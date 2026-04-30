@@ -39,6 +39,7 @@ import {
   composeViolationsText,
   resolvePlanEntry,
 } from './parts/entry';
+import { mergeDelta } from './parts/mergeDelta';
 import {
   hasEmptyImplementation,
   isVerificationPassWithoutCodeGen,
@@ -339,18 +340,18 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   traceNodeEntry('plan', state.currentTask ?? undefined);
 
   // STEP 0: entry classification.
-  const entry = await resolvePlanEntry(state);
+  const { context: entry, delta: entryDelta } = await resolvePlanEntry(state);
   const { nextTask, isRetry, skipKeywordAndRAG } = entry;
 
   await workflowEnter(state, nextTask);
 
   // STEP 0.5 — resume interrupted task.
   const resumed = await maybeResumeInterrupted(state, entry);
-  if (resumed) return resumed;
+  if (resumed) return mergeDelta(resumed, entryDelta) as ArchitectGraphState;
 
   // STEP 0.6 — pre-planned error fast path.
   const prePlanned = await maybePrePlannedFastPath(state, entry);
-  if (prePlanned) return prePlanned;
+  if (prePlanned) return mergeDelta(prePlanned, entryDelta) as ArchitectGraphState;
 
   // STEP 0.7 — verification retry always re-diagnoses (fall through).
   if (isRetry && isVerificationTask(nextTask)) {
@@ -360,19 +361,19 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   // STEP 0.9 — plan↔tool loop re-entry.
   const toolLoop = await runPlanToolLoopPhase(state, nextTask);
-  if (toolLoop.kind === 'return') return toolLoop.state;
+  if (toolLoop.kind === 'return') return mergeDelta(toolLoop.state, entryDelta) as ArchitectGraphState;
   const forceNoTools = !!toolLoop.forceNoTools;
 
   // Setup fast path — skip RAG entirely.
   const setupFast = await maybeSetupFastPath(state, entry);
-  if (setupFast) return setupFast;
+  if (setupFast) return mergeDelta(setupFast, entryDelta) as ArchitectGraphState;
 
   // STEP 0.8 ~ STEP 2.5 — RAG pipeline.
   const rag = await runPlanRAG(state, { nextTask, isRetry, skipKeywordAndRAG });
 
   // STEP 3 — plan LLM.
   const llmOutcome = await runMainPlanLLM(state, entry, rag, forceNoTools);
-  if ('_activePhase' in llmOutcome) return llmOutcome; // tool-call re-entry
+  if ('_activePhase' in llmOutcome) return mergeDelta(llmOutcome, entryDelta) as ArchitectGraphState; // tool-call re-entry
   const planTextRaw = llmOutcome.planText;
 
   // Passing violations down — CodeGen still injects them into its prompt.
@@ -432,7 +433,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
 
     await workflowExit(state);
-    return updatedState;
+    return mergeDelta(updatedState, entryDelta) as ArchitectGraphState;
   } catch (error: any) {
     console.error('\n❌ [Plan] Failed to update state:', error);
     throw error;

@@ -52,7 +52,7 @@ function makeFreshVerificationState() {
 describe('resolvePlanEntry — fresh verification task (C14)', () => {
   it('initialises the verification session via the plan hook', async () => {
     const state = makeFreshVerificationState();
-    const ctx = await resolvePlanEntry(state);
+    const { context: ctx, delta } = await resolvePlanEntry(state);
 
     expect(ctx.nextTask.name).toBe('verify');
     expect(ctx.isRetry).toBe(false);
@@ -65,13 +65,24 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
     expect(state.verification.required()).toEqual(['build']);
     expect(state.verification.passed()).toEqual([]);
     expect(state.verification.attempts()).toBe(0);
+    // Session must surface in the delta so plan() return paths can commit
+    // it via `mergeDelta` — without this, the channel keeps the pre-entry
+    // (undefined) value when plan returns through tool_use / planText.
+    expect(delta.verification).toBe(state.verification);
   });
 
-  it('resets _planSearchWebCount to 0', async () => {
+  it('emits _planSearchWebCount: 0 in both delta (reducer commit) and state (same-turn read)', async () => {
     const state = makeFreshVerificationState();
     state._planSearchWebCount = 42;
 
-    await resolvePlanEntry(state);
+    const { delta } = await resolvePlanEntry(state);
+    // Counter resets are carried via:
+    //   - delta: surfaces in plan()'s return-object via `mergeDelta` so
+    //     the LangGraph reducer commits the reset to the channel.
+    //   - state mutation: same-turn `plan()` body reads (RAG, LLM prompt
+    //     composition, gate predicates) see the reset value before the
+    //     reducer commit happens.
+    expect(delta._planSearchWebCount).toBe(0);
     expect(state._planSearchWebCount).toBe(0);
   });
 });
@@ -102,7 +113,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     state.violations = [{ type: 'type_error' as any, severity: 'critical', message: 'x' }];
     state.planText = '{"task":{"id":"t1"},"diagnostics":{"totalErrors":1}}';
 
-    const ctx = await resolvePlanEntry(state);
+    const { context: ctx, delta } = await resolvePlanEntry(state);
 
     expect(ctx.isRetry).toBe(true);
 
@@ -120,6 +131,11 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     // attempts bumped via session.onPlanEntry('retry')
     expect(snap.attempts).toBe(1);
 
+    // Violation clear flows through both surfaces:
+    //   - delta.violations → mergeDelta → reducer commit
+    //   - state.violations mutation → same-turn read by composeViolations
+    //     Text / generatePlanText / runPlanRAG.extractFilesFromViolations.
+    expect(delta.violations).toEqual([]);
     expect(state.violations).toEqual([]);
   });
 
@@ -149,7 +165,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       ],
     };
 
-    await resolvePlanEntry(state);
+    const { delta } = await resolvePlanEntry(state);
 
     // R2-P1: NODE_PLAN is reset at retry entry. The preserved-across-retry
     // policy documented earlier was never actually exercised — the retry
@@ -159,9 +175,22 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     // verification-variant plan template, and (b) LLM self-service
     // `read_file sessions/architect/code.json` when cascading failure
     // is suspected (see postmortem §4.1 / verification/rules.md).
+    //
+    // Mutation + delta contract:
+    //   - delta carries the clears so `mergeDelta` propagates them to the
+    //     LangGraph reducer (urban-fronting-faith Anthropic-400 fix).
+    //   - mutation also clears `state.conversations` so the same plan()
+    //     turn reads the reset value when running RAG / composing the
+    //     plan-LLM prompt / gating tool-loop via `nodePlan.length`.
+    //     Without the mutation, runMainPlanLLM would see a stale
+    //     NODE_PLAN length ≥ PLAN_TOOL_LOOP_MAX and skip the diagnostic
+    //     tool-loop entirely on the first retry plan-LLM call.
+    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
-    // Execute tool-loop always restarts fresh.
     expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(state.violations).toEqual([]);
+    expect(state._executeCallIndex).toBe(0);
   });
 
   it('clears node:plan at fresh task entry (task boundary)', async () => {
@@ -172,9 +201,13 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       [CONV_KEYS.NODE_EXECUTE]: [{ role: 'user', content: 'stale' }],
     };
 
-    await resolvePlanEntry(state);
+    const { delta } = await resolvePlanEntry(state);
 
     // Fresh task entry must wipe both conversation slots to isolate tasks.
+    // Both `delta` (LangGraph reducer commit) and `state.conversations`
+    // (same-turn read by plan() body) must reflect the clear.
+    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
     expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
   });

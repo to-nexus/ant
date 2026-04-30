@@ -42,6 +42,22 @@ export interface PlanEntryContext {
   inToolLoop: boolean;
 }
 
+/**
+ * Plan-entry result — `context` drives the rest of plan() and `delta`
+ * carries the entry handler's pending state writes (conversation clears,
+ * counter resets, etc.). The delta MUST flow through `mergeDelta(base,
+ * delta)` at every plan() return path so the LangGraph reducer actually
+ * commits the writes — pure mutation of `state.X` does not propagate
+ * through the channel reducer for non-base-named keys.
+ *
+ * Regression: job `urban-fronting-faith` (2026-04-30). See
+ * `tests/retry-orphan-toolresult.test.ts`.
+ */
+export interface PlanEntryResult {
+  context: PlanEntryContext;
+  delta: Partial<ArchitectGraphState>;
+}
+
 interface PlanEntryFlags {
   inToolLoop: boolean;
   isRetry: boolean;
@@ -190,7 +206,7 @@ async function recomputeInstallNeeded(
   }
 }
 
-export async function resolvePlanEntry(state: ArchitectGraphState): Promise<PlanEntryContext> {
+export async function resolvePlanEntry(state: ArchitectGraphState): Promise<PlanEntryResult> {
   const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
   const entryReason = inToolLoop ? undefined : state._nextPlanEntry;
   if (!inToolLoop) state._nextPlanEntry = undefined;
@@ -220,21 +236,24 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
 function handleToolLoopReentry(
   state: ArchitectGraphState,
   flags: PlanEntryFlags,
-): PlanEntryContext {
+): PlanEntryResult {
   const nextTask = state.currentTask!;
   console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
   return {
-    nextTask,
-    isRetry: flags.isRetry,
-    skipKeywordAndRAG: false,
-    inToolLoop: flags.inToolLoop,
+    context: {
+      nextTask,
+      isRetry: flags.isRetry,
+      skipKeywordAndRAG: false,
+      inToolLoop: flags.inToolLoop,
+    },
+    delta: {},
   };
 }
 
 async function handleRetryEntry(
   state: ArchitectGraphState,
   flags: PlanEntryFlags,
-): Promise<PlanEntryContext> {
+): Promise<PlanEntryResult> {
   const nextTask = state.currentTask!;
 
   // Termination dispatch (R1). Verification responsibility holders' plan
@@ -255,6 +274,11 @@ async function handleRetryEntry(
     throw hookTerminal;
   }
 
+  // Retry counter remains a state mutation — `mergeDelta` is base-wins for
+  // top-level keys, and plan() return objects spread `...state` (which
+  // includes the bumped `retries`) so downstream LangGraph state already
+  // sees the increment without a delta carrier. Single-writer contract is
+  // preserved (bc1e45b9 / plan-retry-counter.test.ts).
   if (!isVerificationTask(nextTask)) {
     state.retries = (state.retries || 0) + 1;
     if (state.retries >= state.maxRetries) {
@@ -268,14 +292,13 @@ async function handleRetryEntry(
 
   const prevCallIndex = state._executeCallIndex || 0;
   const isVerificationRetry = isVerificationTask(nextTask);
+  const delta: Partial<ArchitectGraphState> = {};
 
   if (isVerificationRetry) {
     const prevViolationCount = state.violations?.length ?? 0;
     const priorPlanMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     state.verification?.onPlanEntry('retry');
-    state._executeCallIndex = 0;
     const sessionAttempts = state.verification?.attempts() ?? 0;
-    state.violations = [];
     // R2-P1: reset NODE_PLAN at retry entry. Prior attempts' plan↔tool
     // conversation is never actually consumed by the retry path
     // (`runPlanToolLoopPhase` falls through because `_activePhase` is
@@ -286,13 +309,36 @@ async function handleRetryEntry(
     // LLM-self-service `read_file sessions/architect/code.json`; the
     // previous `buildDiagnosticRetryContext` narrative channel was
     // removed (postmortem §4.1).
+    //
+    // ❶ Mutation — same-turn `plan()` body read consistency. `runMainPlanLLM`
+    //   reads `state.conversations.NODE_PLAN` to gate `tryToolsFirst`
+    //   (planToolRounds < PLAN_TOOL_LOOP_MAX), `composeViolationsText` /
+    //   `generatePlanText` / `runPlanRAG` read `state.violations`. Without
+    //   the mutation, the same plan() invocation that should re-run the
+    //   diagnostic tool-loop would see a stale 26-message NODE_PLAN
+    //   (planToolRounds=13 ≥ MAX) and skip the tool-loop entirely.
+    // ❷ Delta — LangGraph reducer commit via `mergeDelta`. The shallow-
+    //   merge `conversationsReducer` would otherwise silently drop the
+    //   NODE_EXECUTE clear when plan() returns through the tool_use
+    //   branch (which only declares `conversations: { NODE_PLAN: [...] }`).
+    //   This is the `urban-fronting-faith` Anthropic-400 trigger.
+    state._executeCallIndex = 0;
+    state.violations = [];
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
       [CONV_KEYS.NODE_PLAN]: [],
     };
     state._executeModifiedFiles = false;
+    delta._executeCallIndex = 0;
+    delta.violations = [];
+    delta.conversations = {
+      [CONV_KEYS.NODE_EXECUTE]: [],
+      [CONV_KEYS.NODE_PLAN]: [],
+    };
+    delta._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
+    delta.verification = state.verification;
     console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
     console.log(`   ♻️  node:execute cleared, _executeCallIndex ${prevCallIndex}→0`);
     console.log(`   ♻️  node:plan reset (had ${priorPlanMsgCount} msgs; retry context via Session summary + sessions/architect/code.json)\n`);
@@ -320,6 +366,12 @@ async function handleRetryEntry(
       }).catch(() => {});
     }
   } else {
+    // Mutation + delta — see verification branch above for the read /
+    // commit responsibilities split. Non-verification retry preserves
+    // NODE_PLAN (the LLM benefits from seeing the prior diagnostic round
+    // within the same task), so only NODE_EXECUTE is cleared on both
+    // sides.
+    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
     state.violations = [];
@@ -327,23 +379,31 @@ async function handleRetryEntry(
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
     };
-    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
+    delta._executeCallIndex = 0;
+    delta._finalTaskLoopCount = 0;
+    delta.violations = [];
+    delta.conversations = {
+      [CONV_KEYS.NODE_EXECUTE]: [],
+    };
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
     console.log(`   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
   }
 
   return {
-    nextTask,
-    isRetry: flags.isRetry,
-    skipKeywordAndRAG: false,
-    inToolLoop: flags.inToolLoop,
+    context: {
+      nextTask,
+      isRetry: flags.isRetry,
+      skipKeywordAndRAG: false,
+      inToolLoop: flags.inToolLoop,
+    },
+    delta,
   };
 }
 
 async function handleReverifyEntry(
   state: ArchitectGraphState,
   flags: PlanEntryFlags,
-): Promise<PlanEntryContext> {
+): Promise<PlanEntryResult> {
   const nextTask = state.currentTask!;
   console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
   console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
@@ -369,7 +429,6 @@ async function handleReverifyEntry(
   // Plan-history push lives at `nodes/plan/index.ts` (single-writer).
   state.verification?.onPlanEntry('reverify');
 
-  state._executeCallIndex = 0;
   // NODE_EXECUTE is always reset at reverify entry — the apply / prior-
   // reverify execute-phase tool-loop messages are stale once we re-enter
   // plan with a (potentially) new diagnostic surface.
@@ -382,26 +441,50 @@ async function handleReverifyEntry(
   // task post-execute, or self-verify task's second+ reverify) keep
   // NODE_PLAN intact — the LLM benefits from seeing the prior diagnostic
   // tool-loop within the same verify-mode framing.
-  state.conversations = isFirstVerifyEntry
+  //
+  // Mutation + delta pattern — see `handleRetryEntry` jsdoc above. Mutation
+  // for same-turn `plan()` body read consistency (runMainPlanLLM tool-loop
+  // gate, composeViolationsText, RAG); delta for LangGraph reducer commit
+  // via `mergeDelta`.
+  const newConvs = isFirstVerifyEntry
     ? { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
     : { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
+  state._executeCallIndex = 0;
   state._executeModifiedFiles = false;
   state.violations = [];
+  state.conversations = newConvs;
+  const delta: Partial<ArchitectGraphState> = {
+    _executeCallIndex: 0,
+    _executeModifiedFiles: false,
+    violations: [],
+    conversations: isFirstVerifyEntry
+      ? { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
+      : { [CONV_KEYS.NODE_EXECUTE]: [] },
+  };
 
   await recomputeInstallNeeded(state, { detectPmIfMissing: true });
 
+  // initSession populates `state.verification`; surface it in the delta so
+  // the LangGraph reducer commits the (possibly fresh) Session reference
+  // alongside the conversation clear. Without this the channel keeps the
+  // pre-entry value when plan returns via the tool_use / planText paths.
+  delta.verification = state.verification;
+
   return {
-    nextTask,
-    isRetry: flags.isRetry,
-    skipKeywordAndRAG: true,
-    inToolLoop: flags.inToolLoop,
+    context: {
+      nextTask,
+      isRetry: flags.isRetry,
+      skipKeywordAndRAG: true,
+      inToolLoop: flags.inToolLoop,
+    },
+    delta,
   };
 }
 
 async function handleFreshTaskEntry(
   state: ArchitectGraphState,
   flags: PlanEntryFlags,
-): Promise<PlanEntryContext> {
+): Promise<PlanEntryResult> {
   const _wid = state.workerId;
   const isWorkerCtx = _wid !== undefined && _wid !== null;
 
@@ -424,12 +507,26 @@ async function handleFreshTaskEntry(
 
   const { resetTaskTokenUsage } = await import('../../../../../../common/graph/llmHelpers');
   resetTaskTokenUsage(state);
+
+  // Mutation + delta — see `handleRetryEntry` jsdoc above. Fresh task entry
+  // wipes both NODE_PLAN and NODE_EXECUTE for task-boundary isolation; the
+  // mutation gives `plan()` body / RAG / runMainPlanLLM a clean read in the
+  // same turn, the delta carries the clear through `mergeDelta` to the
+  // LangGraph reducer.
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_PLAN]: [],
     [CONV_KEYS.NODE_EXECUTE]: [],
+  };
+  const delta: Partial<ArchitectGraphState> = {
+    _executeCallIndex: 0,
+    _planSearchWebCount: 0,
+    conversations: {
+      [CONV_KEYS.NODE_PLAN]: [],
+      [CONV_KEYS.NODE_EXECUTE]: [],
+    },
   };
 
   if (isVerificationTask(nextTask)) {
@@ -451,6 +548,11 @@ async function handleFreshTaskEntry(
     console.log(`🎫 [Plan] verificationAttempts=${sessionAttempts}`);
 
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
+    // Surface the (possibly newly-created) Session in the delta so the
+    // LangGraph reducer commits the reference alongside the rest of the
+    // entry writes. Without this, plan() return paths that don't spread
+    // `...state` would lose it.
+    delta.verification = state.verification;
   }
 
   if (state.context?.featurePath && state._httpJobId) {
@@ -504,9 +606,12 @@ async function handleFreshTaskEntry(
   }
 
   return {
-    nextTask,
-    isRetry: flags.isRetry,
-    skipKeywordAndRAG: false,
-    inToolLoop: flags.inToolLoop,
+    context: {
+      nextTask,
+      isRetry: flags.isRetry,
+      skipKeywordAndRAG: false,
+      inToolLoop: flags.inToolLoop,
+    },
+    delta,
   };
 }
