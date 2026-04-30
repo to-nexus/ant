@@ -144,13 +144,43 @@ function hasFinalVerification(
 export const MAX_BATCH_SPLIT_CYCLES = 10;
 
 /**
- * Strip markdown code fences from a string if present.
- * Handles: ```json\n...\n```, ```\n...\n```, etc.
+ * Extract a JSON-parseable substring from an LLM plan output.
+ *
+ * Three increasingly aggressive strategies, applied in order:
+ *
+ *   1. Whole-string markdown-fence strip — `\`\`\`json\n...\n\`\`\``
+ *      or `\`\`\`\n...\n\`\`\`` wrapping the entire body.
+ *   2. Inline JSON object extraction — when the model prefixes prose
+ *      around backticks (the `urban-fronting-faith` pattern: planText
+ *      began with "\` as soon as ..." prose), grab the substring from
+ *      the first `{` to the last `}`. This rescues plans where the
+ *      model added a prologue / epilogue but the structural body is
+ *      still well-formed JSON.
+ *   3. Fall through to the trimmed input.
+ *
+ * Strategy (2) is the lever that turns the formerly-skipped
+ * `json_parse_error` cycles into recoverable plans without spending an
+ * extra LLM call on a self-correct round-trip. The downstream
+ * `JSON.parse` is the authoritative validator — extraction only
+ * narrows the candidate; if the slice is still malformed, the catch
+ * branch still logs `json_parse_error` and we degrade gracefully.
  */
 function stripMarkdownFences(text: string): string {
   const trimmed = text.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
   if (fenceMatch) return fenceMatch[1].trim();
+
+  // Strategy 2 — first `{` to last `}` slice. Only attempted when the
+  // trimmed body is not itself parseable JSON, otherwise the caller's
+  // own `JSON.parse` would be bypassed for inputs that need no rescue.
+  if (trimmed.length > 0 && trimmed[0] !== '{') {
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      return trimmed.slice(firstBrace, lastBrace + 1).trim();
+    }
+  }
+
   return trimmed;
 }
 
