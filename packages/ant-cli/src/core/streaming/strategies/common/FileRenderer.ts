@@ -56,6 +56,26 @@ export interface FileRendererConfig {
    * ephemeral — this hook feeds the session SSOT (code.json).
    */
   onFileTouched?: (filePath: string) => void;
+  /**
+   * Design-job guard: the feature-relative path the current task is
+   * authoritatively allowed to write to (e.g.
+   * `"architecture/system/api-contract-main.md"`). When set, any
+   * `<file path="...">` whose canonical path differs is auto-corrected
+   * to this value before writing.
+   *
+   * Rationale: prompt instructions alone do not reliably constrain the
+   * LLM's chosen filename. A historical regression had decompose hand
+   * mismatched section assignments to an `api-contract-main.md` task,
+   * which then prompted the execute LLM to hallucinate a
+   * `fe-system-main.md` path and silently drop the actual contract
+   * document. With this guard the worst-case outcome is content
+   * landing in the correct file even when the LLM gets the filename
+   * wrong, instead of a missing artifact.
+   *
+   * Only enforced when `jobType === 'design'` — code jobs legitimately
+   * write multiple files per turn.
+   */
+  expectedTargetFile?: string;
 }
 
 export class FileRenderer {
@@ -68,6 +88,14 @@ export class FileRenderer {
   private featurePath?: string;
   private codebasePath?: string;
   private onFileTouched?: (filePath: string) => void;
+  private expectedTargetFile?: string;
+  /**
+   * Per-renderer dedupe set for `expectedTargetFile` mismatch warnings —
+   * `canonicalizePath` is invoked from start / content / end handlers,
+   * each typically multiple times for a streamed file. Without this set
+   * the same mismatch would log dozens of identical warnings per task.
+   */
+  private warnedMismatchedPaths: Set<string> = new Set();
   
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private lineBuffers: LineBufferManager = new LineBufferManager();
@@ -99,6 +127,73 @@ export class FileRenderer {
     this.featurePath = config.featurePath;
     this.codebasePath = config.codebasePath;
     this.onFileTouched = config.onFileTouched;
+    this.expectedTargetFile = config.expectedTargetFile;
+  }
+
+  /**
+   * Pin the design-job target filename guard for the current task. See
+   * `FileRendererConfig.expectedTargetFile` for the full rationale.
+   * Called per-task from docGen so a single renderer instance can be
+   * reused across worker turns without leaking the previous task's
+   * expected target.
+   */
+  setExpectedTargetFile(expectedTargetFile: string | undefined): void {
+    this.expectedTargetFile = expectedTargetFile;
+    this.warnedMismatchedPaths.clear();
+  }
+
+  /**
+   * Design-job filename guard — see `FileRendererConfig.expectedTargetFile`.
+   *
+   * Returns the path the renderer should treat as authoritative. When the
+   * LLM-emitted path matches the expected target, returns it unchanged;
+   * when it differs, logs a warning and returns the expected path so the
+   * write lands in the correct file. Code jobs and design jobs without an
+   * `expectedTargetFile` configured pass through unchanged.
+   *
+   * Comparison is by basename only — the `<file path="...">` value the
+   * LLM emits is feature-relative (e.g. `architecture/system/foo.md`)
+   * and `expectedTargetFile` is also feature-relative, so a basename-only
+   * check tolerates the LLM picking a sibling subdirectory while still
+   * catching wrong filenames. (Subdirectory mismatch is fixed at the
+   * full-path level by replacing the canonical path entirely.)
+   */
+  private enforceExpectedTargetFile(canonicalPath: string): string {
+    if (this.jobType !== 'design') return canonicalPath;
+    if (!this.expectedTargetFile) return canonicalPath;
+
+    const incomingBase = path.basename(canonicalPath);
+    const expectedBase = path.basename(this.expectedTargetFile);
+
+    if (incomingBase === expectedBase && canonicalPath === this.expectedTargetFile) {
+      return canonicalPath;
+    }
+    const warnKey = `${canonicalPath}→${this.expectedTargetFile}`;
+    const alreadyWarned = this.warnedMismatchedPaths.has(warnKey);
+    if (!alreadyWarned) this.warnedMismatchedPaths.add(warnKey);
+
+    if (incomingBase === expectedBase) {
+      // Same filename, different subdirectory — pin to the canonical
+      // expected location so doc-gen invariants
+      // (e.g. `architecture/system/` vs `architecture/spec/`) hold.
+      if (!alreadyWarned) {
+        console.warn(
+          `⚠️ [FileRenderer] Design path subdirectory mismatch: ` +
+          `"${canonicalPath}" → "${this.expectedTargetFile}" ` +
+          `(expected target file pinned by current task)`
+        );
+      }
+      return this.expectedTargetFile;
+    }
+    if (!alreadyWarned) {
+      console.warn(
+        `⚠️ [FileRenderer] Design filename mismatch: LLM emitted ` +
+        `"${canonicalPath}" but current task targets ` +
+        `"${this.expectedTargetFile}" — overriding to expected target. ` +
+        `(Common cause: decompose mis-assigned a foreign catalog's sections to this task.)`
+      );
+    }
+    return this.expectedTargetFile;
   }
   
   /**
@@ -156,9 +251,17 @@ export class FileRenderer {
    * - "codebase/package.json" for code files
    * - "architecture/system/...", "architecture/spec/...", "visual/ui/...",
    *   "visual/game-art/..." for design / visual files (feature-relative).
+   *
+   * For design jobs the result is then run through the optional
+   * `expectedTargetFile` guard (see `enforceExpectedTargetFile`) so all
+   * three streaming handlers (`renderFileStart` / `renderFileContent` /
+   * `renderFileEnd`) operate on the same corrected key — without this
+   * the start would land on one filename and content/end on another, and
+   * the registry would split a single LLM emission across two entries.
    */
   private canonicalizePath(originalPath: string): string {
-    return originalPath.replace(/\\/g, '/').replace(/^\.?\//, '');
+    const base = originalPath.replace(/\\/g, '/').replace(/^\.?\//, '');
+    return this.enforceExpectedTargetFile(base);
   }
 
   /**

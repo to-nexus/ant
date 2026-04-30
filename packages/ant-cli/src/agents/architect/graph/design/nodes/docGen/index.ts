@@ -33,7 +33,7 @@ import { getTools } from './tools';
 import { parseClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
@@ -171,7 +171,19 @@ export async function docGen(
     state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
-  
+
+  // ✅ Pin the expected output filename for this task — guards against the
+  // execute LLM emitting `<file path="...">` with a hallucinated filename
+  // when the prompt is internally inconsistent (e.g. decompose mis-assigned
+  // a foreign catalog's sections to this task). UI mode skipped because it
+  // writes multiple artifacts per turn (ui-tokens.json, ui-assets.json,
+  // ui-spec.json) rather than a single targetFile.
+  if (intentGroup !== 'design-ui' && state.currentTask?.targetFile) {
+    const targetFile = state.currentTask.targetFile;
+    const expectedTargetFile = `${designDirOf(targetFile)}/${targetFile}`;
+    renderStrategy.setExpectedTargetFile(expectedTargetFile);
+  }
+
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
   const existingFiles = await scanExistingFiles(state, intentGroup === 'design-ui');
   

@@ -21,6 +21,11 @@ import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import {
+  CATALOG_MAP,
+  parseCatalogSections,
+  resolveTemplateDir,
+} from '../../decompose/catalogLookup';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -502,62 +507,11 @@ function resolveDesignTechTierCandidates(
   return [];
 }
 
-/**
- * Catalog file mapping by targetFile prefix.
- * - names: section name list (for computing ASSIGNED/FORBIDDEN scope)
- * - full: detailed per-section writing guides (for filteredCatalog)
- */
-const CATALOG_MAP: Record<string, { names: string; full: string }> = {
-  'fe-system-': {
-    names: 'jobs/design/base/catalogs/frontend-catalog-names.md',
-    full: 'jobs/design/base/catalogs/frontend-catalog.md',
-  },
-  'be-system-': {
-    names: 'jobs/design/base/catalogs/backend-catalog-names.md',
-    full: 'jobs/design/base/catalogs/backend-catalog.md',
-  },
-  'api-contract-': {
-    names: 'jobs/design/base/catalogs/api-contract-catalog-names.md',
-    full: 'jobs/design/base/catalogs/api-contract-catalog.md',
-  },
-};
-
-/**
- * Parse catalog-names.md content into an array of section names.
- * Format: "- § Section Name" or "- § Section Name (conditional: ...)"
- */
-function parseCatalogSections(content: string): string[] {
-  return content
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.startsWith('- §'))
-    .map(line => {
-      const match = line.match(/^- (§ [^(]+)/);
-      return match ? match[1].trim() : '';
-    })
-    .filter(Boolean);
-}
-
-/**
- * Resolve the templates directory, compatible with both ESM dev (tsx) and bundled (esbuild) environments.
- * - Dev:  import.meta.url → src/agents/architect/.../docGen/systemDesignPrompt.ts → ../../../../../../core/prompt/templates
- * - Prod: import.meta.url → dist/composition/job-runner.js → ../core/prompt/templates (via /dist/ marker)
- */
-async function resolveTemplateDir(): Promise<string> {
-  const { fileURLToPath } = await import('url');
-  const pathModule = await import('path');
-
-  const currentDir = pathModule.dirname(fileURLToPath(import.meta.url));
-
-  const distMarker = `${pathModule.sep}dist${pathModule.sep}`;
-  const distIdx = currentDir.lastIndexOf(distMarker);
-  if (distIdx !== -1) {
-    const distRoot = currentDir.substring(0, distIdx + distMarker.length - 1);
-    return pathModule.join(distRoot, 'core', 'prompt', 'templates');
-  }
-
-  return pathModule.resolve(currentDir, '../../../../../../core/prompt/templates');
-}
+// CATALOG_MAP / parseCatalogSections / resolveTemplateDir live in
+// ../../decompose/catalogLookup so decompose-side validation and execute-side
+// rendering share the same SSOT. Diverging copies historically allowed bugs
+// like assigning frontend-catalog sections to api-contract tasks to slip
+// through validation while still rendering an (inconsistent) prompt.
 
 /**
  * Build the ASSIGNED/FORBIDDEN section scope block for the execute prompt.
