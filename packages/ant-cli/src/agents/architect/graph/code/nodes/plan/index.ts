@@ -127,6 +127,15 @@ async function maybeResumeInterrupted(
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
     workspaceConfig: state.workspaceConfig,
+    // Phase declaration — the resume short-circuit MUST hand off to
+    // `execute` with a clean phase. Inheriting `_activePhase` from `state`
+    // (which was `'plan'` because we entered via `handleToolLoopReentry`)
+    // would let the downstream `tool` node misroute `tool_result` blocks
+    // into NODE_PLAN. The leftover `llmResponse` is also cleared so the
+    // pure `planRouter` predicate cannot pick up a stale `tool_use` /
+    // `done: true` flag from the prior tool-loop turn.
+    _activePhase: 'execute' as const,
+    llmResponse: { done: false, textResponse: '', thinking: '', toolCalls: [] },
   };
 }
 
