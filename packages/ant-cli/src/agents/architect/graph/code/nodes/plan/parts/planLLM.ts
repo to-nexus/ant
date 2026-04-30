@@ -29,7 +29,6 @@ import {
   isVerificationPassWithoutCodeGen,
   processDiagnosticBatchSplit,
 } from './batchSplit';
-import { maybeApplyPlanHistory } from './planHistory';
 import { isVerificationTask } from '../../../tasks/verification';
 import { isErrorTask } from '../../../tasks/error';
 
@@ -63,7 +62,9 @@ export async function runPlanToolLoopPhase(
       const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
       const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
       const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(finalizedPlan);
-      maybeApplyPlanHistory(state, finalizedPlan, batchSplitOccurred, nextTask);
+      if (!batchSplitOccurred && !emptyImplShortCircuit) {
+        state.verification?.onPlanApplied(finalizedPlan);
+      }
       // `_activePhase` mutation removed — every return path below this
       // function explicitly commits `_activePhase: 'execute' as const`.
       // Mutating it here was redundant and a latent regression for the
@@ -117,7 +118,11 @@ export async function runPlanToolLoopPhase(
     const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
     const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
     const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
-    maybeApplyPlanHistory(state, planText, batchSplitOccurred, nextTask);
+    const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
+    const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(planText);
+    if (!batchSplitOccurred && !emptyImplShortCircuit) {
+      state.verification?.onPlanApplied(planText);
+    }
     const updatedState: ArchitectGraphState = {
       ...state,
       currentTask: nextTask,

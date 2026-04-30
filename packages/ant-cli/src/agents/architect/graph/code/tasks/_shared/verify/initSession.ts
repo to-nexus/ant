@@ -79,33 +79,6 @@ export function initSession(state: ArchitectGraphState, env: InitSessionEnv): vo
   if (!state.verification) {
     state.verification = VerificationSession.createFresh(env);
     markVerifyEntered(state);
-
-    // Self-verify Tier 2 task — at first reverify entry the apply
-    // phase's `state.planText` is still the body the apply execute
-    // just consumed. Push it into the freshly-created Session's
-    // history so the first verify-cycle plan LLM sees it via the
-    // `priorPlans` template variable (`buildPlanPrompt.ts` →
-    // `templates/jobs/code/nodes/plan/variants/verification/base.md`'s
-    // "Prior Diagnostic Attempts In This Task" block). Without this
-    // hop the buffer starts empty and the cycle-1 verify plan
-    // re-discovers the apply-phase diagnosis from scratch — the
-    // direct trigger of the cascade pattern observed in
-    // `misty-filling-rivet`.
-    //
-    // Verification task type (Tier 3/4) is gated out: its apply phase
-    // is a separate upstream task whose `planText` is foreign to this
-    // session's history.
-    if (
-      task &&
-      !isVerificationTask(task) &&
-      typeof state.planText === 'string' &&
-      state.planText.trim().length > 0
-    ) {
-      state.verification.onPlanApplied(state.planText);
-      console.log(
-        `📜 [Plan] Self-verify task "${task.name}" — apply-phase planText (${state.planText.length} chars) carried into Session.planHistoryBodies`,
-      );
-    }
     return;
   }
   state.verification.hydrateEnv(env);

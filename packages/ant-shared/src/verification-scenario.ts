@@ -88,11 +88,9 @@ export interface ScenarioVerificationSnapshot {
   passed: string[];
   attempts: number;
   planHistoryHashes: string[];
-  planHistoryBodies?: string[];
   depHash?: string;
   installNeeded?: boolean;
   batchSplitCount?: number;
-  previousBatchDiagnostics?: string;
 }
 
 /**

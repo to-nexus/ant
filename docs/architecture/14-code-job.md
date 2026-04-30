@@ -155,11 +155,11 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 `diagnostics/` 디렉토리의 멀티언어 에러 파서가 빌드/테스트 실패 출력을 파싱하여 파일 단위로 분리한다.
 
-- `error` 태스크: 검증 실패 시 오류를 파일별로 분리하여 독립 태스크로 재분해 (batch split)
-- `verification` 태스크: `VerificationTracker`가 build/test objective 완료를 추적. 모든 목표가 충족될 때까지 `checkTaskStatus -> enforce -> plan` 루프를 반복한다
+- `verification` 태스크 = **진단 + fan-out 전담**. plan tool-loop 가 build/test 를 직접 실행해 root cause 를 분리하고, 1+ 수정 항목이 발견되면 무조건 per-target error sub-task 로 fan-out 한다. verification 자체는 fix 를 시도하지 않는다(execute phase 가 사실상 호출되지 않음 — fan-out 후 즉시 `done:true`).
+- `error` 태스크 = **fix 전담**. fan-out 으로 spawn 된 1-entry sub-task 는 `prePlanText` fast-path 를 타고 plan 단계를 건너뛴 채 execute 로 진입해 단일 파일을 고친다.
 - `test-code` 태스크: 모든 feature 태스크 완료 후 테스트 코드 생성
 
-batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개어 병렬 처리를 가능하게 한다. 분할된 태스크는 taskQueue에 삽입되고 `plan` 노드로 재진입한다.
+`processDiagnosticBatchSplit` 의 **always-fan-out 정책**: top-level `implementation.{modify,create,delete}` 는 자동으로 per-target batches[] 로 변환. 기존 `batches[]` 가 있으면 그대로 존중. 분할 임계 환경변수(`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`) 와 `forceByRepeat` 분기는 폐지(verification 책임이 fix 가 아니라 fan-out 으로 양극화되면서 임계 게이팅 자체가 의미 없음). 분할 cycle 의 하드 캡은 `MAX_BATCH_SPLIT_CYCLES = 10` 으로 보장.
 
 ## Cache Invalidation Scope
 

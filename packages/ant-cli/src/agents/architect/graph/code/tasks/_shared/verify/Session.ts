@@ -16,7 +16,6 @@
  *
  * Environment:
  *   - `ANT_DEEP_DIAGNOSTIC_THRESHOLD` — attempts at which deep-diagnostic mode activates (default 2).
- *   - `ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES` — force-split thresholds.
  */
 
 import type { Gate } from './gates';
@@ -33,27 +32,6 @@ function envInt(name: string, fallback: number): number {
 }
 
 export const DEEP_DIAGNOSTIC_THRESHOLD = envInt('ANT_DEEP_DIAGNOSTIC_THRESHOLD', 2);
-
-/**
- * Cap on the per-task plan-history body buffer surfaced by `renderPriorPlans`.
- *
- * Aligned with `MAX_BATCH_SPLIT_CYCLES = 10` in
- * `nodes/plan/parts/batchSplit.ts` (the system's hard limit on cascading
- * batch-split cycles) plus a small headroom of 2 — verification can also
- * retry without batch-splitting, so the plan-history axis is slightly
- * longer than the batch-split axis. Direct import of
- * `MAX_BATCH_SPLIT_CYCLES` would create a circular dependency through
- * `tasks/_shared/verify/errors`, so the value is defined here as an env-
- * tunable constant following the `DEEP_DIAGNOSTIC_THRESHOLD` precedent.
- *
- * Token impact: each summarized cycle ≈ 200 chars (goal + rootCauses +
- * modifyTargets dedupe), so a full buffer of 12 entries adds ≈ 600
- * tokens — under 0.3% of a 200K context window. The previous default of
- * 3 silently dropped 9 cycles' worth of fix history in cascade scenarios
- * (the `urban-fronting-faith` postmortem), causing the cycle-N+1 plan
- * LLM to re-discover the same fix space from scratch.
- */
-const PLAN_HISTORY_BODY_LIMIT = envInt('ANT_PLAN_HISTORY_LIMIT', 12);
 
 // ────────────────────────────────────────────────────────────────────────────
 // Plan-entry vocabulary
@@ -94,32 +72,30 @@ export class VerificationSession {
   // out the whole Set; the Sets themselves are mutated in place.
   private readonly _required: Set<Gate>;
   private readonly _passed: Set<Gate>;
+  // `_planHistoryHashes` is retained as the SSOT for repeated-plan
+  // detection. The body buffer + previousBatchDiagnostics narrative
+  // channels were removed when verification stopped owning fix
+  // responsibility (see "verification fix-책임 제거 리팩토링").
   private readonly _planHistoryHashes: string[];
-  private readonly _planHistoryBodies: string[];
 
   private _attempts: number;
   private _installNeeded: boolean | undefined;
   private _batchSplitCount: number;
-  private _previousBatchDiagnostics: string | undefined;
 
   private constructor(init: {
     required: Iterable<Gate>;
     passed: Iterable<Gate>;
     attempts: number;
     planHistoryHashes: string[];
-    planHistoryBodies: string[];
     installNeeded?: boolean;
     batchSplitCount?: number;
-    previousBatchDiagnostics?: string;
   }) {
     this._required = new Set(init.required);
     this._passed = new Set(init.passed);
     this._attempts = Math.max(0, init.attempts | 0);
     this._planHistoryHashes = [...init.planHistoryHashes];
-    this._planHistoryBodies = [...init.planHistoryBodies];
     this._installNeeded = init.installNeeded;
     this._batchSplitCount = Math.max(0, (init.batchSplitCount ?? 0) | 0);
-    this._previousBatchDiagnostics = init.previousBatchDiagnostics;
 
     // Invariant: passed ⊆ required. Silently intersect so a bad rehydrate
     // (e.g. required shrank across a schema change) degrades gracefully.
@@ -145,7 +121,6 @@ export class VerificationSession {
       passed: [],
       attempts: 0,
       planHistoryHashes: [],
-      planHistoryBodies: [],
     });
   }
 
@@ -163,10 +138,8 @@ export class VerificationSession {
       passed: safe.passed ?? [],
       attempts: safe.attempts ?? 0,
       planHistoryHashes: safe.planHistoryHashes ?? [],
-      planHistoryBodies: safe.planHistoryBodies ?? [],
       installNeeded: safe.installNeeded,
       batchSplitCount: safe.batchSplitCount,
-      previousBatchDiagnostics: safe.previousBatchDiagnostics,
     });
   }
 
@@ -266,34 +239,24 @@ export class VerificationSession {
     return 'unknown';
   }
 
-  /** Recent plan bodies, newest last, bounded to `PLAN_HISTORY_BODY_LIMIT`. */
-  planHistoryBodies(): readonly string[] {
-    return this._planHistoryBodies;
-  }
-
-  previousBatchDiagnostics(): string | undefined {
-    return this._previousBatchDiagnostics;
-  }
-
   // ──────────────────────────────────────────────────────────────────────
   // Mutations (the only legal writers)
   // ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Transition bookkeeping for a plan-node re-entry. `retry` and `reverify`
-   * bump the attempt counter; `fresh`/`resumed`/`toolLoop` are idempotent
-   * no-ops at the session level (the phase layer handles fresh
+   * Transition bookkeeping for a plan-node re-entry. Only `reverify` bumps
+   * the attempt counter; `fresh`/`resumed`/`toolLoop`/`retry` are
+   * idempotent no-ops at the session level (the phase layer handles fresh
    * initialisation via `createFresh`).
    *
-   * Per-cycle "attempted" tracking was removed when the
-   * `attemptedThisCycle` field retired — `passed` is the single source for
-   * every command-policy guard now (see
-   * `tasks/_shared/verify/commandGuard.ts`). A batch-split or error-fix
-   * cycle that lands here no longer carries stale "typecheck already
-   * attempted" state.
+   * `retry` was a verification-task-only call site that disappeared with
+   * the verification fix-책임 제거 리팩토링 (verification never enters
+   * the retry path under always-fan-out). The case is kept as an explicit
+   * no-op so the `PlanEntry` union remains non-exhaustive at the call
+   * site without forcing every caller to handle every reason.
    */
   onPlanEntry(reason: PlanEntry): void {
-    if (reason === 'retry' || reason === 'reverify') {
+    if (reason === 'reverify') {
       this._attempts += 1;
     }
   }
@@ -329,26 +292,14 @@ export class VerificationSession {
 
   /**
    * Record a plan that has been applied (past tense). The hash list is
-   * always appended — even when `planText` is empty — because the hash
-   * sequence is the ground truth for the retry terminator's repeated-
-   * plan detection. An empty string has a stable SHA-1 value, so two
-   * consecutive empty-plan cycles show up as `isPlanRepeated.count === 2`
-   * and `checkRetryTermination` can fire `no_progress` without any
-   * parallel counter.
-   *
-   * The body buffer, in contrast, skips empty bodies: it is a bounded
-   * prompt-injection channel and empties would only contribute noise
-   * (no readable "previous attempt" to show). This split keeps the
-   * detection channel authoritative while the display channel stays
-   * human-meaningful.
+   * always appended — even when `planText` is empty — so that consumers
+   * (e.g. operator tooling, future safety nets) can detect repeated /
+   * silent-give-up streaks via `isPlanRepeated`. An empty string has a
+   * stable SHA-1 value, so two consecutive empty-plan cycles register
+   * with `isPlanRepeated.count === 2`.
    */
   onPlanApplied(planText: string): void {
     this._planHistoryHashes.push(normalizePlanForHash(planText));
-    if (!planText) return;
-    this._planHistoryBodies.push(planText);
-    while (this._planHistoryBodies.length > PLAN_HISTORY_BODY_LIMIT) {
-      this._planHistoryBodies.shift();
-    }
   }
 
   /**
@@ -362,22 +313,25 @@ export class VerificationSession {
   }
 
   /**
-   * A batch-split cycle just fired. Bumps the cycle counter and stores the
-   * diagnostics summary for injection into the follow-up prompt.
+   * A batch-split cycle just fired. Bumps the cycle counter and the generic
+   * attempt counter. A batch-split is "one more diagnostic failure that did
+   * not resolve the task"; treating it as a non-event would leave
+   * `inDeepMode()` stuck at false across an arbitrary chain of splits
+   * (because `onPlanEntry('reverify')` is not on the batch-split → requeue →
+   * fresh-entry path). Counting it here keeps the `attempts` axis monotonic
+   * across ANY plan-cycle failure, which is what deep-diagnostic mode and
+   * the verification cycle banner both depend on.
    *
-   * Also bumps the generic attempt counter. A batch-split is "one more
-   * diagnostic failure that did not resolve the task"; treating it as a
-   * non-event would leave `inDeepMode()` stuck at false across an
-   * arbitrary chain of splits (because `onPlanEntry('retry'/'reverify')`
-   * is not on the batch-split → requeue → fresh-entry path). Counting
-   * it here keeps the `attempts` axis monotonic across ANY plan-cycle
-   * failure, which is what deep-diagnostic mode and the plan prompt's
-   * "Diagnostic attempts so far: N" banner both depend on.
+   * Argument is accepted for backward compatibility but no longer stored —
+   * the diagnostics summary used to be carried into the follow-up prompt
+   * via `previousBatchDiagnostics`, but that channel was removed when
+   * verification stopped owning fix responsibility (every fan-out now
+   * yields fresh per-target sub-tasks; there is no follow-up prompt to
+   * carry the prior diagnostic into).
    */
-  onBatchSplit(snapshotJson: string): void {
+  onBatchSplit(_snapshotJson?: string): void {
     this._batchSplitCount += 1;
     this._attempts += 1;
-    this._previousBatchDiagnostics = snapshotJson;
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -391,10 +345,8 @@ export class VerificationSession {
       passed: this.passed(),
       attempts: this._attempts,
       planHistoryHashes: [...this._planHistoryHashes],
-      planHistoryBodies: [...this._planHistoryBodies],
       installNeeded: this._installNeeded,
       batchSplitCount: this._batchSplitCount,
-      previousBatchDiagnostics: this._previousBatchDiagnostics,
     };
   }
 }

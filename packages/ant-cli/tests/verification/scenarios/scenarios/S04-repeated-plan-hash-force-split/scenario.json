@@ -1,6 +1,6 @@
 {
-  "name": "repeated-plan-hash-force-split",
-  "description": "Overlay mode: plan returns same JSON twice so _lastPlanHash matches thisHash → forceByRepeat escalation to error sub-tasks. Covers C7.",
+  "name": "repeated-plan-hash-fan-out",
+  "description": "Overlay mode: plan returns the same JSON twice. Under always-fan-out the second cycle still fans out to per-target error sub-tasks regardless of plan-hash repetition (the legacy forceByRepeat machinery was removed). Covers C7.",
   "mode": "overlay",
   "timeoutMs": 30000,
   "expectedChildExitCode": "any",

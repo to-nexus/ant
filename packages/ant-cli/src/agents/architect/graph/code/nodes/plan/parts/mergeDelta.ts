@@ -25,25 +25,22 @@
  *     base winning per key achieves both: base.NODE_PLAN survives, delta's
  *     NODE_EXECUTE clear propagates.
  *
- * Regression: job `urban-fronting-faith` (2026-04-30). `handleRetryEntry`
- * cleared NODE_EXECUTE / NODE_PLAN by mutating `state.conversations`; the
- * plan-LLM tool_use branch returned `{ conversations: { NODE_PLAN: [...] } }`,
- * so the reducer kept the OLD NODE_EXECUTE — Anthropic 400 `messages.4:
- * tool_use ids were found without tool_result blocks immediately after`.
+ * Regression: job `urban-fronting-faith` (2026-04-30). The original
+ * incident reproduced inside the verification task type's retry branch,
+ * which cleared NODE_EXECUTE / NODE_PLAN by mutating `state.conversations`
+ * while the plan-LLM tool_use branch returned only
+ * `{ conversations: { NODE_PLAN: [...] } }` — the reducer kept the OLD
+ * NODE_EXECUTE and Anthropic rejected with `messages.4: tool_use ids were
+ * found without tool_result blocks immediately after`. The verification
+ * retry branch was retired in the verification fix-책임 제거 리팩토링
+ * (verification never reaches retry under always-fan-out), but the
+ * mergeDelta invariant survives: every retry/reverify entry handler still
+ * clears NODE_EXECUTE via the delta carrier so the reducer commit is
+ * decoupled from `state.conversations` mutation.
  *
- * Self-review note: an earlier draft of this helper used `{ ...delta,
- * ...base }` (base-wins for top-level). That looked correct in isolation
- * but broke once paired with plan() return objects of shape
- * `{ ...state, conversations: { NODE_PLAN: [...] }, _activePhase: ... }`
- * — the `...state` spread populated `base.{_executeCallIndex,violations,
- * _planSearchWebCount,_finalTaskLoopCount}` with the prior turn's values,
- * which then beat the entry handler's resets. Conversations was the only
- * field that survived because of its explicit inner merge.
- *
- * (Field list trimmed: `_executeModifiedFiles` was retired post-
- * `urban-fronting-faith` p2 — see `tasks/_shared/verify/router.ts` and
- * `nodes/tool/index.ts` for the replacement turn-scoped signal
- * `_lastToolBatchMutatedFiles`.)
+ * (Retired companion: `_executeModifiedFiles` cross-cycle channel —
+ * see `tasks/_shared/verify/router.ts` and `nodes/tool/index.ts` for
+ * the turn-scoped replacement `_lastToolBatchMutatedFiles`.)
  */
 
 import type { Conversations } from '../../../../../../common/graph/conversations';

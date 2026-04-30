@@ -41,13 +41,13 @@ import {
 } from './parts/entry';
 import { mergeDelta } from './parts/mergeDelta';
 import {
+  assertVerificationPlanIsFanoutOnly,
   hasEmptyImplementation,
   isVerificationPassWithoutCodeGen,
   MAX_BATCH_SPLIT_CYCLES,
   processDiagnosticBatchSplit,
 } from './parts/batchSplit';
 import { runPlanToolLoopPhase } from './parts/planLLM';
-import { maybeApplyPlanHistory } from './parts/planHistory';
 import { runPlanRAG } from './parts/rag';
 import { normalizePlanForHash } from '../../tasks/_shared/verify/planHash';
 import { isVerificationTask } from '../../tasks/verification';
@@ -66,6 +66,7 @@ export { runPlanToolLoopPhase } from './parts/planLLM';
  */
 export const __testing__ = {
   processDiagnosticBatchSplit,
+  assertVerificationPlanIsFanoutOnly,
   normalizePlanForHash,
   MAX_BATCH_SPLIT_CYCLES,
   resolvePlanEntry,
@@ -383,6 +384,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   // STEP 3.5 — diagnostic batch split.
   const planText = processDiagnosticBatchSplit(state, planTextRaw, nextTask);
+  // Invariant guard (dev assist) — ensures the always-fan-out conversion did
+  // not leave residual top-level implementation entries on a verification
+  // plan. No-op for non-verification tasks and for empty / parse-failed
+  // plans. See `parts/batchSplit::assertVerificationPlanIsFanoutOnly`.
+  assertVerificationPlanIsFanoutOnly(planText, nextTask);
   const batchSplitOccurred = planTextRaw.length > 50 && planText === '';
   const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
   // Empty-implementation short-circuit: a remediation-style task (verification
@@ -395,10 +401,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
   const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(planText);
 
-  // Single-writer plan-history push. See `parts/planHistory.ts` for the
-  // guard formula — shared with the two short-circuit paths in
-  // `parts/planLLM.ts` so the condition stays in one place.
-  maybeApplyPlanHistory(state, planText, batchSplitOccurred, nextTask);
+  // Single-writer plan-history push. Skip when the plan was consumed by a
+  // batch split (the fanned-out sub-tasks carry the intent forward) or by
+  // the empty-implementation remediation short-circuit (a valid "no errors"
+  // plan that signals completion rather than a new attempt). The hash list
+  // is the SSOT for repeated-plan detection.
+  if (!batchSplitOccurred && !emptyImplShortCircuit) {
+    state.verification?.onPlanApplied(planText);
+  }
 
   // STEP 4 — return finalised state.
   try {
