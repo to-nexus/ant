@@ -5,7 +5,7 @@
  * Mutation of shared state is the most dangerous bug class in parallel task execution.
  */
 import { describe, it, expect } from 'vitest';
-import { prepareDesignDocument } from '../src/agents/architect/graph/code/nodes/decompose/designSelector';
+import { prepareRacInjection } from '../src/agents/architect/graph/code/nodes/decompose/designSelector';
 import { compactContent } from '../src/core/utils/contentCompactor';
 import { resolveToRAC } from '@ant/shared';
 import type { ResolvedActionContext } from '@ant/shared';
@@ -72,40 +72,51 @@ describe('AutoInjectionResolver.resolve immutability', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. prepareDesignDocument does NOT mutate state.designDocs
+// 3. prepareRacInjection does NOT mutate state.artifacts
 // ---------------------------------------------------------------------------
 
-describe('prepareDesignDocument immutability', () => {
-  it('does not mutate state.designDocs (inline mode)', () => {
+describe('prepareRacInjection immutability', () => {
+  it('does not mutate state.artifacts (inline path)', () => {
     const state = {
-      designDocs: {
-        apiContracts: { main: 'API contract content' },
-        feDesigns: { main: 'FE design content' },
-        beDesigns: { main: 'BE design content' },
-      },
-      design: '',
+      artifacts: [
+        { path: 'architecture/system/fe-system-main.md', role: 'ref', content: 'small content' },
+        { path: 'plan/notes.md', role: 'context', content: 'small notes' },
+      ],
     } as any;
-    const before = deepClone(state.designDocs);
+    const before = deepClone(state.artifacts);
 
-    prepareDesignDocument(state);
+    prepareRacInjection(state);
 
-    expect(state.designDocs).toEqual(before);
+    expect(state.artifacts).toEqual(before);
   });
 
-  it('does not mutate state.designDocs (tool mode)', () => {
+  it('does not mutate state.artifacts (compaction path)', () => {
     const state = {
-      designDocs: {
-        apiContracts: { main: 'x'.repeat(100_000) },
-        feDesigns: { main: 'y'.repeat(100_001) },
-        beDesigns: {},
-      },
-      design: '',
+      artifacts: [
+        { path: 'architecture/system/fe-system-main.md', role: 'ref', content: 'x'.repeat(20_000) },
+        { path: 'plan/notes.md', role: 'context', content: 'y'.repeat(5_000) },
+      ],
     } as any;
-    const before = deepClone(state.designDocs);
+    const before = deepClone(state.artifacts);
 
-    prepareDesignDocument(state);
+    prepareRacInjection(state);
 
-    expect(state.designDocs).toEqual(before);
+    expect(state.artifacts).toEqual(before);
+  });
+
+  it('does not mutate state.artifacts (dynamic demotion path)', () => {
+    const state = {
+      artifacts: [
+        { path: 'architecture/system/fe-system-main.md', role: 'ref', content: 'x'.repeat(5_000) },
+        { path: 'plan/intro.md', role: 'context', content: 'y'.repeat(1_500) },
+      ],
+    } as any;
+    const before = deepClone(state.artifacts);
+
+    // Tiny model context window → demotion fires.
+    prepareRacInjection(state, 80_000);
+
+    expect(state.artifacts).toEqual(before);
   });
 });
 

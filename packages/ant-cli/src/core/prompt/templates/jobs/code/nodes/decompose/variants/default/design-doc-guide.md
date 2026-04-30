@@ -82,7 +82,10 @@
 > API contract document.
 {{/if}}
 
-### {{label}}: {{path}}
+### {{label}}{{#if this.wasCompacted}} · compacted{{/if}}: {{path}}
+{{#if this.wasCompacted}}
+> Content compacted to a line-numbered outline. Use `read_file("{{path}}", startLine, endLine)` to fetch full sections.
+{{/if}}
 
 {{{content}}}
 

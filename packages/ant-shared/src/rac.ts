@@ -468,6 +468,20 @@ export interface ResolvedArtifact {
   base64?: string;
   /** @deprecated Intent-based role resolution replaces label-based matching. */
   label?: string;
+
+  // ── Compaction metadata (populated by `compactArtifacts` when content
+  //    exceeds the per-artifact threshold and is replaced with a
+  //    line-numbered outline). All fields are optional and absent on
+  //    artifacts that pass through unchanged. Adding these fields is a
+  //    non-breaking extension — existing consumers ignore them; prompt
+  //    templates can branch on `wasCompacted` to render a
+  //    `· compacted` marker plus a `read_file` access hint.
+  /** True when content was passed through `compactContent` and replaced with an outline. */
+  wasCompacted?: boolean;
+  /** Original character count before compaction. Undefined when `wasCompacted=false`. */
+  originalChars?: number;
+  /** Character count after compaction (= `content.length` when `wasCompacted=true`). */
+  compactedChars?: number;
 }
 
 // ============================================
