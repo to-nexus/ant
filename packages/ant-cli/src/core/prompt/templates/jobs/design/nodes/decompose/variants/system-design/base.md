@@ -68,21 +68,26 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 
 {{#if (eq environment "frontend")}}
 **FRONTEND-ONLY project.**
-- `documentType`: `"unified"`
-- All tasks MUST target `fe-system-main.md` (or `fe-system-{package}.md` if FE MSA detected below)
-- Do NOT create `api-contract-*.md` or `be-system-*.md` tasks
-- Design from the CONSUMER perspective (how frontend consumes APIs), NOT the PROVIDER perspective
-- **SKIP** the CONTRACT-FIRST DETECTION section below — it does not apply
-- MSA DETECTION below applies ONLY to frontend package boundaries (multiple FE apps)
+- `documentType`: `"unified"` by default; becomes `"contract-first"` when `consumedApis` is non-empty.
+- All system-design tasks MUST target `fe-system-main.md` (or `fe-system-{package}.md` if FE MSA detected below).
+- Do NOT create `be-system-*.md` tasks (frontend projects own no provider boundary).
+- `services` MUST stay empty for frontend-only (no provider services).
+- **External API consumer hints** — observe the supplied PRD / directive / refs for **external API contract sources**: a URL, a repository handle, a command that emits the contract, or any other addressable handle. IF observed, populate `consumedApis: [<host>, …]`. Each entry produces `api-contract-{host}.md` as a CONSUMER-perspective snapshot. Use `["main"]` when only one host is observable; use per-host names otherwise. If none observed, leave `consumedApis: []`.
+- All `api-contract-*.md` tasks (when present) author from the CONSUMER perspective — they capture an EXTERNAL contract this project consumes; the `api-contract-guide.md` "External Contract Discovery" rules apply.
+- The CONTRACT-FIRST DETECTION section below targets PROVIDER decisions and MUST be skipped here. The MSA DETECTION section applies only to frontend package boundaries (multiple FE apps).
 {{/if}}
 {{#if (eq environment "backend")}}
 **BACKEND-ONLY project.**
-- Do NOT create `fe-system-*.md` tasks
-- CONTRACT-FIRST DETECTION and MSA DETECTION below apply — observe source documents for service boundaries
+- Do NOT create `fe-system-*.md` tasks.
+- `services` (provider) — observe for backend service boundaries this project owns; each entry produces `be-system-{s}.md` + `api-contract-{s}.md`.
+- `consumedApis` (consumer) — observe for external APIs this project's backend depends on; each entry produces `api-contract-{c}.md` only (no co-creation).
+- CONTRACT-FIRST DETECTION and MSA DETECTION below apply for the provider axis.
 {{/if}}
 {{#if (eq environment "fullstack")}}
 **FULLSTACK project.**
-- All sections below (CONTRACT-FIRST, MSA) apply normally
+- All sections below (CONTRACT-FIRST, MSA) apply normally for the provider axis (`services`, `fePackages`).
+- `consumedApis` (consumer) — observe for external APIs this project depends on; orthogonal to `services`. Each entry produces `api-contract-{c}.md` only.
+- `services` and `consumedApis` MUST NOT share names (provider authorship and consumer snapshot of the same name conflict).
 {{/if}}
 {{/if}}
 
