@@ -85,7 +85,7 @@ export async function callLLMForDecompose(
       options.toolHandler,
       {
         temperature: LLM_TEMPERATURE.DECOMPOSE,
-        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        maxTokens: LLM_MAX_TOKENS.DECOMPOSE,
         enableThinking: true,
         thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
         state: options.state,
@@ -140,7 +140,7 @@ export async function callLLMForDecompose(
 
   for await (const event of llmToUse.stream(messages, {
     temperature: LLM_TEMPERATURE.DECOMPOSE,
-    maxTokens: LLM_MAX_TOKENS.DEFAULT,
+    maxTokens: LLM_MAX_TOKENS.DECOMPOSE,
     enableThinking: true,
     thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
   })) {
