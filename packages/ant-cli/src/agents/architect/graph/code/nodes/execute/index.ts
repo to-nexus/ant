@@ -659,6 +659,14 @@ export async function execute(
           tokenUsage: capturedUsage,
         },
         conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
+        // Phase declaration — execute MUST commit `_activePhase: 'execute'`
+        // on every return so a stale `'plan'` from `plan-toolLoop` cannot
+        // leak into the downstream `tool` node / `routeAfterTool`. The leak
+        // would route the next `tool_result` into NODE_PLAN, leaving the
+        // `tool_use` in NODE_EXECUTE orphaned and producing Anthropic 400
+        // `tool_use ids were found without tool_result blocks immediately
+        // after`. Regression: job `wild-flying-scout` (2026-04-30).
+        _activePhase: 'execute' as const,
         fileErrors: undefined,
         _executeCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,
@@ -813,6 +821,7 @@ export async function execute(
             tokenUsage: capturedUsage,
           },
           conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
+          _activePhase: 'execute' as const,
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           _executeCallIndex: newCallIndex,
           _finalTaskLoopCount: newFinalTaskLoopCount,
@@ -843,6 +852,7 @@ export async function execute(
         tokenUsage: capturedUsage,
       },
       ...(toolCallHistory ? { conversations: { [CONV_KEYS.NODE_EXECUTE]: toolCallHistory } } : {}),
+      _activePhase: 'execute' as const,
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
       _finalTaskLoopCount: newFinalTaskLoopCount,
