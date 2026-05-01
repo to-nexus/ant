@@ -39,6 +39,7 @@ import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } fro
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
+import { traceSession } from '../../tasks/_shared/verify/sessionTrace';
 import type { CodeTask } from '../../../../types/task';
 
 export async function execute(
@@ -499,7 +500,14 @@ export async function execute(
     if (earlyStreamedPaths.length > 0) {
       // Session is an instance whose mutations propagate by reference
       // across node boundaries — invalidating gates here is safe.
-      state.verification?.onFileChanged('all');
+      if (state.verification) {
+        const session = state.verification;
+        traceSession(state, 'onFileChanged', () => session.onFileChanged('all'), {
+          scope: 'all',
+          source: 'execute-streamed-files',
+          fileCount: earlyStreamedPaths.length,
+        });
+      }
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file

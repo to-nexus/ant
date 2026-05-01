@@ -36,7 +36,12 @@ export type ExecutionEventType =
   | 'recursion_budget_warning'
   | 'profile_missing'
   | 'cache_instability'
-  | 'execute_interrupted';
+  | 'execute_interrupted'
+  // Stage 0 (silent-passing-cycle) — diagnostic trace events. See
+  // docs/tmp/verification-no-progress-staged-recovery.md §5.
+  | 'verification_session_change'
+  | 'route_decision'
+  | 'plan_finalize';
 
 export interface ExecutionEvent {
   /** ISO timestamp */
@@ -243,6 +248,9 @@ export class ExecutionLogger {
     await this.log('execute_interrupted', data, taskId);
   }
 
+  // Carries args (esp. run_command.verifies) + sideEffects so an operator
+  // can pair declared gate intent with what reached the Session. args
+  // capped at 4KB.
   async logToolCall(taskId: string, data: {
     toolName: string;
     args: Record<string, any>;
@@ -252,8 +260,52 @@ export class ExecutionLogger {
     originalTokens?: number;
     truncatedTokens?: number;
     error?: string;
+    phase?: 'plan' | 'execute' | 'apply' | 'verify' | 'unknown';
+    sideEffects?: Array<Record<string, any>>;
   }): Promise<void> {
-    await this.log('tool_call', data, taskId);
+    const ARG_CAP = 4096;
+    let argsCapped: Record<string, any> | string = data.args;
+    try {
+      const json = JSON.stringify(data.args);
+      if (json.length > ARG_CAP) {
+        argsCapped = `[truncated ${json.length} chars] ${json.slice(0, ARG_CAP)}` as any;
+      }
+    } catch { /* best-effort */ }
+    await this.log('tool_call', { ...data, args: argsCapped }, taskId);
+  }
+
+  async logVerificationSessionChange(taskId: string, data: {
+    event: 'onCommand' | 'onFileChanged' | 'onBatchSplit' | 'onPlanApplied' | 'onPlanEntry' | 'markInstallNeeded';
+    before: { passed: string[]; required: string[]; attempts: number; planHistoryLength: number; batchSplitCount: number };
+    after: { passed: string[]; required: string[]; attempts: number; planHistoryLength: number; batchSplitCount: number };
+    extra?: Record<string, any>;
+  }): Promise<void> {
+    await this.log('verification_session_change', data, taskId);
+  }
+
+  async logRouteDecision(taskId: string | undefined, data: {
+    router: string;
+    decision: string;
+    inputs: Record<string, any>;
+  }): Promise<void> {
+    await this.log('route_decision', data, taskId);
+  }
+
+  async logPlanFinalize(taskId: string, data: {
+    callSite: 'plan-index' | 'plan-llm-overlimit' | 'plan-llm-toolloop';
+    planTextLen: number;
+    preSplitPlanTextLen: number;
+    batchSplitOccurred: boolean;
+    diagnosticPass?: boolean;
+    emptyImplShortCircuit: boolean;
+    isRemediationTask: boolean;
+    sessionIsComplete?: boolean;
+    sessionPassed?: string[];
+    sessionRequired?: string[];
+    sessionAttempts?: number;
+    decision: 'done' | 'execute';
+  }): Promise<void> {
+    await this.log('plan_finalize', data, taskId);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

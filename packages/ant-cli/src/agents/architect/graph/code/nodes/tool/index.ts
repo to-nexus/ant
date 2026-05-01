@@ -122,6 +122,33 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // (Phase 3a): bumped via `afterBatch` → `hookUpdates` → `buildReturn`
       // so the reducer actually commits it.
       hooksIfActive(state)?.tool?.onEvent(state, event);
+
+      // Stage 0.1 — tool_call trace (args + sideEffects); non-blocking.
+      if (state.context?.featurePath && state._httpJobId && state.currentTask) {
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          const logger = getExecutionLogger({
+            featurePath: state.context!.featurePath!,
+            jobId: state._httpJobId!,
+            jobType: 'code',
+          });
+          const content = event.result.content;
+          const isMultimodal = Array.isArray(content);
+          const resultStr = isMultimodal
+            ? `[multimodal: ${content.length} blocks]`
+            : (typeof content === 'string' ? content : JSON.stringify(content ?? ''));
+          return logger.logToolCall(state.currentTask!.id, {
+            toolName: event.toolName,
+            args: event.args,
+            resultChars: resultStr.length,
+            resultPreview: resultStr.length <= 500 ? resultStr : undefined,
+            wasTruncated: false,
+            error: event.result.error,
+            phase: state._activePhase as 'plan' | 'execute' | undefined,
+            sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
+          });
+        }).catch(() => { /* non-blocking */ });
+      }
+
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {

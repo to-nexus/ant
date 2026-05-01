@@ -1,30 +1,13 @@
 /**
  * test-code/hooks/plan.ts — TaskPlanHook.buildPrompt
  *
- * Test-code parents own two decisions in the plan phase that no other
- * task type handles:
+ * Test-code parents own two decisions in the plan phase:
+ *   1. Install the test runner via `run_command` inside the tool-loop.
+ *   2. Optionally feature-slice split via `<plan>.batches[]`; downstream
+ *      `processDiagnosticBatchSplit` (see `BATCH_SPLIT_POLICY['test-code']`)
+ *      drops the parent and spawns N parallel sub-tasks.
  *
- *   1. Install the test runner (vitest / jest / pytest / go test / ...)
- *      plus any type packages via `run_command`. The planExplore tool
- *      set includes `run_command` and no guard blocks install verbs for
- *      parent test-code tasks, so this happens inside the tool-loop.
- *
- *   2. Decide whether to feature-slice split the test work. When a
- *      `batches[]` array is emitted inside the `<plan>` JSON, the
- *      downstream `processDiagnosticBatchSplit` drops the parent and
- *      spawns N parallel sub-tasks (see `BATCH_SPLIT_POLICY['test-code']`
- *      in `nodes/plan/parts/batchSplit.ts`). When the parent decides the
- *      work fits a single execution it simply emits a non-batched plan
- *      and falls through to its own execute phase.
- *
- * The prompt variant (`jobs/code/nodes/plan/variants/test-code/base.md`)
- * encodes both decisions. This hook wires the template variables and
- * pulls in the basis section exactly like verification / error variants
- * do so the basis-renderer stays untouched.
- *
- * R2 — depends only on the shared `PlanPromptCtx` contract and the
- * promptBuilder via `state.deps`. No imports from `nodes/` / `routers/`
- * / `parallel/`.
+ * R2 — no imports from `nodes/` / `routers/` / `parallel/`.
  */
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';

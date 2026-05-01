@@ -14,6 +14,7 @@
 
 import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import { TaskTimingHelper } from '../../state';
+import { clearForTaskBoundary } from '../../tasks/_shared/verify/sessionLifecycle';
 import { evaluateTaskStatus } from './evaluate';
 
 export async function workerCheckTaskStatus(
@@ -90,6 +91,12 @@ export async function workerCheckTaskStatus(
       _batchSplitRequeued: false,
       _executeCallIndex: 0,
       planText: '',
+      // Task boundary delta — keeps the worker symmetric with main
+      // graph's checkTaskStatus. Re-enqueued task carries its Session
+      // through `resumeState.verification`; the worker slot itself
+      // resets so a subsequent task does not inherit the previous
+      // task's session reference.
+      ...clearForTaskBoundary(),
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;
@@ -142,6 +149,11 @@ export async function workerCheckTaskStatus(
       planText: '',
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
+      // Task boundary delta — symmetric with main graph's success path.
+      // Without this, a worker completing a verify-mode task would leak
+      // `_verifyEntered=true` and the Session reference into whatever
+      // task next occupies the slot.
+      ...clearForTaskBoundary(),
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;

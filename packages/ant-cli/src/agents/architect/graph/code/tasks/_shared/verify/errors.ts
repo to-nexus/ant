@@ -1,15 +1,6 @@
 /**
- * Verification terminal errors — typed taxonomy for "this task cannot converge".
- *
- * Throw sites:
- *   - `max_retries_exceeded`  → `nodes/plan/parts/entry.ts` default branch
- *                               (non-verification task types only).
- *   - `no_progress`           → `_shared/verify/checkRetryTermination`
- *                               (LLM repeated the same plan hash).
- *   - `batch_cycle_limit`     → `nodes/plan/parts/batchSplit.ts`.
- *   - `unresolved_violations` → `parallel/TaskWorker.ts`.
- *
- * R2 — model-only. Imports `VerificationSnapshot` for `carryOver`.
+ * Verification terminal errors — typed taxonomy for "this task cannot
+ * converge". R2: model-only.
  */
 
 import type { VerificationSnapshot } from './snapshot';

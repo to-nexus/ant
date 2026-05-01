@@ -12,18 +12,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
+import {
+  processDiagnosticBatchSplit,
+  MAX_BATCH_SPLIT_CYCLES,
+} from '../../../src/agents/architect/graph/code/tasks/_shared/batchSplit';
+import { assertVerificationPlanIsFanoutOnly } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/emptyImpl';
+import { normalizePlanForHash } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/planHash';
 import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
 import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
-
-const {
-  processDiagnosticBatchSplit,
-  assertVerificationPlanIsFanoutOnly,
-  normalizePlanForHash,
-  MAX_BATCH_SPLIT_CYCLES,
-} = __testing__;
 
 interface StateOverrides {
   verification?: VerificationSession;

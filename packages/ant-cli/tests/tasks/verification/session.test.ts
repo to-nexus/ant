@@ -190,14 +190,8 @@ describe('gate mutations', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('onPlanEntry', () => {
-  it('only reverify bumps attempts; fresh/resumed/toolLoop/retry are no-ops', () => {
-    // `retry` was a verification-only call site that disappeared with the
-    // verification fix-책임 제거 리팩토링. The case stays for type safety
-    // but does not bump the counter.
+  it('only reverify bumps attempts; retry is a no-op', () => {
     const s = freshTs();
-    s.onPlanEntry('fresh');
-    s.onPlanEntry('resumed');
-    s.onPlanEntry('toolLoop');
     s.onPlanEntry('retry');
     expect(s.attempts()).toBe(0);
     s.onPlanEntry('reverify');

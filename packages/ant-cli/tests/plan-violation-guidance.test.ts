@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   composeViolationsText,
   renderViolationGuidance,
-} from '../src/agents/architect/graph/code/nodes/plan/parts/entry';
+} from '../src/agents/architect/graph/code/nodes/plan/entry';
 import type { Violation } from '../src/agents/architect/graph/code/state';
 
 function violation(overrides: Partial<Violation> = {}): Violation {

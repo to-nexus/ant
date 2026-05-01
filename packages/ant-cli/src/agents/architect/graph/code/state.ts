@@ -283,16 +283,10 @@ export interface ArchitectGraphState extends TriageableState {
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
   _activePhase?: 'plan' | 'execute';
   /**
-   * Why did we enter the plan node? Set by the caller (executeRouter, enforce,
-   * etc.), consumed immediately on plan entry. Undefined = new task from queue.
-   *
-   * Renamed from `_planEntryReason` in T4a (task domain consolidation). The
-   * union (`PlanEntry`) is sourced from `tasks/_shared/types.ts` — phase-blind
-   * by design so non-verification task types can adopt the wider vocabulary
-   * (`fresh | resumed | toolLoop`) without coupling state.ts to the
-   * verification model. Callers may still write `'retry' | 'reverify'` today;
-   * `'fresh' / 'resumed' / 'toolLoop'` are reserved for hook-layer producers
-   * landing alongside T5/T6.
+   * Why did we enter the plan node? Set by `checkTaskStatus` (`'retry'`)
+   * or `executeRouter` (`'reverify'`), consumed immediately on plan entry.
+   * `undefined` = fresh task from queue. Tool-loop re-entry is detected
+   * separately via `_activePhase === 'plan'` and bypasses this channel.
    */
   _nextPlanEntry?: PlanEntry;
   /**
