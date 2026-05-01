@@ -62,9 +62,12 @@ export async function runPlanToolLoopPhase(
     return { kind: 'return', state: returned };
   }
   if (result && 'planText' in result) {
+    const toolLoopOrigin: 'tool-loop-empty' | undefined =
+      result.planText === '' ? 'tool-loop-empty' : undefined;
     const updatedState = finalizePlanOutcome(state, nextTask, {
       preSplitPlanText: result.planText,
       callSite: 'plan-llm-toolloop',
+      planEmptyOrigin: toolLoopOrigin,
     });
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);

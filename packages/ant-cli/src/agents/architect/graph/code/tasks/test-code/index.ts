@@ -80,6 +80,9 @@ export const hooks: TaskHooks = {
     buildPrompt: planBuildPrompt,
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/test-code/base',
     finalizeNudge: planFinalizeNudge,
+    // Sub-tasks carry a fixed-scope `prePlanText` (the slice boundary is
+    // non-recoverable from a re-planning pass); bypass the plan-tool-loop.
+    acceptsPrePlanText: true,
   },
   command: { guard: commandGuard },
 };

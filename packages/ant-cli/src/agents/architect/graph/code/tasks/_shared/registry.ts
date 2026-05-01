@@ -36,7 +36,12 @@ const REGISTRY: Record<TaskType, TaskHooks> = {
   'test-code': testCodeHooks,
   doc: docHooks,
   feature: featureHooks,
-  explain: {},
+  // R1 dispatch flags — explain tasks are response-only (Tier 0); the
+  // plan phase is bypassed entirely. Inline here because explain has
+  // no `tasks/explain/index.ts` bundle (only `model/is.ts`); creating
+  // a bundle for two flags would be over-structured. Replaces the
+  // `isExplainTask(task)` predicate in `taskRequiresPlan`.
+  explain: { plan: { requiresPlanText: false, usesToolLoop: false } },
 };
 
 /** Look up hooks by explicit task type. Returns `undefined` when type is unset. */

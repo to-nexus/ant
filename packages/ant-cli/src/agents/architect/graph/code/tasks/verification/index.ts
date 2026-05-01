@@ -30,7 +30,12 @@ import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 
 // Shared verify-mode hooks (also used by composeBundle for self-verify tasks)
-import { initSession, buildPrompt as planBuildPrompt, checkRetryTermination } from '../_shared/verify';
+import {
+  initSession,
+  handleFreshEntry,
+  buildPrompt as planBuildPrompt,
+  checkRetryTermination,
+} from '../_shared/verify';
 import { executeHook } from '../_shared/verify/executeHook';
 import { onEvent } from '../_shared/verify/toolHook';
 import { guard } from '../_shared/verify/commandGuard';
@@ -45,9 +50,17 @@ import {
 export const hooks: TaskHooks = {
   plan: {
     initSession,
+    handleFreshEntry,
     buildPrompt: planBuildPrompt,
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/verification/rules',
     checkRetryTermination,
+    // Verification's signature: no plan-text body (only gate diagnostics
+    // drive the cycle), uses the plan↔tool loop, exclusive paths-only
+    // RAG fast-path, allows empty-impl shortcut (gates passed → done).
+    requiresPlanText: false,
+    usesToolLoop: true,
+    exclusiveFastpath: true,
+    allowsEmptyImplShortcut: true,
   },
   execute: executeHook,
   tool: { onEvent },

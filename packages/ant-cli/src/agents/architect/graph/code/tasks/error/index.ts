@@ -47,6 +47,20 @@ export const hooks = composeBundle({
     plan: {
       buildPrompt: planBuildPrompt,
       toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/error/base',
+      // Focused error-related context only (mirrors analyzer.ts
+      // ContextStrategy.maxFilesToRead).
+      ragQuota: 5,
+      // Sub-tasks carry a fixed-scope `prePlanText`; bypass the diagnostic
+      // plan-tool-loop.
+      acceptsPrePlanText: true,
+      // NOTE: `allowsEmptyImplShortcut` is intentionally NOT published —
+      // an empty error remediation plan no longer short-circuits at the
+      // plan layer. Execute owns the "nothing to fix" outcome via
+      // `emptyPlanFallback` (`tasks/error/hooks/execute.ts`), which prompts
+      // the LLM to emit `<done>true</done>` directly. Surfacing the
+      // outcome through execute keeps the LLM judgment auditable and
+      // routes through the same `<done>` path as the responsibility
+      // fulfilment case.
     },
     execute: executeHook,
     command: { guard: commandGuard },

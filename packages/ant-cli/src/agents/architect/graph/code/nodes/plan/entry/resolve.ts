@@ -19,8 +19,7 @@ import { CodeTask } from '../../../../../types/task';
 import { detectTestFilesFromDisk, isTypeScriptProject } from '../../../tasks/_shared/verify/env';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
-import { onReverifyEntry } from '../../../tasks/_shared/verify/sessionLifecycle';
-import { isVerificationTask } from '../../../tasks/verification';
+import { VerificationBudget } from '../../../tasks/_shared/verify/budget';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import { recomputeInstallNeeded } from './installNeeded';
 
@@ -101,11 +100,11 @@ async function handleRetryEntry(
     throw hookTerminal;
   }
 
-  state.retries = (state.retries || 0) + 1;
-  if (state.retries >= state.maxRetries) {
+  const planRetries = VerificationBudget.bumpPlanRetry(state);
+  if (planRetries >= state.maxRetries) {
     throw new VerificationTerminalError(
       'max_retries_exceeded',
-      `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
+      `Task "${nextTask.name}" failed after ${planRetries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
       snapshotFromState(state)?.verification,
     );
   }
@@ -158,7 +157,21 @@ async function handleReverifyEntry(
   const tsProject = isTypeScriptProject(state);
   const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
   hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
-  onReverifyEntry(state);
+  VerificationBudget.bumpReverify(state);
+
+  // After bumping reverify, check whether the verify cycle has accumulated
+  // enough no-`<done>` rounds to permanent-fail. The other terminal axes
+  // reset across re-routes; only `Session._attempts` is monotonic across
+  // reverify cycles, so this is the missed-`<done>` escape hatch.
+  const snap = VerificationBudget.fromState(state, nextTask);
+  const reason = VerificationBudget.shouldGiveUp(snap, { maxRetries: state.maxRetries });
+  if (reason?.kind === 'missed_done_loop') {
+    throw new VerificationTerminalError(
+      'missed_done_loop',
+      `Verification task "${nextTask.name}" did not reach <done> after ${reason.current} reverify cycles (limit ${reason.threshold}).`,
+      snapshotFromState(state)?.verification,
+    );
+  }
 
   // NODE_PLAN reset only on first verify-mode entry (apply→verify
   // transition) — the apply phase's plan-tool-loop history was framed
@@ -240,22 +253,22 @@ async function handleFreshTaskEntry(
     },
   };
 
-  if (isVerificationTask(nextTask)) {
-    const isResumedVerification = !!state.verification && state.verification.attempts() > 0;
-    const tsProject = isTypeScriptProject(state);
-    const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
-
-    // Single writer of `state.verification` on fresh entry. Dispatched via
-    // `hooksForTaskType` (not `hooksIfActive`) — `state.currentTask` is
-    // not yet assigned in fresh-entry; `nextTask` is still a local.
-    hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
-
-    const sessionAttempts = state.verification?.attempts() ?? 0;
-    console.log(`🔍 [Plan] VerificationSession ${isResumedVerification ? 'rehydrated' : 'initialised'}: required=${state.verification?.required().join('+') ?? ''}, passed=${state.verification?.passed().join('+') ?? ''}`);
-    console.log(`🎫 [Plan] verificationAttempts=${sessionAttempts}`);
-
+  // Fresh-entry side-effects (Session creation/hydration, install probe,
+  // banner log) are bundled into `plan.handleFreshEntry`. Verification
+  // publishes the hook ; other task types get `undefined` and the call
+  // is a no-op. Dispatched via `hooksForTaskType` (not `hooksIfActive`)
+  // because `state.currentTask` is not yet assigned in fresh-entry.
+  const tsProject = isTypeScriptProject(state);
+  const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
+  const freshResult = hooksForTaskType(nextTask.type)?.plan?.handleFreshEntry?.(
+    state,
+    { isTs: tsProject, hasTests },
+  );
+  if (freshResult?.needsInstallObservation) {
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
-    delta.verification = state.verification;
+  }
+  if (freshResult?.verificationDelta) {
+    delta.verification = freshResult.verificationDelta;
   }
 
   if (state.context?.featurePath && state._httpJobId) {

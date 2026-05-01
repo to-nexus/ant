@@ -91,9 +91,9 @@ export function routeAfterDone(state: ArchitectGraphState): string | null {
     return 'plan';
   }
 
-  // Step 2: Empty plan means the diagnostic phase found nothing to change.
-  // Route to checkTaskStatus so the session / tracker can confirm whether
-  // the gate set is actually satisfied.
+  // Step 2: Empty planText means the diagnostic phase found nothing to
+  // change. Route to checkTaskStatus so the session / tracker can confirm
+  // whether the gate set is actually satisfied.
   if (!hasPlan) {
     emitDecision(2, 'checkTaskStatus');
     return 'checkTaskStatus';

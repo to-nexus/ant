@@ -81,9 +81,13 @@ export function guard(
   // re-run a gate that just passed).
   if (passed.has(verifies)) {
     const noun = verifies === 'typecheck' ? 'tsc --noEmit' : verifies === 'build' ? 'build' : 'tests';
+    const missing = session.missing();
+    const nextHint = missing.length === 0
+      ? 'All required gates have passed — emit `<done>true</done>` to finish.'
+      : `Next required gate: ${missing[0]}. Run the corresponding command, or emit \`<done>true</done>\` if every gate is already green.`;
     return reject(
       command,
-      `ALREADY PASSED: ${noun} succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.`,
+      `ALREADY PASSED: ${noun} succeeded earlier in this task and the affected scope has not been invalidated. ${nextHint}`,
     );
   }
 
@@ -91,17 +95,19 @@ export function guard(
   // the LLM can probe config / dependency variants. Within normal mode
   // the project's declared-gate order (typecheck → build → test) is
   // enforced via `passed` alone. Applies to both plan and execute phases.
+  const passedList = session.passed().join(', ') || 'none';
+
   if (verifies === 'build' && required.has('typecheck') && !passed.has('typecheck') && !deep) {
     return reject(
       command,
-      'BLOCKED: Run tsc --noEmit first and confirm it passes. Build embeds type checking, so running it before typecheck passes produces duplicate noise.',
+      `BLOCKED: typecheck must pass before build (already-passed: ${passedList}). Run tsc --noEmit first.`,
     );
   }
 
   if (verifies === 'test' && !passed.has('build') && !deep) {
     return reject(
       command,
-      'BLOCKED: run the build command and confirm it passes before running tests. Tests against an unbuilt project waste a diagnostic cycle.',
+      `BLOCKED: build must pass before tests (already-passed: ${passedList}). Run the build command first.`,
     );
   }
 

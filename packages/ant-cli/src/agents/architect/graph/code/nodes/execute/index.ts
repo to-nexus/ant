@@ -37,6 +37,7 @@ import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
+import { VerificationBudget } from '../../tasks/_shared/verify/budget';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
 import { traceSession } from '../../tasks/_shared/verify/sessionTrace';
@@ -777,7 +778,7 @@ export async function execute(
       !explicitDone &&
       streamedInThisCall.length === 0 &&
       !toolMutatedThisTurn;
-    const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
+    const newFinalTaskLoopCount = VerificationBudget.computeFinalLoopCount(prevLoopCount, isStuckLooping);
 
     // Diagnostic: surface counter axis for the verification stuck-loop
     // safety net so the post-`urban-fronting-faith` regression hunt has

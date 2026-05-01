@@ -139,10 +139,15 @@ describe('tasks/_shared/registry — verification entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('explain task type remains placeholder', () => {
-    // explain has no scheduling/conversation surface in code jobs; it is
-    // intentionally left unwired until a concrete use case emerges.
-    expect(hooksForTaskType('explain')).toEqual({});
+  it('explain task type carries only R1 plan dispatch flags', () => {
+    // explain bypasses the plan phase entirely: `plan.requiresPlanText =
+    // false` AND `plan.usesToolLoop = false`. These two flags are the SSOT
+    // replacement for the legacy `isExplainTask(task)` predicate in
+    // `nodes/plan/llm/requiresPlan.ts`. No scheduling / conversation /
+    // verify hooks — explain has no apply-phase surface in code jobs.
+    expect(hooksForTaskType('explain')).toEqual({
+      plan: { requiresPlanText: false, usesToolLoop: false },
+    });
   });
 });
 
@@ -503,7 +508,8 @@ describe('hooks/command', () => {
       mkCtx({ verificationSession: mkSession({ required: ['build', 'test'] }) }),
       { command: 'pnpm test', verifies: 'test' },
     );
-    expect(res?.content).toContain('run the build command');
+    expect(res?.content).toContain('build must pass before tests');
+    expect(res?.content).toContain('Run the build command');
   });
 
   it('guard — `npm run type-check` (hyphenated) flips gate when verifies is declared', () => {

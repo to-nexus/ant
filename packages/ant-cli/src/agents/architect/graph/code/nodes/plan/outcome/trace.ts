@@ -1,6 +1,27 @@
 import type { ArchitectGraphState } from '../../../state';
 import type { CodeTask } from '../../../../../types/task';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { requiresVerification } from '../../../tasks/_shared/verify';
+
+/**
+ * Empty-`planText` origin classifier.
+ *   - 'verification-short-circuit': `requiresPlanText === false` branch
+ *     (verification / doc / explain — no JSON plan body by spec).
+ *   - 'tool-loop-empty': `allowsEmptyPlanShortcut` branch in the plan
+ *     tool loop (LLM-judged "no diagnostics, nothing to fix").
+ *   - undefined: planText is non-empty, or origin does not apply.
+ */
+export type PlanEmptyOrigin = 'verification-short-circuit' | 'tool-loop-empty' | undefined;
+
+/**
+ * Verify-mode dispatch axes captured at finalize time. Mirrors the
+ * verify SSOT axes documented in `17-code-verification-task.md` §10.1.
+ */
+export interface VerifyAxisSnapshot {
+  requiresVerification: boolean;
+  verifyEntered: boolean;
+  hasSession: boolean;
+}
 
 export interface PlanFinalizeTraceInput {
   callSite: 'plan-index' | 'plan-llm-overlimit' | 'plan-llm-toolloop';
@@ -11,6 +32,7 @@ export interface PlanFinalizeTraceInput {
   emptyImplShortCircuit: boolean;
   isRemediationTask: boolean;
   decision: 'done' | 'execute';
+  planEmptyOrigin?: PlanEmptyOrigin;
 }
 
 /**
@@ -28,6 +50,12 @@ export function tracePlanFinalize(
 
   const session = state.verification;
 
+  const verifyAxisSnapshot: VerifyAxisSnapshot = {
+    requiresVerification: requiresVerification(nextTask),
+    verifyEntered: state._verifyEntered === true,
+    hasSession: !!session,
+  };
+
   import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
     const logger = getExecutionLogger({ featurePath, jobId, jobType: 'code' });
     return logger.logPlanFinalize(nextTask.id, {
@@ -43,6 +71,8 @@ export function tracePlanFinalize(
       sessionRequired: session?.required(),
       sessionAttempts: session?.attempts(),
       decision: input.decision,
+      planEmptyOrigin: input.planEmptyOrigin,
+      verifyAxisSnapshot,
     });
   }).catch(() => { /* non-blocking */ });
 
@@ -57,6 +87,8 @@ export function tracePlanFinalize(
       emptyImplShortCircuit: input.emptyImplShortCircuit,
       preSplitPlanTextLen: input.preSplitPlanText.length,
       sessionIsComplete: session?.isComplete(),
+      planEmptyOrigin: input.planEmptyOrigin,
+      verifyAxisSnapshot,
     },
     responseBody: input.planText,
   }).catch(() => { /* non-blocking */ });

@@ -42,11 +42,21 @@ describe('tasks/_shared/registry — doc entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes only scheduling + conversations slots', () => {
-    // Slot-level absence — mirrors the ui / test-code precedents so a
+  it('bundle publishes scheduling + conversations + execute + plan(dispatch-only) slots', () => {
+    // Slot-level inventory — mirrors the ui / test-code precedents so a
     // future drive-by hook addition forces an explicit test update
     // (and forces the author to justify it in index.ts).
-    expect(docBundle.plan).toBeUndefined();
+    //
+    // `plan` carries ONLY the R1 dispatch flags (`requiresPlanText` /
+    // `usesToolLoop`) — the SSOT replacement for the legacy
+    // `isDocTask(task)` predicate inside
+    // `nodes/plan/llm/requiresPlan.ts`. No buildPrompt / extraTemplateVars
+    // / variant template, since doc still flows through the generic
+    // plan base path.
+    expect(docBundle.plan).toEqual({
+      requiresPlanText: false,
+      usesToolLoop: false,
+    });
     expect(docBundle.decompose).toBeUndefined();
     expect(docBundle.check).toBeUndefined();
     expect(docBundle.tool).toBeUndefined();
