@@ -2,8 +2,7 @@
  * Design graph session SSOT — axis ⑤ per NODE_GRAPH_LAYOUT.
  *
  * All design-job session writes MUST go through this module. `session.updateArtifacts`
- * calls outside this file are an axis ⑤ violation (enforced by
- * `tests/regression/designSessionSSOT.test.ts`). The single allowed exception is
+ * calls outside this file are an axis ⑤ violation. The single allowed exception is
  * `design/nodes/learn/sessionWriter.ts`'s `addRun(...)` call, which is a
  * session-domain log append, not a checkpoint.
  *
