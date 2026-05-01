@@ -143,10 +143,10 @@ describe('mock-content-imagery — wiring at call sites', () => {
     expect(src).toMatch(/mockContentImageryActive:/);
   });
 
-  it('planGeneration.ts injects mockContentImageryActive in the plan/base render vars', () => {
+  it('llm/prompt.ts injects mockContentImageryActive in the plan/base render vars', () => {
     const PLAN_GEN = path.join(
       REPO_ROOT,
-      'src/agents/architect/graph/code/nodes/plan/planGeneration.ts',
+      'src/agents/architect/graph/code/nodes/plan/llm/prompt.ts',
     );
     const src = read(PLAN_GEN);
     expect(src).toMatch(/isMockContentImageryActive\s*\(/);

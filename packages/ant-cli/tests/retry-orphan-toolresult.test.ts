@@ -35,7 +35,7 @@ import {
   type ConversationMessage,
 } from '../src/agents/common/graph/conversations';
 import { composeMessages } from '../src/core/utils/messageComposer';
-import { mergeDelta } from '../src/agents/architect/graph/code/nodes/plan/parts/mergeDelta';
+import { mergeDelta } from '../src/agents/architect/graph/code/nodes/plan/outcome/delta';
 
 const NODE_EXECUTE = CONV_KEYS.NODE_EXECUTE;
 const NODE_PLAN = CONV_KEYS.NODE_PLAN;

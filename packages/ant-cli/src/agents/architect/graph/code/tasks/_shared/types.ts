@@ -58,8 +58,15 @@ export const DEFAULT_TASK_TYPE: TaskType = 'feature';
 // Shared context types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Plan-node entry classification. Concrete union refined by tasks/verification/model. */
-export type PlanEntry = 'fresh' | 'resumed' | 'toolLoop' | 'retry' | 'reverify';
+/**
+ * Plan-node entry classification — explicit reasons set by external
+ * writers (`checkTaskStatus` → 'retry', `executeRouter` → 'reverify').
+ * Fresh entry is encoded as `undefined` (no explicit setter); tool-loop
+ * re-entry is detected via `_activePhase === 'plan'` and bypasses this
+ * channel entirely. Dead values (`'fresh' | 'resumed' | 'toolLoop'`)
+ * were retired — they had 0 setters in production code.
+ */
+export type PlanEntry = 'retry' | 'reverify';
 
 /**
  * Prompt-build context passed to `plan.buildPrompt` / `plan.extraTemplateVars`.
@@ -71,7 +78,7 @@ export type PlanEntry = 'fresh' | 'resumed' | 'toolLoop' | 'retry' | 'reverify';
  * `codeContext` is the plan-node's local RAG result (files + directoryTree +
  * gitDiff) — a pure parameter, NOT a state channel. Hooks may render it
  * into the variant template via `formatCodeContext`. Opaque `unknown` keeps
- * this type module decoupled from `nodes/plan/combineCodeContext`.
+ * this type module decoupled from `nodes/plan/rag/combine`.
  */
 export interface PlanPromptCtx {
   state: ArchitectGraphState;

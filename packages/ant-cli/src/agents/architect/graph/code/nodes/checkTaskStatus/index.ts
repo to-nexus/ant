@@ -19,6 +19,7 @@ import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TASK_PRIORITIES, TaskTimingHelper } from '../../state';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isFeatureTask } from '../../tasks/feature/model/is';
+import { clearForTaskBoundary } from '../../tasks/_shared/verify/sessionLifecycle';
 import { evaluateTaskStatus } from './evaluate';
 
 export async function checkTaskStatus(
@@ -116,12 +117,11 @@ export async function checkTaskStatus(
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
-      // Task boundary clears per-task verification state. Session is the
-      // authoritative SSOT; clearing it transfers ownership to the next
-      // task's `initSession` call (plan/parts/entry.ts). Resumed workers
-      // bypass this path and rehydrate via
+      // Task boundary delta — single SSOT writer for verify-mode reset.
+      // Session ownership transfers to the next task's `initSession`
+      // call. Resumed workers bypass this path and rehydrate via
       // `orchestrator.restoreIntoWorkerState`.
-      verification: undefined,
+      ...clearForTaskBoundary(),
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };
@@ -298,16 +298,12 @@ export async function checkTaskStatus(
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
-      // Task boundary clears. Next verification responsibility holder
-      // (verification task or self-verify task) pops with a clean Session
-      // via `initSession`; a resumed task bypasses this path (TaskWorker
+      // Task boundary delta — clears Session + flips `_verifyEntered`
+      // to false. Next verification responsibility holder (verification
+      // task or self-verify task) pops with a clean Session via
+      // `initSession`; a resumed task bypasses this path (TaskWorker
       // restores via resumeState.verification).
-      verification: undefined,
-      // Phase mode reset — next task starts in apply-mode regardless of
-      // whether the previous task entered verify. Self-verify and
-      // verification tasks re-flip via `markVerifyEntered` in their
-      // respective entry paths.
-      _verifyEntered: false,
+      ...clearForTaskBoundary(),
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };

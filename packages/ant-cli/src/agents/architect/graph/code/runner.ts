@@ -1,7 +1,7 @@
 import { ArchitectGraphState } from "./state";
 import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
-import { resetKeywordDedup } from "./nodes/plan/keywordGeneration";
+import { resetKeywordDedup } from "./nodes/plan/rag";
 import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,

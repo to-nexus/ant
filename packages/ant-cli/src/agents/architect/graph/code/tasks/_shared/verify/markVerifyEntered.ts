@@ -10,7 +10,7 @@
  *   - `_shared/verify/buildPlanPrompt` and friends (only fire when
  *     verify-mode is active)
  *
- * **Single writer:** `markVerifyEntered(state)`. Two call sites, both
+ * **Single writer:** `markVerifyEntered(state)`. Set call sites, all
  * inside `_shared/verify/`:
  *
  *   1. `_shared/verify/initSession` — verification task path. The plan
@@ -23,11 +23,11 @@
  *      (reverify entry). The next plan node entry sees `_verifyEntered`
  *      and dispatches the verify-mode hooks.
  *
- * Direct mutation of `state._verifyEntered` outside this helper is a
- * regression risk: a future writer could flip the flag at the wrong
- * boundary (before files were applied, after the task already
- * completed, etc.). The regression test asserts that no other code path
- * mutates the channel.
+ * **Reset writer:** `clearForTaskBoundary()` from `sessionLifecycle`
+ * returns `{ _verifyEntered: false }` as a delta object. Phase code
+ * spreads it into the success / batch-split / pre-planned return so
+ * the next task starts in apply-mode. No phase code writes
+ * `_verifyEntered: false` directly.
  *
  * R2 — depends only on the graph state shape; no `nodes/` / `routers/` /
  * `parallel/` imports.
