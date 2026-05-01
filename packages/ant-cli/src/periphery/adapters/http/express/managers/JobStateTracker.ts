@@ -53,16 +53,20 @@ export class JobStateTracker {
   }
 
   /**
-   * Initialize job tracking. `jobType` is the full sessionable union
-   * (`code | design | learn | plan | visual`) so non-task jobs (plan /
-   * visual) are tracked alongside decomposable jobs without silent
-   * downcast (Invariant I1).
+   * Initialize job tracking. `jobType` is the executable union
+   * (`code | design | learn | plan | visual | inline-ask`) so non-task
+   * jobs (plan / visual) and the lightweight stateless runner
+   * (`inline-ask`) are tracked alongside decomposable jobs without
+   * silent downcast (Invariant I1). Persistence (`SessionableJobType`)
+   * is a strict subset and is enforced separately by
+   * `JobExecutionManager.handleSuccessfulExit` before reading the
+   * session file.
    */
   initializeJob(
-    jobId: string, 
-    projectId: string, 
-    featureName: string, 
-    jobType: SessionableJobType,
+    jobId: string,
+    projectId: string,
+    featureName: string,
+    jobType: SessionableJobType | 'inline-ask',
     userContext?: UserContext
   ): void {
     // Initialize job status

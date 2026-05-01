@@ -87,8 +87,21 @@ export class JobCleanupManager {
     
     // Get current snapshot
     const snapshot = this.stateTracker.getTaskQueueSnapshot(jobId);
-    
-    // Determine job type
+
+    // Determine job type. inline-ask is stateless and is short-circuited
+    // by RouteConfigurator's JOB_STATUS_UPDATES handler before
+    // cleanupJobState fires (it has no session file or kanban to clean
+    // up). If we ever reach here with an inline-ask mapping, that's a
+    // structural bug — log and skip rather than mis-routing it through
+    // the sessionable cleanup path.
+    if (mapping?.jobType === 'inline-ask') {
+      logger.warn(`cleanupJobState reached with inline-ask jobType — skipping (should be handled by RouteConfigurator inline-ask branch)`, {
+        component: 'JobCleanupManager',
+        jobId,
+      });
+      this.stateTracker.cleanup(jobId);
+      return;
+    }
     const jobStatus = this.stateTracker.getJobStatus(jobId);
     const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'code';
     
