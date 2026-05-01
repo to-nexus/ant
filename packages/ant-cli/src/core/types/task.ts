@@ -61,12 +61,21 @@ export interface TaskQueueSnapshot {
 
 /**
  * Maps a jobId to its project context.
- * Used for: SSE routing, Kanban tracking, job lifecycle
+ * Used for: SSE routing, Kanban tracking, job lifecycle.
+ *
+ * `jobType` accepts the executable union — every `SessionableJobType`
+ * plus the lightweight `inline-ask` runner. The non-sessionable
+ * inline-ask is mapped here so its lifecycle events (status updates,
+ * SSE broadcast) can be routed alongside sessionable jobs without
+ * silent downcast (Invariant I1). Persistence-only consumers
+ * (`SessionService.read`, `JobExecutionManager.handleSuccessfulExit`)
+ * must guard with `isSessionableJobType(mapping.jobType)` before
+ * touching the session file.
  */
 export interface JobProjectMapping {
   projectId: string;
   featureName: string;
-  jobType: SessionableJobType;
+  jobType: SessionableJobType | 'inline-ask';
   userContext?: UserContext;
 }
 

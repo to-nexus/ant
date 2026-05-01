@@ -15,7 +15,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from './JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { isSessionableJobType, type SessionableJobType } from '@ant/shared';
+import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
 
 /**
  * JobExecutionManager
@@ -41,18 +41,25 @@ export class JobExecutionManager {
     
     const projectId = params.project;
     const featureName = params.feature;
-    // Single source of truth: jobType MUST be a sessionable type. Silent
+    // Single source of truth: jobType MUST be an executable type — every
+    // SessionableJobType plus the lightweight `inline-ask` runner. Silent
     // downcast to 'code' is forbidden — it produced the zonal-dreaming-novel
     // regression where a paused plan job had its clarify-answer enqueue
     // converted into a brand-new code job. See `.cursorrules`
-    // "Non-task Clarify Continuation Invariants" (I1).
-    if (!isSessionableJobType(params.jobType)) {
+    // "Non-task Clarify Continuation Invariants" (I1). inline-ask has to
+    // pass the gate because its HTTP route uses the same executeJob path
+    // — its child process dispatches to `runInlineAsk` (no session/kanban)
+    // and `handleSuccessfulExit` skips session-read for it.
+    if (!isExecutableJobType(params.jobType)) {
       throw new Error(
         `[JobExecutionManager] Invalid jobType: ${params.jobType}. ` +
-        `Expected one of: code, design, learn, plan, visual.`,
+        `Expected one of: code, design, learn, plan, visual, inline-ask.`,
       );
     }
-    const jobType: SessionableJobType = params.jobType;
+    // Type-narrowed by `isExecutableJobType`: ExecutableJobType =
+    // SessionableJobType | 'inline-ask'. Persistence-only consumers must
+    // re-narrow with `isSessionableJobType` before touching session files.
+    const jobType = params.jobType;
 
     // Generate jobId
     const jobId = params.jobId || generateHumanId();
@@ -371,58 +378,74 @@ export class JobExecutionManager {
     const mapping = this.stateTracker.getJobMapping(jobId);
     let interruption: InterruptionDetails | undefined;
     
-    // Check session for interruption details (even with exit code 0)
+    // Check session for interruption details (even with exit code 0).
+    // inline-ask is a stateless lightweight runner — it never writes a
+    // session file, so skip the session-read entirely. RouteConfigurator's
+    // JOB_STATUS_UPDATES handler (`isInlineAsk` branch) handles the
+    // inline-ask completion broadcast separately.
     if (mapping) {
-      try {
-        // mapping.jobType is set by stateTracker.initializeJob with the
-        // validated jobType from executeJob(); a missing value here would
-        // be a structural bug — never silently downcast to 'code' (I1).
-        if (!isSessionableJobType(mapping.jobType)) {
-          throw new Error(
-            `[JobExecutionManager] Job mapping has invalid jobType=${mapping.jobType} for jobId=${jobId}`,
+      if (mapping.jobType === 'inline-ask') {
+        this.stateTracker.updateJobStatus(jobId, {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        });
+        this.stateTracker.addLog(jobId, {
+          type: 'stdout',
+          message: '\n✅ Inline ask completed.',
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        try {
+          // mapping.jobType is set by stateTracker.initializeJob with the
+          // validated jobType from executeJob(); a missing value here would
+          // be a structural bug — never silently downcast to 'code' (I1).
+          if (!isSessionableJobType(mapping.jobType)) {
+            throw new Error(
+              `[JobExecutionManager] Job mapping has invalid jobType=${mapping.jobType} for jobId=${jobId}`,
+            );
+          }
+          const sessionData = await this.deps.sessionService.readSessionData(
+            mapping.projectId,
+            mapping.featureName || 'skeleton',
+            mapping.jobType,
+            mapping.userContext
           );
-        }
-        const sessionData = await this.deps.sessionService.readSessionData(
-          mapping.projectId, 
-          mapping.featureName || 'skeleton',
-          mapping.jobType,
-          mapping.userContext
-        );
-        
-        if (sessionData?.state?.interruption) {
-          interruption = sessionData.state.interruption;
-          this.stateTracker.updateJobStatus(jobId, {
-            status: 'paused',
-            completedAt: new Date().toISOString()
-          });
-          
-          this.stateTracker.addLog(jobId, {
-            type: 'stdout',
-            message: `\n⏸️  Job paused: ${interruption?.message || 'Unknown reason'}`,
-            timestamp: new Date().toISOString()
-          });
-        } else {
+
+          if (sessionData?.state?.interruption) {
+            interruption = sessionData.state.interruption;
+            this.stateTracker.updateJobStatus(jobId, {
+              status: 'paused',
+              completedAt: new Date().toISOString()
+            });
+
+            this.stateTracker.addLog(jobId, {
+              type: 'stdout',
+              message: `\n⏸️  Job paused: ${interruption?.message || 'Unknown reason'}`,
+              timestamp: new Date().toISOString()
+            });
+          } else {
+            this.stateTracker.updateJobStatus(jobId, {
+              status: 'completed',
+              completedAt: new Date().toISOString()
+            });
+
+            this.stateTracker.addLog(jobId, {
+              type: 'stdout',
+              message: '\n✅ Job completed successfully!',
+              timestamp: new Date().toISOString()
+            });
+          }
+        } catch (error) {
+          logger.warn(`Failed to read session for interruption check`, {
+            component: 'JobExecutionManager',
+            jobId
+          }, error);
+
           this.stateTracker.updateJobStatus(jobId, {
             status: 'completed',
             completedAt: new Date().toISOString()
           });
-          
-          this.stateTracker.addLog(jobId, {
-            type: 'stdout',
-            message: '\n✅ Job completed successfully!',
-            timestamp: new Date().toISOString()
-          });
         }
-      } catch (error) {
-        logger.warn(`Failed to read session for interruption check`, { 
-          component: 'JobExecutionManager', 
-          jobId 
-        }, error);
-        
-        this.stateTracker.updateJobStatus(jobId, {
-          status: 'completed',
-          completedAt: new Date().toISOString()
-        });
       }
     }
     

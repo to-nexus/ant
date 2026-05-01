@@ -19,7 +19,7 @@ import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
-import { isSessionableJobType } from '@ant/shared';
+import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
 
 /**
  * RouteConfigurator
@@ -464,13 +464,21 @@ export class RouteConfigurator {
       const jobQueue = factory.getJobQueue();
       const stateStore = factory.getStateStore();
 
-      // Single source of truth: jobType MUST be a sessionable type. The
+      // Single source of truth: jobType MUST be an executable type — every
+      // SessionableJobType plus the lightweight `inline-ask` runner. The
       // legacy `params.jobType || 'code'` fallback silently downcast plan /
-      // visual to code (zonal-dreaming-novel regression — Invariant I1).
-      if (!isSessionableJobType(params.jobType)) {
+      // visual to code (zonal-dreaming-novel regression — Invariant I1), so
+      // we validate against the executable union (sessionable + inline-ask)
+      // and reject anything else. inline-ask is included because the
+      // `/projects/:id/features/:feature/inline-ask` route routes through
+      // here too — its downstream `composition/orchestrator.ts:140`
+      // dispatches to `runInlineAsk` (no session, no kanban) and
+      // `JobExecutionManager.handleSuccessfulExit` skips session-read for
+      // it. See `vast-curling-perch` resume blocker incident.
+      if (!isExecutableJobType(params.jobType)) {
         throw new Error(
           `[RouteConfigurator] Invalid jobType: ${params.jobType}. ` +
-          `Expected one of: code, design, learn, plan, visual.`,
+          `Expected one of: code, design, learn, plan, visual, inline-ask.`,
         );
       }
       const jobType = params.jobType;

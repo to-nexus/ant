@@ -19,7 +19,7 @@ export interface LogEntry {
 export interface JobStatus {
   jobId: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';  // ✅ Added 'paused' for recursion limit / interruptions
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'visual';  // ✅ Track the job type
+  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'visual' | 'inline-ask';  // ✅ Track the job type
   startedAt?: string;
   completedAt?: string;
   error?: string;
