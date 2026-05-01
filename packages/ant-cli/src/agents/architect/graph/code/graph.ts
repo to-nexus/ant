@@ -638,7 +638,6 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => false,
       }),
-      _shortCircuitReason: Annotation<any>,
 } as const;
 
 const ArchitectCodeGraphStateAnnotation = Annotation.Root(CodeGraphChannels);

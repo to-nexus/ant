@@ -25,8 +25,6 @@ import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/gr
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from "../../../../../../common/graph/llmHelpers";
 import { buildAssistantMessage } from "../../../../../../common/tool/messageBuilder";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
-import { isVerificationTask } from "../../../tasks/verification";
-import { isErrorTask } from "../../../tasks/error";
 import { selectLLMForTask } from "./selectModel";
 
 /** Max plan↔tool round-trips before forcing plan finalization.
@@ -173,7 +171,9 @@ export async function runPlanLLMWithTools(
   // passed with no fix left) AND error (remediation plan reports zero
   // implementation items). Feature/setup plans cannot legitimately be
   // empty so they never enter the shortcut and fall through to execute.
-  const allowsEmptyPlanShortcut = isVerificationTask(task) || isErrorTask(task);
+  // R1 dispatch via the same `allowsEmptyImplShortcut` flag the plan
+  // node's `finalizePlanOutcome` reads (`_shared/types.ts TaskPlanHook`).
+  const allowsEmptyPlanShortcut = hooksForTaskType(task.type)?.plan?.allowsEmptyImplShortcut === true;
   const planRound = Math.floor((messages.length - 1) / 2);
   const jobId = state._httpJobId || 'unknown';
   if (state.context?.featurePath) {
@@ -222,8 +222,9 @@ export async function runPlanLLMWithTools(
       if (toolCalls.length > 0) {
         console.log(`📋 [Plan] <plan> extracted (${planText.length} chars) — ignoring ${toolCalls.length} concurrent tool call(s)`);
       }
-      // Shortcut: if plan indicates no errors, return empty planText
-      // so execute can immediately mark done without LLM interpretation
+      // Shortcut: structured plan reports zero diagnostics or empty
+      // implementation arrays → return empty planText so the caller
+      // can route to checkTaskStatus without an execute round-trip.
       if (allowsEmptyPlanShortcut) {
         try {
           const parsed = JSON.parse(planText);

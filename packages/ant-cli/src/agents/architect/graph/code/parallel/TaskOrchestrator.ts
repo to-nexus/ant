@@ -30,6 +30,7 @@ import type {
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 import { classifyTerminalError } from '../tasks/_shared/verify/errors';
+import { VerificationBudget, BUDGET_THRESHOLDS } from '../tasks/_shared/verify/budget';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 
@@ -403,7 +404,7 @@ export class TaskOrchestrator<T extends BaseTask> {
    *    whether the job is "completed" or "interrupted".
    */
   async reportFailure(workerId: number, task: T, error: Error): Promise<void> {
-    const MAX_TASK_RETRIES = 2;
+    const MAX_TASK_RETRIES = BUDGET_THRESHOLDS.MAX_TASK_RETRIES;
 
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
@@ -535,10 +536,7 @@ export class TaskOrchestrator<T extends BaseTask> {
         : ownCounterFlag === true;
       const attempts = ownCounter
         ? (orchestratorHook?.attemptCount?.(task as any) ?? 0)
-        : ((task as any)._failedAttempts || 0) + 1;
-      if (!ownCounter) {
-        (task as any)._failedAttempts = attempts;
-      }
+        : VerificationBudget.bumpOrchestratorFail(task as { _failedAttempts?: number });
 
       // Typed classification FIRST — catches `VerificationTerminalError` so
       // verification tasks never fall through to the generic regex branch.

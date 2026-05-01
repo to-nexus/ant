@@ -25,8 +25,7 @@ import { loadSemanticFiles, LessonResult } from "./semantic";
 import { extractFilesFromCode } from "./parseFileBlocks";
 import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../../core/codebase/GitDiffSummary";
 import { RETRIEVAL_CONFIG } from "../../../config/retrievalConfig";
-import { isVerificationTask } from "../../../tasks/verification";
-import { isErrorTask } from "../../../tasks/error";
+import { hooksForTaskType } from "../../../tasks/_shared/registry";
 
 /**
  * Plan-local code context shape returned by `combineCodeContext`.
@@ -94,18 +93,20 @@ export async function combineCodeContext(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // VERIFICATION FAST PATH: Config pre-loaded, source paths-only
+  // EXCLUSIVE FAST PATH: Config pre-loaded, source paths-only
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Only verification tasks use a special loading strategy because they
-  // discover source files on demand via build error output.
+  // Activated when a task is `exclusive` AND its bundle publishes
+  // `plan.exclusiveFastpath = true`. Currently only verification opts
+  // in — its plan loads only config files + entry points because
+  // source-discovery happens on demand via the build-error output.
   // All other exclusive tasks (integration, setup) use the normal 3-tier
   // RAG path below — files are selected by relevance and loaded with FULL
   // content (no truncation), which eliminates redundant read_file calls.
-  const isVerificationFastPath = state.currentTask?.exclusive === true
-    && isVerificationTask(state.currentTask);
+  const isExclusiveFastPath = state.currentTask?.exclusive === true
+    && hooksForTaskType(state.currentTask?.type)?.plan?.exclusiveFastpath === true;
 
-  if (isVerificationFastPath) {
-    console.log(`🔍 [RAG] Verification task → config pre-loaded, rest paths-only`);
+  if (isExclusiveFastPath) {
+    console.log(`🔍 [RAG] ${state.currentTask?.type ?? 'task'} fast path → config pre-loaded, rest paths-only`);
 
     const BINARY_EXTENSIONS = new Set([
       '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
@@ -243,11 +244,11 @@ export async function combineCodeContext(
         && state.currentTask.priority <= TASK_PRIORITIES.FOUNDATION_MAX)
     ));
 
-  // Error tasks need fewer files — focus on error-related code only.
-  // Mirrors analyzer.ts ContextStrategy.maxFilesToRead = 5 for error tasks.
-  const isErrorContext = isErrorTask(state.currentTask);
-  const effectiveTotalMax = isErrorContext
-    ? Math.min(RETRIEVAL_CONFIG.TOTAL_MAX, 5)
+  const taskQuota = state.currentTask
+    ? hooksForTaskType(state.currentTask.type)?.plan?.ragQuota
+    : undefined;
+  const effectiveTotalMax = taskQuota != null
+    ? Math.min(RETRIEVAL_CONFIG.TOTAL_MAX, taskQuota)
     : (isIntegrationOrFoundation ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -2,8 +2,7 @@ import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { computeBudgetFromPlanText } from '../outcome/budget';
-import { isErrorTask } from '../../../tasks/error';
-import { isTestCodeTask } from '../../../tasks/test-code';
+import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import { clearForTaskBoundary } from '../../../tasks/_shared/verify/sessionLifecycle';
 import type { PlanEntryContext } from '../entry';
 
@@ -22,7 +21,8 @@ export async function maybePrePlannedFastPath(
 ): Promise<ArchitectGraphState | null> {
   const { nextTask, isRetry } = entry;
   const prePlanText = (nextTask as CodeTask).prePlanText;
-  const isBatchSplitSub = isErrorTask(nextTask) || isTestCodeTask(nextTask);
+  const isBatchSplitSub =
+    hooksForTaskType(nextTask.type)?.plan?.acceptsPrePlanText === true;
   const hasPrePlanText =
     prePlanText != null &&
     prePlanText.length > 50 &&

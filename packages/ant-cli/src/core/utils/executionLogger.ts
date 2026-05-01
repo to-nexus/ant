@@ -304,6 +304,12 @@ export class ExecutionLogger {
     sessionRequired?: string[];
     sessionAttempts?: number;
     decision: 'done' | 'execute';
+    planEmptyOrigin?: 'verification-short-circuit' | 'tool-loop-empty';
+    verifyAxisSnapshot?: {
+      requiresVerification: boolean;
+      verifyEntered: boolean;
+      hasSession: boolean;
+    };
   }): Promise<void> {
     await this.log('plan_finalize', data, taskId);
   }

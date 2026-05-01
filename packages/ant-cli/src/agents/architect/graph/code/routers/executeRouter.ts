@@ -25,6 +25,7 @@ import {
   isVerifyModeActive,
   markVerifyEntered,
   requiresVerification,
+  VerificationBudget,
 } from '../tasks/_shared/verify';
 
 /**
@@ -162,17 +163,13 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     }
   }
 
-  // Safety Net C: Final task without progress (computed by execute node, read-only here)
+  // Safety Net C: Final task without progress (computed by execute node, read-only here).
   // Verification tasks use threshold=1 by default. When planText is present (inline fix),
   // threshold=2 allows recovery from a thinking-only first call: the second call runs
   // with enableThinking=false (isAfterToolCall=true) and produces actual tool calls.
-  // R1 — polymorphic discrimination via the `isVerificationTask` predicate
-  // from `tasks/verification/model/is`; no literal type-equality branches here.
   const finalTaskLoopCount = state._finalTaskLoopCount || 0;
   const isVerification = currentTask ? isVerificationTask(currentTask) : false;
-  const loopThreshold = isVerification
-    ? (state.planText ? 2 : 1)
-    : 3;
+  const loopThreshold = VerificationBudget.loopThreshold(state, currentTask as CodeTask | undefined);
 
   // Diagnostic: pair with the `[diag] execute return:` line so the
   // counter axis is visible from both the writer (execute) and the

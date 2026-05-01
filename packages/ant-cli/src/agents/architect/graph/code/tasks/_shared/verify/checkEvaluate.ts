@@ -16,18 +16,6 @@ import type { Violation, ViolationType } from '../../../state';
 import { getMissingStepDetail } from './gates';
 
 /**
- * Compose the snippet of the last failed command's error output when
- * available. Keeps the phrasing identical to the legacy helper so the
- * prompt surface does not drift.
- */
-function composeErrorDetail(state: ArchitectGraphState): string {
-  const history = state.commandHistory || [];
-  const lastFailed = [...history].reverse().find(h => !h.success);
-  if (!lastFailed?.errorSnippet) return '';
-  return `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`;
-}
-
-/**
  * Hint rendered on the `budget_exhausted` violation (execute call loop)
  * for any task in verify-mode. Consumed by `checkTaskStatus/evaluate.ts`.
  */
@@ -39,12 +27,13 @@ export const budgetExhaustedHint =
  * violation when the task signalled `<done>` with one or more required
  * gates still missing. Returns `null` when complete (or session not yet
  * initialised — defensive guard for the "non-verification task" edge).
+ *
+ * The retry plan reads the last failed command from NODE_PLAN conversation
+ * history (the `run_command` tool result is preserved in the LLM message
+ * stream), so this violation message no longer duplicates the snippet.
  */
 export function evaluate(state: ArchitectGraphState): Violation | null {
   const session = state.verification;
-  // No session → either a non-verification task (not our concern) or a
-  // verification-mode task whose plan hook hasn't fired yet (shouldn't
-  // happen post-T4b-β; we still guard defensively).
   if (!session) return null;
   if (session.isComplete()) return null;
 
@@ -54,7 +43,7 @@ export function evaluate(state: ArchitectGraphState): Violation | null {
   return {
     type: 'verification_incomplete' as ViolationType,
     severity: 'critical',
-    message: detail.message + composeErrorDetail(state),
+    message: detail.message,
     isRetryable: true,
     suggestedFix: detail.fix,
   };

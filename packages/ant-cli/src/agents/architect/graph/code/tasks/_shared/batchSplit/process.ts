@@ -4,7 +4,7 @@ import { CodeTask } from '../../../../../types/task';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
 import { VerificationTerminalError } from '../verify/errors';
-import { onBatchSplit as lifecycleOnBatchSplit } from '../verify/sessionLifecycle';
+import { VerificationBudget } from '../verify/budget';
 import { isVerificationTask } from '../../verification';
 import { stripMarkdownFences } from './parse';
 import { computeBatchFileOverlap } from './overlap';
@@ -143,8 +143,9 @@ export function processDiagnosticBatchSplit(
     }
 
     // Cycle counter lives on the Session (carried across re-queue via the
-    // resumeState snapshot), not on the task.
-    const splitCount = (state.verification?.batchSplitCount() ?? 0) + 1;
+    // resumeState snapshot). Pre-bump value so the terminal-throw snapshot
+    // below sees the magnitude that the upcoming `bumpBatchSplit` will set.
+    const splitCount = VerificationBudget.peekNextBatchSplit(state);
 
     if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
       logBatchSplit({ action: 'cycle_limit_failed', splitCount, taskName: nextTask.name });
@@ -212,7 +213,7 @@ export function processDiagnosticBatchSplit(
 
     // Bump the Session counter BEFORE snapshot capture so the carried
     // `verification.batchSplitCount` reflects the new cycle.
-    lifecycleOnBatchSplit(state, {
+    VerificationBudget.bumpBatchSplit(state, {
       cycle: splitCount,
       totalErrors: parsed.diagnostics?.totalErrors ?? 0,
       rootCauses: parsed.diagnostics?.rootCauses ?? [],

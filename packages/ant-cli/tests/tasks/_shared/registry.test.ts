@@ -57,10 +57,19 @@ describe('tasks/_shared/registry — hooksForTaskType', () => {
     },
   );
 
-  it('returns the empty placeholder for explain (no hook surface yet)', () => {
+  it('returns the dispatch-only stub for explain (R1 plan dispatch flags only)', () => {
+    // explain bypasses the plan phase entirely: `plan.requiresPlanText
+    // = false` (no plan body) AND `plan.usesToolLoop = false` (no plan
+    // tool loop). These two flags are the SSOT replacement for the
+    // legacy `isExplainTask(task)` predicate inside
+    // `nodes/plan/llm/requiresPlan.ts`. The bundle stays inline in
+    // registry.ts (no `tasks/explain/index.ts`) because two flags do
+    // not justify a dedicated bundle file.
     const hooks = hooksForTaskType('explain');
     expect(hooks).toBeDefined();
-    expect(hooks).toEqual({});
+    expect(hooks).toEqual({
+      plan: { requiresPlanText: false, usesToolLoop: false },
+    });
   });
 
   it('returns undefined when taskType is undefined', () => {

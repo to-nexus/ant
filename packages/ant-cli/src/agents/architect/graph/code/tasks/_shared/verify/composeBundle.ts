@@ -123,6 +123,19 @@ function composePlan(apply: TaskPlanHook | undefined): TaskPlanHook {
     buildPrompt: apply?.buildPrompt,
     extraTemplateVars: apply?.extraTemplateVars,
     toolLoopLogTemplate: apply?.toolLoopLogTemplate,
+    finalizeNudge: apply?.finalizeNudge,
+    // R1 dispatch flags pass through unchanged — they are phase-mode-blind
+    // (apply phase and verify phase agree on plan-text production /
+    // tool-loop / RAG fast-path / empty-impl shortcut / RAG quota /
+    // pre-planned acceptance for the same task type, since the shape of
+    // the LLM contract is identical).
+    requiresPlanText: apply?.requiresPlanText,
+    usesToolLoop: apply?.usesToolLoop,
+    exclusiveFastpath: apply?.exclusiveFastpath,
+    allowsEmptyImplShortcut: apply?.allowsEmptyImplShortcut,
+    ragQuota: apply?.ragQuota,
+    acceptsPrePlanText: apply?.acceptsPrePlanText,
+    handleFreshEntry: apply?.handleFreshEntry,
     checkRetryTermination: (state) => {
       if (isVerifyEntered(state)) {
         return verifyCheckRetryTermination(state);

@@ -2,7 +2,7 @@
 
 > **적용 범위**: `packages/ant-cli/src/agents/{agent}/graph/{job}/` 하위 모든 LangGraph StateGraph.
 > **목적**: task type·phase·도메인 책임이 디렉토리 축에 일관되게 응집되도록 강제한다.
-> **관련 문서**: [14-code-job.md](./14-code-job.md), [17-verification-consolidation-handoff.md](./17-verification-consolidation-handoff.md), [`.cursorrules`](../../.cursorrules) `Node Graph Layout — Task Type Blind Phases (R1)` 섹션.
+> **관련 문서**: [14-code-job.md](./14-code-job.md), [17-code-verification-task.md](./17-code-verification-task.md), [`.cursorrules`](../../.cursorrules) `Node Graph Layout — Task Type Blind Phases (R1)` 섹션.
 
 ---
 

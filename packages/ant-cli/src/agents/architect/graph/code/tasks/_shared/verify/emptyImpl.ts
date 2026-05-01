@@ -66,14 +66,21 @@ export function assertVerificationPlanIsFanoutOnly(
  * Verification-only by design: completeness comes from
  * `VerificationSession.isComplete()`, which only verification's
  * `initSession` populates.
+ *
+ * `task` is passed explicitly (instead of read off `state.currentTask`)
+ * so the call is robust against fresh-entry race windows where
+ * `state.currentTask` may not yet be committed to the entering task —
+ * the caller (`finalizePlanOutcome`) already holds `nextTask` and can
+ * forward it without consulting state.
  */
 export function isVerificationPassWithoutCodeGen(
   state: ArchitectGraphState,
+  task: CodeTask,
   planText: string,
   batchSplitOccurred: boolean,
 ): boolean {
   if (batchSplitOccurred) return false;
   if (planText !== '') return false;
-  if (!isVerificationTask(state.currentTask)) return false;
+  if (!isVerificationTask(task)) return false;
   return state.verification?.isComplete() ?? false;
 }
