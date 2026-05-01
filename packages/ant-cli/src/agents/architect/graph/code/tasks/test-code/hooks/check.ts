@@ -18,13 +18,14 @@
  * The async-widening was introduced here (T5b.5) to accommodate this hook;
  * the verification hook remains sync and relies on structural narrowing.
  *
- * R2 — depends only on the plan node's `testFileDetector` helper (a pure
- * fs query) and graph state types. No `task.type` comparison: the
- * registry routes by type, so this module only runs for test-code tasks.
+ * R2 — depends only on the verify SSOT's `env.detectTestFilesFromDisk`
+ * helper (a pure fs query) and graph state types. No `task.type`
+ * comparison: the registry routes by type, so this module only runs for
+ * test-code tasks.
  */
 
 import type { ArchitectGraphState, Violation, ViolationType } from '../../../state';
-import { detectTestFilesFromDisk } from '../../../nodes/plan/testFileDetector';
+import { detectTestFilesFromDisk } from '../../_shared/verify/env';
 
 const MESSAGE =
   'test-code task completed but no test files (*.test.ts / *.spec.ts / *.test.js / *.spec.js) were found in the workspace.';

@@ -245,15 +245,9 @@ export class VerificationSession {
 
   /**
    * Transition bookkeeping for a plan-node re-entry. Only `reverify` bumps
-   * the attempt counter; `fresh`/`resumed`/`toolLoop`/`retry` are
-   * idempotent no-ops at the session level (the phase layer handles fresh
-   * initialisation via `createFresh`).
-   *
-   * `retry` was a verification-task-only call site that disappeared with
-   * the verification fix-책임 제거 리팩토링 (verification never enters
-   * the retry path under always-fan-out). The case is kept as an explicit
-   * no-op so the `PlanEntry` union remains non-exhaustive at the call
-   * site without forcing every caller to handle every reason.
+   * the attempt counter; `retry` is an idempotent no-op (kept for type
+   * symmetry with `_nextPlanEntry`). Fresh-entry initialisation is handled
+   * by `createFresh` at the phase layer, not through this method.
    */
   onPlanEntry(reason: PlanEntry): void {
     if (reason === 'reverify') {

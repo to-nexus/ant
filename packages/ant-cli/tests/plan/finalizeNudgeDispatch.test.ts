@@ -45,11 +45,11 @@ import { hooks as verificationHooks } from '../../src/agents/architect/graph/cod
 import { hooks as errorHooks } from '../../src/agents/architect/graph/code/tasks/error';
 import { hooks as docHooks } from '../../src/agents/architect/graph/code/tasks/doc';
 import { hooks as designSystemHooks } from '../../src/agents/architect/graph/code/tasks/design-system';
-import { FINALIZE_NUDGE } from '../../src/agents/architect/graph/code/nodes/plan/planGeneration';
+import { FINALIZE_NUDGE } from '../../src/agents/architect/graph/code/nodes/plan/llm';
 
 const PLAN_GEN_PATH = join(
   __dirname,
-  '../../src/agents/architect/graph/code/nodes/plan/planGeneration.ts',
+  '../../src/agents/architect/graph/code/nodes/plan/llm/finalize.ts',
 );
 
 describe('FINALIZE_NUDGE constant — default nudge for task types without override', () => {
@@ -89,7 +89,7 @@ describe('plan.finalizeNudge — per-task-type override surface', () => {
   });
 });
 
-describe('planGeneration.ts — dispatch shape (R1 invariant)', () => {
+describe('llm/finalize.ts — dispatch shape (R1 invariant)', () => {
   // The dispatch must remain a single-line `??` chain to guarantee R1
   // (phase blind to task.type). Inline branches like `if (isXTask(task))`
   // around the nudge selection are exactly what `a71234c2` retired.

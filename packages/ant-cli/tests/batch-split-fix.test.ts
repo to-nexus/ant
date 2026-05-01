@@ -32,7 +32,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('returns false when codebase has no test files', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     makeFs(['src/index.ts', 'src/utils.ts']);
     expect(detectTestFilesFromDisk(tmpDir)).toBe(false);
@@ -40,7 +40,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('returns true for *.test.ts files', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     makeFs(['src/utils.test.ts']);
     expect(detectTestFilesFromDisk(tmpDir)).toBe(true);
@@ -48,7 +48,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('returns true for *.spec.ts files in nested directories', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     makeFs(['features/trading/model/calculations.spec.ts']);
     expect(detectTestFilesFromDisk(tmpDir)).toBe(true);
@@ -56,7 +56,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('returns true for *.test.js files', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     makeFs(['src/helper.test.js']);
     expect(detectTestFilesFromDisk(tmpDir)).toBe(true);
@@ -64,7 +64,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('skips node_modules', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     makeFs(['node_modules/vitest/index.test.ts', 'src/index.ts']);
     expect(detectTestFilesFromDisk(tmpDir)).toBe(false);
@@ -72,14 +72,14 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
 
   it('returns false when featurePath is undefined', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     expect(detectTestFilesFromDisk(undefined)).toBe(false);
   });
 
   it('returns false when codebase directory does not exist', async () => {
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     expect(detectTestFilesFromDisk('/nonexistent/path')).toBe(false);
   });
@@ -89,7 +89,7 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
     makeFs(['src/utils.test.ts']);
 
     const { detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+      '../src/agents/architect/graph/code/tasks/_shared/verify/env'
     );
     expect(detectTestFilesFromDisk(tmpDir)).toBe(true);
   });

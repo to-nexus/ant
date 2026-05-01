@@ -116,7 +116,7 @@ describe('execute node — `_activePhase: \'execute\'` declared on every return'
 describe('maybeResumeInterrupted — resume short-circuit declares phase', () => {
   const planPath = resolve(
     __dirname,
-    '../src/agents/architect/graph/code/nodes/plan/index.ts',
+    '../src/agents/architect/graph/code/nodes/plan/shortcut/resumeInterrupted.ts',
   );
   const source = readFileSync(planPath, 'utf-8');
 

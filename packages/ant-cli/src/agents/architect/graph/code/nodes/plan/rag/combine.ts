@@ -1,32 +1,32 @@
 /**
  * Combine Code Context (RAG)
- * 
+ *
  * Single responsibility: Combine code files from multiple sources for the current task
- * 
+ *
  * 3-tier approach:
  * 1. Vector DB search (find relevant file paths)
  * 2. Git changed files (ensure latest local changes)
  * 3. Local file read (always read from disk for latest content)
- * 
+ *
  * Sources combined:
  * - Stack trace files (error context)
  * - Semantic search files (keyword matches)
  * - Git uncommitted changes (latest modifications)
- * 
+ *
  * This guarantees 100% local latest content.
  */
 
 import path from "path";
-import { GitPort, FileSystemPort } from "../../../../../../core/ports";
-import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
-import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
-import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
-import { loadSemanticFiles, LessonResult } from "./semanticSearch";
-import { extractFilesFromCode } from "./utils";
-import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../core/codebase/GitDiffSummary";
-import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
-import { isVerificationTask } from "../../tasks/verification";
-import { isErrorTask } from "../../tasks/error";
+import { GitPort, FileSystemPort } from "../../../../../../../core/ports";
+import { ArchitectGraphState, TASK_PRIORITIES } from "../../../state";
+import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
+import { loadErrorFiles, LoadedFile } from "./errorFiles";
+import { loadSemanticFiles, LessonResult } from "./semantic";
+import { extractFilesFromCode } from "./parseFileBlocks";
+import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../../core/codebase/GitDiffSummary";
+import { RETRIEVAL_CONFIG } from "../../../config/retrievalConfig";
+import { isVerificationTask } from "../../../tasks/verification";
+import { isErrorTask } from "../../../tasks/error";
 
 /**
  * Plan-local code context shape returned by `combineCodeContext`.
@@ -64,14 +64,14 @@ export interface TaskKeywords {
 
 /**
  * Combine project code context from multiple sources using RAG
- * 
+ *
  * Combines files from:
  * - Error files (from violations)
  * - Semantic search (Vector DB keyword matches)
  * - Git uncommitted changes (local modifications)
- * 
+ *
  * All file content is read from local disk to guarantee latest version.
- * 
+ *
  * @param taskKeywords - Error file paths and semantic keywords
  * @param state - Current graph state
  * @param retriever - Vector DB retriever
@@ -256,19 +256,19 @@ export async function combineCodeContext(
   const hasStackTrace = taskKeywords.errorFiles.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
   const hasRequiredFiles = taskKeywords.requiredFiles.length > 0;
-  
+
   // If nothing to search for, return null (caller will create empty context)
   if (!hasStackTrace && !hasKeywords && !hasRequiredFiles) {
     console.log(`   ℹ️  No required files, stack trace, or keywords - skipping RAG`);
     return null;
   }
-  
+
   if (isIntegrationOrFoundation) {
     console.log(`🔍 [RAG] Integration/foundation task → 3-tier search with extended quota (${RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX} files)...`);
   } else {
     console.log(`🔍 [RAG] Three-tier search (requiredFiles → errorFiles → semantic)...`);
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 0: Required files (highest priority - direct load, no quota)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -277,11 +277,11 @@ export async function combineCodeContext(
     state,
     fileSystem
   );
-  
+
   if (requiredFiles.length > 0) {
     console.log(`   📄 Required files: ${requiredFiles.length} loaded directly`);
     requiredFiles.forEach(f => console.log(`      - ${f.path}`));
-    
+
     // ✅ Show in Chat UI
     try {
       const chatAPI = getChatAPIClient();
@@ -298,7 +298,7 @@ export async function combineCodeContext(
       // Non-critical: UI update failed
     }
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 1: Error files (priority - from violations)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -308,7 +308,7 @@ export async function combineCodeContext(
     git,
     fileSystem
   );
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 2: Semantic files (context, dynamic quota)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -317,7 +317,7 @@ export async function combineCodeContext(
     ...requiredFiles.map(f => f.path),
     ...errorFiles.map(f => f.path)
   ];
-  
+
   const semanticResult = await loadSemanticFiles(
     taskKeywords.keywords,
     state,
@@ -329,10 +329,10 @@ export async function combineCodeContext(
     isIntegrationOrFoundation,
     effectiveTotalMax
   );
-  
+
   const semanticFiles = semanticResult.files;
   const lessons = semanticResult.lessons;
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Merge & Deduplicate
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -367,7 +367,7 @@ export async function combineCodeContext(
     totalChars += fileChars;
     budgetedFiles.push(file);
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Create context object
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -430,10 +430,10 @@ export async function combineCodeContext(
 
 /**
  * Load required files directly from filesystem (no search needed)
- * 
+ *
  * These are files explicitly selected by the keyword LLM from the directory tree.
  * They are loaded with highest priority and do not consume semantic search quota.
- * 
+ *
  * @param filePaths - Relative file paths from codebase root
  * @param state - Current graph state
  * @param fileSystem - FileSystemPort for file access
@@ -446,11 +446,11 @@ async function loadRequiredFiles(
 ): Promise<LoadedFile[]> {
   const MAX_REQUIRED = 10;
   const files: LoadedFile[] = [];
-  
+
   if (filePaths.length === 0) return files;
-  
+
   const rootPath = fileSystem.getRootPath();
-  
+
   for (const filePath of filePaths.slice(0, MAX_REQUIRED)) {
     try {
       const fullPath = path.join(state.context.workingDir, filePath);
@@ -465,16 +465,16 @@ async function loadRequiredFiles(
       console.warn(`      ⚠️  Required file unreadable: ${filePath}`);
     }
   }
-  
+
   return files;
 }
 
 /**
  * Generate directory tree for codebase
- * 
+ *
  * Creates a text representation of the directory structure
  * to help Plan make correct path decisions.
- * 
+ *
  * @param fileSystem - FileSystemPort
  * @param maxDepth - Maximum depth to traverse (default: 4)
  * @returns Formatted directory tree string
@@ -484,25 +484,25 @@ export async function generateDirectoryTree(
   maxDepth: number = 4
 ): Promise<string | undefined> {
   const IGNORE_DIRS = new Set([
-    'node_modules', '.git', '.next', '.nuxt', 'dist', 'build', 
+    'node_modules', '.git', '.next', '.nuxt', 'dist', 'build',
     '.cache', 'coverage', '.turbo', '.vercel', '__pycache__',
     'venv', '.venv', 'target', '.idea', '.vscode'
   ]);
-  
+
   const IGNORE_FILES = new Set([
     '.DS_Store', 'Thumbs.db', '.env', '.env.local',
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'
   ]);
-  
+
   const lines: string[] = [];
-  
+
   async function traverse(dirPath: string, prefix: string, depth: number): Promise<void> {
     if (depth > maxDepth) return;
-    
+
     try {
       const entries = await fileSystem.readDirectory(dirPath);
       if (!entries || entries.length === 0) return;
-      
+
       // Sort: directories first, then files
       const sorted = entries
         .filter((e: any) => e?.name && !IGNORE_DIRS.has(e.name) && !IGNORE_FILES.has(e.name))
@@ -511,13 +511,13 @@ export async function generateDirectoryTree(
           if (!a.isDirectory && b.isDirectory) return 1;
           return a.name.localeCompare(b.name);
         });
-      
+
       for (let i = 0; i < sorted.length; i++) {
         const entry = sorted[i];
         const isLast = i === sorted.length - 1;
         const connector = isLast ? '└── ' : '├── ';
         const childPrefix = isLast ? '    ' : '│   ';
-        
+
         if (entry.isDirectory) {
           lines.push(`${prefix}${connector}${entry.name}/`);
           const childPath = dirPath ? `${dirPath}/${entry.name}` : entry.name;
@@ -530,14 +530,14 @@ export async function generateDirectoryTree(
       // Ignore read errors
     }
   }
-  
+
   // Start from codebase root
   lines.push('codebase/');
   await traverse('codebase', '', 1);
-  
+
   if (lines.length <= 1) {
     return undefined;
   }
-  
+
   return lines.join('\n');
 }

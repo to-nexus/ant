@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { taskRequiresPlan } from '../src/agents/architect/graph/code/nodes/plan/planGeneration';
+import { taskRequiresPlan } from '../src/agents/architect/graph/code/nodes/plan/llm';
 import { TASK_PRIORITIES } from '../src/agents/architect/graph/code/state';
 import type { CodeTask } from '../src/agents/architect/types/task';
 

@@ -1,23 +1,21 @@
 /**
  * Keyword Generation for Plan Node
- * 
+ *
  * Generates task-specific keywords for:
  * - Error files (exact paths from build/operation errors)
  * - Semantic keywords (context for understanding)
  * - Reference project keywords
  */
 
-import * as path from "path";
-import * as fs from "fs/promises";
-import { LLMClient } from "../../../../../../core/ports";
-import { ArchitectGraphState } from "../../state";
-import { CodeTask } from "../../../../types/task";
-import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
-import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { LLMClient } from "../../../../../../../core/ports";
+import { ArchitectGraphState } from "../../../state";
+import { CodeTask } from "../../../../../types/task";
+import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
+import { logPrompt } from "../../../../../../../core/utils/promptLogger";
 import { effectiveTechTier, getTechTier } from "@ant/shared";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
-import { TaskKeywords } from "./combineCodeContext";
-import { KeywordDeduplicator } from "../../../../../../core/prompt/builder/InputSanitizer";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../../common/graph/llmConfig";
+import { TaskKeywords } from "./combine";
+import { KeywordDeduplicator } from "../../../../../../../core/prompt/builder/InputSanitizer";
 
 export type { TaskKeywords };
 
@@ -108,7 +106,7 @@ export async function generateTaskKeywords(
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
-    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../../common/graph/llmHelpers');
     const beforeUsage = getTaskTokenUsage(state);
     const response = await invokeWithTracking(
       llm,
@@ -193,19 +191,19 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
   console.log(`   Error files: ${taskKeywords.errorFiles.length}`);
   console.log(`   Required files: ${taskKeywords.requiredFiles.length}`);
   console.log(`   Semantic keywords: ${taskKeywords.keywords.length}`);
-  
+
   const chatAPI = getChatAPIClient();
-  
+
   if (taskKeywords.errorFiles.length === 0 && taskKeywords.keywords.length === 0 && taskKeywords.requiredFiles.length === 0) {
     console.log(`   ⊖ No keywords to display, skipping Chat UI update`);
     return;
   }
-  
+
   const errorFilesCount = taskKeywords.errorFiles.length;
   const requiredFilesCount = taskKeywords.requiredFiles.length;
   const semanticCount = taskKeywords.keywords.length;
   const totalCount = errorFilesCount + requiredFilesCount + semanticCount;
-  
+
   // Build summary for main display
   const parts: string[] = [];
   if (errorFilesCount > 0) {
@@ -218,35 +216,35 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
     parts.push(`${semanticCount} semantic keywords`);
   }
   const summary = parts.join(', ');
-  
+
   // Build file list with type tags for expandable view
   const filesList: string[] = [];
-  
+
   // Add error files with [error] tag
   taskKeywords.errorFiles.forEach(file => {
     filesList.push(`[error] ${file}`);
   });
-  
+
   // Add required files with [required] tag
   taskKeywords.requiredFiles.forEach(file => {
     filesList.push(`[required] ${file}`);
   });
-  
+
   // Add semantic keywords with [semantic] tag
   taskKeywords.keywords.forEach(keyword => {
     filesList.push(`[semantic] ${keyword}`);
   });
-  
+
   console.log(`   📤 Sending 'analyzing' → 'analyzed' status to Chat UI...`);
   console.log(`      Summary: "${summary}"`);
-  
+
   try {
     // ✅ Send analyzing first and get index
     const mergeIndex = await chatAPI.showChatStatus('analyzing', {
       keywordCount: 0,
       filesList: []
     });
-    
+
     // Then send analyzed with _mergeIndex
     await chatAPI.showChatStatus('analyzed', {
       content: `Analyzed: ${summary}`,
@@ -283,5 +281,3 @@ export function logKeywords(taskKeywords: TaskKeywords): void {
     });
   }
 }
-
-

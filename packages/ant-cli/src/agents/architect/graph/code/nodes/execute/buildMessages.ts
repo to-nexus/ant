@@ -34,9 +34,7 @@ import { isMockContentImageryActive } from "../../../../../../core/prompt/builde
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
-import { hooksIfActive } from "../../tasks/_shared/registry";
-import { isVerifyEntered } from "../../tasks/_shared/verify";
-import { executeHook as sharedVerifyExecuteHook } from "../../tasks/_shared/verify/executeHook";
+import { activeExecuteHook } from "../../tasks/_shared/verify/activeHooks";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
 import { resolveCodebaseRel } from "./codebaseRel";
@@ -158,21 +156,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     throw new Error('[Execute] currentTask is required but not available in state');
   }
 
-  // Task-specific execute hooks carry every task-type switch previously
-  // inlined here (template variant, directive sanitisation, heavy-context
-  // gating, runtime-context framing, empty-plan fallback, directoryTree).
-  // `execHook === undefined` is the generic fallback path used by feature
-  // / explain / ui / design-system tasks (apply phase only).
-  //
-  // Phase-mode dispatch: TaskExecuteHook is a static configuration object
-  // (not a function) so composeBundle cannot wrap it the way it wraps
-  // function-shaped hooks. Instead the phase layer reads the verify-mode
-  // execute hook from `_shared/verify` whenever the active task has
-  // entered verify-mode (`state._verifyEntered === true`). This single
-  // dispatch covers verification task (always in verify-mode) AND Tier 2
-  // self-verify tasks once they cross the apply→reverify boundary.
-  const verifyExecHook = isVerifyEntered(state) ? sharedVerifyExecuteHook : undefined;
-  const execHook = verifyExecHook ?? hooksIfActive(state)?.execute;
+  // Phase-mode dispatch SSOT — `activeExecuteHook` returns the
+  // verify-mode shared hook when the task has entered verify-mode and
+  // the bundle's apply-phase static hook otherwise. `undefined` keeps
+  // the generic fallback path (feature / explain / ui / design-system
+  // apply phase). Phase code never inspects `_verifyEntered`.
+  const execHook = activeExecuteHook(state);
 
   if (!state.planText && !execHook && state.currentTask.priority !== 1000) {
     console.warn(`⚠️  [Execute] planText is empty (task: ${state.currentTask.type}, priority: ${state.currentTask.priority})`);
@@ -746,13 +735,10 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
 export async function buildTaskInvariantContext(state: ArchitectGraphState): Promise<string> {
   const lines: string[] = [];
 
-  // Phase-mode-aware execHook lookup — mirrors the dispatch in
-  // `buildExecuteSystemPrompt`. Verify-mode reads `_shared/verify/executeHook`
-  // for verification + Tier 2 self-verify tasks; apply phase reads the
-  // bundle's apply-phase execute hook.
-  const execHook = isVerifyEntered(state)
-    ? sharedVerifyExecuteHook
-    : hooksIfActive(state)?.execute;
+  // Phase-mode-aware execHook lookup — same SSOT dispatch as
+  // `buildMessages` (verify-mode → shared hook, apply-mode → bundle's
+  // apply-phase hook, undefined → generic fallback).
+  const execHook = activeExecuteHook(state);
 
   if (state.currentTask) {
     lines.push(`# Current Task`);

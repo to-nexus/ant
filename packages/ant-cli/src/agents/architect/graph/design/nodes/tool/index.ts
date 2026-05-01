@@ -162,6 +162,10 @@ const toolNodeFn = createToolNode<DesignGraphState>({
             resultPreview: isImageContent ? resultStr : (resultStr.length <= 500 ? resultStr : undefined),
             wasTruncated: false,
             error: event.result.error,
+            // design jobs don't carry `_activePhase` / verification side
+            // effects, but pass through what's available so log readers
+            // can use the same shape across job types.
+            sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
           }).catch(() => { /* non-blocking */ });
         } catch { /* non-blocking */ }
       }

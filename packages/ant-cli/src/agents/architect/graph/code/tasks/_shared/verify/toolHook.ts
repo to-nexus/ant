@@ -21,6 +21,7 @@
 
 import type { ArchitectGraphState } from '../../../state';
 import type { ToolExecutionEvent, ToolSideEffect } from '../../../../../../common/tool/types';
+import { traceSession } from './sessionTrace';
 
 /**
  * Translate a single side effect into a Session mutation. Extracted so the
@@ -37,7 +38,10 @@ function applyEffect(state: ArchitectGraphState, effect: ToolSideEffect): void {
 
   switch (effect.type) {
     case 'verificationInvalidated': {
-      session.onFileChanged(effect.scope);
+      traceSession(state, 'onFileChanged', () => session.onFileChanged(effect.scope), {
+        scope: effect.scope,
+        source: 'toolHook',
+      });
       break;
     }
     case 'commandExecuted': {
@@ -45,7 +49,12 @@ function applyEffect(state: ArchitectGraphState, effect: ToolSideEffect): void {
       // never actually ran so they must not flip gate state.
       if (effect.exitCode === -1) break;
       // `verifies` undefined → not a gate command; no Session mutation.
-      session.onCommand(effect.verifies, effect.success);
+      traceSession(state, 'onCommand', () => session.onCommand(effect.verifies, effect.success), {
+        verifies: effect.verifies,
+        success: effect.success,
+        exitCode: effect.exitCode,
+        command: effect.command,
+      });
       break;
     }
     default:

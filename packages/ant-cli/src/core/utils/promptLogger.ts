@@ -37,6 +37,8 @@ export interface PromptLogEntry {
   resolvedPartials?: string[];
   /** Variables or partials that were missing during render */
   contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
+  /** Stage 0.2 — LLM final response body. Capped at 8KB. plan-finalize only. */
+  responseBody?: string;
 }
 
 export interface PromptLoggerOptions {
@@ -219,7 +221,19 @@ export class PromptLogger {
         : entry.hardcodedContent;
       content += '\n```\n';
     }
-    
+
+    if (entry.responseBody !== undefined) {
+      const RESPONSE_CAP = 8192;
+      const body = entry.responseBody;
+      const rendered = body.length > RESPONSE_CAP
+        ? body.substring(0, RESPONSE_CAP) + `\n\n... [TRUNCATED — original ${body.length} chars] ...`
+        : body;
+      content += `\n### LLM Final Response\n\n`;
+      content += '```\n';
+      content += rendered.length === 0 ? '<empty>' : rendered;
+      content += '\n```\n';
+    }
+
     content += '\n---\n\n';
     
     return content;
@@ -327,6 +341,7 @@ export async function logPrompt(
     injectedVariables?: Record<string, any>;
     hardcodedContent?: string;
     contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
+    responseBody?: string;
   }
 ): Promise<void> {
   const logger = getPromptLogger({ featurePath, jobId, jobType });
@@ -341,6 +356,7 @@ export async function logPrompt(
     injectedVariables: options?.injectedVariables,
     hardcodedContent: options?.hardcodedContent,
     contractViolations: options?.contractViolations,
+    responseBody: options?.responseBody,
     promptLength,
   });
 }
