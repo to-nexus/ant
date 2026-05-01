@@ -9,7 +9,8 @@ export type VerificationTerminalKind =
   | 'max_retries_exceeded'
   | 'no_progress'
   | 'unresolved_violations'
-  | 'batch_cycle_limit';
+  | 'batch_cycle_limit'
+  | 'missed_done_loop';
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;

@@ -452,17 +452,6 @@ export interface ArchitectGraphState extends TriageableState {
    */
   _verifyEntered?: boolean;
 
-  /**
-   * Reason emitted by the plan node when it short-circuits before execute
-   * (empty plan, already-complete verification, force-split). Consumed by
-   * `routeAfterPlan` in lieu of the previous inline `state.llmResponse`
-   * mutation inside the router (R1 — routers stay pure).
-   *
-   * Set by `nodes/plan/parts/handleShortCircuit` (T6) alongside
-   * `llmResponse = { done: true, … }`; cleared on the next plan entry.
-   */
-  _shortCircuitReason?: string;
-
   /** Phase 3-15 — number of `search_web` calls executed in the current
    *  plan-toolLoop session. Reset on fresh task entry; incremented after
    *  each plan-phase `search_web` execution. Cap enforced in `handleSearchWeb`

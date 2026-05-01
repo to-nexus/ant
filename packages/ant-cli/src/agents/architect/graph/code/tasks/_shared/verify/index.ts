@@ -58,6 +58,7 @@ export { normalizePlanForHash, countRepeatedHash } from './planHash';
 
 // Hook implementations
 export { initSession } from './initSession';
+export { handleFreshEntry } from './freshEntry';
 export { buildPrompt, buildPrompt as buildPlanPrompt } from './buildPlanPrompt';
 export { checkRetryTermination } from './checkRetryTermination';
 
@@ -70,6 +71,17 @@ export {
   onBatchSplit,
   clearForTaskBoundary,
 } from './sessionLifecycle';
+
+// VerificationBudget aggregate — the 5-axis read+write surface that
+// determines "should this verification cycle continue?". Phase code
+// uses these wrappers instead of touching the per-axis counters
+// (Session._attempts, state.retries, task._failedAttempts,
+// Session._batchSplitCount, state._finalTaskLoopCount) directly.
+export {
+  VerificationBudget,
+  BUDGET_THRESHOLDS,
+} from './budget';
+export type { BudgetSnapshot, TerminalReason } from './budget';
 
 // emptyImpl predicates — `assertVerificationPlanIsFanoutOnly` is
 // dev-only and consumed exclusively by `nodes/plan/outcome/finalize.ts`,

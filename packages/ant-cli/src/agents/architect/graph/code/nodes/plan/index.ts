@@ -22,7 +22,6 @@ import {
   buildPlanPromptBlocks,
   generatePlanText,
   runPlanLLMWithTools,
-  taskRequiresPlan,
   PLAN_TOOL_LOOP_MAX,
   runPlanToolLoopPhase,
 } from './llm';
@@ -41,7 +40,7 @@ import {
 import { MAX_BATCH_SPLIT_CYCLES } from '../../tasks/_shared/batchSplit';
 import { runPlanRAG } from './rag';
 import { normalizePlanForHash } from '../../tasks/_shared/verify/planHash';
-import { isVerificationTask } from '../../tasks/verification';
+import { hooksForTaskType } from '../../tasks/_shared/registry';
 
 // Back-compat re-exports.
 export type { PlanEntryContext } from './entry';
@@ -101,8 +100,9 @@ async function runMainPlanLLM(
 ): Promise<ArchitectGraphState | { planText: string }> {
   const { nextTask } = entry;
   const llm = state.deps?.llm as LLMClient | undefined;
-  const requiresPlan = taskRequiresPlan(nextTask);
-  const isVerification = isVerificationTask(nextTask);
+  const planHook = hooksForTaskType(nextTask.type)?.plan;
+  const requiresPlanText = planHook?.requiresPlanText ?? true;
+  const usesToolLoop = planHook?.usesToolLoop ?? requiresPlanText;
 
   const remainingTasks = (state.taskQueue?.getAll() || [])
     .filter(t => t.id !== nextTask.id)
@@ -110,7 +110,7 @@ async function runMainPlanLLM(
 
   const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
   const planToolRounds = nodePlan.length / 2;
-  const tryToolsFirst = llm && (requiresPlan || isVerification) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  const tryToolsFirst = llm && usesToolLoop && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
   // UI doc injection is now handled by ArtifactPipeline in planGeneration.ts.
   const uiDocForPlan: string | undefined = undefined;
@@ -138,8 +138,8 @@ async function runMainPlanLLM(
     }
   }
 
-  if (isVerification) {
-    console.log(`📋 [Plan] Verification task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
+  if (!requiresPlanText) {
+    console.log(`📋 [Plan] Task "${nextTask.name}" (${nextTask.type}): tool loop did not produce plan, proceeding with empty planText`);
     return { planText: '' };
   }
 
@@ -176,10 +176,21 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const prePlanned = await maybePrePlannedFastPath(state, entry, workflowExit);
   if (prePlanned) return mergeDelta(prePlanned, entryDelta) as ArchitectGraphState;
 
-  // STEP 0.7 — verification retry always re-diagnoses (fall through).
-  if (isRetry && isVerificationTask(nextTask)) {
-    console.log(`\n🔄 [Plan] Verification retry — will re-run build/test via tool loop for fresh error analysis`);
-    console.log(`   Violations from previous attempt: ${state.violations?.length || 0}`);
+  // STEP 0.7 — retry diagnostic log. Verify-mode tasks (verification +
+  // Tier 2 self-verify) re-run gates via the tool loop on retry; all
+  // other retry tasks fall through normally. The log surface stays
+  // task-blind by reading the same `requiresPlanText` flag the
+  // dispatcher uses — `false` ⇔ verification + doc + explain, of
+  // which only verification ever reaches retry under the current
+  // pipelines. R1 — no `task.type === 'verification'` literal here.
+  if (isRetry) {
+    const planHook = hooksForTaskType(nextTask.type)?.plan;
+    const isVerifyMode = (planHook?.requiresPlanText ?? true) === false
+      && (planHook?.usesToolLoop ?? true) === true;
+    if (isVerifyMode) {
+      console.log(`\n🔄 [Plan] Verify-mode retry — will re-run gates via tool loop for fresh error analysis`);
+      console.log(`   Violations from previous attempt: ${state.violations?.length || 0}`);
+    }
   }
 
   // STEP 0.9 — plan↔tool loop re-entry.
@@ -203,6 +214,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     console.log(`📋 [Plan] Passing ${state.violations.length} violation(s) to CodeGen for prompt injection`);
   }
 
+  // Empty planText reaching here came from the `!requiresPlanText`
+  // branch in `runMainPlanLLM`; other empty-plan paths classify origin
+  // at their own finalize call site.
+  const planNeedsText = (hooksForTaskType(nextTask.type)?.plan?.requiresPlanText ?? true);
+  const stepFourOrigin: 'verification-short-circuit' | undefined =
+    planTextRaw === '' && !planNeedsText ? 'verification-short-circuit' : undefined;
+
   // STEP 3.5 ~ STEP 4 — single SSOT for batchSplit + emptyImpl shortcut +
   // session.onPlanApplied + tracePlanFinalize + state shape. The two
   // former call sites (this one and `runPlanToolLoopPhase`) converge on
@@ -211,6 +229,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     preSplitPlanText: planTextRaw,
     callSite: 'plan-index',
     lessons: rag.lessons,
+    planEmptyOrigin: stepFourOrigin,
   });
 
   await workflowExit(state);

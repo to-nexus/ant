@@ -203,6 +203,66 @@ export interface TaskPlanHook {
    * its generic `state.retries/maxRetries` path when this hook exists.
    */
   checkRetryTermination?: (state: ArchitectGraphState) => VerificationTerminalError | null;
+  /**
+   * Does this task type produce a JSON plan-text body via `generatePlanText`?
+   * Default `true`. `false` for tasks where the plan phase is only a
+   * diagnostic / dispatch surface (verification — gates only ; doc /
+   * explain — direct narrative).
+   */
+  requiresPlanText?: boolean;
+  /**
+   * Does this task type drive the plan↔tool loop? Default = `requiresPlanText`.
+   * Verification is the one task where the two diverge: `requiresPlanText=false`
+   * (no plan body) but `usesToolLoop=true` (the loop runs gate / inspect
+   * commands).
+   */
+  usesToolLoop?: boolean;
+  /**
+   * When `task.exclusive === true`, does this task type activate the
+   * paths-only RAG fast path? Verification publishes `true` so its plan
+   * loads only config files + entry points (source surface is the build
+   * error output).
+   */
+  exclusiveFastpath?: boolean;
+  /**
+   * When `state.planText` parses to zero `modify/create/delete` entries
+   * and no `batches`, may the plan node short-circuit to `done:true`?
+   * Verification + error publish `true` (an empty remediation plan
+   * means "nothing to fix").
+   */
+  allowsEmptyImplShortcut?: boolean;
+  /**
+   * Task-type-specific RAG retrieval quota override. Caps the total file
+   * count delivered to the plan-prompt code context. `undefined` falls
+   * back to the integration/foundation vs general defaults in
+   * `RETRIEVAL_CONFIG`.
+   */
+  ragQuota?: number;
+  /**
+   * Does this task type accept a pre-planned `prePlanText` body and
+   * bypass the diagnostic plan-tool-loop? Drop-and-replace batch sub-tasks
+   * (error / test-code) publish `true` because their slice boundary is
+   * non-recoverable from a re-planning pass.
+   */
+  acceptsPrePlanText?: boolean;
+  /**
+   * Optional fresh-entry hook. Called by the plan node on a brand-new
+   * task entry (not retry / reverify / tool-loop re-entry). Verification
+   * publishes this to seed the Session + log a banner; the caller forwards
+   * `needsInstallObservation` into a `recomputeInstallNeeded` call so the
+   * verify SSOT does not need a phase-layer dependency.
+   */
+  handleFreshEntry?: (
+    state: ArchitectGraphState,
+    env: InitSessionEnv,
+  ) => FreshEntryResult;
+}
+
+export interface FreshEntryResult {
+  /** Session reference to commit on the plan-entry delta. */
+  verificationDelta?: ArchitectGraphState['verification'];
+  /** True when the caller should run `recomputeInstallNeeded` after the hook. */
+  needsInstallObservation?: boolean;
 }
 
 export interface TaskToolHook {

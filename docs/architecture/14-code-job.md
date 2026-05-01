@@ -161,9 +161,11 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 `processDiagnosticBatchSplit` 의 **always-fan-out 정책**: top-level `implementation.{modify,create,delete}` 는 자동으로 per-target batches[] 로 변환. 기존 `batches[]` 가 있으면 그대로 존중. 분할 임계 환경변수(`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`) 와 `forceByRepeat` 분기는 폐지(verification 책임이 fix 가 아니라 fan-out 으로 양극화되면서 임계 게이팅 자체가 의미 없음). 분할 cycle 의 하드 캡은 `MAX_BATCH_SPLIT_CYCLES = 10` 으로 보장.
 
+> **Verification task 의 책임/불변식/안티패턴 전체**는 [17-code-verification-task.md](./17-code-verification-task.md) 참조 (SSOT — Session, gates, commandGuard, snapshot, terminal 등 12 책임 매트릭스).
+
 ## Cache Invalidation Scope
 
-편집된 파일의 영향 범위에 따라 `VerificationTracker`를 선택적으로 무효화한다. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`)가 경로와 diff를 관찰해 scope를 결정하고, `tool` 노드의 `verificationInvalidated` side effect 처리기가 해당 scope만 tracker에서 떨어뜨린다.
+편집된 파일의 영향 범위에 따라 `VerificationSession._passed` 를 선택적으로 무효화한다. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`)가 경로와 diff를 관찰해 scope를 결정하고, `tool` 노드의 `verificationInvalidated` side effect 처리기가 해당 scope를 `Session.onFileChanged` 로 전달해 해당 gate 만 떨어뜨린다.
 
 | 편집 대상 | scope | 근거 |
 |---|---|---|
@@ -180,7 +182,7 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 **보수성 원칙**: diff 부재 / 판별 실패 시 항상 `scope:'all'`로 안전 쪽으로 폴백한다. Narrowing은 캐시 최적화이지 정확성의 전제가 아니다.
 
-런타임 측면에서 `codeCommandPolicy`는 tracker의 `*Passed`를 독립 조건으로 먼저 관찰하기 때문에, invalidation이 실제로 `*Passed=false`로 떨어뜨리지 않는 한 retry/reverify 경계를 넘어서도 이미 통과한 gate의 재실행을 `ALREADY PASSED`로 결정론적으로 차단한다. 이는 프롬프트의 stochastic hint(`cachedPassedSteps`)에 의존하지 않고 관찰 가능한 tracker 상태를 SSOT로 삼는 FPOP Constraints-over-Instructions 원칙의 적용이다.
+런타임 측면에서 `commandGuard`는 `Session.passed()` 를 독립 조건으로 먼저 관찰하기 때문에, invalidation이 실제로 `Session.onFileChanged` 로 `_passed` 비트를 떨어뜨리지 않는 한 retry/reverify 경계를 넘어서도 이미 통과한 gate의 재실행을 `[Policy] ALREADY PASSED`로 결정론적으로 차단한다. 이는 프롬프트의 stochastic hint(`cachedPassedSteps`)에 의존하지 않고 관찰 가능한 Session 상태를 SSOT로 삼는 FPOP Constraints-over-Instructions 원칙의 적용이다.
 
 ## State 복원
 
@@ -329,51 +331,20 @@ Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충�
 
 Cloud mode에서 `BridgeMCPTransport`는 Redis Pub/Sub을 사용한다. `orchestrator.ts`에서 Code Job 전용 Redis 클라이언트를 생성하여 `deps.redis`로 전달하고, Job 완료 시 `quit()`한다.
 
-## Axis A~G: 필드·리셋 규칙·테스트 커버리지
+## Verification 사이클 상세
 
-Code job의 verification 사이클은 7개 축(Axis A–G)으로 분해된다. 각 축은 **상태 필드**(state 저장), **리셋 규칙**(언제 초기화되는가), **테스트 커버리지**(어느 L1/L2 시나리오가 불변식을 묶는가)로 정의된다. 새 필드 추가·기존 필드 의미 변경 시 반드시 이 표를 갱신한다.
+Code job 의 verification 사이클(필드·리셋 규칙·gate·정책·snapshot·terminal·composeBundle 합성·불변식·안티패턴) 은 [17-code-verification-task.md](./17-code-verification-task.md) 가 SSOT. 본 문서에는 다음 high-level 만 남긴다:
 
-### 요약 매트릭스
+- **책임 양극화**: verification = 진단 + fan-out, error = fix (위 `Error Diagnostics System` 섹션 참조).
+- **Session SSOT**: 진단 상태는 `state.verification: VerificationSession` ([`tasks/_shared/verify/Session.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/Session.ts)) 에 인캡슐.
+- **gate 통과는 LLM `verifies` 선언 + exit 0** 이 SSOT (regex 명령 추론 폐지).
+- **terminal 종료**는 `VerificationTerminalError` typed kind 4종 + `MAX_BATCH_SPLIT_CYCLES = 10` 하드캡 + orchestrator `_failedAttempts >= 2` + `recursionLimit` 로 보장.
 
-| Axis | 책임 | 필드 | 리셋 시점 | L1/L2 커버리지 |
-|------|------|------|----------|----------------|
-| **A** — Install invalidation | dep-hash 기반 install skip/force 판정 | `_installNeeded`, `_depFileHash` | verification plan 진입, retry/reverify | S10 (dep-manifest-surgical), `invalidationScope.test.ts` |
-| **B** — Verification completion SSOT | `<done>` + tracker 동시 체크 | `_verificationTracker.{buildPassed,testPassed,typecheckPassed, *Required, *Attempted}` | reverify 시 `*Attempted`만 리셋 · 수정 범위 invalidation 시 `*Passed` flip | S01, S03, S06, S08, `isVerificationComplete.test.ts` |
-| **C** — Cached-passed step hint | 이미 통과한 gate는 프롬프트에 명시 | `formatCachedPassedSteps(tracker)` | tracker `*Passed` 변동에 파생 | (Phase 3-16 파생화 후) golden snapshot |
-| **D** — Retry summary & plan history | 직전 attempt 요약 → violationsText 경유 주입 | `_appliedPlanHistory`, `retrySummaryText` (런타임) | retry/reverify 진입마다 `retrySummaryText` 새로 렌더 · history는 reverify 시 append | `summarizeForRetry.test.ts`, F3c 로그 검증 |
-| **E** — Verification budget | retry·reverify 누적 한도 | `_verificationBudget`, `_diagnosticAttempts`, `_deepDiagnosticBudgetGranted`, `_lastPlanHash` | retry/reverify 진입 시 `consumeVerificationBudget` 1 감소 · fresh task 시 env 기반 시드 | S05 (budget-exhausted), `processDiagnosticBatchSplit.test.ts` |
-| **F** — Batch split / force escalation | LLM 단일 plan 고집 시 safety valve | `_batchSplitCount`, `_lastPlanHash` | 각 plan 진입마다 재계산 | S02, S04, `batch-split-fix.test.ts` |
-| **G** — Deep-diagnostic escalation | 2회 이상 재진입 시 config 주입 | `_diagnosticAttempts`, `_deepDiagnosticBudgetGranted` | fresh task 시드 · retry/reverify에서 `maybeGrantDeepDiagnosticBudget` | `deepDiagnosticConfig.test.ts` |
-
-### STEP 0 entry 분기별 리셋 필드 (Phase 2-9)
-
-`resolvePlanEntry`는 4개의 핸들러로 분기한다. 각 분기가 건드리는 필드를 아래 표로 고정한다.
-
-| 필드 | inToolLoop | retry | reverify | fresh |
-|------|:---:|:---:|:---:|:---:|
-| `state.retries` | 보존 | 보존 (maxRetries 검사) | 미조작 | 0 (scenario env 시 보존) |
-| `_executeCallIndex` | 보존 | 0 | 0 | 0 |
-| `_finalTaskLoopCount` | 보존 | 0 (비verification) / 보존 (verification) | 보존 | 0 (신규 task) |
-| `_verificationTracker` | 보존 | `*Attempted` 3개만 false, 그 외 보존 | `*Attempted` false · `*Passed`/`*Required`는 prev 보존 | 신규 task 시 fresh seed (verification만) |
-| `state.conversations[NODE_PLAN/EXECUTE]` | 보존 | 클리어 | 클리어 | 미조작 |
-| `state.violations` | 보존 | 클리어 (summary로 흡수) | 클리어 | 미조작 |
-| `_installNeeded` | 보존 | `recomputeInstallNeeded` | `recomputeInstallNeeded({detectPmIfMissing:true})` | verification task 시 `recomputeInstallNeeded({detectPmIfMissing:true})` |
-| `_appliedPlanHistory` | 보존 | 보존 | `planText` push | 신규 task 시 `[]` 초기화 |
-| `_verificationBudget` | 보존 | `consumeVerificationBudget` (verification 한정) | `consumeVerificationBudget` | fresh task 시 env 시드 · resume 시 보존 |
-| `_diagnosticAttempts` | 보존 | `maybeGrantDeepDiagnosticBudget` | 동일 | fresh task 시 0 |
-| `_lastPlanHash` | 보존 | 미조작 (STEP 2의 batch split이 갱신) | 동일 | fresh task 시 보존 (resume) |
-| `retrySummaryText` (반환값) | `undefined` | `renderRetrySummary(...)` | `undefined` | `undefined` |
-| `skipKeywordAndRAG` (반환값) | `false` | `false` | `true` | `false` |
-
-### 불변식 (Phase 2-9 이후)
-
-1. `state.retries` 의 단일 writer 는 `handleRetryEntry` (bc1e45b9 · F3 2026-04). plan 의 return 객체는 `retries` 를 절대 덮어쓰지 않는다 — `...state` spread 로 자연 영속화. inToolLoop 재진입 경로도 state.retries 를 건드리지 않으므로 override 없이 유지됨. `ANT_SCENARIO_PRESERVE_RETRIES` 는 resume 시점의 `runner.ts` 에서만 seeding 에 사용 (plan 진입 로직에는 영향 없음).
-2. retry/reverify 진입에서 `state.violations`를 클리어하기 **전에** `retrySummaryText` 렌더가 완료되어야 함 (STEP 3 `composeViolationsText` 단일 경로).
-3. `recomputeInstallNeeded` 호출 조건은 분기별로 다르다 (retry 한정 ≠ reverify의 `detectPmIfMissing` ≠ fresh의 verification 전용) — 네 분기를 하나로 합치면 회귀.
-4. `_verificationTracker.testsRequired`, `typecheckRequired`는 fresh task 시점에 한 번 결정되어 이후 상태 변화로 변경되지 않는다.
+> 새 verification 필드 추가, gate 추가, commandGuard 정책 변경, snapshot 필드 변경, terminal kind 추가 시 — 17-code-verification-task.md 의 책임 매트릭스 / 불변식 / 안티패턴 섹션을 먼저 갱신하고, 본 문서에는 cross-link 만 둔다.
 
 ## 경계
 
+- Verification task 책임/불변식/안티패턴 (SSOT): [17-code-verification-task.md](17-code-verification-task.md)
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
 - Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
 - Tool 시스템 (도구 카탈로그, 레지스트리, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)

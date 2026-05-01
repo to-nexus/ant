@@ -50,6 +50,13 @@ export const hooks: TaskHooks = {
   scheduling: { preDocBarrier },
   conversations: { convKey },
   execute: executeHook,
+  plan: {
+    // R1 dispatch flags — doc tasks render narrative directly via
+    // execute, no plan-text body and no tool loop. Replaces the
+    // `isDocTask(task)` predicate in `taskRequiresPlan`.
+    requiresPlanText: false,
+    usesToolLoop: false,
+  },
 };
 
 export { isDocTask } from './model/is';
