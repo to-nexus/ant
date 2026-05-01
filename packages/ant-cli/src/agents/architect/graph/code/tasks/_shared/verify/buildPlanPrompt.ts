@@ -46,11 +46,12 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
 
 /**
  * Compact session-state banner rendered at the top of the verification
- * plan prompt when the task has already attempted at least one cycle.
- * Replaces the verbose `buildDiagnosticRetryContext` narrative that used
- * to embed completed error sub-tasks' prePlanText (removed per
- * postmortem §4.1) and the body-buffer prior-plans block (removed per
- * verification fix-책임 제거 리팩토링).
+ * plan prompt — every cycle, including cycle-1 (fresh entry). The banner
+ * is the single SSOT channel that carries verification cycle context
+ * across worker context boundaries (each task spawns a fresh worker with
+ * empty NODE_PLAN history, so without the banner the LLM cannot know
+ * which cycle it's in or whether prior batch-splits already attempted
+ * fixes — `vast-curling-perch` cycle-2 infinite-loop incident).
  *
  * Three principles drive the copy:
  *   1. Scalar summary only — verification cycle counter / passed / missing
@@ -62,8 +63,13 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
  *   3. No task-specific internals — keeps the surface blind to
  *      individual error sub-tasks' fix content.
  *
- * Returns `undefined` on the first attempt so the banner stays silent
- * when there is nothing to report.
+ * Always returns a non-empty string when `session` is present. The
+ * previous `attempts === 0 && batchSplits === 0` early-return was an
+ * over-eager optimisation that suppressed the banner on cycle-1 fresh
+ * entries AND (per the `vast-curling-perch` incident) on cycle-2+
+ * re-entries when state.verification's counters appeared as 0 to the
+ * LLM dispatch path. Removing the gate guarantees the banner is always
+ * visible, restoring the regression guard's deterministic invariant.
  */
 function renderSessionSummary(
   session: { attempts(): number; passed(): readonly string[]; missing(): readonly string[]; batchSplitCount(): number } | undefined,
@@ -71,15 +77,13 @@ function renderSessionSummary(
   if (!session) return undefined;
   const attempts = session.attempts();
   const batchSplits = session.batchSplitCount();
-  if (attempts === 0 && batchSplits === 0) return undefined;
-
   const passed = session.passed();
   const missing = session.missing();
   const parts: string[] = [];
   parts.push(`- Verification cycle: ${attempts}`);
   parts.push(`- Passed gates: ${passed.length > 0 ? passed.join(', ') : 'none'}`);
   parts.push(`- Outstanding gates: ${missing.length > 0 ? missing.join(', ') : 'none'}`);
-  if (batchSplits > 0) parts.push(`- Prior batch-split cycles: ${batchSplits}`);
+  parts.push(`- Prior batch-split cycles: ${batchSplits}`);
   return parts.join('\n');
 }
 

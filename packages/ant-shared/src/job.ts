@@ -36,6 +36,36 @@ export function isSessionableJobType(jobType: string | undefined | null): jobTyp
   return jobType === 'code' || jobType === 'design' || jobType === 'learn' || jobType === 'plan' || jobType === 'visual';
 }
 
+/**
+ * Job types that the BE entry layer (`executeJob` / `JobExecutionManager`)
+ * is allowed to dispatch — superset of `SessionableJobType` plus the
+ * non-sessionable lightweight runner (`inline-ask`).
+ *
+ * `SessionableJobType` is the SSOT for "does this job persist a session
+ * file under `sessions/{agent}/`?" — that answer is `false` for inline-ask
+ * (it's a stateless probe of the interrupted session that runs LLM-based
+ * intent classification and either responds in chat, redirects, or
+ * triggers a continue/dismiss). Keeping inline-ask out of the sessionable
+ * union preserves the I1 invariant against silent jobType downcast.
+ *
+ * However the spawn / enqueue path still has to accept it, otherwise the
+ * `/projects/:id/features/:feature/inline-ask` HTTP route hits the
+ * sessionable-only guard and 500s — `vast-curling-perch` resume blocker.
+ *
+ * Downstream invariants:
+ *   - `BullMQJobQueue.enqueue` — accepts any executable type, routes by `jobType`.
+ *   - `JobWorker.processJob` — jobType-blind, spawns child with `params.jobType` arg.
+ *   - `composition/orchestrator.ts` — has explicit `inline-ask` branch (line ~140) that
+ *     dispatches to `runInlineAsk` (no session, no kanban).
+ *   - `JobExecutionManager.handleSuccessfulExit` — must skip session-read when
+ *     `mapping.jobType === 'inline-ask'` (no session file to read).
+ */
+export type ExecutableJobType = SessionableJobType | 'inline-ask';
+
+export function isExecutableJobType(jobType: string | undefined | null): jobType is ExecutableJobType {
+  return isSessionableJobType(jobType) || jobType === 'inline-ask';
+}
+
 /** Job-level timing (entire code/design/learn job lifecycle) */
 export interface JobTiming {
   startedAt: string;
