@@ -108,34 +108,61 @@ export class JobCleanupManager {
     // End workflow tracking
     await this.deps.workflowStateService.endJob(jobId);
     
-    // Move in-progress task back to queue in session file
-    if (mapping) {
-      try {
-        // chat-SSOT §5 retired the in-memory currentMessage scratchpad,
-        // so there is no longer a "finalize" step to call here. The
-        // worker's `LLMResponseService.finalizeMessage` already drained
-        // its TURN_BUFFER before exiting; if the worker died mid-turn,
-        // the per-turn buffer expires via TTL.
-        const effectiveUserContext = userContext || mapping.userContext || {
-          userId: 'local',
-          organizationId: 'local',
-        };
-        
-        const featurePath = this.deps.workspaceResolver.getFeaturePath(
-          effectiveUserContext,
-          mapping.projectId,
-          mapping.featureName || 'skeleton'
-        );
-        const sessionPath = getSessionFilePathByJob(featurePath, jobType);
-        
-        const sessionData = await this.deps.sessionService.readSessionData(
-          mapping.projectId, 
-          mapping.featureName || 'skeleton',
-          jobType,
-          effectiveUserContext
-        );
-        
-        let shouldBroadcast = true;
+    if (!mapping) {
+      logger.warn(`No mapping found, cannot broadcast Kanban update`, {
+        component: 'JobCleanupManager',
+        jobId
+      });
+      logger.debug(`cleanupJobState completed`, {
+        component: 'JobCleanupManager',
+        jobId
+      });
+      return;
+    }
+
+    // chat-SSOT §5 retired the in-memory currentMessage scratchpad,
+    // so there is no longer a "finalize" step to call here. The
+    // worker's `LLMResponseService.finalizeMessage` already drained
+    // its TURN_BUFFER before exiting; if the worker died mid-turn,
+    // the per-turn buffer expires via TTL.
+    const effectiveUserContext = userContext || mapping.userContext || {
+      userId: 'local',
+      organizationId: 'local',
+    };
+
+    // Two phases — kept INDEPENDENT so a failure in Phase A (session
+    // sync + final kanban broadcast) cannot prevent Phase B (cancelled
+    // card emission). Before the split, both lived under one wide
+    // try/catch that swallowed every throw between session-read and
+    // cancelled-card-emit, silently dropping the Resume / Dismiss UI
+    // when any intermediate step (`readSessionData`, `atomicWriteFile`,
+    // `broadcastFinalUpdate`) failed (cancelled-card-missing RCA).
+    //
+    //   Phase A — session sync + final kanban broadcast (UI accuracy)
+    //   Phase B — cancelled choice card emission (Resume / Dismiss UI)
+    //
+    // Phase B reads `sessionData?.state` for the clarify-suppress
+    // invariant, so the variable is hoisted above the Phase A try.
+    // `readSessionData` returns `Promise<any>` (`SessionService.ts`),
+    // so the local mirror is intentionally untyped.
+    let sessionData: any = null;
+
+    try {
+      const featurePath = this.deps.workspaceResolver.getFeaturePath(
+        effectiveUserContext,
+        mapping.projectId,
+        mapping.featureName || 'skeleton'
+      );
+      const sessionPath = getSessionFilePathByJob(featurePath, jobType);
+
+      sessionData = await this.deps.sessionService.readSessionData(
+        mapping.projectId,
+        mapping.featureName || 'skeleton',
+        jobType,
+        effectiveUserContext
+      );
+
+      let shouldBroadcast = true;
         
         if (sessionData?.state) {
           // ✅ Parallel mode: Orchestrator's checkpoint already has the complete
@@ -430,94 +457,115 @@ export class JobCleanupManager {
           }
         }
         
-        // Broadcast final update for every jobType. plan/visual jobs may
-        // not have a populated taskQueue, in which case the SESSION-only
-        // payload publishes empty todo/inProgress/completed and overwrites
-        // any leftover LIVE snapshot from the worker's KanbanBroadcaster.
-        // Frontend filters by `selectedJobType` so unrelated jobTypes are
-        // ignored without UI churn.
-        if (shouldBroadcast) {
-          await this.broadcastFinalUpdate(
-            mapping,
-            jobType,
-            effectiveUserContext,
-            jobId,
-            interruptionReason,
-          );
-        } else {
-          this.stateTracker.cleanup(jobId);
-        }
-        
-        // Emit a cancelled choice card so the UI can offer Resume /
-        // Dismiss. NX-guarded inside ChatService so duplicate pause
-        // sources (StaleJobRecovery, BullMQ stalled handler, etc.)
-        // can't double-emit.
-        if (interruptionReason && mapping.projectId && mapping.featureName) {
-          // Invariant I2 — see `shouldSuppressCancelledCardForClarify`
-          // for the gate contract and rationale.
-          const suppressedByClarify = shouldSuppressCancelledCardForClarify(
-            jobType,
-            sessionData?.state,
-          );
-
-          if (suppressedByClarify) {
-            logger.info(
-              `Suppressing cancelled card for clarify-paused non-task job (Invariant I2)`,
-              { component: 'JobCleanupManager', jobId },
-              { jobType, reason: interruptionReason.reason },
-            );
-          } else {
-            // Backstop for the cancelled-turn streaming overlay: sweep
-            // every active TURN_BUFFER for this feature and broadcast
-            // empty snapshots so the FE projector clears its
-            // `streamingBuffers` mirror. Best-effort — never throws or
-            // blocks the cancelled card emission below. Covers the
-            // SIGTERM 1.8s race where a parallel worker exits before
-            // `LLMResponseService.finalizeMessage(true)` can run.
-            try {
-              await this.deps.chatService.clearAllTurnBuffers(
-                mapping.projectId,
-                mapping.featureName,
-                effectiveUserContext,
-              );
-            } catch (err) {
-              logger.warn(
-                `clearAllTurnBuffers backstop failed`,
-                { component: 'JobCleanupManager', jobId },
-                err,
-              );
-            }
-
-            await this.deps.chatService.appendChoicePresentedCancelled(
-              mapping.projectId,
-              mapping.featureName,
-              jobId,
-              {
-                reason: interruptionReason.reason,
-                message: interruptionReason.message,
-                jobType: jobType as any,
-                designErrorType: (interruptionReason.metadata as any)?.designErrorType,
-                userContext: effectiveUserContext,
-              },
-            );
-          }
-        }
-      } catch (error) {
-        logger.error(`Error in cleanupJobState`, { 
-          component: 'JobCleanupManager', 
-          jobId 
-        }, error);
+      // Broadcast final update for every jobType. plan/visual jobs may
+      // not have a populated taskQueue, in which case the SESSION-only
+      // payload publishes empty todo/inProgress/completed and overwrites
+      // any leftover LIVE snapshot from the worker's KanbanBroadcaster.
+      // Frontend filters by `selectedJobType` so unrelated jobTypes are
+      // ignored without UI churn.
+      if (shouldBroadcast) {
+        await this.broadcastFinalUpdate(
+          mapping,
+          jobType,
+          effectiveUserContext,
+          jobId,
+          interruptionReason,
+        );
+      } else {
+        this.stateTracker.cleanup(jobId);
       }
-    } else {
-      logger.warn(`No mapping found, cannot broadcast Kanban update`, { 
-        component: 'JobCleanupManager', 
-        jobId 
-      });
+    } catch (error) {
+      // Phase A failure must NOT block Phase B — log and fall through
+      // to the cancelled card emission below so the UI still renders
+      // Resume / Dismiss even when session sync / kanban broadcast
+      // failed (cancelled-card-missing RCA: the prior single outer
+      // try/catch swallowed every throw between session-read and
+      // cancelled-card-emit, silently dropping the choice card).
+      logger.error(`Error in cleanupJobState session/broadcast phase`, {
+        component: 'JobCleanupManager',
+        jobId
+      }, error);
     }
-    
-    logger.debug(`cleanupJobState completed`, { 
-      component: 'JobCleanupManager', 
-      jobId 
+
+    // Phase B — cancelled choice card emission (independent of Phase A).
+    // The card offers Resume / Dismiss affordances; if it goes missing
+    // the user has no UI handle on the paused job. NX-guarded inside
+    // ChatService so duplicate pause sources (StaleJobRecovery, BullMQ
+    // stalled handler, etc.) cannot double-emit.
+    if (interruptionReason && mapping.projectId && mapping.featureName) {
+      // Invariant I2 — see `shouldSuppressCancelledCardForClarify`.
+      // `sessionData` may be null if Phase A's `readSessionData` threw —
+      // `awaitingClarify` then defaults to falsy, so the card emits
+      // (correct behaviour for a crashed-mid-clarify session: there's
+      // no stable clarify card to collide with anymore).
+      const suppressedByClarify = shouldSuppressCancelledCardForClarify(
+        jobType,
+        sessionData?.state,
+      );
+
+      if (suppressedByClarify) {
+        logger.info(
+          `Suppressing cancelled card for clarify-paused non-task job (Invariant I2)`,
+          { component: 'JobCleanupManager', jobId },
+          { jobType, reason: interruptionReason.reason },
+        );
+      } else {
+        // Backstop for the cancelled-turn streaming overlay: sweep
+        // every active TURN_BUFFER for this feature and broadcast
+        // empty snapshots so the FE projector clears its
+        // `streamingBuffers` mirror. Best-effort — never throws or
+        // blocks the cancelled card emission below. Covers the
+        // SIGTERM 1.8s race where a parallel worker exits before
+        // `LLMResponseService.finalizeMessage(true)` can run.
+        try {
+          await this.deps.chatService.clearAllTurnBuffers(
+            mapping.projectId,
+            mapping.featureName,
+            effectiveUserContext,
+          );
+        } catch (err) {
+          logger.warn(
+            `clearAllTurnBuffers backstop failed`,
+            { component: 'JobCleanupManager', jobId },
+            err,
+          );
+        }
+
+        // Wrap so a Redis blip / chat.jsonl write race surfaces with
+        // a clear log instead of silently disappearing
+        // (cancelled-card-missing RCA — the prior outer try/catch
+        // swallowed every throw between Phase A and the emit).
+        try {
+          const result = await this.deps.chatService.appendChoicePresentedCancelled(
+            mapping.projectId,
+            mapping.featureName,
+            jobId,
+            {
+              reason: interruptionReason.reason,
+              message: interruptionReason.message,
+              jobType: jobType as any,
+              designErrorType: (interruptionReason.metadata as any)?.designErrorType,
+              userContext: effectiveUserContext,
+            },
+          );
+          logger.info(
+            `appendChoicePresentedCancelled result`,
+            { component: 'JobCleanupManager', jobId },
+            { emitted: result.emitted, cardId: result.cardId, reason: interruptionReason.reason },
+          );
+        } catch (err) {
+          logger.error(
+            `appendChoicePresentedCancelled threw — Resume/Dismiss UI will be missing for this pause (reason=${interruptionReason.reason})`,
+            { component: 'JobCleanupManager', jobId },
+            err,
+          );
+        }
+      }
+    }
+
+    logger.debug(`cleanupJobState completed`, {
+      component: 'JobCleanupManager',
+      jobId
     });
   }
 
