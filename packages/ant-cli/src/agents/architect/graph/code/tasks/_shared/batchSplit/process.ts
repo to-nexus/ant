@@ -250,6 +250,21 @@ export function processDiagnosticBatchSplit(
             state.resolvedAction?.basis?.techTier?.frontend,
             state.resolvedAction?.basis?.techTier?.backend,
           ].filter((t): t is TechTier => !!t);
+          // Path B spawns a NEW verification task (different id from the
+          // dropped parent) — it must enter with a fresh conversation so the
+          // `variants/verification/base.md` template is rendered (incl. the
+          // `priorErrorTasks` block that surfaces completed error sub-tasks).
+          //
+          // Attaching `snapshot` here would carry the parent error task's
+          // `conversations` (started from `variants/error/base.md`) into the
+          // new FV. Combined with `task.interrupted=true` later being set
+          // by `saveCheckpoint` / `captureWorkerSnapshots`, the worker's
+          // restore gate (`task.interrupted && task.resumeState`) would
+          // re-load that parent conversation and the FV would re-investigate
+          // the same error from scratch (raw-clinging-beach regression).
+          //
+          // Path A above (`requeue-parent`) re-uses the SAME task id, so
+          // carrying the snapshot is the intended behavior there.
           const verificationTask: CodeTask = {
             id: `final-verification-batch-split-${Date.now()}`,
             name: `Final Verification (batch-split of "${nextTask.name}")`,
@@ -257,7 +272,7 @@ export function processDiagnosticBatchSplit(
             priority: TASK_PRIORITIES.FINAL_VERIFICATION,
             description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
             techTiers,
-            resumeState: snapshot ?? undefined,
+            resumeState: undefined,
             batchSplitCount: newBatchSplitCount,
           };
           state.taskQueue.push(verificationTask);
