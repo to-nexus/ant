@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { __testing__ } from '../../src/agents/architect/graph/code/nodes/plan';
-import { VerificationTerminalError } from '../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
+import { VerificationTerminalError } from '../../src/agents/architect/graph/code/tasks/_shared/verify/terminal/errors';
 
 const { resolvePlanEntry } = __testing__;
 

@@ -10,8 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import * as planBuildPrompt from '../../../src/agents/architect/graph/code/tasks/_shared/verify/buildPlanPrompt';
-import * as routerHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/router';
+import * as planBuildPrompt from '../../../src/agents/architect/graph/code/tasks/_shared/verify/prompt/buildPlanPrompt';
+import * as routerHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/hooks/router';
 import * as decompHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/decompose';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/conversations';
 

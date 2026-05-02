@@ -16,7 +16,7 @@ import {
   processDiagnosticBatchSplit,
   MAX_BATCH_SPLIT_CYCLES,
 } from '../../../src/agents/architect/graph/code/tasks/_shared/batchSplit';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
+import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/terminal/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 

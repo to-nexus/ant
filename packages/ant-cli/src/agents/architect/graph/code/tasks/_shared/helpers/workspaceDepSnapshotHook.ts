@@ -6,7 +6,7 @@
  * Shared by every task type that may write or extend a dependency
  * manifest: setup, feature, ui, error, design-system, test-code.
  * Verify-mode also calls this directly from
- * `_shared/verify/buildPlanPrompt.ts` because that path bypasses the
+ * `_shared/verify/prompt/buildPlanPrompt.ts` because that path bypasses the
  * apply-phase hook surface.
  *
  * The snapshot lives on the codebase disk (single source of truth via

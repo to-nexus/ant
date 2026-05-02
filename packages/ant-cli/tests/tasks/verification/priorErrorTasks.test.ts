@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { renderPriorErrorTasks } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/priorErrorTasks';
+import { renderPriorErrorTasks } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/prompt/priorErrorTasks';
 import type { ArchitectGraphState } from '../../../src/agents/architect/graph/code/state';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 

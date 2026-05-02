@@ -186,7 +186,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // chooses 'plan' for reverify whenever the verification cycle is not
   // complete (Session.isComplete() === false). The retired
   // `madeFileChanges` short-circuit is documented in
-  // `tasks/_shared/verify/router.ts`.
+  // `tasks/_shared/verify/hooks/router.ts`.
   //
   // The router mutates two channels on the apply→reverify transition:
   //   - `_nextPlanEntry = 'reverify'` for the plan node entry path

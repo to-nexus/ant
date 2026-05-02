@@ -27,8 +27,8 @@ import type { ArchitectGraphState } from '../../../state';
 import type { TaskExecuteHook, TaskPlanHook } from '../types';
 import { hooksIfActive } from '../registry';
 import { isVerifyEntered } from './markVerifyEntered';
-import { executeHook as verifyExecuteHook } from './executeHook';
-import { buildPrompt as verifyBuildPrompt } from './buildPlanPrompt';
+import { executeHook as verifyExecuteHook } from './hooks/executeHook';
+import { buildPrompt as verifyBuildPrompt } from './prompt/buildPlanPrompt';
 
 /**
  * Phase-mode execute hook resolver. Returns the verify-mode shared hook
