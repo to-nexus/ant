@@ -192,6 +192,14 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         expect((s as any).prePlanText).toBeTruthy();
       }
       expect(finalVerifications[0].type).toBe('verification');
+      // raw-clinging-beach regression guard: Path B (drop-and-replace) MUST
+      // spawn the new FV without `resumeState`, otherwise the parent error
+      // task's `conversations` (rooted in `variants/error/base.md`) would be
+      // restored into the FV via `TaskWorker.executeTask`'s
+      // `task.interrupted && task.resumeState` gate, hijacking the FV away
+      // from the `variants/verification/base.md` template (and skipping the
+      // `priorErrorTasks` block).
+      expect((finalVerifications[0] as any).resumeState).toBeUndefined();
     });
 
     it('test-code parent: drops original, spawns test-code sub-tasks with minimal shape, enqueues Final Verification', () => {
@@ -252,6 +260,11 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
 
       const groups = subTasks.map((t: any) => t.parallelGroup);
       expect(new Set(groups).size).toBe(2);
+
+      // raw-clinging-beach regression guard (see error-parent case above):
+      // Path B must spawn the FV without `resumeState` so the parent
+      // test-code task's conversation cannot be restored into the FV.
+      expect((finalVerifications[0] as any).resumeState).toBeUndefined();
     });
 
     it('test-code parent: single batch → also fans out under always-fan-out', () => {
