@@ -215,10 +215,16 @@ export function processDiagnosticBatchSplit(
 
     // Path A re-enqueues the original to preserve identity / `_failedAttempts`;
     // Path B drops it and (optionally) enqueues a Final Verification.
-    const snapshot = snapshotFromState(state);
+    //
+    // `snapshotFromState(state)` is taken inside the Path A branch only —
+    // Path B spawns a NEW Final Verification with `resumeState: undefined`
+    // (raw-clinging-beach regression guard), so carrying the parent's
+    // conversation snapshot here would be dead state. Keeping the call
+    // site inside the branch that consumes it makes the data flow obvious.
     const effectiveKind: 'requeue-parent' | 'drop-and-replace' =
       taskPolicy?.kind ?? 'drop-and-replace';
     if (effectiveKind === 'requeue-parent') {
+      const snapshot = snapshotFromState(state);
       const requeuedTask: CodeTask = {
         ...nextTask,
         timing: undefined,
