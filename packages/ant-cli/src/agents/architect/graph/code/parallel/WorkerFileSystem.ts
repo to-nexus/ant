@@ -214,8 +214,4 @@ export class WorkerFileSystem implements FileSystemPort {
   resolveAbsolute(relativePath: string): string {
     return this.delegate.resolveAbsolute(relativePath);
   }
-
-  getWorkspaceRoot(): string {
-    return this.delegate.getWorkspaceRoot();
-  }
 }

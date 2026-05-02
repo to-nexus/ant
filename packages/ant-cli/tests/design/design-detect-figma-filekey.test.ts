@@ -171,7 +171,7 @@ function makeLoadArtifactsHarness(): LoadArtifactsHarness {
     copyDirectory: async () => {},
     moveDirectory: async () => {},
     getRootPath: () => featurePath,
-    getWorkspaceRoot: () => featurePath,
+    resolveAbsolute: (rel: string) => `${featurePath}/${rel}`,
   };
 
   const gitPortStub = {} as any;
