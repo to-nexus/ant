@@ -1,11 +1,34 @@
 /**
- * read_file handler — context-injected version
+ * read_file handler — context-injected version.
+ *
+ * Contract:
+ *   - Path goes through `resolveToolPath` → `normalizeToCodebasePath` SSOT
+ *     (the same path the entire workspace tool surface uses).
+ *   - Range arguments (`startLine`/`endLine`, 1-based, inclusive) slice
+ *     the result; clamped to file length, `start > end` rejected.
+ *   - Full reads of files larger than `READ_FILE_FULL_READ_LIMIT` are
+ *     refused with a range-instruction error rather than silently
+ *     truncated. The Compact ↔ Decompact cycle relies on this — the
+ *     prompt-side compacted outline emits `L{N}: <heading>` markers and
+ *     the LLM is expected to re-issue with that line number as
+ *     `startLine` instead of pulling 100K+ chars in one shot.
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
+
+/**
+ * Threshold above which a `read_file` call without `startLine`/`endLine`
+ * is rejected. Files within this size return the full content unchanged.
+ * Previously enforced only inside decompose's own discoveryTools fork —
+ * lifted here so every read_file caller (decompose, worker tool loop,
+ * design source-selector, etc.) shares the same anti-context-blowout
+ * contract.
+ */
+export const READ_FILE_FULL_READ_LIMIT = 100_000;
 
 export async function handleReadFile(
   ctx: ToolExecutionContext,
@@ -35,6 +58,36 @@ export async function handleReadFile(
     return { content };
   }
 
+  const hasRange = typeof startLine === 'number' || typeof endLine === 'number';
+
+  // Stat-first oversized check — refusing BEFORE reading avoids pulling
+  // a huge file into memory just to discard it. The absolute path is
+  // routed through the port's traversal-protected resolver so this
+  // direct fs touch stays inside the workspace boundary.
+  if (!hasRange) {
+    try {
+      const absPath = fileSystem.resolveAbsolute(resolved.fsPath);
+      const stat = fs.statSync(absPath);
+      if (stat.size > READ_FILE_FULL_READ_LIMIT) {
+        const errorMsg =
+          `Error: File too large for full read (${stat.size.toLocaleString()} bytes). ` +
+          `Use \`read_file("${resolved.displayPath}", startLine, endLine)\` to read a specific range. ` +
+          `Compacted documents in the prompt include line-numbered outlines ` +
+          `(\`L{N}: <heading>\`) — pass those line numbers as startLine.`;
+        console.error(`[readFile] ${errorMsg}`);
+        return { content: errorMsg, error: errorMsg };
+      }
+    } catch {
+      // statSync failure (file missing / permission) falls through to
+      // fileSystem.readFile which produces the canonical "not found"
+      // error path below. Never swallow into a misleading oversized
+      // error.
+    }
+  } else if (typeof startLine === 'number' && typeof endLine === 'number' && startLine > endLine) {
+    const errorMsg = `Error: startLine (${startLine}) > endLine (${endLine}) for ${resolved.displayPath}.`;
+    return { content: errorMsg, error: errorMsg };
+  }
+
   const mergeIndex = await ctx.chatStatus.addReadingFile(resolved.displayPath);
 
   try {
@@ -52,7 +105,7 @@ export async function handleReadFile(
     await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex);
 
     let result: string;
-    if (startLine || endLine) {
+    if (hasRange) {
       const lines = fileContent.split('\n');
       const totalLines = lines.length;
       const start = Math.max(1, startLine || 1);
