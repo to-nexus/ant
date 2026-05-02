@@ -6,6 +6,7 @@ import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../
 import { designDirOf } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
+import { evaluateBcGate } from './bcGate';
 import {
   collectTouchedFilesFromChatLog,
   type TouchedFromChatLog,
@@ -413,6 +414,25 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     
     const taskFailed = state.violations && state.violations.length > 0;
+    // BC 적기는 turn 단위 신호로 결정한다. verification/error tail의
+    // `state.violations` 잔존(=taskFailed)은 본래 `interruption` 마킹용
+    // 신호이며 BC 적기에는 영향을 주지 않아야 한다 — turn 안에서 다른
+    // task가 코드를 정상 변경했다면(`touchedForLearn`에 file_* 흔적이
+    // 남았다면) 마지막 task가 verification이라도 BC를 기록한다.
+    // SSOT: packages/ant-cli/src/core/context/breadcrumb.ts:239
+    // (`collectTouchedFilesFromChatLog`).
+    // The gate decision + diagnostic line live in `bcGate.ts` so they
+    // remain unit-testable without standing up the full learn node.
+    const bcGate = evaluateBcGate({
+      isLastTask,
+      taskFailed: !!taskFailed,
+      isWorkerContext,
+      hasOrchestratorFailure,
+      touchedSize: touchedForLearn?.all.size ?? 0,
+      mode: state.resolvedAction?.mode,
+      currentTaskType: state.currentTask?.type,
+      violationsLen: state.violations?.length ?? 0,
+    });
     const completedJobTiming = state.jobTiming ? {
       ...state.jobTiming,
       ...(isLastTask && !taskFailed && { completedAt: new Date().toISOString() })
@@ -460,11 +480,22 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // self-skips for `mode='explain'` and `touched=0`. Every other
     // code-change task records a BC line.
     //
-    // Gated by `!taskFailed` so a failed run does not poison downstream
-    // feature.jsonl readers. §19 featureBiases has a different failure
-    // contract and runs earlier, outside this block (see above).
+    // Gate: `bcShouldEmit = isLastTask && turnTouchedAny` — see the
+    // `turnTouchedAny` derivation above. The earlier `!taskFailed` gate
+    // mistakenly conflated `interruption` marking (verification-tail
+    // violations) with BC emission, which silently dropped BCs on turns
+    // whose tail task was verification/error. The interruption marking
+    // path (`if (isLastTask && taskFailed)` above) keeps its original
+    // semantics. §19 featureBiases has a different failure contract and
+    // runs earlier, outside this block (see above).
+    //
+    // The `📝 [Learn] BC eval — …` log is the SSOT diagnostic for "why
+    // didn't a BC appear?" — `silentSkipDiagnostics` covers the four
+    // inner skip sites in writeBreadcrumb, and this line covers the
+    // outer gate that decides whether writeBreadcrumb was called at all.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (isLastTask && !taskFailed) {
+    console.log(bcGate.diagnosticLine);
+    if (bcGate.bcShouldEmit) {
       try {
         const executionTier = getExecutionTier(state);
         await executionTier.breadcrumb(state, touchedForLearn);
