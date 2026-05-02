@@ -38,6 +38,23 @@
       "initial_creation": "Initial Creation",
       "modification": "Modification",
       "refactor": "Refactor"
+    },
+    "date": {
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "group": {
+      "tasks": "{{count}} tasks"
+    },
+    "anchors": {
+      "specs": "Specs",
+      "paths": "Paths",
+      "files": "Files",
+      "moreFiles": "+{{count}} more"
+    },
+    "summary": {
+      "expand": "Show more",
+      "collapse": "Collapse"
     }
   },
   "tier": {
