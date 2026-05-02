@@ -176,6 +176,12 @@ cancelled cardId 는 한 turn 안의 모든 task 에 걸쳐 unique 해야 하므
 
 N개 질문을 하나의 카드에 묶어 표시한다. 질문별 옵션 버튼과 인라인 직접입력을 지원한다. 1개 이상 응답 시 제출 가능(partial 허용). 모든 선택은 Zustand `pendingClarifyAnswers`에 저장되며 ChatInput과 공유된다.
 
+### Cancelled Card NX semantics — release-on-failure
+
+`ChatService.appendChoicePresentedCancelled` 의 `ant:chat:cancelled-emitted:job:{jobId}` NX guard 는 **"한 번 SUCCESSFULLY emit 됐으면 두 번째 시도 skip"** 의 의미다 — 단순히 "한 번 시도했으면 skip" 이 아니다. acquire 후 emission 이 throw 하면 (Redis blip / chat.jsonl write race / `autoResolveStaleCancelledCards` 실패 등) try/finally 에서 lock 을 즉시 release 해 다음 pause source 가 재시도 가능. 성공 path 에서는 24h NX 가 그대로 유지되어 multi-source idempotency contract (StaleJobRecovery / BullMQ stalled handler / ServerLifecycleManager 동시 fire 시 중복 카드 방지) 가 보존된다.
+
+Release 누락 시 회귀: 이전 버그 (cleanupJobState 의 단일 outer try/catch 가 emit throw 를 swallow 했던 시점) 가 NX 만 set 하고 line emit 못 한 케이스를 만들면, 24h TTL 동안 같은 jobId 의 모든 cancelled card 시도가 silent skip 됨 (`cancelled-card-stale-NX` RCA — `vast-curling-perch` 에서 관측됨, fixed in commit `8ea931b8` + ChatService release-on-failure). 회귀 가드: [`tests/http/chatService.test.ts`](packages/ant-cli/tests/http/chatService.test.ts) 의 `release-on-failure (a~d)` 4 cases.
+
 ## 경계
 
 - Redis Pub/Sub 채널: [02-infrastructure.md](02-infrastructure.md)
