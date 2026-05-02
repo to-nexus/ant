@@ -139,14 +139,27 @@ export function planSearch(
     }
   }
 
-  // ── dependency mode + excludes ────────────────────────────────────────
-  // Commit 1 baseline: explicit include_dependencies only. Commit 2 will
-  // add auto-inference from file_pattern + --no-ignore.
-  const effectiveIncludeDeps = !!args.include_dependencies;
+  // ── dependency mode (explicit + auto-inferred) ────────────────────────
+  // Auto-infer when file_pattern explicitly targets node_modules/ or
+  // vendor/ — the LLM's intent is library grounding, so silently dropping
+  // the dependency-exclude glob (which would defeat the search) and
+  // demanding a redundant `include_dependencies: true` is exactly the
+  // false-negative producer the next-intl RCA exposed.
+  const filePatternTargetsDeps =
+    !!effectiveFilePattern &&
+    /(^|\/)(node_modules|vendor)(\/|$)/.test(effectiveFilePattern);
+  const effectiveIncludeDeps = !!args.include_dependencies || filePatternTargetsDeps;
+
   const appliedExcludes = effectiveIncludeDeps
     ? ['.git']
     : DEFAULT_EXCLUDES;
-  const noIgnore = false;
+
+  // ripgrep's default ignore stack (.gitignore, .ignore, parent .gitignores)
+  // re-cuts node_modules even after we drop our own `!node_modules` glob,
+  // because most workspaces gitignore it. In dependency mode we explicitly
+  // bypass those; `.git/` is still hard-excluded above so `--no-ignore`
+  // never leaks the VCS internals.
+  const noIgnore = effectiveIncludeDeps;
 
   // ── ripgrep argv ──────────────────────────────────────────────────────
   // cwd = workspace root (always exists, FileSystemAdapter constructor
