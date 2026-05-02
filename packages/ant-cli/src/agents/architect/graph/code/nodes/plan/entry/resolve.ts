@@ -16,10 +16,9 @@
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import { detectTestFilesFromDisk, isTypeScriptProject } from '../../../tasks/_shared/verify/env';
 import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
 import { VerificationBudget } from '../../../tasks/_shared/verify/budget';
-import { hooksForTaskType } from '../../../tasks/_shared/registry';
+import { requiresVerification } from '../../../tasks/_shared/verify/predicate';
 import { isVerificationTask } from '../../../tasks/verification';
 import { recomputeInstallNeeded } from './installNeeded';
 
@@ -95,16 +94,6 @@ async function handleRetryEntry(
   flags: PlanEntryFlags,
 ): Promise<PlanEntryResult> {
   const nextTask = state.currentTask!;
-
-  // Termination dispatch (R1). Verification's hook is currently a no-op
-  // here because verification never reaches retry under always-fan-out;
-  // the lookup stays for future task-type plug-ins.
-  const planHook = hooksForTaskType(nextTask.type)?.plan;
-  const hookTerminal = planHook?.checkRetryTermination?.(state);
-  if (hookTerminal) {
-    console.error(`\n❌ [Plan] ${nextTask.name} terminated (${hookTerminal.kind}): ${hookTerminal.message}\n`);
-    throw hookTerminal;
-  }
 
   const planRetries = VerificationBudget.bumpPlanRetry(state);
   if (planRetries >= state.maxRetries) {
@@ -224,16 +213,12 @@ async function handleFreshTaskEntry(
     },
   };
 
-  // Fresh-entry side-effects (currently: install-observation request) are
-  // bundled into `plan.handleFreshEntry`. Verification publishes the hook;
-  // other task types get `undefined` and the call is a no-op.
-  const tsProject = isTypeScriptProject(state);
-  const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
-  const freshResult = hooksForTaskType(nextTask.type)?.plan?.handleFreshEntry?.(
-    state,
-    { isTs: tsProject, hasTests },
-  );
-  if (freshResult?.needsInstallObservation) {
+  // Verification responsibility tasks (verification task type + Tier 2
+  // self-verify) need an install-observation probe at fresh entry so the
+  // verify-mode plan prompt sees `state._installNeededTransient`. Direct
+  // call (the legacy `plan.handleFreshEntry` hook surface was retired by
+  // plan §16 — the only thing it ever did was flag this side effect).
+  if (requiresVerification(nextTask)) {
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
   }
 
