@@ -15,6 +15,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { rgPath } from '@vscode/ripgrep';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolDirectory, prependFixMessage } from './pathResolver';
@@ -28,22 +29,38 @@ const MAX_RESULT_LINES = 500;
 const PER_FILE_MAX_COUNT = 200;
 
 /**
- * Hint appended to ripgrep ENOENT messages so the operator sees a clear
- * recovery path. `@vscode/ripgrep` downloads its binary via a postinstall
- * script; pnpm 10+ blocks those by default unless the package is listed
- * under `pnpm.onlyBuiltDependencies`. When the bin/ directory is empty,
- * `spawn(rgPath, ...)` emits ENOENT at runtime. See `CLAUDE.md` →
+ * Hint appended when ripgrep is genuinely missing on disk (postinstall
+ * was blocked or never ran). `@vscode/ripgrep` downloads its binary via
+ * a postinstall script; pnpm 10+ blocks those by default unless the
+ * package is listed under `pnpm.onlyBuiltDependencies`. See `CLAUDE.md` →
  * "Native-Binary Dependencies" for the full recovery procedure.
  */
-const RIPGREP_ENOENT_HINT =
+const RIPGREP_BINARY_MISSING_HINT =
   '\n\nHint: the ripgrep binary is missing. Run ' +
   '`env -u GITHUB_TOKEN -u GH_TOKEN node node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/lib/postinstall.js --force` ' +
   'and verify that `@vscode/ripgrep` is listed in `pnpm.onlyBuiltDependencies` of the root `package.json` ' +
   '(pnpm 10 blocks postinstall scripts by default).';
 
-function decorateRgError(message: string): string {
-  if (message.includes('ENOENT')) return message + RIPGREP_ENOENT_HINT;
-  return message;
+/**
+ * Hint appended when ripgrep IS installed but spawn still produced ENOENT.
+ * Almost always caused by passing a non-existent or unreadable cwd —
+ * Node's spawn surfaces ENOENT against the binary path even when the
+ * real culprit is the working directory. (vast-curling-perch RCA.)
+ */
+const RIPGREP_CWD_ENOENT_HINT =
+  '\n\nHint: ripgrep binary is present, so this ENOENT means the spawn cwd ' +
+  "or search root does not exist (or isn't readable). Verify the directory " +
+  'is mounted and the path is workspace-relative.';
+
+/**
+ * Decorate raw spawn errors with a hint that points at the *real* cause.
+ * Distinguishing binary-missing vs cwd-missing matters: the wrong hint
+ * sends operators down a useless postinstall loop while the real fix is
+ * elsewhere.
+ */
+export function decorateRgError(message: string, binaryExists: boolean = existsSync(rgPath)): string {
+  if (!message.includes('ENOENT')) return message;
+  return message + (binaryExists ? RIPGREP_CWD_ENOENT_HINT : RIPGREP_BINARY_MISSING_HINT);
 }
 
 async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -75,6 +92,9 @@ export async function handleSearchCode(
   }
 
   const fileSystem = ctx.fileSystem;
+  if (!fileSystem) {
+    return { content: 'search_code requires fileSystem', error: 'search_code requires fileSystem' };
+  }
 
   const wantsWorkspaceScope = (() => {
     const fp = (file_pattern || '').replace(/\\/g, '/').replace(/^\.?\//, '');
@@ -109,7 +129,30 @@ export async function handleSearchCode(
       excludes = DEFAULT_EXCLUDES;
     }
 
-    console.log(`[searchCode] Ripgrep: ${resolvedRoot.displayPath} (fsPath: ${resolvedRoot.fsPath}, excludes: ${excludes})`);
+    // Resolve to an absolute filesystem path. `resolvedRoot.fsPath` is
+    // workspace-relative (e.g. `codebase/`) — passing that as `spawn`'s cwd
+    // would make Node resolve it against `process.cwd()` (the server's CWD,
+    // not the workspace root) and fail with ENOENT against the *binary path*,
+    // disguising the real cause. Use the port's traversal-protected
+    // resolver so all native-spawn callers share one absolute-path SSOT.
+    const absRoot = fileSystem.resolveAbsolute(resolvedRoot.fsPath);
+    if (!existsSync(absRoot)) {
+      const errorMsg =
+        `Search root does not exist: ${resolvedRoot.displayPath} (resolved to ${absRoot}). ` +
+        `Verify the directory is part of the workspace and try a path that exists.`;
+      console.error(`[searchCode] ${errorMsg}`);
+      await ctx.chatStatus.showStatus('searched_code', {
+        pattern,
+        filesCount: 0,
+        totalMatches: 0,
+        filesList: [],
+        error: errorMsg,
+        _mergeIndex: searchingIndex,
+      });
+      return { content: `Error: ${errorMsg}`, error: errorMsg };
+    }
+
+    console.log(`[searchCode] Ripgrep: ${resolvedRoot.displayPath} (absRoot: ${absRoot}, excludes: ${excludes})`);
 
     const rgArgs: string[] = [
       '--no-heading',
@@ -125,9 +168,11 @@ export async function handleSearchCode(
       rgArgs.push('--glob', file_pattern);
     }
     // `--` so patterns starting with `-` are not parsed as flags.
-    rgArgs.push('--', pattern, resolvedRoot.fsPath);
+    // Pass `.` as the search root since cwd is already absRoot — keeps
+    // ripgrep's emitted paths short and our normalize step trivial.
+    rgArgs.push('--', pattern, '.');
 
-    const { stdout, stderr, code } = await runRipgrep(rgArgs, resolvedRoot.fsPath);
+    const { stdout, stderr, code } = await runRipgrep(rgArgs, absRoot);
 
     // ripgrep exit codes: 0=match, 1=no match, 2+=error.
     if (code === 2) {
@@ -146,11 +191,11 @@ export async function handleSearchCode(
     }
 
     let lines = stdout.split('\n').filter(l => l.length > 0);
-    // Normalize absolute paths emitted by ripgrep down to repository-relative
-    // so the output matches the pre-ripgrep format (`file:line: content`).
-    // resolvedRoot.fsPath is the cwd we passed; strip it from each hit.
-    const rootPrefix = resolvedRoot.fsPath.endsWith('/') ? resolvedRoot.fsPath : resolvedRoot.fsPath + '/';
-    lines = lines.map(l => l.startsWith(rootPrefix) ? l.slice(rootPrefix.length) : l);
+    // ripgrep emits paths relative to the search root (`.`), e.g. `foo.ts:12: ...`.
+    // Strip the leading `./` so output stays clean and matches the pre-ripgrep
+    // format (`file:line: content`). The displayPath context is preserved by
+    // `prependFixMessage` if a path-correction notice is active.
+    lines = lines.map(l => (l.startsWith('./') ? l.slice(2) : l));
 
     if (code === 1 || lines.length === 0) {
       const errorMsg = `No matches found for pattern "${pattern}"${file_pattern ? ` in files matching "${file_pattern}"` : ''}`;
@@ -178,10 +223,6 @@ export async function handleSearchCode(
         return m ? m[1] : '';
       }).filter(Boolean),
     ));
-
-    // `fileSystem` is reserved for future cross-process fs concerns (it is
-    // intentionally unused here — ripgrep owns tree walking).
-    void fileSystem;
 
     await ctx.chatStatus.showStatus('searched_code', {
       pattern,
