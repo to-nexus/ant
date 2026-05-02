@@ -115,8 +115,5 @@ export interface FileSystemPort {
    * @throws Error if the resolved path escapes the workspace boundary.
    */
   resolveAbsolute(relativePath: string): string;
-
-  /** @deprecated Use getRootPath() instead */
-  getWorkspaceRoot(): string;
 }
 
