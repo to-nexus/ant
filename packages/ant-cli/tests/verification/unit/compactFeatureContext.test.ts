@@ -96,21 +96,23 @@ describe('compactFeatureContext — active compaction', () => {
     );
   });
 
-  it('preserves breadcrumbs untouched during compaction', async () => {
+  it('preserves recent breadcrumbs (after window cutoff) during compaction', async () => {
+    // job-context-bridge T5 — BCs at or after the kept-window cutoff
+    // timestamp flow through verbatim. Earlier BCs would be folded into
+    // the MECE summary as Artifacts.
     const turns = Array.from({ length: 10 }, (_, i) => makeTurn(i, 10_000));
-    const breadcrumbs = [
-      {
-        type: 'breadcrumb' as const,
-        ts: '2026-04-19T00:10:00.000Z',
-        jobId: 'job-9',
-        turnId: 't-9',
-        jobType: 'code' as const,
-        scope: 'modification' as const,
-        anchors: { files: ['a.ts'] },
-        summary: 'file changed',
-        stats: { touched: 1 },
-      },
-    ];
+    const recentBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:10:00.000Z', // strictly after t-6 (kept window starts at t-6)
+      jobId: 'job-9',
+      turnId: 't-9',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { files: ['a.ts'] },
+      summary: 'file changed',
+      stats: { touched: 1 },
+    };
+    const breadcrumbs = [recentBc];
     const ctx: FeatureContext = { breadcrumbs, userTurns: turns };
     const llm = makeLLM();
     const promptPort = makePromptPort();
@@ -122,8 +124,53 @@ describe('compactFeatureContext — active compaction', () => {
     );
 
     expect(result.wasCompacted).toBe(true);
-    expect(result.breadcrumbs).toBe(breadcrumbs);
+    // recent BC (after cutoff) survives unchanged
+    expect(result.breadcrumbs).toEqual([recentBc]);
     expect(result.userTurns).toHaveLength(4);
+  });
+
+  it('folds old breadcrumbs (before window cutoff) into MECE summary', async () => {
+    const turns = Array.from({ length: 10 }, (_, i) => makeTurn(i, 10_000));
+    // turns[i].ts === `2026-04-19T00:00:0${i}.000Z` (see makeTurn helper).
+    // windowSize=4 → cutoff at t-6 (ts = 2026-04-19T00:00:06.000Z).
+    const oldBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:00:01.000Z', // before t-6 cutoff
+      jobId: 'job-1',
+      turnId: 't-1',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { paths: ['src/old/**'] },
+      summary: 'old refactor',
+      stats: { touched: 7, modified: 7 },
+    };
+    const recentBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:00:09.500Z', // after t-6 cutoff
+      jobId: 'job-9',
+      turnId: 't-9',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { files: ['a.ts'] },
+      summary: 'recent change',
+      stats: { touched: 1 },
+    };
+    const ctx: FeatureContext = { breadcrumbs: [oldBc, recentBc], userTurns: turns };
+    const llm = makeLLM();
+    const promptPort = makePromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 12_000, windowSize: 4 },
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.breadcrumbs).toEqual([recentBc]);
+    // old BC's content surfaces in the prompt rendered for the LLM
+    const renderArgs = (promptPort.render as any).mock.calls[0][1];
+    expect(renderArgs.conversation).toContain('Artifact');
+    expect(renderArgs.conversation).toContain('old refactor');
   });
 
   it('returns original ctx on LLM failure (graceful degradation)', async () => {

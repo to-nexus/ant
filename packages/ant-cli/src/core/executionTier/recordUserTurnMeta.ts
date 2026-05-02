@@ -28,7 +28,19 @@ export interface RecordUserTurnMetaInput {
 
 export async function recordUserTurnMeta(input: RecordUserTurnMetaInput): Promise<void> {
   const { session, turnId, jobId, jobType, executionTier, nodeLabel } = input;
-  if (!session || !turnId || !jobId) return;
+  if (!session || !turnId || !jobId) {
+    // Silent skip used to make BC/meta-missing bugs impossible to diagnose
+    // (job-context-bridge T1). Surface the exact precondition that failed
+    // so the next resolve cycle can attribute the silence correctly.
+    console.warn(
+      `⚠️  [${nodeLabel}] recordUserTurnMeta skipped: ${
+        !session ? 'session port unavailable' :
+        !turnId ? 'turnId missing' :
+        'jobId missing'
+      }`,
+    );
+    return;
+  }
   try {
     await session.appendUserTurnMeta({
       type: 'user_turn_meta',

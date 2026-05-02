@@ -195,36 +195,51 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 
 ### 5.1 Collapse vs Compact (orthogonal)
 
+> **2026 update — job-context-bridge T2/T5**: auto-boundary (`reason: 'auto_job_complete_todo'`)는 폐기됨. 자동 cut이 다음 job에 직전 작업 맥락을 0으로 만들던 회귀를 회복하기 위함. 남은 boundary는 Hard Reset (`reason: 'user_reset'`) 한 종류. 동시에 Compact의 응축 대상에 breadcrumb이 포함됨 — 이전 "Breadcrumb는 응축 안 함" 정책 폐기.
+
 | | Collapse | Compact |
 |---|---|---|
-| **트리거** | Boundary append 시점 (쓰기) | resolve 노드 읽기 시점 (T2 토큰 > `FEATURE_CONTEXT_THRESHOLD`) |
-| **대상** | `loadSinceBoundary` 이전의 모든 user_turn / meta / breadcrumb | window 초과 T2 user_turn (breadcrumb는 제외) |
-| **수단** | `collapsed=true` 마킹 (파일 보존) | LLM 요약 → `FeatureContext.summary` 별도 필드 |
+| **트리거** | Hard Reset (`user_reset` boundary) append 시점 (쓰기) | resolve 노드 읽기 시점 (user_turn + breadcrumb 합산 토큰 > `FEATURE_CONTEXT_THRESHOLD`) |
+| **대상** | Hard Reset 이전의 모든 user_turn / meta / breadcrumb | window 외 옛 user_turn + window-cutoff 이전 breadcrumb |
+| **수단** | `collapsed=true` 마킹 (파일 보존) | LLM 요약 (MECE Agreements/Artifacts/Open items) → `FeatureContext.summary` 별도 필드. Breadcrumb은 `Artifact` 카테고리로 응축 |
 | **비용** | I/O만 (LLM 없음) | 1회 LLM call (graceful degradation: 실패 시 원형 반환) |
 | **구현** | `FileSessionAdapter.appendBoundary` (+ Sweep 전용 `collapseTraceOnly` / Job 탭 X 전용 `collapseByJobId`) | `core/context/featureContextBuilder.ts#compactFeatureContext` |
 
-두 메커니즘은 **직교**. Compact는 상한을 못 맞출 때 보강하는 안전망, Collapse는 `task` 완료 시 정식 경계.
+레거시 `auto_job_complete_todo` boundary가 이미 적힌 feature.jsonl은 `loadSinceBoundary`가 그 reason을 무시하므로 자동 복원된다 (마이그레이션 불필요).
 
 ### 5.1.1 Tier-별 strategy 매트릭스 (operation-per-strategy + Tier facade)
 
-Breadcrumb / Boundary / Collapse / Compact 네 operation은 각각 Strategy 객체로 캡슐화되어 있으며, Tier facade 가 생성자에서 조합한다 (`core/executionTier/`).
+> **2026 update — job-context-bridge T2/T3/T8**: tier facade 의 4채널(breadcrumb/boundary/collapse/compact) 중 **boundary와 collapse는 폐기**되어 facade 인터페이스에서 제거됐다. 남은 채널은 `breadcrumb` (단일 FullBreadcrumb dispatch + `mode='explain'` / `touched=0` 가드는 writeBreadcrumb 내부에 내장) + `compact` (ThresholdLLM 또는 NoopCompact) 두 개.
 
-| Tier | Breadcrumb | Boundary | Collapse | Compact |
-|---|---|---|---|---|
-| 0 Reflex (`explain` × oneshot) | Noop | Noop | Noop | Noop |
-| 1 OneShot (any × oneshot) | Noop | Noop | Noop | ThresholdLLM |
-| 2 Exploratory (any × exploratory) | Mini (`touched ≥ 3`) | Noop | Noop | ThresholdLLM |
-| 3 Task — `generate`/`refactor` | Full (bubble-up) | AutoComplete | AtBoundary | ThresholdLLM |
-| 3 Task — `explain` | Noop | ExplainOnly | AtBoundary | ThresholdLLM |
-| 4 Plan (`design`/`plan`) | Noop | Noop | Noop | Noop |
+| Tier | Breadcrumb | Compact |
+|---|---|---|
+| 0 Reflex (`explain` × oneshot) | Full → 자동 skip(`mode=explain`) | Noop |
+| 1 OneShot (any × oneshot) | Full (touched>0 이면 emit) | ThresholdLLM |
+| 2 Exploratory (any × exploratory) | Full (touched>0 이면 emit) | ThresholdLLM |
+| 3 Task — `generate`/`refactor` | Full (bubble-up) | ThresholdLLM |
+| 3 Task — `explain` | Noop | ThresholdLLM |
+| 4 Plan — `generate`/`refactor` | Full (bubble-up) | ThresholdLLM |
+| 4 Plan — `explain` | Noop | ThresholdLLM |
 
-**D11 불변식**: 위 표의 "mode 분기"는 `Tier3Task` 생성자 **한 곳에서만** 수행된다. Phase 노드 / routers / parallel / tool handlers / 공유 operation strategy 내부에서 `mode === '...'` / `complexity === '...'` 리터럴 비교가 등장하면 R1 위반이자 D11 위반. 검증:
+이전 매트릭스의 "Mini-BC (touched ≥ 3)" 게이트는 폐기됨 — 작은 변경(touched 1~2)도 다음 job의 navigation pointer 가치가 충분하다는 판단(T3).
+
+**D11 불변식**: 위 표의 "mode 분기"는 `Tier3Task`/`Tier4Plan` 생성자 **두 곳에서만** 수행된다. 검증:
 
 ```bash
 rg "mode === '(explain|generate|refactor)'|complexity === '(oneshot|exploratory|task)'" \
   packages/ant-cli/src/core/executionTier/tiers/ \
-  --glob '!Tier3Task.ts'
+  --glob '!Tier3Task.ts' --glob '!Tier4Plan.ts'
 # expect: 0
+```
+
+**폐기 심볼 grep 검증** (모두 0 매칭이어야 함):
+
+```bash
+rg "MINI_BREADCRUMB_TOUCHED_THRESHOLD|DEFAULT_BREADCRUMB_WINDOW" packages/ant-cli/src
+rg "AutoCompleteBoundary|ExplainOnlyBoundary|AutoBoundaryBase" packages/ant-cli/src
+rg "atBoundaryCollapse|AtBoundaryCollapse" packages/ant-cli/src
+rg "MiniBreadcrumb|miniBreadcrumb" packages/ant-cli/src
+rg "BoundaryStrategy|CollapseStrategy" packages/ant-cli/src
 ```
 
 ### 5.2 Breadcrumb Bubble-up (T3)
@@ -269,13 +284,15 @@ direct 노드 ReAct 루프 내부에서 `shouldEscalate(state, touchedFiles)` �
 
 | 상수 | 값 | 용도 |
 |---|---|---|
-| `FEATURE_CONTEXT_THRESHOLD` | 12000 (tokens) | Compact 트리거 임계값 (T2 user_turn 합산) |
-| `FEATURE_CONTEXT_WINDOW` | 6 | Compact 시 보존할 최신 user_turn 개수 |
+| `FEATURE_CONTEXT_THRESHOLD` | 12000 (tokens) | Compact 트리거 임계값 (user_turn + breadcrumb 합산. T5 이후 BC도 응축 대상) |
+| `FEATURE_CONTEXT_WINDOW` | 6 | Compact 시 보존할 최신 user_turn 개수 (BC는 윈도우-cutoff timestamp 기준으로 함께 보존) |
 | `BREADCRUMB_THRESHOLDS` | `{SMALL:10, MEDIUM:50, LARGE:200}` | bubble-up 경계 |
 | `BREADCRUMB_LIMITS` | `{specs:3, paths:5, files:10}` | 앵커 개수 상한 |
 | `DIRECT_LOOP_LIMITS` | `{oneshot:2, exploratory:10}` | direct 노드 ReAct 루프 상한 (후자는 `ANT_DIRECT_MAX_STEPS`로 override) |
 | `PROMOTION_TOUCHED_THRESHOLD` | 3 | direct → decompose 승격 touched 임계 |
-| `DEFAULT_BREADCRUMB_WINDOW` | 5 | `featureContext.breadcrumbs` 렌더 최신 N개 (별도: `core/context/featureContextBuilder.ts`) |
+| `BREADCRUMB_SUMMARY_TIMEOUT_MS` | 5000 | LLM 요약 호출 timeout (T4 fallback 발동) |
+
+**폐기된 상수 (T2/T3/T5)**: `MINI_BREADCRUMB_TOUCHED_THRESHOLD` (BC가 모든 코드 변경에서 emit), `DEFAULT_BREADCRUMB_WINDOW` (compact 토큰 예산이 단일 cut 기준).
 
 ---
 
