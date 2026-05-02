@@ -42,7 +42,6 @@ import type { ArchitectGraphState, Violation } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import type { TaskType } from '@ant/shared';
 import type { ToolExecutionContext, ToolExecutionEvent, ToolResult } from '../../../../../common/tool/types';
-import type { VerificationTerminalError } from './verify/errors';
 
 /**
  * Fallback task-type used when the decompose LLM omits the `type` field
@@ -131,16 +130,6 @@ export function toPlanPromptResult(value: string | PlanPromptResult): PlanPrompt
 // Hook interfaces
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * Environment inputs sampled by the phase layer at plan entry. Carried
- * historically by `initSession`; now consumed only by `handleFreshEntry`
- * for task types that need to inspect TS / test presence.
- */
-export interface InitSessionEnv {
-  isTs: boolean;
-  hasTests: boolean;
-}
-
 export interface TaskPlanHook {
   /**
    * Fully override the plan-prompt string. Return the composed prompt (already
@@ -184,12 +173,6 @@ export interface TaskPlanHook {
    */
   finalizeNudge?(ctx: { task: CodeTask; state: ArchitectGraphState }): string;
   /**
-   * Called at plan retry entry with `state.planText` set to the just-failed
-   * plan. Publishers own retry termination end-to-end; the phase layer skips
-   * its generic `state.retries/maxRetries` path when this hook exists.
-   */
-  checkRetryTermination?: (state: ArchitectGraphState) => VerificationTerminalError | null;
-  /**
    * Does this task type produce a JSON plan-text body via `generatePlanText`?
    * Default `true`. `false` for tasks where the plan phase is only a
    * diagnostic / dispatch surface (verification — gates only ; doc /
@@ -231,22 +214,6 @@ export interface TaskPlanHook {
    * non-recoverable from a re-planning pass.
    */
   acceptsPrePlanText?: boolean;
-  /**
-   * Optional fresh-entry hook. Called by the plan node on a brand-new
-   * task entry (not retry / reverify / tool-loop re-entry). Verification
-   * publishes this to flag the install-observation request; the caller
-   * forwards `needsInstallObservation` into a `recomputeInstallNeeded`
-   * call so the verify SSOT does not need a phase-layer dependency.
-   */
-  handleFreshEntry?: (
-    state: ArchitectGraphState,
-    env: InitSessionEnv,
-  ) => FreshEntryResult;
-}
-
-export interface FreshEntryResult {
-  /** True when the caller should run `recomputeInstallNeeded` after the hook. */
-  needsInstallObservation?: boolean;
 }
 
 export interface TaskToolHook {
