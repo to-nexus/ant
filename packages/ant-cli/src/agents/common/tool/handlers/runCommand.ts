@@ -38,6 +38,7 @@ import {
 import { shouldSkipInstall } from './invalidationScope';
 import { enforceManifestPinPolicyForInstall } from './manifestPinPolicy';
 import { checkOrchestratorPortSafeguard } from '../runCommandSafeguards';
+import { detectCacheReplay } from '../../../architect/graph/code/tasks/_shared/verify/cacheReplay';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants — imported from canonical source to prevent drift
@@ -333,10 +334,12 @@ function makeCommandExecuted(input: {
   success: boolean;
   hasWarnings: boolean;
   verifies?: Gate;
+  cacheReplayed?: boolean;
 }): ToolSideEffect {
-  const { exitCode, command, success, hasWarnings, verifies } = input;
+  const { exitCode, command, success, hasWarnings, verifies, cacheReplayed } = input;
   const effect: ToolSideEffect = { type: 'commandExecuted', exitCode, command, success, hasWarnings };
   if (verifies) (effect as { verifies?: Gate }).verifies = verifies;
+  if (cacheReplayed) (effect as { cacheReplayed?: boolean }).cacheReplayed = true;
   return effect;
 }
 
@@ -760,7 +763,15 @@ async function executeCommandLogic(
       .map(({ label }) => label);
 
     const hasWarnings = detectedIssues.length > 0;
-    sideEffects.push(makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings, verifies }));
+    // Cache replay detection — only meaningful for verification gate
+    // commands. A passing exit code that came from a cached artifact
+    // pre-dates any fix applied in this verification cycle, so the gate
+    // observation is untrusted; the plan-side prompt rule consumes this
+    // flag and instructs the LLM to re-run with a cache-bypass argument.
+    const cacheReplayed = verifies
+      ? detectCacheReplay(`${stdout}\n${stderr}`).replayed
+      : false;
+    sideEffects.push(makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings, verifies, cacheReplayed }));
 
     if (hasWarnings) {
       console.warn(`\n   ⚠️  Command exit code 0 but output contains errors: ${detectedIssues.join(', ')}\n`);

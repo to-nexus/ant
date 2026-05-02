@@ -37,6 +37,7 @@ import {
   recordUserTurnMeta,
 } from "../../../../../../core/executionTier";
 import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
+import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 
 
 /**
@@ -275,11 +276,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     && (state.resolvedAction?.hasExplicitFields ?? false)
     && (_racRefs.length + _racContext.length > 0);
 
-  // Detect error indicators in directive for error-or-general template activation
-  const hasErrorInDirective = (() => {
-    const d = (state.directive || '').toLowerCase();
-    return /\b(error|exception|crash|fail(ed|ure|s)?|stack\s*trace|cannot\s+read|is\s+not\s+(a\s+function|defined)|unexpected\s+token|module\s+not\s+found|typeerror|referenceerror|syntaxerror)\b/.test(d);
-  })();
+  // Detect error indicators in directive for error-or-general template activation.
+  // Single source of truth: `core/utils/runtimeErrorPattern`.
+  const hasErrorInDirective = containsRuntimeErrorPattern(state.directive);
 
   const decomposeVars = {
     directive: state.directive || '',
@@ -783,6 +782,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         mode: state.resolvedAction?.mode,
         nodeLabel: 'Decompose',
         pool,
+        hasErrorInDirective,
       });
       // Even if executionTier passed, retry when decision tags are missing
       // for matrix-active tiers (game projects need gameArtTier/gameContentTier

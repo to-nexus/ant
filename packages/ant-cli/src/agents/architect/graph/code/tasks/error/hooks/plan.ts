@@ -83,6 +83,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
+    // Error tasks always operate on a user-reported failure scenario;
+    // the persistent-process partial unlocks reproducer commands here.
+    allowPersistentProcesses: true,
     ...depSnapshot,
   });
 

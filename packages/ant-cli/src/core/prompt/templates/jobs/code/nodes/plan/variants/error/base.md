@@ -8,6 +8,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/monorepo-install-locality}}
+
 {{> jobs/code/base/injections/workspace-dep-snapshot}}
 
 {{> jobs/code/base/injections/preview-env-contract}}
@@ -216,10 +218,12 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships �
 **`run_command` is permitted for**:
 - **Diagnostic commands**: Type checking, build, lint — as aids to identify structural errors
 - **Observation**: Read-only commands that inspect configuration, dependencies, or project state
+- **Reproducer**: Run the failing scenario the user reported (dev server + HTTP probe, failing script, etc.) — see persistent-process policy below
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
-- Persistent background processes
 
-**Constraint**: After reading error-related files and optionally running diagnostics, produce `<plan>` promptly. Do NOT continue calling tools after sufficient information is gathered.
+{{> jobs/code/base/injections/persistent-process-policy}}
+
+**Constraint**: After reading error-related files and optionally running diagnostics / reproducer, produce `<plan>` promptly. Do NOT continue calling tools after sufficient information is gathered.
 {{/if}}

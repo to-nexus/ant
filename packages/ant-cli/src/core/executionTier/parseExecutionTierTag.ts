@@ -100,7 +100,8 @@ export function coerceExecutionTier(
 export type ExecutionTierViolationCode =
   | 'MISSING_TAG'
   | 'FORBIDDEN_TIER_FOR_MODE'
-  | 'DESIGN_REF_REQUIRES_TIER4';
+  | 'DESIGN_REF_REQUIRES_TIER4'
+  | 'RUNTIME_ERROR_REQUIRES_TIER2_PLUS';
 
 export class ExecutionTierViolation extends Error {
   public readonly code: ExecutionTierViolationCode;
@@ -121,8 +122,10 @@ export class ExecutionTierViolation extends Error {
       message = `[${opts.nodeLabel}] LLM output missing <executionTier> tag (mode=${opts.mode ?? 'unknown'})`;
     } else if (code === 'FORBIDDEN_TIER_FOR_MODE') {
       message = `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> which is forbidden for mode=${opts.mode}`;
-    } else {
+    } else if (code === 'DESIGN_REF_REQUIRES_TIER4') {
       message = `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> but pool carries a design ref — Tier 4 is required for mode=${opts.mode}`;
+    } else {
+      message = `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> but the directive describes a runtime error scenario — Tier 2 or higher is required (mode=${opts.mode})`;
     }
     super(message);
     this.name = 'ExecutionTierViolation';
@@ -146,6 +149,17 @@ export interface ValidateExecutionTierOpts {
    * `FORBIDDEN_TIER_FOR_MODE`) are unaffected.
    */
   pool?: ArtifactPoolView;
+  /**
+   * `true` when the directive describes a runtime error scenario (stack
+   * trace, exception message, "module not found", etc.) per the SSOT
+   * helper `core/utils/runtimeErrorPattern.containsRuntimeErrorPattern`.
+   * When set, Tier 1 (OneShot — verification-unneeded trivial edit) is
+   * forbidden because the fix could plausibly break typecheck/build/test
+   * AND the user's reproducer scenario must run as part of verification.
+   * Tier 2+ owns either inline self-verify (Tier 2 selfVerifyOnDone) or
+   * a dedicated verification task (Tier 3/4).
+   */
+  hasErrorInDirective?: boolean;
 }
 
 /**
@@ -172,6 +186,21 @@ export function validateExecutionTier(
   const isWriteMode = opts.mode === 'generate' || opts.mode === 'refactor';
   if (parsed === ExecutionTierId.Reflex && isWriteMode) {
     throw new ExecutionTierViolation('FORBIDDEN_TIER_FOR_MODE', {
+      nodeLabel: opts.nodeLabel,
+      mode: opts.mode,
+      observedTier: parsed,
+    });
+  }
+  // Runtime-error directives mandate Tier 2+ so the fix carries either inline
+  // self-verify or a dedicated verification task. Tier 1 OneShot (no
+  // verification) collapses behavioral fixes into "trivial edits" and
+  // bypasses the reproducer check the verification cycle requires.
+  if (
+    isWriteMode &&
+    opts.hasErrorInDirective === true &&
+    parsed < ExecutionTierId.Exploratory
+  ) {
+    throw new ExecutionTierViolation('RUNTIME_ERROR_REQUIRES_TIER2_PLUS', {
       nodeLabel: opts.nodeLabel,
       mode: opts.mode,
       observedTier: parsed,
@@ -217,6 +246,19 @@ export function buildExecutionTierViolationFraming(
       `For \`${modeLabel}\` the minimum executionTier is \`1\` (OneShot, single verification-unneeded write). ` +
       'A "no change required" outcome must be reached AFTER observing the code inside a Tier 1+ execution, ' +
       'never at classification time. Re-emit with `<executionTier>1</executionTier>` or higher.'
+    );
+  }
+  if (violation.code === 'RUNTIME_ERROR_REQUIRES_TIER2_PLUS') {
+    return (
+      header +
+      `Your previous response emitted \`<executionTier>${violation.observedTier}</executionTier>\` for \`${modeLabel}\` mode, ` +
+      'but the directive describes a runtime error scenario (stack trace, `Error:` / exception message, ' +
+      '`Cannot find module`, "module not found", or similar failure pattern). ' +
+      'Tier 1 (OneShot) is reserved for verification-unneeded edits — comment-only / typo / safe text-literal swaps — ' +
+      'and is FORBIDDEN here because a behavioral fix could plausibly break typecheck/build/test AND must reproduce the ' +
+      "user's failing scenario as part of verification. Re-emit with `<executionTier>2</executionTier>` (Exploratory, " +
+      'single unit of work with `selfVerifyOnDone: true`) or higher (Tier 3/4 with a dedicated verification task) ' +
+      'so the install/typecheck/build/test gates AND the reproducer step run before <done>.'
     );
   }
   // DESIGN_REF_REQUIRES_TIER4
