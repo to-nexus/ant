@@ -189,17 +189,14 @@ export async function generateTaskKeywords(
       }
 
       const result: TaskKeywords = {
-        // ✅ Backward-compatible: accept errorFiles OR legacy stackTrace.
-        // Normalize at source — downstream `loadErrorFiles` consumes the
-        // canonical workspace-rel form (`codebase/...` for code paths,
-        // sibling-prefix verbatim for `architecture/`/`plan/`/etc.).
-        errorFiles: normalizePathArray(parsed.errorFiles ?? parsed.stackTrace),
-        // ✅ Backward-compatible: accept keywords OR legacy codebase
-        keywords: Array.isArray(parsed.keywords) ? parsed.keywords
-                : Array.isArray(parsed.codebase) ? parsed.codebase
-                : [],
-        // Normalized at source — downstream `loadRequiredFiles` consumes
-        // the canonical workspace-rel form.
+        // Normalize at source — downstream loaders (`loadErrorFiles`,
+        // `loadRequiredFiles`) consume the canonical workspace-rel form
+        // (`codebase/...` for code paths, sibling-prefix verbatim for
+        // `architecture/`/`plan/`/etc.). `normalizePathArray` is also
+        // tolerant of non-array input (returns `[]`), so no extra
+        // `Array.isArray` guard is needed.
+        errorFiles: normalizePathArray(parsed.errorFiles),
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
         requiredFiles: normalizePathArray(parsed.requiredFiles),
         references
       };
