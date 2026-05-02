@@ -7,11 +7,11 @@
  * 3. Grepped: Local file search (NOT in Vector DB)
  */
 
-import path from "path";
 import { GitPort } from "../../../../../../../core/ports";
 import { ArchitectGraphState } from "../../../state";
 import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
 import { RETRIEVAL_CONFIG } from "../../../config/retrievalConfig";
+import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNormalizer";
 import type { LoadedFile } from "./errorFiles";
 
 // ✅ Lesson type from CodebaseRetriever
@@ -213,15 +213,17 @@ export async function loadSemanticFiles(
   const localFiles: LoadedFile[] = [];
   const allPaths = [...vectorDbPaths, ...localFilePaths];
 
-  // FileSystemPort expects paths relative to workspace root, not absolute paths.
-  // state.context.workingDir is absolute (e.g., /…/ant-prediction/codebase),
-  // so we must convert to workspace-relative (e.g., codebase/.eslintignore).
-  const rootPath = fileSystem.getRootPath();
-
   for (const filePath of allPaths) {
     try {
-      const fullPath = path.join(state.context.workingDir, filePath);
-      const relativePath = path.relative(rootPath, fullPath);
+      // Normalize via the SSOT — same fix pattern as combine.loadRequiredFiles
+      // and errorFiles.loadErrorFiles. The pre-fix manual `path.join(
+      // workingDir, p)` + `path.relative(rootPath, ...)` chain accidentally
+      // worked for codebase paths (because workingDir = workspaceRoot/
+      // codebase round-trips correctly) but BROKE for sibling-tree paths
+      // (`architecture/spec/foo.md` → `codebase/architecture/spec/foo.md`,
+      // 0 bytes). normalizeToCodebasePath handles both via the canonical
+      // sibling set.
+      const relativePath = normalizeToCodebasePath(filePath).normalized;
       const content = await fileSystem.readFile(relativePath);
 
       if (content) {
