@@ -28,6 +28,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './buildMessages';
 import { getTools } from './tools';
+import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { resolveCodebaseRel } from './codebaseRel';
@@ -740,8 +741,9 @@ export async function execute(
       const actualEnableThinking = !isAfterToolCall && !hasRemediationPlan;
       console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${nodeExecute.length}, violations=${state.violations?.length ?? 0}`);
       if (state.context?.featurePath && state._httpJobId) {
-        const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
-        getExecutionLogger({
+        // Static import + synchronous writeQueue update — see executionLogger
+        // contract (vast-curling-perch C-3 RCA).
+        void getExecutionLogger({
           featurePath: state.context.featurePath,
           jobId: state._httpJobId,
           jobType: 'code',
@@ -754,7 +756,7 @@ export async function execute(
           nodeHistoryLength: nodeExecute.length,
           violationsCount: state.violations?.length ?? 0,
           callIndex: newCallIndex,
-        }, state.currentTask?.id).catch(() => {});
+        }, state.currentTask?.id).catch(() => { /* non-blocking */ });
       }
     }
 

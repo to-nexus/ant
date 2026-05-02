@@ -18,6 +18,8 @@
  * @see TaskOrchestrator.ts — handleInterruption() implementation
  */
 
+import { flushAllExecutionLoggers } from '../core/utils/executionLogger';
+
 /** Minimal interface for the orchestrator — avoids importing the full generic class */
 interface GracefulOrchestrator {
   handleInterruption(reason: string): Promise<void>;
@@ -95,5 +97,18 @@ export async function handleGracefulShutdown(reason: string, timeoutMs = 1800): 
     await Promise.race([interruptionPromise, timeoutPromise]);
   } else {
     console.log(`[GracefulShutdown] No active orchestrator registered — checkpoint from previous phase is still valid`);
+  }
+
+  // Drain any pending execution-logger writes (route_decision /
+  // plan_finalize / batch_split / tool_call / etc.) so post-mortem
+  // analysis has the trace events that fired right before SIGTERM.
+  // Without this, fire-and-forget appendEvents queued during the
+  // last few microseconds before signal delivery never reach disk.
+  // See executionLogger contract (vast-curling-perch C-3 RCA).
+  try {
+    await flushAllExecutionLoggers();
+    console.log(`[GracefulShutdown] ✅ Execution loggers drained`);
+  } catch (err) {
+    console.warn(`[GracefulShutdown] ⚠️ flushAllExecutionLoggers failed:`, err);
   }
 }

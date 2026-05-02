@@ -1,6 +1,7 @@
 import type { ArchitectGraphState } from '../../../state';
 import type { CodeTask } from '../../../../../types/task';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { getExecutionLogger } from '../../../../../../../core/utils/executionLogger';
 import { requiresVerification } from '../../../tasks/_shared/verify';
 
 /**
@@ -54,9 +55,10 @@ export function tracePlanFinalize(
     hasSession: false,
   };
 
-  import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-    const logger = getExecutionLogger({ featurePath, jobId, jobType: 'code' });
-    return logger.logPlanFinalize(nextTask.id, {
+  // Static import + synchronous writeQueue update — see executionLogger
+  // contract (vast-curling-perch C-3 RCA).
+  void getExecutionLogger({ featurePath, jobId, jobType: 'code' })
+    .logPlanFinalize(nextTask.id, {
       callSite: input.callSite,
       planTextLen: input.planText.length,
       preSplitPlanTextLen: input.preSplitPlanText.length,
@@ -67,8 +69,8 @@ export function tracePlanFinalize(
       decision: input.decision,
       planEmptyOrigin: input.planEmptyOrigin,
       verifyAxisSnapshot,
-    });
-  }).catch(() => { /* non-blocking */ });
+    })
+    .catch(() => { /* non-blocking */ });
 
   void logPrompt(featurePath, jobId, 'code', 'plan-finalize', input.planText.length, {
     taskId: nextTask.id,

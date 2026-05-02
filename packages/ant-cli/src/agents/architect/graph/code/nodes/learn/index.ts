@@ -13,6 +13,11 @@ import {
 import { recordClassification } from '../../../../../../core/utils/featureBiases';
 import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
 import { getExecutionTier } from '../../../../../../core/executionTier';
+import {
+  getExecutionLogger,
+  clearExecutionLogger,
+  flushExecutionLogger,
+} from '../../../../../../core/utils/executionLogger';
 
 class LessonQueue {
   private queue: Array<() => Promise<void>> = [];
@@ -666,9 +671,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
   }
   
-  // Log job_complete event and finalize debug loggers
+  // Log job_complete event and finalize debug loggers.
+  // `flushExecutionLogger` drains every fire-and-forget appendEvent
+  // queued by phase nodes (route_decision / plan_finalize / batch_split /
+  // tool_call / etc.) so they are guaranteed on disk before the logger
+  // is cleared. See executionLogger contract (vast-curling-perch C-3 RCA).
   if (isLastTask && !_isLearnWorkerContext && state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../../core/utils/tokenLogger');
     const { clearPromptLogger } = await import('../../../../../../core/utils/promptLogger');
     const execLogger = getExecutionLogger({
@@ -687,6 +695,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       totalCacheReadTokens: jobTokenUsage?.cacheReadTokens || 0,
       elapsedMs: startedAt ? Date.now() - startedAt : 0,
     });
+    await flushExecutionLogger(state._httpJobId);
     await clearExecutionLogger(state._httpJobId);
     await clearTokenLogger(state._httpJobId);
     clearPromptLogger('code', state._httpJobId);

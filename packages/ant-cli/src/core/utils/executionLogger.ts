@@ -1,14 +1,37 @@
 /**
  * Execution Logger
- * 
+ *
  * Logs structured execution events for job/task lifecycle debugging.
  * Works in both CLI and HTTP modes (unlike TaskLogger which only captures console output in CLI).
- * 
+ *
  * Events capture: job lifecycle, task transitions, errors, retries, timing, and decisions.
- * 
+ *
  * Creates files in sessions/debug/logs/ directory.
- * 
+ *
  * File naming: log-{jobId}.json
+ *
+ * ## Fire pattern contract (vast-curling-perch C-3 RCA)
+ *
+ * Every call site MUST use a **static import** of `getExecutionLogger`
+ * (NOT `await import(...)` / `import(...).then(...)`). Dynamic imports
+ * delay the `writeQueue` enqueue across micro-tasks; if the worker exits
+ * (normal completion + Node draining, SIGTERM, or process crash) before
+ * the dynamic import resolves, the event NEVER reaches the queue and is
+ * lost without trace. Static imports update `writeQueue` synchronously
+ * within the call site, so `flushAllExecutionLoggers()` can deterministic
+ * drain pending writes regardless of process exit timing.
+ *
+ * Call site shape:
+ * ```ts
+ * import { getExecutionLogger } from '...../executionLogger';
+ * // ...
+ * void getExecutionLogger({ featurePath, jobId, jobType: 'code' })
+ *   .logXxx(taskId, data)
+ *   .catch(() => { /\* non-blocking \*\/ });
+ * ```
+ *
+ * `void` + `.catch()` keeps the call non-blocking while ensuring the
+ * promise chain is established synchronously.
  */
 
 import * as path from 'path';
@@ -352,6 +375,27 @@ export class ExecutionLogger {
   async finalize(): Promise<void> {}
 
   /**
+   * Drain the write queue. Resolves once every preceding `appendEvent`
+   * has been written to disk (including ensureLogDir / initLogFile /
+   * append). Used by `flushExecutionLogger` / `flushAllExecutionLoggers`
+   * so callers can guarantee no lost writes on graceful shutdown.
+   *
+   * Idempotent — calling repeatedly returns the same settled chain.
+   */
+  async flush(): Promise<void> {
+    // Awaiting `writeQueue` directly yields after the last queued task
+    // completes (success or failure). `enqueue` ensures `writeQueue`
+    // is always a valid promise; a fresh logger with no `appendEvent`
+    // calls returns the initial `Promise.resolve()`.
+    try {
+      await this.writeQueue;
+    } catch {
+      // Errors in individual appendEvents are already caught and
+      // warned by `log()`; flush itself never throws.
+    }
+  }
+
+  /**
    * Read existing log file to determine state, handling both properly closed
    * files (\n]\n trailer) and crash-recovered files (no closing bracket).
    */
@@ -423,4 +467,35 @@ export async function clearExecutionLogger(jobId: string): Promise<void> {
     await logger.finalize();
     loggerInstances.delete(jobId);
   }
+}
+
+/**
+ * Drain all pending writes for a single job's logger.
+ *
+ * Returns once every queued `appendEvent` for `jobId` has hit disk.
+ * Safe no-op when the job has no logger instance (no events were
+ * ever queued for this job).
+ *
+ * Call this from worker exit / orchestrator drain / process SIGTERM
+ * handlers to guarantee that fire-and-forget log calls do not lose
+ * events on hard exit. Static imports at every call site (see contract
+ * above) ensure `writeQueue` is updated synchronously, so this drain
+ * is deterministic.
+ */
+export async function flushExecutionLogger(jobId: string): Promise<void> {
+  const logger = loggerInstances.get(jobId);
+  if (!logger) return;
+  // Enqueueing a no-op tail flushes the chain — `writeQueue` resolves
+  // only after every preceding queued `appendEvent` settles.
+  await logger.flush();
+}
+
+/**
+ * Drain pending writes for every active execution logger. Use at
+ * process-level shutdown when the specific `jobId` is unknown to the
+ * caller (e.g. unhandled rejection handlers, SIGTERM listeners).
+ */
+export async function flushAllExecutionLoggers(): Promise<void> {
+  const loggers = Array.from(loggerInstances.values());
+  await Promise.allSettled(loggers.map(l => l.flush()));
 }

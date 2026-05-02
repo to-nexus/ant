@@ -19,6 +19,7 @@
 
 import type { ArchitectGraphState } from '../../../../state';
 import { requiresVerification } from '../predicate';
+import { getExecutionLogger } from '../../../../../../../../core/utils/executionLogger';
 
 export function routeAfterDone(state: ArchitectGraphState): string | null {
   const hasPlan = !!state.planText?.trim();
@@ -28,9 +29,11 @@ export function routeAfterDone(state: ArchitectGraphState): string | null {
     const featurePath = state.context?.featurePath;
     const jobId = state._httpJobId;
     if (!featurePath || !jobId) return;
-    import('../../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-      const logger = getExecutionLogger({ featurePath, jobId, jobType: 'code' });
-      return logger.logRouteDecision(state.currentTask?.id, {
+    // Static import + synchronous writeQueue update — see executionLogger
+    // contract (vast-curling-perch C-3 RCA) for why dynamic import is
+    // banned at every fire site.
+    void getExecutionLogger({ featurePath, jobId, jobType: 'code' })
+      .logRouteDecision(state.currentTask?.id, {
         router: 'routeAfterDone',
         decision,
         inputs: {
@@ -40,8 +43,8 @@ export function routeAfterDone(state: ArchitectGraphState): string | null {
           requiresVerification: requiresVerification(state.currentTask),
           taskType: state.currentTask?.type,
         },
-      });
-    }).catch(() => { /* non-blocking */ });
+      })
+      .catch(() => { /* non-blocking */ });
   };
 
   // Step 1: Empty planText → diagnostic phase decided no fixes are needed.
