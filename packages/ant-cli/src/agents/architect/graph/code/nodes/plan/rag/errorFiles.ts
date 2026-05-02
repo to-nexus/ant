@@ -8,11 +8,11 @@
  * Note: No Vector DB search - error files have exact paths!
  */
 
-import path from "path";
 import { GitPort, FileSystemPort } from "../../../../../../../core/ports";
 import { ArchitectGraphState } from "../../../state";
 import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
 import { RETRIEVAL_CONFIG } from "../../../config/retrievalConfig";
+import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNormalizer";
 
 export interface LoadedFile {
   path: string;
@@ -65,11 +65,13 @@ export async function loadErrorFiles(
         console.log(`         📋 Other candidates: ${resolved.candidates.filter(c => c !== resolvedPath).slice(0, 3).join(', ')}`);
       }
 
-      // Load file content
-      // FileSystemPort expects paths relative to workspace root, not absolute paths.
-      const fullPath = path.join(state.context.workingDir, resolvedPath);
-      const rootPath = fileSystem.getRootPath();
-      const relativePath = path.relative(rootPath, fullPath);
+      // FileSystemPort expects paths relative to workspace root.
+      // Normalize via the SSOT — `resolveStackTraceFile` returns paths
+      // workingDir-relative (typically `apps/...` for codebase code), so
+      // we apply the same canonical-prefix policy `normalizeToCodebasePath`
+      // applies everywhere else: codebase paths get `codebase/` prepended,
+      // sibling-tree paths (architecture/, plan/, ...) stay verbatim.
+      const relativePath = normalizeToCodebasePath(resolvedPath).normalized;
       const content = await fileSystem.readFile(relativePath);
 
       if (content) {
