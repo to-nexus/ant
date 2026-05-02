@@ -68,6 +68,60 @@ describe('resolvePlanEntry — fresh verification task', () => {
     expect(delta._planSearchWebCount).toBe(0);
     expect(state._planSearchWebCount).toBe(0);
   });
+
+  it('flips _verifyEntered=true on first dedicated-verification fresh entry (regression: cleanup commit 4673ad7f dropped initSession without replacing the writer)', async () => {
+    // Tier 3/4 dedicated verification task: must enter verify-mode at the
+    // moment its plan node first runs, otherwise downstream readers
+    // (`isVerifyModeActive`, the regression guards on `prePlanned` /
+    // `resumeInterrupted` shortcuts, the `verifyModeActive` flag in tool
+    // execution context) all see `false` for the entire verification
+    // lifetime.
+    const state = makeFreshVerificationState();
+    state._verifyEntered = false;
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(state._verifyEntered).toBe(true);
+    expect(delta._verifyEntered).toBe(true);
+  });
+
+  it('does NOT flip _verifyEntered for non-verification fresh entry (apply-mode tasks stay in apply-mode)', async () => {
+    const state = makeFreshVerificationState();
+    state.taskQueue.pop = vi.fn(() => ({
+      id: 'feat1',
+      name: 'feature task',
+      description: 'a feature',
+      type: 'feature' as const,
+      priority: 400,
+    })) as any;
+    state._verifyEntered = false;
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(state._verifyEntered).toBe(false);
+    expect(delta._verifyEntered).toBeUndefined();
+  });
+
+  it('does NOT flip _verifyEntered for Tier 2 self-verify fresh entry (apply-phase enters first; executeRouter <done> arm flips it later)', async () => {
+    // selfVerifyOnDone tasks satisfy `requiresVerification(task)` but their
+    // FIRST plan entry is in apply-mode. Only `isVerificationTask(task)`
+    // (Tier 3/4) should auto-enter verify-mode here.
+    const state = makeFreshVerificationState();
+    state.taskQueue.pop = vi.fn(() => ({
+      id: 'sv1',
+      name: 'self-verify error',
+      description: 'apply then verify',
+      type: 'error' as const,
+      priority: 100,
+      selfVerifyOnDone: true,
+    })) as any;
+    state._verifyEntered = false;
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(state._verifyEntered).toBe(false);
+    expect(delta._verifyEntered).toBeUndefined();
+  });
 });
 
 describe('resolvePlanEntry — uniform retry path (verification + non-verification share one branch)', () => {
