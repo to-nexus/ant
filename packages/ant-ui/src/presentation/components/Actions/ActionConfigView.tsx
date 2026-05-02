@@ -244,7 +244,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const codebaseHasFiles = gitSnapshot?.codebaseHasFiles ?? false;
   const codebaseRequired = slots ? slots.refs.some(r => r.codebase && r.locked) : false;
   const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
-  const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx) : [], [slots, fileTree, selectedRefs, warningCtx]);
+  // Codebase Channel SSOT — plan/design 인텐트는 `getConfigSlots` 가 동적으로
+  // codebaseSlot('context', { auto: true }) 를 주입하므로 context 쪽도 ref 와
+  // 동일하게 codebaseHasFiles 를 흘려야 한다. 누락 시 resolveSlots.ts 의
+  // def.codebase 분기가 hasFiles=false 로 평가되어 항상 amber empty card 로
+  // 렌더된다 (실제 코드베이스 존재 여부와 무관).
+  const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedRefs, warningCtx, codebaseHasFiles]);
   const targetExisting = useMemo(() => {
     if (!slots || slots.target.kind !== 'generate') return [];
     return listDir(fileTree, slots.target.dir);
