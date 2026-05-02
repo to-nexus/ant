@@ -35,7 +35,13 @@ export function DeploySection({
   disabledReason: DeployDisabledReason | undefined;
   onDeploy: () => void;
   onStopDeploy: () => void;
-  onOpenDeployUrl: () => void;
+  /**
+   * Open a deploy URL in a new tab.
+   *
+   * Pass an explicit `url` for multi-package per-package buttons. No-arg
+   * call uses the top-level representative URL (single-package back-compat).
+   */
+  onOpenDeployUrl: (url?: string) => void;
 }) {
   const { t } = useTranslation('explorer');
 
@@ -193,20 +199,48 @@ export function DeploySection({
             {t('preview.deploy.stop', 'Stop')}
           </button>
         )}
-        {/* Open button: available while running OR hibernated (click triggers auto-wake). */}
-        {(isRunning || isHibernated) && deployStatus?.url && (
-          <button
-            onClick={onOpenDeployUrl}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                     bg-blue-600 text-white hover:bg-blue-700
-                     transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            {isHibernated
-              ? t('preview.deploy.wake', 'Wake up')
-              : t('preview.deploy.open', 'Open')}
-          </button>
-        )}
+        {/* Open button(s): available while running OR hibernated (click
+            triggers auto-wake on the proxy). Multi-package deploys
+            replace the single representative button with one button per
+            package — there is no "primary" deploy. */}
+        {(isRunning || isHibernated) && (() => {
+          const openable = (deployStatus?.packages || []).filter(p => !!p.url);
+          // Single-package back-compat: prefer top-level url. If null but
+          // packages has exactly one entry, fall back to that one URL.
+          if (openable.length <= 1) {
+            const singleUrl = deployStatus?.url ?? openable[0]?.url ?? null;
+            if (!singleUrl) return null;
+            return (
+              <button
+                onClick={() => onOpenDeployUrl(singleUrl)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
+                         bg-blue-600 text-white hover:bg-blue-700
+                         transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                {isHibernated
+                  ? t('preview.deploy.wake', 'Wake up')
+                  : t('preview.deploy.open', 'Open')}
+              </button>
+            );
+          }
+          // Multi-package: render one button per deployed frontend.
+          return openable.map((pkg) => (
+            <button
+              key={pkg.slug || pkg.name}
+              onClick={() => onOpenDeployUrl(pkg.url || undefined)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
+                       bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              title={t('preview.openPackage', { name: pkg.name })}
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span className="truncate max-w-[16ch]">{pkg.name}</span>
+              {isHibernated && (
+                <Moon className="w-3 h-3 opacity-70" />
+              )}
+            </button>
+          ));
+        })()}
       </div>
 
       {isError && deployStatus?.error && (

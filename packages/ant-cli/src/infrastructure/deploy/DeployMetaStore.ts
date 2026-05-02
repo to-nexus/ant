@@ -7,13 +7,58 @@
  *
  * This is the source of truth for "can this deploy auto-wake?".
  * Redis is only a cache of the running state.
+ *
+ * ── v1 → v2 schema migration ──
+ * v1 stored a single deployed package directly on the meta object
+ * (`framework`, `buildOutputDir`, `basePath`, `urlKey`). v2 introduces
+ * `packages[]` so multi-frontend monorepos can rehydrate every static
+ * server. `read()` transparently lifts v1 records into v2 shape in memory
+ * — the on-disk file stays v1 until the next `write()`. This keeps the
+ * upgrade path forward-only without requiring a one-shot migration job.
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 
+export interface DeployMetaPackage {
+  /** Original package name (e.g. "apps/web"). UI display value. */
+  name: string;
+  /** URL-safe identifier — derived via `packageSlug(name)` and deduped. */
+  slug: string;
+  framework: DeployFramework;
+  /**
+   * Absolute path to THIS package's directory inside the deploy workspace.
+   * Used as `cwd` for `next start` on rehydration. For single-frontend
+   * projects this equals `DeployMeta.workspacePath`.
+   */
+  workspacePath: string;
+  /** Per-package build artifact directory (absolute). */
+  buildOutputDir: string;
+  /**
+   * Public path prefix this package is served under.
+   *   single-frontend: `/deploy/{4partUrlKey}`
+   *   multi-frontend:  `/deploy/{4partUrlKey}--{slug}`
+   */
+  basePath: string;
+  /** urlKey segment (4-part for single, 5-part for multi). */
+  urlKey: string;
+}
+
 export interface DeployMeta {
+  version: 2;
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+  workspacePath: string;
+  packages: DeployMetaPackage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Legacy v1 layout — still readable so existing deploys can rehydrate. */
+interface DeployMetaV1 {
   version: 1;
   tenantId: string;
   userId: string;
@@ -30,9 +75,40 @@ export interface DeployMeta {
 
 const META_DIR = '.deploy';
 const META_FILE = 'meta.json';
+/**
+ * Slug used when lifting v1 meta. v1 deploys are by definition single-package
+ * (the legacy code couldn't produce more than one), so this slug is stable
+ * and never collides with anything.
+ */
+const V1_LIFT_SLUG = 'root';
 
 function metaPath(workspacePath: string): string {
   return path.join(workspacePath, META_DIR, META_FILE);
+}
+
+function liftV1(meta: DeployMetaV1): DeployMeta {
+  return {
+    version: 2,
+    tenantId: meta.tenantId,
+    userId: meta.userId,
+    projectId: meta.projectId,
+    feature: meta.feature,
+    workspacePath: meta.workspacePath,
+    packages: [
+      {
+        name: V1_LIFT_SLUG,
+        slug: V1_LIFT_SLUG,
+        framework: meta.framework,
+        // v1 always built and served at the deploy workspace root.
+        workspacePath: meta.workspacePath,
+        buildOutputDir: meta.buildOutputDir,
+        basePath: meta.basePath,
+        urlKey: meta.urlKey,
+      },
+    ],
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+  };
 }
 
 export class DeployMetaStore {
@@ -47,9 +123,11 @@ export class DeployMetaStore {
   async read(workspacePath: string): Promise<DeployMeta | null> {
     try {
       const raw = await fs.readFile(metaPath(workspacePath), 'utf8');
-      const meta = JSON.parse(raw) as DeployMeta;
-      if (meta.version !== 1) return null;
-      return meta;
+      const parsed = JSON.parse(raw) as DeployMeta | DeployMetaV1;
+      if (parsed.version === 2) return parsed;
+      if (parsed.version === 1) return liftV1(parsed);
+      // Unknown / future version → ignore (caller will treat as "no meta").
+      return null;
     } catch (err: any) {
       if (err.code === 'ENOENT') return null;
       throw err;

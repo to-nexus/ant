@@ -207,14 +207,25 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
               ready={ready}  // Health check result
               setupReasoning={setupReasoning}  // Categorized failure code
               issues={status?.issues}
-              packages={status?.packages}  // ✅ NEW: Pass packages info
-              url={status?.url || undefined}   // Convert null to undefined
+              packages={status?.packages}
+              // Top-level url is `null` when there are 2+ frontends —
+              // forward as-is so the panel renders per-package buttons.
+              url={status?.url ?? null}
               error={error}
               progress={progress}
-              onOpen={() => {
-                if (status?.url) {
-                  // ✅ Preview is on a separate host (VITE_PREVIEW_HOST)
-                  window.open(`${PREVIEW_BASE()}${status.url}`, '_blank');
+              onOpen={(targetUrl?: string) => {
+                // Resolution order:
+                //   1. Caller-supplied url (per-package Open button)
+                //   2. status.url (single-frontend back-compat)
+                //   3. First openable frontend (fallback when top-level null)
+                const resolved =
+                  targetUrl
+                  ?? status?.url
+                  ?? status?.packages?.find(p => p.type === 'frontend' && !!p.url)?.url
+                  ?? undefined;
+                if (resolved) {
+                  // Preview is on a separate host (VITE_PREVIEW_HOST)
+                  window.open(`${PREVIEW_BASE()}${resolved}`, '_blank');
                 }
               }}
               onFix={handleFixSetup}  // ✅ Pass fix handler

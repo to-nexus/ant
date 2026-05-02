@@ -7,7 +7,7 @@ import { PortManager } from '../../../../../infrastructure/networking/PortManage
 import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, ServiceConnection } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
-import { createServerKey, parseServerKey, toUrlKey } from './utils/serverKeyUtils';
+import { createServerKey, parseServerKey, toUrlKey, toUrlKeyWithService, packageSlug } from './utils/serverKeyUtils';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
@@ -210,8 +210,13 @@ export class PreviewService {
             phase: state.phase,
             error: state.error,
             port: state.port || undefined,
-            url: state.port ? `/${toUrlKey(serverKey)}` : undefined,
-            packages: state.packages || [],
+            // Top-level url is the "representative" Open URL. For
+            // multi-frontend monorepos there is no single representative —
+            // emit `null` so old FE clients gracefully hide the Open button
+            // instead of silently opening an arbitrary frontend. New FE
+            // clients fall back to per-package URLs in `packages[].url`.
+            url: this.computeTopLevelUrl(state.packages, state.port, serverKey) || undefined,
+            packages: this.enrichPackagesWithUrl(state.packages || []),
             issues: state.issues || [],
             structureType: state.structureType || undefined,
             connections: state.connections || [],
@@ -343,6 +348,97 @@ export class PreviewService {
   async validatePreviewSetup(codebasePath: string): Promise<ValidationResult> {
     return await this.projectValidator.validate(codebasePath);
   }
+
+  /**
+   * Decide the "representative" Open URL emitted at the top level of the
+   * status payload.
+   *
+   * 0 frontends    → null (backend-only project; no public URL).
+   * 1 frontend     → `/{4partUrlKey}`. Equals the legacy single-package URL —
+   *                  bit-stable for callers that haven't migrated to
+   *                  `packages[].url` yet.
+   * 2+ frontends   → null. Old FE clients gracefully hide the Open button;
+   *                  new FE clients render one Open button per
+   *                  `packages[].url`.
+   *
+   * Falls back to legacy `port`-based URL when `packages` is empty (e.g.
+   * stale Redis records written by older builds — they had no `packages` at
+   * all and a single top-level port).
+   */
+  private computeTopLevelUrl(
+    packages: PreviewPackage[] | undefined,
+    legacyPort: number | undefined,
+    serverKey: string
+  ): string | null {
+    const frontends = (packages || []).filter(p => p.type === 'frontend');
+    if (frontends.length === 1) {
+      return frontends[0].urlKey ? `/${frontends[0].urlKey}` : `/${toUrlKey(serverKey)}`;
+    }
+    if (frontends.length === 0) {
+      // Legacy fallback: backend-only state with port set, or stale state
+      // missing `packages`. Single 4-part URL is still useful to stale
+      // clients (e.g. cross-project proxy).
+      return legacyPort ? `/${toUrlKey(serverKey)}` : null;
+    }
+    return null;
+  }
+
+  /**
+   * Enrich `PreviewPackage[]` with a per-frontend `url` field for FE
+   * consumption. Backend / other packages get `url: null` to make absence
+   * explicit.
+   */
+  private enrichPackagesWithUrl(packages: PreviewPackage[]): Array<PreviewPackage & { url: string | null }> {
+    return packages.map(p => ({
+      ...p,
+      url: p.type === 'frontend' && p.urlKey ? `/${p.urlKey}` : null,
+    }));
+  }
+
+  /**
+   * Assign URL-safe slug + per-package `urlKey` to every package, in place.
+   *
+   * Single-frontend rule (1 frontend, possibly N non-frontend):
+   *   the lone frontend gets the 4-part `urlKey = toUrlKey(serverKey)`
+   *   so existing single-package URLs remain bit-stable.
+   *
+   * Multi-frontend rule (>= 2 frontends):
+   *   every frontend gets a 5-part `urlKey = toUrlKeyWithService(serverKey, slug)`
+   *   carrying its slug. There is NO "primary" frontend.
+   *
+   * Backend / other packages always receive a slug (used by the proxy when
+   * resolving cross-project `serviceName` connections) but never a `urlKey` —
+   * they have no public URL and no basePath to inject.
+   *
+   * Slug derivation is delegated to `packageSlug()` (SSOT). Collisions are
+   * resolved by appending `-2`, `-3`, … in the order packages appear in
+   * `structure.packages`. This is deterministic across restarts because the
+   * detector returns packages in stable order (sorted by path).
+   */
+  private assignPackageUrlIdentity(packages: PackageInfo[], serverKey: string): void {
+    const used = new Set<string>();
+    for (const pkg of packages) {
+      let base = packageSlug(pkg.name);
+      let slug = base;
+      let suffix = 2;
+      while (used.has(slug)) {
+        slug = `${base}-${suffix++}`;
+      }
+      used.add(slug);
+      pkg.slug = slug;
+    }
+
+    const frontendCount = packages.filter(p => p.type === 'frontend').length;
+    for (const pkg of packages) {
+      if (pkg.type !== 'frontend') {
+        pkg.urlKey = undefined;
+        continue;
+      }
+      pkg.urlKey = frontendCount > 1
+        ? toUrlKeyWithService(serverKey, pkg.slug!)
+        : toUrlKey(serverKey);
+    }
+  }
   
   /**
    * Start preview server for a project feature
@@ -363,7 +459,11 @@ export class PreviewService {
     error?: string;
     port?: number;
     serverKey?: string;
-    url?: string;
+    /**
+     * Representative Open URL.
+     * `null` when there are 2+ frontends (caller must use `status.packages[].url`).
+     */
+    url?: string | null;
     setupReasoning?: string;
     setupReason?: string;
     suggestedFix?: string;
@@ -557,6 +657,12 @@ export class PreviewService {
         }
       }
 
+      // Assign URL-safe slug + per-package urlKey BEFORE spawning so the
+      // ProcessSpawner can inject the correct ANT_BASE_PATH / VITE_BASE_PATH /
+      // NEXT_PUBLIC_BASE_PATH for each frontend. Required for multi-frontend
+      // monorepos where each dev server is reachable at a unique URL.
+      this.assignPackageUrlIdentity(orderedPackages, serverKey);
+
       // Read connections from Redis registry, auto-detect if empty
       const savedConfig = this.stateStore
         ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
@@ -621,6 +727,7 @@ export class PreviewService {
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
           serverKey,
+          packageUrlKey: pkg.urlKey,
           projectRoot: localPath,
           connections,
           packageSource,
@@ -636,10 +743,19 @@ export class PreviewService {
       // Record spawn timestamp for early-exit detection
       this.spawnTimestamps.set(serverKey, Date.now());
 
-      // Build package ports for Redis registration
-      const packagePorts = orderedPackages
+      // Build package ports for Redis registration. Persist `slug` + per-package
+      // `urlKey` so the proxy can route `/{4part}--{slug}/...` requests directly
+      // to the matching frontend dev server, and so the FE can render an
+      // "Open" button per accessible frontend.
+      const packagePorts: PreviewPackage[] = orderedPackages
         .filter(p => typeof p.port === 'number')
-        .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
+        .map(p => ({
+          name: p.name,
+          slug: p.slug,
+          type: p.type,
+          port: p.port as number,
+          urlKey: p.urlKey,
+        }));
       
       // 4. Update Redis with full port/package info + phase: 'starting'
       //    Use entry port (frontend) if available, otherwise first package port
@@ -696,8 +812,18 @@ export class PreviewService {
       
       this.appendLog(serverKey, 'stdout', '✅ All preview servers started successfully!');
       
-      // 6. Validate frontend setup
+      // 6. Validate frontend setup.
+      //    Single-frontend: entry validation is fatal (existing behavior).
+      //    Multi-frontend:  entry validation remains fatal (the project has
+      //                     a primary frontend by convention — first frontend
+      //                     in detector order). Validation failures of OTHER
+      //                     frontends become non-fatal `warning` issues so
+      //                     the preview still starts and the user can fix
+      //                     each misconfigured frontend through the same
+      //                     "Fix" UI flow.
       let validation: ValidationResult = { valid: true };
+      const issues: PreviewIssue[] = [];
+      const frontendPackages = orderedPackages.filter(p => p.type === 'frontend');
       
       if (structure.entry?.type === 'frontend') {
         validation = await this.validatePreviewSetup(structure.entry.path);
@@ -706,14 +832,36 @@ export class PreviewService {
           return this.handleValidationFailure(serverKey, tenantId, userId, projectId, feature, processes, orderedPackages, structure.entry.path, validation);
         }
         
-        // Log framework detection (all frameworks now use native base path via env var)
         if (validation.framework) {
           logger.info(`[Preview] Framework detected: ${validation.framework} for ${serverKey}`, { component: 'PreviewService' });
+        }
+
+        // Multi-frontend: validate each non-entry frontend so the user is
+        // aware of misconfigured packages BEFORE clicking their Open link.
+        // Failures emit warning-level issues — the entry frontend keeps the
+        // existing fatal semantic for back-compat with single-frontend flows.
+        if (frontendPackages.length > 1) {
+          for (const fp of frontendPackages) {
+            if (fp.path === structure.entry.path) continue;
+            try {
+              const fpValidation = await this.validatePreviewSetup(fp.path);
+              if (!fpValidation.valid) {
+                issues.push({
+                  reasoning: (fpValidation.reasoning || 'unknown') as PreviewIssueReasoning,
+                  severity: 'warning',
+                  reason: `[${fp.name}] ${fpValidation.reason || 'Preview server setup validation failed'}`,
+                  suggestedFix: fpValidation.suggestedFix,
+                });
+                logger.warn(`[Preview] Validation warning for ${fp.name}: ${fpValidation.reason}`, { component: 'PreviewService' });
+              }
+            } catch (err: any) {
+              logger.warn(`[Preview] Validator threw for ${fp.name}: ${err.message}`, { component: 'PreviewService' });
+            }
+          }
         }
       }
 
       // 7. Non-fatal issues detection
-      const issues: PreviewIssue[] = [];
       const entryFrontendPath = structure.entry?.type === 'frontend' ? structure.entry.path : undefined;
       const hasBackend = orderedPackages.some(p => p.type === 'backend' && typeof p.port === 'number');
       
@@ -788,7 +936,11 @@ export class PreviewService {
         message: `Started ${structure.packages.length} package(s)`,
         port: entryPort!,
         serverKey,
-        url: proxyUrl,
+        // For multi-frontend monorepos `finalStatus.url` is `null` — pass
+        // it through unchanged so the HTTP response is in sync with SSE.
+        // Old single-frontend semantics are preserved: `proxyUrl` matches
+        // `finalStatus.url` for that case.
+        url: finalStatus?.url ?? proxyUrl,
         setupReasoning: validation.reasoning,
         setupReason: validation.reason,
         suggestedFix: validation.suggestedFix,
@@ -881,6 +1033,21 @@ export class PreviewService {
       const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
       const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
       await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
+    }
+    
+    // Release every allocated package port — must happen BEFORE
+    // `previewServers.delete` so the late `handleProcessExit` → `cleanupIfAllDead`
+    // chain (which short-circuits on missing process map) cannot be the
+    // last hope for port release. Multi-frontend projects leak N ports
+    // here without this; single-frontend always leaked exactly 1.
+    if (this.portManager) {
+      const portsToRelease = new Set<number>();
+      for (const pkg of orderedPackages) {
+        if (typeof pkg.port === 'number') portsToRelease.add(pkg.port);
+      }
+      for (const p of portsToRelease) {
+        this.portManager.release(p);
+      }
     }
     
     // Clean up local state (process handles, paths)
@@ -1345,10 +1512,25 @@ export class PreviewService {
     running: boolean;
     ready: boolean;
     port?: number;
-    url?: string;
+    /**
+     * Representative Open URL.
+     * `null` when there are 2+ frontends — FE must use `packages[].url`.
+     */
+    url?: string | null;
     processCount?: number;
     backendPort?: number;
-    packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
+    /**
+     * Per-package details. Frontend packages carry a `url` (path under root)
+     * pointing at their dev server. Non-frontend packages have `url: null`.
+     */
+    packages?: Array<{
+      name: string;
+      slug?: string;
+      type: 'frontend' | 'backend' | 'other';
+      port: number;
+      urlKey?: string;
+      url: string | null;
+    }>;
     issues?: PreviewIssue[];
     phase?: string;
     error?: string;
@@ -1385,10 +1567,10 @@ export class PreviewService {
             phase: redisState.phase || (redisState.ready ? 'running' : redisState.running ? 'starting' : 'idle'),
             error: redisState.error,
             port: redisState.port || undefined,
-            url: redisState.port ? `/${toUrlKey(serverKey)}` : undefined,
+            url: this.computeTopLevelUrl(redisState.packages, redisState.port, serverKey),
             processCount: aliveProcesses.length || (redisState.packages?.length || 0),
             backendPort: redisState.backendPort,
-            packages: redisState.packages || [],
+            packages: this.enrichPackagesWithUrl(redisState.packages || []),
             issues: (redisState.issues || []) as any,
             structureType: redisState.structureType,
             projectProfile,

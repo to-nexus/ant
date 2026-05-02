@@ -35,7 +35,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
 import { parsePreviewKey } from '../state/redisKeyUtils';
-import { toUrlKey, toUrlKeyWithService, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { toUrlKeyWithService, fromUrlKey, isUrlKey, parseUrlKey, packageSlug } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
@@ -345,11 +345,10 @@ export class PreviewServer {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
-        const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
-        const urlKey = toUrlKey(serverKey);
-
         // getPreviewStatus reads from Redis (source of truth), with local memory fallback.
         // This guarantees consistent state across pods in multi-pod deployments.
+        // status.url and status.packages[].url already obey the multi-frontend
+        // contract (top-level url=null when 2+ frontends; per-package url for each).
         const status = await this.previewService.getPreviewStatus(
           userContext.organizationId,
           userContext.userId,
@@ -381,12 +380,11 @@ export class PreviewServer {
           }
         }
 
-        // Use Redis values (from decompose) first, filesystem detection as fallback
         res.json({
           running: status.running,
           ready: status.ready,
           port: status.port || null,
-          url: status.port ? `/${urlKey}` : null,
+          url: status.url ?? null,
           processCount: status.processCount || 0,
           backendPort: status.backendPort || null,
           packages: status.packages || [],
@@ -530,15 +528,21 @@ export class PreviewServer {
         // Resolve ant-project connections: compute resolvedUrlKey and proxy path
         const resolvedConnections = (connections || []).map((conn: any) => {
           if (conn.resolution?.type === 'ant-project' && conn.resolution.projectId && conn.resolution.feature) {
-            // Resolve 'self' placeholders to actual project/feature
             const resolvedProjectId = conn.resolution.projectId === 'self' ? projectId : conn.resolution.projectId;
             const resolvedFeature = conn.resolution.feature === 'self' ? feature : conn.resolution.feature;
             const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${resolvedProjectId}:${resolvedFeature}`;
-            const resolvedUrlKey = toUrlKeyWithService(backendServerKey, conn.resolution.serviceName);
+            // Normalize the user-supplied serviceName through the SAME slug
+            // helper used when producing `PreviewPackage.slug`. This way a
+            // user typing `apps/web`, `apps-web`, or `web` in their
+            // `@connection` annotation all resolve to the same slug, and the
+            // proxy can match by exact slug equality without fuzzy logic.
+            const slug = packageSlug(conn.resolution.serviceName);
+            const resolvedUrlKey = toUrlKeyWithService(backendServerKey, slug);
             return {
               ...conn,
               resolution: {
                 ...conn.resolution,
+                serviceName: slug,
                 resolvedUrlKey,
               },
               value: `/${resolvedUrlKey}`,
@@ -813,7 +817,16 @@ export class PreviewServer {
 
   /**
    * Create deploy proxy middleware.
-   * Routes /deploy/:urlKey/* to the local static server running on the deploy port.
+   *
+   * Routes `/deploy/:urlKey/*` to the static server for the matching package.
+   *
+   *   4-part urlKey  → single-package deploy. Routes to `state.packages[0]`.
+   *                    Back-compat with deploys produced before multi-package
+   *                    support — these always have exactly one package.
+   *   5-part urlKey  → multi-package deploy. The 5th segment is the package
+   *                    slug; routes to `state.packages.find(p => p.slug === slug)`.
+   *                    Slug match uses `packageSlug()` for input
+   *                    normalization, mirroring the preview proxy SSOT.
    */
   private createDeployProxyMiddleware() {
     return async (req: Request, res: Response, next: NextFunction) => {
@@ -825,27 +838,53 @@ export class PreviewServer {
         return next();
       }
 
-      const parsed = parsePreviewKey(fromUrlKey(urlKey));
+      const parsed = parseUrlKey(urlKey);
       if (!parsed) {
         res.status(400).json({ error: 'Invalid deploy key format' });
         return;
       }
 
-      const { tenantId, userId, projectId, feature } = parsed;
+      const { tenantId, userId, projectId, feature, serviceName } = parsed;
 
-      // Lazy re-hydration: if the static server is dead (pod restart, idle
-      // eviction, crash), DeployService will re-spawn it from meta.json.
-      // Returns null when the deploy is truly unavailable (meta lost,
-      // artifact missing, port exhaustion).
+      // Lazy re-hydration: if the static servers are dead (pod restart, idle
+      // eviction, crash), DeployService will re-spawn ALL of them from
+      // meta.json. Returns null when the deploy is truly unavailable.
       let deployState = await this.deployService.ensureRunning(tenantId, userId, projectId, feature);
       if (!deployState) {
         res.status(404).json({ error: 'Deploy unavailable' });
         return;
       }
 
+      // Resolve which deploy package this URL belongs to.
+      const resolvePackagePort = (state: NonNullable<typeof deployState>): number | null => {
+        const pkgs = state.packages || [];
+        if (pkgs.length === 0) return null;
+        if (serviceName) {
+          // 5-part urlKey: exact slug match (input normalized for BC).
+          const wantedSlug = packageSlug(serviceName);
+          const match = pkgs.find(p => p.slug === wantedSlug);
+          return match?.port ?? null;
+        }
+        // 4-part urlKey: only valid for single-package deploys. Multi-package
+        // static servers each have a 5-part `basePath`, so a 4-part request
+        // would silently 404 at the upstream — return null here instead so
+        // the proxy renders a clear "not found" with a stable error shape.
+        if (pkgs.length > 1) {
+          logger.warn(`[Deploy] 4-part urlKey '${urlKey}' rejected for multi-package deploy — caller must use 5-part`, { component: 'PreviewServer' });
+          return null;
+        }
+        return pkgs[0]?.port ?? null;
+      };
+
       const tryProxy = async (state: NonNullable<typeof deployState>): Promise<void> => {
+        const targetPort = resolvePackagePort(state);
+        if (!targetPort) {
+          res.status(404).json({ error: 'Deploy package not found' });
+          return;
+        }
         const targetHost = state.host || 'localhost';
-        const targetPort = state.port;
+        // Static server's basePath = `/deploy/${urlKey}`, so we always proxy
+        // the full original request path (prefix is part of the route).
         const targetPath = `/deploy/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
         const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
 
