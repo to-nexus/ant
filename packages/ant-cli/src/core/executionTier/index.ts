@@ -34,7 +34,12 @@
  *   import { getExecutionTier } from '../../../../../../core/executionTier';
  *   const executionTier = getExecutionTier(state);
  *   await executionTier.breadcrumb(state, touched);
- *   await executionTier.boundary(state);
+ *
+ * The boundary / collapse channels were removed from the facade by
+ * job-context-bridge T2/T8 — auto boundary is gone and Hard Reset
+ * (`reason: 'user_reset'`) is recorded directly by SessionPersistence,
+ * not via tier strategies. Compact remains via `executionTier.compact`
+ * for callers that go through `hydrateFeatureContext`.
  *
  * Phase code MUST NOT compare `mode` literals; routing is encapsulated
  * behind this facade. Mode branching lives ONLY inside the tier

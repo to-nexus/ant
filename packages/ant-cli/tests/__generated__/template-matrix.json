@@ -447,6 +447,11 @@
       "basis-registry"
     ]
   },
+  "infra/breadcrumb-summary/system": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "infra/compaction/system": {
     "sources": [
       "render-call"

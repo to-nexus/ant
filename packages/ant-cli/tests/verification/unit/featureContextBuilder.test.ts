@@ -8,7 +8,6 @@ import {
   buildFeatureContext,
   hydrateFeatureContext,
   mergeFeatureContext,
-  DEFAULT_BREADCRUMB_WINDOW,
 } from '../../../src/core/context/featureContextBuilder';
 import type { SessionPort } from '../../../src/core/ports/session';
 import type { LLMClient } from '../../../src/core/ports/llm';
@@ -165,10 +164,12 @@ describe('mergeFeatureContext — collapsed lines dropped', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('mergeFeatureContext — breadcrumb window', () => {
-  it('keeps the last N breadcrumbs (default window)', () => {
-    const all = Array.from({ length: DEFAULT_BREADCRUMB_WINDOW + 3 }, (_, i) =>
-      makeBreadcrumb(i + 1),
-    );
+  it('returns ALL non-collapsed breadcrumbs by default (job-context-bridge T5)', () => {
+    // Window-based trim was retired here — compactFeatureContext is the
+    // single arbiter of how many BC lines reach the prompt by folding old
+    // entries into the MECE summary once token budget is hit. Without an
+    // explicit `breadcrumbWindow` override every live BC flows through.
+    const all = Array.from({ length: 8 }, (_, i) => makeBreadcrumb(i + 1));
 
     const ctx = mergeFeatureContext({
       userTurns: [],
@@ -176,13 +177,12 @@ describe('mergeFeatureContext — breadcrumb window', () => {
       breadcrumbs: all,
     });
 
-    expect(ctx.breadcrumbs).toHaveLength(DEFAULT_BREADCRUMB_WINDOW);
-    // the most recent N are retained
-    expect(ctx.breadcrumbs[0].turnId).toBe(`t-${all.length - DEFAULT_BREADCRUMB_WINDOW + 1}`);
+    expect(ctx.breadcrumbs).toHaveLength(all.length);
+    expect(ctx.breadcrumbs[0].turnId).toBe('t-1');
     expect(ctx.breadcrumbs.at(-1)?.turnId).toBe(`t-${all.length}`);
   });
 
-  it('honours a custom breadcrumbWindow override', () => {
+  it('honours a custom breadcrumbWindow override (back-compat)', () => {
     const all = Array.from({ length: 8 }, (_, i) => makeBreadcrumb(i + 1));
     const ctx = mergeFeatureContext(
       { userTurns: [], userTurnMetas: [], breadcrumbs: all },
@@ -191,19 +191,26 @@ describe('mergeFeatureContext — breadcrumb window', () => {
     expect(ctx.breadcrumbs.map((b) => b.turnId)).toEqual(['t-7', 't-8']);
   });
 
-  it('treats window ≤ 0 as "keep none" (no negative slice index leak)', () => {
+  it('treats window=0 as "keep none"', () => {
     const all = [makeBreadcrumb(1), makeBreadcrumb(2)];
     const ctx = mergeFeatureContext(
       { userTurns: [], userTurnMetas: [], breadcrumbs: all },
       { breadcrumbWindow: 0 },
     );
     expect(ctx.breadcrumbs).toEqual([]);
+  });
 
+  it('ignores negative window (back-compat — negative is meaningless)', () => {
+    // Old behavior special-cased negative as "keep none". New semantics
+    // treat negative as "no override given" so all BCs flow through;
+    // compact handles overflow downstream. Callers wanting "keep none"
+    // must use 0 explicitly.
+    const all = [makeBreadcrumb(1), makeBreadcrumb(2)];
     const ctxNeg = mergeFeatureContext(
       { userTurns: [], userTurnMetas: [], breadcrumbs: all },
       { breadcrumbWindow: -3 },
     );
-    expect(ctxNeg.breadcrumbs).toEqual([]);
+    expect(ctxNeg.breadcrumbs.map((b) => b.turnId)).toEqual(['t-1', 't-2']);
   });
 
   it('does not touch summary/wasCompacted fields (Compact SSOT)', () => {

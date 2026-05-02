@@ -5,25 +5,21 @@ import {
   noopBreadcrumb,
   type BreadcrumbStrategy,
 } from '../strategies/breadcrumb';
-import {
-  AutoCompleteBoundary,
-  ExplainOnlyBoundary,
-  type BoundaryStrategy,
-} from '../strategies/boundary';
-import { atBoundaryCollapse } from '../strategies/collapse';
 import { thresholdLLMCompact } from '../strategies/compact';
 import { ExecutionTierId } from '../types';
 
 /**
- * Tier 3 — any mode × complexity=task. Full pipeline:
- *   - generate / refactor: Full breadcrumb + AutoComplete boundary
- *   - explain:             Noop breadcrumb + ExplainOnly boundary
+ * Tier 3 — any mode × complexity=task.
+ *   - generate / refactor: Full breadcrumb (anchors + LLM summary)
+ *   - explain:             Noop breadcrumb (read-only by definition)
+ *
+ * Auto boundary is gone (job-context-bridge T2). Hard Reset is recorded
+ * directly by SessionPersistence — boundary / collapse slots are no
+ * longer part of the tier facade.
  *
  * **D11 invariant**: the mode dispatch happens here, inside the constructor,
- * and NOWHERE else. Operation methods (breadcrumb / boundary / compact /
- * collapse) on this class do NOT inspect `mode`/`complexity` literals.
- * Enforcement: `rg "mode === '(explain|generate|refactor)'"
- *   packages/ant-cli/src/core/executionTier/tiers/ --glob '!Tier3Task.ts'` → 0 matches.
+ * and NOWHERE else. Operation methods (breadcrumb / compact) on this class
+ * do NOT inspect `mode`/`complexity` literals.
  *
  * Unlike Tier 0-2-4, Tier3 is NOT a singleton — each invocation returns a
  * new instance so the mode-specific strategy composition is stable for the
@@ -35,20 +31,10 @@ export class Tier3Task extends BaseTier {
   readonly label = 'Task' as const;
 
   constructor(mode: Mode) {
-    const collapse = atBoundaryCollapse;
-    let breadcrumb: BreadcrumbStrategy;
-    let boundary: BoundaryStrategy;
-    if (mode === 'explain') {
-      breadcrumb = noopBreadcrumb;
-      boundary = new ExplainOnlyBoundary(collapse);
-    } else {
-      breadcrumb = fullBreadcrumb;
-      boundary = new AutoCompleteBoundary(collapse);
-    }
+    const breadcrumb: BreadcrumbStrategy =
+      mode === 'explain' ? noopBreadcrumb : fullBreadcrumb;
     super({
       breadcrumb,
-      boundary,
-      collapse,
       compact: thresholdLLMCompact,
     });
   }

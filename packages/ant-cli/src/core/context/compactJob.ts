@@ -36,6 +36,7 @@ function formatEntriesForPrompt(entries: CompactableEntry[]): string {
       const label = e.role === 'user' ? 'User'
         : e.role === 'assistant' ? 'Assistant'
         : e.role === 'system' ? 'Context Summary'
+        : e.role === 'breadcrumb' ? 'Artifact'  // job-context-bridge T5: BC entries map to MECE Artifacts
         : e.role;
       return `[${label}] ${e.content}`;
     })
@@ -65,8 +66,17 @@ export async function compactJob<T extends CompactableEntry>(
     };
   }
 
-  const recentEntries = entries.slice(-config.recentWindowSize);
-  const oldEntries = entries.slice(0, -config.recentWindowSize);
+  // job-context-bridge T5: when callers pre-partition entries (e.g.
+  // compactFeatureContext mixes user_turns + breadcrumbs and decides the
+  // window itself by timestamp), they pass `recentWindowSize === 0` to
+  // signal "every entry is old". The previous `slice(-0)` returned the
+  // full array which contradicted that intent.
+  const recentEntries = config.recentWindowSize <= 0
+    ? []
+    : entries.slice(-config.recentWindowSize);
+  const oldEntries = config.recentWindowSize <= 0
+    ? entries
+    : entries.slice(0, -config.recentWindowSize);
 
   if (oldEntries.length === 0) {
     return {

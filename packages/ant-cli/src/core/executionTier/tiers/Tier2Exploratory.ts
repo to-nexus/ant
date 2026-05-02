@@ -1,7 +1,5 @@
 import { BaseTier } from './base';
-import { miniBreadcrumb } from '../strategies/breadcrumb';
-import { noopBoundary } from '../strategies/boundary';
-import { noopCollapse } from '../strategies/collapse';
+import { fullBreadcrumb } from '../strategies/breadcrumb';
 import { thresholdLLMCompact } from '../strategies/compact';
 import { ExecutionTierId } from '../types';
 
@@ -10,22 +8,19 @@ import { ExecutionTierId } from '../types';
  * pipeline (n=1 task with `selfVerifyOnDone`). The sole task runs a
  * two-cycle lifecycle: apply phase (task-type plan/execute applies fixes)
  * → reverify phase (`tasks/_shared/verify/` runs install/typecheck/
- * build/test gates) → done. Phase mode dispatch is task-type-blind: any
- * task whose `requiresVerification(task)` predicate returns true (Tier
- * 3/4 verification task OR Tier 2 self-verify) shares the verify-mode
- * hook surface.
+ * build/test gates) → done.
  *
- * Mini-breadcrumb fires when >= 3 files were touched; no boundary (the
- * user_turn stays in T2 so follow-up questions keep their context).
+ * BC emit on every code change (job-context-bridge T3 — replaces the
+ * legacy `MINI_BREADCRUMB_TOUCHED_THRESHOLD = 3` gate). Small touches
+ * still carry useful pointer info for the next turn; the only no-info
+ * case (touched=0) is filtered inside `fullBreadcrumb`.
  */
 export class Tier2Exploratory extends BaseTier {
   readonly id = ExecutionTierId.Exploratory;
   readonly label = 'Exploratory' as const;
 
   static readonly instance: Tier2Exploratory = new Tier2Exploratory({
-    breadcrumb: miniBreadcrumb,
-    boundary: noopBoundary,
-    collapse: noopCollapse,
+    breadcrumb: fullBreadcrumb,
     compact: thresholdLLMCompact,
   });
 

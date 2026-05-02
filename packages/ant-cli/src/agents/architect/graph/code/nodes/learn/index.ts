@@ -443,17 +443,22 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Session redesign §2.4 — Breadcrumb / Boundary via tier facade.
+    // Session redesign §2.4 — Breadcrumb via tier facade.
     // Runs once at the end of a code job (isLastTask) to capture the
     // job's trace into feature.jsonl for future resolve/plan/direct use.
     //
     // `getExecutionTier(state)` reads `state.executionTier` (written by
     // decompose after `validateExecutionTier` confirms the LLM's
     // `<executionTier>` tag); when absent (legacy session / pre-decompose
-    // node), it defaults to Tier 0 Reflex (Noop facade).
-    // Tier 3 Task is the ONLY tier that emits breadcrumb + boundary;
-    // lower tiers Noop transparently so this block stays uniform across
-    // execution paths.
+    // node), it defaults to Tier 0 Reflex.
+    //
+    // Auto boundary was deprecated by job-context-bridge T2; only
+    // Hard Reset (`reason: 'user_reset'`) still cuts the timeline, and
+    // that path is handled by SessionPersistence — not here.
+    //
+    // BC emission policy is now uniform across tiers: writeBreadcrumb
+    // self-skips for `mode='explain'` and `touched=0`. Every other
+    // code-change task records a BC line.
     //
     // Gated by `!taskFailed` so a failed run does not poison downstream
     // feature.jsonl readers. §19 featureBiases has a different failure
@@ -463,9 +468,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       try {
         const executionTier = getExecutionTier(state);
         await executionTier.breadcrumb(state, touchedForLearn);
-        await executionTier.boundary(state);
       } catch (err) {
-        console.warn('⚠️  [Learn] tier breadcrumb/boundary failed:', err);
+        console.warn('⚠️  [Learn] tier breadcrumb failed:', err);
       }
     }
 
