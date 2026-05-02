@@ -1,6 +1,7 @@
 import { ArchitectGraphState } from "./state";
 import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
+import { normalizeResumedQueueBudgets } from "./parallel/resumeBudgetReset";
 import { resetKeywordDedup } from "./nodes/plan/rag";
 import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
@@ -53,8 +54,15 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         // ✅ CRITICAL: Set isResume flag for graph router
         initial.isResume = true;
         
-        // Reconstruct TaskQueue from saved array
-        initial.taskQueue = TaskQueue.from<CodeTask>(session.state.taskQueue);
+        // Reconstruct TaskQueue from saved array. `normalizeResumedQueueBudgets`
+        // is the load-boundary safety net — any task carrying `_failed: true`
+        // gets its VerificationBudget axes (batchSplitCount / _failedAttempts)
+        // reset to 0, regardless of which writer produced the saved state.
+        // This makes the resume-after-permanent-fail contract idempotent and
+        // recovers from any historical drift (vast-curling-perch RCA — fix
+        // re-deploys after pre-fix saves had stale 11 leaked into Redis).
+        const loadedQueue = (session.state.taskQueue ?? []) as CodeTask[];
+        initial.taskQueue = TaskQueue.from<CodeTask>(normalizeResumedQueueBudgets(loadedQueue));
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
@@ -202,9 +210,12 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         );
         
         if (session.state && session.state.taskQueue) {
+          // Same load-boundary safety net as the primary resume path —
+          // see normalizeResumedQueueBudgets JSDoc for rationale.
+          const restoredQueue = (session.state.taskQueue ?? []) as CodeTask[];
           state = {
             ...initial,
-            taskQueue: TaskQueue.from<CodeTask>(session.state.taskQueue),
+            taskQueue: TaskQueue.from<CodeTask>(normalizeResumedQueueBudgets(restoredQueue)),
             currentTask: session.state.currentTask,
             completedTasks: session.state.completedTasks || [],
             completedTasksDetails: session.state.completedTasksDetails || [],

@@ -21,6 +21,7 @@ import { routeAfterPlan } from "./routers/planRouter";
 import { routeAfterTool } from "./routers/toolRouter";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
+import { buildResumableFailedTask } from "./parallel/resumeBudgetReset";
 import { hooksForTaskType } from "./tasks/_shared/registry";
 import * as routing from "./routing";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
@@ -199,13 +200,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         // "Paused" badge — semantically "all permanent failures are also
         // interrupted at the job level". `_failed` / `_failureReason` are
         // kept for the resume path (`TaskOrchestrator` clears them on retry)
-        // and for batchSplit handling.
-        const failedAsQueue = checkpoint.failedTasks.map(f => ({
-          ...f.task,
-          interrupted: true,
-          _failed: true,
-          _failureReason: f.error.message,
-        }));
+        // and for batchSplit handling. The helper also resets task-owned
+        // VerificationBudget axes so the user-resume gets a fresh budget
+        // (vast-curling-perch RCA — `JobCleanupManager` reads this Redis
+        // checkpoint as parallel-mode SSOT, so this writer must reset too).
+        const failedAsQueue = checkpoint.failedTasks.map(f =>
+          buildResumableFailedTask(f.task as CodeTask, f.error.message),
+        );
         // Deduplicate: if a failed task was re-enqueued (e.g. verification after
         // batch split), the re-enqueued version in checkpoint.taskQueue has the
         // same id. Keep only the failed-record copy to avoid duplicate ids in the
@@ -377,11 +378,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   // Even if hasInterruptedTasks is still true (edge case), only save if remainingQueue > 0.
   if (result.hasInterruptedTasks && hasActualRemainingWork && state.deps?.session && state.context.featureFolder) {
     try {
-      const failedAsQueue = result.failedTasks.map(f => ({
-        ...f.task,
-        _failed: true,
-        _failureReason: f.error.message,
-      }));
+      const failedAsQueue = result.failedTasks.map(f =>
+        buildResumableFailedTask(f.task as CodeTask, f.error.message),
+      );
 
       await state.deps.session.updateArtifacts(
         state.context.project,
@@ -451,12 +450,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   // (used by the resume path and batchSplit) for visibility.
   if (result.hasFailures && !result.hasInterruptedTasks && state.deps?.session && state.context.featureFolder) {
     try {
-      const failedAsQueue = result.failedTasks.map(f => ({
-        ...f.task,
-        interrupted: true,
-        _failed: true,
-        _failureReason: f.error.message,
-      }));
+      const failedAsQueue = result.failedTasks.map(f =>
+        buildResumableFailedTask(f.task as CodeTask, f.error.message),
+      );
 
       await state.deps.session.updateArtifacts(
         state.context.project,
