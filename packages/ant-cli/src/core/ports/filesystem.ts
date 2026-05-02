@@ -105,6 +105,17 @@ export interface FileSystemPort {
    */
   getRootPath(): string;
 
+  /**
+   * Resolve a workspace-relative path to an absolute filesystem path,
+   * with path-traversal protection. Use this when integrating with APIs
+   * that require an absolute path (e.g., `child_process.spawn` cwd,
+   * native binaries). For ordinary file operations, prefer the
+   * relative-path methods above — they call this internally.
+   *
+   * @throws Error if the resolved path escapes the workspace boundary.
+   */
+  resolveAbsolute(relativePath: string): string;
+
   /** @deprecated Use getRootPath() instead */
   getWorkspaceRoot(): string;
 }

@@ -31,12 +31,16 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   /**
-   * Resolve input path to absolute path within workspace.
+   * Resolve a workspace-relative path to an absolute filesystem path.
    * Accepts both relative paths and absolute paths within the workspace boundary.
-   * @throws Error if path resolves outside workspace (traversal protection)
+   *
+   * Public so callers that must talk to APIs requiring absolute paths
+   * (`child_process.spawn` cwd, native binaries, etc.) can share the
+   * same traversal-protected resolution as the file operations below.
+   *
+   * @throws Error if path resolves outside the workspace (traversal protection)
    */
-  private resolvePath(inputPath: string): string {
-    // Absolute path: validate it's within workspace
+  resolveAbsolute(inputPath: string): string {
     if (path.isAbsolute(inputPath)) {
       const normalized = path.normalize(inputPath);
       if (normalized === this.basePath || normalized.startsWith(this.basePath + path.sep)) {
@@ -47,24 +51,22 @@ export class FileSystemAdapter implements FileSystemPort {
         `Workspace: ${this.basePath}, Requested: ${normalized}`
       );
     }
-    
-    // Relative path: resolve against basePath
+
     const fullPath = path.resolve(this.basePath, inputPath);
-    
-    // Security check: prevent path traversal (e.g., "../../../etc/passwd")
+
     if (!fullPath.startsWith(this.basePath)) {
       throw new Error(
         `Path traversal detected: "${inputPath}" resolves outside workspace. ` +
         `Workspace: ${this.basePath}, Requested: ${fullPath}`
       );
     }
-    
+
     return fullPath;
   }
   
   async readFile(relativePath: string): Promise<string | null> {
     try {
-      const fullPath = this.resolvePath(relativePath);
+      const fullPath = this.resolveAbsolute(relativePath);
       return await fs.promises.readFile(fullPath, 'utf-8');
     } catch (error: any) {
       if (error.code === 'ENOENT') {
@@ -75,7 +77,7 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async writeFile(relativePath: string, content: string): Promise<void> {
-    const fullPath = this.resolvePath(relativePath);
+    const fullPath = this.resolveAbsolute(relativePath);
     
     // Ensure parent directory exists
     const dir = path.dirname(fullPath);
@@ -86,7 +88,7 @@ export class FileSystemAdapter implements FileSystemPort {
   
   async fileExists(relativePath: string): Promise<boolean> {
     try {
-      const fullPath = this.resolvePath(relativePath);
+      const fullPath = this.resolveAbsolute(relativePath);
       await fs.promises.access(fullPath);
       return true;
     } catch {
@@ -95,7 +97,7 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async deleteFile(relativePath: string): Promise<void> {
-    const fullPath = this.resolvePath(relativePath);
+    const fullPath = this.resolveAbsolute(relativePath);
     
     try {
       await fs.promises.unlink(fullPath);
@@ -109,7 +111,7 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async readDirectory(relativePath: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
-    const fullPath = this.resolvePath(relativePath);
+    const fullPath = this.resolveAbsolute(relativePath);
     
     const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
     
@@ -120,12 +122,12 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async createDirectory(relativePath: string): Promise<void> {
-    const fullPath = this.resolvePath(relativePath);
+    const fullPath = this.resolveAbsolute(relativePath);
     await fs.promises.mkdir(fullPath, { recursive: true });
   }
   
   async listFiles(relativePath: string, exclude: string[] = []): Promise<string[]> {
-    const fullPath = this.resolvePath(relativePath);
+    const fullPath = this.resolveAbsolute(relativePath);
     
     // Default excludes
     const defaultExcludes = [
@@ -187,7 +189,7 @@ export class FileSystemAdapter implements FileSystemPort {
   
   async isDirectory(relativePath: string): Promise<boolean> {
     try {
-      const fullPath = this.resolvePath(relativePath);
+      const fullPath = this.resolveAbsolute(relativePath);
       const stat = await fs.promises.stat(fullPath);
       return stat.isDirectory();
     } catch {
@@ -196,8 +198,8 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async copyFile(src: string, dest: string, overwrite = true): Promise<void> {
-    const srcPath = this.resolvePath(src);
-    const destPath = this.resolvePath(dest);
+    const srcPath = this.resolveAbsolute(src);
+    const destPath = this.resolveAbsolute(dest);
     
     // Check source exists
     try {
@@ -226,8 +228,8 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async moveFile(src: string, dest: string, overwrite = true): Promise<void> {
-    const srcPath = this.resolvePath(src);
-    const destPath = this.resolvePath(dest);
+    const srcPath = this.resolveAbsolute(src);
+    const destPath = this.resolveAbsolute(dest);
     
     // Check source exists
     try {
@@ -264,8 +266,8 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   async copyDirectory(src: string, dest: string): Promise<void> {
-    const srcPath = this.resolvePath(src);
-    const destPath = this.resolvePath(dest);
+    const srcPath = this.resolveAbsolute(src);
+    const destPath = this.resolveAbsolute(dest);
     
     // Verify source is a directory
     const srcStat = await fs.promises.stat(srcPath);
@@ -300,7 +302,7 @@ export class FileSystemAdapter implements FileSystemPort {
     // Merge copy first, then remove source
     await this.copyDirectory(src, dest);
     
-    const srcPath = this.resolvePath(src);
+    const srcPath = this.resolveAbsolute(src);
     await fs.promises.rm(srcPath, { recursive: true, force: true });
   }
   
