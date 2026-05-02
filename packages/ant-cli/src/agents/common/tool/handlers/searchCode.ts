@@ -17,8 +17,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { rgPath } from '@vscode/ripgrep';
+import type { FileSystemPort } from '../../../../core/ports/filesystem';
+import { normalizeToCodebasePath } from '../../../../core/utils/pathNormalizer';
 import type { ToolExecutionContext, ToolResult } from '../types';
-import { resolveToolDirectory, prependFixMessage } from './pathResolver';
 
 const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
 /** Cap total result size fed back to the LLM. ripgrep's per-file `--max-count`
@@ -81,11 +82,106 @@ async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string
   });
 }
 
+export interface SearchPlan {
+  /** Absolute cwd handed to `spawn`. Always the workspace root so file_pattern
+   *  semantics match other tool handlers (`read_file` / `edit_file`) — every
+   *  glob is workspace-rel, no second prefix layer to think about. */
+  cwd: string;
+  /** `file_pattern` after `normalizeToCodebasePath` — the SSOT used by 15+
+   *  other handlers for codebase/sibling-prefix decisions. */
+  effectiveFilePattern: string | undefined;
+  /** Notice surfaced to the LLM when normalize had to correct the input
+   *  (e.g. `codebase/codebase/...` → `codebase/...`, or bare `**` → `codebase/**`). */
+  filePatternFix: string | undefined;
+  effectiveIncludeDeps: boolean;
+  /** Glob basenames passed to ripgrep as `--glob !<name>`. Surfaced in
+   *  zero-match diagnostics so the LLM/operator can see why a search came
+   *  back empty. */
+  appliedExcludes: string[];
+  /** Whether `--no-ignore` is added to the ripgrep invocation (off by
+   *  default, on for dependency-mode so `.gitignore`'d node_modules stay
+   *  searchable). */
+  noIgnore: boolean;
+  rgArgs: string[];
+}
+
+/**
+ * One function captures every search-shape decision the handler makes —
+ * cwd, file_pattern normalization, dependency-mode inference, ripgrep
+ * flag construction. Keeps the handler body a thin wrapper: build a plan,
+ * spawn with it, format the result. Also makes the planning logic
+ * trivially unit-testable in isolation.
+ */
+export function planSearch(
+  args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
+  fileSystem: FileSystemPort,
+): SearchPlan {
+  // ── file_pattern normalize via the existing SSOT ──────────────────────
+  // `normalizeToCodebasePath` is the same helper that read_file / edit_file
+  // / createFile / runCommand / FileRenderer / 11+ other call sites use to
+  // decide "is this a codebase path or a sibling (features/, plan/, ...)
+  // path?". Routing search_code through it eliminates the previous
+  // `wantsWorkspaceScope` private branch (same domain, duplicated logic)
+  // and the codebase/-prefix double-up that produced the next-intl false
+  // negative.
+  let effectiveFilePattern: string | undefined;
+  let filePatternFix: string | undefined;
+  if (args.file_pattern) {
+    const norm = normalizeToCodebasePath(args.file_pattern);
+    effectiveFilePattern = norm.normalized;
+    if (norm.wasFixed) {
+      filePatternFix =
+        `file_pattern auto-corrected: "${args.file_pattern}" → "${norm.normalized}"` +
+        (norm.reason ? ` (${norm.reason})` : '');
+      console.warn(`\n[searchCode] PATH AUTO-FIX: ${norm.reason}`);
+      console.warn(`   Requested: ${args.file_pattern}`);
+      console.warn(`   Corrected: ${norm.normalized}\n`);
+    }
+  }
+
+  // ── dependency mode + excludes ────────────────────────────────────────
+  // Commit 1 baseline: explicit include_dependencies only. Commit 2 will
+  // add auto-inference from file_pattern + --no-ignore.
+  const effectiveIncludeDeps = !!args.include_dependencies;
+  const appliedExcludes = effectiveIncludeDeps
+    ? ['.git']
+    : DEFAULT_EXCLUDES;
+  const noIgnore = false;
+
+  // ── ripgrep argv ──────────────────────────────────────────────────────
+  // cwd = workspace root (always exists, FileSystemAdapter constructor
+  // mkdirs it). `.` as search root means ripgrep emits workspace-rel
+  // paths verbatim — no post-strip needed beyond the one-off `./` cleanup
+  // ripgrep adds when given `.` as a positional.
+  const rgArgs = [
+    '--no-heading',
+    '--line-number',
+    '--color', 'never',
+    '--max-count', String(PER_FILE_MAX_COUNT),
+    '--max-filesize', '1M',
+    ...(noIgnore ? ['--no-ignore'] : []),
+    ...appliedExcludes.flatMap(ex => ['--glob', `!${ex}`]),
+    ...(effectiveFilePattern ? ['--glob', effectiveFilePattern] : []),
+    // `--` so patterns starting with `-` are not parsed as flags.
+    '--', args.pattern, '.',
+  ];
+
+  return {
+    cwd: fileSystem.getRootPath(),
+    effectiveFilePattern,
+    filePatternFix,
+    effectiveIncludeDeps,
+    appliedExcludes,
+    noIgnore,
+    rgArgs,
+  };
+}
+
 export async function handleSearchCode(
   ctx: ToolExecutionContext,
   args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
 ): Promise<ToolResult> {
-  const { pattern, file_pattern, include_dependencies } = args;
+  const { pattern, file_pattern } = args;
 
   if (!pattern) {
     return { content: 'search_code requires pattern', error: 'search_code requires pattern' };
@@ -96,50 +192,15 @@ export async function handleSearchCode(
     return { content: 'search_code requires fileSystem', error: 'search_code requires fileSystem' };
   }
 
-  const wantsWorkspaceScope = (() => {
-    const fp = (file_pattern || '').replace(/\\/g, '/').replace(/^\.?\//, '');
-    return (
-      fp.startsWith('features/') ||
-      fp.startsWith('plan/') ||
-      fp.startsWith('architecture/') ||
-      fp.startsWith('visual/') ||
-      fp.startsWith('assets/') ||
-      fp.startsWith('meta/') ||
-      fp.startsWith('sessions/')
-    );
-  })();
-  const resolvedRoot = await resolveToolDirectory(ctx, wantsWorkspaceScope ? 'features' : '.');
+  const plan = planSearch(args, fileSystem);
 
   const searchingIndex = await ctx.chatStatus.showStatus('searching_code', { pattern, file_pattern });
 
   try {
-    const segments = resolvedRoot.fsPath.split('/');
-    const isInsideDeps = segments.includes('node_modules') || segments.includes('vendor');
-    // `include_dependencies=true` drops `node_modules` from excludes,
-    // enabling library-grounding searches (e.g., looking up real API shape in
-    // `@types/*.d.ts` when the build error suggests a version boundary). The
-    // default path keeps `node_modules` excluded for performance on routine
-    // project-code searches.
-    let excludes: string[];
-    if (isInsideDeps) {
-      excludes = ['.git'];
-    } else if (include_dependencies) {
-      excludes = DEFAULT_EXCLUDES.filter(e => e !== 'node_modules');
-    } else {
-      excludes = DEFAULT_EXCLUDES;
-    }
-
-    // Resolve to an absolute filesystem path. `resolvedRoot.fsPath` is
-    // workspace-relative (e.g. `codebase/`) — passing that as `spawn`'s cwd
-    // would make Node resolve it against `process.cwd()` (the server's CWD,
-    // not the workspace root) and fail with ENOENT against the *binary path*,
-    // disguising the real cause. Use the port's traversal-protected
-    // resolver so all native-spawn callers share one absolute-path SSOT.
-    const absRoot = fileSystem.resolveAbsolute(resolvedRoot.fsPath);
-    if (!existsSync(absRoot)) {
+    if (!existsSync(plan.cwd)) {
       const errorMsg =
-        `Search root does not exist: ${resolvedRoot.displayPath} (resolved to ${absRoot}). ` +
-        `Verify the directory is part of the workspace and try a path that exists.`;
+        `Workspace root does not exist: ${plan.cwd}. ` +
+        `Verify the workspace is initialized and mounted.`;
       console.error(`[searchCode] ${errorMsg}`);
       await ctx.chatStatus.showStatus('searched_code', {
         pattern,
@@ -152,27 +213,12 @@ export async function handleSearchCode(
       return { content: `Error: ${errorMsg}`, error: errorMsg };
     }
 
-    console.log(`[searchCode] Ripgrep: ${resolvedRoot.displayPath} (absRoot: ${absRoot}, excludes: ${excludes})`);
+    console.log(
+      `[searchCode] Ripgrep: cwd=${plan.cwd}, file_pattern=${plan.effectiveFilePattern ?? '(none)'}, ` +
+      `excludes=${plan.appliedExcludes.join(',')}, includeDeps=${plan.effectiveIncludeDeps}, noIgnore=${plan.noIgnore}`,
+    );
 
-    const rgArgs: string[] = [
-      '--no-heading',
-      '--line-number',
-      '--color', 'never',
-      '--max-count', String(PER_FILE_MAX_COUNT),
-      '--max-filesize', '1M',
-    ];
-    for (const ex of excludes) {
-      rgArgs.push('--glob', `!${ex}`);
-    }
-    if (file_pattern) {
-      rgArgs.push('--glob', file_pattern);
-    }
-    // `--` so patterns starting with `-` are not parsed as flags.
-    // Pass `.` as the search root since cwd is already absRoot — keeps
-    // ripgrep's emitted paths short and our normalize step trivial.
-    rgArgs.push('--', pattern, '.');
-
-    const { stdout, stderr, code } = await runRipgrep(rgArgs, absRoot);
+    const { stdout, stderr, code } = await runRipgrep(plan.rgArgs, plan.cwd);
 
     // ripgrep exit codes: 0=match, 1=no match, 2+=error.
     if (code === 2) {
@@ -191,15 +237,14 @@ export async function handleSearchCode(
     }
 
     let lines = stdout.split('\n').filter(l => l.length > 0);
-    // ripgrep emits paths relative to the search root (`.`), e.g. `foo.ts:12: ...`.
-    // Strip the leading `./` so output stays clean and matches the pre-ripgrep
-    // format (`file:line: content`). The displayPath context is preserved by
-    // `prependFixMessage` if a path-correction notice is active.
+    // ripgrep emits paths relative to the search root (`.`), e.g. `foo.ts:12:...`.
+    // Strip the leading `./` so output matches the canonical `file:line:content`
+    // format used elsewhere.
     lines = lines.map(l => (l.startsWith('./') ? l.slice(2) : l));
 
     if (code === 1 || lines.length === 0) {
-      const errorMsg = `No matches found for pattern "${pattern}"${file_pattern ? ` in files matching "${file_pattern}"` : ''}`;
-      console.error(`[searchCode] ❌ ${errorMsg}`);
+      const errorMsg = `No matches found for pattern "${pattern}"${plan.effectiveFilePattern ? ` in files matching "${plan.effectiveFilePattern}"` : ''}`;
+      console.error(`[searchCode] ${errorMsg}`);
       await ctx.chatStatus.showStatus('searched_code', {
         pattern,
         filesCount: 0,
@@ -232,10 +277,11 @@ export async function handleSearchCode(
       _mergeIndex: searchingIndex,
     });
 
-    return { content: prependFixMessage(resolvedRoot, lines.join('\n') + truncatedNotice) };
+    const fixNotice = plan.filePatternFix ? `${plan.filePatternFix}\n\n` : '';
+    return { content: fixNotice + lines.join('\n') + truncatedNotice };
   } catch (e) {
     const errorMsg = (e as Error).message;
-    console.error(`[searchCode] ❌ Error:`, errorMsg);
+    console.error(`[searchCode] Error:`, errorMsg);
     return { content: `Error: ${errorMsg}`, error: errorMsg };
   }
 }
