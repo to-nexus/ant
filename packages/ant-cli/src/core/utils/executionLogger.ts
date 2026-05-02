@@ -275,9 +275,9 @@ export class ExecutionLogger {
   }
 
   async logVerificationSessionChange(taskId: string, data: {
-    event: 'onCommand' | 'onFileChanged' | 'onBatchSplit' | 'onPlanApplied' | 'onPlanEntry' | 'markInstallNeeded';
-    before: { passed: string[]; required: string[]; attempts: number; planHistoryLength: number; batchSplitCount: number };
-    after: { passed: string[]; required: string[]; attempts: number; planHistoryLength: number; batchSplitCount: number };
+    event: 'onCommand' | 'onFileChanged' | 'onBatchSplit' | 'markInstallNeeded';
+    before: { passed: string[]; required: string[]; batchSplitCount: number };
+    after: { passed: string[]; required: string[]; batchSplitCount: number };
     extra?: Record<string, any>;
   }): Promise<void> {
     await this.log('verification_session_change', data, taskId);
@@ -299,10 +299,6 @@ export class ExecutionLogger {
     diagnosticPass?: boolean;
     emptyImplShortCircuit: boolean;
     isRemediationTask: boolean;
-    sessionIsComplete?: boolean;
-    sessionPassed?: string[];
-    sessionRequired?: string[];
-    sessionAttempts?: number;
     decision: 'done' | 'execute';
     planEmptyOrigin?: 'verification-short-circuit' | 'tool-loop-empty';
     verifyAxisSnapshot?: {

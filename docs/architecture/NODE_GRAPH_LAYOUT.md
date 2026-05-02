@@ -153,7 +153,7 @@ Phase layer (phase `nodes/`, `routers/`, `parallel/`, common/tool handlers) 가 
 state에 새 필드 추가 충동이 생기면 먼저 "이것은 `tasks/{taskType}/model/` 안에 속하는가?"를 물어라.
 
 - state에는 **cross-task 공통 필드만** 남긴다.
-- task type별 state는 `state.{type}` 한 필드(Session 인스턴스)에 응집. 예: `state.verification?: VerificationSession` (verification 책임 단위, `tasks/_shared/verify/Session.ts`).
+- task type별 정보는 `task.{field}` 로 응집한다 (예: `task.batchSplitCount`). VerificationSession 클래스는 폐기됨 (vast-curling-perch verify cleanup, plan §5.6.3) — gate cache / passed Set / install observation / attempts counter 모두 LLM 의 conversation history + priorErrorTasks prompt inject 로 대체.
 - 검증 책임은 task type 단위가 아니라 행동 단위로 응집. `tasks/_shared/verify/` 가 SSOT 이며 verification task type 과 Tier 2 self-verify task (`selfVerifyOnDone:true`) 가 공유. 분기 predicate: `requiresVerification(task)`. phase mode 채널: `state._verifyEntered` (single writer: `markVerifyEntered.ts`).
 - 새 필드 1개 추가 ⇒ 기존 필드 1개 이상 제거를 목표("Axis N+1 금지").
 

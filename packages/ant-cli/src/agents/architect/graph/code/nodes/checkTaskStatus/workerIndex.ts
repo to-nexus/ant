@@ -14,7 +14,7 @@
 
 import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import { TaskTimingHelper } from '../../state';
-import { clearForTaskBoundary } from '../../tasks/_shared/verify/sessionLifecycle';
+import { clearForTaskBoundary } from '../../tasks/_shared/verify/markVerifyEntered';
 import { evaluateTaskStatus } from './evaluate';
 
 export async function workerCheckTaskStatus(
@@ -148,7 +148,6 @@ export async function workerCheckTaskStatus(
       conversations: {},
       planText: '',
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
       // Task boundary delta — symmetric with main graph's success path.
       // Without this, a worker completing a verify-mode task would leak
       // `_verifyEntered=true` and the Session reference into whatever
@@ -187,20 +186,14 @@ export async function workerCheckTaskStatus(
   const enforcementHistory = [...(state.enforcementHistory || []), feedback];
 
   // Task has retryable violations — propagate to plan for retry.
-  // `state.retries += 1` is owned by `plan/handleRetryEntry`.
-  //
-  // Counter resets (mirror of main-graph `checkTaskStatus`): without these,
-  // a Safety Net C trip on the worker subgraph would re-enter execute with
-  // a stale `_finalTaskLoopCount` and immediately re-trip — ping-pong
-  // through plan ↔ checkTaskStatus until recursion limit. The success path
-  // (L139-144) and batch-split path (L86-95) already reset these.
+  // `state.retries += 1` is owned by `plan/handleRetryEntry`. The
+  // `_executeCallIndex` reset mirrors the success / batch-split paths.
   return {
     violations: retryableViolations,
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
     _taskCompleted: false,
     _executeCallIndex: 0,
-    _finalTaskLoopCount: 0,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   } as any;

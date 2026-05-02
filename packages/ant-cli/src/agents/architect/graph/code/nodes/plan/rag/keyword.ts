@@ -31,6 +31,17 @@ export function resetKeywordDedup(): void {
 }
 
 /**
+ * Clear the dedup record for a single task. Called by the batch-split
+ * Path A re-queue site so the parent verification task's keyword RAG
+ * fires fresh on its next plan entry — without this, the second cycle
+ * skipped keyword RAG entirely and lost its retrieval window
+ * (`vast-curling-perch` D-0).
+ */
+export function clearKeywordDedupForTask(taskId: string): void {
+  keywordDedup.delete(taskId);
+}
+
+/**
  * Generate task-specific keywords using LLM
  */
 export async function generateTaskKeywords(

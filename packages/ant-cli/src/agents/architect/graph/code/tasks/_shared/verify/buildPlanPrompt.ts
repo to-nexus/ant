@@ -2,18 +2,12 @@
  * `_shared/verify/buildPlanPrompt` — verify-mode plan prompt builder shared
  * by every verification responsibility holder.
  *
- * SSOT: previously `tasks/verification/hooks/plan.ts::buildPrompt`. Moved
- * here so self-verify Tier 2 tasks render the same diagnostic plan
- * prompt as Tier 3/4 verification tasks once they enter verify-mode.
- *
  * Renders against `jobs/code/nodes/plan/variants/verification/base` with
- * tech-tier-aware language hints, dependency-status injection, deep-
- * diagnostic mode signal, and cached-passed-step block. The
- * verification-specific `isErrorTask: false` template var is preserved
- * (the template branches on it for header copy).
+ * tech-tier-aware language hints, dependency-status injection drawn from
+ * `state._installNeededTransient`, prior-error-tasks awareness, and a
+ * scalar batch-split banner.
  *
- * R2 — depends only on `_shared/verify/Session`, `configSnapshot`, and the
- * shared plan prompt helpers.
+ * R2 — depends only on the shared plan prompt helpers + state shape.
  */
 
 import type { PlanPromptCtx, PlanPromptResult } from '../types';
@@ -21,86 +15,18 @@ import { effectiveTechTier, getTechTier } from '@ant/shared';
 import { formatCodeContext, mapLang } from '../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
-
-// ────────────────────────────────────────────────────────────────────────────
-// buildPrompt — verification-variant plan prompt
-// ────────────────────────────────────────────────────────────────────────────
+import { renderPriorErrorTasks } from './priorErrorTasks';
 
 /**
- * Render a bullet block for the "already passed" gates so the LLM skips
- * steps that are known-green. The labels below are the SSOT for the prompt
- * surface; callers supply the set of passed-step names from whichever
- * source they trust (Session.passed() when available, legacy tracker
- * derivation as a coexistence fallback).
+ * Compact verification banner. Always rendered (the absence of a banner
+ * was the `vast-curling-perch` cycle-2 incident root cause), even on
+ * cycle-1 fresh entry. Drawn from `task.batchSplitCount` so the cycle
+ * carry-over is durable across re-queue boundaries.
  */
-function renderPassedSteps(passed: readonly string[]): string | undefined {
-  if (passed.length === 0) return undefined;
-  const labels: Record<string, string> = {
-    typecheck: '- ✓ typecheck (tsc --noEmit)',
-    build: '- ✓ build',
-    test: '- ✓ test',
-  };
-  const rendered = passed.map(s => labels[s]).filter(Boolean).join('\n');
-  return rendered || undefined;
+function renderSessionSummary(batchSplits: number): string {
+  return `- Prior batch-split cycles: ${batchSplits}`;
 }
 
-/**
- * Compact session-state banner rendered at the top of the verification
- * plan prompt — every cycle, including cycle-1 (fresh entry). The banner
- * is the single SSOT channel that carries verification cycle context
- * across worker context boundaries (each task spawns a fresh worker with
- * empty NODE_PLAN history, so without the banner the LLM cannot know
- * which cycle it's in or whether prior batch-splits already attempted
- * fixes — `vast-curling-perch` cycle-2 infinite-loop incident).
- *
- * Three principles drive the copy:
- *   1. Scalar summary only — verification cycle counter / passed / missing
- *      gates / batch-split count. Details live on disk
- *      (`sessions/architect/code.json`) and are fetched on demand.
- *   2. Points the LLM at self-service lookup when it suspects cascading
- *      failure — the rules-level Prior-Attempt Lookup principle tells
- *      it HOW to call `read_file`.
- *   3. No task-specific internals — keeps the surface blind to
- *      individual error sub-tasks' fix content.
- *
- * Always returns a non-empty string when `session` is present. The
- * previous `attempts === 0 && batchSplits === 0` early-return was an
- * over-eager optimisation that suppressed the banner on cycle-1 fresh
- * entries AND (per the `vast-curling-perch` incident) on cycle-2+
- * re-entries when state.verification's counters appeared as 0 to the
- * LLM dispatch path. Removing the gate guarantees the banner is always
- * visible, restoring the regression guard's deterministic invariant.
- */
-function renderSessionSummary(
-  session: { attempts(): number; passed(): readonly string[]; missing(): readonly string[]; batchSplitCount(): number } | undefined,
-): string | undefined {
-  if (!session) return undefined;
-  const attempts = session.attempts();
-  const batchSplits = session.batchSplitCount();
-  const passed = session.passed();
-  const missing = session.missing();
-  const parts: string[] = [];
-  parts.push(`- Verification cycle: ${attempts}`);
-  parts.push(`- Passed gates: ${passed.length > 0 ? passed.join(', ') : 'none'}`);
-  parts.push(`- Outstanding gates: ${missing.length > 0 ? missing.join(', ') : 'none'}`);
-  parts.push(`- Prior batch-split cycles: ${batchSplits}`);
-  return parts.join('\n');
-}
-
-
-/**
- * Compose the verification-variant plan prompt. Used for both Tier 3/4
- * verification tasks AND Tier 2 self-verify tasks once they enter
- * verify-mode (`composeBundle` dispatches to this when
- * `state._verifyEntered === true`).
- *
- *   - tech-tier resolution + language-hint lookup (silent fallback when the
- *     hint partial does not exist for the detected language);
- *   - dependency-status hint driven by `Session.dependencyStatus()`;
- *   - deep-diagnostic mode signal on re-entry ≥ threshold;
- *   - cached-passed-step block so the LLM does not re-run gates the
- *     session already considers passed.
- */
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
   const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
@@ -115,14 +41,11 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     console.log(`🔧 [Plan] Verify-mode techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
   }
 
-  // `state.verification` is the sole SSOT for every verification-owned
-  // read (attempts, passed gates, dep status). `initSession` has already
-  // run for a verification task by the time `buildPrompt` fires, so the
-  // session is normally present; any absence short-circuits the
-  // verification-specific vars via `?? undefined`.
-  const session = state.verification;
-
-  const depStatus = session?.dependencyStatus() ?? 'unknown';
+  const installNeededTransient = state._installNeededTransient;
+  const depStatus: 'current' | 'changed' | 'unknown' =
+    installNeededTransient === false ? 'current'
+    : installNeededTransient === true ? 'changed'
+    : 'unknown';
   let dependencyStatus: string | undefined;
   if (depStatus === 'current') {
     dependencyStatus = 'Observation: every declared `package.json` dependency is present in `node_modules`.';
@@ -132,12 +55,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
 
-  // Deep-diagnostic mode activates on the 2nd re-entry and is surfaced as
-  // a template signal only — the prior config-snapshot strong-injection
-  // was removed (LLM uses `read_file` on demand). Session is the sole
-  // authority — the hook never runs without a populated session because
-  // `initSession` is called from plan/parts/entry.ts before any hook fires.
-  const isDeepDiagnostic = session?.inDeepMode() ?? false;
   const fmtCtx = formatCodeContext(codeContext);
 
   let languageHints = '';
@@ -150,13 +67,12 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     } catch { /* no hints */ }
   }
 
-  // "Already passed" hint so the LLM skips cached steps instead of hitting
-  // the codeCommandPolicy rejection to learn the same. Session.passed()
-  // is the SSOT once hydrated; legacy tracker is the coexistence bridge.
-  const cachedPassedSteps = renderPassedSteps(session?.passed() ?? []);
+  const batchSplitCount = (task as { batchSplitCount?: number }).batchSplitCount ?? 0;
+  const sessionSummary = renderSessionSummary(batchSplitCount);
 
-  // Scalar verification-cycle banner drawn from Session.
-  const sessionSummary = renderSessionSummary(session);
+  // Prior error sub-tasks spawned in this verification cycle. Injected so
+  // the LLM avoids regression-by-repetition without a read_file lookup.
+  const priorErrorTasks = renderPriorErrorTasks(state);
 
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
@@ -193,11 +109,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     dependencyStatus,
     packageManager,
     hasPackageManager: !!packageManager,
-    isDeepDiagnostic,
-    diagnosticAttempts: session?.attempts() ?? 0,
-    cachedPassedSteps,
     sessionSummary,
-    hasSessionSummary: !!sessionSummary,
+    hasSessionSummary: true,
+    priorErrorTasks,
     antrulesContent,
     resolvedAction: state.resolvedAction,
     hasFrontend,
@@ -213,15 +127,12 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       dependencyStatus: dependencyStatus ? `[${dependencyStatus.length} chars]` : undefined,
       packageManager,
       hasPackageManager: !!packageManager,
-      cachedPassedStepsRendered: !!cachedPassedSteps,
-      cachedPassedStepsCount: session?.passed().length ?? 0,
-      isDeepDiagnostic,
-      diagnosticAttempts: session?.attempts() ?? 0,
       hasLanguageHints: !!languageHints,
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
-      hasSessionSummary: !!sessionSummary,
-      batchSplitCount: session?.batchSplitCount() ?? 0,
+      hasSessionSummary: true,
+      batchSplitCount,
+      priorErrorTasksCount: priorErrorTasks?.length ?? 0,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },
   };

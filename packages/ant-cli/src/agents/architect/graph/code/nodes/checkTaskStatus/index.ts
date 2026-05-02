@@ -19,7 +19,7 @@ import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TASK_PRIORITIES, TaskTimingHelper } from '../../state';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isFeatureTask } from '../../tasks/feature/model/is';
-import { clearForTaskBoundary } from '../../tasks/_shared/verify/sessionLifecycle';
+import { clearForTaskBoundary } from '../../tasks/_shared/verify/markVerifyEntered';
 import { evaluateTaskStatus } from './evaluate';
 
 export async function checkTaskStatus(
@@ -93,16 +93,15 @@ export async function checkTaskStatus(
 
   // Batch split: original task was re-enqueued — skip completion marking entirely
   if (batchSplitRequeued) {
-    // Re-enqueued tasks carry their batch-split cycle counter in the
-    // VerificationSession snapshot attached to `resumeState.verification`.
-    // Surface the cycle number for parity with the pre-T4b log line.
+    // Re-enqueued tasks carry their batch-split cycle counter on
+    // `task.batchSplitCount` (assigned at the batch-split re-queue site).
     const requeuedTasks = state.taskQueue?.getAll().filter(t => {
-      const cycle = (t as any).resumeState?.verification?.batchSplitCount;
+      const cycle = (t as any).batchSplitCount;
       return typeof cycle === 'number' && cycle > 0;
     });
     if (requeuedTasks?.length) {
       for (const t of requeuedTasks) {
-        const cycle = (t as any).resumeState?.verification?.batchSplitCount ?? 1;
+        const cycle = (t as any).batchSplitCount ?? 1;
         console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${cycle})`);
       }
     }
@@ -115,7 +114,6 @@ export async function checkTaskStatus(
       violations: [],
       _batchSplitRequeued: false,
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
       planText: '',
       // Task boundary delta — single SSOT writer for verify-mode reset.
       // Session ownership transfers to the next task's `initSession`
@@ -174,11 +172,11 @@ export async function checkTaskStatus(
       nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
       nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     });
-    // Phase 3c: `state._executeCallIndex = 0` / `state._finalTaskLoopCount = 0`
-    // / `state.violations = []` mutations removed — the success-path return
-    // object below (and `updatedState` consumed by `saveCheckpoint`) declare
-    // these fields explicitly so the LangGraph reducer commits them. Direct
-    // mutation did not propagate beyond this function.
+    // Phase 3c: `state._executeCallIndex = 0` / `state.violations = []`
+    // mutations removed — the success-path return object below (and
+    // `updatedState` consumed by `saveCheckpoint`) declare these fields
+    // explicitly so the LangGraph reducer commits them. Direct mutation
+    // did not propagate beyond this function.
     console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
 
     // Update completedTasks (IDs only)
@@ -249,7 +247,6 @@ export async function checkTaskStatus(
       retries: 0,
       violations: [],
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
     };
 
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
@@ -296,7 +293,6 @@ export async function checkTaskStatus(
       violations: [],
       conversations: { [CONV_KEYS.NODE_EXECUTE]: retainedExecute },
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
       planText: '',
       // Task boundary delta — clears Session + flips `_verifyEntered`
       // to false. Next verification responsibility holder (verification
@@ -367,13 +363,9 @@ export async function checkTaskStatus(
   // writer). `_nextPlanEntry: 'retry'` tells `resolvePlanEntry` which
   // branch to take.
   //
-  // `_finalTaskLoopCount: 0` and `_executeCallIndex: 0` reset mirror the
-  // success path (L298-299) and batch-split path (L116-117). Without these,
-  // a violation return after a Safety Net C trip would re-enter execute
-  // with the counter already past the threshold, immediately re-tripping
-  // → plan ↔ checkTaskStatus ping-pong (the `urban-fronting-faith` p2
-  // postmortem).  `handleRetryEntry` (verification branch) also resets
-  // these on the plan side, but emitting them here is defence-in-depth so
+  // `_executeCallIndex: 0` reset mirrors the success path and batch-split
+  // path. `handleRetryEntry` (verification branch) also resets it on the
+  // plan side, but emitting it here is defence-in-depth so
   // a non-verification retry path (which doesn't go through the verify
   // entry handler) doesn't carry stale counters either.
   return {
@@ -381,7 +373,6 @@ export async function checkTaskStatus(
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
     _executeCallIndex: 0,
-    _finalTaskLoopCount: 0,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };

@@ -35,20 +35,13 @@ describe('tasks/_shared/registry — ui entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes verify-shared dispatch slots (composeBundle wired)', () => {
-    // Post verify-shared refactor: ui is wired through `composeBundle` so
-    // the hook surface includes verify-mode dispatch wrappers for the
-    // function-shaped slots. Tier 3+ ui tasks fall through unchanged.
-    // Tier 2 self-verify ui tasks pick up verify-mode behaviour after
-    // `_verifyEntered` flips. Static slots (buildPrompt / execute) stay
-    // apply-only — the phase layer dispatches verify-mode separately.
-    expect(typeof uiBundle.plan?.initSession).toBe('function');
-    expect(typeof uiBundle.check?.evaluate).toBe('function');
-    expect(typeof uiBundle.tool?.onEvent).toBe('function');
-    expect(typeof uiBundle.command?.guard).toBe('function');
+  it('bundle publishes only the verify-mode router dispatch (post plan §5.4 / §5.6)', () => {
+    expect(uiBundle.plan?.initSession).toBeUndefined();
+    expect(uiBundle.check?.evaluate).toBeUndefined();
+    expect(uiBundle.tool?.onEvent).toBeUndefined();
+    expect(uiBundle.command?.guard).toBeUndefined();
     expect(typeof uiBundle.router?.routeAfterDone).toBe('function');
-    expect(typeof uiBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
-    // Static slots stay apply-only (ui has no apply override).
+    expect((uiBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     expect(uiBundle.plan?.buildPrompt).toBeUndefined();
     expect(uiBundle.execute).toBeUndefined();
     // ui has no decompose hook (no isExclusive override).

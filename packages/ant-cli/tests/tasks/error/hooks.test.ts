@@ -56,32 +56,16 @@ describe('tasks/_shared/registry — error entry', () => {
     expect(hooks?.orchestrator?.onTaskComplete).toBe(orchestratorHook.onTaskComplete);
   });
 
-  it('bundle publishes verify-shared slots (composeBundle dispatch)', () => {
-    // Post verify-shared refactor: composeBundle wires verify-mode
-    // dispatch onto every error bundle. Tier 3/4 error tasks (no
-    // selfVerifyOnDone) fall through the dispatch untouched —
-    // `requiresVerification` returns false → apply hooks remain active.
-    // Tier 2 self-verify error tasks pick up the verify-mode hook surface
-    // once `_verifyEntered === true`.
-    expect(typeof errorBundle.check?.evaluate).toBe('function');
+  it('bundle publishes only the verify-mode router dispatch (post plan §5.4 / §5.6)', () => {
+    // composeBundle now wires only `router.routeAfterDone` (verify-mode
+    // routing for tasks that own a verification cycle). Other slots
+    // (check.evaluate, tool.onEvent, orchestrator.hasOwnAttemptCounter)
+    // were retired with the Session.
     expect(typeof errorBundle.router?.routeAfterDone).toBe('function');
-    expect(typeof errorBundle.tool?.onEvent).toBe('function');
-    // Orchestrator attempt-counter fields are now task-instance-aware:
-    // hasOwnAttemptCounter is a function that gates on requiresVerification.
-    // Tier 3/4 error tasks return false (uses `_failedAttempts`); Tier 2
-    // self-verify error tasks return true (uses Session.attempts()).
-    expect(typeof errorBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
-    const tier3ErrorTask = task('e1') as any;
-    expect((errorBundle.orchestrator?.hasOwnAttemptCounter as any)(tier3ErrorTask)).toBe(false);
-    const tier2SelfVerifyErrorTask = task('e2', { selfVerifyOnDone: true } as any) as any;
-    expect((errorBundle.orchestrator?.hasOwnAttemptCounter as any)(tier2SelfVerifyErrorTask)).toBe(true);
-    // Scheduling stays unimplemented — error tasks have no
-    // type-specific cross-task barriers.
+    expect(errorBundle.check?.evaluate).toBeUndefined();
+    expect(errorBundle.tool?.onEvent).toBeUndefined();
+    expect((errorBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     expect(errorBundle.scheduling).toBeUndefined();
-    // budgetExhaustedHint NOT defaulted to verify hint by composeBundle —
-    // checkTaskStatus reads it as a static string and the verify hint is
-    // wrong for apply-phase budget exhaustion. Verification task type
-    // wires the verify hint statically through its bundle shim.
     expect(errorBundle.check?.budgetExhaustedHint).toBeUndefined();
   });
 });
@@ -95,7 +79,6 @@ function guardCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): any {
     activePhase: opts.activePhase ?? 'execute',
     currentTaskType: 'error',
     verificationSession: undefined,
-    isDeepDiagnostic: false,
     fileSystem: undefined,
     chatStatus: undefined,
     workingDir: '/tmp',

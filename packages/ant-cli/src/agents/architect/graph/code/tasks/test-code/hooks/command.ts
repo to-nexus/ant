@@ -29,7 +29,6 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import type { Gate } from '../../_shared/verify/gates';
 
 /**
  * Match install / add commands across the Node / Python / Ruby / Rust
@@ -79,7 +78,7 @@ function reject(command: string, reason: string): ToolResult {
  */
 export function guard(
   ctx: ToolExecutionContext,
-  args: { command: string; verifies?: Gate },
+  args: { command: string; verifies?: string },
 ): ToolResult | null {
   const { command, verifies } = args;
 

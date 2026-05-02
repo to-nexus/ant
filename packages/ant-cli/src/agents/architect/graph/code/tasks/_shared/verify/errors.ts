@@ -1,30 +1,24 @@
 /**
  * Verification terminal errors — typed taxonomy for "this task cannot
- * converge". R2: model-only.
+ * converge".
  */
-
-import type { VerificationSnapshot } from './snapshot';
 
 export type VerificationTerminalKind =
   | 'max_retries_exceeded'
-  | 'no_progress'
   | 'unresolved_violations'
   | 'batch_cycle_limit'
-  | 'missed_done_loop';
+  | 'orchestrator_fail_limit';
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;
-  readonly carryOver?: VerificationSnapshot | null;
 
   constructor(
     kind: VerificationTerminalKind,
     message: string,
-    carryOver?: VerificationSnapshot | null,
   ) {
     super(message);
     this.name = 'VerificationTerminalError';
     this.kind = kind;
-    this.carryOver = carryOver;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }

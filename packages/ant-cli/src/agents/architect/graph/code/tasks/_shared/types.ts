@@ -132,10 +132,9 @@ export function toPlanPromptResult(value: string | PlanPromptResult): PlanPrompt
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * Environment inputs sampled by the phase layer before calling
- * `initSession`. Keeps the Session constructor decoupled from phase helpers
- * (`isTypeScriptProject`, `detectTestFilesFromDisk`) so the hook layer stays
- * pure wrt `tasks/{type}/model/`. Populated by `nodes/plan/parts/entry.ts`.
+ * Environment inputs sampled by the phase layer at plan entry. Carried
+ * historically by `initSession`; now consumed only by `handleFreshEntry`
+ * for task types that need to inspect TS / test presence.
  */
 export interface InitSessionEnv {
   isTs: boolean;
@@ -143,19 +142,6 @@ export interface InitSessionEnv {
 }
 
 export interface TaskPlanHook {
-  /**
-   * Idempotent session hydration called at plan-node entry. Task types that
-   * carry a session (currently only `verification`) populate `state.{type}`
-   * here; non-session task types leave this undefined. Callers must invoke
-   * this BEFORE any subsequent hook so those hooks may assume the session
-   * exists.
-   *
-   * Introduced in T4b-α so `state.verification` is populated on every
-   * fresh / retry / reverify plan entry, not only on resume. Before T4b-α
-   * the session was only rehydrated from carry-over; fresh entries fell
-   * back to the legacy `_verification*` fields.
-   */
-  initSession?(state: ArchitectGraphState, env: InitSessionEnv): void;
   /**
    * Fully override the plan-prompt string. Return the composed prompt (already
    * concatenated with any basis section). Used by verification / error whose
@@ -248,9 +234,9 @@ export interface TaskPlanHook {
   /**
    * Optional fresh-entry hook. Called by the plan node on a brand-new
    * task entry (not retry / reverify / tool-loop re-entry). Verification
-   * publishes this to seed the Session + log a banner; the caller forwards
-   * `needsInstallObservation` into a `recomputeInstallNeeded` call so the
-   * verify SSOT does not need a phase-layer dependency.
+   * publishes this to flag the install-observation request; the caller
+   * forwards `needsInstallObservation` into a `recomputeInstallNeeded`
+   * call so the verify SSOT does not need a phase-layer dependency.
    */
   handleFreshEntry?: (
     state: ArchitectGraphState,
@@ -259,8 +245,6 @@ export interface TaskPlanHook {
 }
 
 export interface FreshEntryResult {
-  /** Session reference to commit on the plan-entry delta. */
-  verificationDelta?: ArchitectGraphState['verification'];
   /** True when the caller should run `recomputeInstallNeeded` after the hook. */
   needsInstallObservation?: boolean;
 }
@@ -286,18 +270,14 @@ export interface TaskCommandHook {
 
 export interface TaskCheckHook {
   /**
-   * Return a type-specific violation, if any. Sync return is preferred for
-   * the common case (verification gate check reading only session state);
-   * async return is allowed for hooks that need filesystem / IO access
-   * (e.g. test-code guard that verifies real test files were written).
+   * Return a type-specific violation, if any. Optional — task types
+   * without check-time invariants leave the slot undefined.
    */
-  evaluate(state: ArchitectGraphState): Violation | null | Promise<Violation | null>;
+  evaluate?(state: ArchitectGraphState): Violation | null | Promise<Violation | null>;
   /**
    * Optional hint rendered on the `budget_exhausted` violation's
-   * `suggestedFix` when this task type hits the call-budget guard.
-   * Replaces the legacy `task.type === 'verification'` branch at
-   * `graph.ts` L120 / `workerGraph.ts` L156. Task types that omit the
-   * hint get the generic "break down the scope" message.
+   * `suggestedFix` when this task type hits the call-budget guard. Task
+   * types that omit the hint get the generic "break down the scope" message.
    */
   budgetExhaustedHint?: string;
 }
@@ -334,48 +314,9 @@ export interface TaskCompleteCtx {
 
 export interface TaskOrchestratorHook {
   /**
-   * True when this task owns a unified attempt counter on its session.
-   * False / undefined means the orchestrator should consult its shared
-   * `_failedAttempts` counter.
-   *
-   * Function-shaped to support task-instance dispatch: a bundle may
-   * report `true` only for tasks that actually own a verification cycle
-   * (`requiresVerification(task)` — Tier 3/4 verification + Tier 2
-   * self-verify). Non-self-verify tasks of the same type fall through
-   * to the shared counter.
-   *
-   * Boolean shape is also accepted for legacy bundles where the answer
-   * is type-static (returns the same value for every task of that
-   * type). The orchestrator normalises both forms.
-   */
-  hasOwnAttemptCounter?: boolean | ((task: CodeTask) => boolean);
-  /** Only read when `hasOwnAttemptCounter` resolves to true for the task. */
-  attemptCount?(task: CodeTask): number;
-  /**
-   * Re-seed the worker subgraph's initial state with a task-type-specific
-   * snapshot carried on `task.resumeState`. Called from
-   * `TaskWorker.executeTask` after the task-type-blind restore block
-   * rebuilds the cross-task fields (planText / conversations / etc).
-   *
-   * Verification rebuilds `state.verification` from its
-   * `VerificationSnapshot`; non-session task types omit the hook and the
-   * call is a no-op.
-   *
-   * Note: snapshot *capture* / *attach* remains task-type-blind — the
-   * orchestrator writes the full `WorkerSnapshot` onto `task.resumeState`
-   * at all three carry-over boundaries (transient re-queue, interruption,
-   * batch split) because the cross-task fields (planText / conversations /
-   * retries / violations / enforcementHistory) must be preserved regardless
-   * of `task.type`. Restore is the only asymmetric side because it needs
-   * to revive the session *instance* from its plain-object snapshot
-   * projection.
-   */
-  restoreIntoWorkerState?(workerState: Record<string, unknown>, resume: unknown): void;
-  /**
    * Invoked AFTER a task is marked complete but BEFORE the next worker is
    * spawned. Replaces the inline `task.type === 'error'` auto-add-final-
-   * verification branches at `graph.ts` L309 (sequential checkTaskStatus)
-   * and L511 (parallelOrchestrator.onTaskComplete). Hooks may mutate the
+   * verification branches in the orchestrator. Hooks may mutate the
    * task queue (e.g. push a follow-up task) but MUST NOT reach back into
    * arbitrary graph state.
    */

@@ -3,7 +3,7 @@ import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { computeBudgetFromPlanText } from '../outcome/budget';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
-import { clearForTaskBoundary } from '../../../tasks/_shared/verify/sessionLifecycle';
+import { clearForTaskBoundary } from '../../../tasks/_shared/verify/markVerifyEntered';
 import type { PlanEntryContext } from '../entry';
 
 /**

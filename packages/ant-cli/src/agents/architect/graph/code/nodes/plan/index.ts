@@ -39,7 +39,6 @@ import {
 } from './shortcut';
 import { MAX_BATCH_SPLIT_CYCLES } from '../../tasks/_shared/batchSplit';
 import { runPlanRAG } from './rag';
-import { normalizePlanForHash } from '../../tasks/_shared/verify/planHash';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 
 // Back-compat re-exports.
@@ -50,7 +49,6 @@ export { runPlanToolLoopPhase } from './llm';
 /** Test-only exports for verification scenario harness L1 unit tests. */
 export const __testing__ = {
   finalizePlanOutcome,
-  normalizePlanForHash,
   MAX_BATCH_SPLIT_CYCLES,
   resolvePlanEntry,
   runPlanToolLoopPhase,
@@ -222,9 +220,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     planTextRaw === '' && !planNeedsText ? 'verification-short-circuit' : undefined;
 
   // STEP 3.5 ~ STEP 4 — single SSOT for batchSplit + emptyImpl shortcut +
-  // session.onPlanApplied + tracePlanFinalize + state shape. The two
-  // former call sites (this one and `runPlanToolLoopPhase`) converge on
-  // `finalizePlanOutcome`; drift between them is no longer possible.
+  // tracePlanFinalize + state shape. The two former call sites (this one
+  // and `runPlanToolLoopPhase`) converge on `finalizePlanOutcome`; drift
+  // between them is no longer possible.
   const updatedState = finalizePlanOutcome(state, nextTask, {
     preSplitPlanText: planTextRaw,
     callSite: 'plan-index',
