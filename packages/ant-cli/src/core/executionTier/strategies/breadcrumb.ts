@@ -128,7 +128,15 @@ async function writeBreadcrumb(
       `📝 [Tier] breadcrumb appended (scope=${breadcrumb.scope} touched=${touchedCount})`,
     );
   } catch (err) {
-    console.warn('⚠️  [Tier] appendBreadcrumb failed:', err);
+    // Identifier-bearing warn — pairs with `📝 [Learn] BC eval — …` so an
+    // operator can decide between (a) the outer gate skipped emission and
+    // (b) emission was attempted but the SessionPort write failed. Without
+    // jobId/turnId here a silent-failure case is indistinguishable from
+    // the gate-skip case.
+    console.warn(
+      `⚠️  [Tier] appendBreadcrumb failed (jobId=${jobId}, turnId=${turnId}, touched=${touchedCount}):`,
+      err,
+    );
   }
 }
 
