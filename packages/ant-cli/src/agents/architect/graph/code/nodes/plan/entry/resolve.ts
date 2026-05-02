@@ -21,6 +21,7 @@ import { VerificationBudget } from '../../../tasks/_shared/verify/terminal/budge
 import { requiresVerification } from '../../../tasks/_shared/verify/predicate';
 import { isVerificationTask } from '../../../tasks/verification';
 import { recomputeInstallNeeded } from './installNeeded';
+import { getExecutionLogger } from '../../../../../../../core/utils/executionLogger';
 
 export interface PlanEntryContext {
   nextTask: CodeTask;
@@ -223,19 +224,19 @@ async function handleFreshTaskEntry(
   }
 
   if (state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger } = await import('../../../../../../../core/utils/executionLogger');
-    const execLogger = getExecutionLogger({
+    // Static import + synchronous writeQueue update — see executionLogger
+    // contract (vast-curling-perch C-3 RCA).
+    void getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
       jobType: 'code',
-    });
-    execLogger.logTaskStart(nextTask.id, {
+    }).logTaskStart(nextTask.id, {
       taskName: nextTask.name,
       taskType: nextTask.type,
       priority: nextTask.priority,
       isParallel: !!(nextTask as any).parallelGroup,
       parallelGroup: (nextTask as any).parallelGroup,
-    }).catch(() => {});
+    }).catch(() => { /* non-blocking */ });
   }
 
   // TaskOrchestrator handles kanban for parallel mode.

@@ -26,6 +26,7 @@ import * as routing from "./routing";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import type { InterruptionReason } from '../../../../core/types/session';
+import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 
 /**
  * Parallel Orchestrator node for code job.
@@ -122,19 +123,16 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       },
       onTaskFailure: (task, error, workerId) => {
         console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
-        // Log task_fail to debug/logs/ for post-mortem analysis
+        // Log task_fail to debug/logs/ for post-mortem analysis.
+        // Static import + synchronous writeQueue update — see
+        // executionLogger contract (vast-curling-perch C-3 RCA).
         if (state.context?.featurePath && state._httpJobId) {
-          const _failFeaturePath = state.context.featurePath;
-          const _failJobId = state._httpJobId;
-          void (async () => {
-            const { getExecutionLogger: getExecLogFail } = await import('../../../../core/utils/executionLogger');
-            const failLogger = getExecLogFail({
-            featurePath: _failFeaturePath,
-            jobId: _failJobId,
-            jobType: 'code',
-          });
           const isRecLimit = /recursion limit/i.test(error.message);
-          failLogger.logTaskFail(task.id, {
+          void getExecutionLogger({
+            featurePath: state.context.featurePath,
+            jobId: state._httpJobId,
+            jobType: 'code',
+          }).logTaskFail(task.id, {
             taskName: task.name,
             reason: isRecLimit ? 'recursion_limit' : 'unknown',
             errorMessage: error.message.substring(0, 500),
@@ -143,8 +141,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             outputTokens: task.tokenUsage?.outputTokens,
             cacheReadTokens: task.tokenUsage?.cacheReadTokens,
             llmCallCount: task.tokenUsage?.callCount,
-          }).catch(() => {});
-          })().catch(() => {});
+          }).catch(() => { /* non-blocking */ });
         }
       },
       onWorkerTerminate: (workerId) => {
@@ -163,21 +160,20 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         state.deps?.kanbanUpdate?.clearWorkerPhaseTokenUsage?.(workerId);
       },
       onInterruption: (reason, runningTaskIds) => {
-        // ✅ Log job_interrupted event to debug/logs/
+        // ✅ Log job_interrupted event to debug/logs/.
+        // Static import + synchronous writeQueue update — see
+        // executionLogger contract (vast-curling-perch C-3 RCA).
         if (state.context?.featurePath && state._httpJobId) {
-          import('../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-            const execLogger = getExecutionLogger({
-              featurePath: state.context.featurePath!,
-              jobId: state._httpJobId!,
-              jobType: 'code',
-            });
-            execLogger.logJobInterrupted({
-              reason,
-              runningTaskIds,
-              remainingTaskCount: taskQueue.size(),
-              completedTaskCount: orchestrator.getCompletedTasks().length,
-            }).catch(() => {});
-          }).catch(() => {});
+          void getExecutionLogger({
+            featurePath: state.context.featurePath,
+            jobId: state._httpJobId,
+            jobType: 'code',
+          }).logJobInterrupted({
+            reason,
+            runningTaskIds,
+            remainingTaskCount: taskQueue.size(),
+            completedTaskCount: orchestrator.getCompletedTasks().length,
+          }).catch(() => { /* non-blocking */ });
         }
       },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
@@ -301,10 +297,11 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
 
-  // ✅ Log parallel_start (and job_resumed if resuming) events to debug/logs/
+  // ✅ Log parallel_start (and job_resumed if resuming) events to debug/logs/.
+  // Static import + synchronous writeQueue update — see executionLogger
+  // contract (vast-curling-perch C-3 RCA).
   const parallelStartTime = Date.now();
   if (state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
     const execLogger = getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
@@ -312,16 +309,16 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     });
     // ✅ Log job_resumed when this is a resume run with an existing task queue
     if (state.isResume) {
-      execLogger.logJobResumed({
+      void execLogger.logJobResumed({
         fromCompletedTaskCount: (state.completedTasksDetails || []).length,
         remainingTaskCount: taskQueue.size(),
-      }).catch(() => {});
+      }).catch(() => { /* non-blocking */ });
     }
     const allTaskIds = taskQueue.getAll().map((t: any) => t.id);
-    execLogger.logParallelStart({
+    void execLogger.logParallelStart({
       taskIds: allTaskIds,
       concurrency: maxWorkers,
-    }).catch(() => {});
+    }).catch(() => { /* non-blocking */ });
   }
 
   // Register orchestrator for graceful shutdown (SIGTERM handler)
@@ -345,18 +342,18 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Remaining: ${result.remainingQueue.length}`);
   console.log(`   Interrupted: ${result.hasInterruptedTasks}`);
 
-  // ✅ Log parallel_complete event to debug/logs/
+  // ✅ Log parallel_complete event to debug/logs/.
+  // Static import + synchronous writeQueue update — see executionLogger
+  // contract (vast-curling-perch C-3 RCA).
   if (state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger: getExecLog } = await import('../../../../core/utils/executionLogger');
-    const execLog = getExecLog({
+    void getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
       jobType: 'code',
-    });
-    execLog.logParallelComplete({
+    }).logParallelComplete({
       taskIds: result.completedTasks.map((t: any) => t.id),
       elapsedMs: Date.now() - parallelStartTime,
-    }).catch(() => {});
+    }).catch(() => { /* non-blocking */ });
   }
   if (result.failedTasks.length > 0) {
     for (const f of result.failedTasks) {
