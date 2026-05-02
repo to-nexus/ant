@@ -309,9 +309,4 @@ export class FileSystemAdapter implements FileSystemPort {
   getRootPath(): string {
     return this.basePath;
   }
-
-  /** @deprecated Use getRootPath() instead */
-  getWorkspaceRoot(): string {
-    return this.getRootPath();
-  }
 }
