@@ -9,25 +9,36 @@
  *   - `executeRouter.isFinalTask` predicate (Safety Net A/B/E)
  *   - `_shared/verify/prompt/buildPlanPrompt` and friends (only fire when
  *     verify-mode is active)
+ *   - `nodes/plan/shortcut/{prePlanned,resumeInterrupted}` regression
+ *     guards (skip-plan fast paths bail when `isVerifyModeActive(state)`
+ *     is true so verification always re-runs gates).
  *
  * **Single writer:** `markVerifyEntered(state)`. Set call sites, all
- * inside `_shared/verify/`:
+ * outside this module proper but each living in a node owning its task
+ * lifecycle hand-off:
  *
- *   1. `_shared/verify/initSession` — verification task path. The plan
- *      node's `initSession` dispatch fires on every fresh entry; this
- *      flips the flag the first time a verification task's plan node
- *      runs.
- *   2. `executeRouter` `<done>` arm — self-verify task path. When the
- *      apply phase emits `<done>` and `requiresVerification(task)` is
- *      true, the router calls this helper just before routing to plan
- *      (reverify entry). The next plan node entry sees `_verifyEntered`
- *      and dispatches the verify-mode hooks.
+ *   1. `nodes/plan/entry/resolve.ts::handleFreshTaskEntry` —
+ *      Tier 3/4 dedicated verification task path. Fires on every fresh
+ *      plan-node entry where `isVerificationTask(nextTask)` (i.e. cycle 1
+ *      of the queue pop AND every subsequent Path A re-queue cycle).
+ *      Replaces the retired `_shared/verify/initSession` writer that the
+ *      `vast-curling-perch` cleanup deleted; the cleanup commit
+ *      `4673ad7f` removed `initSession.ts` without replacing the
+ *      `markVerifyEntered` call site, leaving every dedicated
+ *      verification task running with `_verifyEntered=false` for its
+ *      entire lifetime — a silent functional drift.
+ *   2. `routers/executeRouter` `<done>` arm — Tier 2 self-verify task
+ *      path. When the apply phase emits `<done>` and
+ *      `requiresVerification(task)` is true, the router calls this
+ *      helper just before routing to plan (reverify entry). The next
+ *      plan node entry sees `_verifyEntered` and dispatches the
+ *      verify-mode hooks.
  *
- * **Reset writer:** `clearForTaskBoundary()` from `sessionLifecycle`
- * returns `{ _verifyEntered: false }` as a delta object. Phase code
- * spreads it into the success / batch-split / pre-planned return so
- * the next task starts in apply-mode. No phase code writes
- * `_verifyEntered: false` directly.
+ * **Reset writer:** `clearForTaskBoundary()` returns
+ * `{ _verifyEntered: false }` as a delta object. Phase code spreads it
+ * into the success / batch-split / pre-planned return so the next task
+ * starts in apply-mode. No phase code writes `_verifyEntered: false`
+ * directly.
  *
  * R2 — depends only on the graph state shape; no `nodes/` / `routers/` /
  * `parallel/` imports.

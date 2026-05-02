@@ -4,6 +4,7 @@ import { CodeTask } from '../../../../../types/task';
 import { computeBudgetFromPlanText } from '../outcome/budget';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import { clearForTaskBoundary } from '../../../tasks/_shared/verify/markVerifyEntered';
+import { isVerifyModeActive } from '../../../tasks/_shared/verify';
 import type { PlanEntryContext } from '../entry';
 
 /**
@@ -13,6 +14,15 @@ import type { PlanEntryContext } from '../entry';
  * sub-task owns a fixed scope. Forcing them through plan-phase tool-loop
  * on retry would re-run diagnostics the parent distilled (cascade
  * regression) or lose the slice boundary (test-code).
+ *
+ * **Verify-mode invariant** (vast-curling-perch follow-up): symmetric
+ * with `maybeResumeInterrupted`. A task that has entered verify-mode
+ * MUST re-run gates via the plan-tool-loop; pre-plan injection would
+ * skip the diagnostic gate entirely. The `acceptsPrePlanText` flag
+ * already gates dispatch to error/test-code only (verification doesn't
+ * publish it), so today this guard is defence-in-depth — but locking
+ * the invariant here protects against a future bundle accidentally
+ * publishing `acceptsPrePlanText:true` on a verify-mode-eligible task.
  */
 export async function maybePrePlannedFastPath(
   state: ArchitectGraphState,
@@ -20,6 +30,7 @@ export async function maybePrePlannedFastPath(
   workflowExit: (state: ArchitectGraphState) => Promise<void>,
 ): Promise<ArchitectGraphState | null> {
   const { nextTask, isRetry } = entry;
+  if (isVerifyModeActive(state)) return null;
   const prePlanText = (nextTask as CodeTask).prePlanText;
   const isBatchSplitSub =
     hooksForTaskType(nextTask.type)?.plan?.acceptsPrePlanText === true;
