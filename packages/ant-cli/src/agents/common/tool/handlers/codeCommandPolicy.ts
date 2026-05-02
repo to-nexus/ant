@@ -1,19 +1,17 @@
 /**
  * CodeCommandPolicy — Code job-specific guards for run_command
  *
- * These guards are ONLY applied to Code job's tool registry.
- * Design/Plan/Ask jobs use the base executeCommand without these policies.
+ * Only applied to Code job's tool registry. Design/Plan/Ask jobs use the
+ * base executeCommand without these policies.
  *
- * After T6 the body is task-type-blind (R1): guard logic lives in
+ * R1 — task-type-blind body. Guard logic lives in
  * `tasks/{type}/hooks/command.ts` and is dispatched via the shared
  * registry. Only cross-task concerns (Go build block outside
- * verification, diagnostic-inspect bypass) remain inline.
+ * verification responsibility) remain inline.
  */
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import type { TaskType } from '@ant/shared';
-import type { Gate } from '../../../architect/graph/code/tasks/_shared/verify/gates';
-import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/_shared/verify/gates';
 import { hooksForTaskType } from '../../../architect/graph/code/tasks/_shared/registry';
 
 export interface CodeCommandPolicyResult {
@@ -42,36 +40,18 @@ function makeRejection(command: string, reason: string): ToolResult {
  */
 export function applyCodeCommandPolicy(
   ctx: ToolExecutionContext,
-  args: { command: string; verifies?: Gate },
+  args: { command: string; verifies?: string },
 ): ToolResult | null {
   const { command } = args;
   const taskType = ctx.currentTaskType;
 
-  // Diagnostic inspect commands (cat/ls/pnpm why/tsc --version/etc.) are
-  // always allowed and bypass every loop-guard below. They do not mutate
-  // tracker state and are essential for config/dep-version root-cause discovery.
-  // Allow-list lives in tasks/_shared/verify/gates.ts.
-  if (isDiagnosticInspectCommand(command)) {
-    return null;
-  }
-
   // Go build/test/run/vet block. Verification responsibility holders run
-  // these as part of their verify cycle: Tier 3/4 dedicated verification
-  // tasks (verify-mode plan/execute), or Tier 2 self-verify tasks once
-  // they enter verify-mode (`ctx.verificationSession` non-null indicates
-  // an active Session — composeBundle dispatches command guard to
-  // `_shared/verify/commandGuard` in that case). Apply-phase callers
-  // (Tier 2 self-verify before reverify, Tier 3/4 error/feature/ui/setup)
-  // never run Go build gates directly — they apply fixes and defer
-  // verification to the dedicated cycle.
-  //
-  // The previous `selfVerifyOnDone` exception was retired alongside the
-  // two-cycle (apply→reverify) refactor. Self-verify Tier 2 tasks now
-  // transition into verify-mode through `executeRouter.routeAfterDone`
-  // and run gates against the Session-tracked `_shared/verify/commandGuard`,
-  // so apply-phase build commands are uniformly blocked.
+  // these as part of their verify cycle (`ctx.verifyModeActive === true`).
+  // Apply-phase callers (Tier 2 self-verify before reverify, Tier 3/4
+  // error/feature/ui/setup) never run Go build gates directly — they apply
+  // fixes and defer verification to the dedicated cycle.
   const GO_BUILD_PATTERNS = /\bgo\s+(build|test|run|vet)\b/;
-  const allowedByVerifyMode = !!ctx.verificationSession;
+  const allowedByVerifyMode = ctx.verifyModeActive === true;
   if (GO_BUILD_PATTERNS.test(command) && !allowedByVerifyMode) {
     console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
     return makeRejection(
@@ -80,7 +60,6 @@ export function applyCodeCommandPolicy(
     );
   }
 
-  // Task-type-specific guards (verification loop/order gating lives here).
-  // Phase layer is blind — dispatch via the shared registry (R1).
-  return hooksForTaskType(taskType as TaskType | undefined)?.command?.guard(ctx, args) ?? null;
+  // Task-type-specific guards.
+  return hooksForTaskType(taskType as TaskType | undefined)?.command?.guard(ctx, args as any) ?? null;
 }

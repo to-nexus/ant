@@ -25,7 +25,6 @@ import {
   isVerifyModeActive,
   markVerifyEntered,
   requiresVerification,
-  VerificationBudget,
 } from '../tasks/_shared/verify';
 
 /**
@@ -163,33 +162,10 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     }
   }
 
-  // Safety Net C: Final task without progress (computed by execute node, read-only here).
-  // Verification tasks use threshold=1 by default. When planText is present (inline fix),
-  // threshold=2 allows recovery from a thinking-only first call: the second call runs
-  // with enableThinking=false (isAfterToolCall=true) and produces actual tool calls.
-  const finalTaskLoopCount = state._finalTaskLoopCount || 0;
-  const isVerification = currentTask ? isVerificationTask(currentTask) : false;
-  const loopThreshold = VerificationBudget.loopThreshold(state, currentTask as CodeTask | undefined);
+  // Safety Net C (verification-only loop guard) was retired by plan §5.3.
+  // Runaway is bounded by Safety Net D/E (`_executeCallIndex` budget),
+  // LangGraph's `recursionLimit`, and the `batch_cycle_limit` fail-safe.
 
-  // Diagnostic: pair with the `[diag] execute return:` line so the
-  // counter axis is visible from both the writer (execute) and the
-  // reader (router) perspective. Cheap, JSON-friendly, fires on every
-  // route decision regardless of task type.
-  console.log(
-    `[diag] routeAfterExecute: _finalTaskLoopCount=${finalTaskLoopCount} ` +
-    `threshold=${loopThreshold} ` +
-    `planText.len=${state.planText?.length ?? 0} ` +
-    `isVerification=${isVerification} ` +
-    `done=${response.done} ` +
-    `tools=${response.toolCalls?.length ?? 0} ` +
-    `_executeCallIndex=${state._executeCallIndex ?? 0}`,
-  );
-
-  if (finalTaskLoopCount >= loopThreshold) {
-    console.warn(`⚠️  [Router] Task stuck in loop (${finalTaskLoopCount}/${loopThreshold} iterations, no tools, no done)`);
-    console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
-    return 'checkTaskStatus';
-  }
   
   // 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)
   if (state.fileErrors && state.fileErrors.length > 0) {

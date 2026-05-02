@@ -16,6 +16,7 @@ import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { hooksIfActive } from '../../tasks/_shared/registry';
+import { isVerifyModeActive } from '../../tasks/_shared/verify';
 
 const registry = createCodeToolRegistry();
 
@@ -43,12 +44,11 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
       currentTaskType: (state.currentTask as any)?.type,
-      // Note: `currentTaskSelfVerifyOnDone` was retired with the verify-shared
-      // refactor. Verify-mode dispatch is now signalled exclusively by
-      // `state.verification` (Session presence) → `ctx.verificationSession`
-      // populated below. Apply-phase command guards no longer need the
-      // selfVerifyOnDone flag because gate commands are uniformly blocked in
-      // apply phase (the verify cycle re-runs them in reverify).
+      // Verify-mode dispatch is signalled by `verifyModeActive` below
+      // (`requiresVerification(task) && _verifyEntered`). Apply-phase
+      // command guards no longer need the selfVerifyOnDone flag because
+      // gate commands are uniformly blocked in apply phase (the verify
+      // cycle re-runs them in reverify).
       // Batch-split sub-tasks carry a non-empty `prePlanText` injected by
       // `processDiagnosticBatchSplit`. Surface this as a flat flag so
       // task-type command guards (test-code install block) can reject
@@ -59,18 +59,12 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
         ((state.currentTask as any).prePlanText as string).length > 0
           ? true
           : undefined,
-      // T4b-β: verification cycle state is carried by `state.verification`
-      // (VerificationSession). Tool handlers that need gate / install
-      // information read it off the session directly via the
-      // `verificationSession` slot — no tracker fan-out from state is
-      // necessary any more. Dep install status itself lives on the codebase
-      // (package.json vs node_modules/<name>) and is observed directly by
-      // `areDepsInstalled` at plan entry (F3), not carried as a tool signal.
-      verificationSession: state.verification,
+      // Verify-mode active flag — set when the current task is a verification
+      // responsibility holder AND `_verifyEntered === true`. Command-policy
+      // guards use this to differentiate apply-phase callers from
+      // verification cycles (Go build allow-list, etc.).
+      verifyModeActive: isVerifyModeActive(state),
       retries: state.retries,
-      // Deep-diagnostic activates once the Session's attempt count crosses
-      // the threshold; the hook layer owns the predicate.
-      isDeepDiagnostic: state.verification?.inDeepMode() ?? false,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,
       retriever: state.deps?.retriever as any,
@@ -218,8 +212,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     // `routeAfterDone`'s `madeFileChanges` always read `false` and routed
     // to checkTaskStatus instead of plan(reverify). The sticky cross-cycle
     // semantics are now handled exclusively by `Session.passed()` /
-    // `session.isComplete()` plus `checkRetryTermination`'s plan-hash
-    // repeat detection.
+    // `session.isComplete()` plus the `batch_cycle_limit` fail-safe.
     const touchedFiles = state._activePhase !== 'plan' && executionEvents.some(e =>
       (e.result.sideEffects || []).some(ef => ef.type === 'verificationInvalidated'),
     );

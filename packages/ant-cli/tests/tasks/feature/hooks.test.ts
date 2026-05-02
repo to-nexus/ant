@@ -73,41 +73,22 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes verify-shared dispatch slots (composeBundle wired)', () => {
-    // Post verify-shared refactor: feature is wired through `composeBundle`
-    // so the hook surface includes verify-mode dispatch wrappers for the
-    // function-shaped slots (initSession / checkRetryTermination /
-    // command.guard / check.evaluate / tool.onEvent /
-    // router.routeAfterDone / orchestrator.hasOwnAttemptCounter). The
-    // wrappers are no-ops for Tier 3+ feature tasks — `requiresVerification`
-    // returns false and the wrapped hooks delegate to apply (which is
-    // undefined for feature today). Tier 2 self-verify feature tasks pick
-    // up verify-mode behaviour once `_verifyEntered === true`.
-    //
-    // Static slots (`buildPrompt` / `execute`) stay apply-mode only here —
-    // the phase layer (planGeneration.ts / buildMessages.ts) dispatches
-    // verify-mode by reading `_shared/verify/buildPrompt` and
-    // `_shared/verify/executeHook` directly when `isVerifyEntered(state)`
-    // is true. Forwarding apply only here keeps the "no override → generic
-    // plan/execute base path" fallback intact for Tier 3+ feature tasks.
-    expect(typeof featureBundle.plan?.initSession).toBe('function');
-    expect(typeof featureBundle.plan?.checkRetryTermination).toBe('function');
-    expect(typeof featureBundle.check?.evaluate).toBe('function');
-    expect(typeof featureBundle.tool?.onEvent).toBe('function');
-    expect(typeof featureBundle.command?.guard).toBe('function');
+  it('bundle publishes only the verify-mode router dispatch (post plan §5.4 / §5.6)', () => {
+    // composeBundle now wires only `router.routeAfterDone`. Other slots
+    // were retired with the verification Session.
+    expect(featureBundle.plan?.initSession).toBeUndefined();
+    expect(featureBundle.plan?.checkRetryTermination).toBeUndefined();
+    expect(featureBundle.check?.evaluate).toBeUndefined();
+    expect(featureBundle.tool?.onEvent).toBeUndefined();
+    expect(featureBundle.command?.guard).toBeUndefined();
     expect(typeof featureBundle.router?.routeAfterDone).toBe('function');
     // Apply-only static slots remain undefined for feature (no apply
     // hook wired in tasks/feature/index.ts).
     expect(featureBundle.plan?.buildPrompt).toBeUndefined();
     expect(featureBundle.execute).toBeUndefined();
-    // hasOwnAttemptCounter is now a function (task-instance-aware) —
-    // returns false for ordinary feature tasks (no selfVerifyOnDone), true
-    // only for Tier 2 self-verify feature tasks that own a verification cycle.
-    expect(typeof featureBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
-    const ordinaryFeature = task('f-plain') as any;
-    expect((featureBundle.orchestrator?.hasOwnAttemptCounter as any)(ordinaryFeature)).toBe(false);
-    const selfVerifyFeature = task('f-sv', { selfVerifyOnDone: true } as any) as any;
-    expect((featureBundle.orchestrator?.hasOwnAttemptCounter as any)(selfVerifyFeature)).toBe(true);
+    // hasOwnAttemptCounter slot retired; verification responsibility holders
+    // share the orchestrator's `_failedAttempts` axis.
+    expect((featureBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
   });
 
   it('scheduling exposes integration-consumer + 4 producer flags — no other consumer flags', () => {

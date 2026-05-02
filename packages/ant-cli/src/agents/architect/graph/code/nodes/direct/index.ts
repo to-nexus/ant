@@ -254,10 +254,8 @@ export async function direct(
         figmaFileKey: state.figmaFileKey,
         activePhase: 'execute',
         currentTaskType: undefined,
-        // Direct mode does not run verification tasks, so the Session is
-        // always absent here — the command policy falls through to the
-        // generic (non-verification) guard.
-        verificationSession: undefined,
+        // Direct mode does not run verification cycles.
+        verifyModeActive: false,
         retries: 0,
         referenceRequests: state.referenceRequests,
         resolvedActionMode: mode,

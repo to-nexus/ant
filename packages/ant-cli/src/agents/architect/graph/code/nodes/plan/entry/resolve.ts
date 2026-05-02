@@ -17,10 +17,10 @@ import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { detectTestFilesFromDisk, isTypeScriptProject } from '../../../tasks/_shared/verify/env';
-import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
 import { VerificationBudget } from '../../../tasks/_shared/verify/budget';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
+import { isVerificationTask } from '../../../tasks/verification';
 import { recomputeInstallNeeded } from './installNeeded';
 
 export interface PlanEntryContext {
@@ -61,7 +61,13 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
   if (entryReason === 'retry' && state.currentTask) {
     return await handleRetryEntry(state, flags);
   }
+  // Verification task type: every entry (fresh / cycle-N reverify) routes
+  // through the fresh-task entry handler. Only Tier 2 self-verify tasks
+  // (apply→verify transition) take the reverify path.
   if (entryReason === 'reverify' && state.currentTask) {
+    if (isVerificationTask(state.currentTask)) {
+      return await handleFreshTaskEntry(state, flags);
+    }
     return await handleReverifyEntry(state, flags);
   }
   return await handleFreshTaskEntry(state, flags);
@@ -105,7 +111,6 @@ async function handleRetryEntry(
     throw new VerificationTerminalError(
       'max_retries_exceeded',
       `Task "${nextTask.name}" failed after ${planRetries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
-      snapshotFromState(state)?.verification,
     );
   }
 
@@ -114,7 +119,6 @@ async function handleRetryEntry(
   // NODE_EXECUTE clear when plan returns through the tool_use branch).
   const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
   state._executeCallIndex = 0;
-  state._finalTaskLoopCount = 0;
   state.violations = [];
   state.conversations = {
     ...state.conversations,
@@ -122,7 +126,6 @@ async function handleRetryEntry(
   };
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
-    _finalTaskLoopCount: 0,
     violations: [],
     conversations: {
       [CONV_KEYS.NODE_EXECUTE]: [],
@@ -147,57 +150,25 @@ async function handleReverifyEntry(
   flags: PlanEntryFlags,
 ): Promise<PlanEntryResult> {
   const nextTask = state.currentTask!;
-  console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
-  console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
+  console.log(`\n🔄 [Plan] Post-execute verification entry: ${nextTask.name}\n`);
 
-  // FIRST verify-mode entry of a self-verify Tier 2 task → no Session yet.
-  // Used to decide whether NODE_PLAN needs a phase-boundary reset.
-  const isFirstVerifyEntry = !state.verification;
-
-  const tsProject = isTypeScriptProject(state);
-  const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
-  hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
-  VerificationBudget.bumpReverify(state);
-
-  // After bumping reverify, check whether the verify cycle has accumulated
-  // enough no-`<done>` rounds to permanent-fail. The other terminal axes
-  // reset across re-routes; only `Session._attempts` is monotonic across
-  // reverify cycles, so this is the missed-`<done>` escape hatch.
-  const snap = VerificationBudget.fromState(state, nextTask);
-  const reason = VerificationBudget.shouldGiveUp(snap, { maxRetries: state.maxRetries });
-  if (reason?.kind === 'missed_done_loop') {
-    throw new VerificationTerminalError(
-      'missed_done_loop',
-      `Verification task "${nextTask.name}" did not reach <done> after ${reason.current} reverify cycles (limit ${reason.threshold}).`,
-      snapshotFromState(state)?.verification,
-    );
-  }
-
-  // NODE_PLAN reset only on first verify-mode entry (apply→verify
-  // transition) — the apply phase's plan-tool-loop history was framed
-  // as a remediation/feature plan and would mix with the verification
-  // template. Subsequent reverify keeps NODE_PLAN intact.
-  const newConvs = isFirstVerifyEntry
-    ? { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
-    : { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
+  // Tier 2 self-verify (apply→verify transition). NODE_PLAN is preserved —
+  // the apply phase's plan dialogue stays visible to the LLM as part of the
+  // conversation history; the verify-mode template instructs it to plan
+  // afresh against gate output.
   state._executeCallIndex = 0;
-  state._finalTaskLoopCount = 0;
   state.violations = [];
-  state.conversations = newConvs;
+  state.conversations = {
+    ...state.conversations,
+    [CONV_KEYS.NODE_EXECUTE]: [],
+  };
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
-    _finalTaskLoopCount: 0,
     violations: [],
-    conversations: isFirstVerifyEntry
-      ? { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
-      : { [CONV_KEYS.NODE_EXECUTE]: [] },
+    conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
   };
 
   await recomputeInstallNeeded(state, { detectPmIfMissing: true });
-
-  // Surface (possibly fresh) Session in delta so the reducer commits the
-  // reference alongside the conversation clear.
-  delta.verification = state.verification;
 
   return {
     context: {
@@ -253,11 +224,9 @@ async function handleFreshTaskEntry(
     },
   };
 
-  // Fresh-entry side-effects (Session creation/hydration, install probe,
-  // banner log) are bundled into `plan.handleFreshEntry`. Verification
-  // publishes the hook ; other task types get `undefined` and the call
-  // is a no-op. Dispatched via `hooksForTaskType` (not `hooksIfActive`)
-  // because `state.currentTask` is not yet assigned in fresh-entry.
+  // Fresh-entry side-effects (currently: install-observation request) are
+  // bundled into `plan.handleFreshEntry`. Verification publishes the hook;
+  // other task types get `undefined` and the call is a no-op.
   const tsProject = isTypeScriptProject(state);
   const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
   const freshResult = hooksForTaskType(nextTask.type)?.plan?.handleFreshEntry?.(
@@ -266,9 +235,6 @@ async function handleFreshTaskEntry(
   );
   if (freshResult?.needsInstallObservation) {
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
-  }
-  if (freshResult?.verificationDelta) {
-    delta.verification = freshResult.verificationDelta;
   }
 
   if (state.context?.featurePath && state._httpJobId) {

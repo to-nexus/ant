@@ -53,19 +53,12 @@ export interface BaseTaskResumeState {
 }
 
 /**
- * Code-job resume state: base fields + verification snapshot.
+ * Code-job resume state. The verification cycle's only carry-over
+ * (`task.batchSplitCount`) is a first-class CodeTask field, not a
+ * resume-state field — re-queue paths assign it explicitly so it survives
+ * even when `resumeState` is omitted.
  */
-export interface CodeTaskResumeState extends BaseTaskResumeState {
-  /**
-   * VerificationSession snapshot — SSOT for verification-domain
-   * carry-over. Typed as `any` here to avoid importing from
-   * `graph/code/tasks/...` into `types/task.ts` (the module would then
-   * participate in a cycle with the graph state).
-   * Concrete shape: `VerificationSnapshot` (see
-   * `agents/architect/graph/code/tasks/_shared/verify/snapshot.ts`).
-   */
-  verification?: any;
-}
+export interface CodeTaskResumeState extends BaseTaskResumeState {}
 
 /**
  * Design-job resume state. Presently no job-specific fields; the type
@@ -108,6 +101,13 @@ export interface CodeTask extends BaseTask {
    * 1000) governs the gates instead.
    */
   selfVerifyOnDone?: boolean;
+  /**
+   * Number of batch-split cycles this verification responsibility task
+   * has triggered. SSOT for the `batch_cycle_limit` fail-safe (cap =
+   * `MAX_BATCH_SPLIT_CYCLES = 10`). Carried across re-queues by the
+   * orchestrator's `task.resumeState` round-trip.
+   */
+  batchSplitCount?: number;
   /**
    * Per-task SSOT for files mutated during execution.
    *

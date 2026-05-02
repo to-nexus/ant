@@ -61,23 +61,19 @@ describe('tasks/_shared/registry — setup entry', () => {
     expect(hooks?.execute?.skipCrossTaskContext).toBeUndefined();
   });
 
-  it('bundle publishes verify-shared dispatch slots (composeBundle wired)', () => {
-    // Post verify-shared refactor: setup bundles include verify-mode
-    // dispatch wrappers for function-shaped slots. Tier 3+ setup tasks
-    // fall through unchanged. Tier 2 self-verify setup tasks pick up
-    // verify-mode behaviour after `_verifyEntered` flips. Static slots
-    // stay apply-only.
-    expect(typeof setupBundle.plan?.initSession).toBe('function');
-    // Setup has no apply-phase buildPrompt override (it follows the
-    // generic plan base path); composeBundle forwards undefined.
+  it('bundle publishes only the verify-mode router dispatch (post plan §5.4 / §5.6)', () => {
+    // composeBundle now wires only `router.routeAfterDone`. Other slots
+    // (initSession, check.evaluate, tool.onEvent, command.guard) were
+    // retired with the Session. Setup has plan.extraTemplateVars from
+    // apply phase forwarded.
+    expect(setupBundle.plan?.initSession).toBeUndefined();
     expect(setupBundle.plan?.buildPrompt).toBeUndefined();
-    // Setup has plan.extraTemplateVars from apply phase forwarded.
     expect(typeof setupBundle.plan?.extraTemplateVars).toBe('function');
-    expect(typeof setupBundle.check?.evaluate).toBe('function');
-    expect(typeof setupBundle.tool?.onEvent).toBe('function');
-    expect(typeof setupBundle.command?.guard).toBe('function');
+    expect(setupBundle.check?.evaluate).toBeUndefined();
+    expect(setupBundle.tool?.onEvent).toBeUndefined();
+    expect(setupBundle.command?.guard).toBeUndefined();
     expect(typeof setupBundle.router?.routeAfterDone).toBe('function');
-    expect(typeof setupBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
+    expect((setupBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     // Setup has no CONSUMER scheduling flags (it's foundation work and
     // gated only by the priority-based `hasPreFeatureWork` check).
     expect(setupBundle.scheduling?.preIntegrationBarrier).toBeUndefined();

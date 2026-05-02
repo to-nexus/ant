@@ -595,10 +595,6 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
-      _finalTaskLoopCount: Annotation<any>({
-        reducer: (_prev: any, next: any) => next,
-        default: () => 0,
-      }),
       commandHistory: Annotation<any>,
       llmResponse: Annotation<any>,
       toolResults: Annotation<any>,
@@ -633,7 +629,6 @@ export const CodeGraphChannels = {
       _isStopRequested: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
-      verification: Annotation<any>,
       _verifyEntered: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
         default: () => false,

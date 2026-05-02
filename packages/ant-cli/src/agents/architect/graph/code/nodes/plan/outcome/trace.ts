@@ -48,12 +48,10 @@ export function tracePlanFinalize(
   const jobId = state._httpJobId;
   if (!featurePath || !jobId) return;
 
-  const session = state.verification;
-
   const verifyAxisSnapshot: VerifyAxisSnapshot = {
     requiresVerification: requiresVerification(nextTask),
     verifyEntered: state._verifyEntered === true,
-    hasSession: !!session,
+    hasSession: false,
   };
 
   import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
@@ -66,10 +64,6 @@ export function tracePlanFinalize(
       diagnosticPass: input.diagnosticPass,
       emptyImplShortCircuit: input.emptyImplShortCircuit,
       isRemediationTask: input.isRemediationTask,
-      sessionIsComplete: session?.isComplete(),
-      sessionPassed: session?.passed(),
-      sessionRequired: session?.required(),
-      sessionAttempts: session?.attempts(),
       decision: input.decision,
       planEmptyOrigin: input.planEmptyOrigin,
       verifyAxisSnapshot,
@@ -86,7 +80,6 @@ export function tracePlanFinalize(
       diagnosticPass: input.diagnosticPass,
       emptyImplShortCircuit: input.emptyImplShortCircuit,
       preSplitPlanTextLen: input.preSplitPlanText.length,
-      sessionIsComplete: session?.isComplete(),
       planEmptyOrigin: input.planEmptyOrigin,
       verifyAxisSnapshot,
     },

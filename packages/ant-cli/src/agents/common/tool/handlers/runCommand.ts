@@ -23,7 +23,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
-import type { Gate } from '../../../architect/graph/code/tasks/_shared/verify/gates';
+type Gate = string;
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
 import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';

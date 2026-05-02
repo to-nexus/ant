@@ -37,10 +37,8 @@ import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
-import { VerificationBudget } from '../../tasks/_shared/verify/budget';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
-import { traceSession } from '../../tasks/_shared/verify/sessionTrace';
 import type { CodeTask } from '../../../../types/task';
 
 export async function execute(
@@ -485,31 +483,10 @@ export async function execute(
       }
     }
 
-    // Detect files written in this call via the `<file>` XML streaming
-    // pipeline. Used purely to invalidate verification gates on the
-    // Session — the historical `_executeModifiedFiles` flag was retired
-    // (verification cycle-progress is now adjudicated by
-    // `session.isComplete()` + `checkRetryTermination`, see
-    // `tasks/_shared/verify/router.ts`).
-    //
     // Files newly written this turn surface to the LLM via conversation
     // tool_results (edit_file / create_file / delete_file) and via streamed
     // `<file>` tag markers in the assistant message — no state channel
     // carries file snapshots.
-    const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
-      .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
-    if (earlyStreamedPaths.length > 0) {
-      // Session is an instance whose mutations propagate by reference
-      // across node boundaries — invalidating gates here is safe.
-      if (state.verification) {
-        const session = state.verification;
-        traceSession(state, 'onFileChanged', () => session.onFileChanged('all'), {
-          scope: 'all',
-          source: 'execute-streamed-files',
-          fileCount: earlyStreamedPaths.length,
-        });
-      }
-    }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
     // Instead of: execute → checkTaskStatus → enforce → plan → execute → read_file → tool → codexecuteeGen (4-5 LLM calls)
@@ -682,7 +659,6 @@ export async function execute(
         _activePhase: 'execute' as const,
         fileErrors: undefined,
         _executeCallIndex: newCallIndex,
-        _finalTaskLoopCount: 0,
         // Reset turn-scoped signal so the next execute turn (which won't
         // immediately follow another tool batch) starts with a clean slate.
         _lastToolBatchMutatedFiles: false,
@@ -740,53 +716,14 @@ export async function execute(
       console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
     }
 
-    // Safety Net: track verification loop count (verification is the final
-    // task in every code job; see tasks/verification/model/is.ts). The
-    // `_finalTaskLoopCount` state name predates T6b-θ and is preserved to
-    // keep save / restore compatibility; semantically it tracks
-    // verification-only loops without progress.
-    //
-    // "Progress" = a file was actually written this turn — via either:
-    //   (a) `<file>` XML streaming → `streamedInThisCall` (FileRegistry), or
-    //   (b) `edit_file` / `create_file` / `delete_file` tool call →
-    //       `_lastToolBatchMutatedFiles` set true by `nodes/tool/index.ts`
-    //       on the immediately preceding tool batch.
-    //
-    // Earlier history of this signal:
-    //   - Original: `toolCalls.length === 0` — missed the
-    //     `urban-fronting-faith` p1 pattern (LLM calling read_file /
-    //     list_files for the entire budget without writing a fix).
-    //   - 03ab4b0a: `streamedInThisCall.length === 0` — caught read-only
-    //     churn but ALSO falsely flagged tool-based file mutations as
-    //     stuck (FileRegistry only tracks `<file>` tags), advancing the
-    //     counter on the very first edit_file turn.
-    //   - Current: combined check — read-only churn still counts as stuck,
-    //     but a turn that immediately followed a tool-based file mutation
-    //     resets the counter via the turn-scoped
-    //     `_lastToolBatchMutatedFiles` signal.
-    //
-    // Cross-turn semantics: `_lastToolBatchMutatedFiles` is reset to
-    // `false` on every execute return so it counts for exactly ONE
-    // subsequent execute turn. Sticky cross-cycle file change tracking is
-    // owned by `Session.passed()` / `session.isComplete()` —
-    // `_executeModifiedFiles` was retired alongside this fix.
+    // Safety Net C (verification-only loop counter) was retired by plan §5.3.
+    // Runaway is bounded by Safety Net D/E (`_executeCallIndex` budget),
+    // LangGraph's `recursionLimit`, and the `batch_cycle_limit` fail-safe.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
-    const prevLoopCount = state._finalTaskLoopCount || 0;
     const toolMutatedThisTurn = state._lastToolBatchMutatedFiles === true;
-    const isStuckLooping =
-      isVerification &&
-      !explicitDone &&
-      streamedInThisCall.length === 0 &&
-      !toolMutatedThisTurn;
-    const newFinalTaskLoopCount = VerificationBudget.computeFinalLoopCount(prevLoopCount, isStuckLooping);
 
-    // Diagnostic: surface counter axis for the verification stuck-loop
-    // safety net so the post-`urban-fronting-faith` regression hunt has
-    // direct evidence per turn. Cheap (one line, JSON-friendly), printed
-    // on every execute return regardless of task type so the format stays
-    // uniform across task types.
     console.log(
-      `[diag] execute return: _finalTaskLoopCount=${prevLoopCount}->${newFinalTaskLoopCount} ` +
+      `[diag] execute return: ` +
       `streamed=${streamedInThisCall.length} ` +
       `toolMut=${toolMutatedThisTurn} ` +
       `planText.len=${state.planText?.length ?? 0} ` +
@@ -796,6 +733,7 @@ export async function execute(
       `explicitDone=${explicitDone} ` +
       `tools=${toolCalls.length}`,
     );
+
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
@@ -816,7 +754,6 @@ export async function execute(
           nodeHistoryLength: nodeExecute.length,
           violationsCount: state.violations?.length ?? 0,
           callIndex: newCallIndex,
-          finalTaskLoopCount: newFinalTaskLoopCount,
         }, state.currentTask?.id).catch(() => {});
       }
     }
@@ -886,10 +823,9 @@ export async function execute(
           _activePhase: 'execute' as const,
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           _executeCallIndex: newCallIndex,
-          _finalTaskLoopCount: newFinalTaskLoopCount,
           // Reset the turn-scoped tool-mutation signal — execute consumed
-          // it; the next turn's stuck-loop check starts fresh and only
-          // re-flips when another tool batch mutates files.
+          // it; the next turn starts fresh and only re-flips when another
+          // tool batch mutates files.
           _lastToolBatchMutatedFiles: false,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -920,7 +856,6 @@ export async function execute(
       _activePhase: 'execute' as const,
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
-      _finalTaskLoopCount: newFinalTaskLoopCount,
       // Reset turn-scoped tool-mutation signal (see top of execute return
       // section for rationale).
       _lastToolBatchMutatedFiles: false,

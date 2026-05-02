@@ -24,6 +24,7 @@ export {
   displayKeywords,
   logKeywords,
   resetKeywordDedup,
+  clearKeywordDedupForTask,
 } from './keyword';
 
 export { loadErrorFiles } from './errorFiles';

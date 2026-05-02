@@ -11,10 +11,9 @@
 import type { ToolDefinition } from '../../../core/ports/llm';
 import type { PromptPort } from '../../../core/ports/prompt';
 import { ToolName, TOOL_SETS } from './toolCatalog';
-// Gate vocabulary SSOT lives in `tasks/_shared/verify/gates.ts`. We
-// derive the `run_command.verifies` enum from `GATE_ORDER` so the schema
-// cannot drift from the Session / sideEffect / hook surface.
-import { GATE_ORDER } from '../../architect/graph/code/tasks/_shared/verify/gates';
+// `verifies` is a free-form gate label (typecheck/build/test); the schema
+// enum is the SSOT after plan §5.4 retired the gate vocabulary file.
+const GATE_ORDER = ['typecheck', 'build', 'test'] as const;
 
 export { ToolName, TOOL_SETS };
 
