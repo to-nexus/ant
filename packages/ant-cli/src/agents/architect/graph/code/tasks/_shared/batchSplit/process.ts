@@ -6,6 +6,7 @@ import { appendTrace } from '../../../../../../../utils/verificationTrace';
 import { VerificationTerminalError } from '../verify/terminal/errors';
 import { VerificationBudget } from '../verify/terminal/budget';
 import { isVerificationTask } from '../../verification';
+import { getExecutionLogger } from '../../../../../../../core/utils/executionLogger';
 import { stripMarkdownFences } from './parse';
 import { computeBatchFileOverlap } from './overlap';
 import { hasFinalVerification } from './finalVerification';
@@ -43,13 +44,13 @@ export function processDiagnosticBatchSplit(
 
   const logBatchSplit = (data: Record<string, any>) => {
     if (state.context?.featurePath && state._httpJobId) {
-      import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-        getExecutionLogger({
-          featurePath: state.context!.featurePath!,
-          jobId: state._httpJobId!,
-          jobType: 'code',
-        }).log('batch_split', data, nextTask.id);
-      }).catch(() => {});
+      void getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'code',
+      })
+        .log('batch_split', data, nextTask.id)
+        .catch(() => { /* non-blocking */ });
     }
   };
 

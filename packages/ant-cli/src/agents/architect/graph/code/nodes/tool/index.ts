@@ -17,6 +17,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isVerifyModeActive } from '../../tasks/_shared/verify';
+import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 const registry = createCodeToolRegistry();
 
@@ -118,19 +119,20 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       hooksIfActive(state)?.tool?.onEvent(state, event);
 
       // Stage 0.1 — tool_call trace (args + sideEffects); non-blocking.
+      // Static import + synchronous writeQueue update — see executionLogger
+      // contract (vast-curling-perch C-3 RCA).
       if (state.context?.featurePath && state._httpJobId && state.currentTask) {
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          const logger = getExecutionLogger({
-            featurePath: state.context!.featurePath!,
-            jobId: state._httpJobId!,
-            jobType: 'code',
-          });
-          const content = event.result.content;
-          const isMultimodal = Array.isArray(content);
-          const resultStr = isMultimodal
-            ? `[multimodal: ${content.length} blocks]`
-            : (typeof content === 'string' ? content : JSON.stringify(content ?? ''));
-          return logger.logToolCall(state.currentTask!.id, {
+        const content = event.result.content;
+        const isMultimodal = Array.isArray(content);
+        const resultStr = isMultimodal
+          ? `[multimodal: ${content.length} blocks]`
+          : (typeof content === 'string' ? content : JSON.stringify(content ?? ''));
+        void getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'code',
+        })
+          .logToolCall(state.currentTask.id, {
             toolName: event.toolName,
             args: event.args,
             resultChars: resultStr.length,
@@ -139,8 +141,8 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
             error: event.result.error,
             phase: state._activePhase as 'plan' | 'execute' | undefined,
             sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
-          });
-        }).catch(() => { /* non-blocking */ });
+          })
+          .catch(() => { /* non-blocking */ });
       }
 
       const effects = event.result.sideEffects || [];

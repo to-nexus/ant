@@ -21,6 +21,7 @@ import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isFeatureTask } from '../../tasks/feature/model/is';
 import { clearForTaskBoundary } from '../../tasks/_shared/verify/markVerifyEntered';
 import { evaluateTaskStatus } from './evaluate';
+import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 export async function checkTaskStatus(
   state: ArchitectGraphState,
@@ -131,7 +132,6 @@ export async function checkTaskStatus(
     // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
     // No additional merge or job-level re-accumulation needed here.
     const { getTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
     const taskTokenUsage = getTaskTokenUsage(state);
 
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
@@ -146,14 +146,15 @@ export async function checkTaskStatus(
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
 
-    // ✅ Log task_complete event to debug/logs/
+    // ✅ Log task_complete event to debug/logs/.
+    // Static import + synchronous writeQueue update — see executionLogger
+    // contract (vast-curling-perch C-3 RCA).
     if (state.context?.featurePath && state._httpJobId) {
-      const execLogger = getExecutionLogger({
+      void getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,
         jobType: 'code',
-      });
-      execLogger.logTaskComplete(completedTask.id, {
+      }).logTaskComplete(completedTask.id, {
         taskName: completedTask.name,
         elapsedMs: completedTask.timing?.elapsedTime || 0,
         inputTokens: completedTask.tokenUsage?.inputTokens || 0,
@@ -161,7 +162,7 @@ export async function checkTaskStatus(
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
         llmCallCount: completedTask.tokenUsage?.callCount ?? 0,
-      }).catch(() => {});
+      }).catch(() => { /* non-blocking */ });
     }
 
     // Apply centralized conversation retention policy (code job always discards)
@@ -305,21 +306,21 @@ export async function checkTaskStatus(
     };
   }
 
-  // ✅ Log violation event to debug/logs/
+  // ✅ Log violation event to debug/logs/.
+  // Static import + synchronous writeQueue update — see executionLogger
+  // contract (vast-curling-perch C-3 RCA).
   if (state.context?.featurePath && state._httpJobId && state.currentTask) {
-    const { getExecutionLogger: getExecLogger } = await import('../../../../../../core/utils/executionLogger');
-    const execLogger = getExecLogger({
+    void getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
       jobType: 'code',
-    });
-    execLogger.logTaskError(state.currentTask.id, {
+    }).logTaskError(state.currentTask.id, {
       taskName: state.currentTask.name,
       violationType: violations[0]?.type || 'unknown',
       violationCount: violations.length,
       retryCount: state.retries || 0,
       message: violations.map((v: any) => v.message).join('; ').substring(0, 500),
-    }).catch(() => {});
+    }).catch(() => { /* non-blocking */ });
   }
 
   // ✅ Workflow instrumentation: Exit node (task failed/has violations path)

@@ -23,6 +23,7 @@ import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { formatViolations } from "../../utils/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { getExecutionLogger } from "../../../../../../core/utils/executionLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
@@ -516,24 +517,25 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const prevB1 = _lastCacheBlockHashes.block1;
     const prevB2 = _lastCacheBlockHashes.block2;
 
+    // Static import + synchronous writeQueue update — see executionLogger
+    // contract (vast-curling-perch C-3 RCA). This eliminates the previous
+    // microtask-scheduled `import().then` race that the comment above
+    // referenced (the prev-hash snapshot is still kept for symmetry, but
+    // the dynamic-import scheduling concern is now moot).
     if (prevB1 && prevB1 !== b1Hash) {
       console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${prevB1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
       if (state.context?.featurePath && state._httpJobId) {
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: prevB1, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
-            .catch(() => {});
-        }).catch(() => {});
+        void getExecutionLogger({ featurePath: state.context.featurePath, jobId: state._httpJobId, jobType: 'code' })
+          .logCacheInstability(currentTaskId, { block: 'block1', prevHash: prevB1, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
+          .catch(() => { /* non-blocking */ });
       }
     }
     if (prevB2 && prevB2 !== b2Hash) {
       console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${prevB2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
       if (state.context?.featurePath && state._httpJobId) {
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: prevB2, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
-            .catch(() => {});
-        }).catch(() => {});
+        void getExecutionLogger({ featurePath: state.context.featurePath, jobId: state._httpJobId, jobType: 'code' })
+          .logCacheInstability(currentTaskId, { block: 'block2', prevHash: prevB2, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
+          .catch(() => { /* non-blocking */ });
       }
     }
 

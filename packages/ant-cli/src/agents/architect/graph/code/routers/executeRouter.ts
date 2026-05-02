@@ -26,6 +26,7 @@ import {
   markVerifyEntered,
   requiresVerification,
 } from '../tasks/_shared/verify';
+import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 /**
  * Detect recent tool failures from command history
@@ -90,28 +91,28 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
       const _taskId = currentTask?.id || 'unknown';
       const _lastText = (response as any).lastTextSnippet || '';
       if (state.context?.featurePath && state._httpJobId) {
-        import('../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          const execLogger = getExecutionLogger({
-            featurePath: state.context!.featurePath!,
-            jobId: state._httpJobId!,
-            jobType: 'code',
-          });
-          execLogger.logRecursionBudgetWarning(_taskId, {
+        // Static import + synchronous writeQueue update — see
+        // executionLogger contract (vast-curling-perch C-3 RCA).
+        const execLogger = getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'code',
+        });
+        void execLogger.logRecursionBudgetWarning(_taskId, {
+          taskName: currentTask?.name || 'unknown',
+          current: state.recursionCount!,
+          limit: state.recursionLimit!,
+          remaining,
+          forcedNode: 'checkTaskStatus',
+        }).catch(() => { /* non-blocking */ });
+        if (!response.done && _lastText) {
+          void execLogger.logExecuteInterrupted(_taskId, {
             taskName: currentTask?.name || 'unknown',
-            current: state.recursionCount!,
-            limit: state.recursionLimit!,
-            remaining,
-            forcedNode: 'checkTaskStatus',
-          }).catch(() => {});
-          if (!response.done && _lastText) {
-            execLogger.logExecuteInterrupted(_taskId, {
-              taskName: currentTask?.name || 'unknown',
-              callIndex: state._executeCallIndex || 0,
-              lastResponseSnippet: _lastText.slice(0, 200),
-              reason: 'recursion_limit',
-            }).catch(() => {});
-          }
-        }).catch(() => {});
+            callIndex: state._executeCallIndex || 0,
+            lastResponseSnippet: _lastText.slice(0, 200),
+            reason: 'recursion_limit',
+          }).catch(() => { /* non-blocking */ });
+        }
       }
 
       return 'checkTaskStatus';

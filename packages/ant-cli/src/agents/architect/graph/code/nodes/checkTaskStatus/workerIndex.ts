@@ -16,6 +16,7 @@ import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import { TaskTimingHelper } from '../../state';
 import { clearForTaskBoundary } from '../../tasks/_shared/verify/markVerifyEntered';
 import { evaluateTaskStatus } from './evaluate';
+import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 export async function workerCheckTaskStatus(
   state: ArchitectGraphState,
@@ -121,15 +122,15 @@ export async function workerCheckTaskStatus(
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
     console.log(`✅ [Worker] Task "${completedTask.name}" completed!`);
 
-    // Log task_complete to debug/logs/
+    // Log task_complete to debug/logs/.
+    // Static import + synchronous writeQueue update — see executionLogger
+    // contract (vast-curling-perch C-3 RCA).
     if (state.context?.featurePath && state._httpJobId) {
-      const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
-      const execLogger = getExecutionLogger({
+      void getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,
         jobType: 'code',
-      });
-      execLogger.logTaskComplete(completedTask.id, {
+      }).logTaskComplete(completedTask.id, {
         taskName: completedTask.name,
         elapsedMs: completedTask.timing?.elapsedTime || 0,
         inputTokens: completedTask.tokenUsage?.inputTokens || 0,
@@ -137,7 +138,7 @@ export async function workerCheckTaskStatus(
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
         llmCallCount: completedTask.tokenUsage?.callCount ?? 0,
-      }).catch(() => {});
+      }).catch(() => { /* non-blocking */ });
     }
 
     return {
