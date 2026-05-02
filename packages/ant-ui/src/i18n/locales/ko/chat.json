@@ -38,6 +38,23 @@
       "initial_creation": "초기 생성",
       "modification": "수정",
       "refactor": "리팩터링"
+    },
+    "date": {
+      "today": "오늘",
+      "yesterday": "어제"
+    },
+    "group": {
+      "tasks": "{{count}}개 작업"
+    },
+    "anchors": {
+      "specs": "스펙",
+      "paths": "경로",
+      "files": "파일",
+      "moreFiles": "+{{count}}개 더"
+    },
+    "summary": {
+      "expand": "더보기",
+      "collapse": "접기"
     }
   },
   "tier": {
