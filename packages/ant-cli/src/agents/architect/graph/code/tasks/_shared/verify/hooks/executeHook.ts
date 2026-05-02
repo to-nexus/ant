@@ -1,5 +1,5 @@
 /**
- * `_shared/verify/executeHook` — TaskExecuteHook for verify-mode.
+ * `_shared/verify/hooks/executeHook` — TaskExecuteHook for verify-mode.
  *
  * SSOT: previously `tasks/verification/hooks/execute.ts`. Moved here so
  * self-verify Tier 2 tasks render the same execute-phase template as
@@ -20,7 +20,7 @@
  * `routers/`, or `parallel/`.
  */
 
-import type { TaskExecuteHook } from '../types';
+import type { TaskExecuteHook } from '../../types';
 
 const templatePaths = {
   base: 'jobs/code/nodes/execute/variants/verification/base',

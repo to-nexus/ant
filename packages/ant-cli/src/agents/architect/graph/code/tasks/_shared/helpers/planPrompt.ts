@@ -3,7 +3,7 @@
  * across plan hooks and the generic plan path.
  *
  * Earlier revisions (T6b-β) duplicated these two helpers across
- * `tasks/_shared/verify/buildPlanPrompt.ts`, `tasks/error/hooks/plan.ts`,
+ * `tasks/_shared/verify/prompt/buildPlanPrompt.ts`, `tasks/error/hooks/plan.ts`,
  * `tasks/setup/hooks/plan.ts`, and `nodes/plan/planGeneration.ts`. The
  * copies drifted trivially to maintain (e.g. adding a new language
  * required editing all four files). Extracting them here keeps R2

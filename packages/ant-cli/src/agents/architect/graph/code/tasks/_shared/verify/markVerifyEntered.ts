@@ -7,7 +7,7 @@
  *
  *   - `composeBundle` — gates apply-vs-verify hook dispatch
  *   - `executeRouter.isFinalTask` predicate (Safety Net A/B/E)
- *   - `_shared/verify/buildPlanPrompt` and friends (only fire when
+ *   - `_shared/verify/prompt/buildPlanPrompt` and friends (only fire when
  *     verify-mode is active)
  *
  * **Single writer:** `markVerifyEntered(state)`. Set call sites, all

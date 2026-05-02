@@ -12,9 +12,9 @@ import type { TaskHooks } from '../_shared/types';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 
-import { buildPrompt as planBuildPrompt } from '../_shared/verify/buildPlanPrompt';
-import { executeHook } from '../_shared/verify/executeHook';
-import { routeAfterDone } from '../_shared/verify/router';
+import { buildPrompt as planBuildPrompt } from '../_shared/verify/prompt/buildPlanPrompt';
+import { executeHook } from '../_shared/verify/hooks/executeHook';
+import { routeAfterDone } from '../_shared/verify/hooks/router';
 
 /**
  * Hint rendered on the `budget_exhausted` violation (execute call loop)

@@ -1,5 +1,5 @@
 /**
- * `_shared/verify/buildPlanPrompt` — verify-mode plan prompt builder shared
+ * `_shared/verify/prompt/buildPlanPrompt` — verify-mode plan prompt builder shared
  * by every verification responsibility holder.
  *
  * Renders against `jobs/code/nodes/plan/variants/verification/base` with
@@ -10,11 +10,11 @@
  * R2 — depends only on the shared plan prompt helpers + state shape.
  */
 
-import type { PlanPromptCtx, PlanPromptResult } from '../types';
+import type { PlanPromptCtx, PlanPromptResult } from '../../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
-import { formatCodeContext, mapLang } from '../helpers/planPrompt';
-import { workspaceDepSnapshotVars } from '../helpers/workspaceDepSnapshotHook';
-import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
+import { formatCodeContext, mapLang } from '../../helpers/planPrompt';
+import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook';
+import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { renderPriorErrorTasks } from './priorErrorTasks';
 
 /**

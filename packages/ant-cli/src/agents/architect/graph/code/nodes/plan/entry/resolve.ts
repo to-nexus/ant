@@ -16,8 +16,8 @@
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
-import { VerificationBudget } from '../../../tasks/_shared/verify/budget';
+import { VerificationTerminalError } from '../../../tasks/_shared/verify/terminal/errors';
+import { VerificationBudget } from '../../../tasks/_shared/verify/terminal/budget';
 import { requiresVerification } from '../../../tasks/_shared/verify/predicate';
 import { isVerificationTask } from '../../../tasks/verification';
 import { recomputeInstallNeeded } from './installNeeded';

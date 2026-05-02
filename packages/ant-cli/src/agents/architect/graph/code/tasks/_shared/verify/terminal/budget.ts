@@ -1,5 +1,5 @@
 /**
- * `_shared/verify/budget` — VerificationBudget aggregate.
+ * `_shared/verify/terminal/budget` — VerificationBudget aggregate.
  *
  * Single read+write surface for the axes that determine "should this
  * verification cycle continue?".
@@ -8,9 +8,9 @@
  * `batchSplit` cycle-limit constant.
  */
 
-import type { ArchitectGraphState } from '../../../state';
-import type { CodeTask } from '../../../../../types/task';
-import { MAX_BATCH_SPLIT_CYCLES } from '../batchSplit/cycleLimit';
+import type { ArchitectGraphState } from '../../../../state';
+import type { CodeTask } from '../../../../../../types/task';
+import { MAX_BATCH_SPLIT_CYCLES } from '../../batchSplit/cycleLimit';
 
 /**
  * JSON-friendly read-only projection of every budget axis.
