@@ -8,57 +8,69 @@
  * silently truncated payload. Range reads of the same file return only
  * the requested slice with a `[Lines X-Y of N]` header — these are the
  * line numbers the compacted outline (`L{N}: <heading>`) emits.
+ *
+ * Migrated from `decompose/discoveryTools` (which previously held this
+ * policy in isolation) to the shared `common/tool/handlers/read_file`
+ * — same contract, but now applies to every read_file caller (decompose,
+ * worker tool loop, design source-selector) rather than decompose alone.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import {
-  handleReadFile,
-  createClarifyContext,
-  type DiscoveryToolContext,
-} from '../../src/agents/architect/graph/code/nodes/decompose/discoveryTools';
+import { handleReadFile } from '../../src/agents/common/tool/handlers/readFile';
+import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
+import type { ToolExecutionContext, ToolResult } from '../../src/agents/common/tool/types';
 
-let featurePath: string;
+let workspacePath: string;
 
 beforeAll(() => {
-  featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-readfile-'));
-  // Small markdown for line-range slicing.
-  fs.mkdirSync(path.join(featurePath, 'plan'), { recursive: true });
+  workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-readfile-'));
+  // Sibling tree fixture (`plan/` is a CANONICAL_FEATURE_DIRS sibling so
+  // it stays workspace-rel without `codebase/` prepending).
+  fs.mkdirSync(path.join(workspacePath, 'plan'), { recursive: true });
   const small = Array.from({ length: 50 }, (_, i) => `Line ${i + 1}`).join('\n');
-  fs.writeFileSync(path.join(featurePath, 'plan/small.md'), small);
+  fs.writeFileSync(path.join(workspacePath, 'plan/small.md'), small);
 
   // Oversized markdown — 110K bytes (above 100K limit).
   const oversized = Array.from({ length: 1_200 }, (_, i) =>
     `## Section ${i + 1}\n` + 'x'.repeat(80),
   ).join('\n');
-  fs.writeFileSync(path.join(featurePath, 'plan/large.md'), oversized);
+  fs.writeFileSync(path.join(workspacePath, 'plan/large.md'), oversized);
 });
 
 afterAll(() => {
-  if (featurePath) fs.rmSync(featurePath, { recursive: true, force: true });
+  if (workspacePath) fs.rmSync(workspacePath, { recursive: true, force: true });
 });
 
-function ctx(): DiscoveryToolContext {
-  return { featurePath, clarify: createClarifyContext() };
+function silentChatStatus(): ToolExecutionContext['chatStatus'] {
+  const noop = async () => undefined as any;
+  return new Proxy({}, { get: () => noop }) as ToolExecutionContext['chatStatus'];
+}
+
+function ctx(): ToolExecutionContext {
+  return {
+    fileSystem: new FileSystemAdapter(workspacePath),
+    chatStatus: silentChatStatus(),
+    workingDir: workspacePath,
+  };
+}
+
+async function read(args: { path: string; startLine?: number; endLine?: number }): Promise<string> {
+  const result: ToolResult = await handleReadFile(ctx(), args);
+  return result.error ? result.content : result.content;
 }
 
 describe('handleReadFile — small files (<= 100K)', () => {
-  it('full read returns the entire file', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md' },
-      ctx(),
-    );
+  it('full read returns the entire file', async () => {
+    const result = await read({ path: 'plan/small.md' });
     expect(result).toContain('Line 1');
     expect(result).toContain('Line 50');
     expect(result.startsWith('Error:')).toBe(false);
   });
 
-  it('startLine/endLine returns just the requested range with header', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', startLine: 10, endLine: 12 },
-      ctx(),
-    );
+  it('startLine/endLine returns just the requested range with header', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 10, endLine: 12 });
     expect(result).toContain('[Lines 10-12 of 50]');
     expect(result).toContain('Line 10');
     expect(result).toContain('Line 11');
@@ -67,47 +79,32 @@ describe('handleReadFile — small files (<= 100K)', () => {
     expect(result).not.toContain('Line 13');
   });
 
-  it('endLine beyond totalLines is clamped to file length', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', startLine: 48, endLine: 9999 },
-      ctx(),
-    );
+  it('endLine beyond totalLines is clamped to file length', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 48, endLine: 9999 });
     expect(result).toContain('[Lines 48-50 of 50]');
     expect(result).toContain('Line 48');
     expect(result).toContain('Line 50');
   });
 
-  it('startLine 0 / negative is clamped to 1', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', startLine: 0, endLine: 2 },
-      ctx(),
-    );
+  it('startLine 0 / negative is clamped to 1', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 0, endLine: 2 });
     expect(result).toContain('[Lines 1-2 of 50]');
     expect(result).toContain('Line 1');
   });
 
-  it('startLine > endLine returns explicit error', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', startLine: 30, endLine: 5 },
-      ctx(),
-    );
+  it('startLine > endLine returns explicit error', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 30, endLine: 5 });
     expect(result).toMatch(/Error: startLine.*> endLine/);
   });
 
-  it('only startLine → reads from there to EOF', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', startLine: 49 },
-      ctx(),
-    );
+  it('only startLine → reads from there to EOF', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 49 });
     expect(result).toContain('[Lines 49-50 of 50]');
     expect(result).toContain('Line 49');
   });
 
-  it('only endLine → reads from line 1 to endLine', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/small.md', endLine: 3 },
-      ctx(),
-    );
+  it('only endLine → reads from line 1 to endLine', async () => {
+    const result = await read({ path: 'plan/small.md', endLine: 3 });
     expect(result).toContain('[Lines 1-3 of 50]');
     expect(result).toContain('Line 1');
     expect(result).toContain('Line 3');
@@ -116,11 +113,8 @@ describe('handleReadFile — small files (<= 100K)', () => {
 });
 
 describe('handleReadFile — oversized files (> 100K)', () => {
-  it('full read is rejected with a range-instruction error (truncate-prohibited contract)', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/large.md' },
-      ctx(),
-    );
+  it('full read is rejected with a range-instruction error (truncate-prohibited contract)', async () => {
+    const result = await read({ path: 'plan/large.md' });
     // Must NOT silently truncate.
     expect(result).toMatch(/Error: File too large/);
     expect(result).toMatch(/startLine, endLine/);
@@ -130,30 +124,24 @@ describe('handleReadFile — oversized files (> 100K)', () => {
     expect(result).not.toContain('TRUNCATED');
   });
 
-  it('range read on the same file succeeds — Decompact cycle smoke', () => {
-    // Stat the file to grab a known section. The fixture writes
-    // `## Section N` headings every other line so line 21 is the 11th
-    // section (sections are 2 lines each).
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/large.md', startLine: 21, endLine: 22 },
-      ctx(),
-    );
+  it('range read on the same file succeeds — Decompact cycle smoke', async () => {
+    // The fixture writes `## Section N` headings every other line so
+    // line 21 is the 11th section (sections are 2 lines each).
+    const result = await read({ path: 'plan/large.md', startLine: 21, endLine: 22 });
     expect(result.startsWith('Error:')).toBe(false);
-    expect(result).toMatch(/^\[Lines 21-22 of \d+\]/);
+    expect(result).toMatch(/\[Lines 21-22 of \d+\]/);
     expect(result).toContain('## Section 11');
   });
 
-  it('range read with startLine taken from a compacted outline returns the matching section verbatim', () => {
+  it('range read with startLine taken from a compacted outline returns the matching section verbatim', async () => {
     // Decompact-cycle invariant: the line number the compacted outline
     // emits (`L{N}: <heading>`) maps directly to the source file. The
     // outline of `large.md` would surface `## Section 11` at line 21.
     // We assert the LLM-style call returns that exact heading at that
     // exact line.
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/large.md', startLine: 21, endLine: 21 },
-      ctx(),
-    );
-    const body = result.split('\n\n')[1] ?? '';
+    const result = await read({ path: 'plan/large.md', startLine: 21, endLine: 21 });
+    // body comes after the `[Lines ...]` header (separated by a blank line).
+    const body = result.split('\n\n').pop() ?? '';
     expect(body).toBe('## Section 11');
   });
 });
