@@ -16,6 +16,24 @@ import { effectiveTechTier, getTechTier } from "@ant/shared";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combine";
 import { KeywordDeduplicator } from "../../../../../../../core/prompt/builder/InputSanitizer";
+import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNormalizer";
+
+/**
+ * Run a path through the workspace normalize SSOT and drop empties.
+ * Applied to LLM-emitted `errorFiles` / `requiredFiles` arrays so
+ * downstream loaders (`loadErrorFiles`, `loadRequiredFiles`) consume
+ * canonical workspace-rel paths regardless of which prefix shape the
+ * LLM happened to write.
+ */
+function normalizePathArray(arr: unknown): string[] {
+  if (!Array.isArray(arr)) return [];
+  const out: string[] = [];
+  for (const p of arr) {
+    if (typeof p !== 'string' || !p.trim()) continue;
+    out.push(normalizeToCodebasePath(p).normalized);
+  }
+  return out;
+}
 
 export type { TaskKeywords };
 
@@ -168,15 +186,18 @@ export async function generateTaskKeywords(
       }
 
       const result: TaskKeywords = {
-        // ✅ Backward-compatible: accept errorFiles OR legacy stackTrace
-        errorFiles: Array.isArray(parsed.errorFiles) ? parsed.errorFiles
-                  : Array.isArray(parsed.stackTrace) ? parsed.stackTrace
-                  : [],
+        // ✅ Backward-compatible: accept errorFiles OR legacy stackTrace.
+        // Normalize at source — downstream `loadErrorFiles` consumes the
+        // canonical workspace-rel form (`codebase/...` for code paths,
+        // sibling-prefix verbatim for `architecture/`/`plan/`/etc.).
+        errorFiles: normalizePathArray(parsed.errorFiles ?? parsed.stackTrace),
         // ✅ Backward-compatible: accept keywords OR legacy codebase
         keywords: Array.isArray(parsed.keywords) ? parsed.keywords
                 : Array.isArray(parsed.codebase) ? parsed.codebase
                 : [],
-        requiredFiles: Array.isArray(parsed.requiredFiles) ? parsed.requiredFiles : [],
+        // Normalized at source — downstream `loadRequiredFiles` consumes
+        // the canonical workspace-rel form.
+        requiredFiles: normalizePathArray(parsed.requiredFiles),
         references
       };
 

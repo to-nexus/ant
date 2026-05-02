@@ -20,6 +20,7 @@ import path from "path";
 import { GitPort, FileSystemPort } from "../../../../../../../core/ports";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../../state";
 import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
+import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNormalizer";
 import { loadErrorFiles, LoadedFile } from "./errorFiles";
 import { loadSemanticFiles, LessonResult } from "./semantic";
 import { extractFilesFromCode } from "./parseFileBlocks";
@@ -450,17 +451,22 @@ async function loadRequiredFiles(
 
   if (filePaths.length === 0) return files;
 
-  const rootPath = fileSystem.getRootPath();
+  void state; // workingDir derivation no longer needed — normalize SSOT does it.
 
   for (const filePath of filePaths.slice(0, MAX_REQUIRED)) {
     try {
-      const fullPath = path.join(state.context.workingDir, filePath);
-      const relativePath = path.relative(rootPath, fullPath);
+      // Normalize via the SSOT instead of manually `path.join(workingDir, p)`
+      // + `path.relative(rootPath, ...)`. The manual chain accidentally
+      // worked for `apps/...` (because workingDir = workspaceRoot/codebase
+      // collapses correctly) but BROKE for sibling-prefixed paths
+      // (`architecture/spec/foo.md` became `codebase/architecture/...`).
+      // normalizeToCodebasePath handles both via the canonical sibling set.
+      const relativePath = normalizeToCodebasePath(filePath).normalized;
       const content = await fileSystem.readFile(relativePath);
       if (content) {
-        files.push({ path: filePath, content, source: 'local' });
+        files.push({ path: relativePath, content, source: 'local' });
       } else {
-        console.warn(`      ⚠️  Required file empty or not found: ${filePath}`);
+        console.warn(`      ⚠️  Required file empty or not found: ${filePath} (resolved: ${relativePath})`);
       }
     } catch {
       console.warn(`      ⚠️  Required file unreadable: ${filePath}`);
