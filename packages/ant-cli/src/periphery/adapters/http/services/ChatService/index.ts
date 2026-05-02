@@ -320,6 +320,18 @@ export class ChatService {
     // chat-SSOT §8 — server-restart-proof per-job NX flag. Without this
     // a second pause source (StaleJobRecovery, BullMQ stalled handler,
     // …) could write a duplicate cancelled card.
+    //
+    // The NX guard's contract is "one SUCCESSFUL emit per jobId". The
+    // try/finally below releases the lock when emission throws (Redis
+    // blip / chat.jsonl write race / `autoResolveStaleCancelledCards`
+    // failure) so the next pause source can retry. Before the
+    // release-on-failure path, a partial failure between acquire and
+    // append would strand the NX key for its full 24h TTL — every
+    // subsequent retry against the same jobId returned `emitted=false`
+    // and the user lost the Resume / Dismiss UI permanently
+    // (cancelled-card-stale-NX RCA — observed on `vast-curling-perch`
+    // after the cleanupJobState swallow bug, fixed in commit `8ea931b8`,
+    // had already SET the key but never EMITTED the line).
     const cancelledNxKey = `ant:chat:cancelled-emitted:job:${jobId}`;
     const acquired = this.stateStore
       ? await this.stateStore.acquireLock(cancelledNxKey, 24 * 60 * 60).catch(() => true)
@@ -332,42 +344,61 @@ export class ChatService {
       return { cardId: '', emitted: false };
     }
 
-    // Auto-resolve any stale unresolved cancelled cards for this feature.
-    // Mirrors the legacy MessageManager logic so the chat view stays
-    // tidy across consecutive interruptions.
-    await this.autoResolveStaleCancelledCards(projectId, featureName, jobId, ctx);
+    let emitSucceeded = false;
+    try {
+      // Auto-resolve any stale unresolved cancelled cards for this
+      // feature. Mirrors the legacy MessageManager logic so the chat
+      // view stays tidy across consecutive interruptions.
+      await this.autoResolveStaleCancelledCards(projectId, featureName, jobId, ctx);
 
-    // Mint pauseSeq via the shared StateStorePort primitive so the
-    // cardId is unique per pause cycle. Falls back to Date.now() in
-    // tests / local mode without a stateStore.
-    const pauseSeq = this.stateStore
-      ? await this.stateStore.nextPauseSeq(turnId).catch(() => Date.now())
-      : Date.now();
-    const cardId = `cancelled-${turnId}-${jobId}-${pauseSeq}`;
-    // Synthetic per-card workerScope: each cancelled card lands in its
-    // own FE section so chronological sort places it at its actual ts
-    // rather than piggybacking on `_main_`'s pinned-first position.
-    // See `selectTurns` + 31-chat-system.md §섹션-정렬.
-    const workerScope = `_cancelled_:${cardId}`;
-    const adapter = this.makeAdapter(projectId, featureName, ctx);
-    const line: ChatChoicePresentedLine = {
-      type: 'choice_presented',
-      ts: new Date().toISOString(),
-      jobId,
-      turnId,
-      jobType: args.jobType ?? DEFAULT_JOB_TYPE,
-      workerScope,
-      cardId,
-      cardType: 'cancelled',
-      prompt: args.message,
-      payload: {
-        reason: args.reason,
+      // Mint pauseSeq via the shared StateStorePort primitive so the
+      // cardId is unique per pause cycle. Falls back to Date.now() in
+      // tests / local mode without a stateStore.
+      const pauseSeq = this.stateStore
+        ? await this.stateStore.nextPauseSeq(turnId).catch(() => Date.now())
+        : Date.now();
+      const cardId = `cancelled-${turnId}-${jobId}-${pauseSeq}`;
+      // Synthetic per-card workerScope: each cancelled card lands in
+      // its own FE section so chronological sort places it at its
+      // actual ts rather than piggybacking on `_main_`'s pinned-first
+      // position. See `selectTurns` + 31-chat-system.md §섹션-정렬.
+      const workerScope = `_cancelled_:${cardId}`;
+      const adapter = this.makeAdapter(projectId, featureName, ctx);
+      const line: ChatChoicePresentedLine = {
+        type: 'choice_presented',
+        ts: new Date().toISOString(),
         jobId,
-        ...(args.designErrorType ? { designErrorType: args.designErrorType } : {}),
-      },
-    };
-    await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
-    return { cardId, emitted: true };
+        turnId,
+        jobType: args.jobType ?? DEFAULT_JOB_TYPE,
+        workerScope,
+        cardId,
+        cardType: 'cancelled',
+        prompt: args.message,
+        payload: {
+          reason: args.reason,
+          jobId,
+          ...(args.designErrorType ? { designErrorType: args.designErrorType } : {}),
+        },
+      };
+      await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
+      emitSucceeded = true;
+      return { cardId, emitted: true };
+    } finally {
+      // Release the NX guard ONLY when the line was not actually
+      // emitted. The success path keeps the 24h NX held so the
+      // multi-pause-source idempotency contract stays intact; the
+      // failure path returns the lock to the pool so the next caller
+      // can retry instead of inheriting a permanent skip.
+      if (!emitSucceeded && this.stateStore) {
+        await this.stateStore.releaseLock(cancelledNxKey).catch((err) =>
+          logger.warn(
+            `releaseLock cancelled-emitted NX failed for job ${jobId}`,
+            { component: COMPONENT },
+            err,
+          ),
+        );
+      }
+    }
   }
 
   /**
