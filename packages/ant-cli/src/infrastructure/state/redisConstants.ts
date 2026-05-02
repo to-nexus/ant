@@ -22,6 +22,7 @@ export {
   parseTurnBufferIndexMember,
   getCancelledEmittedKey,
   getCancelledPauseSeqKey,
+  getWorkerCycleSeqKey,
   getChatLogLockKey,
   getChoiceResolvedNXKey,
 } from '../../core/constants/redis';
