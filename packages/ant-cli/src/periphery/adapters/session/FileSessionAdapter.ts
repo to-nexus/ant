@@ -564,13 +564,29 @@ export class FileSessionAdapter implements SessionPort {
     const filePath = getFeatureJsonlPath(this.featurePath);
     const all = await this.readJsonlLines<FeatureLine>(filePath);
 
-    // Find index of latest boundary
+    // Find index of latest *significant* boundary. job-context-bridge T2
+    // deprecated automatic boundaries (`reason: 'auto_job_complete_todo'`)
+    // because cutting at task completion silently destroyed cross-job
+    // continuity — the next job lost both the prior user_turn AND the
+    // breadcrumbs that pointed to its outputs. Only Hard Reset
+    // (`reason: 'user_reset'`) still honours the cut. Legacy auto
+    // boundaries already on disk are deliberately left in place; treating
+    // them as cuts would re-introduce the bug for any feature.jsonl
+    // written before this change.
+    //
+    // Note: `collapsed=true` lines marked by an old auto boundary's
+    // collapse phase are NOT recovered (we don't know which boundary
+    // caused which marking without a separate marker). Those entries
+    // stay filtered below — accepted as one-time loss for already-cut
+    // data. New data accumulates without auto cuts.
     let latestBoundaryIdx = -1;
     for (let i = all.length - 1; i >= 0; i--) {
-      if (all[i].type === 'boundary') {
-        latestBoundaryIdx = i;
-        break;
-      }
+      const line = all[i];
+      if (line.type !== 'boundary') continue;
+      const reason = (line as FeatureBoundaryLine).reason;
+      if (reason === 'auto_job_complete_todo') continue;
+      latestBoundaryIdx = i;
+      break;
     }
 
     const userTurns: FeatureUserTurnLine[] = [];

@@ -89,6 +89,14 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     _httpJobId: state._httpJobId,
     _uiLocale: state._uiLocale,
     jobId: state.jobId,
+    // turnId propagation to worker subgraph — without this every worker's
+    // state.turnId is undefined and downstream callers (writeBreadcrumb /
+    // recordUserTurnMeta / ChatLogAppender) silently skip. Even though
+    // workers themselves do NOT emit BC (gated by `!isWorkerContext`),
+    // task-internal trace lines still need the owning turnId so they
+    // attribute correctly in chat.jsonl. job-context-bridge T1 fix.
+    turnId: state.turnId,
+    executionTier: state.executionTier,
     jobTiming: state.jobTiming,
     featureTasks: state.featureTasks,
     referenceRequests: state.referenceRequests,

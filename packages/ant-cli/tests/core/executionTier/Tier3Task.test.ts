@@ -1,25 +1,23 @@
 /**
  * Tier3Task — the ONLY site where mode dispatch is allowed (D11 invariant).
  *
- * Verifies:
- *   - mode='explain' composes { Noop breadcrumb, ExplainOnly boundary }
- *   - mode='generate'/'refactor' composes { Full breadcrumb, AutoComplete boundary }
- *   - both modes share { AtBoundary collapse, ThresholdLLM compact }
+ * After job-context-bridge T8:
+ *   - mode='explain' composes { Noop breadcrumb, ThresholdLLM compact }
+ *   - mode='generate'/'refactor' composes { Full breadcrumb, ThresholdLLM compact }
  *
- * We drive the strategies end-to-end via a stub SessionPort so the
- * compose-then-apply path is exercised (constructor → operation method →
- * SessionPort call). Direct import of the strategy classes keeps us from
- * coupling to internals.
+ * boundary / collapse channels were removed from the tier facade — auto
+ * boundary is gone (T2) and Hard Reset is recorded outside the tier
+ * strategy chain. These tests pin that the facade exposes only
+ * `breadcrumb` and `compact`.
  */
 import { describe, it, expect, vi } from 'vitest';
-import type { FeatureBoundaryLine, FeatureBreadcrumbLine } from '@ant/shared';
+import type { FeatureBreadcrumbLine } from '@ant/shared';
 import { Tier3Task } from '../../../src/core/executionTier/tiers/Tier3Task';
 import type { ExecutionTierState } from '../../../src/core/executionTier/types';
 
 function stubSession() {
   return {
     appendBreadcrumb: vi.fn<[FeatureBreadcrumbLine], Promise<void>>().mockResolvedValue(undefined),
-    appendBoundary: vi.fn<[FeatureBoundaryLine], Promise<void>>().mockResolvedValue(undefined),
     loadChatByTurnIds: vi.fn().mockResolvedValue([]),
   };
 }
@@ -35,21 +33,19 @@ function makeState(mode: 'explain' | 'generate' | 'refactor'): ExecutionTierStat
 }
 
 describe('Tier3Task', () => {
-  it('mode=explain → Noop breadcrumb + ExplainOnly boundary (boundary emitted, breadcrumb skipped)', async () => {
+  it('mode=explain → Noop breadcrumb (no BC line, no boundary slot)', async () => {
     const state = makeState('explain');
     const session = state.deps!.session as any;
     const tier = new Tier3Task('explain');
 
     await tier.breadcrumb(state);
-    await tier.boundary(state);
 
     expect(session.appendBreadcrumb).not.toHaveBeenCalled();
-    expect(session.appendBoundary).toHaveBeenCalledTimes(1);
-    const boundary = session.appendBoundary.mock.calls[0][0];
-    expect(boundary.reason).toBe('auto_job_complete_todo');
+    expect((tier as any).boundary).toBeUndefined();
+    expect((tier as any).collapse).toBeUndefined();
   });
 
-  it('mode=generate → Full breadcrumb + AutoComplete boundary (both emitted)', async () => {
+  it('mode=generate → Full breadcrumb only', async () => {
     const state = makeState('generate');
     const session = state.deps!.session as any;
     // Simulate a file-op chat_status event so the breadcrumb has touched content.
@@ -68,17 +64,14 @@ describe('Tier3Task', () => {
 
     const tier = new Tier3Task('generate');
     await tier.breadcrumb(state);
-    await tier.boundary(state);
 
     expect(session.appendBreadcrumb).toHaveBeenCalledTimes(1);
     const bc = session.appendBreadcrumb.mock.calls[0][0];
     expect(bc.type).toBe('breadcrumb');
     expect(bc.anchors.files).toContain('src/x.ts');
-
-    expect(session.appendBoundary).toHaveBeenCalledTimes(1);
   });
 
-  it('mode=refactor → Full breadcrumb + AutoComplete boundary', async () => {
+  it('mode=refactor → Full breadcrumb with refactor scope', async () => {
     const state = makeState('refactor');
     const session = state.deps!.session as any;
     session.loadChatByTurnIds = vi.fn().mockResolvedValue([
@@ -95,9 +88,7 @@ describe('Tier3Task', () => {
     ]);
     const tier = new Tier3Task('refactor');
     await tier.breadcrumb(state);
-    await tier.boundary(state);
     expect(session.appendBreadcrumb).toHaveBeenCalledTimes(1);
     expect(session.appendBreadcrumb.mock.calls[0][0].scope).toBe('refactor');
-    expect(session.appendBoundary).toHaveBeenCalledTimes(1);
   });
 });

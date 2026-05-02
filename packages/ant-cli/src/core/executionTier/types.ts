@@ -13,8 +13,9 @@
  */
 
 import { ExecutionTierId } from '@ant/shared';
-import type { FeatureBoundaryLine } from '@ant/shared';
 import type { SessionPort } from '../ports/session';
+import type { LLMClient } from '../ports/llm';
+import type { PromptPort } from '../ports/prompt';
 import type { FeatureContext, CompactFeatureContextDeps } from '../context/featureContextBuilder';
 import type { TouchedFromChatLog } from '../context/breadcrumb';
 
@@ -25,13 +26,22 @@ export { ExecutionTierId };
  * observe. We intentionally avoid importing `ArchitectGraphState` here so
  * the `core/executionTier/` module does not depend on any single agent's graph
  * (tiers are cross-agent). Consumers pass the subset they need.
+ *
+ * `deps.llm` and `deps.promptBuilder` are optional — when present, the
+ * BC emit path uses them to produce an LLM-generated summary; when absent
+ * (test harness, ask flow), the fallback paraphrase is used. Either way
+ * the BC line is still written.
  */
 export interface ExecutionTierState {
   jobId?: string;
   turnId?: string;
   directive?: string;
   resolvedAction?: { mode?: 'explain' | 'generate' | 'refactor' | string };
-  deps?: { session?: SessionPort };
+  deps?: {
+    session?: SessionPort;
+    llm?: LLMClient;
+    promptBuilder?: PromptPort;
+  };
 }
 
 export interface ExecutionTier {
@@ -39,30 +49,18 @@ export interface ExecutionTier {
   readonly label: 'Reflex' | 'OneShot' | 'Exploratory' | 'Task' | 'RefsGrounded';
 
   /**
-   * Append a breadcrumb (§12 Breadcrumb). No-op when the tier does not
-   * participate in breadcrumb recording.
+   * Append a breadcrumb (§12 Breadcrumb). Skip semantics live in
+   * `writeBreadcrumb` (mode='explain' / touched=0); the tier slot
+   * dispatches to a single FullBreadcrumb implementation.
    *
    * Side-effect only; caller's responsibility to log failures.
    */
   breadcrumb(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void>;
 
   /**
-   * Append a boundary (§4.2 Boundary / primary Collapse trigger). Some
-   * boundary variants also delegate to {@link ExecutionTier.collapse}
-   * internally so the "boundary → collapse" chain stays atomic.
-   */
-  boundary(state: ExecutionTierState): Promise<void>;
-
-  /**
    * Compact `FeatureContext` (§13 compaction_policy). Returns the input
-   * unchanged when the tier does not compact (e.g. Reflex / Plan).
+   * unchanged when the tier does not compact (e.g. Tier 0 Reflex —
+   * read-only path skips the LLM safety net).
    */
   compact(ctx: FeatureContext, deps: CompactFeatureContextDeps): Promise<FeatureContext>;
-
-  /**
-   * Mark pre-boundary user_turn/user_turn_meta lines collapsed (§4.2).
-   * Usually invoked transitively from a boundary strategy; exposed on the
-   * facade so adapters / tests can call it directly if needed.
-   */
-  collapse(session: SessionPort, boundary: FeatureBoundaryLine): Promise<void>;
 }

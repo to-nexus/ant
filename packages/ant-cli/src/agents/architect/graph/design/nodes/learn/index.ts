@@ -2,7 +2,6 @@ import * as path from 'node:path';
 import { DesignGraphState } from "../../state";
 import { saveFigmaMCPDebugLog } from '../../../../../../periphery/adapters/figma/figmaMCPHandler';
 import { ARTIFACT_PREFIX } from '@ant/shared';
-import type { FeatureBoundaryLine } from '@ant/shared';
 
 import { saveSessionRun } from './sessionWriter';
 import { extractDesignLessons, storeLessonsToMemory, stripMetaFromContent } from './lessonExtractor';
@@ -10,14 +9,16 @@ import {
   buildBreadcrumb,
   collectTouchedFilesFromChatLog,
 } from '../../../../../../core/context/breadcrumb';
+import { buildLlmBreadcrumbSummary } from '../../../../../../core/context/breadcrumbSummary';
 
 /**
- * Append a breadcrumb + boundary for a completed design job (§12).
+ * Append a breadcrumb for a completed design job (§12).
  *
- * Design's learn phase always represents a "task-complete" class event
- * for whatever tier the Decompose Tier Entry Node emitted — a boundary
- * collapses the user_turn into T3, and a breadcrumb surfaces the
- * produced documents as path anchors for the next resolve cycle.
+ * Design's learn phase emits a breadcrumb so the produced documents
+ * appear as anchor pointers in the next resolve cycle. The auto
+ * boundary previously paired with this BC was retired by
+ * job-context-bridge T2 — only Hard Reset still cuts the timeline, and
+ * that is recorded directly by SessionPersistence, not here.
  *
  * SSOT for touched files: chat.jsonl `chat_status` lines with
  * statusType in {file_create, file_edit, file_delete} (+ failed
@@ -80,8 +81,29 @@ async function applyDesignBreadcrumbBoundary(
     deleted = fbDeleted;
     rangeRef = undefined;
   }
-  const summary = designBreadcrumbSummary(state, pathsFromTrace.length);
   const mode = state.resolvedAction?.mode;
+  // Skip explain mode — no anchor information to record (job-context-bridge T3).
+  if (mode === 'explain') {
+    console.log("📝 [Design Learn] breadcrumb skipped: mode='explain' (no anchors)");
+    return;
+  }
+  if (pathsFromTrace.length === 0) {
+    console.log('📝 [Design Learn] breadcrumb skipped: touched=0 (no doc change)');
+    return;
+  }
+
+  // job-context-bridge T4 — LLM-generated noun-form summary; falls back to
+  // directive paraphrase on any failure.
+  const summary = await buildLlmBreadcrumbSummary({
+    directive: state.directive || '',
+    mode,
+    created,
+    modified,
+    deleted,
+    touchedCount: pathsFromTrace.length,
+    llm: state.deps?.llm,
+    promptPort: state.deps?.promptBuilder,
+  });
 
   const breadcrumb = buildBreadcrumb({
     jobId,
@@ -104,37 +126,8 @@ async function applyDesignBreadcrumbBoundary(
     console.warn('⚠️  [Design Learn] appendBreadcrumb failed:', err);
   }
 
-  const boundary: FeatureBoundaryLine = {
-    type: 'boundary',
-    ts: new Date().toISOString(),
-    jobId,
-    turnId,
-    jobType: 'design',
-    reason: 'auto_job_complete_todo',
-  };
-  try {
-    await session.appendBoundary(boundary);
-    console.log(`📌 [Design Learn] boundary appended (reason=${boundary.reason})`);
-  } catch (err) {
-    console.warn('⚠️  [Design Learn] appendBoundary failed:', err);
-  }
-}
-
-/**
- * Build a noun-form one-line summary for design breadcrumbs.
- *
- * FPOP constraint (inline contract — no LLM render today):
- *   - Observation target: the completed design artefact.
- *   - Principle: single-line noun-form phrase; filenames belong in anchors.
- *   - Constraint: no verb-form sentences, no listing of individual files.
- */
-function designBreadcrumbSummary(state: DesignGraphState, touchedCount: number): string {
-  const directive = (state.directive || '').trim();
-  const firstLine = directive.split(/\r?\n/)[0] ?? '';
-  const trimmed = firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
-  const scaleTag = touchedCount > 0 ? ` · ${touchedCount} docs` : '';
-  const core = trimmed.length > 0 ? trimmed : 'design update';
-  return `${core}${scaleTag}`;
+  // job-context-bridge T2 — auto boundary deprecated for design too.
+  // Hard Reset is recorded by SessionPersistence; nothing to do here.
 }
 
 /**

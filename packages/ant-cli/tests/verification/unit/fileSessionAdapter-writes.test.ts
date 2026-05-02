@@ -161,7 +161,12 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
   // loadSinceBoundary merge
   // ─────────────────────────────────────────────────────────────────────
 
-  it('loadSinceBoundary returns user_turn + user_turn_meta after latest boundary and ALL breadcrumbs', async () => {
+  it('loadSinceBoundary ignores legacy auto_job_complete_todo boundaries (job-context-bridge T2)', async () => {
+    // job-context-bridge T2 deprecated auto-cut. Legacy `auto_job_complete_todo`
+    // boundary lines may still exist on disk; the reader treats them as
+    // non-cuts so cross-job continuity is restored without a one-shot
+    // migration. user_turn lines pre-dating those legacy boundaries that
+    // were never `collapsed=true` are now visible again.
     const t1: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'one' };
     const m1: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', executionTier: 1 };
     const bc1: FeatureBreadcrumbLine = { type: 'breadcrumb', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', scope: 'modification', summary: 'bc1', anchors: { files: ['a.ts'] }, stats: { modified: 1 } };
@@ -178,13 +183,27 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
 
     const result = await adapter.loadSinceBoundary();
 
-    expect(result.userTurns).toHaveLength(1);
-    expect(result.userTurns[0].turnId).toBe('t-2');
-
-    expect(result.userTurnMetas).toHaveLength(0); // m1 was before boundary
+    // Both user_turns visible — the auto boundary is ignored.
+    expect(result.userTurns.map((t) => t.turnId)).toEqual(['t-1', 't-2']);
+    expect(result.userTurnMetas.map((m) => m.turnId)).toEqual(['t-1']);
 
     expect(result.breadcrumbs).toHaveLength(2);
     expect(result.breadcrumbs.map((b) => b.summary)).toEqual(['bc1', 'bc2']);
+  });
+
+  it('loadSinceBoundary still cuts at user_reset boundary (Hard Reset path preserved)', async () => {
+    // Hard Reset is the only remaining cut. user_turns before it must
+    // not appear in the next-turn featureContext.
+    const t1: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'one' };
+    const reset: FeatureBoundaryLine = { type: 'boundary', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'reset', reason: 'user_reset' };
+    const t2: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:03Z', jobId: 'j2', turnId: 't-2', jobType: 'code', text: 'two' };
+
+    await adapter.appendLine('feature', t1);
+    await adapter.appendLine('feature', reset);
+    await adapter.appendLine('feature', t2);
+
+    const result = await adapter.loadSinceBoundary();
+    expect(result.userTurns.map((t) => t.turnId)).toEqual(['t-2']);
   });
 
   // ─────────────────────────────────────────────────────────────────────

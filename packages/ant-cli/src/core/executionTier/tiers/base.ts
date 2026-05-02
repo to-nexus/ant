@@ -1,28 +1,27 @@
 /**
  * Shared tier implementation skeleton.
  *
- * Every tier composes a `{breadcrumb, boundary, collapse, compact}` quad
- * in its constructor. The operation methods are uniform across tiers —
- * they simply delegate. The constructor is the ONE and ONLY site where
- * tier-specific behaviour is wired; neither the base class nor the
- * operation methods may inspect `mode` / `complexity` literals (D11
- * invariant, see 18-session-redesign §2.4).
+ * job-context-bridge T8: boundary / collapse strategy slots removed
+ * from the tier facade. Auto boundary is gone (T2) and the only
+ * remaining boundary is `reason: 'user_reset'`, recorded directly by
+ * SessionPersistence — the tier chain has nothing to do with boundary
+ * any more. The remaining slots are:
+ *   - breadcrumb: { FullBreadcrumb } single dispatch (mode/touched
+ *                 gating happens inside writeBreadcrumb)
+ *   - compact:    { ThresholdLLMCompact, NoopCompact (Tier 0 only) }
+ *
+ * Mode dispatch still lives ONLY inside the tier constructors
+ * (Tier3Task, Tier4Plan) — D11 invariant.
  */
 
-import type { FeatureBoundaryLine } from '@ant/shared';
-import type { SessionPort } from '../../ports/session';
 import type { FeatureContext, CompactFeatureContextDeps } from '../../context/featureContextBuilder';
 import type { TouchedFromChatLog } from '../../context/breadcrumb';
 import type { ExecutionTier, ExecutionTierState, ExecutionTierId } from '../types';
 import type { BreadcrumbStrategy } from '../strategies/breadcrumb';
-import type { BoundaryStrategy } from '../strategies/boundary';
-import type { CollapseStrategy } from '../strategies/collapse';
 import type { CompactStrategy } from '../strategies/compact';
 
 export interface TierComposition {
   breadcrumb: BreadcrumbStrategy;
-  boundary: BoundaryStrategy;
-  collapse: CollapseStrategy;
   compact: CompactStrategy;
 }
 
@@ -36,15 +35,7 @@ export abstract class BaseTier implements ExecutionTier {
     return this.strategies.breadcrumb.apply(state, touched);
   }
 
-  boundary(state: ExecutionTierState): Promise<void> {
-    return this.strategies.boundary.apply(state);
-  }
-
   compact(ctx: FeatureContext, deps: CompactFeatureContextDeps): Promise<FeatureContext> {
     return this.strategies.compact.apply(ctx, deps);
-  }
-
-  collapse(session: SessionPort, boundary: FeatureBoundaryLine): Promise<void> {
-    return this.strategies.collapse.apply(session, boundary);
   }
 }

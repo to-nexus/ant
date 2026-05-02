@@ -29,8 +29,10 @@ import { compactJob, type CompactableEntry } from './compactJob';
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './constants';
 import type { ExecutionTier } from '../executionTier/types';
 
-/** Default breadcrumb window surfaced to plan/direct prompts. */
-export const DEFAULT_BREADCRUMB_WINDOW = 5;
+/* DEFAULT_BREADCRUMB_WINDOW removed by job-context-bridge T5 — token-budget
+ * pressure inside compactFeatureContext is now the single arbiter of how
+ * many BC lines reach the prompt. Tests that imported the constant should
+ * size their fixtures to exercise the compact path directly. */
 
 /**
  * Shape consumed by plan/direct prompt renderers (Handlebars). Keep the
@@ -61,9 +63,17 @@ export interface FeatureContext {
 }
 
 /**
- * Merge user_turn + user_turn_meta by `turnId` and trim the breadcrumb list.
- * Pure function — pulled out for unit testing and so the adapter read can
- * be stubbed in tests.
+ * Merge user_turn + user_turn_meta by `turnId`. Pure function — pulled out
+ * for unit testing and so the adapter read can be stubbed in tests.
+ *
+ * job-context-bridge T5: the legacy breadcrumb-window slice was removed
+ * here. compactFeatureContext is now the single arbiter of how many BC
+ * lines reach the prompt — it folds older BC entries into the MECE
+ * summary (Artifacts category) once the combined token estimate crosses
+ * `FEATURE_CONTEXT_THRESHOLD`. Without that token-budget pressure every
+ * non-collapsed BC flows through; the prompt template still renders a
+ * bounded list because the template caller can apply a final per-render
+ * cap if needed.
  */
 export function mergeFeatureContext(
   input: {
@@ -71,6 +81,8 @@ export function mergeFeatureContext(
     userTurnMetas: FeatureUserTurnMetaLine[];
     breadcrumbs: FeatureBreadcrumbLine[];
   },
+  // Kept for backward compatibility with callers that still pass an
+  // explicit window override; ignored when undefined or negative.
   options?: { breadcrumbWindow?: number },
 ): FeatureContext {
   const metaByTurn = new Map<
@@ -93,15 +105,20 @@ export function mergeFeatureContext(
       return meta ? { ...turn, ...meta } : turn;
     });
 
-  const window = options?.breadcrumbWindow ?? DEFAULT_BREADCRUMB_WINDOW;
   const liveBreadcrumbs = input.breadcrumbs.filter(
     (bc) => !(bc as { collapsed?: true }).collapsed,
   );
-  // Guard the JS `-0` trap: `Array.prototype.slice(-0)` is identical to
-  // `slice(0)` and returns the full array, which contradicts the "keep none"
-  // intent of a zero/negative window. Branch explicitly so callers cannot
-  // accidentally leak the full breadcrumb list through a defensive clamp.
-  const breadcrumbs = window <= 0 ? [] : liveBreadcrumbs.slice(-window);
+
+  // Backward compat: callers (tests / specialised resolves) may still pass
+  // `breadcrumbWindow` to enforce a hard slice. When undefined every live
+  // BC flows through; compact handles overflow downstream.
+  const window = options?.breadcrumbWindow;
+  const breadcrumbs =
+    typeof window === 'number' && window >= 0
+      ? window === 0
+        ? []
+        : liveBreadcrumbs.slice(-window)
+      : liveBreadcrumbs;
 
   return { breadcrumbs, userTurns: merged };
 }
@@ -136,11 +153,17 @@ export async function buildFeatureContext(
 // ─────────────────────────────────────────────────────────────────────────────
 // §13 compaction_policy — Compact mechanism
 //
-// Collapse (boundary-triggered) is handled at write time by
-// FileSessionAdapter.appendBoundary. Compact is the orthogonal safety net:
-// when T2 user_turns grow past FEATURE_CONTEXT_THRESHOLD we summarize the
-// oldest entries via LLM while keeping FEATURE_CONTEXT_WINDOW most-recent
-// turns intact. Breadcrumbs are never compacted (bounded by design).
+// Collapse (Hard Reset only after job-context-bridge T2) is handled at
+// write time by FileSessionAdapter.appendBoundary. Compact is the
+// orthogonal safety net: when the combined user_turn + breadcrumb payload
+// crosses FEATURE_CONTEXT_THRESHOLD, the older entries from BOTH channels
+// are folded into a single MECE summary while the most recent
+// FEATURE_CONTEXT_WINDOW user_turns (and the breadcrumbs at or after the
+// window cutoff timestamp) stay intact.
+//
+// Updated by job-context-bridge T5 — breadcrumbs are no longer
+// "bounded by design": once auto boundaries are gone they can accumulate
+// indefinitely, so compact must include them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHARS_PER_TOKEN = 2.8;
@@ -148,6 +171,31 @@ const CHARS_PER_TOKEN = 2.8;
 function estimateTurnsTokens(turns: MergedUserTurn[]): number {
   return turns.reduce(
     (sum, turn) => sum + Math.ceil((turn.text || '').length / CHARS_PER_TOKEN),
+    0,
+  );
+}
+
+function formatBreadcrumbAsContent(bc: FeatureBreadcrumbLine): string {
+  const stats = [
+    typeof bc.stats?.created === 'number' ? `created ${bc.stats.created}` : '',
+    typeof bc.stats?.modified === 'number' ? `modified ${bc.stats.modified}` : '',
+    typeof bc.stats?.deleted === 'number' ? `deleted ${bc.stats.deleted}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const anchorParts: string[] = [];
+  if (bc.anchors.specs?.length) anchorParts.push(`specs: ${bc.anchors.specs.join(', ')}`);
+  if (bc.anchors.paths?.length) anchorParts.push(`paths: ${bc.anchors.paths.join(', ')}`);
+  if (bc.anchors.files?.length) anchorParts.push(`files: ${bc.anchors.files.join(', ')}`);
+  const anchors = anchorParts.length > 0 ? ` | ${anchorParts.join(' | ')}` : '';
+  const statsTag = stats ? ` (${stats})` : '';
+  return `[${bc.scope}] ${bc.summary}${statsTag}${anchors}`;
+}
+
+function estimateBreadcrumbsTokens(bcs: FeatureBreadcrumbLine[]): number {
+  return bcs.reduce(
+    (sum, bc) =>
+      sum + Math.ceil(formatBreadcrumbAsContent(bc).length / CHARS_PER_TOKEN),
     0,
   );
 }
@@ -166,17 +214,20 @@ export interface CompactFeatureContextDeps {
 }
 
 /**
- * Run LLM-based Compact on a `FeatureContext` when its user_turn payload
- * exceeds the budget. Returns a new `FeatureContext` with:
+ * Run LLM-based Compact on a `FeatureContext` when its user_turn + BC
+ * payload exceeds the budget. Returns a new `FeatureContext` with:
  *  - `userTurns` trimmed to the last `windowSize` entries,
- *  - `summary` populated with the LLM-generated digest of the older entries,
+ *  - `breadcrumbs` trimmed to those at or after the window-cutoff
+ *    timestamp (i.e. BCs that "belong to" the kept user_turns),
+ *  - `summary` populated with the LLM-generated digest of the older
+ *    user_turns AND older BCs (BCs labelled as Artifacts in the prompt),
  *  - `wasCompacted = true`.
  *
  * No-ops (returning the input unchanged) when:
- *  - token estimate is within threshold,
+ *  - combined token estimate is within threshold,
  *  - or fewer than `windowSize + 1` user_turns exist (nothing to compact),
  *  - or the LLM call throws (graceful degradation — original ctx preserved,
- *    caller keeps full user_turns for the prompt).
+ *    caller keeps full user_turns + BCs for the prompt).
  */
 export async function compactFeatureContext(
   ctx: FeatureContext,
@@ -188,27 +239,51 @@ export async function compactFeatureContext(
 
   if (ctx.userTurns.length <= windowSize) return ctx;
 
-  const totalTokens = estimateTurnsTokens(ctx.userTurns);
+  const totalTokens =
+    estimateTurnsTokens(ctx.userTurns) +
+    estimateBreadcrumbsTokens(ctx.breadcrumbs);
   if (totalTokens <= threshold) return ctx;
 
-  const entries: CompactableEntry[] = ctx.userTurns.map((turn) => ({
-    role: 'user',
-    content: turn.text || '',
-    timestamp: turn.ts,
-  }));
+  const keptUserTurns = ctx.userTurns.slice(-windowSize);
+  const oldUserTurns = ctx.userTurns.slice(0, -windowSize);
+  const cutoffTs = keptUserTurns[0]?.ts ?? '';
+  // BCs at or after the window-cutoff are "fresh" enough to flow through
+  // verbatim — they correspond to the kept user_turns. Earlier BCs go
+  // into the summary as MECE Artifacts so their anchor info survives in
+  // condensed form rather than being cut by the old fixed window.
+  const oldBreadcrumbs = ctx.breadcrumbs.filter((bc) => !cutoffTs || bc.ts < cutoffTs);
+  const keptBreadcrumbs = ctx.breadcrumbs.filter((bc) => !cutoffTs || bc.ts >= cutoffTs);
+
+  // Mix old user_turns + old BCs in chronological order so the LLM sees
+  // a single timeline. role='breadcrumb' renders as MECE "Artifact".
+  const entries: CompactableEntry[] = [
+    ...oldUserTurns.map((turn) => ({
+      role: 'user',
+      content: turn.text || '',
+      timestamp: turn.ts,
+    })),
+    ...oldBreadcrumbs.map((bc) => ({
+      role: 'breadcrumb',
+      content: formatBreadcrumbAsContent(bc),
+      timestamp: bc.ts,
+    })),
+  ].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 
   try {
     const result = await compactJob(entries, deps.llm, deps.promptPort, {
+      // The recentWindowSize here is unused by compactJob's own slice
+      // because we already partitioned old vs kept above. Pass 0 to
+      // signal "all entries are old" to compactJob.
       threshold,
-      recentWindowSize: windowSize,
+      recentWindowSize: 0,
       maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
     });
     if (!result.wasCompacted || !result.summary) return ctx;
 
-    const keptUserTurns = ctx.userTurns.slice(-windowSize);
     return {
       ...ctx,
       userTurns: keptUserTurns,
+      breadcrumbs: keptBreadcrumbs,
       summary: result.summary,
       wasCompacted: true,
     };
@@ -281,7 +356,7 @@ export async function hydrateFeatureContext(
   // scenario when a long-paused job resumes after other turns accumulated —
   // running the lookup on the post-compact array returns `undefined` and
   // reintroduces the §12 defect (silent turnId loss → ChatLogAppender /
-  // tier.breadcrumb / tier.boundary / recordClassificationBias all no-op).
+  // tier.breadcrumb / recordClassificationBias all no-op).
   //
   // Keep this search BEFORE the compact step so the owning turn is always
   // visible, regardless of how aggressively compact trims the tail window.

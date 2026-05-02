@@ -1,23 +1,23 @@
 import { BaseTier } from './base';
-import { noopBreadcrumb } from '../strategies/breadcrumb';
-import { noopBoundary } from '../strategies/boundary';
-import { noopCollapse } from '../strategies/collapse';
+import { fullBreadcrumb } from '../strategies/breadcrumb';
 import { thresholdLLMCompact } from '../strategies/compact';
 import { ExecutionTierId } from '../types';
 
 /**
  * Tier 1 — any × oneshot (One-shot). Direct ReAct with 1–2 steps.
- * Compact runs (T2 may accumulate across sessions); breadcrumb / boundary
- * are off because the directive's scope is narrow.
+ *
+ * BC emit on every code change (job-context-bridge T3): even a 1–2 step
+ * write turn produces anchor information the next job needs. The previous
+ * `noopBreadcrumb` choice was the strongest contributor to "next turn
+ * sees nothing" symptoms because most narrow directives route here.
+ * `fullBreadcrumb` self-skips for explain mode and touched=0.
  */
 export class Tier1OneShot extends BaseTier {
   readonly id = ExecutionTierId.OneShot;
   readonly label = 'OneShot' as const;
 
   static readonly instance: Tier1OneShot = new Tier1OneShot({
-    breadcrumb: noopBreadcrumb,
-    boundary: noopBoundary,
-    collapse: noopCollapse,
+    breadcrumb: fullBreadcrumb,
     compact: thresholdLLMCompact,
   });
 
