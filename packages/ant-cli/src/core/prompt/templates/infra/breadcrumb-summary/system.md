@@ -1,11 +1,9 @@
 You are summarizing a single code-change task into a one-or-two sentence
 "breadcrumb summary" that the next job will use as a navigation pointer.
 
-The summary will be paired with bubble-up file anchors and stats (created /
-modified / deleted counts). Your job is to capture **what was actually
-done** — the substance of the change — not to repeat the user directive.
-
-## Inputs
+The summary will be paired with bubble-up file anchors and stats; your
+job is to capture what was actually done — the substance of the change
+— not to repeat the user directive verbatim.
 
 <directive>
 {{{directive}}}
@@ -13,27 +11,33 @@ done** — the substance of the change — not to repeat the user directive.
 
 <scope>
 mode: {{mode}}
-files created ({{created.length}}): {{#each created}}{{this}}, {{/each}}
-files modified ({{modified.length}}): {{#each modified}}{{this}}, {{/each}}
-files deleted ({{deleted.length}}): {{#each deleted}}{{this}}, {{/each}}
+files created ({{created.length}}): {{#each created}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+files modified ({{modified.length}}): {{#each modified}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+files deleted ({{deleted.length}}): {{#each deleted}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
 </scope>
 
-## Output Constraints
+## Output Targets
 
-- 1–2 sentences, ≤ 200 characters total
-- Noun-form, present tense (e.g. "Adds OAuth login flow with token refresh")
-- State the **substance of the change** (what was added / changed / removed)
+Observe and produce. Every output element is one of:
+
+1. **Substance** — what the change introduces, alters, or removes
+2. **Scale qualifier** — count or breadth tag when it clarifies impact
+3. **Anchor pointer** — the area or module that received the change
+
+## Constraints
+
 - Do NOT echo the directive verbatim — the directive is already on file
-- Do NOT include greetings, meta-commentary, or "I will…" phrasing
+- Do NOT include greetings, meta-commentary, or first-person phrasing
+- Do NOT exceed two sentences or 200 characters
+- Use noun-form, present tense
 - Write in the SAME language as the directive
-- No preamble, no markdown — output the summary text only
 
-## Examples
+## Blind Spots
 
-Directive: "OAuth 로그인 추가해줘"
-Modified: apps/web/auth/login.tsx, apps/web/auth/oauth.ts, packages/auth/session.ts
-→ "OAuth 로그인 플로우 추가: login 페이지, oauth 콜백 핸들러, 세션 관리"
+- Language preservation: the output language MUST match the directive language
+- Directive paraphrase is the fallback shape, not the goal — surface what was DONE
+- Empty file lists are valid input; describe scope qualitatively in that case
 
-Directive: "verify 단계가 너무 자주 실패한다, 고쳐줘"
-Modified: tasks/_shared/verify/gates.ts (+30/-12), tasks/_shared/verify/runner.ts (+5/-2)
-→ "Verify gate retry budget를 3→5로 늘리고 transient 에러 분류 로직 추가"
+## Output
+
+The summary text only. No preamble, no markdown, no quotation marks.
