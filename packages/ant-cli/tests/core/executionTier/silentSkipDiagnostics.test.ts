@@ -119,6 +119,47 @@ describe('writeBreadcrumb / FullBreadcrumb — silent skip diagnostics', () => {
     );
     expect(session.appendBreadcrumb).not.toHaveBeenCalled();
   });
+
+  // When `appendBreadcrumb` itself rejects (disk I/O, lock contention,
+  // jsonl corruption), the inner try/catch swallows the error so a BC
+  // miss never aborts the owning learn node. The warn line MUST carry
+  // jobId/turnId/touched so an operator can disambiguate it from the
+  // four outer skip cases above (which log `writeBreadcrumb skipped: …`
+  // instead). Without those identifiers a silent-failure case is
+  // indistinguishable from a gate-skip case in field logs.
+  it('logs jobId/turnId/touched when appendBreadcrumb itself rejects', async () => {
+    const session = {
+      appendBreadcrumb: vi.fn().mockRejectedValue(new Error('disk full')),
+      appendUserTurnMeta: vi.fn().mockResolvedValue(undefined),
+      loadChatByTurnIds: vi.fn().mockResolvedValue([]),
+    };
+    const touched: TouchedFromChatLog = {
+      all: new Set<string>(['a.ts', 'b.ts']),
+      created: ['a.ts'],
+      modified: ['b.ts'],
+      deleted: [],
+    };
+    const state: ExecutionTierState = {
+      jobId: 'job-9',
+      turnId: 'turn-9',
+      directive: 'stub',
+      resolvedAction: { mode: 'generate' },
+      deps: {
+        session: session as any,
+        // No llm/promptBuilder — buildLlmBreadcrumbSummary self-falls-back
+        // to the directive paraphrase, so the BC line still gets built and
+        // append is reached.
+      },
+    };
+    await new FullBreadcrumb().apply(state, touched);
+    expect(session.appendBreadcrumb).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /appendBreadcrumb failed \(jobId=job-9, turnId=turn-9, touched=2\)/,
+      ),
+      expect.any(Error),
+    );
+  });
 });
 
 describe('recordUserTurnMeta — silent skip diagnostics', () => {

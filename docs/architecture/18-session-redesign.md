@@ -242,6 +242,18 @@ rg "MiniBreadcrumb|miniBreadcrumb" packages/ant-cli/src
 rg "BoundaryStrategy|CollapseStrategy" packages/ant-cli/src
 ```
 
+### 5.1.2 BC 적기 게이트 (`learn` 노드 outer policy)
+
+**BC 적기 결정은 turn 단위(`turnTouchedAny`) 신호를 사용**한다. verification/error tail의 `state.violations` 잔존(=`taskFailed`)은 `interruption` 마킹용이며 BC 적기에는 영향을 주지 않는다. 코드를 한 건이라도 변경한 turn이라면 마지막 task가 verification이어도 BC가 기록된다.
+
+| 게이트 | SSOT | 영향 |
+|---|---|---|
+| `isLastTask` | `nodes/learn/index.ts` | turn 경계 1회 제한 |
+| `turnTouchedAny = touchedForLearn.all.size > 0` | `core/context/breadcrumb.ts#collectTouchedFilesFromChatLog` (chat.jsonl `file_*` SSOT) | turn 안에서 코드 변경이 발생한 사실 자체 |
+| `taskFailed = state.violations.length > 0` | — | **BC 적기에는 미사용** (interruption 마킹 전용) |
+
+게이트는 [`nodes/learn/bcGate.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/learn/bcGate.ts) 의 순수 함수 `evaluateBcGate` 로 분리되어 있고, 같은 함수가 `📝 [Learn] BC eval — …` 한 줄 진단 로그도 함께 산출한다 — "BC 0개" 보고가 들어왔을 때 가장 먼저 grep 할 SSOT. 내부 4 skip 사유(`mode='explain'` / `touched=0` / session 누락 / context 누락)는 [`writeBreadcrumb`](../../packages/ant-cli/src/core/executionTier/strategies/breadcrumb.ts) 안쪽에 그대로 남아 있고, `appendBreadcrumb` 자체가 실패한 silent failure는 `⚠️ [Tier] appendBreadcrumb failed (jobId=…, turnId=…, touched=…)` warn으로 분리 식별된다 — 회귀 테스트는 [`learn-bc-gate.test.ts`](../../packages/ant-cli/tests/graph/learn-bc-gate.test.ts) + [`silentSkipDiagnostics.test.ts`](../../packages/ant-cli/tests/core/executionTier/silentSkipDiagnostics.test.ts) 두 파일이 lock한다.
+
 ### 5.2 Breadcrumb Bubble-up (T3)
 
 `core/context/breadcrumb.ts#buildBreadcrumb`:
