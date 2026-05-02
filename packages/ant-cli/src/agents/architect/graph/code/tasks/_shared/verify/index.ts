@@ -38,19 +38,19 @@ export type { ComposeBundleInput } from './composeBundle';
 export {
   VerificationTerminalError,
   classifyTerminalError,
-} from './errors';
-export type { VerificationTerminalKind, TerminalClassification } from './errors';
+} from './terminal/errors';
+export type { VerificationTerminalKind, TerminalClassification } from './terminal/errors';
 
 // Verify-mode plan-prompt builder (consumed by activeHooks dispatcher).
-export { buildPrompt, buildPrompt as buildPlanPrompt } from './buildPlanPrompt';
+export { buildPrompt, buildPrompt as buildPlanPrompt } from './prompt/buildPlanPrompt';
 
 // VerificationBudget aggregate — read+write surface for the axes that
 // determine "should this verification cycle continue?".
 export {
   VerificationBudget,
   BUDGET_THRESHOLDS,
-} from './budget';
-export type { BudgetSnapshot, TerminalReason } from './budget';
+} from './terminal/budget';
+export type { BudgetSnapshot, TerminalReason } from './terminal/budget';
 
 // emptyImpl predicates.
 export {

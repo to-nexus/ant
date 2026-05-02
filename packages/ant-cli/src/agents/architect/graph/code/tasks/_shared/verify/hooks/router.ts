@@ -1,5 +1,5 @@
 /**
- * `_shared/verify/router` — TaskRouterHook.routeAfterDone shared by every
+ * `_shared/verify/hooks/router` — TaskRouterHook.routeAfterDone shared by every
  * verification responsibility holder.
  *
  * Returns:
@@ -17,8 +17,8 @@
  * R2 — depends only on the graph state shape.
  */
 
-import type { ArchitectGraphState } from '../../../state';
-import { requiresVerification } from './predicate';
+import type { ArchitectGraphState } from '../../../../state';
+import { requiresVerification } from '../predicate';
 
 export function routeAfterDone(state: ArchitectGraphState): string | null {
   const hasPlan = !!state.planText?.trim();
@@ -28,7 +28,7 @@ export function routeAfterDone(state: ArchitectGraphState): string | null {
     const featurePath = state.context?.featurePath;
     const jobId = state._httpJobId;
     if (!featurePath || !jobId) return;
-    import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+    import('../../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
       const logger = getExecutionLogger({ featurePath, jobId, jobType: 'code' });
       return logger.logRouteDecision(state.currentTask?.id, {
         router: 'routeAfterDone',

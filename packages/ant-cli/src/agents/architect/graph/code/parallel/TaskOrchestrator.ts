@@ -29,8 +29,8 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
-import { classifyTerminalError } from '../tasks/_shared/verify/errors';
-import { VerificationBudget, BUDGET_THRESHOLDS } from '../tasks/_shared/verify/budget';
+import { classifyTerminalError } from '../tasks/_shared/verify/terminal/errors';
+import { VerificationBudget, BUDGET_THRESHOLDS } from '../tasks/_shared/verify/terminal/budget';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 

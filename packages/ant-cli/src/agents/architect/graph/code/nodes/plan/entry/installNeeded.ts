@@ -1,10 +1,10 @@
 import type { ArchitectGraphState } from '../../../state';
-import { probeInstallStatus } from '../../../tasks/_shared/verify/env';
+import { probeInstallStatus } from '../../../tasks/_shared/verify/env/env';
 
 /**
  * Per-entry install-status probe. The probe logic (`areDepsInstalled` +
  * optional `detectPackageManager`) lives in
- * `tasks/_shared/verify/env.ts::probeInstallStatus`. This wrapper:
+ * `tasks/_shared/verify/env/env.ts::probeInstallStatus`. This wrapper:
  *
  *   - delegates to `probeInstallStatus(featureRoot, opts)`;
  *   - writes the observation to `state._installNeededTransient` (read by

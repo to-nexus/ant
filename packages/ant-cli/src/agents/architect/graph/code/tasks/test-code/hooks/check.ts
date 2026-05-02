@@ -25,7 +25,7 @@
  */
 
 import type { ArchitectGraphState, Violation, ViolationType } from '../../../state';
-import { detectTestFilesFromDisk } from '../../_shared/verify/env';
+import { detectTestFilesFromDisk } from '../../_shared/verify/env/env';
 
 const MESSAGE =
   'test-code task completed but no test files (*.test.ts / *.spec.ts / *.test.js / *.spec.js) were found in the workspace.';

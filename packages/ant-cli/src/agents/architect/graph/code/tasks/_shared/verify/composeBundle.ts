@@ -34,7 +34,7 @@ import type {
 } from '../types';
 import { requiresVerification } from './predicate';
 import { isVerifyEntered } from './markVerifyEntered';
-import { routeAfterDone as verifyRouteAfterDone } from './router';
+import { routeAfterDone as verifyRouteAfterDone } from './hooks/router';
 
 /**
  * Inputs to `composeBundle`. `apply` carries the task type's apply-phase

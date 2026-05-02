@@ -26,7 +26,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getTechTier } from '@ant/shared';
-import type { ArchitectGraphState } from '../../../state';
+import type { ArchitectGraphState } from '../../../../state';
 
 const TEST_FILE_PATTERNS = [
   /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/,
@@ -99,14 +99,14 @@ export async function probeInstallStatus(
   opts?: { detectPackageManager?: boolean },
 ): Promise<InstallStatusObservation> {
   const { areDepsInstalled } = await import(
-    '../../../../../../common/tool/handlers/invalidationScope'
+    '../../../../../../../common/tool/handlers/invalidationScope'
   );
   const installed = await areDepsInstalled(featureRoot);
 
   let packageManager: string | undefined;
   if (opts?.detectPackageManager) {
     const { detectPackageManager } = await import(
-      '../../../../../../../core/utils/packageManager'
+      '../../../../../../../../core/utils/packageManager'
     );
     const detected = await detectPackageManager(featureRoot);
     if (detected) packageManager = detected;

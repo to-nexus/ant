@@ -19,7 +19,7 @@ import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/workerScope';
-import { VerificationTerminalError } from '../tasks/_shared/verify/errors';
+import { VerificationTerminalError } from '../tasks/_shared/verify/terminal/errors';
 import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
 
 /**

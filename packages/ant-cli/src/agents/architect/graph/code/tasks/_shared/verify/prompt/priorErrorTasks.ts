@@ -1,5 +1,5 @@
 /**
- * `_shared/verify/priorErrorTasks` — verification prompt inject helper.
+ * `_shared/verify/prompt/priorErrorTasks` — verification prompt inject helper.
  *
  * Surfaces every prior error sub-task (spawned by previous batch-splits in
  * this verification cycle) into the verification plan prompt so the LLM
@@ -14,7 +14,7 @@
  * R2 — depends only on the graph state shape and CodeTask type.
  */
 
-import type { ArchitectGraphState } from '../../../state';
+import type { ArchitectGraphState } from '../../../../state';
 
 export interface PriorErrorTaskEntry {
   /** task.name (= batch.name) */
