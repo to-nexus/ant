@@ -82,6 +82,39 @@ async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string
   });
 }
 
+/**
+ * Compose a zero-match response that tells the LLM/operator *why* the
+ * search came back empty — distinguishing "really no occurrences" from
+ * "your file_pattern was rewritten" from "exclude / .gitignore cut the
+ * tree you wanted". Without this context an empty result gets
+ * misread as ground truth and the agent loops on the wrong assumption
+ * (the next-intl session was an exact instance of that loop).
+ */
+export function formatZeroMatchMessage(
+  pattern: string,
+  rawFilePattern: string | undefined,
+  plan: SearchPlan,
+): string {
+  const headline = `No matches found for pattern "${pattern}"` +
+    (plan.effectiveFilePattern ? ` in files matching "${plan.effectiveFilePattern}"` : '');
+
+  const ctxLines: string[] = [];
+  ctxLines.push(`  cwd: ${plan.cwd}`);
+  if (rawFilePattern && rawFilePattern !== plan.effectiveFilePattern) {
+    ctxLines.push(`  file_pattern normalized: "${rawFilePattern}" → "${plan.effectiveFilePattern}"`);
+  }
+  ctxLines.push(`  appliedExcludes: ${plan.appliedExcludes.join(', ') || '(none)'}`);
+  const depsNote = plan.effectiveIncludeDeps
+    ? (rawFilePattern && /(^|\/)(node_modules|vendor)(\/|$)/.test(plan.effectiveFilePattern || '')
+        ? ' (auto-inferred from file_pattern targeting node_modules/vendor)'
+        : '')
+    : '';
+  ctxLines.push(`  include_dependencies: ${plan.effectiveIncludeDeps}${depsNote}`);
+  ctxLines.push(`  --no-ignore applied: ${plan.noIgnore}`);
+
+  return `${headline}\n\n[search context]\n${ctxLines.join('\n')}`;
+}
+
 export interface SearchPlan {
   /** Absolute cwd handed to `spawn`. Always the workspace root so file_pattern
    *  semantics match other tool handlers (`read_file` / `edit_file`) — every
@@ -256,8 +289,8 @@ export async function handleSearchCode(
     lines = lines.map(l => (l.startsWith('./') ? l.slice(2) : l));
 
     if (code === 1 || lines.length === 0) {
-      const errorMsg = `No matches found for pattern "${pattern}"${plan.effectiveFilePattern ? ` in files matching "${plan.effectiveFilePattern}"` : ''}`;
-      console.error(`[searchCode] ${errorMsg}`);
+      const errorMsg = formatZeroMatchMessage(pattern, args.file_pattern, plan);
+      console.error(`[searchCode] ${errorMsg.split('\n')[0]}`);
       await ctx.chatStatus.showStatus('searched_code', {
         pattern,
         filesCount: 0,
