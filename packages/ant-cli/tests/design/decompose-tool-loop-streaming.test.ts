@@ -6,7 +6,7 @@ import type { LLMClient, LLMStreamEvent } from '../../src/core/ports/llm';
  * Tool-use (RAG) path coverage for the per-`<task>` streaming hook.
  *
  * `decomposeWithToolLoop` runs in code-job decompose whenever any tool
- * is passed (which is always — DISCOVERY_TOOLS is mandatory). Without
+ * is passed (which is always — read_file/list_files/clarify are mandatory). Without
  * the streaming hook wired here, decompose runs would only deliver the
  * Kanban broadcast at end-of-stream because the tool-loop never fed
  * `event.text` chunks through the XMLStreamParser. These tests lock
