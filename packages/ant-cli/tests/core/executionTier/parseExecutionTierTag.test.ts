@@ -291,6 +291,119 @@ describe('validateExecutionTier', () => {
       }
     });
   });
+
+  describe('runtime-error directive floor (RUNTIME_ERROR_REQUIRES_TIER2_PLUS)', () => {
+    it('throws when generate mode + hasErrorInDirective + Tier 1', () => {
+      try {
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(ExecutionTierViolation);
+        expect((e as ExecutionTierViolation).code).toBe('RUNTIME_ERROR_REQUIRES_TIER2_PLUS');
+        expect((e as ExecutionTierViolation).observedTier).toBe(ExecutionTierId.OneShot);
+      }
+    });
+
+    it('throws when refactor mode + hasErrorInDirective + Tier 1', () => {
+      try {
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('RUNTIME_ERROR_REQUIRES_TIER2_PLUS');
+      }
+    });
+
+    it('passes through Tier 2 when hasErrorInDirective is true', () => {
+      expect(
+        validateExecutionTier(ExecutionTierId.Exploratory, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        }),
+      ).toBe(ExecutionTierId.Exploratory);
+    });
+
+    it('passes through Tier 3/4 when hasErrorInDirective is true', () => {
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        }),
+      ).toBe(ExecutionTierId.Task);
+      expect(
+        validateExecutionTier(ExecutionTierId.RefsGrounded, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        }),
+      ).toBe(ExecutionTierId.RefsGrounded);
+    });
+
+    it('does NOT throw for Tier 1 when hasErrorInDirective is false / absent', () => {
+      expect(
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: false,
+        }),
+      ).toBe(ExecutionTierId.OneShot);
+      expect(
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+        }),
+      ).toBe(ExecutionTierId.OneShot);
+    });
+
+    it('does NOT throw for explain mode even with hasErrorInDirective', () => {
+      expect(
+        validateExecutionTier(ExecutionTierId.Reflex, {
+          mode: 'explain',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        }),
+      ).toBe(ExecutionTierId.Reflex);
+    });
+
+    it('precedence — FORBIDDEN_TIER_FOR_MODE wins over RUNTIME_ERROR_REQUIRES_TIER2_PLUS (Tier 0 path)', () => {
+      try {
+        validateExecutionTier(ExecutionTierId.Reflex, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          hasErrorInDirective: true,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('FORBIDDEN_TIER_FOR_MODE');
+      }
+    });
+
+    it('precedence — RUNTIME_ERROR_REQUIRES_TIER2_PLUS wins over DESIGN_REF_REQUIRES_TIER4 (Tier 1 path)', () => {
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+          hasErrorInDirective: true,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        // Either code would be a valid floor — runtime error check fires
+        // first, so this is the expected one.
+        expect((e as ExecutionTierViolation).code).toBe('RUNTIME_ERROR_REQUIRES_TIER2_PLUS');
+      }
+    });
+  });
 });
 
 describe('buildExecutionTierViolationFraming', () => {
@@ -330,5 +443,19 @@ describe('buildExecutionTierViolationFraming', () => {
     expect(framing).toContain('action-config-matrix');
     expect(framing).toContain('<executionTier>4</executionTier>');
     expect(framing).toContain('verification');
+  });
+
+  it('produces a RUNTIME_ERROR_REQUIRES_TIER2_PLUS-specific retry message', () => {
+    const v = new ExecutionTierViolation('RUNTIME_ERROR_REQUIRES_TIER2_PLUS', {
+      nodeLabel: 'Decompose',
+      mode: 'refactor',
+      observedTier: ExecutionTierId.OneShot,
+    });
+    const framing = buildExecutionTierViolationFraming(v);
+    expect(framing).toContain('runtime error');
+    expect(framing).toContain('reproduce');
+    expect(framing).toContain('<executionTier>2</executionTier>');
+    expect(framing).toContain('selfVerifyOnDone');
+    expect(framing).toContain('refactor');
   });
 });

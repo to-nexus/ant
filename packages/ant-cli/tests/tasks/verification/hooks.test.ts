@@ -103,6 +103,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
       options: { hasTools: true },
     });
     expect(out.text).toContain('BASIS_SECTION');
@@ -113,9 +114,60 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base).toBeDefined();
-    expect(base?.vars.isErrorTask).toBe(false);
+    // Plain non-error directive → runtime-error context flag stays false,
+    // persistent processes remain disallowed. The legacy `isErrorTask`
+    // template gate has been retired in favour of hasUserRuntimeErrorContext;
+    // the `directive` prompt variable name itself is preserved (system-wide
+    // standard naming used by every other render call).
+    expect(base?.vars.hasUserRuntimeErrorContext).toBe(false);
+    expect(base?.vars.allowPersistentProcesses).toBe(false);
+    expect(base?.vars.directive).toBe('ship diagnostics');
+    expect(base?.vars.isErrorTask).toBeUndefined();
     expect(base?.vars.runTests).toBe(true);
     expect(base?.vars.hasTools).toBe(true);
+  });
+
+  it('flips hasUserRuntimeErrorContext + allowPersistentProcesses when directive describes a runtime error', async () => {
+    const { promptBuilder, renderCalls } = makePromptBuilderStub();
+    const out = await planBuildPrompt.buildPrompt({
+      state: makeState({
+        deps: { promptBuilder } as any,
+        directive: `Error: Cannot find module '@tailwindcss/postcss'`,
+      }),
+      task: task('v6'),
+      codeContext: undefined,
+      violationsText: undefined,
+      uiDoc: undefined,
+      remainingTasks: undefined,
+      antrulesContent: undefined,
+    });
+    const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
+    expect(base?.vars.hasUserRuntimeErrorContext).toBe(true);
+    expect(base?.vars.allowPersistentProcesses).toBe(true);
+    expect(base?.vars.directive).toContain('@tailwindcss/postcss');
+    expect(out.vars?.hasUserRuntimeErrorContext).toBe(true);
+  });
+
+  it('flips hasUserRuntimeErrorContext when prior error sub-tasks are present even if directive is plain', async () => {
+    const { promptBuilder, renderCalls } = makePromptBuilderStub();
+    await planBuildPrompt.buildPrompt({
+      state: makeState({
+        deps: { promptBuilder } as any,
+        directive: 'add a settings page',
+        completedTasksDetails: [
+          { id: 'e1', name: 'fix-x', type: 'error', priority: 100, description: 'fix import' },
+        ] as any,
+      }),
+      task: task('v7'),
+      codeContext: undefined,
+      violationsText: undefined,
+      uiDoc: undefined,
+      remainingTasks: undefined,
+      antrulesContent: undefined,
+    });
+    const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
+    expect(base?.vars.hasUserRuntimeErrorContext).toBe(true);
+    expect(base?.vars.allowPersistentProcesses).toBe(true);
   });
 
   it('forwards state._installNeededTransient=true into dependencyStatus', async () => {
@@ -130,6 +182,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       violationsText: 'earlier failure',
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base?.vars.dependencyStatus).toMatch(/missing from `node_modules`/);
@@ -147,6 +200,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base?.vars.dependencyStatus).toBeUndefined();
@@ -162,6 +216,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base?.vars.sessionSummary).toMatch(/Prior batch-split cycles: 3/);
@@ -176,8 +231,70 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,
+        antrulesContent: undefined,
       }),
     ).rejects.toThrow(/PromptBuilder not available/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// templates/jobs/code/nodes/plan/variants/verification/base
+//   — `missing-test-entry` root-cause classification hint (Section C)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('plan/variants/verification/base — missing-test-entry classification hint', () => {
+  // Defense for the brownfield safety net: when a test runner is
+  // installed but the manifest is missing the test entry, the hint
+  // routes the verification task through its existing error sub-task
+  // mechanism (Section C of the test-code-script-wiring +
+  // monorepo-install-locality plan) instead of burning a retry cycle
+  // re-installing the dep that was already there.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const fs = require('fs') as typeof import('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const path = require('path') as typeof import('path');
+  const tplPath = path.join(
+    __dirname,
+    '../../../src/core/prompt/templates/jobs/code/nodes/plan/variants/verification/base.md',
+  );
+
+  it('carries the classification block (heading + table + remediation note)', () => {
+    const text = fs.readFileSync(tplPath, 'utf8');
+    expect(text).toMatch(/missing-test-entry/);
+    expect(text).toMatch(/Probe before classifying/);
+    // Three-row decision table — version probe disambiguates installed vs missing entry.
+    expect(text).toMatch(/`--version` exits non-zero/);
+    expect(text).toMatch(/`--version` exits 0, AND the failing command IS the project's test entry/);
+  });
+
+  it('points to the existing error sub-task path (no new task type)', () => {
+    const text = fs.readFileSync(tplPath, 'utf8');
+    // Reuse of error sub-task fan-out is the SSOT preservation guard —
+    // if someone ever swaps this for a new task type, the assertion
+    // below catches the divergence.
+    expect(text).toMatch(/emit an error sub-task/);
+    expect(text).toMatch(/dependency manifest/i);
+  });
+
+  it('carries the over-fire guard (other "Missing script" failures must NOT classify)', () => {
+    const text = fs.readFileSync(tplPath, 'utf8');
+    expect(text).toMatch(/Over-fire guard/);
+    // The guard explicitly enumerates the bucket boundary so the LLM
+    // does not generalise the classification to every "missing X".
+    expect(text).toMatch(/failing command IS the project's test-run entry-point/);
+  });
+
+  it('block is anchored to Step 3 (Analyze Errors), not floating elsewhere', () => {
+    const text = fs.readFileSync(tplPath, 'utf8');
+    const stepIdx = text.search(/^### Step \{\{#if runTests\}\}3\{\{else\}\}2\{\{\/if\}\}: Analyze Errors/m);
+    const planStepIdx = text.search(/^### Step \{\{#if runTests\}\}4\{\{else\}\}3\{\{\/if\}\}: Produce Remediation Plan/m);
+    const classifierIdx = text.indexOf('missing-test-entry');
+    expect(stepIdx).toBeGreaterThan(-1);
+    expect(planStepIdx).toBeGreaterThan(-1);
+    // Hint sits inside Step 3, before Step 4. If someone moves it
+    // outside the Analyze-Errors step, this anchor breaks.
+    expect(classifierIdx).toBeGreaterThan(stepIdx);
+    expect(classifierIdx).toBeLessThan(planStepIdx);
   });
 });
 

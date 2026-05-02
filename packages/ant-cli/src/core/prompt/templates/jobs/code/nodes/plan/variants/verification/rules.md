@@ -10,7 +10,8 @@
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
-- Persistent background processes (e.g., database servers, message queues, dev servers)
+
+{{> jobs/code/base/injections/persistent-process-policy}}
 
 ### Install Decision Principle
 
@@ -34,6 +35,26 @@
 **Constraints**:
 - After observing a gate's failure, proceed directly to producing the remediation `<plan>` from that output. Do NOT re-run the same gate in the same plan cycle to "double check" or "confirm" — it wastes a tool slot and cannot change the result.
 - When the conversation history shows a gate already passed in this cycle and no source file has changed since, do not re-run it. Move to the next gate in the ordering.
+
+### Cache Replay Detection
+
+**Principle**: Monorepo build tools (Turbo, Nx, Lerna) skip task re-execution and replay cached logs when their input hash hasn't changed. The shell exit code is 0 in both real-execution and replay paths, so a passing exit code from a replayed gate command is NOT trustworthy evidence that the post-fix source tree was actually validated.
+
+**Observable** — known cache-replay markers in the gate command's stdout/stderr:
+
+| Tool | Marker (case-insensitive) |
+|------|--------------------------|
+| Turbo | `cache hit, replaying logs` |
+| Nx | `[local cache]` / `[remote cache]` / `existing outputs match the cache` |
+| Lerna | `lerna info from cache` / `cache hit` |
+
+**Constraints**:
+- When a gate command's output contains one of the markers above AND a fix was applied since the prior trusted gate observation, the observation is **untrusted** — treat the gate as "not yet observed" for this cycle, even if exit code is 0.
+- Re-run the gate with a cache-bypass argument:
+  - Turbo: append `--force` (e.g. `pnpm build --force`, `pnpm test --force`)
+  - Nx: append `--skip-nx-cache`
+  - Lerna: append `--no-cache`
+- Do NOT emit the no-errors sentinel plan on top of a cache-replayed gate. That is a protocol violation under this rule, regardless of exit code.
 
 ### Verification Gate Ordering
 
