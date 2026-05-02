@@ -2,6 +2,8 @@
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/monorepo-install-locality}}
+
 {{#if featureContext}}
 ════════════════════════════════════════════════════════════════════════════════
 ## Prior Context
