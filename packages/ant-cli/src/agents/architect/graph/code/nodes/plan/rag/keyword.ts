@@ -24,8 +24,11 @@ import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNor
  * downstream loaders (`loadErrorFiles`, `loadRequiredFiles`) consume
  * canonical workspace-rel paths regardless of which prefix shape the
  * LLM happened to write.
+ *
+ * Exported so the marble-jumping-grove regression suite can lock the
+ * normalize-at-source contract without standing up a full LLM mock.
  */
-function normalizePathArray(arr: unknown): string[] {
+export function normalizePathArray(arr: unknown): string[] {
   if (!Array.isArray(arr)) return [];
   const out: string[] = [];
   for (const p of arr) {
