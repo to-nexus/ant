@@ -516,7 +516,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
-  const { createClarifyContext } = await import('./discoveryTools');
+  const { createClarifyContext } = await import('../../../../../common/clarify');
   const clarifyCtx = createClarifyContext();
 
   // Tier Entry Node retry contract (C-2 from plan):
@@ -633,35 +633,92 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     resetAccumulated();
 
     try {
-      const { DISCOVERY_TOOLS, createDiscoveryToolHandler } = await import('./discoveryTools');
+      // Decompose's discovery tools are now the SAME `read_file` /
+      // `list_files` the entire workspace tool surface uses — the
+      // dedicated `discoveryTools` fork (with its own `scope: 'artifact'
+      // | 'codebase'` enum, its own `resolveAndValidate` traversal
+      // gate, and its own raw-path emission) was deleted in favor of
+      // `common/tool/handlers/*` + `normalizeToCodebasePath` SSOT.
+      //
+      // Three pieces wire it together:
+      //   1. Tool schemas come from `ARCHITECT_TOOLS` (single LLM
+      //      contract across decompose / worker / direct).
+      //   2. `ToolExecutionContext` is built from `state.deps` like every
+      //      other tool callsite. We pass a SILENT `chatStatus` here so
+      //      the per-call `addReadingFile` / `addReadComplete` cards
+      //      come from sourceSelector's tool loop (the existing UI
+      //      surface) instead of double-emitting.
+      //   3. RAC whitelist is wrapped around the common handler — it's
+      //      decompose-specific (worker tools have no RAC) so it stays
+      //      out of the common handler. Sibling-tree paths (plan/,
+      //      architecture/, ...) are gated; codebase/ paths are
+      //      orthogonal, matching the original `scope === 'artifact'`
+      //      contract (`mossy-nearing-gleam` regression invariant).
+      const { ARCHITECT_TOOLS } = await import('../../../../../common/tool/toolSchemas');
+      const { handleReadFile, handleListFiles } = await import('../../../../../common/tool/handlers');
+      const { CLARIFY_TOOL, handleClarify } = await import('../../../../../common/clarify');
+      const racGate = await import('./racGate');
+      const { decideRacGate } = racGate;
+      type RacScope = (typeof racGate)['decideRacGate'] extends (t: any, s: infer S) => any ? S : never;
 
-      const discoveryCtx = {
-        featurePath: state.context.featurePath || '',
-        codebasePath: (state as any).codebasePath || undefined,
-        clarify: clarifyCtx,
-        // Channel A closure (RAC-leak SSOT) — explicit pipelines hard-gate
-        // `read_file`/`list_files` (artifact scope) to RAC paths. Without
-        // this, the prompt's `fe-main → fe-system-main.md` mapping table
-        // tempts the LLM to side-load design docs the user explicitly did
-        // not include (`mossy-nearing-gleam` regression).
-        racScope: isExplicitPipeline
-          ? { refs: _racRefs, context: _racContext }
-          : undefined,
+      const racScope: RacScope = isExplicitPipeline
+        ? { refs: _racRefs, context: _racContext }
+        : undefined;
+
+      // Silent chatStatus — sourceSelector.decomposeWithToolLoop owns
+      // the UI emission for every tool call in the loop (one card per
+      // `tc.input.path`, merged through `_mergeIndex: cardId`).
+      // Forwarding the common handler's emission through the real
+      // ChatAPIClient would double the cards. Commit 3 of this RCA
+      // chain rewrites sourceSelector's emission to use the normalized
+      // path instead of `tc.input.path` raw — the silent proxy stays.
+      const silentChatStatus = new Proxy({}, { get: () => async () => undefined }) as any;
+
+      const ctx: any = {
+        fileSystem: state.deps?.fileSystem,
+        chatStatus: silentChatStatus,
+        workingDir: state.context?.featurePath || process.cwd(),
+        featurePath: state.context?.featurePath,
+        project: state.context?.project,
+        featureFolder: state.context?.featureFolder,
+        command: state.deps?.command,
+        git: state.deps?.git,
+        redis: state.deps?.redis,
+        workspaceResolver: state.deps?.workspaceResolver,
+        userId: state.context?.userId,
+        organizationId: state.context?.organizationId,
+        activePhase: 'plan',
       };
-      const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
 
-      // `read_file` (with optional startLine/endLine) is the SSOT for
-      // re-expanding any compacted document — there is no
-      // separate `read_design_doc` channel anymore. The RAC whitelist
-      // inside `discoveryHandler` keeps explicit pipelines from
-      // side-loading documents the user did not include.
-      const allTools = [...DISCOVERY_TOOLS];
+      const allTools = [ARCHITECT_TOOLS.read_file, ARCHITECT_TOOLS.list_files, CLARIFY_TOOL];
       const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
         tools: allTools,
         toolHandler: async (name, args) => {
-          const discoveryResult = await discoveryHandler(name, args);
-          if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
-          return `Error: Unknown tool "${name}"`;
+          if (name === 'clarify') {
+            return handleClarify(args as { question: string; options?: string[] }, clarifyCtx);
+          }
+
+          // RAC gate. `decideRacGate` derives codebase vs sibling from
+          // the same `normalizeToCodebasePath` SSOT every other tool
+          // callsite uses, replacing the deleted discoveryTools' explicit
+          // `scope === 'artifact'` enum check.
+          const target = (args.path ?? args.directory ?? '') as string;
+          const gate = decideRacGate(target, racScope);
+          if (!gate.allowed) return `Error: ${gate.error}`;
+
+          let res;
+          if (name === 'read_file') {
+            res = await handleReadFile(ctx, args as { path: string; startLine?: number; endLine?: number });
+          } else if (name === 'list_files') {
+            res = await handleListFiles(ctx, args as { directory?: string; pattern?: string });
+          } else {
+            return `Error: Unknown tool "${name}"`;
+          }
+          // ToolResult.content is `string | any[]` (the array branch is a
+          // figma multimodal-block carve-out). decompose's tool loop is
+          // text-only — coerce to string so the LLM sees a stringified
+          // payload if the array case ever lands here.
+          return typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
         },
         state,
         onTaskParsed,

@@ -39,11 +39,13 @@ import {
   deriveArtifactPolicy,
 } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
 import {
-  handleListFiles,
-  handleReadFile,
-  createClarifyContext,
-  type DiscoveryToolContext,
-} from '../../src/agents/architect/graph/code/nodes/decompose/discoveryTools';
+  decideRacGate,
+  isWithinRacWhitelist,
+  type RacScope,
+} from '../../src/agents/architect/graph/code/nodes/decompose/racGate';
+import { handleReadFile, handleListFiles } from '../../src/agents/common/tool/handlers';
+import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
+import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 import type { ResolvedActionContext } from '@ant/shared';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 
@@ -156,91 +158,168 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
 // Channel A — decompose discovery tools must respect explicit RAC scope
 // ───────────────────────────────────────────────────────────────────────
 
-describe('discoveryTools RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => {
-  let featurePath: string;
+describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => {
+  let workspacePath: string;
 
   beforeAll(() => {
-    featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-discovery-'));
-    fs.mkdirSync(path.join(featurePath, 'plan'), { recursive: true });
-    fs.writeFileSync(path.join(featurePath, 'plan/prd.md'), '# PRD\n');
-    fs.mkdirSync(path.join(featurePath, 'architecture/system'), { recursive: true });
+    workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-discovery-'));
+    fs.mkdirSync(path.join(workspacePath, 'plan'), { recursive: true });
+    fs.writeFileSync(path.join(workspacePath, 'plan/prd.md'), '# PRD\n');
+    fs.mkdirSync(path.join(workspacePath, 'architecture/system'), { recursive: true });
     fs.writeFileSync(
-      path.join(featurePath, 'architecture/system/fe-system-main.md'),
+      path.join(workspacePath, 'architecture/system/fe-system-main.md'),
       '# fe-system-main — Cross SDK adapter contract',
     );
-    fs.mkdirSync(path.join(featurePath, 'architecture/spec'), { recursive: true });
-    fs.writeFileSync(path.join(featurePath, 'architecture/spec/spec-foo.md'), '# spec-foo');
+    fs.mkdirSync(path.join(workspacePath, 'architecture/spec'), { recursive: true });
+    fs.writeFileSync(path.join(workspacePath, 'architecture/spec/spec-foo.md'), '# spec-foo');
+    // Codebase fixture for orthogonality assertion.
+    fs.mkdirSync(path.join(workspacePath, 'codebase/src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspacePath, 'codebase/src/main.ts'),
+      'export const ok = true;\n',
+    );
   });
 
   afterAll(() => {
-    if (featurePath) fs.rmSync(featurePath, { recursive: true, force: true });
+    if (workspacePath) fs.rmSync(workspacePath, { recursive: true, force: true });
   });
 
-  function ctx(racScope?: DiscoveryToolContext['racScope']): DiscoveryToolContext {
+  function silentChatStatus(): ToolExecutionContext['chatStatus'] {
+    const noop = async () => undefined as any;
+    return new Proxy({}, { get: () => noop }) as ToolExecutionContext['chatStatus'];
+  }
+
+  function ctx(): ToolExecutionContext {
     return {
-      featurePath,
-      clarify: createClarifyContext(),
-      racScope,
+      fileSystem: new FileSystemAdapter(workspacePath),
+      chatStatus: silentChatStatus(),
+      workingDir: workspacePath,
     };
   }
 
-  it('explicit RAC blocks read_file on a non-RAC artifact path', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
-      ctx({ refs: [], context: ['plan/prd.md'] }),
+  /**
+   * Drive the gate exactly as decompose's tool loop wires it:
+   *   1. `decideRacGate` first (reject sibling paths outside RAC).
+   *   2. otherwise dispatch to the common handler.
+   * If the gate logic in decompose/index.ts ever drifts from this shape,
+   * one of these tests fires.
+   */
+  async function gatedRead(args: { path: string }, racScope: RacScope | undefined): Promise<string> {
+    const gate = decideRacGate(args.path, racScope);
+    if (!gate.allowed) return `Error: ${gate.error}`;
+    const res = await handleReadFile(ctx(), args);
+    return res.content;
+  }
+
+  async function gatedList(args: { directory: string }, racScope: RacScope | undefined): Promise<string> {
+    const gate = decideRacGate(args.directory, racScope);
+    if (!gate.allowed) return `Error: ${gate.error}`;
+    const res = await handleListFiles(ctx(), args);
+    return res.content;
+  }
+
+  it('explicit RAC blocks read_file on a non-RAC artifact path', async () => {
+    const result = await gatedRead(
+      { path: 'architecture/system/fe-system-main.md' },
+      { refs: [], context: ['plan/prd.md'] },
     );
     expect(result).toMatch(/outside the RAC selection/);
     expect(result).not.toContain('Cross SDK');
   });
 
-  it('explicit RAC blocks list_files on a non-RAC directory', () => {
-    const result = handleListFiles(
-      { scope: 'artifact', directory: 'architecture/system' },
-      ctx({ refs: [], context: ['plan/prd.md'] }),
+  it('explicit RAC blocks list_files on a non-RAC directory', async () => {
+    const result = await gatedList(
+      { directory: 'architecture/system' },
+      { refs: [], context: ['plan/prd.md'] },
     );
     expect(result).toMatch(/outside the RAC selection/);
     expect(result).not.toContain('fe-system-main');
   });
 
-  it('explicit RAC permits read_file on a RAC member path', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'plan/prd.md' },
-      ctx({ refs: [], context: ['plan/prd.md'] }),
+  it('explicit RAC permits read_file on a RAC member path', async () => {
+    const result = await gatedRead(
+      { path: 'plan/prd.md' },
+      { refs: [], context: ['plan/prd.md'] },
     );
     expect(result).toContain('# PRD');
   });
 
-  it('directory RAC entry permits read on descendants but rejects siblings', () => {
+  it('directory RAC entry permits read on descendants but rejects siblings', async () => {
     // RAC pins `architecture/spec/` as a directory slot.
-    const allowed = handleReadFile(
-      { scope: 'artifact', path: 'architecture/spec/spec-foo.md' },
-      ctx({ refs: ['architecture/spec'], context: [] }),
+    const allowed = await gatedRead(
+      { path: 'architecture/spec/spec-foo.md' },
+      { refs: ['architecture/spec'], context: [] },
     );
     expect(allowed).toContain('# spec-foo');
 
-    const denied = handleReadFile(
-      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
-      ctx({ refs: ['architecture/spec'], context: [] }),
+    const denied = await gatedRead(
+      { path: 'architecture/system/fe-system-main.md' },
+      { refs: ['architecture/spec'], context: [] },
     );
     expect(denied).toMatch(/outside the RAC selection/);
   });
 
-  it('list_files allowed on a parent of a RAC directory entry', () => {
+  it('list_files allowed on a parent of a RAC directory entry', async () => {
     // Listing `architecture` is needed when the LLM wants to inspect
     // siblings of a pinned `architecture/spec/` directory slot.
-    const result = handleListFiles(
-      { scope: 'artifact', directory: 'architecture' },
-      ctx({ refs: ['architecture/spec'], context: [] }),
+    const result = await gatedList(
+      { directory: 'architecture' },
+      { refs: ['architecture/spec'], context: [] },
     );
     expect(result).not.toMatch(/outside the RAC selection/);
   });
 
-  it('infer pipeline (no racScope) preserves legacy behaviour', () => {
-    const result = handleReadFile(
-      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
-      ctx(undefined),
+  it('infer pipeline (no racScope) preserves legacy behaviour', async () => {
+    const result = await gatedRead(
+      { path: 'architecture/system/fe-system-main.md' },
+      undefined,
     );
     expect(result).toContain('Cross SDK');
+  });
+
+  // ── New invariants made possible by the SSOT unification ──────────────
+  //
+  // The deleted `discoveryTools` had a `scope: 'artifact' | 'codebase'`
+  // enum the LLM had to choose between. The new contract drops the enum
+  // and lets `normalizeToCodebasePath` decide; the orthogonality
+  // (codebase paths bypass RAC) is now implicit in the prefix the LLM
+  // writes. Lock that promise.
+
+  it('codebase paths are orthogonal to RAC (always allowed even with restrictive scope)', async () => {
+    // Restrictive RAC excludes everything; a codebase path STILL reads
+    // because RAC is artifact-only by contract.
+    const result = await gatedRead(
+      { path: 'codebase/src/main.ts' },
+      { refs: [], context: [] },
+    );
+    expect(result).toContain('export const ok = true');
+  });
+
+  it('RAC orthogonality check exposed via decideRacGate (no enum needed)', () => {
+    // The decision function MUST not gate codebase paths regardless of
+    // RAC contents.
+    const verdict = decideRacGate(
+      'codebase/anything/at/all.ts',
+      { refs: ['plan/prd.md'], context: [] },
+    );
+    expect(verdict.allowed).toBe(true);
+
+    // But the underlying isWithinRacWhitelist treats it as "not in
+    // whitelist" — proving decideRacGate is doing its codebase-vs-sibling
+    // dispatch, not delegating blindly.
+    expect(isWithinRacWhitelist('codebase/anything/at/all.ts',
+      { refs: ['plan/prd.md'], context: [] })).toBe(false);
+  });
+
+  it('bare path with no prefix gets normalized to codebase/ → orthogonal to RAC', () => {
+    // `apps/console/foo.ts` — exactly the marble-jumping-grove shape —
+    // is normalized to `codebase/apps/console/foo.ts` by the SSOT, so
+    // the RAC gate must let it through even with empty whitelist.
+    const verdict = decideRacGate(
+      'apps/console/foo.ts',
+      { refs: [], context: ['plan/prd.md'] },
+    );
+    expect(verdict.allowed).toBe(true);
   });
 });
 
