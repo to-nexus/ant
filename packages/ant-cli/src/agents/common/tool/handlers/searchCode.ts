@@ -110,7 +110,7 @@ export function formatZeroMatchMessage(
         : '')
     : '';
   ctxLines.push(`  include_dependencies: ${plan.effectiveIncludeDeps}${depsNote}`);
-  ctxLines.push(`  --no-ignore applied: ${plan.noIgnore}`);
+  ctxLines.push(`  deps-tree walk (--no-ignore --hidden --follow): ${plan.walkDepsTree}`);
 
   return `${headline}\n\n[search context]\n${ctxLines.join('\n')}`;
 }
@@ -131,10 +131,13 @@ export interface SearchPlan {
    *  zero-match diagnostics so the LLM/operator can see why a search came
    *  back empty. */
   appliedExcludes: string[];
-  /** Whether `--no-ignore` is added to the ripgrep invocation (off by
-   *  default, on for dependency-mode so `.gitignore`'d node_modules stay
-   *  searchable). */
-  noIgnore: boolean;
+  /** Dependency-tree walk mode — couples `--no-ignore`, `--hidden`, and
+   *  `--follow` on the ripgrep invocation. Off by default; on whenever
+   *  `effectiveIncludeDeps` is true. All three flags are required to
+   *  reach installed library code in pnpm/npm/yarn workspaces: gitignore
+   *  bypass + hidden `.pnpm/` dir + symlink resolution at the declared
+   *  package path. */
+  walkDepsTree: boolean;
   rgArgs: string[];
 }
 
@@ -187,12 +190,28 @@ export function planSearch(
     ? ['.git']
     : DEFAULT_EXCLUDES;
 
-  // ripgrep's default ignore stack (.gitignore, .ignore, parent .gitignores)
-  // re-cuts node_modules even after we drop our own `!node_modules` glob,
-  // because most workspaces gitignore it. In dependency mode we explicitly
-  // bypass those; `.git/` is still hard-excluded above so `--no-ignore`
-  // never leaks the VCS internals.
-  const noIgnore = effectiveIncludeDeps;
+  // Dependency-tree walk knob — couples `--no-ignore`, `--hidden`, and
+  // `--follow` because all three are required to actually reach
+  // installed library code in the most common JS/TS topologies:
+  //
+  //   - `--no-ignore` defeats the workspace's `.gitignore node_modules/`
+  //     entry (every JS/TS workspace has it).
+  //   - `--hidden` is required for pnpm. pnpm stores actual content at
+  //     `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/...` —
+  //     `.pnpm` is hidden, so without `--hidden` ripgrep never enters it.
+  //   - `--follow` resolves the symlink at `node_modules/<pkg>` (the
+  //     LLM-friendly declared path) onto the real `.pnpm/...` content.
+  //     Without it, file_pattern globs like
+  //     `codebase/apps/hub/node_modules/next-intl/**` match zero files
+  //     because ripgrep emits paths at their REAL location, not the
+  //     symlinked one. (npm/yarn flat layouts don't need this, but the
+  //     flag is harmless there — same files, no extra paths.)
+  //
+  // `.git/` stays hard-excluded above so `--hidden` cannot leak VCS
+  // internals. `--follow` follows symlinks freely; deps mode is an
+  // intentional library-grounding bundle so the wider reach is the
+  // intended trade.
+  const walkDepsTree = effectiveIncludeDeps;
 
   // ── ripgrep argv ──────────────────────────────────────────────────────
   // cwd = workspace root (always exists, FileSystemAdapter constructor
@@ -205,7 +224,7 @@ export function planSearch(
     '--color', 'never',
     '--max-count', String(PER_FILE_MAX_COUNT),
     '--max-filesize', '1M',
-    ...(noIgnore ? ['--no-ignore'] : []),
+    ...(walkDepsTree ? ['--no-ignore', '--hidden', '--follow'] : []),
     ...appliedExcludes.flatMap(ex => ['--glob', `!${ex}`]),
     ...(effectiveFilePattern ? ['--glob', effectiveFilePattern] : []),
     // `--` so patterns starting with `-` are not parsed as flags.
@@ -218,7 +237,7 @@ export function planSearch(
     filePatternFix,
     effectiveIncludeDeps,
     appliedExcludes,
-    noIgnore,
+    walkDepsTree,
     rgArgs,
   };
 }
@@ -261,7 +280,7 @@ export async function handleSearchCode(
 
     console.log(
       `[searchCode] Ripgrep: cwd=${plan.cwd}, file_pattern=${plan.effectiveFilePattern ?? '(none)'}, ` +
-      `excludes=${plan.appliedExcludes.join(',')}, includeDeps=${plan.effectiveIncludeDeps}, noIgnore=${plan.noIgnore}`,
+      `excludes=${plan.appliedExcludes.join(',')}, includeDeps=${plan.effectiveIncludeDeps}, walkDepsTree=${plan.walkDepsTree}`,
     );
 
     const { stdout, stderr, code } = await runRipgrep(plan.rgArgs, plan.cwd);

@@ -40,6 +40,7 @@ import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 
 const NEEDLE = '__SEARCH_CODE_REGRESSION_NEEDLE__';
 const DEPS_NEEDLE = '__SEARCH_CODE_DEPS_NEEDLE__';
+const PNPM_NEEDLE = '__PNPM_LIB_NEEDLE__';
 
 let workspacePath: string;
 let priorCwd: string;
@@ -74,6 +75,26 @@ beforeAll(() => {
     path.join(depDir, 'index.js'),
     `module.exports = "${DEPS_NEEDLE}";\n`,
   );
+
+  // pnpm-style fixture — the real content lives under
+  // `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/...` and the
+  // declared package is a SYMLINK pointing into it. `.pnpm` is a
+  // hidden directory, so without `--hidden` ripgrep can't enter it.
+  // This is the next-intl scenario verbatim — defect that surfaced in
+  // the live integration check after defects A-D were already fixed.
+  const pnpmRealDir = path.join(workspacePath, 'codebase', 'node_modules', '.pnpm', 'pnpm-lib@1.0.0', 'node_modules', 'pnpm-lib', 'dist');
+  fs.mkdirSync(pnpmRealDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(pnpmRealDir, 'config.js'),
+    `module.exports = function(){throw new Error("${PNPM_NEEDLE}")};\n`,
+  );
+  // Symlink at the declared dep location → the real .pnpm/ content.
+  const pnpmSymlinkParent = path.join(workspacePath, 'codebase', 'node_modules');
+  fs.symlinkSync(
+    path.join('.pnpm', 'pnpm-lib@1.0.0', 'node_modules', 'pnpm-lib'),
+    path.join(pnpmSymlinkParent, 'pnpm-lib'),
+  );
+
   // Realistic .gitignore that would mask node_modules from ripgrep's
   // default scan — this is the defect-B trigger.
   fs.writeFileSync(
@@ -236,6 +257,32 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
     expect(result.content).toContain('demo-lib');
   });
 
+  it('defect E (pnpm hidden): finds dep content under node_modules/.pnpm/ (hidden dir)', async () => {
+    // Half of the next-intl defect — without `--hidden` ripgrep can't
+    // enter `.pnpm/` and returns 0 even with `--no-ignore`.
+    const result = await handleSearchCode(makeCtx(), {
+      pattern: PNPM_NEEDLE,
+      file_pattern: 'codebase/node_modules/.pnpm/**/*.js',
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain(PNPM_NEEDLE);
+  });
+
+  it('defect E (pnpm symlink): finds the same content via the LLM-friendly declared path (symlink)', async () => {
+    // The other half — pnpm exposes each declared dep at
+    // `node_modules/<pkg>` as a SYMLINK to `.pnpm/<pkg>@<ver>/...`.
+    // ripgrep walks the real location (`.pnpm/...`), so a file_pattern
+    // glob written at the declared path matches zero files unless
+    // `--follow` resolves the symlink. This is the exact path shape
+    // an LLM writes (and the next-intl session burned 13 retries on it).
+    const result = await handleSearchCode(makeCtx(), {
+      pattern: PNPM_NEEDLE,
+      file_pattern: 'codebase/node_modules/pnpm-lib/**/*.js',
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain(PNPM_NEEDLE);
+  });
+
   it('defect A+B: explicit include_dependencies still works (the documented @types/* use case)', async () => {
     const result = await handleSearchCode(makeCtx(), {
       pattern: DEPS_NEEDLE,
@@ -274,7 +321,7 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
     expect(result.error).toContain(`cwd: ${workspacePath}`);
     expect(result.error).toMatch(/appliedExcludes:.*node_modules/);
     expect(result.error).toMatch(/include_dependencies: false/);
-    expect(result.error).toMatch(/--no-ignore applied: false/);
+    expect(result.error).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): false/);
   });
 
   it('defect D: zero-match diagnostics show normalize correction when file_pattern was rewritten', async () => {
@@ -292,7 +339,7 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
       file_pattern: 'codebase/apps/hub/node_modules/some-lib/**/*.js',
     });
     expect(result.error).toMatch(/include_dependencies: true.*auto-inferred/);
-    expect(result.error).toMatch(/--no-ignore applied: true/);
+    expect(result.error).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): true/);
   });
 });
 
@@ -322,29 +369,40 @@ describe('planSearch — pure decision logic (encapsulation contract)', () => {
     }
   });
 
-  it('file_pattern targeting node_modules auto-enables deps mode + --no-ignore', () => {
+  it('file_pattern targeting node_modules auto-enables deps mode + walkDepsTree (--no-ignore --hidden --follow)', () => {
     const plan = planSearch(
       { pattern: 'x', file_pattern: 'codebase/x/node_modules/y/*.js' },
       fs(),
     );
     expect(plan.effectiveIncludeDeps).toBe(true);
-    expect(plan.noIgnore).toBe(true);
+    expect(plan.walkDepsTree).toBe(true);
     expect(plan.appliedExcludes).not.toContain('node_modules');
     expect(plan.appliedExcludes).toContain('.git');
+    // All three flags MUST be present together — gitignore bypass +
+    // hidden .pnpm/ entry + symlink resolution at the declared
+    // package path.
+    expect(plan.rgArgs).toContain('--no-ignore');
+    expect(plan.rgArgs).toContain('--hidden');
+    expect(plan.rgArgs).toContain('--follow');
   });
 
-  it('explicit include_dependencies enables deps mode + --no-ignore even without a file_pattern', () => {
+  it('explicit include_dependencies enables deps mode + walkDepsTree without a file_pattern', () => {
     const plan = planSearch({ pattern: 'x', include_dependencies: true }, fs());
     expect(plan.effectiveIncludeDeps).toBe(true);
-    expect(plan.noIgnore).toBe(true);
+    expect(plan.walkDepsTree).toBe(true);
+    expect(plan.rgArgs).toContain('--no-ignore');
+    expect(plan.rgArgs).toContain('--hidden');
+    expect(plan.rgArgs).toContain('--follow');
   });
 
-  it('default search keeps DEFAULT_EXCLUDES and does NOT add --no-ignore (perf path)', () => {
+  it('default search keeps DEFAULT_EXCLUDES and does NOT walk deps tree (perf path)', () => {
     const plan = planSearch({ pattern: 'x' }, fs());
     expect(plan.effectiveIncludeDeps).toBe(false);
-    expect(plan.noIgnore).toBe(false);
+    expect(plan.walkDepsTree).toBe(false);
     expect(plan.appliedExcludes).toEqual(['node_modules', '.git', 'dist', 'build']);
     expect(plan.rgArgs).not.toContain('--no-ignore');
+    expect(plan.rgArgs).not.toContain('--hidden');
+    expect(plan.rgArgs).not.toContain('--follow');
   });
 
   it('rgArgs is built from the same plan fields — no hidden state', () => {
@@ -373,7 +431,7 @@ describe('formatZeroMatchMessage — diagnostic shape', () => {
     expect(msg).toContain('cwd:');
     expect(msg).toContain('appliedExcludes:');
     expect(msg).toContain('include_dependencies:');
-    expect(msg).toContain('--no-ignore applied:');
+    expect(msg).toContain('deps-tree walk (--no-ignore --hidden --follow):');
   });
 
   it('omits the "file_pattern normalized" line when normalize was a no-op', () => {
@@ -393,10 +451,11 @@ describe('formatZeroMatchMessage — diagnostic shape', () => {
     const plan = basePlan({
       effectiveFilePattern: 'codebase/x/node_modules/y/*.js',
       effectiveIncludeDeps: true,
-      noIgnore: true,
+      walkDepsTree: true,
       appliedExcludes: ['.git'],
     });
     const msg = formatZeroMatchMessage('x', 'codebase/x/node_modules/y/*.js', plan);
     expect(msg).toMatch(/include_dependencies: true.*auto-inferred/);
+    expect(msg).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): true/);
   });
 });
