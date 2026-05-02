@@ -252,21 +252,37 @@ export async function decomposeWithToolLoop(
     // skip the emissions silently.
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     const chatAPI = getChatAPIClient();
+    // Path normalization SSOT — `read_file` / `list_files` paths shown
+    // in chat cards must be the normalized form the worker actually
+    // resolves, NOT the raw `tc.input.path` the LLM wrote. Without
+    // this, an LLM-side `apps/console/postcss.config.mjs` rendered
+    // verbatim while the handler resolved `codebase/apps/console/...` —
+    // the marble-jumping-grove RCA's user-visible "Read Failed:
+    // apps/console/..." card. Same SSOT every other tool callsite uses.
+    const { normalizeToCodebasePath } = await import('../../../../../../core/utils/pathNormalizer');
+    const normalizeWorkspacePath = (raw: string): string =>
+      normalizeToCodebasePath(raw).normalized;
 
     const toolResults: MessageContentBlock[] = [];
     for (const tc of toolCalls) {
       let cardId: string | undefined;
+      let displayPath: string | undefined;
       try {
         if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
-          cardId = await chatAPI.addReadingFile(tc.input.path);
+          displayPath = normalizeWorkspacePath(tc.input.path);
+          cardId = await chatAPI.addReadingFile(displayPath);
         } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
+          // read_source_doc consumes a virtual filename from the
+          // sourceDocuments index, NOT a workspace path — bypass
+          // normalize so the original key stays intact.
           cardId = await chatAPI.addReadingSource(
             tc.input.filename,
             tc.input.startLine,
             tc.input.endLine,
           );
         } else if (tc.name === 'list_files' && typeof tc.input?.directory === 'string') {
-          cardId = await chatAPI.showChatStatus('exploring', { directory: tc.input.directory });
+          displayPath = normalizeWorkspacePath(tc.input.directory);
+          cardId = await chatAPI.showChatStatus('exploring', { directory: displayPath });
         }
       } catch (err) {
         // Status emission must never break the tool loop. Keep cardId
@@ -289,7 +305,7 @@ export async function decomposeWithToolLoop(
       try {
         const isErr = result.startsWith('Error:');
         if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
-          await chatAPI.addReadComplete(tc.input.path, cardId, isErr ? result : undefined);
+          await chatAPI.addReadComplete(displayPath ?? tc.input.path, cardId, isErr ? result : undefined);
         } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
           await chatAPI.addReadSourceComplete(
             tc.input.filename,
@@ -300,7 +316,7 @@ export async function decomposeWithToolLoop(
           );
         } else if (tc.name === 'list_files' && typeof tc.input?.directory === 'string') {
           await chatAPI.showChatStatus('explored', {
-            directory: tc.input.directory,
+            directory: displayPath ?? tc.input.directory,
             ...(cardId ? { _mergeIndex: cardId } : {}),
             ...(isErr ? { error: true } : {}),
           });
