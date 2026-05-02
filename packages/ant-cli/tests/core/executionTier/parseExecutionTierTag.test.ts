@@ -12,6 +12,11 @@ import {
   ExecutionTierViolation,
   buildExecutionTierViolationFraming,
 } from '../../../src/core/executionTier';
+import {
+  isDirectTier,
+  isTaskTier,
+  tierToDirectMode,
+} from '../../../src/core/executionTier/derive';
 import { ArtifactPoolView } from '../../../src/core/artifact/ArtifactPipeline';
 import { ExecutionTierId } from '@ant/shared';
 import type { ResolvedArtifact } from '@ant/shared';
@@ -457,5 +462,61 @@ describe('buildExecutionTierViolationFraming', () => {
     expect(framing).toContain('<executionTier>2</executionTier>');
     expect(framing).toContain('selfVerifyOnDone');
     expect(framing).toContain('refactor');
+  });
+});
+
+/**
+ * core/executionTier/derive — tier-boundary helpers under Tier-Verification
+ * Alignment (Phase 1).
+ *
+ * The boundary shifted from `tier <= 2 → direct` to `tier <= 1 → direct`.
+ * Tier 2 (Exploratory) is now a task-path tier (single unit of work with
+ * `selfVerifyOnDone`), not a direct ReAct loop.
+ */
+describe('isDirectTier — boundary is tier <= 1', () => {
+  it.each([
+    [ExecutionTierId.Reflex, true],
+    [ExecutionTierId.OneShot, true],
+    [ExecutionTierId.Exploratory, false],
+    [ExecutionTierId.Task, false],
+    [ExecutionTierId.RefsGrounded, false],
+  ])('Tier %d → %s', (tier, expected) => {
+    expect(isDirectTier(tier as ExecutionTierId)).toBe(expected);
+  });
+});
+
+describe('isTaskTier — boundary is tier >= 2', () => {
+  it.each([
+    [ExecutionTierId.Reflex, false],
+    [ExecutionTierId.OneShot, false],
+    [ExecutionTierId.Exploratory, true],
+    [ExecutionTierId.Task, true],
+    [ExecutionTierId.RefsGrounded, true],
+  ])('Tier %d → %s', (tier, expected) => {
+    expect(isTaskTier(tier as ExecutionTierId)).toBe(expected);
+  });
+
+  it('isDirectTier and isTaskTier are exhaustive / disjoint for every tier', () => {
+    for (const tier of [
+      ExecutionTierId.Reflex,
+      ExecutionTierId.OneShot,
+      ExecutionTierId.Exploratory,
+      ExecutionTierId.Task,
+      ExecutionTierId.RefsGrounded,
+    ]) {
+      expect(isDirectTier(tier) !== isTaskTier(tier)).toBe(true);
+    }
+  });
+});
+
+describe('tierToDirectMode — Tier 0 undefined, Tier 1 oneshot, Tier 2+ undefined', () => {
+  it.each([
+    [ExecutionTierId.Reflex, undefined],
+    [ExecutionTierId.OneShot, 'oneshot' as const],
+    [ExecutionTierId.Exploratory, undefined],
+    [ExecutionTierId.Task, undefined],
+    [ExecutionTierId.RefsGrounded, undefined],
+  ])('Tier %d → %s', (tier, expected) => {
+    expect(tierToDirectMode(tier as ExecutionTierId)).toBe(expected);
   });
 });

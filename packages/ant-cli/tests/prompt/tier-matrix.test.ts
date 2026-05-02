@@ -30,24 +30,14 @@ import {
 
 const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
 
-describe('TIER_DOMAIN_MATRIX', () => {
+describe('TIER_KEYS — registry shape', () => {
   it('all 4 tiers are present (D23 removed `domain`)', () => {
     expect(TIER_KEYS).toEqual(['techTier', 'visualTier', 'gameArtTier', 'gameContentTier']);
   });
-
-  it('techTier is domain-universal', () => {
-    expect(TIER_DOMAIN_MATRIX.techTier).toEqual(expect.arrayContaining(['service', 'game']));
-  });
-
-  it('visualTier is service-only (D28 — vertical domain split)', () => {
-    expect(TIER_DOMAIN_MATRIX.visualTier).toEqual(['service']);
-  });
-
-  it('gameArtTier and gameContentTier are game-only (D12-revised + D28 mirror)', () => {
-    expect(TIER_DOMAIN_MATRIX.gameArtTier).toEqual(['game']);
-    expect(TIER_DOMAIN_MATRIX.gameContentTier).toEqual(['game']);
-  });
 });
+
+// `TIER_DOMAIN_MATRIX` row-shape assertions live in
+// tests/policy/domain-surface-boundary.test.ts (the D28 SSOT).
 
 describe('isTierActive — slot/domain/runtime composition', () => {
   it('returns false when slot is undefined', () => {
