@@ -163,6 +163,22 @@ export class TaskWorker<T extends BaseTask> {
         ...this.sharedContext.deps,
         fileSystem: workerFileSystem,
       },
+      // ✅ Live orchestrator → worker propagation of `completedTasksDetails`.
+      // sharedContext is captured at orchestrator init time and never refreshed,
+      // so workers that pop a task AFTER siblings completed would otherwise see
+      // an empty list. The verify-mode plan prompt's `priorErrorTasks` inject
+      // (`renderPriorErrorTasks(state)`) reads `state.completedTasksDetails.filter(t => t.type === 'error')`,
+      // and silently rendered an empty section before this fix — every
+      // verification cycle saw an identical prompt regardless of how many
+      // batch-split error sub-tasks had finished, defeating the
+      // `vast-curling-perch` cleanup's "regression-by-repetition" guard
+      // (cleanup commit `4673ad7f` introduced the inject but the worker
+      // propagation was missed; see `docs/architecture/17-code-verification-task.md`
+      // §3 banner contract). Querying the orchestrator at task-assignment
+      // time gives a per-cycle stable snapshot — no need for a live ref
+      // because the worker subgraph treats `state.completedTasksDetails`
+      // as read-only.
+      completedTasksDetails: this.orchestrator.getCompletedTasks(),
       // Per-worker independent state
       planText: '',
       conversations: {},

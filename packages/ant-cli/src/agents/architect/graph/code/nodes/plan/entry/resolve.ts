@@ -19,6 +19,7 @@ import { CodeTask } from '../../../../../types/task';
 import { VerificationTerminalError } from '../../../tasks/_shared/verify/terminal/errors';
 import { VerificationBudget } from '../../../tasks/_shared/verify/terminal/budget';
 import { requiresVerification } from '../../../tasks/_shared/verify/predicate';
+import { markVerifyEntered } from '../../../tasks/_shared/verify/markVerifyEntered';
 import { isVerificationTask } from '../../../tasks/verification';
 import { recomputeInstallNeeded } from './installNeeded';
 import { getExecutionLogger } from '../../../../../../../core/utils/executionLogger';
@@ -221,6 +222,22 @@ async function handleFreshTaskEntry(
   // plan §16 — the only thing it ever did was flag this side effect).
   if (requiresVerification(nextTask)) {
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
+    // ★ Phase mode signal — Tier 3/4 dedicated verification tasks need
+    // `_verifyEntered=true` from their first plan entry onward (apply
+    // phase doesn't exist for them). The retired `_shared/verify/initSession`
+    // module used to do this; vast-curling-perch cleanup deleted it without
+    // replacing the call site, leaving `state._verifyEntered=false` for the
+    // entire verification lifetime. Tier 2 self-verify tasks remain unaffected
+    // — `requiresVerification(task)` is true for them too, but on apply-mode
+    // entry they should NOT have `_verifyEntered=true` yet; the `executeRouter`
+    // `<done>` arm flips it later. We therefore gate on
+    // `isVerificationTask(task)` (Tier 3/4 only), not the broader predicate.
+    // The helper is idempotent so repeated fresh entries (cycle 2+ via Path
+    // A re-queue) are no-ops.
+    if (isVerificationTask(nextTask)) {
+      markVerifyEntered(state);
+      delta._verifyEntered = true;
+    }
   }
 
   if (state.context?.featurePath && state._httpJobId) {
