@@ -307,7 +307,13 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
     expect(base).toBeDefined();
+    // The `directive` prompt variable name is the system-wide standard
+    // (used by decompose, plan/base, plan/test-code, plan/direct,
+    // design/detect, planner/plan, etc.). RC-B preserves it here.
     expect(base?.vars.directive).toBe('resolve ts errors');
+    // RC-A SSOT: error tasks always permit persistent processes for
+    // reproducer flows (the partial gates on this flag).
+    expect(base?.vars.allowPersistentProcesses).toBe(true);
     expect(base?.vars.packageManager).toBe('pnpm');
     expect(base?.vars.hasPackageManager).toBe(true);
     expect(base?.vars.isRetry).toBe(true);

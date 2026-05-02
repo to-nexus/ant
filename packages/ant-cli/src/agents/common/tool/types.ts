@@ -224,7 +224,7 @@ export type ToolSideEffect =
   | { type: 'fileCreated'; path: string }
   | { type: 'fileDeleted'; path: string }
   | { type: 'fileNotChanged'; path: string }
-  | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate }
+  | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate; cacheReplayed?: boolean }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
   | { type: 'figmaSuccess' }

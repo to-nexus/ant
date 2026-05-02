@@ -8,6 +8,8 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/monorepo-install-locality}}
+
 {{> jobs/code/base/injections/workspace-dep-snapshot}}
 
 {{> jobs/code/base/injections/preview-env-contract}}
@@ -67,16 +69,23 @@ Observe the project's build system from the pre-loaded context (config files, di
 Execute the project's primary build command using `run_command`.
 {{/if}}
 
-{{#if isErrorTask}}
-### Step 1.5: Cross-reference User Report
+{{#if hasUserRuntimeErrorContext}}
+### Step 1.5: Cross-reference User Report (REQUIRED — runtime error context active)
 
-The user reported this error:
+The user-reported failure scenario for this verification cycle:
 
 ```
 {{directive}}
 ```
 
 Compare the build output with the user's report. The build output is the ground truth — the user's description may be incomplete or outdated.
+
+**Reproducer requirement** — the failing scenario above is the success criterion of this verification cycle. A passing build/typecheck/test alone is NOT sufficient evidence that the user's error is fixed. You MUST observe BOTH:
+
+1. The reproducer command (the same scenario the user reported — e.g. `pnpm dev` + an HTTP request to the failing route, or the same script that produced the error trace) exits 0 (or yields the expected runtime output), AND
+2. The original error pattern from the directive above is NOT present in the reproducer output.
+
+If you have NOT yet observed both conditions in this verification cycle, the no-errors sentinel plan is FORBIDDEN even when typecheck/build/test all pass. Either run the reproducer now (`run_command` permits persistent background processes here — see the persistent-process policy section), or include a `repro` step in your plan describing how the apply phase / next cycle will run it.
 {{/if}}
 
 {{#if runTests}}
@@ -95,6 +104,22 @@ If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE command output
 4. **Group related errors by root cause** — a single root cause (e.g., duplicate symbol, missing import) often produces multiple compiler errors
 5. **Determine fix priority** — fix root causes first, cascading errors resolve automatically
 6. **Identify which files need reading** — use `read_file` on files referenced in errors to understand context
+
+#### Root-cause classification — `missing-test-entry`
+
+**Principle**: A failure where the test runner is installed but the project's test entry-point is absent is a one-line manifest fix, not a code defect. Misclassifying it as "runner not installed" wastes a retry cycle reinstalling a dep that was already there.
+
+**Probe before classifying**: run the runner's `--version` invocation directly (e.g. `npx vitest --version`, `pytest --version`, `cargo test --help`) — this disambiguates which side is broken without touching source files.
+
+| Probe result | Failing-command shape | Root cause |
+|--------------|----------------------|------------|
+| `--version` exits non-zero / "command not found" | any | `missing-test-runner` (install dep + wire entry) |
+| `--version` exits 0, AND the failing command IS the project's test entry-point (e.g. `npm test` → "Missing script: test", `pytest` against an empty discovery set) | manifest is missing the test entry | `missing-test-entry` |
+| `--version` exits 0, failing command is NOT the test entry (e.g. `npm run lint` → "Missing script: lint") | unrelated missing script | NOT `missing-test-entry` — handle as a normal error |
+
+**Remediation for `missing-test-entry`**: emit an error sub-task whose `modify` list contains ONLY the dependency manifest (e.g. `codebase/package.json`, `codebase/pyproject.toml`); the sub-task's apply phase wires the entry, and the next verification cycle re-runs the now-resolvable command.
+
+⚠️ **Over-fire guard**: The `missing-test-entry` classification fires ONLY when the failing command IS the project's test-run entry-point. Other "Missing script: X" or "command not found" failures stay in their normal root-cause buckets — do not extend this classification to cover them.
 
 ### Step {{#if runTests}}4{{else}}3{{/if}}: Produce Remediation Plan
 

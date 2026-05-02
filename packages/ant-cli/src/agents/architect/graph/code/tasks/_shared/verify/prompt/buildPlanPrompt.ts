@@ -16,6 +16,7 @@ import { formatCodeContext, mapLang } from '../../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { renderPriorErrorTasks } from './priorErrorTasks';
+import { containsRuntimeErrorPattern } from '../../../../../../../../core/utils/runtimeErrorPattern';
 
 /**
  * Compact verification banner. Always rendered (the absence of a banner
@@ -74,6 +75,17 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // the LLM avoids regression-by-repetition without a read_file lookup.
   const priorErrorTasks = renderPriorErrorTasks(state);
 
+  // Directive-grounding flag — true when this verification cycle was
+  // initiated by a user-reported runtime error directive OR when prior
+  // error sub-tasks ran in this cycle. Both signals indicate that
+  // `state.directive` carries the original failing scenario the
+  // verification must close against. The verification base template
+  // gates the "Cross-reference User Report" + reproducer requirement on
+  // this flag (replaces the legacy hard-coded `isErrorTask: false`).
+  const hasUserRuntimeErrorContext =
+    containsRuntimeErrorPattern(state.directive) ||
+    (priorErrorTasks?.length ?? 0) > 0;
+
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
@@ -97,7 +109,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     taskName: task.name,
     taskDescription: task.description,
     directive: state.directive || '',
-    isErrorTask: false,
+    hasUserRuntimeErrorContext,
     runTests: true,
     projectCodeContext: fmtCtx,
     directoryTree: (codeContext as any)?.directoryTree || '',
@@ -116,6 +128,11 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
+    // Reproducer permission gates on the same SSOT flag — persistent
+    // processes are unlocked iff this verification cycle is grounded by a
+    // user-reported runtime error (initial directive OR prior error
+    // sub-tasks present).
+    allowPersistentProcesses: hasUserRuntimeErrorContext,
     ...depSnapshot,
   });
 
@@ -133,6 +150,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasSessionSummary: true,
       batchSplitCount,
       priorErrorTasksCount: priorErrorTasks?.length ?? 0,
+      hasUserRuntimeErrorContext,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },
   };

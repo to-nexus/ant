@@ -25,6 +25,8 @@
     "game-art-source": [],
     "antrules": ["antrulesContent"],
     "dep-self-contained": [],
+    "monorepo-install-locality": ["monorepoActive", "monorepoRootPath", "monorepoManagerLabel", "monorepoRootMarker", "monorepoMembersSummary"],
+    "persistent-process-policy": ["allowPersistentProcesses"],
     "workspace-dep-snapshot": ["hasWorkspaceDepSnapshot", "workspaceDepSnapshot"],
     "batch-execution": [],
     "batch-gather": [],

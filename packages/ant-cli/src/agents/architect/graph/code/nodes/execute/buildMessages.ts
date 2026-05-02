@@ -38,6 +38,7 @@ import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { activeExecuteHook } from "../../tasks/_shared/verify/activeHooks";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
+import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import { resolveCodebaseRel } from "./codebaseRel";
 
 const DEFAULT_EXECUTE_TEMPLATES = {
@@ -354,7 +355,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       resolvedAction: resolvedActionWithDocs || null,
       userLanguage: state.context?.userLanguage || 'en',
       filteredCatalog: undefined,
-      hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
+      hasRuntimeError: containsRuntimeErrorPattern(state.directive),
       // `missing-dependency-fix` activation: a task that declares or relies
       // on deps owns the install within the same cycle. Flipped true when
       // `codebase/node_modules` does not resolve every declared dep in
@@ -1170,16 +1171,3 @@ function formatSessionContextForPrompt(sessionContext?: {
   return parts.join('\n');
 }
 
-function containsRuntimeErrorPattern(directive: string): boolean {
-  const errorPatterns = [
-    /Error:/i, /TypeError/i, /ReferenceError/i, /SyntaxError/i,
-    /RangeError/i, /ELIFECYCLE/i, /npm ERR!/i,
-    /\s+at\s+\S+\s+\(/i, /node_modules/i,
-    /failed to/i, /cannot find/i, /undefined is not/i,
-    /unexpected token/i, /module not found/i, /command failed/i,
-    /compilation error/i, /\$ npm run/i, /\$ node /i,
-    /Process exited with code/i, /test.*failed/i,
-    /assertion.*failed/i, /expected.*but got/i,
-  ];
-  return errorPatterns.some(pattern => pattern.test(directive));
-}
