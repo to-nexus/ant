@@ -403,7 +403,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const fs = await import('fs');
         const path = await import('path');
 
-        const rootPath = state.deps.fileSystem.getRootPath();
+        const fileSystem = state.deps.fileSystem;
 
         const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
         const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10);
@@ -432,8 +432,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         for (const rel of candidates) {
           if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
 
-          const abs = path.resolve(rootPath, rel);
-          if (!abs.startsWith(rootPath)) continue;
+          // `rel` is an LLM/artifact-derived workspace-relative path, so we
+          // must traversal-protect. Use the port's resolver instead of
+          // re-implementing `path.resolve(...)` + `startsWith(...)` here.
+          let abs: string;
+          try {
+            abs = fileSystem.resolveAbsolute(rel);
+          } catch {
+            continue; // outside workspace — skip silently like before
+          }
           if (!fs.existsSync(abs)) continue;
 
           const stat = fs.statSync(abs);
