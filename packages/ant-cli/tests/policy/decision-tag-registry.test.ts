@@ -106,23 +106,8 @@ describe('parseDecisionTags — invalid bodies', () => {
   });
 });
 
-describe('parseDecisionTags — genre × coreLoop matrix gate (I9 — D31-revised v9)', () => {
-  it('drops coreLoop when LLM emits a pair outside GENRE_CORELOOP_MATRIX (cardSolitaire × survive)', () => {
-    const r = parseDecisionTags('<gameContentTier>genre=cardSolitaire,coreLoop=survive</gameContentTier>');
-    // cardSolitaire only admits [solve, collect] per matrix.
-    expect(r.parsed.gameContentTier).toEqual({ genre: 'cardSolitaire' });
-  });
-
-  it('drops coreLoop when LLM emits slidingPuzzle × collect (matrix admits only [solve])', () => {
-    const r = parseDecisionTags('<gameContentTier>genre=slidingPuzzle,coreLoop=collect</gameContentTier>');
-    expect(r.parsed.gameContentTier).toEqual({ genre: 'slidingPuzzle' });
-  });
-
-  it('keeps coreLoop when the pair is admitted by the matrix (arcadeSnake × survive)', () => {
-    const r = parseDecisionTags('<gameContentTier>genre=arcadeSnake,coreLoop=survive</gameContentTier>');
-    expect(r.parsed.gameContentTier).toEqual({ genre: 'arcadeSnake', coreLoop: 'survive' });
-  });
-});
+// `parseDecisionTags — genre × coreLoop matrix gate` describe lives in
+// tests/prompt/genre-coreloop-matrix.test.ts (the I9/D31-revised SSOT).
 
 describe('parseDecisionTags — missing tags', () => {
   it('lists all missing names', () => {

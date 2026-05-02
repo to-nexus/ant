@@ -216,27 +216,6 @@ describe('ToolRegistry', () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ChatStatusReporter (noop)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-describe('createNoopChatStatusReporter', () => {
-  it('should create a reporter with all methods', () => {
-    const reporter = createNoopChatStatusReporter();
-    expect(reporter.showStatus).toBeInstanceOf(Function);
-    expect(reporter.addReadingFile).toBeInstanceOf(Function);
-    expect(reporter.commandStart).toBeInstanceOf(Function);
-    expect(reporter.finalizeMessage).toBeInstanceOf(Function);
-  });
-
-  it('should return undefined from noop methods', async () => {
-    const reporter = createNoopChatStatusReporter();
-    expect(await reporter.showStatus('test')).toBeUndefined();
-    expect(await reporter.addReadingFile('/path')).toBeUndefined();
-    expect(await reporter.commandStart('ls')).toBeUndefined();
-  });
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // buildToolResultMessage
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

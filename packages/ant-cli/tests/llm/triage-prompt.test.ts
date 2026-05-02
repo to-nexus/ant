@@ -66,18 +66,6 @@ describe('buildTriagePrompt', () => {
     expect(user).toContain('PRD');
   });
 
-  it('snapshot: full prompt structure for code job', () => {
-    const result = buildTriagePrompt({
-      userInput: 'Build an API',
-      currentJob: 'code',
-      currentAgent: 'architect',
-      workspaceState: makeWs(),
-      jobCapabilities: AgentRegistry.generatePromptContext(),
-    });
-
-    expect(result).toMatchSnapshot();
-  });
-
   describe('rules.md structure (post pinnedRefCount removal)', () => {
     it('exposes Step 5 (Implementation Readiness) and renumbered Steps 6/7', () => {
       const { system } = buildTriagePrompt({

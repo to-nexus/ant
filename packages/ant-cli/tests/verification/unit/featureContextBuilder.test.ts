@@ -8,6 +8,11 @@ import {
   buildFeatureContext,
   hydrateFeatureContext,
   mergeFeatureContext,
+  compactFeatureContext,
+} from '../../../src/core/context/featureContextBuilder';
+import type {
+  FeatureContext,
+  MergedUserTurn,
 } from '../../../src/core/context/featureContextBuilder';
 import type { SessionPort } from '../../../src/core/ports/session';
 import type { LLMClient } from '../../../src/core/ports/llm';
@@ -414,5 +419,196 @@ describe('hydrateFeatureContext — resolve helper', () => {
     expect(out.turnId).toBeUndefined();
     warnSpy.mockRestore();
     logSpy.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// compactFeatureContext — same module, threshold/window/breadcrumb folding
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeMergedTurn(idx: number, userLen = 20): MergedUserTurn {
+  return {
+    type: 'user_turn',
+    ts: `2026-04-19T00:00:${String(idx).padStart(2, '0')}.000Z`,
+    jobId: `job-${idx}`,
+    turnId: `t-${idx}`,
+    jobType: 'code',
+    text: 'x'.repeat(userLen),
+  };
+}
+
+function makeMergedCtx(turns: MergedUserTurn[]): FeatureContext {
+  return { breadcrumbs: [], userTurns: turns };
+}
+
+function makeCompactLLM(summary = 'digest-summary'): LLMClient {
+  return {
+    invoke: vi.fn().mockResolvedValue(summary),
+    invokeWithUsage: vi.fn().mockResolvedValue({
+      content: summary,
+      usage: { inputTokens: 100, outputTokens: 50 },
+    }),
+  } as unknown as LLMClient;
+}
+
+function makeCompactPromptPort(): PromptPort {
+  return {
+    render: vi.fn().mockResolvedValue('system prompt body'),
+  } as unknown as PromptPort;
+}
+
+describe('compactFeatureContext — threshold gating', () => {
+  it('no-op when userTurns ≤ windowSize', async () => {
+    const ctx = makeMergedCtx([makeMergedTurn(1), makeMergedTurn(2)]);
+    const llm = makeCompactLLM();
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 10, windowSize: 6 },
+    );
+
+    expect(result).toBe(ctx);
+    expect(result.wasCompacted).toBeUndefined();
+    expect(llm.invoke).not.toHaveBeenCalled();
+  });
+
+  it('no-op when token estimate is under threshold', async () => {
+    // 8 turns × 20 chars / 2.8 ≈ 57 tokens → well under 100_000
+    const ctx = makeMergedCtx(Array.from({ length: 8 }, (_, i) => makeMergedTurn(i, 20)));
+    const llm = makeCompactLLM();
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 100_000, windowSize: 6 },
+    );
+
+    expect(result).toBe(ctx);
+    expect(result.wasCompacted).toBeUndefined();
+    expect(llm.invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('compactFeatureContext — active compaction', () => {
+  it('keeps the most recent windowSize entries and populates summary', async () => {
+    // 12 turns × 10_000 chars → far above a 12_000-token threshold
+    const turns = Array.from({ length: 12 }, (_, i) => makeMergedTurn(i, 10_000));
+    const ctx = makeMergedCtx(turns);
+    const llm = makeCompactLLM('older-entries-digest');
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 12_000, windowSize: 6 },
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.summary).toBe('older-entries-digest');
+    expect(result.userTurns).toHaveLength(6);
+    expect(result.userTurns.map((t) => t.turnId)).toEqual([
+      't-6', 't-7', 't-8', 't-9', 't-10', 't-11',
+    ]);
+    expect(promptPort.render).toHaveBeenCalledWith(
+      'infra/compaction/system',
+      expect.objectContaining({ conversation: expect.any(String) }),
+    );
+  });
+
+  it('preserves recent breadcrumbs (after window cutoff) during compaction', async () => {
+    // job-context-bridge T5 — BCs at or after the kept-window cutoff
+    // timestamp flow through verbatim. Earlier BCs would be folded into
+    // the MECE summary as Artifacts.
+    const turns = Array.from({ length: 10 }, (_, i) => makeMergedTurn(i, 10_000));
+    const recentBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:10:00.000Z', // strictly after t-6 (kept window starts at t-6)
+      jobId: 'job-9',
+      turnId: 't-9',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { files: ['a.ts'] },
+      summary: 'file changed',
+      stats: { touched: 1 },
+    };
+    const breadcrumbs = [recentBc];
+    const ctx: FeatureContext = { breadcrumbs, userTurns: turns };
+    const llm = makeCompactLLM();
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 12_000, windowSize: 4 },
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.breadcrumbs).toEqual([recentBc]);
+    expect(result.userTurns).toHaveLength(4);
+  });
+
+  it('folds old breadcrumbs (before window cutoff) into MECE summary', async () => {
+    const turns = Array.from({ length: 10 }, (_, i) => makeMergedTurn(i, 10_000));
+    const oldBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:00:01.000Z', // before t-6 cutoff
+      jobId: 'job-1',
+      turnId: 't-1',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { paths: ['src/old/**'] },
+      summary: 'old refactor',
+      stats: { touched: 7, modified: 7 },
+    };
+    const recentBc = {
+      type: 'breadcrumb' as const,
+      ts: '2026-04-19T00:00:09.500Z', // after t-6 cutoff
+      jobId: 'job-9',
+      turnId: 't-9',
+      jobType: 'code' as const,
+      scope: 'modification' as const,
+      anchors: { files: ['a.ts'] },
+      summary: 'recent change',
+      stats: { touched: 1 },
+    };
+    const ctx: FeatureContext = { breadcrumbs: [oldBc, recentBc], userTurns: turns };
+    const llm = makeCompactLLM();
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 12_000, windowSize: 4 },
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.breadcrumbs).toEqual([recentBc]);
+    const renderArgs = (promptPort.render as any).mock.calls[0][1];
+    expect(renderArgs.conversation).toContain('Artifact');
+    expect(renderArgs.conversation).toContain('old refactor');
+  });
+
+  it('returns original ctx on LLM failure (graceful degradation)', async () => {
+    const turns = Array.from({ length: 10 }, (_, i) => makeMergedTurn(i, 10_000));
+    const ctx = makeMergedCtx(turns);
+    const failingLLM = {
+      invoke: vi.fn().mockRejectedValue(new Error('llm down')),
+      invokeWithUsage: vi.fn().mockRejectedValue(new Error('llm down')),
+    } as unknown as LLMClient;
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm: failingLLM, promptPort },
+      { threshold: 12_000, windowSize: 4 },
+    );
+
+    expect(result).toBe(ctx);
+    expect(result.wasCompacted).toBeUndefined();
+    expect(result.summary).toBeUndefined();
+    expect(result.userTurns).toHaveLength(10);
   });
 });
