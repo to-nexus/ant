@@ -54,6 +54,36 @@ export function isTaskReentry(task: BaseTask): boolean {
 }
 
 /**
+ * Predicate — should `executeTask` restore conversation/planText/etc.
+ * from `task.resumeState` into the per-cycle worker state?
+ *
+ * AND-gate: BOTH `task.interrupted === true` AND a non-null
+ * `task.resumeState` must be present. The gate's two halves are
+ * **independently necessary** — the snapshot alone is not enough
+ * (a fresh task spawned with a snapshot but `interrupted=false`
+ * MUST start with empty conversations) and the marker alone is
+ * not enough (an interrupted task with no snapshot has nothing
+ * to restore).
+ *
+ * Pure function — exported for the regression guard in
+ * `tests/parallel/worker-resume-restore-gate.test.ts` so the
+ * truth table cannot drift from the worker without a test failure.
+ *
+ * Locks the `raw-clinging-beach` regression: a Path B Final
+ * Verification spawned by `processDiagnosticBatchSplit` must NEVER
+ * have its conversation hijacked by the parent error task's
+ * snapshot, even if a later `saveCheckpoint` / `captureWorkerSnapshots`
+ * flips its `interrupted` flag to `true` — because the FV is now
+ * spawned with `resumeState: undefined`, this predicate evaluates
+ * to `false` regardless of `interrupted`.
+ */
+export function shouldRestoreFromResumeState(task: BaseTask): boolean {
+  if (task.interrupted !== true) return false;
+  const resume = (task as { resumeState?: unknown }).resumeState;
+  return resume != null;
+}
+
+/**
  * Produce a `WorkerSnapshot` from any code-graph state object.
  *
  * Single snapshot API for the three carry-over boundaries
@@ -240,7 +270,7 @@ export class TaskWorker<T extends BaseTask> {
       // (verification session, diagnostic tracker, etc.) are restored via
       // the orchestrator hook below so the phase layer never references
       // `_verificationTracker` or friends by name.
-      ...(task.interrupted && (task as any).resumeState ? {
+      ...(shouldRestoreFromResumeState(task) ? {
         planText: (task as any).resumeState.planText || '',
         conversations: (task as any).resumeState.conversations || {},
         retries: (task as any).resumeState.retries || 0,
@@ -255,7 +285,7 @@ export class TaskWorker<T extends BaseTask> {
     // rehydration (`orchestrator.restoreIntoWorkerState`) was retired by
     // plan §5.6.1; verification cycle carry-over now flows through
     // `task.batchSplitCount` (assigned at the batch-split re-queue site).
-    if (task.interrupted && (task as any).resumeState) {
+    if (shouldRestoreFromResumeState(task)) {
       (task as any).resumeState = undefined;
       task.interrupted = false;
     }
