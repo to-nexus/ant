@@ -32,6 +32,8 @@ import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../..
 import { classifyTerminalError } from '../tasks/_shared/verify/terminal/errors';
 import { VerificationBudget, BUDGET_THRESHOLDS } from '../tasks/_shared/verify/terminal/budget';
 import { hooksForTaskType } from '../tasks/_shared/registry';
+import { buildResumableFailedTask } from './resumeBudgetReset';
+import type { CodeTask } from '../../../types/task';
 import type { TaskType } from '@ant/shared';
 
 /**
@@ -835,15 +837,20 @@ export class TaskOrchestrator<T extends BaseTask> {
     const currentTasks = Array.from(this.runningTasks.values());
     const queue = this.taskQueue.getAll();
 
-    // Include failed tasks in queue with _failed marker so UI can display them
-    const failedAsQueue = this.failedTasks.map(f => ({
-      ...f.task,
-      _failed: true,
-    }));
+    // Failed tasks broadcast through the LIVE Kanban Redis snapshot
+    // (TASK_QUEUE_KEY_PREFIX). `JobCleanupManager` reads this snapshot
+    // as a fallback when the checkpoint snapshot is missing — therefore
+    // the failed-task projection MUST go through the same SSOT helper
+    // that the checkpoint / session writers use, otherwise stale
+    // VerificationBudget axes (batchSplitCount / _failedAttempts) leak
+    // into the disk on JCM's fallback path (vast-curling-perch RCA).
+    const failedAsQueue = this.failedTasks.map(f =>
+      buildResumableFailedTask(f.task as unknown as CodeTask, f.error.message),
+    );
 
     this.callbacks.onKanbanUpdate?.(
       currentTasks,
-      [...queue, ...failedAsQueue],
+      [...queue, ...failedAsQueue] as T[],
       this.completedTasks,
       this.accumulatedTokenUsage,
     );
