@@ -555,24 +555,52 @@ export interface StateStorePort {
 
   /**
    * Return a monotonically increasing pause sequence for a turn.
-   * Used to mint deterministic `cancelled-{turnId}-{seq}` cardIds so
+   * Used by `ChatService.appendChoicePresentedCancelled` to mint
+   * deterministic `cancelled-{turnId}-{jobId}-{seq}` cardIds so
    * repeated pause/resume cycles cannot collide.
+   *
+   * SCOPE: cancelled cardId uniqueness ONLY. The worker scope
+   * `cycleSeq` suffix (`worker-N#task-K#p{n}`) is owned by
+   * `nextWorkerCycleSeq` / `getCurrentWorkerCycleSeq` — different key
+   * partition (turnId × taskKey) and different INCR triggers
+   * (Stop only here vs. all task re-entries there).
    */
   nextPauseSeq(turnId: string): Promise<number>;
 
   /**
    * Peek (GET-only, no INCR) the current pause sequence for a turn.
    * Returns 0 when the key is absent / unset (no cancellation has
-   * occurred for this turn yet).
-   *
-   * Why peek-only: the cancelled-cardId path
-   * (`ChatService.appendChoicePresentedCancelled`) owns the INCR side
-   * of `pauseSeq`. Workers consume the *current* value to compose
-   * cycle-aware worker scopes (`worker-N#task-K#p{n}`) — see chat-SSOT
-   * §섹션-정렬 rule 4. Calling INCR here would race against the
-   * cancellation path and skip values.
+   * occurred for this turn yet). Currently retained for diagnostics
+   * and the legacy `LLMResponseService.getCurrentPauseSeq` shim —
+   * `TaskWorker` no longer consumes this for cycleSeq composition
+   * (see `getCurrentWorkerCycleSeq`).
    */
   getCurrentPauseSeq(turnId: string): Promise<number>;
+
+  /**
+   * INCR + return the per-(turn, task) worker cycle sequence used as
+   * the `worker-N#task-K#p{cycleSeq}` chat scope suffix. Called by
+   * `TaskWorker.executeTask` whenever it picks up a task that bears a
+   * re-entry marker so each re-entry mints an isolated FE chat
+   * section AND an isolated `LLMResponseService.WorkerLocalState`
+   * slot (the latter is what fixes stale `fileCardByPath` /
+   * `commandCardByCommand` / `thinking` carry-over across batchSplit
+   * Path A re-queues / orchestrator transient retry / Stop+Resume).
+   *
+   * Returns the new value (>=1). The first re-entry returns 1, the
+   * next 2, etc. Fresh entries should call `getCurrentWorkerCycleSeq`
+   * (peek) instead so the suffix is elided when no re-entry has
+   * happened yet — matching the legacy two-axis scope key.
+   */
+  nextWorkerCycleSeq(turnId: string, taskKey: string): Promise<number>;
+
+  /**
+   * Peek (GET-only) the current worker cycle sequence for a
+   * (turn, task) pair. Returns 0 when no re-entry has been recorded
+   * yet (the suffix is then elided to preserve chat.jsonl BC with
+   * the legacy `worker-N#task-K` form).
+   */
+  getCurrentWorkerCycleSeq(turnId: string, taskKey: string): Promise<number>;
 
   // ============================================
   // Pending Choice Management (for Cloud Mode)

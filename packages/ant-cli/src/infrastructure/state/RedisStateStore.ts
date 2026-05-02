@@ -53,6 +53,7 @@ import {
   getTurnBufferIndexMember,
   parseTurnBufferIndexMember,
   getCancelledPauseSeqKey,
+  getWorkerCycleSeqKey,
 } from './redisConstants';
 import { logger } from '../../utils/logger';
 
@@ -1217,6 +1218,21 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async getCurrentPauseSeq(turnId: string): Promise<number> {
     const key = getCancelledPauseSeqKey(turnId);
+    const raw = await this.redis.get(key);
+    if (!raw) return 0;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  async nextWorkerCycleSeq(turnId: string, taskKey: string): Promise<number> {
+    const key = getWorkerCycleSeqKey(turnId, taskKey);
+    const seq = await this.redis.incr(key);
+    await this.redis.expire(key, REDIS_TTL.CHAT.WORKER_CYCLE_SEQ);
+    return seq;
+  }
+
+  async getCurrentWorkerCycleSeq(turnId: string, taskKey: string): Promise<number> {
+    const key = getWorkerCycleSeqKey(turnId, taskKey);
     const raw = await this.redis.get(key);
     if (!raw) return 0;
     const parsed = parseInt(raw, 10);

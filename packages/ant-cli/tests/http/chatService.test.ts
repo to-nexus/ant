@@ -94,6 +94,17 @@ class FakeStateStore implements Partial<StateStorePort> {
     return this.pauseSeqByTurn.get(turnId) ?? 0;
   }
 
+  private cycleSeqByPair = new Map<string, number>();
+  async nextWorkerCycleSeq(turnId: string, taskKey: string): Promise<number> {
+    const k = `${turnId}::${taskKey}`;
+    const next = (this.cycleSeqByPair.get(k) ?? 0) + 1;
+    this.cycleSeqByPair.set(k, next);
+    return next;
+  }
+  async getCurrentWorkerCycleSeq(turnId: string, taskKey: string): Promise<number> {
+    return this.cycleSeqByPair.get(`${turnId}::${taskKey}`) ?? 0;
+  }
+
   async clearTurnBuffer(): Promise<void> {}
   async clearTurnBufferPendingCard(): Promise<void> {}
   async appendToTurnBuffer(): Promise<void> {}

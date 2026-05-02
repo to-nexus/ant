@@ -23,6 +23,37 @@ import { VerificationTerminalError } from '../tasks/_shared/verify/terminal/erro
 import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
 
 /**
+ * Predicate — does this task object carry a re-entry marker that the
+ * worker MUST treat as "second (or later) cycle" for the purpose of
+ * minting a fresh `cycleSeq`?
+ *
+ * Three task-shape sources of re-entry are unified here so
+ * `TaskWorker.executeTask` has a single SSOT:
+ *
+ *   1. `task.interrupted === true`
+ *      → set by all of:
+ *        - batchSplit Path A re-queue
+ *          (`tasks/_shared/batchSplit/process.ts`)
+ *        - `TaskOrchestrator` transient retry
+ *          (`parallel/TaskOrchestrator.ts`)
+ *        - user Stop + Resume via `handleInterruption` / checkpoint
+ *
+ *   2. `task._failedAttempts > 0`
+ *      → defensive fallback for any path that bumps the orchestrator
+ *        attempt counter without setting `interrupted` (none today,
+ *        but the counter is the most authoritative re-entry signal).
+ *
+ * Pure function — exported for the regression guard in
+ * `tests/parallel/worker-cycle-seq-reentry.test.ts` so the truth
+ * table cannot drift from the worker without a test failure.
+ */
+export function isTaskReentry(task: BaseTask): boolean {
+  if (task.interrupted === true) return true;
+  const attempts = (task as { _failedAttempts?: number })._failedAttempts ?? 0;
+  return attempts > 0;
+}
+
+/**
  * Produce a `WorkerSnapshot` from any code-graph state object.
  *
  * Single snapshot API for the three carry-over boundaries
@@ -142,6 +173,16 @@ export class TaskWorker<T extends BaseTask> {
    * Execute a single task using the worker subgraph.
    */
   private async executeTask(task: T): Promise<any> {
+    // Capture re-entry markers BEFORE workerState construction —
+    // the resumeState restore block below clears `task.interrupted`
+    // after rehydrating, so reading it later would always see false
+    // and silently degrade cycleSeq INCR (verification re-entry
+    // stale-card RCA — the marker check MUST run on the as-arrived
+    // task object). The truth table lives in `isTaskReentry` so a
+    // single export carries it across the worker and its regression
+    // tests.
+    const isReentry = isTaskReentry(task);
+
     // Build the appropriate subgraph
     const includeInstallValidate = !!task.exclusive;
     const graph = this.graphBuilder(includeInstallValidate);
@@ -235,29 +276,47 @@ export class TaskWorker<T extends BaseTask> {
     // first-event timestamp, restoring chronology when a long-lived
     // worker handles tasks across barrier cohorts.
     //
-    // `cycleSeq` (peek of the turnId-level pauseSeq) carries the
-    // pause/resume cycle index so a task that survives a Stop/Resume
-    // cycle mints `worker-N#task-K#p{cycleSeq}` instead of piggy-backing
-    // on the original `worker-N#task-K` section. Without the suffix the
-    // FE projector anchors the worker section's firstTs to the first
-    // attempt forever — cancelled cards (`_cancelled_:{cardId}`,
-    // synthetic scope) sort BELOW the worker section and the user sees
-    // the cancelled card "stuck" at the chat input even after resume
-    // (`even-getting-knave` regression). See
-    // docs/architecture/31-chat-system.md §섹션-정렬 rule 4.
+    // `cycleSeq` carries the task's lifecycle entry index. The first
+    // attempt elides the suffix (cycleSeq=0) so the key matches the
+    // legacy `worker-N#task-K` form; every subsequent re-entry mints
+    // `worker-N#task-K#p{cycleSeq}` so the new cycle (a) renders as a
+    // fresh FE chat section anchored at the cycle's actual start ts
+    // (`even-getting-knave` regression — cancelled cards otherwise
+    // stay "stuck" at the chat input) AND (b) gets an isolated
+    // `LLMResponseService.WorkerLocalState` slot so stale
+    // `fileCardByPath` / `commandCardByCommand` / `thinking` entries
+    // from the prior cycle cannot leak (verification re-entry
+    // stale-card RCA — previously the second cycle of a verification
+    // task carried the first cycle's progress card ids and FE folded
+    // them into the same scrollback position).
+    //
+    // Re-entry sources covered (single SSOT — INCR happens here):
+    //   1. batchSplit Path A — `requeuedTask.interrupted = true`
+    //   2. orchestrator transient retry — `task.interrupted = true`
+    //   3. user Stop + Resume — `task.interrupted = true` via
+    //      handleInterruption / checkpoint
+    //   4. orchestrator-managed transient failure with bumped
+    //      `_failedAttempts` (defensive — covers any path that bumps
+    //      the attempt counter without setting `interrupted`)
+    // See docs/architecture/31-chat-system.md §섹션-정렬 rule 4.
+    // `isReentry` was captured at function entry so the resumeState
+    // restore block above (which clears `task.interrupted`) cannot
+    // race-erase the marker before the cycleSeq decision runs.
     const taskKey = task.id || task.name;
     let cycleSeq = 0;
     try {
       const llmService = await getLLMResponseServiceOrNull();
       if (llmService) {
-        cycleSeq = await llmService.getCurrentPauseSeq();
+        cycleSeq = isReentry
+          ? await llmService.nextWorkerCycleSeq(taskKey)
+          : await llmService.getCurrentWorkerCycleSeq(taskKey);
       }
     } catch (err) {
-      // Best-effort. If the peek fails the worker still runs — it just
-      // emits with the legacy two-axis scope. Better to lose the cycle
-      // suffix than to abort the task on a Redis blip.
+      // Best-effort. If the redis call fails the worker still runs —
+      // it just emits with the legacy two-axis scope. Better to lose
+      // the cycle suffix than to abort the task on a Redis blip.
       console.warn(
-        `[Worker ${this.workerId}] getCurrentPauseSeq failed; falling back to cycleSeq=0`,
+        `[Worker ${this.workerId}] worker cycleSeq lookup failed (isReentry=${isReentry}); falling back to cycleSeq=0`,
         err,
       );
       cycleSeq = 0;

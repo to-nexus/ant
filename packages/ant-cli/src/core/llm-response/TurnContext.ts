@@ -51,16 +51,18 @@ export class TurnContext {
    * can sort sections by first-event timestamp — restoring chronology
    * when the same worker handles tasks across barrier cohorts.
    *
-   * `cycleSeq` is the turnId-level pause/resume cycle index captured
-   * at worker entry (`TaskWorker.executeTask` peeks
-   * `StateStorePort.getCurrentPauseSeq(turnId)` before invoking the
-   * subgraph). On the first attempt the value is 0 and the suffix is
-   * elided — the resulting key matches the legacy two-axis form, so
-   * existing buffers and chat.jsonl events stay schema-compatible.
-   * Each subsequent stop/resume cycle bumps the suffix
-   * (`#p1`, `#p2`, …), minting a fresh FE section whose first-event
-   * timestamp anchors at the resume moment instead of the original
-   * task start. This is what backs the chronology guarantee in
+   * `cycleSeq` is the per-(turn, task) lifecycle entry index
+   * managed by `StateStorePort.nextWorkerCycleSeq`. On the first
+   * attempt the value is 0 and the suffix is elided — the resulting
+   * key matches the legacy two-axis form, so existing buffers and
+   * chat.jsonl events stay schema-compatible. Every re-entry source
+   * (user Stop/Resume, batchSplit Path A re-queue, orchestrator
+   * transient retry) bumps the suffix (`#p1`, `#p2`, …), minting a
+   * fresh FE section AND a fresh `LLMResponseService.WorkerLocalState`
+   * slot. The fresh slot is what eliminates stale `fileCardByPath` /
+   * `commandCardByCommand` / `thinking` carry-over between cycles
+   * (verification re-entry stale-card RCA). The fresh section is what
+   * backs the chronology guarantee in
    * docs/architecture/31-chat-system.md §섹션-정렬 rule 4 — without
    * the suffix, cancelled cards (`_cancelled_:{cardId}`) get sorted
    * BELOW the worker section even after Resume, which is the

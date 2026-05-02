@@ -8,9 +8,8 @@
  * Three dimensions live on the same storage:
  *   - `workerId`   — the long-lived TaskWorker identity (loop unit).
  *   - `taskKey?`   — the currently-executing task within that worker.
- *   - `cycleSeq?`  — the pause/resume cycle the task is running in
- *                    (mirrors the turnId-level `pauseSeq` used by
- *                    `ChatService.appendChoicePresentedCancelled`).
+ *   - `cycleSeq?`  — the task lifecycle entry cycle (0 on first
+ *                    attempt; bumped on every re-entry — see below).
  *
  * Why three: a TaskWorker is a long-lived loop that picks up tasks
  * across barrier cohorts (UI cohort, then test-code cohort, …). Without
@@ -21,18 +20,31 @@
  * event with `worker-N#task-K` lets the FE projector split per task and
  * sort sections by first-event timestamp, restoring chronology.
  *
- * Without `cycleSeq`, a task that survives a stop/resume cycle reuses
- * the same `worker-N#task-K` scope on its second attempt, so all events
- * from cycle 1, 2, 3 collapse into one FE section whose first ts is
- * pinned to cycle 1's start. Cancelled cards (`_cancelled_:{cardId}`)
- * mint at the stop ts, which is *later* than the worker's first ts —
- * so the cancelled section sorts BELOW the worker section even after
- * Resume. The card stays "stuck" at the bottom of the chat (visually
- * latest), which is the `even-getting-knave` regression. Stamping each
- * cycle-N attempt as `worker-N#task-K#p{cycleSeq}` mints a fresh
- * section per cycle, so each cycle's first ts is the cycle's actual
- * start; cancelled sections naturally interleave between cycle sections
- * by chronology. See chat-SSOT §섹션-정렬 rule 4.
+ * Without `cycleSeq`, a task that survives a re-entry (Stop/Resume,
+ * batchSplit Path A re-queue, orchestrator transient retry) reuses the
+ * same `worker-N#task-K` scope, which causes two distinct failures:
+ *   (a) FE section anchoring — cycle 1, 2, 3 collapse into one FE
+ *       section whose first ts is pinned to cycle 1's start.
+ *       Cancelled cards (`_cancelled_:{cardId}`) mint at the Stop ts,
+ *       which is *later* than the worker's first ts, so the cancelled
+ *       section sorts BELOW the worker section even after Resume —
+ *       the `even-getting-knave` regression.
+ *   (b) `LLMResponseService.WorkerLocalState` slot reuse — the
+ *       service keys its per-worker `fileCardByPath` /
+ *       `commandCardByCommand` / `thinking` caches by the same scope
+ *       string. Without a fresh suffix, the second cycle inherits the
+ *       first cycle's stale cardIds, so terminal `chat_status` events
+ *       carry old ids and the FE folds them into the prior cycle's
+ *       card position (verification re-entry stale-card RCA — the
+ *       user sees a file/command/thinking card in scrollback being
+ *       updated by the new cycle's output).
+ *
+ * Stamping each re-entry as `worker-N#task-K#p{cycleSeq}` mints a
+ * fresh FE section AND a fresh WorkerLocalState slot per cycle.
+ * `TaskWorker.executeTask` owns the INCR side
+ * (`StateStorePort.nextWorkerCycleSeq(turnId, taskKey)`) and triggers
+ * it on any re-entry marker, so all three re-entry sources converge
+ * on the same SSOT. See chat-SSOT §섹션-정렬 rule 4.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -41,10 +53,11 @@ interface WorkerContext {
   workerId: number;
   taskKey?: string;
   /**
-   * Pause/resume cycle index for the current task attempt. 0 (or
-   * undefined) on the first attempt before any cancellation; equals
-   * the value of the turnId-level `pauseSeq` GET-peek captured at
-   * worker entry on subsequent cycles.
+   * Task lifecycle entry cycle. 0 (or undefined) on the first
+   * attempt; equals the per-(turn, task) INCR value returned by
+   * `StateStorePort.nextWorkerCycleSeq` on every subsequent re-entry
+   * (Stop+Resume / batchSplit Path A / orchestrator transient retry).
+   * Set at worker entry by `TaskWorker.executeTask`.
    */
   cycleSeq?: number;
 }
