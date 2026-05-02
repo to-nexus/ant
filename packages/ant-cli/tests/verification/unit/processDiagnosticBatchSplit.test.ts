@@ -1,14 +1,19 @@
 /**
- * L1 unit — processDiagnosticBatchSplit (plan node).
+ * L1 unit — verification batch-split + sibling diagnostic helpers SSOT.
  *
- * Always-fan-out semantics (post verification fix-책임 제거):
- *   - top-level implementation entries → auto-converted to per-target batches
- *   - existing batches (any count, including 1) → fan-out as-is
- *   - 0 implementation entries (no top-level, no batches) → noop
- *   - non-verification / non-error / non-test-code task → noop
- *   - short planText (<= 50 chars) → noop
- *   - unparseable JSON → noop (returns original)
- *   - hard limit: MAX_BATCH_SPLIT_CYCLES exceeded → throw VerificationTerminalError
+ *   1. processDiagnosticBatchSplit (plan node) — always-fan-out semantics:
+ *        - top-level implementation entries → per-target batches
+ *        - existing batches (any count) → fan-out as-is
+ *        - 0 entries / non-verification task / short planText / bad JSON → noop
+ *        - hard limit: MAX_BATCH_SPLIT_CYCLES → throw VerificationTerminalError
+ *
+ *   2. classifyTerminalError dispatcher — typed terminal errors are
+ *      recognised by the orchestrator BEFORE the legacy regex-based
+ *      `isDeterministicError` runs.
+ *
+ *   3. hasEmptyImplementation (Axis F-1) — detects empty modify/create/delete
+ *      with no batches; treats markdown-fenced JSON, missing keys, and
+ *      invalid JSON safely.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -16,7 +21,11 @@ import {
   processDiagnosticBatchSplit,
   MAX_BATCH_SPLIT_CYCLES,
 } from '../../../src/agents/architect/graph/code/tasks/_shared/batchSplit';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/terminal/errors';
+import {
+  VerificationTerminalError,
+  classifyTerminalError,
+} from '../../../src/agents/architect/graph/code/tasks/_shared/verify/terminal/errors';
+import { hasEmptyImplementation } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/emptyImpl';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
@@ -447,4 +456,98 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
     });
   });
 
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// classifyTerminalError dispatcher (sibling helper)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('classifyTerminalError', () => {
+  it('returns terminal:true with kind for VerificationTerminalError', () => {
+    const err = new VerificationTerminalError(
+      'max_retries_exceeded',
+      'Task "X" failed after 3 attempts (max: 3).',
+    );
+    expect(classifyTerminalError(err)).toEqual({ terminal: true, kind: 'max_retries_exceeded' });
+  });
+
+  it('returns terminal:false for plain Error (regex fallback applies)', () => {
+    expect(classifyTerminalError(new Error('some transient network issue'))).toEqual({ terminal: false });
+  });
+
+  it('works for all defined kinds', () => {
+    const kinds = [
+      'max_retries_exceeded',
+      'unresolved_violations',
+      'batch_cycle_limit',
+      'orchestrator_fail_limit',
+    ] as const;
+    for (const k of kinds) {
+      expect(classifyTerminalError(new VerificationTerminalError(k, 'msg'))).toEqual({ terminal: true, kind: k });
+    }
+  });
+
+  it('preserves instanceof through throw/catch so callers can branch on type', () => {
+    try {
+      throw new VerificationTerminalError('batch_cycle_limit', 'loop detected');
+    } catch (e) {
+      expect(e instanceof VerificationTerminalError).toBe(true);
+      expect((e as VerificationTerminalError).kind).toBe('batch_cycle_limit');
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// hasEmptyImplementation (Axis F-1) — sibling helper
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('Axis F-1 — hasEmptyImplementation', () => {
+  it('detects empty modify/create/delete with no batches', () => {
+    const plan = JSON.stringify({
+      task: { id: 'x', goal: 'y' },
+      diagnostics: { totalErrors: 0 },
+      implementation: { modify: [], create: [], delete: [] },
+    });
+    expect(hasEmptyImplementation(plan)).toBe(true);
+  });
+
+  it('treats missing implementation keys as empty', () => {
+    const plan = JSON.stringify({
+      task: { id: 'x', goal: 'y' },
+      diagnostics: { totalErrors: 0 },
+      implementation: {},
+    });
+    expect(hasEmptyImplementation(plan)).toBe(true);
+  });
+
+  it('non-empty modify list is NOT empty', () => {
+    const plan = JSON.stringify({
+      implementation: { modify: [{ target: 'src/a.ts' }], create: [], delete: [] },
+    });
+    expect(hasEmptyImplementation(plan)).toBe(false);
+  });
+
+  it('plan with batches is NOT empty', () => {
+    const plan = JSON.stringify({
+      implementation: { modify: [], create: [], delete: [] },
+      batches: [{ name: 'one', modify: [{ target: 'src/a.ts' }] }],
+    });
+    expect(hasEmptyImplementation(plan)).toBe(false);
+  });
+
+  it('strips markdown fences before parsing', () => {
+    const plan = '```json\n' + JSON.stringify({
+      implementation: { modify: [], create: [], delete: [] },
+    }) + '\n```';
+    expect(hasEmptyImplementation(plan)).toBe(true);
+  });
+
+  it('invalid JSON returns false (not empty, so execute normally)', () => {
+    expect(hasEmptyImplementation('not json at all')).toBe(false);
+  });
+
+  it('undefined/empty string return false', () => {
+    expect(hasEmptyImplementation(undefined)).toBe(false);
+    expect(hasEmptyImplementation('')).toBe(false);
+  });
 });

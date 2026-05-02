@@ -16,8 +16,6 @@ import {
   resolveTaskTechTiersFromMap,
   applyExplicitTechTierOverrides,
   effectiveTechTier,
-  resolveLanguage,
-  resolveFramework,
   resolveToRAC,
 } from '@ant/shared';
 import type { TechTier, TechTierConfig, PackageTierEntry } from '@ant/shared';
@@ -65,53 +63,8 @@ describe('buildTechTier', () => {
   });
 });
 
-// ============================================
-// resolveLanguage
-// ============================================
-
-describe('resolveLanguage', () => {
-  it.each([
-    ['typescript', 'typescript'],
-    ['TypeScript', 'typescript'],
-    ['javascript', 'typescript'],
-    ['go', 'go'],
-    ['golang', 'go'],
-    ['python', 'typescript'],
-    ['rust', 'typescript'],
-    ['java', 'typescript'],
-    ['unknown', 'typescript'],
-    [undefined, 'typescript'],
-  ])('resolves "%s" to "%s"', (input, expected) => {
-    expect(resolveLanguage(input ? { language: input } : undefined)).toBe(expected);
-  });
-});
-
-// ============================================
-// resolveFramework
-// ============================================
-
-describe('resolveFramework', () => {
-  it('resolves nextjs variants', () => {
-    expect(resolveFramework({ framework: 'Next.js' })).toBe('nextjs');
-    expect(resolveFramework({ framework: 'NextJS' })).toBe('nextjs');
-  });
-
-  it('resolves nuxt', () => {
-    expect(resolveFramework({ framework: 'Nuxt' })).toBe('nuxt');
-  });
-
-  it('resolves express', () => {
-    expect(resolveFramework({ framework: 'Express' })).toBe('express');
-  });
-
-  it('returns undefined when absent', () => {
-    expect(resolveFramework(undefined)).toBeUndefined();
-  });
-
-  it('taskProfile overrides profile', () => {
-    expect(resolveFramework({ framework: 'react' }, { framework: 'nextjs' })).toBe('nextjs');
-  });
-});
+// `resolveLanguage` / `resolveFramework` unit tests live in
+// tests/core/rac.test.ts (the @ant/shared normalisation SSOT).
 
 // ============================================
 // resolveTaskTechTiersFromMap
