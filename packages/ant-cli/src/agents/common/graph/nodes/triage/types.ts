@@ -113,6 +113,65 @@ export interface TriageResult {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
+ * MonorepoManager: workspace marker that pins the root and the
+ * invocation surface for dependency mutations.
+ *
+ * Naming follows the marker (not the package manager binary) so that
+ * a single binary like `pnpm` that supports both single-package and
+ * workspace mode is not conflated with the workspace marker itself.
+ */
+export type MonorepoManager =
+  | 'pnpm-workspace'
+  | 'npm-workspaces'
+  | 'yarn-workspaces'
+  | 'bun-workspaces'
+  | 'cargo-workspace'
+  | 'go-workspace'
+  | 'uv-workspace';
+
+/**
+ * MonorepoLayout: detected workspace topology.
+ *
+ * Set by `analyzeWorkspace` when a workspace root marker is observed
+ * inside `codebase/` (depth-1). Consumed by:
+ *   - `workspaceDepSnapshotVars` → prompt variables for the
+ *     `monorepo-install-locality` partial (Section B.3 of the
+ *     test-code-script-wiring plan).
+ *   - `codeCommandPolicy` install-locality guard → reject install
+ *     commands issued from a member directory when the marker pins
+ *     the root elsewhere (B.5).
+ *
+ * Single-package projects leave `WorkspaceState.monorepo` undefined.
+ */
+export interface MonorepoLayout {
+  /**
+   * Workspace root, relative to the feature directory. Conventionally
+   * `'codebase'` (the canonical codebase root) — but stored explicitly
+   * so consumers do not have to hard-code that constant.
+   */
+  rootPath: string;
+  /**
+   * Workspace marker manager — pinned by the file that declared the
+   * workspace, not by the lockfile alone (a `package-lock.json` next
+   * to a `pnpm-workspace.yaml` is still a pnpm workspace).
+   */
+  manager: MonorepoManager;
+  /**
+   * The actual file (or single key inside a file) that triggered
+   * the detection. Surfaced in the prompt for debugging-grade
+   * orientation; never used for control flow.
+   */
+  rootMarker: string;
+  /**
+   * Member globs / paths declared by the marker, relative to
+   * `rootPath`. Empty list means "marker present but member set
+   * unparseable" — treat as monorepo, but the prompt-side hint
+   * cannot list members.
+   */
+  members?: string[];
+}
+
+/**
  * WorkspaceState: 워크스페이스 상태
  *
  * Path-presence flags use domain labels (`hasPlan`, `hasArchitecture*`,
@@ -168,6 +227,13 @@ export interface WorkspaceState {
    * Empty / undefined when only the memory index detected the codebase.
    */
   codebaseEntryPoints?: string[];
+
+  /**
+   * Workspace topology of the `codebase/` tree, when a monorepo
+   * marker is observed. Undefined for single-package projects.
+   * See `MonorepoLayout` JSDoc for consumer wiring.
+   */
+  monorepo?: MonorepoLayout;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

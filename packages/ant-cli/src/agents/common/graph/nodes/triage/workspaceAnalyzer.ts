@@ -17,7 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspaceState } from './types';
+import { WorkspaceState, MonorepoLayout, MonorepoManager } from './types';
 import {
   ARTIFACT_PREFIX,
   FIGMA_CONFIG_PATH,
@@ -287,6 +287,16 @@ export async function analyzeWorkspace(
     state.codebaseEntryPoints = entryPoints;
   }
 
+  // Monorepo marker scan — independent of `hasCodebase` (a codebase that
+  // failed entry-point detection but contains `pnpm-workspace.yaml` is
+  // still a workspace). Path-only inspection where possible; minimal
+  // structured parsing for marker files that need it (YAML members list,
+  // package.json `workspaces` field, Cargo `[workspace] members`).
+  const monorepo = detectMonorepoLayout(codebaseAbs);
+  if (monorepo) {
+    state.monorepo = monorepo;
+  }
+
   if (deps?.memory) {
     try {
       const results = await deps.memory.query('', deps.projectId || '', { k: 1 });
@@ -327,6 +337,233 @@ function scanCodebaseEntryPoints(codebaseAbs: string): string[] {
   // so `hasCodebase` flips and the partial activates.
   if (matched.length === 0 && present.size > 0) return ['codebase/'];
   return matched;
+}
+
+/**
+ * Public re-export — also consumed by `applyCodeCommandPolicy`'s
+ * install-locality guard, which scans the codebase root on every
+ * mutating command instead of trusting the (potentially stale)
+ * cached `WorkspaceState.monorepo` channel.
+ */
+export { detectMonorepoLayout };
+
+/**
+ * Detect a monorepo workspace marker inside `codebaseAbs`.
+ *
+ * Returns the resolved {@link MonorepoLayout} when a marker is found,
+ * otherwise `undefined`. Detection is fail-soft — a malformed marker
+ * file (unparseable YAML / TOML / JSON) downgrades to "marker present
+ * but member set unparseable" (returns the layout with `members: []`),
+ * which is still useful for the install-locality guard.
+ *
+ * Detection priority is the order most-distinctive-first; the first
+ * marker that resolves wins. Conventionally only one marker is present
+ * in a real workspace, but a misconfigured project might show multiple
+ * — the priority order picks the narrower interpretation.
+ *
+ * Note: poetry monorepos lack a single workspace marker (each package
+ * has its own `pyproject.toml` and per-package install IS the canonical
+ * flow), so they are intentionally NOT detected — they fall through as
+ * single-package and the install-locality guard does not fire.
+ */
+function detectMonorepoLayout(codebaseAbs: string): MonorepoLayout | undefined {
+  if (!fs.existsSync(codebaseAbs)) return undefined;
+
+  const here = (name: string) => path.join(codebaseAbs, name);
+  const exists = (name: string) => fs.existsSync(here(name));
+  const readSafe = (name: string): string | undefined => {
+    try {
+      return fs.readFileSync(here(name), 'utf-8');
+    } catch {
+      return undefined;
+    }
+  };
+
+  // 1. pnpm-workspace.yaml — narrowest signal (a single tool name).
+  if (exists('pnpm-workspace.yaml')) {
+    const raw = readSafe('pnpm-workspace.yaml') ?? '';
+    return makeLayout('pnpm-workspace', 'pnpm-workspace.yaml', parsePnpmWorkspaceMembers(raw));
+  }
+
+  // 2. package.json with `workspaces` field — npm/yarn/bun share the
+  //    same field shape; the lockfile (yarn.lock / pnpm-lock.yaml /
+  //    package-lock.json / bun.lock) discriminates further. Fall back to
+  //    npm-workspaces if no lockfile is identifiable.
+  if (exists('package.json')) {
+    const raw = readSafe('package.json') ?? '';
+    const members = parsePackageJsonWorkspaces(raw);
+    if (members !== null) {
+      const manager: MonorepoManager =
+        exists('yarn.lock') ? 'yarn-workspaces'
+        : exists('bun.lock') || exists('bun.lockb') ? 'bun-workspaces'
+        : 'npm-workspaces';
+      return makeLayout(manager, 'package.json', members);
+    }
+  }
+
+  // 3. Cargo.toml `[workspace]` section.
+  if (exists('Cargo.toml')) {
+    const raw = readSafe('Cargo.toml') ?? '';
+    const members = parseCargoWorkspaceMembers(raw);
+    if (members !== null) {
+      return makeLayout('cargo-workspace', 'Cargo.toml', members);
+    }
+  }
+
+  // 4. go.work — `use ( ... )` block.
+  if (exists('go.work')) {
+    const raw = readSafe('go.work') ?? '';
+    return makeLayout('go-workspace', 'go.work', parseGoWorkUseBlock(raw));
+  }
+
+  // 5. pyproject.toml `[tool.uv.workspace]`.
+  if (exists('pyproject.toml')) {
+    const raw = readSafe('pyproject.toml') ?? '';
+    const members = parseUvWorkspaceMembers(raw);
+    if (members !== null) {
+      return makeLayout('uv-workspace', 'pyproject.toml', members);
+    }
+  }
+
+  return undefined;
+}
+
+function makeLayout(
+  manager: MonorepoManager,
+  rootMarker: string,
+  members: string[],
+): MonorepoLayout {
+  return {
+    rootPath: CODEBASE_DIR,
+    manager,
+    rootMarker,
+    members,
+  };
+}
+
+/**
+ * Parse `pnpm-workspace.yaml` `packages:` list.
+ *
+ * Minimal YAML — the file shape is "packages:" followed by `- "<glob>"`
+ * lines. Other top-level keys (catalog, etc.) are ignored. Returns []
+ * when the `packages:` key is absent or unparseable.
+ */
+function parsePnpmWorkspaceMembers(raw: string): string[] {
+  const lines = raw.split(/\r?\n/);
+  const out: string[] = [];
+  let inPackages = false;
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*$/, '');
+    if (/^packages\s*:/i.test(line)) {
+      inPackages = true;
+      continue;
+    }
+    if (inPackages) {
+      // Exit on a new top-level key.
+      if (/^[A-Za-z_]/.test(line)) break;
+      const m = line.match(/^\s*-\s*['"]?([^'"\s]+)['"]?\s*$/);
+      if (m) out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Parse `package.json` `workspaces` field.
+ *
+ * Returns:
+ *   - `string[]` of glob patterns when the field is an array or
+ *     `{ packages: [...] }` object form.
+ *   - `null` when the field is absent (caller treats as "not a
+ *     workspaces project").
+ *   - `[]` when the field is present but unparseable.
+ */
+function parsePackageJsonWorkspaces(raw: string): string[] | null {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const ws = parsed?.workspaces;
+  if (ws === undefined || ws === null) return null;
+  if (Array.isArray(ws)) return ws.filter((p): p is string => typeof p === 'string');
+  if (typeof ws === 'object' && Array.isArray(ws.packages)) {
+    return ws.packages.filter((p: unknown): p is string => typeof p === 'string');
+  }
+  return [];
+}
+
+/**
+ * Parse `Cargo.toml` `[workspace]` section's `members = [ ... ]` list.
+ *
+ * Minimal TOML reader — Cargo accepts the array as multi-line. Returns
+ * `null` when no `[workspace]` section is present, `[]` when present
+ * but `members` is missing or unparseable.
+ */
+function parseCargoWorkspaceMembers(raw: string): string[] | null {
+  const wsHeader = /^\s*\[workspace\]\s*$/m;
+  if (!wsHeader.test(raw)) return null;
+  // Slice from `[workspace]` to the next section header (or EOF).
+  const wsStart = raw.search(wsHeader);
+  const after = raw.slice(wsStart + 1);
+  const nextHeaderIdx = after.search(/^\s*\[[^\]]+\]\s*$/m);
+  const block = nextHeaderIdx >= 0 ? after.slice(0, nextHeaderIdx) : after;
+  const membersMatch = block.match(/members\s*=\s*\[([\s\S]*?)\]/);
+  if (!membersMatch) return [];
+  const inner = membersMatch[1];
+  const out: string[] = [];
+  const re = /['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(inner)) !== null) {
+    out.push(m[1]);
+  }
+  return out;
+}
+
+/**
+ * Parse `go.work` `use ( ... )` block (and bare `use <path>` lines).
+ */
+function parseGoWorkUseBlock(raw: string): string[] {
+  const out: string[] = [];
+  const lines = raw.split(/\r?\n/);
+  let inUseBlock = false;
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\/\/.*$/, '').trim();
+    if (!line) continue;
+    if (line === 'use (') { inUseBlock = true; continue; }
+    if (inUseBlock) {
+      if (line === ')') { inUseBlock = false; continue; }
+      out.push(line);
+      continue;
+    }
+    const single = line.match(/^use\s+(.+)$/);
+    if (single) out.push(single[1].trim());
+  }
+  return out;
+}
+
+/**
+ * Parse `pyproject.toml` `[tool.uv.workspace]` `members = [ ... ]`.
+ *
+ * Returns `null` when no `[tool.uv.workspace]` table is present.
+ */
+function parseUvWorkspaceMembers(raw: string): string[] | null {
+  const header = /^\s*\[tool\.uv\.workspace\]\s*$/m;
+  if (!header.test(raw)) return null;
+  const start = raw.search(header);
+  const after = raw.slice(start + 1);
+  const nextHeaderIdx = after.search(/^\s*\[[^\]]+\]\s*$/m);
+  const block = nextHeaderIdx >= 0 ? after.slice(0, nextHeaderIdx) : after;
+  const membersMatch = block.match(/members\s*=\s*\[([\s\S]*?)\]/);
+  if (!membersMatch) return [];
+  const out: string[] = [];
+  const re = /['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(membersMatch[1])) !== null) {
+    out.push(m[1]);
+  }
+  return out;
 }
 
 /**

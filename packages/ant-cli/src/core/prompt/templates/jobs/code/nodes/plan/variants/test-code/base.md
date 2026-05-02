@@ -10,6 +10,8 @@ You are the **parent test-code task** for this job. Your responsibilities in thi
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/monorepo-install-locality}}
+
 {{> jobs/code/base/injections/workspace-dep-snapshot}}
 
 {{#if hasPackageManager}}
@@ -63,7 +65,7 @@ Use `read_file` / `list_files` / `search_code` to understand:
 
 ### Step 2 — Install Test Runner (if missing)
 
-**Principle**: Test-runner dependencies belong to the parent plan phase, never to a sub-task. Sub-tasks run in parallel and would race on `package-lock.json`.
+**Principle**: Test-runner dependencies and the manifest's test-run entry both belong to the parent plan phase, never to a sub-task. Sub-tasks run in parallel and would race on `package-lock.json` and on shared manifest writes.
 
 - If the project already declares a test runner (vitest / jest / pytest / go test stdlib / ...), verify its packages are installed (`pnpm why vitest`, `cat package.json`) and **skip install**.
 - If the project has no declared runner, pick the ecosystem default (vitest for TypeScript, jest for JavaScript legacy, pytest for Python, stdlib `testing` for Go) and install it along with the matching `@types/{runner}` / globals package:
@@ -74,7 +76,29 @@ Use `read_file` / `list_files` / `search_code` to understand:
 
 - Verify the runner is picked up by running its `--version` invocation (e.g. `npx vitest --version`). Do NOT run the actual test suite — that is the verification task's job.
 
-**Constraint**: Do NOT modify application source code during the plan phase. `run_command` is for install / version probe / observation only.
+**Constraint**: Do NOT modify application source code during the plan phase. `run_command` is reserved for install / version probe / observation. The single permitted manifest-write exception is the test-run entry described in Step 2.5 below — perform it via `edit_file`, not via `run_command`.
+
+### Step 2.5 — Wire Test-Run Entry (if missing)
+
+**Principle**: The verification phase invokes a single project-level test command. If the project's manifest does not expose that command, verification fails before the first assertion runs and consumes a full retry cycle resolving an entry that you could have wired in one edit here.
+
+**Observation target**: Does the project's dependency manifest already expose a test-run entry that invokes the runner installed in Step 2?
+
+| Observation | Action |
+|-------------|--------|
+| **Entry absent** | Add a single entry to the **existing** manifest, invoking the runner installed in Step 2 |
+| **Entry present** | No action |
+| **Ecosystem provides a built-in test command and the manifest is conventionally bare** (e.g. languages whose test runner is invoked directly from the toolchain root) | No action |
+
+**Constraint**: Add the entry to the **existing** manifest only. Do NOT create a new config file solely to host the test command.
+
+**Constraint**: This wiring is the **parent plan phase's exclusive responsibility**. Sub-tasks spawned by `batches[]` are blocked from editing the manifest (lockfile-race defence) — if you skip this step, no later phase will recover it for you.
+
+**Constraint**: Use `edit_file` to add the entry. Do NOT issue a `run_command` install verb to set the script — that is a different operation.
+
+**Constraint**: Do NOT include the manifest in any `batches[]` entry's `create` / `modify` list (Step 3 / Format B already enumerates manifest paths as forbidden). The wiring you perform here happens *before* the `<plan>` block is emitted.
+
+⚠️ **Blind spot**: Installing the runner alone is not sufficient — the verification phase invokes the *entry-point*, not the runner binary directly. Re-open the manifest after install and confirm the entry exists; do not infer its presence from a successful `--version` probe.
 
 ### Step 3 — Decide: Single Task or Feature-Slice Split?
 

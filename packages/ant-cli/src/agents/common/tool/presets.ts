@@ -47,7 +47,10 @@ export function createCodeToolRegistry(): ToolRegistry {
   const registry = buildRegistryFromMatrix(JobType.CODE);
 
   registry.wrap(ToolName.RUN_COMMAND, (original) => async (ctx, args) => {
-    const rejection = applyCodeCommandPolicy(ctx, args as { command: string; verifies?: Gate });
+    const rejection = applyCodeCommandPolicy(
+      ctx,
+      args as { command: string; verifies?: Gate; working_directory?: string },
+    );
     if (rejection) return rejection;
     return original(ctx, args);
   });

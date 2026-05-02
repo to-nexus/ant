@@ -559,6 +559,10 @@ describe('Template Smoke Tests', () => {
       // adding it to the allow-list mirrors how ui-source-dispatch is
       // treated above.
       'jobs/code/base/injections/workspace-dep-snapshot',
+      // monorepo-install-locality is gated on {{#if monorepoActive}}; smoke
+      // SAMPLE_VARS has no workspace analysis, so the partial is empty until
+      // analyzeWorkspace marks an active monorepo.
+      'jobs/code/base/injections/monorepo-install-locality',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);
