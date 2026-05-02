@@ -231,6 +231,15 @@ describe('marble-jumping-grove — SSOT discipline source-text guards', () => {
     expect(src).not.toMatch(/path\.join\(state\.context\.workingDir,\s*resolvedPath\)/);
   });
 
+  it('semantic.loadSemanticFiles uses normalizeToCodebasePath (vector-db + local fallback path loader)', () => {
+    const src = readSrc('agents/architect/graph/code/nodes/plan/rag/semantic.ts');
+    expect(src).toContain('normalizeToCodebasePath');
+    expect(src).toMatch(/normalizeToCodebasePath\(filePath\)\.normalized/);
+    // Manual chain must be gone — caught by sweep after the original
+    // commit-4 inventory missed this 4th call site.
+    expect(src).not.toMatch(/path\.join\(state\.context\.workingDir,\s*filePath\)/);
+  });
+
   it('keyword.ts populates errorFiles + requiredFiles via normalizePathArray', () => {
     const src = readSrc('agents/architect/graph/code/nodes/plan/rag/keyword.ts');
     expect(src).toContain('normalizePathArray');
