@@ -88,7 +88,7 @@ export const ARCHITECT_TOOLS = {
   
   search_code: {
     name: 'search_code',
-    description: 'Search the codebase with ripgrep. Use a ripgrep regex; matches are returned as `file:line:content`. By default `node_modules` and `vendor` are excluded; set `include_dependencies: true` to grep installed library source (e.g., `@types/*.d.ts`) when a build error suggests a version-boundary or API-shape question.',
+    description: 'Search the workspace with ripgrep. Returns matches as `file:line:content`. By default `node_modules`, `vendor`, `.git`, `dist`, `build` are excluded for performance. When you need to inspect installed library source (e.g., `@types/*.d.ts`) the handler auto-detects intent from `file_pattern` and bypasses both the dependency exclude and `.gitignore`; pass `include_dependencies: true` only when you want deps included without scoping a `file_pattern`. Empty results include a `[search context]` block listing the resolved cwd / file_pattern / excludes / dependency mode so you can tell "really absent" from "cut by a filter".',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -98,11 +98,11 @@ export const ARCHITECT_TOOLS = {
         },
         file_pattern: {
           type: 'string',
-          description: 'Ripgrep glob to restrict files (optional). Examples: "**/*.tsx", "src/**/*.{ts,tsx}", "!**/*.test.ts" (exclude). When `include_dependencies` is true, you may target library files directly: "node_modules/@types/react/*.d.ts".',
+          description: 'Ripgrep glob, workspace-root-relative — uses the same prefix convention as `read_file` / `edit_file` / `list_files` / `create_file`. Code paths take a `codebase/` prefix; sibling trees use their own (`features/`, `plan/`, `architecture/`, `visual/`, `assets/`, `meta/`, `sessions/`). A pattern with no recognized prefix is auto-corrected to `codebase/...`. A `file_pattern` that explicitly targets `node_modules/` or `vendor/` (e.g. `codebase/apps/web/node_modules/next-intl/**/*.{js,cjs,mjs}`) automatically enables dependency mode — no need to also pass `include_dependencies`. Examples: "codebase/**/*.tsx", "codebase/src/**/*.{ts,tsx}", "!codebase/**/*.test.ts" (exclude), "codebase/node_modules/@types/react/*.d.ts" (auto deps mode).',
         },
         include_dependencies: {
           type: 'boolean',
-          description: 'Include `node_modules` / `vendor` in the search scope (default: false). Use when the build error names a library symbol and you need to verify the real API shape or version contract rather than guessing from pre-training knowledge.',
+          description: 'Force dependency mode without a `file_pattern` scoping it (default: false). Auto-inferred to `true` whenever `file_pattern` itself targets `node_modules/` or `vendor/`, so explicit use is only needed for a global deps-included sweep. When on, `node_modules` / `vendor` are kept in scope AND `.gitignore` is bypassed (`.git/` stays hard-excluded).',
         },
       },
       required: ['pattern'],
