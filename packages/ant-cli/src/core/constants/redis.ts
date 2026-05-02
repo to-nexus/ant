@@ -75,8 +75,28 @@ export const REDIS_KEYS = {
     /**
      * Monotonic pause sequence per turn for cancelled cardId generation.
      * `ant:chat:pauseSeq:{turnId}` (INCR, 24h)
+     *
+     * SCOPE: cancelled cardId uniqueness ONLY. The worker scope cycle
+     * suffix (`worker-N#task-K#p{cycleSeq}`) is owned by `WORKER_CYCLE_SEQ`
+     * below — do NOT collapse the two even though both are monotonic
+     * counters. They have different keys (turnId vs turnId×taskKey)
+     * and different INCR triggers (Stop only vs all task re-entries).
      */
     CANCELLED_PAUSE_SEQ: `${REDIS_DOMAINS.CHAT}:pauseSeq:`,
+    /**
+     * Monotonic worker cycle sequence per (turn, task). INCRed by
+     * `TaskWorker.executeTask` whenever it picks up a task that bears a
+     * re-entry marker (`task.interrupted === true` or
+     * `task._failedAttempts > 0`). The new value becomes the `cycleSeq`
+     * suffix in `worker-N#task-K#p{cycleSeq}` so re-entered cycles get
+     * an isolated FE chat section AND an isolated `LLMResponseService`
+     * `WorkerLocalState` slot — the latter is what fixes the stale
+     * `fileCardByPath` / `commandCardByCommand` / `thinking` carry-over
+     * across batchSplit Path A re-queues / orchestrator transient retry
+     * / Stop+Resume cycles (verification re-entry stale-card RCA).
+     * `ant:chat:cycleSeq:{turnId}:{taskKey}` (INCR, 24h)
+     */
+    WORKER_CYCLE_SEQ: `${REDIS_DOMAINS.CHAT}:cycleSeq:`,
     /**
      * Cross-pod chat.jsonl append lock.
      * `ant:chat:chatlogLock:{projectId}:{featureName}:{file}` (SET NX, 5s)
@@ -173,6 +193,8 @@ export const REDIS_TTL = {
     CANCELLED_EMITTED: 24 * 60 * 60, // 24 hours
     /** Pause sequence (auto-INCR, kept for session lifetime). */
     CANCELLED_PAUSE_SEQ: 24 * 60 * 60, // 24 hours
+    /** Per-(turn, task) worker cycle sequence (auto-INCR on re-entry). */
+    WORKER_CYCLE_SEQ: 24 * 60 * 60, // 24 hours
     /** Cross-pod chat.jsonl append lock. */
     CHATLOG_LOCK: 5,                  // 5 seconds
   },
@@ -336,6 +358,17 @@ export function getCancelledEmittedKey(turnId: string, pauseSeq: number): string
 
 export function getCancelledPauseSeqKey(turnId: string): string {
   return `${REDIS_KEYS.CHAT.CANCELLED_PAUSE_SEQ}${turnId}`;
+}
+
+/**
+ * Per-(turn, task) worker cycle sequence key. The taskKey segment is
+ * the `task.id || task.name` value `TaskWorker` already uses for the
+ * `worker-N#task-K` scope — keeping the partition unit identical
+ * across redis and ALS is what guarantees the cycleSeq INCR isolates
+ * one task's re-entries from sibling tasks in the same turn.
+ */
+export function getWorkerCycleSeqKey(turnId: string, taskKey: string): string {
+  return `${REDIS_KEYS.CHAT.WORKER_CYCLE_SEQ}${turnId}:${taskKey}`;
 }
 
 export function getChatLogLockKey(projectId: string, featureName: string, file: 'feature' | 'chat'): string {

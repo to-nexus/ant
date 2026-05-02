@@ -208,17 +208,15 @@ export class LLMResponseService {
   }
 
   /**
-   * Peek the turnId-level pause sequence (`pauseSeq`) that
-   * `ChatService.appendChoicePresentedCancelled` increments on every
-   * Stop. Used by `TaskWorker.executeTask` to mint cycle-aware worker
-   * scopes (`worker-N#task-K#p{cycleSeq}`) so resumed cycles render in
-   * their own FE section instead of piggy-backing on the original
-   * task's first-event timestamp. Returns 0 when no Stop has occurred
-   * yet (or the service is unconfigured) — the caller treats this as
-   * "no suffix" and emits the legacy `worker-N#task-K` form.
+   * Peek the turnId-level pause sequence (`pauseSeq`) — diagnostic
+   * surface only. Workers MUST use {@link nextWorkerCycleSeq} /
+   * {@link getCurrentWorkerCycleSeq} for the `worker-N#task-K#p{n}`
+   * scope suffix; this helper remains for legacy callers and tooling
+   * that inspect the cancellation counter directly.
    *
-   * GET-only (peek). The INCR side stays exclusively with the
-   * cancellation path so workers cannot race-skip a pauseSeq.
+   * GET-only (peek). The INCR side stays with the cancellation path
+   * (`ChatService.appendChoicePresentedCancelled`) so workers cannot
+   * race-skip a pauseSeq.
    */
   async getCurrentPauseSeq(): Promise<number> {
     if (!this.enabled) return 0;
@@ -229,6 +227,60 @@ export class LLMResponseService {
     } catch (err) {
       logger.warn(
         `getCurrentPauseSeq failed for turnId=${turnId}`,
+        { component: 'LLMResponseService' },
+        err,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * INCR + return the per-(turn, task) worker cycle sequence used as
+   * the `worker-N#task-K#p{cycleSeq}` chat scope suffix. Called by
+   * `TaskWorker.executeTask` when it picks up a task that bears a
+   * re-entry marker (`task.interrupted === true` or
+   * `task._failedAttempts > 0`). The fresh value isolates the cycle's
+   * `WorkerLocalState` slot inside this service so stale
+   * `fileCardByPath` / `commandCardByCommand` / `thinking` entries
+   * from a prior cycle cannot leak into the new cycle's chat events
+   * (verification re-entry stale-card RCA).
+   *
+   * Returns 0 on failure (best-effort) — callers must handle the
+   * fallback gracefully (the worker emits with the legacy two-axis
+   * scope rather than aborting on a Redis blip).
+   */
+  async nextWorkerCycleSeq(taskKey: string): Promise<number> {
+    if (!this.enabled) return 0;
+    const turnId = this.getTurnId();
+    if (!turnId) return 0;
+    try {
+      return await this.stateStore.nextWorkerCycleSeq(turnId, taskKey);
+    } catch (err) {
+      logger.warn(
+        `nextWorkerCycleSeq failed for turnId=${turnId}, taskKey=${taskKey}`,
+        { component: 'LLMResponseService' },
+        err,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * Peek (GET-only) the current worker cycle sequence for a
+   * (turn, task) pair. Returns 0 when no re-entry has been recorded
+   * yet — the worker uses this on fresh task entry to handle the
+   * cross-process resume case (a different process may have INCRed
+   * the counter before crashing).
+   */
+  async getCurrentWorkerCycleSeq(taskKey: string): Promise<number> {
+    if (!this.enabled) return 0;
+    const turnId = this.getTurnId();
+    if (!turnId) return 0;
+    try {
+      return await this.stateStore.getCurrentWorkerCycleSeq(turnId, taskKey);
+    } catch (err) {
+      logger.warn(
+        `getCurrentWorkerCycleSeq failed for turnId=${turnId}, taskKey=${taskKey}`,
         { component: 'LLMResponseService' },
         err,
       );
