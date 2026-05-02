@@ -312,6 +312,110 @@ describe('ChatService — Phase 9 emission contract', () => {
     );
   });
 
+  // ─── release-on-failure (cancelled-card-stale-NX RCA) ───────────────
+  // Before the fix the NX guard was acquired BEFORE emission and never
+  // released, so any throw between acquire and `appendAndBroadcast`
+  // (Redis blip / chat.jsonl write race / `autoResolveStaleCancelledCards`
+  // failure) stranded the key for its full 24h TTL — every subsequent
+  // pause source against the same jobId returned `emitted=false` and
+  // the user lost the Resume / Dismiss UI permanently.
+  //
+  // The fix wraps the emission block in try/finally; the lock is
+  // released ONLY when the line was not actually emitted. The four
+  // cases below pin the truth table for the invariant.
+
+  it('release-on-failure (a): emission throw releases the NX guard so the next pause source can retry', async () => {
+    await seedUserTurn('job-fail', 't-fail');
+
+    // Force the chat.jsonl emission path to throw by monkey-patching
+    // the private `appendAndBroadcast` method. The try/finally in
+    // `appendChoicePresentedCancelled` MUST still release the NX
+    // guard so a future pause source can re-acquire and retry —
+    // before the fix the lock stayed held for its full 24h TTL.
+    const origAppend = (service as any).appendAndBroadcast.bind(service);
+    (service as any).appendAndBroadcast = async () => {
+      throw new Error('simulated chat.jsonl write race');
+    };
+
+    await expect(
+      service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-fail', {
+        reason: 'user_stopped',
+        message: 'fail',
+        userContext: USER_CTX,
+      }),
+    ).rejects.toThrow(/simulated chat.jsonl write race/);
+
+    // Lock released — neither the in-flight set nor the historical set
+    // points to a stuck NX guard.
+    expect(store.acquiredLocks.has('ant:chat:cancelled-emitted:job:job-fail')).toBe(false);
+    expect(store.releasedLocks).toContain('ant:chat:cancelled-emitted:job:job-fail');
+
+    // Restore the real emit path — second call must now acquire AND
+    // emit normally with no further release calls.
+    (service as any).appendAndBroadcast = origAppend;
+    store.releasedLocks.length = 0;
+
+    const retry = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-fail', {
+      reason: 'user_stopped',
+      message: 'retry',
+      userContext: USER_CTX,
+    });
+    expect(retry.emitted).toBe(true);
+    // Success path keeps NX held — no further release.
+    expect(store.releasedLocks).not.toContain('ant:chat:cancelled-emitted:job:job-fail');
+  });
+
+  it('release-on-failure (b): NX miss path does NOT call release (preserves the multi-source idempotency contract)', async () => {
+    await seedUserTurn('job-1', 't-aa');
+
+    const first = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-1', {
+      reason: 'user_stopped',
+      message: 'first',
+      userContext: USER_CTX,
+    });
+    expect(first.emitted).toBe(true);
+
+    store.releasedLocks.length = 0;
+
+    // NX miss — early return, MUST NOT release the key (otherwise a
+    // third caller could squeeze in a duplicate cancelled card).
+    const second = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-1', {
+      reason: 'user_stopped',
+      message: 'second',
+      userContext: USER_CTX,
+    });
+    expect(second.emitted).toBe(false);
+    expect(store.releasedLocks).not.toContain('ant:chat:cancelled-emitted:job:job-1');
+    expect(store.acquiredLocks.has('ant:chat:cancelled-emitted:job:job-1')).toBe(true);
+  });
+
+  it('release-on-failure (c): success path keeps NX held — no release call', async () => {
+    await seedUserTurn('job-ok', 't-ok');
+    const result = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-ok', {
+      reason: 'user_stopped',
+      message: 'ok',
+      userContext: USER_CTX,
+    });
+    expect(result.emitted).toBe(true);
+    // 24h NX held to block duplicate emissions from concurrent pause sources.
+    expect(store.acquiredLocks.has('ant:chat:cancelled-emitted:job:job-ok')).toBe(true);
+    expect(store.releasedLocks).not.toContain('ant:chat:cancelled-emitted:job:job-ok');
+  });
+
+  it('release-on-failure (d): no-user_turn early exit returns BEFORE the NX acquire — nothing to release', async () => {
+    // findTurnIdForJobWithFallback returns null → early exit before
+    // the NX acquire path. The lock was never taken so the release
+    // path must also be untouched.
+    const result = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'orphan', {
+      reason: 'user_stopped',
+      message: 'orphan',
+      userContext: USER_CTX,
+    });
+    expect(result.emitted).toBe(false);
+    expect(store.acquiredLocks.has('ant:chat:cancelled-emitted:job:orphan')).toBe(false);
+    expect(store.releasedLocks).not.toContain('ant:chat:cancelled-emitted:job:orphan');
+  });
+
   it('appendChoiceResolved inherits the cancelled presented line workerScope so resolved siblings share the synthetic FE section', async () => {
     await seedUserTurn('job-rs', 't-rs');
     const cancelled = await service.appendChoicePresentedCancelled(
