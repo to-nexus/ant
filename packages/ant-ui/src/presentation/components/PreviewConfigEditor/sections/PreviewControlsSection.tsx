@@ -35,10 +35,25 @@ export function PreviewControlsSection({
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
-  onOpenPreview: () => void;
+  /**
+   * Open a preview URL in a new tab.
+   *
+   * Pass an explicit `url` for multi-frontend per-package buttons.
+   * No-arg call uses the top-level representative URL (single-frontend back-compat).
+   */
+  onOpenPreview: (url?: string) => void;
   onDismissError: (key: string) => void;
 }) {
   const { t } = useTranslation('explorer');
+
+  // Multi-frontend support: top-level url is null when there are 2+
+  // openable frontends. We must read packages[].url and render one Open
+  // button per package instead of relying on a single representative URL.
+  const openableFrontends = (previewStatus?.packages || []).filter(
+    (p) => p.type === 'frontend' && !!p.url,
+  );
+  const showSingleOpen = openableFrontends.length <= 1;
+  const singleOpenUrl = previewStatus?.url ?? openableFrontends[0]?.url ?? undefined;
 
   return (
     <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -129,9 +144,9 @@ export function PreviewControlsSection({
             </button>
           </>
         )}
-        {isRunning && isReady && previewStatus?.url && (
+        {isRunning && isReady && showSingleOpen && singleOpenUrl && (
           <button
-            onClick={onOpenPreview}
+            onClick={() => onOpenPreview(singleOpenUrl)}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                      bg-blue-600 text-white hover:bg-blue-700
                      transition-colors"
@@ -141,6 +156,25 @@ export function PreviewControlsSection({
           </button>
         )}
       </div>
+
+      {/* Multi-frontend: one Open button per accessible frontend.
+          Replaces the single "Open" button when openableFrontends.length > 1. */}
+      {isRunning && isReady && !showSingleOpen && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {openableFrontends.map((pkg) => (
+            <button
+              key={pkg.slug || pkg.name}
+              onClick={() => onOpenPreview(pkg.url || undefined)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
+                       bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              title={t('preview.openPackage', { name: pkg.name })}
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span className="truncate max-w-[16ch]">{pkg.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Error display */}
       {previewStatus?.error && !dismissedSet.has(`error:${previewStatus.error}`) && (

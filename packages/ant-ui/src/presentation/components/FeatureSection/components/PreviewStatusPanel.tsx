@@ -30,12 +30,37 @@ interface PreviewStatusPanelProps {
   state: PreviewState;
   ready?: boolean;
   setupReasoning?: SetupFailureReasoning;
-  url?: string;
+  /**
+   * Top-level "representative" URL.
+   *   - 1 frontend  → `/{4partUrlKey}` (single Open button rendered).
+   *   - 2+ frontends→ should be `null` — UI renders one Open button per
+   *                  package via `packages[].url` instead.
+   */
+  url?: string | null;
   error?: PreviewError;
   progress?: PreviewProgress;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
-  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
-  onOpen?: () => void;
+  /**
+   * Per-package details. Frontend packages with a non-null `url` are
+   * "openable" — each gets its own inline Open button when there are
+   * 2+ frontends.
+   */
+  packages?: Array<{
+    name: string;
+    slug?: string;
+    type: 'frontend' | 'backend' | 'other';
+    port: number;
+    urlKey?: string;
+    url?: string | null;
+  }>;
+  /**
+   * Open a preview URL in a new tab.
+   *
+   * Pass an explicit `url` from `packages[i].url` for multi-frontend
+   * Open buttons. Calling without arguments uses the top-level `url`
+   * (single-frontend back-compat).
+   */
+  onOpen?: (url?: string) => void;
   onFix?: () => void;
   onDismiss?: () => void;
   fixButtonClicked?: boolean;
@@ -68,6 +93,15 @@ export function PreviewStatusPanel({
   const { t } = useTranslation('explorer');
   const isMultiPackage = progress && progress.totalCount > 1;
   const hasMultiplePackages = packages && packages.length > 1;
+  // Frontends the user can actually open (BE only sets `url` for frontends
+  // whose dev server is reachable). When there are 2+ openable frontends,
+  // we replace the single representative Open button with one button per
+  // package in the package list.
+  const openableFrontends = (packages || []).filter(
+    (p) => p.type === 'frontend' && !!p.url,
+  );
+  const showSingleOpen = openableFrontends.length <= 1;
+  const singleOpenUrl = url ?? openableFrontends[0]?.url ?? undefined;
   
   const startingWithCounts = isMultiPackage
     ? `${t('preview.starting')} (${progress.completedCount}/${progress.totalCount})`
@@ -258,9 +292,9 @@ export function PreviewStatusPanel({
               </span>
             </div>
             
-            {ready && url && onOpen && (
+            {ready && showSingleOpen && singleOpenUrl && onOpen && (
               <button
-                onClick={onOpen}
+                onClick={() => onOpen(singleOpenUrl)}
                 className="px-3 py-1.5 text-xs font-medium bg-green-600 dark:bg-green-700 text-white rounded 
                          hover:bg-green-700 dark:hover:bg-green-600 transition-colors 
                          flex items-center gap-1.5"
@@ -274,25 +308,44 @@ export function PreviewStatusPanel({
 
           {ready && hasMultiplePackages && (
             <div className="mt-3 space-y-1.5">
-              {packages!.map((pkg, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between text-xs px-2 py-1.5 bg-green-100/50 dark:bg-green-900/20 rounded"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400" />
-                    <span className="font-medium text-green-800 dark:text-green-200">
-                      {pkg.name}
-                    </span>
-                    <span className="text-green-600 dark:text-green-400">
-                      ({pkg.type})
-                    </span>
+              {packages!.map((pkg, idx) => {
+                const pkgUrl = pkg.url || undefined;
+                const isOpenable = pkg.type === 'frontend' && !!pkgUrl;
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-xs px-2 py-1.5 bg-green-100/50 dark:bg-green-900/20 rounded"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400 flex-shrink-0" />
+                      <span className="font-medium text-green-800 dark:text-green-200 truncate">
+                        {pkg.name}
+                      </span>
+                      <span className="text-green-600 dark:text-green-400 flex-shrink-0">
+                        ({pkg.type})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-green-600 dark:text-green-400 font-mono">
+                        :{pkg.port}
+                      </span>
+                      {/* Per-frontend Open button — only shown when there
+                          are 2+ openable frontends, replacing the single
+                          representative button above. */}
+                      {!showSingleOpen && isOpenable && onOpen && (
+                        <button
+                          onClick={() => onOpen(pkgUrl)}
+                          className="p-1 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/40 rounded transition-colors"
+                          title={t('preview.openPackage', { name: pkg.name })}
+                          aria-label={t('preview.openPackage', { name: pkg.name })}
+                        >
+                          <ExternalLink size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-green-600 dark:text-green-400 font-mono">
-                    :{pkg.port}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -744,7 +744,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.set(key, JSON.stringify(fullState), 'EX', REDIS_TTL.INFRA.DEPLOY);
     pipeline.sadd(REDIS_KEYS.INFRA.DEPLOY_LIST, deployKey);
     await pipeline.exec();
-    logger.info(`[Deploy] Registered: ${deployKey} -> ${state.host}:${state.port}`, { component: 'RedisStateStore' });
+    const portsLabel = state.packages.map(p => `${p.slug}:${p.port}`).join(',');
+    logger.info(`[Deploy] Registered: ${deployKey} -> ${state.host} [${portsLabel}]`, { component: 'RedisStateStore' });
   }
 
   async getDeploy(
@@ -762,7 +763,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async updateDeploy(
     tenantId: string, userId: string, projectId: string, feature: string,
-    update: Partial<Pick<DeployState, 'phase' | 'port' | 'host' | 'podId' | 'error' | 'buildLog' | 'url' | 'urlKey' | 'workspacePath' | 'lastAccessedAt'>>
+    update: Partial<Pick<DeployState, 'phase' | 'host' | 'podId' | 'error' | 'buildLog' | 'workspacePath' | 'packages' | 'lastAccessedAt'>>
   ): Promise<void> {
     const deployKey = createDeployKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);

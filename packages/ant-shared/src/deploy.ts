@@ -41,11 +41,48 @@ export type DeployPhase =
 
 export type DeployFramework = 'vite' | 'cra' | 'nextjs' | 'static' | 'unknown';
 
+/**
+ * One deployed package within a multi-package deploy.
+ *
+ * Single-package deploys produce a single-element array. Multi-package
+ * deploys (monorepo with N frontends) produce N entries — there is no
+ * "primary" package.
+ */
+export interface DeployStatusPackage {
+  name: string;
+  /** URL-safe identifier, used as the 5th urlKey segment for multi-package deploys. */
+  slug: string;
+  framework: DeployFramework;
+  /**
+   * Static-server port. `0` indicates the package is hibernated and a port
+   * has not yet been allocated for the current pod.
+   */
+  port: number;
+  /** urlKey segment carried in this package's public URL (4 or 5 part). */
+  urlKey: string;
+  /** Public URL for THIS package (`/deploy/{urlKey}`). */
+  url: string;
+  /** Per-package phase. Aggregate `DeployStatus.phase` is derived from these. */
+  phase: DeployPhase;
+  error?: string;
+}
+
 export interface DeployStatus {
   phase: DeployPhase;
-  url?: string;
-  port?: number;
-  framework?: string;
+  /**
+   * Representative Open URL.
+   * `null` when there are 2+ packages — UI must use `packages[].url` to
+   * render one Open button per deployed package.
+   *
+   * `undefined` from old BE builds; treat undefined as "no URL available".
+   */
+  url?: string | null;
+  /**
+   * Per-package state (multi-package deploys).
+   * Always set on responses from new BE; missing from stale records and
+   * old BE builds.
+   */
+  packages?: DeployStatusPackage[];
   error?: string;
 }
 

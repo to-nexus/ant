@@ -19,7 +19,7 @@ import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { Readable } from 'stream';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
+import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey, packageSlug } from '../services/PreviewService/utils/serverKeyUtils';
 
 const FAVICON_PATHS = new Set(['/favicon.ico', '/favicon.svg', '/favicon.png']);
 
@@ -244,11 +244,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     
     logger.debug(`Parsed urlKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}${serviceName ? ', service=' + serviceName : ''}`, { component: 'PreviewProxy' });
     
-    // Lookup entry (frontend) port and host from registry
+    // Lookup entry port + per-package metadata from registry.
+    // `previewPackages` carries `slug` (URL-safe identifier) and `urlKey`
+    // (per-package basePath segment) populated by PreviewService.
     let port: number;
     let previewHost: string;
     let hasFrontend = false;
-    let previewPackages: Array<{ name: string; type: string; port: number }> = [];
+    type ProxyPkg = { name: string; slug?: string; type: string; port: number; urlKey?: string };
+    let previewPackages: ProxyPkg[] = [];
     try {
       const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
@@ -260,7 +263,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       port = mapping.port;
       previewHost = mapping.host || 'localhost';
       previewPackages = (mapping.packages as any) || [];
-      hasFrontend = previewPackages.some((p: any) => p.type === 'frontend');
+      hasFrontend = previewPackages.some((p) => p.type === 'frontend');
       logger.warn(`[Preview] Found: ${internalKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
@@ -272,54 +275,89 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    // Frontend frameworks use native base path (basePath / base) — keep urlKey prefix.
-    // Backend-only projects don't use base path — strip urlKey prefix.
+    // ── Routing precedence ──
+    //
+    //   1. `/{urlKey}/api/*` → backend port, prefix stripped.
+    //      Wins over service routing because user-typed `serviceName` slugs
+    //      cannot collide with the literal `api` segment (`/api/*` is the
+    //      universal fullstack contract).
+    //
+    //   2. 5-part urlKey with `serviceName`:
+    //        - matched frontend pkg → keep prefix, route to that pkg.port
+    //          (frontend has its own basePath equal to the 5-part urlKey).
+    //        - matched backend/other pkg → strip prefix, route to that pkg.port
+    //          (no basePath; pkg expects bare paths).
+    //        - no match → fall back to entry frontend with prefix kept.
+    //
+    //   3. 4-part urlKey: route to entry frontend, prefix kept.
+    //
+    //   4. Backend-only project (no frontend in packages): strip prefix,
+    //      route everything to the single backend port.
+    //
+    // SSOT: matching uses `pkg.slug` (URL-safe). Stale records lacking `slug`
+    // (written by older builds) fall through cleanly to the entry frontend.
     let targetPath = req.url;
     let targetPort = port;
     let serviceRouted = false;
     
-    // ✅ Service-specific routing for multi-package projects
-    // When serviceName is present in the URL key (5th segment), find the matching
-    // package and route directly to its port. The target service has no basePath,
-    // so the urlKey prefix is always stripped.
-    if (serviceName && previewPackages.length) {
-      const targetPkg = previewPackages.find((p: any) =>
-        p.name === serviceName || p.name.endsWith('/' + serviceName)
-      );
-      if (targetPkg) {
-        targetPort = targetPkg.port;
-        targetPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
-        serviceRouted = true;
-        logger.debug(`Routing to service '${serviceName}' -> port ${targetPkg.port}`, { component: 'PreviewProxy' });
-      } else {
-        logger.warn(`Service '${serviceName}' not found in packages, falling back to default`, { component: 'PreviewProxy' });
-      }
-    }
+    const stripPrefix = (p: string): string =>
+      p.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
     
-    // ✅ Fullstack support: check if project has a backend
-    if (!serviceRouted && typeof getBackendPort === 'function') {
+    // (1) /api/* always wins
+    if (typeof getBackendPort === 'function') {
       try {
-        const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
-        if (typeof backendPort === 'number' && backendPort > 0) {
-          const pathForApiCheck = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '');
-          const isApiRequest = pathForApiCheck === '/api' || pathForApiCheck.startsWith('/api/');
-          if (isApiRequest) {
+        const pathForApiCheck = stripPrefix(req.url);
+        const isApiRequest = pathForApiCheck === '/api' || pathForApiCheck.startsWith('/api/');
+        if (isApiRequest) {
+          const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
+          if (typeof backendPort === 'number' && backendPort > 0) {
             targetPort = backendPort;
-            targetPath = pathForApiCheck || '/';
+            targetPath = pathForApiCheck;
+            serviceRouted = true;
             logger.debug(`Routing API request to backend port: ${backendPort}`, { component: 'PreviewProxy' });
           }
         }
       } catch {
-        // best-effort
+        // best-effort — fall through to other precedence rules
       }
     }
     
-    // Backend-only projects: strip urlKey prefix (no basePath configured)
-    if (!hasFrontend && targetPort === port) {
-      targetPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+    // (2) 5-part urlKey: service-specific routing by slug
+    if (!serviceRouted && serviceName && previewPackages.length) {
+      // Defensive normalization: any caller that didn't pre-slugify
+      // `serviceName` is rescued here so URL `apps/web` (impossible at this
+      // point — `/` would have been a path delimiter) and historical raw
+      // names match the SSOT slug.
+      const wantedSlug = packageSlug(serviceName);
+      const targetPkg = previewPackages.find((p) => p.slug === wantedSlug);
+      if (targetPkg) {
+        targetPort = targetPkg.port;
+        if (targetPkg.type === 'frontend') {
+          // Frontend has its own basePath equal to the 5-part urlKey — keep prefix.
+          targetPath = req.url;
+        } else {
+          // Backend/other: strip prefix, dev server expects bare paths.
+          targetPath = stripPrefix(req.url);
+        }
+        serviceRouted = true;
+        logger.debug(`Routing to service '${wantedSlug}' (${targetPkg.type}) -> port ${targetPkg.port}`, { component: 'PreviewProxy' });
+      } else {
+        logger.warn(`Service '${serviceName}' not found in packages, falling back to entry`, { component: 'PreviewProxy' });
+      }
+    }
+    
+    // (4) Backend-only projects: strip urlKey prefix (no basePath configured)
+    if (!serviceRouted && !hasFrontend) {
+      targetPath = stripPrefix(req.url);
     }
 
-    if (hasFrontend) {
+    // Next.js _next/image needs absolute basePath in its `url=` param.
+    // Rewrite when the resolved target is a frontend dev server (it owns the
+    // `basePath` rewrite contract). Use the urlKey actually carried in the
+    // request — equals the frontend's basePath whether 4-part or 5-part.
+    const targetIsFrontend = previewPackages.some(p => p.port === targetPort && p.type === 'frontend')
+      || (!serviceRouted && hasFrontend);
+    if (targetIsFrontend) {
       targetPath = rewriteNextImagePath(targetPath, urlKey);
     }
 

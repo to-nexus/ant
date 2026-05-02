@@ -168,6 +168,7 @@
     "running": "프리뷰 실행 중",
     "notRunning": "프리뷰 실행되지 않음",
     "open": "열기",
+    "openPackage": "{{name}} 열기",
     "noProjectFeature": "프로젝트와 피처를 먼저 선택해주세요",
     "startFailed": "프리뷰 시작에 실패했습니다",
     "stopFailed": "프리뷰 중지에 실패했습니다: {{message}}",

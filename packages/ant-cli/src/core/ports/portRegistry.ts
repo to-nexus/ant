@@ -13,8 +13,29 @@ import type { PreviewStructureType } from './preview';
 
 export interface PreviewPackage {
   name: string;
+  /**
+   * URL-safe identifier derived from `name` via `packageSlug()`.
+   * Used as the 5th segment of the urlKey for multi-frontend setups so each
+   * frontend can be addressed at a unique URL.
+   *
+   * Always set on entries written by code that has been upgraded to support
+   * multi-frontend; missing on stale entries written by older builds (in
+   * which case routing falls back to the entry frontend).
+   *
+   * SSOT: derivation lives in
+   * `periphery/adapters/http/services/PreviewService/utils/serverKeyUtils.ts#packageSlug`.
+   */
+  slug?: string;
   type: 'frontend' | 'backend' | 'other';
   port: number;
+  /**
+   * Per-package urlKey. For single-frontend setups this equals the 4-part
+   * `toUrlKey(serverKey)` (back-compat). For multi-frontend setups this is
+   * the 5-part `toUrlKeyWithService(serverKey, slug)`. Set only for
+   * frontend packages; backend / other packages have no basePath and so no
+   * urlKey to expose.
+   */
+  urlKey?: string;
 }
 
 export interface PreviewRuntimeIssue {
@@ -125,25 +146,82 @@ export interface PreviewState {
 export type { DeployPhase, DeployFramework } from '@ant/shared';
 import type { DeployPhase, DeployFramework } from '@ant/shared';
 
+/**
+ * One deployed frontend package.
+ *
+ * Multi-frontend monorepos produce N entries (one per frontend); single-frontend
+ * projects produce a single-element array. The shape is uniform — there is no
+ * "primary" entry that gets special treatment elsewhere in the code.
+ */
+export interface DeployPackage {
+  /** Original package name (e.g. "apps/web", "root"). UI display value. */
+  name: string;
+  /**
+   * URL-safe identifier (`packageSlug(name)`, deduped within a project).
+   * Used as the 5th urlKey segment for multi-frontend setups.
+   */
+  slug: string;
+  framework: DeployFramework;
+  /**
+   * Absolute path to THIS package's directory.
+   * Used as `cwd` for `next start` and as the build root for `runBuild`.
+   * For single-frontend projects this equals `DeployState.workspacePath`.
+   */
+  workspacePath: string;
+  /** Per-package build artifact directory. */
+  buildOutputDir: string;
+  /**
+   * Public path prefix this package is served under.
+   * Single-frontend: `/deploy/{4partUrlKey}`.
+   * Multi-frontend:  `/deploy/{4partUrlKey}--{slug}`.
+   */
+  basePath: string;
+  /** Static-server port allocated for this package. */
+  port: number;
+  /**
+   * The urlKey segment carried in the public URL.
+   * 4-part for single-frontend, 5-part for multi-frontend.
+   */
+  urlKey: string;
+  /** Public URL for this package (`/deploy/{urlKey}`). */
+  url: string;
+  /** Per-package phase. Aggregate `DeployState.phase` is derived from these. */
+  phase: DeployPhase;
+  /** Last error for THIS package, if any. */
+  error?: string;
+}
+
+/**
+ * Aggregate deploy state for a (tenant, user, project, feature) tuple.
+ *
+ * Multi-package SSOT: every per-frontend datum lives in `packages[]`.
+ * Top-level fields are identity + lifecycle only — no legacy duals.
+ */
 export interface DeployState {
+  // Identity
   tenantId: string;
   userId: string;
   projectId: string;
   feature: string;
 
+  // Aggregate lifecycle
+  /**
+   * Aggregated across `packages[]`:
+   *   error       if any package errored
+   *   building    if any package is building
+   *   deploying   if any deploying & none building/error
+   *   running     when every package is running
+   *   stopped/hibernated/unavailable propagate from registry-level transitions.
+   */
   phase: DeployPhase;
-  port: number;
   host: string;
   podId: string;
 
-  framework: DeployFramework;
-  buildOutputDir: string;
-  basePath: string;
-  /** Full workspace path — required for lazy re-hydration (read meta.json, re-spawn server). */
+  /** Sibling deploy/ workspace root (shared by all packages). */
   workspacePath: string;
-  /** urlKey derived from serverKey — stable identifier used in the public deploy URL. */
-  urlKey?: string;
-  url?: string;
+
+  /** One entry per built frontend. Always non-empty after `startDeploy`. */
+  packages: DeployPackage[];
 
   error?: string;
   buildLog?: string[];

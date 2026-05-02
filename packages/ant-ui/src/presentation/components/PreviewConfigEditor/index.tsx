@@ -71,11 +71,23 @@ export function PreviewConfigEditor() {
 
   const isRunning = previewState === 'running';
 
-  const handleOpenPreview = useCallback(() => {
-    if (vm.url) {
-      window.open(`${PREVIEW_BASE()}${vm.url}`, '_blank');
+  const handleOpenPreview = useCallback((targetUrl?: string) => {
+    // Resolution order:
+    //   1. Caller-supplied url (per-package Open button in multi-frontend UI)
+    //   2. vm.url (top-level representative URL — single-frontend back-compat)
+    //   3. First openable frontend in vm.previewStatus.packages (fallback
+    //      when top-level url is null but packages are populated)
+    const resolved =
+      targetUrl
+      ?? vm.url
+      ?? (previewStatus?.packages || []).find(
+           (p) => p.type === 'frontend' && !!p.url
+         )?.url
+      ?? undefined;
+    if (resolved) {
+      window.open(`${PREVIEW_BASE()}${resolved}`, '_blank');
     }
-  }, [vm.url]);
+  }, [vm.url, previewStatus?.packages]);
 
   const handleApplyToChat = useCallback((message: string) => {
     setPendingChatInput({ message, jobType: 'code', autoSubmit: false });

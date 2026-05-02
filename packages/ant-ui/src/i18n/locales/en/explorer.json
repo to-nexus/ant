@@ -168,6 +168,7 @@
     "running": "Preview is Running",
     "notRunning": "Preview is not Running",
     "open": "Open",
+    "openPackage": "Open {{name}}",
     "noProjectFeature": "Please select a project and feature first",
     "startFailed": "Failed to start preview",
     "stopFailed": "Failed to stop preview: {{message}}",

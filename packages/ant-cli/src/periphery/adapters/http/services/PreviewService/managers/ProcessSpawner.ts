@@ -3,11 +3,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
-import { toUrlKey } from '../utils/serverKeyUtils';
 import { logger } from '../../../../../../utils/logger';
 
 export interface SpawnOptions {
   serverKey: string;
+  /**
+   * Per-package urlKey used for basePath injection.
+   *
+   * Single-frontend project → 4-part `toUrlKey(serverKey)`.
+   * Multi-frontend monorepo → 5-part `toUrlKeyWithService(serverKey, slug)`.
+   *
+   * Required for frontend packages (drives `ANT_BASE_PATH` / `VITE_BASE_PATH`
+   * / `NEXT_PUBLIC_BASE_PATH`). Backend / other packages may omit.
+   */
+  packageUrlKey?: string;
   /** Project root path for loading root-level .env (monorepo support). */
   projectRoot?: string;
   extraEnv?: Record<string, string | undefined>;
@@ -277,11 +286,12 @@ export class ProcessSpawner {
     // Universal:  ANT_BASE_PATH          → generic fallback for custom setups
     //
     const basePathEnv: Record<string, string> = {};
-    if (pkg.type === 'frontend' && options.serverKey) {
-      const urlKey = toUrlKey(options.serverKey);
-      const basePath = `/${urlKey}`;
+    if (pkg.type === 'frontend' && options.packageUrlKey) {
+      // Per-package basePath. For multi-frontend monorepos this is a
+      // 5-part urlKey carrying the package slug, so each frontend dev
+      // server is reachable at a unique URL prefix without overlap.
+      const basePath = `/${options.packageUrlKey}`;
 
-      // Universal env var (always injected for frontend packages)
       basePathEnv.ANT_BASE_PATH = basePath;
 
       if (isNextJs) {
