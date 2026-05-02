@@ -2,29 +2,42 @@
  * DeployService
  *
  * Orchestrates the deploy lifecycle:
- * 1. Detect framework
- * 2. Run production build (with base path injection)
- * 3. Start static server
- * 4. Register deploy state in Redis
- * 5. Persist re-hydration metadata to workspace (.deploy/meta.json)
+ * 1. Detect frontend packages (single or multi)
+ * 2. Run production build for EACH package (with per-package basePath)
+ * 3. Start a static server per package
+ * 4. Register deploy state in Redis (packages[] is SSOT)
+ * 5. Persist re-hydration metadata to workspace (.deploy/meta.json v2)
  * 6. Broadcast status via SSE
  *
- * Supports lazy re-hydration: when URL is accessed but the static server
- * process is gone (pod restart, idle eviction, crash), `ensureRunning()` reads
- * meta.json and re-spawns the static server without re-building.
+ * Multi-package contract (mirrors PreviewService):
+ *   - 1 frontend  → `/deploy/{4partUrlKey}` (legacy single-package URL).
+ *   - 2+ frontends→ `/deploy/{4partUrlKey}--{slug}` per package, top-level
+ *                   `state.url` is null (FE renders one Open button per
+ *                   `packages[].url`).
+ *
+ * Lazy re-hydration: when ANY package's URL is hit but the static server
+ * process is gone, `ensureRunning()` reads meta.json and respawns ALL
+ * packages (re-hydration is per-deploy, not per-package — it's cheap and
+ * keeps the state consistent).
  */
 
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
-import { StateStorePort, DeployState, DeployPhase } from '../../core/ports/stateStore';
+import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
-import { DeployMetaStore } from './DeployMetaStore';
+import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
 import { resolveDeployWorkspacePath, syncDeployWorkspace } from './DeployWorkspace';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
-import { toUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import {
+  toUrlKey,
+  toUrlKeyWithService,
+  packageSlug,
+} from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
+import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
 import { logger } from '../../utils/logger';
 
 /**
@@ -35,6 +48,7 @@ import { logger } from '../../utils/logger';
 export type DeployFailureReason =
   | 'base-branch-not-allowed'
   | 'code-job-active'
+  | 'no-deployable-package'
   | 'port-allocation-failed'
   | 'state-register-failed'
   | 'workspace-sync-failed';
@@ -52,13 +66,38 @@ export interface DeployServiceOptions {
 }
 
 interface ActiveDeploy {
-  handle: StaticServerHandle;
+  /** One handle per package — index aligns with `state.packages`. */
+  handles: StaticServerHandle[];
   state: DeployState;
 }
 
 const DEFAULT_IDLE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MIN_IDLE_CHECK_MS = 60 * 1000; // 1 min floor
 const MAX_IDLE_CHECK_MS = 10 * 60 * 1000; // 10 min ceiling
+
+/**
+ * Aggregate per-package phases into a single deploy-level phase.
+ *
+ *   any error      → error
+ *   any building   → building
+ *   any deploying  → deploying
+ *   all running    → running
+ *   all hibernated → hibernated
+ *   any starting   → starting
+ *   else           → first non-running phase encountered (best-effort)
+ */
+function aggregatePhase(packages: Array<{ phase: DeployPhase }>): DeployPhase {
+  if (packages.length === 0) return 'idle';
+  if (packages.some(p => p.phase === 'error')) return 'error';
+  if (packages.some(p => p.phase === 'building')) return 'building';
+  if (packages.some(p => p.phase === 'deploying')) return 'deploying';
+  if (packages.some(p => p.phase === 'starting')) return 'starting';
+  if (packages.every(p => p.phase === 'running')) return 'running';
+  if (packages.every(p => p.phase === 'hibernated')) return 'hibernated';
+  if (packages.every(p => p.phase === 'stopped')) return 'stopped';
+  // Mixed terminal states (e.g. some hibernated, some unavailable) → degrade.
+  return packages.find(p => p.phase !== 'running')?.phase || 'running';
+}
 
 export class DeployService {
   private portManager: PortManager;
@@ -136,8 +175,6 @@ export class DeployService {
             j.status === 'paused')
       );
     } catch (err: any) {
-      // If we cannot determine job state, fail open: do not block deploy.
-      // The build itself would surface a partially-written source tree.
       logger.warn(`[Deploy] hasActiveCodeJob lookup failed: ${err.message}`, { component: 'DeployService' });
       return false;
     }
@@ -161,21 +198,52 @@ export class DeployService {
   }
 
   /**
+   * Decide the "representative" Open URL emitted at the top level of the
+   * status payload — same contract as `PreviewService.computeTopLevelUrl`.
+   *
+   *   1 package  → `packages[0].url` (back-compat with single-package).
+   *   2+ packages→ null (FE must use `packages[].url`).
+   *   0 packages → null.
+   */
+  private computeTopLevelDeployUrl(packages: DeployPackage[] | undefined): string | null {
+    if (!packages || packages.length === 0) return null;
+    if (packages.length === 1) return packages[0].url || null;
+    return null;
+  }
+
+  /**
    * Broadcast a deploy status SSE event. Exposed publicly so the proxy
    * middleware can notify the UI of host/port failures.
+   *
+   * Convention: callers pass a SHALLOW patch (e.g. `{ phase: 'building' }`).
+   * This method is responsible for enriching with `packages` + top-level
+   * `url` when those are available in Redis, so the UI always renders the
+   * latest per-package state.
    */
   async broadcastStatus(
     tenantId: string, userId: string,
     projectId: string, featureName: string,
     data: Record<string, any>
   ): Promise<void> {
+    let enriched = { ...data };
+    try {
+      const state = await this.stateStore.getDeploy(tenantId, userId, projectId, featureName);
+      if (state) {
+        enriched = {
+          packages: state.packages,
+          url: this.computeTopLevelDeployUrl(state.packages),
+          ...enriched,
+        };
+      }
+    } catch { /* best-effort */ }
+
     try {
       const channel = getRealtimeBroadcastChannel(tenantId, userId);
       await this.stateStore.publish(channel, {
         type: 'deploy',
         projectId,
         featureName,
-        data: { type: 'status', data },
+        data: { type: 'status', data: enriched },
         userContext: { organizationId: tenantId, userId },
       });
     } catch (err: any) {
@@ -204,9 +272,55 @@ export class DeployService {
   }
 
   /**
-   * Start a deploy: validate, allocate port, register state, then kick off
-   * the build asynchronously. Returns immediately (non-blocking) so the HTTP
-   * response is sent within milliseconds — no ALB/proxy timeout risk.
+   * Discover deployable frontend packages in the deploy workspace.
+   *
+   * Reuses `ProjectStructureDetector` (the same detector PreviewService
+   * uses) — SSOT for "what frontends does this project have?". Filters to
+   * `type === 'frontend'` only, since the static-server primitives in this
+   * service only support frontend artifacts.
+   *
+   * Returns packages sorted by `path` so slug deduplication and
+   * Redis serialization are deterministic across rebuilds.
+   */
+  private async detectFrontendPackages(workspacePath: string): Promise<PackageInfo[]> {
+    const detector = new ProjectStructureDetector();
+    const structure = await detector.detect(workspacePath);
+    return structure.packages
+      .filter(p => p.type === 'frontend')
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /**
+   * Assign URL-safe `slug` (deduped) + per-package `urlKey` to every
+   * frontend package. Identical contract to `PreviewService` so producers
+   * and consumers agree on the same identifier for any given package name.
+   */
+  private assignDeployIdentity(packages: PackageInfo[], serverKey: string): void {
+    const used = new Set<string>();
+    for (const pkg of packages) {
+      const base = packageSlug(pkg.name);
+      let slug = base;
+      let suffix = 2;
+      while (used.has(slug)) {
+        slug = `${base}-${suffix++}`;
+      }
+      used.add(slug);
+      pkg.slug = slug;
+    }
+
+    const isMulti = packages.length > 1;
+    for (const pkg of packages) {
+      pkg.urlKey = isMulti
+        ? toUrlKeyWithService(serverKey, pkg.slug!)
+        : toUrlKey(serverKey);
+    }
+  }
+
+  /**
+   * Start a deploy: validate, allocate ports for every frontend package,
+   * register state, then kick off the build asynchronously. Returns
+   * immediately (non-blocking) so the HTTP response is sent within
+   * milliseconds — no ALB/proxy timeout risk.
    * All subsequent status updates are delivered via SSE.
    *
    * Validation order (fail fast, no side effects before success):
@@ -214,11 +328,8 @@ export class DeployService {
    *   2. active `code` job rejected (snapshotting a tree mid-write would
    *      yield half-written source files in the deployed build)
    *   3. snapshot codebase → deploy workspace (incremental)
-   *   4. allocate port, register Redis state, spawn executeBuild
-   *
-   * @param codebasePath  absolute path to the dev codebase (the preview
-   *                      workspace). Deploy never builds here directly; it
-   *                      syncs into the sibling `deploy/` workspace.
+   *   4. detect frontend packages — must be at least 1
+   *   5. allocate N ports, register Redis state, spawn executeBuild
    */
   async startDeploy(
     tenantId: string,
@@ -239,8 +350,7 @@ export class DeployService {
     const key = this.makeKey(tenantId, userId, projectId, feature);
 
     // 2) Active code-job guard — do this BEFORE any snapshot/port work so
-    // the caller sees a clean 409 without transient side effects. Other
-    // job types do not touch the source tree.
+    // the caller sees a clean 409 without transient side effects.
     if (await this.hasActiveCodeJob(projectId, feature)) {
       return {
         success: false,
@@ -261,9 +371,7 @@ export class DeployService {
 
     const host = this.getPodHost();
 
-    // 3) Snapshot the codebase into the sibling deploy workspace. From here
-    // on, all build/serve operations target `deployWorkspacePath` — the
-    // preview dev server's `codebase/.next` is never touched.
+    // 3) Snapshot the codebase into the sibling deploy workspace.
     let deployWorkspacePath: string;
     try {
       deployWorkspacePath = await syncDeployWorkspace(codebasePath, (line) => {
@@ -278,16 +386,46 @@ export class DeployService {
       };
     }
 
-    const framework = detectFramework(deployWorkspacePath);
-    const serverKey = `${tenantId}:${userId}:${projectId}:${feature}`;
-    const urlKey = toUrlKey(serverKey);
-    const basePath = `/deploy/${urlKey}`;
+    // 4) Detect frontend packages. Backend-only / unsupported projects fail fast.
+    const frontends = await this.detectFrontendPackages(deployWorkspacePath);
+    if (frontends.length === 0) {
+      return {
+        success: false,
+        reason: 'no-deployable-package',
+        message: 'No frontend package found to deploy. Deploy requires at least one frontend (Vite, Next.js, CRA, or static).',
+      };
+    }
 
-    // Allocate port
-    let port: number;
+    const serverKey = `${tenantId}:${userId}:${projectId}:${feature}`;
+    this.assignDeployIdentity(frontends, serverKey);
+
+    // 5) Allocate one port per package, then build the initial DeployPackage[].
+    const allocatedPorts: number[] = [];
+    const packagesState: DeployPackage[] = [];
     try {
-      port = await this.portManager.allocate('deploy');
+      for (const fp of frontends) {
+        const port = await this.portManager.allocate('deploy');
+        allocatedPorts.push(port);
+        const framework = detectFramework(fp.path);
+        const buildOutputDir = getBuildOutputDir(fp.path, framework);
+        const urlKey = fp.urlKey!;
+        const basePath = `/deploy/${urlKey}`;
+        packagesState.push({
+          name: fp.name,
+          slug: fp.slug!,
+          framework,
+          workspacePath: fp.path,
+          buildOutputDir,
+          basePath,
+          port,
+          urlKey,
+          url: basePath, // deploy URL == basePath (same prefix)
+          phase: 'building',
+        });
+      }
     } catch (err: any) {
+      // Release any ports we already grabbed before failing.
+      for (const p of allocatedPorts) this.portManager.release(p);
       return {
         success: false,
         reason: 'port-allocation-failed',
@@ -295,27 +433,20 @@ export class DeployService {
       };
     }
 
-    // Register initial state in Redis. `workspacePath` is now the deploy
-    // workspace — rehydrate and stopDeploy both use it as the source of
-    // truth for cwd and meta.json location.
     const initialState: Omit<DeployState, 'lastAccessedAt'> = {
       tenantId, userId, projectId, feature,
       phase: 'building',
-      port,
       host,
       podId: os.hostname(),
-      framework,
-      buildOutputDir: getBuildOutputDir(deployWorkspacePath, framework),
-      basePath,
       workspacePath: deployWorkspacePath,
-      urlKey,
+      packages: packagesState,
       startedAt: new Date(),
     };
 
     try {
       await this.stateStore.registerDeploy(initialState);
     } catch (err: any) {
-      this.portManager.release(port);
+      for (const p of allocatedPorts) this.portManager.release(p);
       return {
         success: false,
         reason: 'state-register-failed',
@@ -323,20 +454,25 @@ export class DeployService {
       };
     }
 
-    await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'building', framework });
+    await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'building' });
 
     // Fire-and-forget: build + serve runs in background
-    this.executeBuild(tenantId, userId, projectId, feature, deployWorkspacePath, port, framework, urlKey, basePath, initialState, generation)
+    this.executeBuild(tenantId, userId, projectId, feature, deployWorkspacePath, initialState, generation)
       .catch(err => logger.error(`[Deploy] Unexpected executeBuild error for ${key}: ${err.message}`, { component: 'DeployService' }));
 
-    logger.info(`[Deploy] Build started: ${key} (${framework}) in ${deployWorkspacePath}`, { component: 'DeployService' });
-    return { success: true, message: 'Build started' };
+    const summary = packagesState.map(p => `${p.slug}(${p.framework}@${p.port})`).join(', ');
+    logger.info(`[Deploy] Build started: ${key} — ${packagesState.length} package(s): ${summary}`, { component: 'DeployService' });
+    return { success: true, message: `Build started for ${packagesState.length} package(s)` };
   }
 
   /**
    * Async build + serve pipeline. Runs in the background after startDeploy()
-   * returns. All state transitions are broadcast via SSE.
-   * Wrapped in try/finally to guarantee port release on any failure path.
+   * returns. Loops over `state.packages` SERIALLY — concurrent builds in
+   * the same workspace would race over `node_modules` and tooling caches.
+   *
+   * Per-package failures don't abort the whole deploy: the failed package
+   * is marked `phase: 'error'` and successful packages continue running.
+   * Aggregate state is `error` if ANY package errored, else `running`.
    */
   private async executeBuild(
     tenantId: string,
@@ -344,113 +480,151 @@ export class DeployService {
     projectId: string,
     feature: string,
     workspacePath: string,
-    port: number,
-    framework: ReturnType<typeof detectFramework>,
-    urlKey: string,
-    basePath: string,
     initialState: Omit<DeployState, 'lastAccessedAt'>,
     generation: number
   ): Promise<void> {
     const key = this.makeKey(tenantId, userId, projectId, feature);
-    const host = initialState.host;
-    let buildSucceeded = false;
-
     const isStale = () => this.deployGeneration.get(key) !== generation;
 
+    // Working copy of packages we mutate as builds complete.
+    const packages: DeployPackage[] = initialState.packages.map(p => ({ ...p }));
+    const handles: StaticServerHandle[] = [];
+    const tagFor = (pkg: DeployPackage) => packages.length > 1 ? `[${pkg.slug}] ` : '';
+
     try {
-      const buildResult = await runBuild(workspacePath, basePath, (line) => {
-        this.broadcastLog(tenantId, userId, projectId, feature, line);
-      });
+      for (let i = 0; i < packages.length; i++) {
+        if (isStale()) {
+          logger.info(`[Deploy] executeBuild aborted — generation stale: ${key}`, { component: 'DeployService' });
+          return;
+        }
+
+        const pkg = packages[i];
+        const tag = tagFor(pkg);
+
+        // Build phase
+        await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}🏗️  Building ${pkg.name}…`);
+        pkg.phase = 'building';
+        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, { phase: 'building', packages });
+
+        const buildResult = await runBuild(pkg.workspacePath, pkg.basePath, (line) => {
+          this.broadcastLog(tenantId, userId, projectId, feature, `${tag}${line}`);
+        });
+
+        if (isStale()) return;
+
+        if (!buildResult.success) {
+          pkg.phase = 'error';
+          pkg.error = buildResult.error;
+          // Keep going for OTHER packages — partial success is still useful.
+          await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
+            phase: aggregatePhase(packages),
+            packages,
+            error: buildResult.error,
+            buildLog: buildResult.logs,
+          });
+          await this.broadcastStatus(tenantId, userId, projectId, feature, {
+            phase: aggregatePhase(packages),
+            error: buildResult.error,
+          });
+          continue;
+        }
+
+        // refresh outputDir from buildResult (e.g. nextjs static export → out/)
+        pkg.buildOutputDir = buildResult.outputDir;
+
+        // Serve phase
+        pkg.phase = 'deploying';
+        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
+          phase: aggregatePhase(packages),
+          packages,
+        });
+        await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: aggregatePhase(packages) });
+
+        try {
+          const handle = await startStaticServer({
+            framework: pkg.framework,
+            outputDir: pkg.buildOutputDir,
+            port: pkg.port,
+            basePath: pkg.basePath,
+            workspacePath: pkg.workspacePath,
+          });
+          handles.push(handle);
+          pkg.phase = 'running';
+          await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}✅ Deployed at ${pkg.url}`);
+        } catch (err: any) {
+          pkg.phase = 'error';
+          pkg.error = err.message;
+          await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}❌ Static server failed: ${err.message}`);
+        }
+      }
 
       if (isStale()) {
-        logger.info(`[Deploy] Build completed but deploy generation is stale: ${key}`, { component: 'DeployService' });
+        // Tear down anything we spun up during this stale build.
+        for (const h of handles) { try { await h.stop(); } catch { /* ignore */ } }
+        for (const p of packages) this.portManager.release(p.port);
         return;
       }
 
-      if (!buildResult.success) {
-        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
-          phase: 'error',
-          error: buildResult.error,
-          buildLog: buildResult.logs,
-        });
-        await this.broadcastStatus(tenantId, userId, projectId, feature, {
-          phase: 'error',
-          error: buildResult.error,
-        });
-        return;
-      }
-
-      // Transition to deploying (spawning static server)
-      await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'deploying' });
-      await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
-        phase: 'deploying',
-      });
-
-      const handle = await startStaticServer({
-        framework,
-        outputDir: buildResult.outputDir,
-        port,
-        basePath,
-        workspacePath,
-      });
-
-      const deployUrl = `/deploy/${urlKey}`;
+      const aggregate = aggregatePhase(packages);
       const now = new Date().toISOString();
 
-      // Persist re-hydration meta BEFORE marking running — meta.json is source of truth.
-      try {
-        await this.metaStore.write(workspacePath, {
-          version: 1,
-          tenantId, userId, projectId, feature,
-          framework,
-          workspacePath,
-          buildOutputDir: buildResult.outputDir,
-          basePath,
-          urlKey,
-          createdAt: now,
-          updatedAt: now,
-        });
-      } catch (err: any) {
-        logger.warn(`[Deploy] Failed to persist meta.json: ${err.message}`, { component: 'DeployService' });
+      // Persist meta.json BEFORE marking running — meta is the rehydrate SSOT.
+      const metaPackages: DeployMetaPackage[] = packages
+        .filter(p => p.phase === 'running')
+        .map(p => ({
+          name: p.name,
+          slug: p.slug,
+          framework: p.framework,
+          workspacePath: p.workspacePath,
+          buildOutputDir: p.buildOutputDir,
+          basePath: p.basePath,
+          urlKey: p.urlKey,
+        }));
+
+      if (metaPackages.length > 0) {
+        try {
+          await this.metaStore.write(workspacePath, {
+            version: 2,
+            tenantId, userId, projectId, feature,
+            workspacePath,
+            packages: metaPackages,
+            createdAt: now,
+            updatedAt: now,
+          });
+        } catch (err: any) {
+          logger.warn(`[Deploy] Failed to persist meta.json: ${err.message}`, { component: 'DeployService' });
+        }
       }
 
       await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
-        phase: 'running',
-        url: deployUrl,
+        phase: aggregate,
+        packages,
       });
 
+      // Stash handles for stopDeploy/cleanup. Only packages that actually
+      // started have a handle; failed packages have already been logged.
       this.activeDeploys.set(key, {
-        handle,
-        state: {
-          ...initialState,
-          phase: 'running',
-          url: deployUrl,
-          buildOutputDir: buildResult.outputDir,
-          lastAccessedAt: new Date(),
-        },
+        handles,
+        state: { ...initialState, phase: aggregate, packages, lastAccessedAt: new Date() },
       });
 
-      buildSucceeded = true;
+      await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: aggregate });
 
-      await this.broadcastStatus(tenantId, userId, projectId, feature, {
-        phase: 'running',
-        url: deployUrl,
-        port,
-        framework,
-      });
-
-      logger.info(`[Deploy] Deployed: ${key} -> ${host}:${port} (${framework})`, { component: 'DeployService' });
+      const successCount = packages.filter(p => p.phase === 'running').length;
+      logger.info(
+        `[Deploy] Build completed for ${key} — ${successCount}/${packages.length} package(s) running`,
+        { component: 'DeployService' }
+      );
     } catch (err: any) {
+      // Catastrophic error — release all ports and mark deploy errored.
+      for (const h of handles) { try { await h.stop(); } catch { /* ignore */ } }
+      for (const p of packages) this.portManager.release(p.port);
       await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
         phase: 'error',
         error: err.message,
       }).catch(() => {});
       await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'error', error: err.message });
       logger.error(`[Deploy] Build/serve failed for ${key}: ${err.message}`, { component: 'DeployService' });
-    } finally {
-      if (!buildSucceeded) {
-        this.portManager.release(port);
-      }
     }
   }
 
@@ -469,8 +643,7 @@ export class DeployService {
     this.deployGeneration.set(key, (this.deployGeneration.get(key) ?? 0) + 1);
 
     // Wait for any in-flight rehydrate to observe the bumped generation and
-    // abort itself, so this stop cannot race with a concurrent wake-up that
-    // would otherwise leave a zombie static server alive.
+    // abort itself, so this stop cannot race with a concurrent wake-up.
     const inflight = this.rehydrateLocks.get(key);
     if (inflight) {
       try { await inflight; } catch { /* ignore */ }
@@ -482,12 +655,14 @@ export class DeployService {
       ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
 
     if (active) {
-      try {
-        await active.handle.stop();
-      } catch (err: any) {
-        logger.warn(`[Deploy] Stop error: ${err.message}`, { component: 'DeployService' });
+      // Stop every static server in parallel — they're independent.
+      await Promise.all(active.handles.map(async (h) => {
+        try { await h.stop(); }
+        catch (err: any) { logger.warn(`[Deploy] Stop handle error: ${err.message}`, { component: 'DeployService' }); }
+      }));
+      for (const pkg of active.state.packages) {
+        this.portManager.release(pkg.port);
       }
-      this.portManager.release(active.state.port);
       this.activeDeploys.delete(key);
     }
 
@@ -500,14 +675,14 @@ export class DeployService {
   }
 
   /**
-   * Ensure the deploy's static server is running on this pod. If it is
-   * already healthy, returns the current state. Otherwise performs lazy
-   * re-hydration: reads meta.json, allocates a port, spawns the static
-   * server, and broadcasts phase transitions (starting → running).
+   * Ensure the deploy's static servers are running on this pod. If already
+   * healthy, returns the current state. Otherwise performs lazy
+   * re-hydration: reads meta.json, allocates N ports, spawns ALL static
+   * servers, and broadcasts phase transitions.
    *
-   * Returns null if the deploy cannot be revived (no meta, artifact missing,
-   * port exhausted). Callers must treat this as "unavailable — user must
-   * re-deploy".
+   * Returns null if the deploy cannot be revived (no meta, all artifacts
+   * missing, ports exhausted). Callers must treat this as
+   * "unavailable — user must re-deploy".
    */
   async ensureRunning(
     tenantId: string, userId: string, projectId: string, feature: string
@@ -517,23 +692,17 @@ export class DeployService {
     const active = this.activeDeploys.get(key);
     const selfPod = os.hostname();
 
-    // Fast path: we are the owning pod and the process is alive.
     if (state?.phase === 'running' && active && state.podId === selfPod) {
       return state;
     }
 
-    // Another pod owns a running deploy — trust it, no rehydrate.
     if (state?.phase === 'running' && state.podId && state.podId !== selfPod) {
       return state;
     }
 
-    // Dedup concurrent rehydrate requests for the same key.
     const inflight = this.rehydrateLocks.get(key);
     if (inflight) return inflight;
 
-    // Capture the generation at the start of rehydrate. If stopDeploy/startDeploy
-    // bumps it mid-flight, rehydrate will detect and abort (disposing of any
-    // freshly spawned static server) instead of leaving a zombie.
     const genAtStart = this.deployGeneration.get(key) ?? 0;
 
     const promise = this.rehydrate(tenantId, userId, projectId, feature, state, genAtStart)
@@ -550,9 +719,6 @@ export class DeployService {
     const key = this.makeKey(tenantId, userId, projectId, feature);
     const lockKey = `deploy:rehydrate:${key}`;
 
-    // Multi-pod coordination: only one pod may spawn a static server for this
-    // deploy at a time. If another pod wins the lock, wait briefly and read
-    // Redis to see if it succeeded; otherwise surface unavailable.
     const acquired = await this.stateStore.acquireLock(lockKey, 30);
     if (!acquired) {
       await new Promise((r) => setTimeout(r, 500));
@@ -562,96 +728,110 @@ export class DeployService {
       return null;
     }
 
+    const allocatedPorts: number[] = [];
+    const handles: StaticServerHandle[] = [];
+
     try {
       const workspacePath = existing?.workspacePath
         ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
 
       const meta = await this.metaStore.read(workspacePath);
-      if (!meta) {
+      if (!meta || meta.packages.length === 0) {
         await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'unavailable' });
         logger.warn(`[Deploy] Rehydrate aborted — no meta.json: ${key}`, { component: 'DeployService' });
         return null;
       }
 
-      if (!fs.existsSync(meta.buildOutputDir)) {
+      // Validate every package's build artifact exists. If ANY are missing,
+      // the meta is stale — clear it and surface unavailable to force a
+      // fresh deploy.
+      const missing = meta.packages.filter(p => !fs.existsSync(p.buildOutputDir));
+      if (missing.length > 0) {
         await this.broadcastStatus(tenantId, userId, projectId, feature, {
           phase: 'unavailable',
-          error: 'Build output missing',
+          error: `Build output missing for ${missing.map(p => p.slug).join(', ')}`,
         });
         await this.metaStore.remove(workspacePath);
-        logger.warn(`[Deploy] Rehydrate aborted — buildOutputDir missing: ${meta.buildOutputDir}`, { component: 'DeployService' });
+        logger.warn(`[Deploy] Rehydrate aborted — buildOutputDir missing for ${missing.map(p => p.slug).join(', ')}`, { component: 'DeployService' });
         return null;
       }
 
       await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'starting' });
 
-      let port: number;
-      try {
-        port = await this.portManager.allocate('deploy');
-      } catch (err: any) {
-        await this.broadcastStatus(tenantId, userId, projectId, feature, {
-          phase: 'unavailable',
-          error: err.message,
-        });
-        return null;
-      }
-
       const host = this.getPodHost();
-      try {
-        const handle = await startStaticServer({
-          framework: meta.framework,
-          outputDir: meta.buildOutputDir,
-          port,
-          basePath: meta.basePath,
-          workspacePath: meta.workspacePath,
-        });
+      const packagesState: DeployPackage[] = [];
 
-        // Generation guard: if a stopDeploy/startDeploy landed while we were
-        // spawning, discard the freshly started server so it does not become
-        // a zombie outliving the intended stop.
-        if ((this.deployGeneration.get(key) ?? 0) !== genAtStart) {
-          try { await handle.stop(); } catch { /* ignore */ }
-          this.portManager.release(port);
-          logger.info(`[Deploy] Rehydrate aborted (generation bumped): ${key}`, { component: 'DeployService' });
-          return null;
+      for (const mp of meta.packages) {
+        let port: number;
+        try {
+          port = await this.portManager.allocate('deploy');
+          allocatedPorts.push(port);
+        } catch (err: any) {
+          logger.warn(`[Deploy] Port allocation failed for ${mp.slug}: ${err.message}`, { component: 'DeployService' });
+          throw err;
         }
 
-        const fullState: Omit<DeployState, 'lastAccessedAt'> = {
-          tenantId, userId, projectId, feature,
-          phase: 'running',
-          port, host, podId: os.hostname(),
-          framework: meta.framework,
-          buildOutputDir: meta.buildOutputDir,
-          basePath: meta.basePath,
-          workspacePath: meta.workspacePath,
-          urlKey: meta.urlKey,
-          url: `/deploy/${meta.urlKey}`,
-          startedAt: new Date(),
-        };
-        await this.stateStore.registerDeploy(fullState);
-        this.activeDeploys.set(key, {
-          handle,
-          state: { ...fullState, lastAccessedAt: new Date() },
-        });
-
-        await this.broadcastStatus(tenantId, userId, projectId, feature, {
-          phase: 'running',
-          url: fullState.url,
+        const handle = await startStaticServer({
+          framework: mp.framework,
+          outputDir: mp.buildOutputDir,
           port,
-          framework: meta.framework,
+          basePath: mp.basePath,
+          workspacePath: mp.workspacePath,
         });
+        handles.push(handle);
 
-        logger.info(`[Deploy] Rehydrated ${key} on ${host}:${port}`, { component: 'DeployService' });
-        return { ...fullState, lastAccessedAt: new Date() };
-      } catch (err: any) {
-        this.portManager.release(port);
-        await this.broadcastStatus(tenantId, userId, projectId, feature, {
-          phase: 'unavailable',
-          error: err.message,
+        packagesState.push({
+          name: mp.name,
+          slug: mp.slug,
+          framework: mp.framework,
+          workspacePath: mp.workspacePath,
+          buildOutputDir: mp.buildOutputDir,
+          basePath: mp.basePath,
+          port,
+          urlKey: mp.urlKey,
+          url: mp.basePath,
+          phase: 'running',
         });
-        logger.error(`[Deploy] Rehydrate failed: ${err.message}`, { component: 'DeployService' });
+      }
+
+      // Generation guard: if a stopDeploy/startDeploy landed mid-spawn,
+      // discard everything we just started.
+      if ((this.deployGeneration.get(key) ?? 0) !== genAtStart) {
+        for (const h of handles) { try { await h.stop(); } catch { /* ignore */ } }
+        for (const p of allocatedPorts) this.portManager.release(p);
+        logger.info(`[Deploy] Rehydrate aborted (generation bumped): ${key}`, { component: 'DeployService' });
         return null;
       }
+
+      const fullState: Omit<DeployState, 'lastAccessedAt'> = {
+        tenantId, userId, projectId, feature,
+        phase: 'running',
+        host,
+        podId: os.hostname(),
+        workspacePath: meta.workspacePath,
+        packages: packagesState,
+        startedAt: new Date(),
+      };
+      await this.stateStore.registerDeploy(fullState);
+      this.activeDeploys.set(key, {
+        handles,
+        state: { ...fullState, lastAccessedAt: new Date() },
+      });
+
+      await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'running' });
+
+      const portsLabel = packagesState.map(p => `${p.slug}:${p.port}`).join(',');
+      logger.info(`[Deploy] Rehydrated ${key} on ${host} [${portsLabel}]`, { component: 'DeployService' });
+      return { ...fullState, lastAccessedAt: new Date() };
+    } catch (err: any) {
+      for (const h of handles) { try { await h.stop(); } catch { /* ignore */ } }
+      for (const p of allocatedPorts) this.portManager.release(p);
+      await this.broadcastStatus(tenantId, userId, projectId, feature, {
+        phase: 'unavailable',
+        error: err.message,
+      });
+      logger.error(`[Deploy] Rehydrate failed: ${err.message}`, { component: 'DeployService' });
+      return null;
     } finally {
       await this.stateStore.releaseLock(lockKey).catch(() => { /* lock may have expired; safe to ignore */ });
     }
@@ -661,11 +841,7 @@ export class DeployService {
    * Get deploy status — combines in-memory, Redis, and on-disk meta
    * to report the most accurate phase.
    *
-   * Priority:
-   *   1. Redis says running + active on this pod → running
-   *   2. meta.json exists                        → hibernated
-   *   3. Redis entry without meta                → unavailable (lost artifact)
-   *   4. Nothing                                 → idle
+   * Top-level `url` follows the multi-package contract (null for 2+ packages).
    */
   async getStatus(
     tenantId: string,
@@ -674,9 +850,8 @@ export class DeployService {
     feature: string
   ): Promise<{
     phase: DeployPhase;
-    url?: string;
-    port?: number;
-    framework?: string;
+    url?: string | null;
+    packages?: DeployPackage[];
     error?: string;
   }> {
     const key = this.makeKey(tenantId, userId, projectId, feature);
@@ -688,9 +863,8 @@ export class DeployService {
     if (state?.phase === 'running' && active && state.podId === selfPod) {
       return {
         phase: 'running',
-        url: state.url,
-        port: state.port,
-        framework: state.framework,
+        url: this.computeTopLevelDeployUrl(state.packages),
+        packages: state.packages,
       };
     }
 
@@ -698,9 +872,8 @@ export class DeployService {
     if (state?.phase === 'running' && state.podId && state.podId !== selfPod) {
       return {
         phase: 'running',
-        url: state.url,
-        port: state.port,
-        framework: state.framework,
+        url: this.computeTopLevelDeployUrl(state.packages),
+        packages: state.packages,
       };
     }
 
@@ -708,32 +881,52 @@ export class DeployService {
     if (state?.phase === 'building' || state?.phase === 'deploying' || state?.phase === 'starting') {
       return {
         phase: state.phase,
-        url: state.url,
-        port: state.port,
-        framework: state.framework,
+        url: this.computeTopLevelDeployUrl(state.packages),
+        packages: state.packages,
       };
     }
 
     // 4. Error passed through
     if (state?.phase === 'error') {
-      return { phase: 'error', error: state.error, framework: state?.framework };
+      return {
+        phase: 'error',
+        error: state.error,
+        packages: state.packages,
+      };
     }
 
     // 5. Check meta.json → hibernated (auto-wake eligible)
     const workspacePath = state?.workspacePath
       ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
     const meta = await this.metaStore.read(workspacePath);
-    if (meta) {
+    if (meta && meta.packages.length > 0) {
+      // Reconstruct DeployPackage[] from meta — port is unknown until rehydrate.
+      const synth: DeployPackage[] = meta.packages.map(mp => ({
+        name: mp.name,
+        slug: mp.slug,
+        framework: mp.framework,
+        workspacePath: mp.workspacePath,
+        buildOutputDir: mp.buildOutputDir,
+        basePath: mp.basePath,
+        port: 0,
+        urlKey: mp.urlKey,
+        url: mp.basePath,
+        phase: 'hibernated',
+      }));
       return {
         phase: 'hibernated',
-        url: `/deploy/${meta.urlKey}`,
-        framework: meta.framework,
+        url: this.computeTopLevelDeployUrl(synth),
+        packages: synth,
       };
     }
 
     // 6. Redis entry but no meta → artifact lost
     if (state) {
-      return { phase: 'unavailable', error: state.error, framework: state.framework };
+      return {
+        phase: 'unavailable',
+        error: state.error,
+        packages: state.packages,
+      };
     }
 
     // 7. Nothing at all
@@ -757,26 +950,27 @@ export class DeployService {
     );
 
     for (const d of stale) {
-      // Only `running` has a meta.json on disk, so only `running` is eligible
-      // for lazy rehydration. `building`/`deploying`/`starting` were killed
-      // mid-build with no artifact — surface as `error` so the UI shows the
-      // real cause instead of a "Wake up" CTA that would immediately fail.
+      // Only `running` has a meta.json on disk and is rehydrate-eligible.
       const wasRunning = d.phase === 'running';
       const nextPhase: DeployPhase = wasRunning ? 'hibernated' : 'error';
       const errorMsg = wasRunning ? undefined : 'Pod restarted during build';
 
+      const summary = (d.packages || []).map(p => `${p.slug}:${p.phase}`).join(',');
       logger.warn(
-        `[Deploy] Transitioning stale deploy → ${nextPhase}: ${d.tenantId}:${d.userId}:${d.projectId}:${d.feature} (was ${d.phase})`,
+        `[Deploy] Transitioning stale deploy → ${nextPhase}: ${d.tenantId}:${d.userId}:${d.projectId}:${d.feature} (was ${d.phase}, packages=[${summary}])`,
         { component: 'DeployService' }
       );
       try {
+        // Mark every package's phase to match the aggregate so callers
+        // observing per-package state see consistent values.
+        const nextPackages = (d.packages || []).map(p => ({ ...p, phase: nextPhase }));
         await this.stateStore.updateDeploy(d.tenantId, d.userId, d.projectId, d.feature, {
           phase: nextPhase,
+          packages: nextPackages,
           ...(errorMsg ? { error: errorMsg } : {}),
         });
-        // NOTE: d.port was allocated by a previous pod process; this pod's
-        // PortManager has no record of it, so release() would be a no-op.
-        // The old OS-level process died with its pod — nothing to free here.
+        // NOTE: per-package ports were allocated by a previous pod process;
+        // this pod's PortManager has no record of them, so release() is a no-op.
         await this.broadcastStatus(d.tenantId, d.userId, d.projectId, d.feature, {
           phase: nextPhase,
           ...(errorMsg ? { error: errorMsg } : {}),
@@ -795,14 +989,12 @@ export class DeployService {
   }
 
   /**
-   * Periodically evict idle deploys: stop the static server process but
+   * Periodically evict idle deploys: stop all static-server processes but
    * keep meta.json + Redis entry (with phase='hibernated'). Next URL access
    * will auto-rehydrate via ensureRunning().
    */
   startIdleEviction(): void {
     if (this.idleCheckInterval) {
-      // Double-start would leak the previous interval handle. Caller bug —
-      // log and bail out instead of silently doubling the eviction rate.
       logger.warn('[Deploy] startIdleEviction called twice — ignoring', { component: 'DeployService' });
       return;
     }
@@ -825,12 +1017,19 @@ export class DeployService {
           const key = this.makeKey(d.tenantId, d.userId, d.projectId, d.feature);
           const active = this.activeDeploys.get(key);
           if (active) {
-            try { await active.handle.stop(); } catch { /* ignore */ }
-            this.portManager.release(d.port);
+            // Stop ALL handles in parallel and release every package's port.
+            await Promise.all(active.handles.map(async (h) => {
+              try { await h.stop(); } catch { /* ignore */ }
+            }));
+            for (const pkg of active.state.packages) {
+              this.portManager.release(pkg.port);
+            }
             this.activeDeploys.delete(key);
           }
+          const hibernatedPackages = (d.packages || []).map(p => ({ ...p, phase: 'hibernated' as DeployPhase }));
           await this.stateStore.updateDeploy(d.tenantId, d.userId, d.projectId, d.feature, {
             phase: 'hibernated',
+            packages: hibernatedPackages,
           });
           await this.broadcastStatus(d.tenantId, d.userId, d.projectId, d.feature, { phase: 'hibernated' });
           logger.info(`[Deploy] Hibernated idle deploy: ${key}`, { component: 'DeployService' });
@@ -857,8 +1056,10 @@ export class DeployService {
     this.stopIdleEviction();
     for (const [key, active] of this.activeDeploys) {
       try {
-        await active.handle.stop();
-        this.portManager.release(active.state.port);
+        await Promise.all(active.handles.map(h => h.stop().catch(() => {})));
+        for (const pkg of active.state.packages) {
+          this.portManager.release(pkg.port);
+        }
       } catch (err: any) {
         logger.warn(`[Deploy] Cleanup error for ${key}: ${err.message}`, { component: 'DeployService' });
       }

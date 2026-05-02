@@ -32,7 +32,15 @@ export interface UseDeployManagerResult {
   disabledReason: DeployDisabledReason | undefined;
   deploy: () => Promise<void>;
   stop: () => Promise<void>;
-  openDeployUrl: () => void;
+  /**
+   * Open a deployed package's URL in a new tab.
+   *
+   * Pass an explicit `url` (from `status.packages[i].url`) for multi-package
+   * deploys. Calling without arguments uses the representative `status.url`
+   * — only meaningful for single-package deploys; falls back to the first
+   * package's URL if the top-level field is null but `packages` is set.
+   */
+  openDeployUrl: (url?: string) => void;
 }
 
 /**
@@ -192,11 +200,20 @@ export function useDeployManager(
     }
   }, [selectedProject, selectedFeature, featureKey, setDeployLoading, setDeployStatus]);
 
-  const openDeployUrl = useCallback(() => {
-    if (deployStatus?.url) {
-      window.open(`${PREVIEW_BASE()}${deployStatus.url}`, '_blank');
+  const openDeployUrl = useCallback((url?: string) => {
+    // Resolution order:
+    //   1. Caller-supplied url (per-package Open button in multi-package UI)
+    //   2. Top-level deployStatus.url (single-package back-compat)
+    //   3. First running package's url (fallback when top-level null)
+    const resolved =
+      url
+      ?? deployStatus?.url
+      ?? deployStatus?.packages?.find(p => p.phase === 'running')?.url
+      ?? deployStatus?.packages?.[0]?.url;
+    if (resolved) {
+      window.open(`${PREVIEW_BASE()}${resolved}`, '_blank');
     }
-  }, [deployStatus?.url]);
+  }, [deployStatus?.url, deployStatus?.packages]);
 
   return {
     status: deployStatus,

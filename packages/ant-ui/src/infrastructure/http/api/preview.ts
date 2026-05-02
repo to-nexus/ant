@@ -26,17 +26,42 @@ export interface ServiceConnection {
   userModified?: boolean;
 }
 
+/** One package in the running preview (slug-addressable). */
+export interface PreviewStatusPackage {
+  name: string;
+  /**
+   * URL-safe identifier. Optional only for back-compat with old BE builds
+   * that didn't emit it; new BE always sets this.
+   */
+  slug?: string;
+  type: 'frontend' | 'backend' | 'other';
+  port: number;
+  /** urlKey segment carried in this package's public URL. */
+  urlKey?: string;
+  /**
+   * Public URL for this package. Set for openable frontend packages
+   * (`/{4partUrlKey}` for single-frontend, `/{5partUrlKey}` for multi).
+   * `null` for backend / other packages.
+   */
+  url?: string | null;
+}
+
 export interface PreviewStatus {
   running: boolean;
   ready?: boolean;
   port?: number | null;
   backendPort?: number | null;
+  /**
+   * Representative Open URL.
+   * `null` when there are 2+ frontends — UI must use `packages[].url` to
+   * render one Open button per accessible frontend.
+   */
   url?: string | null;
   logs?: LogEntry[];
   setupReasoning?: string;
   setupReason?: string;
   suggestedFix?: string;
-  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
+  packages?: PreviewStatusPackage[];
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
   phase?: 'idle' | 'installing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
   error?: string;

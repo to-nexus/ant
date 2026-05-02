@@ -128,7 +128,7 @@ export interface PendingChoiceData {
 // ============================================
 
 // Re-export from portRegistry
-export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection, DeployState, DeployPhase, DeployFramework } from './portRegistry';
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection, DeployState, DeployPackage, DeployPhase, DeployFramework } from './portRegistry';
 import { PreviewState, IDEState, PortMapping, ServiceConnection, DeployState } from './portRegistry';
 import type { PreviewStructureType } from './preview';
 
@@ -400,7 +400,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<DeployState, 'phase' | 'port' | 'host' | 'podId' | 'error' | 'buildLog' | 'url' | 'urlKey' | 'workspacePath' | 'lastAccessedAt'>>
+    update: Partial<Pick<DeployState, 'phase' | 'host' | 'podId' | 'error' | 'buildLog' | 'workspacePath' | 'packages' | 'lastAccessedAt'>>
   ): Promise<void>;
 
   /**

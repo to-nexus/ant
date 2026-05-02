@@ -9,11 +9,36 @@ Preview 시스템은 생성된 코드의 실시간 미리보기를 제공한다.
 | 형식 | 용도 | 예시 |
 |------|------|------|
 | Internal Key (Redis) | 내부 상태 관리 | `org:user:project:feature` |
-| URL Key (HTTP) | URL path segment | `org--user--project--feature` |
+| URL Key (HTTP, 4-part) | 단일 frontend / 4-part 라우팅 | `org--user--project--feature` |
+| URL Key (HTTP, 5-part) | 멀티 frontend 패키지 / `ant-project` serviceName | `org--user--project--feature--apps-web` |
 
-URL Key는 콜론 대신 더블대시(`--`)를 사용한다. `toUrlKey()` / `fromUrlKey()` 함수로 변환한다.
+URL Key는 콜론 대신 더블대시(`--`)를 사용한다. `toUrlKey()` / `toUrlKeyWithService()` / `fromUrlKey()` / `parseUrlKey()`가 SSOT이며 모두 `packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/serverKeyUtils.ts`에 있다. `fromUrlKey()`는 항상 앞 4개만 internal key로 변환하며 `parseUrlKey()`가 5번째 세그먼트를 `serviceName`으로 추출한다.
 
-Multi-package 서비스 연결 시 URL Key에 5번째 세그먼트(serviceName)가 추가될 수 있다: `org--user--project--feature--serviceName`. `fromUrlKey()`는 항상 앞 4개만 internal key로 변환하며, `parseUrlKey()`가 5번째 세그먼트를 별도로 추출한다.
+### 5번째 세그먼트의 두 용도
+
+5-part URL Key는 두 시나리오에 동일 형식으로 쓰인다:
+
+1. **멀티 프런트엔드 패키지 접근**: 한 피처에 frontend 패키지가 2개 이상이면 각 패키지가 자체 5-part urlKey를 가진다. 하나는 entry, 나머지도 모두 자체 dev server에 직접 접근할 수 있어야 한다.
+2. **`ant-project` 서비스 연결**: 다른 피처의 특정 패키지를 호출할 때 (`@connection ... ant-project:{pid}:{feat}:{svc}`).
+
+두 용도 모두 5번째 세그먼트는 **반드시 `packageSlug(name)`이 만든 슬러그**여야 한다. 프록시는 슬러그로 정확 일치(exact match)만 시도하므로 raw name(`apps/web`)을 그대로 쓰면 매치되지 않는다. `PreviewServer.createDeployProxyMiddleware` / `previewProxy`는 입력단에서 `packageSlug()`로 정규화하여 legacy 입력도 자동 보정한다.
+
+### `packageSlug()` 규칙 (SSOT)
+
+| 입력 | 출력 |
+|------|------|
+| `web` | `web` |
+| `apps/web` | `apps-web` |
+| `@scope/ui` | `scope-ui` |
+| `apps_web` | `appsweb` (밑줄은 strip) |
+| `apps---web` | `apps-web` (연속 하이픈 collapse) |
+| 빈 문자열 | `pkg` |
+
+알고리즘: 슬래시 → `-`, 영숫자/하이픈 외 strip, 연속 하이픈 collapse, 양끝 trim, 빈 결과는 `pkg`로 폴백. `--` 출현이 절대 불가능하도록 보장하므로 5-part urlKey 파싱이 깨지지 않는다.
+
+### Slug 충돌 처리
+
+`PreviewService.assignPackageUrlIdentity` / `DeployService.assignDeployIdentity`가 frontend 패키지 목록을 한 번에 받아 슬러그를 결정한다. 이미 사용된 슬러그가 또 나오면 `slug-2`, `slug-3`, … 단일 하이픈 접미사로 dedupe한다 (`--` 절대 미사용). 결과적으로 한 피처 내 모든 frontend는 unique slug를 갖는다.
 
 ## Redis 키 분리
 
@@ -39,13 +64,24 @@ Preview는 별도 호스트(`ant-preview.crosstoken.io`)를 사용한다. 프레
 
 ### Main 경로
 
-1. URL에서 urlKey 파싱 -> `fromUrlKey()` -> internal key
-2. Redis에서 `{ host, port }` 조회
-3. 경로 prefix 유지하여 Dev Server로 프록시
-4. Fullstack: `/api/*` -> backend port 분기
-5. Multi-package serviceName: urlKey의 5번째 세그먼트로 특정 패키지 port 라우팅
-6. 응답 body를 stream pipe (변환/재작성 없음)
-7. preview cookie 설정 (`Path=/{urlKey}`)
+1. URL에서 urlKey 파싱 → `parseUrlKey()` → `{ tenantId, userId, projectId, feature, serviceName? }`
+2. Redis에서 `PreviewState`(host/port + `packages[]`) 조회
+3. 라우팅 우선순위(아래 표) 적용 → 최종 `{targetPort, targetPath}` 결정
+4. 응답 body를 stream pipe (변환/재작성 없음)
+5. preview cookie 설정 (`Path=/{urlKey}`)
+
+### 라우팅 우선순위
+
+| 우선순위 | 조건 | targetPort | targetPath |
+|---------|------|-----------|-----------|
+| 1 | `/{urlKey}/api/*` (4-part 또는 5-part 무관) | `getBackendPort()` 결과 | prefix strip |
+| 2-a | 5-part `serviceName`이 frontend pkg.slug와 일치 | 해당 `pkg.port` | prefix 유지 (frontend는 자체 basePath 보유) |
+| 2-b | 5-part `serviceName`이 backend/other pkg.slug와 일치 | 해당 `pkg.port` | prefix strip (basePath 없음) |
+| 2-c | 5-part `serviceName`이 어떤 pkg.slug와도 불일치 | (3)으로 fall-through | (3)으로 fall-through |
+| 3 | 4-part urlKey, frontend 존재 | entry frontend port | prefix 유지 |
+| 4 | frontend 없음 (backend-only deploy 등) | entry port | prefix strip |
+
+`/api/*`가 항상 (2)보다 우선한다. 사용자가 만든 슬러그는 영숫자+하이픈으로 제한되므로 `api`라는 리터럴 세그먼트와 충돌하지 않으며, `/api/*`는 fullstack 보편 계약이다.
 
 ### Fallback 경로
 
@@ -58,10 +94,11 @@ urlKey가 없는 요청 (리소스 누출):
 
 | 프레임워크 | 환경변수 | 설정 위치 |
 |-----------|---------|----------|
-| Vite (React/Vue) | `VITE_BASE_PATH` | `vite.config.ts` -> `base` |
-| Next.js | `NEXT_PUBLIC_BASE_PATH` | `next.config.js` -> `basePath` |
+| Vite (React/Vue) | `VITE_BASE_PATH` | `vite.config.ts` → `base` |
+| Next.js | `NEXT_PUBLIC_BASE_PATH` | `next.config.js` → `basePath` |
+| 공통 | `ANT_BASE_PATH` | 사용자 코드/플러그인용 fallback |
 
-`ProcessSpawner`가 Dev Server 프로세스 생성 시 환경변수를 자동 주입한다.
+`ProcessSpawner`가 Dev Server 프로세스 생성 시 환경변수를 자동 주입한다. 주입값은 `SpawnOptions.packageUrlKey`(SSOT)에서 파생되며, 단일 frontend는 4-part urlKey, 멀티 frontend는 각자 자기 패키지의 5-part urlKey가 된다. 따라서 멀티 frontend 시에도 각 패키지는 **자기 자신의 basePath만** 알며, 프록시가 동일한 5-part prefix를 그대로 보존(라우팅 표 우선순위 2-a)하여 동작한다.
 
 ## 프로젝트 설정 검증 (Validator)
 
@@ -73,7 +110,11 @@ Preview 시작 시 프록시 환경 설정을 검증한다.
 | VueValidator | vite.config base + Vue Router base |
 | NextValidator | next.config basePath + 환경변수 참조 |
 
-검증 실패 시: 서버 중단 -> Redis에 issues 기록 -> SSE로 UI에 브로드캐스트 -> UI에 Fix 버튼 표시 -> Fix 클릭 시 suggestedFix를 채팅에 자동 입력.
+검증 실패 시: 서버 중단 → Redis에 issues 기록 → SSE로 UI에 브로드캐스트 → UI에 Fix 버튼 표시 → Fix 클릭 시 suggestedFix를 채팅에 자동 입력.
+
+### 멀티 frontend 검증 범위
+
+`frontendCount > 1`이면 entry frontend뿐 아니라 **모든 frontend 패키지**에 대해 validator를 실행한다. Entry는 fatal severity로 실패 시 서버 중단을 유발하지만, 비-entry 패키지의 실패는 `severity: 'warning'`으로 격하되어 동일 Fix UI를 그대로 활용하면서 다른 frontend의 기동을 막지 않는다. 사용자는 멀티 frontend에서도 secondary 패키지의 잘못된 base path를 즉시 인지하고 고칠 수 있다.
 
 ## 코드 생성 가이드 (예방)
 
@@ -236,7 +277,7 @@ display = live가 있으면 base에 live.status overlay, 없으면 base 그대�
 
 - **Cross-Project**: `ant-project` resolution에 다른 프로젝트의 projectId/feature 지정 → 프록시 경로 자동 계산
 - **Same-Project (self)**: `ant-project` resolution에 자기 자신의 projectId/feature 지정 → 내부 프록시 경로 자동 계산. `.env.example`에서 `@connection business backend-api self`로 선언.
-- **Multi-package serviceName**: `ant-project` resolution에 serviceName을 추가로 지정하면 대상 프로젝트의 특정 패키지(서비스)로 라우팅. URL Key에 5번째 세그먼트로 인코딩됨.
+- **Multi-package serviceName**: `ant-project` resolution에 serviceName을 추가로 지정하면 대상 프로젝트의 특정 패키지(서비스)로 라우팅. URL Key에 5번째 세그먼트로 인코딩됨. 사용자가 입력한 `serviceName`은 producer(`PreviewServer`의 preview-config 응답 빌더)에서 `packageSlug()`로 정규화되어 5-part urlKey에 박힌다. 따라서 `[serviceName=apps/web]`이라 적어도 실제 라우팅 슬러그는 `apps-web`이며, 해당 피처가 같은 슬러그로 자기 패키지를 등록해 두기만 하면 매치된다.
 
 ## Multi-Pod (K8s)
 
@@ -295,6 +336,8 @@ ALB 라운드 로빈으로 인해 stop 요청이 start를 실행한 Pod가 아�
 
 Deploy는 Preview와 별개의 서빙 경로다. 사용자가 "Deploy" 버튼을 누르면 피처의 프로덕션 빌드를 실행하고, 그 산출물을 정적 서버로 서빙한다. URL은 `/deploy/{urlKey}/...` 형식이며 동일한 `ant-preview` 프로세스 안의 별도 프록시 미들웨어가 처리한다.
 
+Deploy는 Preview와 동일한 멀티 패키지 모델을 따른다 — 슬러그 SSOT(`packageSlug()`), 5-part urlKey, `packages[]` 데이터 모델, 라우팅 우선순위까지 공유한다. 차이는 (1) 정적 산출물을 띄운다는 것, (2) `.deploy/meta.json`이 source of truth라는 점뿐이다.
+
 ### Phase 모델
 
 | Phase | 의미 | 프로세스 | 메타 | 자동 복구 |
@@ -311,54 +354,83 @@ Deploy는 Preview와 별개의 서빙 경로다. 사용자가 "Deploy" 버튼을
 
 ### 사망 경로
 
+멀티 패키지에서는 `activeDeploys[key]`가 N개의 `StaticServerHandle` 배열이다. 사망/복구 경로는 모두 패키지 단위로 적용된다.
+
 | 경로 | 트리거 | 결과 | 복구 |
 |------|-------|------|------|
-| Pod rolling update | `ant-preview` 배포 시 (`main/dev/ci/*` push) | `activeDeploys` + static server 프로세스 소실 | `cleanupStaleDeploys()`가 시작 시 `running→hibernated` 전환 |
-| Process crash / OOM | static server 자식 프로세스만 죽음 | Redis entry는 남지만 fetch 실패 | 프록시가 fetch 실패 시 `hibernated` 표시 + 1회 `ensureRunning` 재시도 |
-| Idle eviction | `ANT_DEPLOY_IDLE_TTL_MS` 초과 | `startIdleEviction`이 프로세스 정리 + phase `hibernated` broadcast | URL 접근 시 `ensureRunning`이 재기동 |
-| Redis TTL 만료 | 7일 무접근 | Redis entry 삭제 | meta.json이 남아있다면 `ensureRunning`이 재등록 |
+| Pod rolling update | `ant-preview` 배포 시 (`main/dev/ci/*` push) | 모든 패키지의 `activeDeploys` 핸들 + static server 프로세스 소실 | `cleanupStaleDeploys()`가 시작 시 `pkg.phase: running→hibernated` (또는 `error`) 전환 |
+| Process crash / OOM | 특정 패키지 static server 자식 프로세스만 죽음 | Redis entry는 남지만 해당 패키지 fetch 실패 | 프록시가 fetch 실패 시 `hibernated` 표시 + 1회 `ensureRunning` 재시도 |
+| Idle eviction | `ANT_DEPLOY_IDLE_TTL_MS` 초과 | `startIdleEviction`이 **모든 패키지** 핸들 정리 + 각 패키지 포트 해제 + phase `hibernated` broadcast | URL 접근 시 `ensureRunning`이 모든 패키지 재기동 |
+| Redis TTL 만료 | 7일 무접근 | Redis entry 삭제 | meta.json이 남아있다면 `ensureRunning`이 모든 패키지 재등록 |
 
 ### Lazy Re-hydration
 
-EFS `/mnt/workspaces`가 ReadWriteMany이므로 `buildOutputDir`는 pod 교체 후에도 살아있다. 재빌드 없이 static server만 다시 띄우면 복구 가능하다.
+EFS `/mnt/workspaces`가 ReadWriteMany이므로 각 `pkg.buildOutputDir`는 pod 교체 후에도 살아있다. 재빌드 없이 static server만 다시 띄우면 복구 가능하다.
 
 ```
-Browser → /deploy/{urlKey}/*
+Browser → /deploy/{urlKey}/*  또는  /deploy/{urlKey}--{slug}/*
   PreviewServer.createDeployProxyMiddleware
+    → parseUrlKey() → {projectId, feature, serviceName?}
     → DeployService.ensureRunning()
         1) Redis + activeDeploys 체크 → hit 시 그대로 프록시
         2) miss 시 per-key in-memory lock 획득
-        3) workspacePath/.deploy/meta.json 읽기
+        3) workspacePath/.deploy/meta.json 읽기 (v1은 v2로 자동 lift)
            - 없으면 phase='unavailable' broadcast → 404
            - 있으면 phase='starting' broadcast
-        4) 포트 할당 + startStaticServer(meta.framework, meta.buildOutputDir, ...)
+        4) meta.packages[]를 모두 순회: 각 패키지마다 포트 할당 + startStaticServer
         5) registerDeploy + phase='running' broadcast
+    → resolvePackagePort: serviceName(slug) 매치 → 그 패키지 port. 미매치/4-part는 entry pkg port.
     → fetch → 성공 시 touchDeploy (lastAccessedAt + TTL 갱신)
     → 실패 시 phase='hibernated' 갱신 + 1회 ensureRunning 재시도 → 여전히 실패면 phase='unavailable' + 502
 ```
 
-### 영속 저장소: `.deploy/meta.json`
+### 멀티 패키지 Deploy
+
+`DeployService.startDeploy`는 `ProjectStructureDetector`를 재사용해 모든 frontend 패키지를 찾고 `assignDeployIdentity`로 슬러그/urlKey를 부여한다. 각 패키지마다 별도 포트를 할당하고 빌드/static server를 **직렬로** 띄운다. 빌드 실패 패키지는 자기 phase만 `error`가 되고 나머지는 진행한다.
+
+| 항목 | 단일 패키지 | 멀티 패키지 |
+|------|-------------|-------------|
+| URL Key | 4-part `{urlKey}` | 패키지마다 5-part `{urlKey}--{slug}` |
+| basePath | `/deploy/{4-part}` | `/deploy/{5-part}` (패키지별) |
+| 포트 | 1개 | N개 (각 패키지) |
+| 최상위 `status.url` | 그 url | `null` (FE는 `packages[].url` 사용) |
+| `aggregatePhase` | 패키지 phase 그대로 | error 우선 → building → deploying → starting → all-running 등 |
+
+FE는 `DeployStatus.packages[]`를 받아 패키지별 "Open" 버튼을 그린다. 단일 패키지는 기존 단일 버튼 UX 유지.
+
+### 영속 저장소: `.deploy/meta.json` (v2)
 
 `workspacePath/.deploy/meta.json`이 재기동에 필요한 모든 정보를 담는다. Redis는 캐시일 뿐, meta.json이 **source of truth**다.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "tenantId": "...",
   "userId": "...",
   "projectId": "...",
   "feature": "...",
-  "framework": "vite",
   "workspacePath": "/mnt/workspaces/.../codebase",
-  "buildOutputDir": "/mnt/workspaces/.../codebase/dist",
-  "basePath": "/deploy/{urlKey}",
-  "urlKey": "{urlKey}",
+  "packages": [
+    {
+      "name": "apps/web",
+      "slug": "apps-web",
+      "framework": "nextjs",
+      "workspacePath": "/mnt/workspaces/.../codebase/apps/web",
+      "buildOutputDir": "/mnt/workspaces/.../codebase/apps/web/.next",
+      "basePath": "/deploy/{urlKey}--apps-web",
+      "urlKey": "{urlKey}--apps-web"
+    }
+  ],
   "createdAt": "...",
   "updatedAt": "..."
 }
 ```
 
-`DeployMetaStore.write`는 tmp 파일로 쓴 뒤 atomic rename으로 교체한다. `stopDeploy`는 meta.json을 삭제한다. `ensureRunning`은 meta.json이 있어도 `buildOutputDir`이 실제로 존재하는지 별도로 확인한다 — 없으면 `unavailable`로 전환하고 meta도 제거.
+`DeployMetaStore.write`는 tmp 파일로 쓴 뒤 atomic rename으로 교체한다. `stopDeploy`는 meta.json을 삭제한다. `ensureRunning`은 meta.json이 있어도 각 `pkg.buildOutputDir`이 실제로 존재하는지 별도로 확인한다 — 없으면 `unavailable`로 전환하고 meta도 제거.
+
+#### v1 → v2 in-memory 자동 lift
+
+기존 단일 패키지 deploy는 `version: 1`로 저장되어 있다. `DeployMetaStore.read()`가 v1을 읽으면 메모리에서 v2 형태로 변환해 반환한다 (디스크는 v1 그대로). slug는 `'root'`로 고정 — v1은 정의상 단일 패키지라 충돌 가능성이 없다. 다음 `write()` 시점에 v2로 덮어쓰여 forward-only 마이그레이션이 완료된다.
 
 ### Per-feature UI 상태 분리
 

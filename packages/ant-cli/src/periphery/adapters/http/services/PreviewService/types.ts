@@ -25,6 +25,18 @@ export interface PackageInfo {
   projectProfile?: { language: string; framework?: string };  // Detected by decompose node
   port?: number;
   process?: ChildProcess;
+  /**
+   * URL-safe slug for monorepo addressing. Computed by `PreviewService.startPreview`
+   * via `packageSlug(name)` and deduped across siblings. Persisted on
+   * `PreviewState.packages[].slug` so the proxy can match it.
+   */
+  slug?: string;
+  /**
+   * Per-package urlKey written to Redis. Frontend-only.
+   *   single-frontend → 4-part `toUrlKey(serverKey)`
+   *   multi-frontend  → 5-part `toUrlKeyWithService(serverKey, slug)`
+   */
+  urlKey?: string;
 }
 
 /**

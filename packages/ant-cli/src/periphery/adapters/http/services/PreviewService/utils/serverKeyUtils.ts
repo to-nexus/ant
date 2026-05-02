@@ -79,6 +79,31 @@ export function isUrlKey(segment: string): boolean {
 }
 
 /**
+ * Convert a monorepo package name (e.g. "apps/web", "@scope/ui") into a URL-safe
+ * slug usable as the 5th segment of the urlKey.
+ *
+ * Constraints:
+ *   - No '/' or '\' (would split URL path segments)
+ *   - No '--' (would conflict with URL_KEY_SEPARATOR)
+ *   - No leading/trailing '-'
+ *   - Falls back to "pkg" when input collapses to empty
+ *
+ * Callers MUST dedupe slugs across packages before persisting (collision rule:
+ * append "-2", "-3", …). This helper is stateless — dedupe is the caller's job.
+ *
+ * SSOT: every consumer that emits or matches a 5-part urlKey segment goes
+ * through this function. Do NOT inline `.replace(/[\/_]/g, '-')` elsewhere.
+ */
+export function packageSlug(name: string): string {
+  const slug = name
+    .replace(/[\\/]/g, '-')
+    .replace(/[^a-zA-Z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || 'pkg';
+}
+
+/**
  * Extract serverKey components (and optional serviceName) from a URL key.
  * Parses directly from the double-dash-separated format without going through
  * fromUrlKey+parsePreviewKey, so the 5th segment is cleanly extracted as serviceName.
