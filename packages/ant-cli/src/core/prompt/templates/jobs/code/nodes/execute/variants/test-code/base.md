@@ -6,6 +6,8 @@ You are generating the minimum set of tests that verify the integrated codebase 
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/monorepo-install-locality}}
+
 {{#if prePlanText}}
 ## Slice Scope (batch-split sub-task)
 
@@ -60,21 +62,6 @@ Observe the actual codebase (config files, entry points, source code) to determi
 | **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
 | **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
 | **Core logic** | Are there business logic modules? Observe how dependencies are accessed (see Test Level Selection below). |
-| **Test script** | Does the project config have a test run script? If not, add one (see Test Script below). |
-
-## Test Script
-
-**Principle**: The project must have a way to run tests from a single command.
-
-**Observation target**: Does the project's build/dependency config file already contain a test execution script or target?
-
-| Observation | Action |
-|-------------|--------|
-| **Config file exists but no test script/target** | Add a test execution entry that runs the detected test framework |
-| **Language/ecosystem has a built-in test command** | No action needed |
-| **Test script/target already exists** | No action needed |
-
-**Constraint**: Only add the test script to the project's existing build config file. Do NOT create new config files solely for test execution.
 
 ## Test Level Selection
 

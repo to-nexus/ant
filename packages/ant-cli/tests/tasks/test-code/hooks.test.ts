@@ -329,6 +329,67 @@ describe('tasks/test-code/hooks/plan.finalizeNudge', () => {
   });
 });
 
+describe('templates/jobs/code/nodes/(plan|execute)/variants/test-code — Test Script wiring SSOT', () => {
+  // Defense for the test-script wiring SSOT split:
+  //   - parent plan phase OWNS manifest test-run entry wiring (Step 2.5)
+  //   - execute variant must NOT carry a duplicate `## Test Script` section
+  //     that would (a) be visible to batch-split sub-tasks (where manifest
+  //     edits are forbidden — lockfile race) and (b) duplicate the parent
+  //     plan's responsibility (MECE violation).
+  // Regression scenario: Format-B parent installs the runner but no phase
+  // wires `scripts.test`, causing verification's first cycle to fail with
+  // "Missing script: test" and burn retry budget on a one-line fix.
+  const planBase = path.join(
+    __dirname,
+    '../../../src/core/prompt/templates/jobs/code/nodes/plan/variants/test-code/base.md',
+  );
+  const executeBase = path.join(
+    __dirname,
+    '../../../src/core/prompt/templates/jobs/code/nodes/execute/variants/test-code/base.md',
+  );
+
+  it('plan base template carries Step 2.5 — Wire Test-Run Entry block', () => {
+    const text = fs.readFileSync(planBase, 'utf8');
+    expect(text).toMatch(/Step 2\.5\s*[—\-]\s*Wire Test-Run Entry/);
+    // Responsibility framing — owner is the parent plan phase, not sub-tasks.
+    expect(text).toMatch(/parent plan phase['’]?s? exclusive responsibility/i);
+    // Tool boundary — manifest wiring uses edit_file, not run_command.
+    expect(text).toMatch(/Use `edit_file`/);
+  });
+
+  it('plan base template still forbids application source modification (constraint preserved)', () => {
+    const text = fs.readFileSync(planBase, 'utf8');
+    expect(text).toMatch(/Do NOT modify application source code/);
+    // The exception MUST be named explicitly so LLM cannot read the
+    // constraint as banning the new Step 2.5 wiring edit.
+    expect(text).toMatch(/single permitted manifest-write exception/i);
+  });
+
+  it('plan base template warns that wiring must NOT enter the batches[] payload', () => {
+    const text = fs.readFileSync(planBase, 'utf8');
+    expect(text).toMatch(/Do NOT include the manifest in any `batches\[\]`/);
+  });
+
+  it('plan base template carries the install-vs-entry blind-spot reminder', () => {
+    const text = fs.readFileSync(planBase, 'utf8');
+    expect(text).toMatch(/Installing the runner alone is not sufficient/i);
+  });
+
+  it('execute base template no longer carries a `## Test Script` section', () => {
+    const text = fs.readFileSync(executeBase, 'utf8');
+    expect(text).not.toMatch(/^## Test Script\s*$/m);
+    // Also no leftover checkpoint row pointing to the deleted section.
+    expect(text).not.toMatch(/\*\*Test script\*\*\s*\|\s*Does the project config/);
+  });
+
+  it('execute base template preserves the sub-task manifest-edit prohibition (lockfile race defence)', () => {
+    const text = fs.readFileSync(executeBase, 'utf8');
+    // The prePlanText (sub-task) branch MUST keep its strict manifest list
+    // — that is the OTHER half of the MECE split with the plan-phase wiring.
+    expect(text).toMatch(/Do NOT modify `package\.json`/);
+  });
+});
+
 describe('tasks/test-code/model/is — isTestCodeTask', () => {
   // Introduced in T6b-κ so `nodes/plan/planGeneration.ts
   // taskRequiresPlan` can delegate the skip-planning predicate to the
