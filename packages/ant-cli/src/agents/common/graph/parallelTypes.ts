@@ -143,20 +143,6 @@ export interface WorkerSnapshot {
   violations?: any[];
   enforcementHistory?: any[];
   tokenUsage?: TaskTokenUsage;
-  /**
-   * Verification session snapshot — the SSOT that supersedes the former
-   * flat `_verificationTracker` / `_verificationAttempts` /
-   * `_appliedPlanHistory` / `_depFileHash` fields (removed in T4b-β).
-   * Present only on code-job carry-overs that originated from a task
-   * that crossed into verify-mode (verification task type or Tier 2
-   * self-verify task with `selfVerifyOnDone:true`).
-   *
-   * Typed as `any` at this boundary to keep `common/graph/` free of
-   * code-job-specific imports; the concrete shape is
-   * `VerificationSnapshot` (see
-   * `agents/architect/graph/code/tasks/_shared/verify/snapshot.ts`).
-   */
-  verification?: any;
 }
 
 // ============================================

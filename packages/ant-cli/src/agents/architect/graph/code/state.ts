@@ -9,10 +9,8 @@ import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
-import type { VerificationSession } from "./tasks/_shared/verify/Session";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
-// task type). Source it from the `_shared/` layer so `state.ts` does not
-// inherit a structural dependency on the verification-specific model.
+// task type). Source it from the `_shared/` layer.
 import type { PlanEntry } from "./tasks/_shared/types";
 
 export interface IntegrationRequirement {
@@ -276,9 +274,6 @@ export interface ArchitectGraphState extends TriageableState {
   /** Per-task execute call budget computed from planText (create×1 + modify×3). Undefined = use default. */
   _executeBudget?: number;
 
-  /** Counter for consecutive final-task iterations with no done and no tool calls (Safety Net C) */
-  _finalTaskLoopCount?: number;
-
   /** Which node's tool loop are we in? 'plan' = plan-tool loop, 'execute' = execute-tool loop.
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
   _activePhase?: 'plan' | 'execute';
@@ -320,6 +315,13 @@ export interface ArchitectGraphState extends TriageableState {
    * prompt builders only. No other node consumes this.
    */
   _detectedPackageManager?: string;
+  /**
+   * Transient install observation written by `recomputeInstallNeeded` and
+   * read once by the verification plan prompt builder. `true` = install
+   * needed, `false` = current, `undefined` = unknown / not a JS project.
+   * Per-entry only — there is no Session cache.
+   */
+  _installNeededTransient?: boolean;
   /** Files written by other parallel tasks/workers (for session manifest in execute) */
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
   /**
@@ -412,21 +414,6 @@ export interface ArchitectGraphState extends TriageableState {
 
   /** Batch split occurred: original task was re-enqueued, skip completed marking in checkTaskStatus */
   _batchSplitRequeued?: boolean;
-
-  /**
-   * SSOT for verification domain state (attempts, gate config, pass cache,
-   * plan history, dep hash, batch-split counter). Populated by
-   * `tasks/_shared/verify/initSession` on fresh plan entry (verification
-   * task) or on the first reverify entry (Tier 2 self-verify task),
-   * rehydrated on resume via `VerificationSession.rehydrate(snap)`, and
-   * carried across worker boundaries as `VerificationSnapshot` in
-   * `WorkerSnapshot.verification` / `CodeTaskResumeState.verification`.
-   *
-   * `undefined` for tasks that have not yet entered verify-mode —
-   * queries go through the Session API (`state.verification?.method()`)
-   * and short-circuit naturally.
-   */
-  verification?: VerificationSession;
 
   /**
    * Phase mode signal — `true` when the active task has entered its

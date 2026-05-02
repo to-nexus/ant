@@ -10,13 +10,13 @@
  */
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
-// Gate vocabulary SSOT — declared once in
-// `tasks/_shared/verify/gates.ts` and imported here so the side-effect
-// channel and the `VerificationSessionSurface` cannot drift from the
-// Session's required/passed sets. The path crosses the common→code-graph
-// boundary, but `Gate` is a 3-element string union with no structural
-// dependencies, so the import stays inert.
-import type { Gate } from '../../architect/graph/code/tasks/_shared/verify/gates';
+// `Gate` was a 3-element union `'typecheck' | 'build' | 'test'` declared in
+// `tasks/_shared/verify/gates.ts`. After plan §5.4 the gate set + ordering
+// guard moved entirely to LLM judgment, so the type is now inlined here as
+// a string. The `verifies` field on `commandExecuted` side-effects survives
+// only as a free-form label for execution logs.
+//
+type Gate = string;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ChatStatusReporter — UI coupling isolation
@@ -107,23 +107,6 @@ export interface FileTreeUpdatePort {
   notifyFileTreeUpdate(project: string, featureName: string): Promise<void>;
 }
 
-/**
- * Minimal surface of `VerificationSession` that the tool / command-policy
- * handlers consume. Declared here (rather than imported from
- * `tasks/_shared/verify/Session`) so the common tool layer stays free
- * of code-graph imports.
- *
- * The full class lives at
- * `agents/architect/graph/code/tasks/_shared/verify/Session.ts`.
- */
-export interface VerificationSessionSurface {
-  required(): Gate[];
-  missing(): Gate[];
-  passed(): Gate[];
-  isComplete(): boolean;
-  dependencyStatus(): 'current' | 'changed' | 'unknown';
-  inDeepMode(): boolean;
-}
 
 export interface ToolExecutionContext {
   // === Common (all jobs) ===
@@ -180,20 +163,13 @@ export interface ToolExecutionContext {
    */
   currentTaskHasPrePlanText?: boolean;
   /**
-   * Read-only handle onto the active task's `VerificationSession` (when
-   * the current task is verification-typed). Command-policy hooks consult
-   * the session for gate state and dependency observation status instead
-   * of the flattened `verificationTracker` / `depFileHash` fields that
-   * existed pre-T4b-β. Dependency install status itself is a codebase
-   * observation (see `invalidationScope.areDepsInstalled`), not a
-   * hash cached on the session (F3).
+   * `true` when the active task is in verify-mode (verification responsibility
+   * holder + `_verifyEntered === true`). Used by command-policy guards to
+   * differentiate apply-phase callers (build commands blocked) from
+   * verification cycles (build commands allowed).
    */
-  verificationSession?: VerificationSessionSurface;
+  verifyModeActive?: boolean;
   retries?: number;
-  /** Deep-diagnostic mode active: loosen loop guards so the LLM can
-   *  probe config / dependency variants and re-run verification commands with
-   *  different options once per attempt. */
-  isDeepDiagnostic?: boolean;
 
   /** Phase 3-15 — number of `search_web` calls already executed in the current
    *  plan-toolLoop session. Handlers reject further calls once this reaches

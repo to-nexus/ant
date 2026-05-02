@@ -34,8 +34,6 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import type { Gate } from '../../_shared/verify/gates';
-import { isDiagnosticInspectCommand } from '../../_shared/verify/gates';
 
 /**
  * Policy-rejection `ToolResult`. See `_shared/verify/commandGuard.ts` for
@@ -53,22 +51,13 @@ function reject(command: string, reason: string): ToolResult {
 
 export function guard(
   ctx: ToolExecutionContext,
-  args: { command: string; verifies?: Gate },
+  args: { command: string; verifies?: string },
 ): ToolResult | null {
   const { command, verifies } = args;
 
-  // Read-only inspection commands (cat/ls/pnpm why/tsc --version/etc.) are
-  // always allowed — they don't mutate state and may be needed to confirm a
-  // fix location before writing it.
-  if (isDiagnosticInspectCommand(command)) return null;
-
   // Apply-phase block (uniform across tiers): build/test/typecheck are the
-  // diagnostic surface and belong to the verification cycle (Tier 3/4
-  // dedicated verification task; Tier 2 self-verify reverify phase via
-  // `_shared/verify/commandGuard`). Gate identity is the LLM's `verifies`
-  // declaration on the `run_command` call — the previous regex-based
-  // command-string inference was retired (see
-  // `docs/tmp/gate-classification-postmortem.md`).
+  // diagnostic surface and belong to the verification cycle. Gate identity
+  // is the LLM's `verifies` declaration on the `run_command` call.
   if (ctx.activePhase !== 'plan') {
     if (verifies) {
       return reject(

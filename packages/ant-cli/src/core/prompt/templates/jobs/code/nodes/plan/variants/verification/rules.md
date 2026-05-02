@@ -36,15 +36,14 @@
 
 **Constraint**: After observing a gate's failure, proceed directly to producing the remediation `<plan>` from that output. Do NOT re-run the same gate in the same plan cycle to "double check" or "confirm" — it wastes a tool slot and cannot change the result.
 
-**Constraint**: A gate that already reports as passed (the runtime will annotate "ALREADY PASSED") does not need to be re-run. Move to the next gate in the ordering.
+**Constraint**: When the conversation history shows a gate already passed in this cycle and no source file has changed since, do not re-run it. Move to the next gate in the ordering.
 
 ### Verification Gate Ordering
 
 **Principle**: Verification gates are observed in dependency order — type-check, build, test.
 Each gate's output informs whether the next gate is meaningful.
 
-**Constraint**: Do NOT skip a required gate. If the runtime reports a gate as
-already passed, proceed to the next; otherwise execute it.
+**Constraint**: Do NOT skip a required gate. Run them in order; do not jump straight to test before build/typecheck have been observed.
 
 {{/if}}
 
@@ -60,7 +59,7 @@ already passed, proceed to the next; otherwise execute it.
 
 **Constraint**: If you are uncertain whether remediation is needed, run one more verification command to collect evidence. Do NOT default to "no response" when uncertain.
 
-**Blind spot**: A verification failure observed earlier in the diagnostic cycle (violations from a previous attempt, failing gate output) REQUIRES a remediation `<plan>`. Emitting the no-errors sentinel while violations are still outstanding will be detected as a repeated-give-up pattern and terminate the task with `no_progress`.
+**Blind spot**: A verification failure observed earlier in the diagnostic cycle (violations from a previous attempt, failing gate output) REQUIRES a remediation `<plan>`. Emitting the no-errors sentinel while violations are still outstanding leaves the cycle stuck and will eventually trip the `batch_cycle_limit` fail-safe.
 
 ### Error Grouping Principle
 
@@ -124,28 +123,14 @@ If you are unsure which build command to use, observe:
 
 Use `read_file` on the project root's configuration files to determine the correct build command.
 
-### Prior-Attempt Lookup
+### Prior Error Sub-Tasks Awareness
 
-**Principle**: Prior attempts are durable on disk, not embedded in this prompt. `sessions/architect/code.json` is the SSOT — it records every completed task's plan body, diagnostics, and outcome across the whole feature session.
+**Principle**: The `## Prior Error Sub-Tasks Completed` section above (when present) lists every error sub-task spawned by previous batch-splits in this verification cycle. The list is the durable record of what has already been attempted — there is no `read_file` lookup to perform.
 
-**Constraint**: When a diagnostic cycle shows signs of cascading failure (the outstanding error names a file touched by a previously completed task, the same symptom reappears after a prior fix, batch-split count is rising), issue ONE `read_file` call against `sessions/architect/code.json` and extract only the completed-task entries relevant to the files under investigation.
+**Constraint**: A new plan that targets the same root cause, the same file, or the same fix angle as one of the listed prior tasks is a regression. Diagnose why the prior attempts were insufficient (e.g., they treated a symptom whose actual source is upstream) and approach from a different angle: alternate root cause, upstream config, dependency / environment, or a different fix strategy.
 
-**Constraint**: Do NOT read the session file on every attempt. Read it only when the evidence above is present. The Diagnostic Cycle Status banner (when rendered) tells you how many attempts and batch splits have occurred — use it to gate the lookup.
+### Verification Cycle Discipline
 
-**Constraint**: Do NOT paste session JSON wholesale into the plan. Extract the relevant fix rationale and cite it in your root-cause analysis.
+**Principle**: The runtime no longer caches gate-pass observations across the cycle. You decide when to re-run a verification command based on the evidence visible in your conversation history (prior `run_command` outputs, files changed since).
 
-### Cached Verification Steps
-
-**Principle**: A verification step (typecheck, build, test) that already passed in the current diagnostic cycle is retained by the runtime. You will be told when a step is already passed.
-
-**Constraint**: Do not re-run a step that is reported as already passed. Proceed to the next unverified step or, if every required step passes, output an empty plan and signal completion.
-
-**Constraint**: Tool responses whose content begins with `[Policy]` are internal guards (already-passed / gate ordering / deep-mode), NOT command execution failures. Treat them as the listed state (e.g. "already passed") and proceed to the next step — do not interpret them as a verification failure and do not retry the same command.
-
-{{#if isDeepDiagnostic}}
-### Deep-Diagnostic Variant Commands
-
-**Principle**: In deep-diagnostic mode, re-running a failed verification with different options (different config flag, different project, more verbose output) is permitted so long as the intent is to disambiguate the root cause.
-
-**Constraint**: Every variant run must be justified by a new hypothesis, not by hope. Do NOT cycle through variants of the same command without observation.
-{{/if}}
+**Constraint**: Do not re-run a verification command (typecheck / build / test) without a reason — re-running a passing gate after no source-file change wastes a tool slot. When every required gate has been observed to pass and no later edit invalidates them, emit the no-errors sentinel plan and signal completion.

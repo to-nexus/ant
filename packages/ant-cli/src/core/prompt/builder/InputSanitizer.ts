@@ -76,4 +76,10 @@ export class KeywordDeduplicator {
   reset(): void {
     this.processed.clear();
   }
+
+  /** Clear the dedup record for a single task (used on batch-split re-queue
+   *  so the parent task's keyword RAG re-fires on its next plan entry). */
+  delete(taskId: string): void {
+    this.processed.delete(taskId);
+  }
 }

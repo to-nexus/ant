@@ -85,22 +85,13 @@ describe('execute node — _executeModifiedFiles fully retired', () => {
   });
 });
 
-describe('execute node — isStuckLooping respects tool-mutated turns', () => {
-  // Locate the `isStuckLooping` expression and assert it ANDs in the
-  // tool-mutated signal. Re-introducing the old `streamedInThisCall.length
-  // === 0` only check (which was the 03ab4b0a partial fix that missed
-  // tool-based mutations) would trip this.
-  it('isStuckLooping AND-includes !toolMutatedThisTurn', () => {
-    const m = source.match(
-      /const\s+isStuckLooping\s*=\s*([\s\S]*?);/,
-    );
-    expect(m).not.toBeNull();
-    const expr = m![1];
-    expect(expr).toMatch(/streamedInThisCall\.length\s*===\s*0/);
-    expect(expr).toMatch(/!\s*toolMutatedThisTurn|toolMutatedThisTurn\s*===\s*false/);
+describe('execute node — Safety Net C is fully retired (plan §5.3)', () => {
+  it('source contains no `isStuckLooping`/`_finalTaskLoopCount` identifiers', () => {
+    expect(source).not.toMatch(/isStuckLooping/);
+    expect(source).not.toMatch(/_finalTaskLoopCount/);
   });
 
-  it('toolMutatedThisTurn reads `state._lastToolBatchMutatedFiles`', () => {
+  it('toolMutatedThisTurn signal still reads `state._lastToolBatchMutatedFiles` (kept for diagnostic logging)', () => {
     expect(source).toMatch(
       /const\s+toolMutatedThisTurn\s*=\s*state\._lastToolBatchMutatedFiles\s*===\s*true/,
     );

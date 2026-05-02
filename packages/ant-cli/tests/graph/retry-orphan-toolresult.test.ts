@@ -143,7 +143,6 @@ describe('mergeDelta semantics — delta wins for top-level, conversations is in
       _executeCallIndex: 3,
       violations: [{ type: 'old' as any, severity: 'critical' as const, message: 'stale' }],
       _planSearchWebCount: 7,
-      _finalTaskLoopCount: 2,
       conversations: { [NODE_EXECUTE]: [staleAssistantToolUse] },
     };
     const planReturn = {
@@ -153,13 +152,11 @@ describe('mergeDelta semantics — delta wins for top-level, conversations is in
     };
     const retryDelta = {
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
       violations: [],
       conversations: { [NODE_EXECUTE]: [] as ConversationMessage[] },
     };
     const merged = mergeDelta(planReturn as any, retryDelta as any);
     expect((merged as any)._executeCallIndex).toBe(0);
-    expect((merged as any)._finalTaskLoopCount).toBe(0);
     expect((merged as any).violations).toEqual([]);
   });
 

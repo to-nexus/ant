@@ -69,3 +69,11 @@ export function isVerifyEntered(state: ArchitectGraphState): boolean {
 export function resetVerifyEntered(state: ArchitectGraphState): void {
   state._verifyEntered = false;
 }
+
+/**
+ * Task-boundary delta. Returned by `checkTaskStatus` (main + worker) and
+ * by the prePlanned fast-path so the next task starts in apply-mode.
+ */
+export function clearForTaskBoundary(): { _verifyEntered: boolean } {
+  return { _verifyEntered: false };
+}

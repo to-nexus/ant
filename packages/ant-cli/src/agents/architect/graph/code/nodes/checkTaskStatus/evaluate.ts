@@ -158,7 +158,7 @@ export async function evaluateTaskStatus(
   // the inlined branches being replaced.
   if (violations.length === 0 && llmExplicitlyDone) {
     const hook = hooksIfActive(state)?.check;
-    if (hook) {
+    if (hook?.evaluate) {
       const extra = await hook.evaluate(state);
       if (extra) violations.push(extra);
     }

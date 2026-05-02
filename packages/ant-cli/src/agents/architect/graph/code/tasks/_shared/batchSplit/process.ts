@@ -57,13 +57,10 @@ export function processDiagnosticBatchSplit(
     return planText;
   }
   if (!planText || planText.length <= 50) {
-    // `plan_too_short` on a verification task with all gates passing is a
-    // happy-path signal — `isVerificationPassWithoutCodeGen` flips
-    // `done:true` afterwards. Surface that distinction so the log isn't
-    // mistaken for a "gave up" signal.
+    // For a verification task, an empty plan flips `done:true` via
+    // `isVerificationPassWithoutCodeGen`. Surface that distinction so the
+    // log isn't mistaken for a "gave up" signal.
     const isVerification = isVerificationTask(nextTask);
-    const verificationComplete = state.verification?.isComplete() ?? false;
-    const willPassViaShortcut = isVerification && verificationComplete;
     logBatchSplit({
       action: 'skipped',
       reason: 'plan_too_short',
@@ -71,8 +68,7 @@ export function processDiagnosticBatchSplit(
       taskName: nextTask.name,
       parentType: nextTask.type,
       isVerification,
-      verificationComplete,
-      nextOutcome: willPassViaShortcut
+      nextOutcome: isVerification
         ? 'pass_via_empty_plan_shortcut'
         : 'skip_to_execute_or_check',
     });
@@ -142,10 +138,11 @@ export function processDiagnosticBatchSplit(
       return planText;
     }
 
-    // Cycle counter lives on the Session (carried across re-queue via the
-    // resumeState snapshot). Pre-bump value so the terminal-throw snapshot
-    // below sees the magnitude that the upcoming `bumpBatchSplit` will set.
-    const splitCount = VerificationBudget.peekNextBatchSplit(state);
+    // Cycle counter lives on `task.batchSplitCount` (carried across re-queue
+    // via the resumeState snapshot + the explicit field assignment in the
+    // Path A / Path B branches below). Pre-bump value so the terminal-throw
+    // snapshot below sees the magnitude that the upcoming write will set.
+    const splitCount = VerificationBudget.peekNextBatchSplit(state, nextTask);
 
     if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
       logBatchSplit({ action: 'cycle_limit_failed', splitCount, taskName: nextTask.name });
@@ -159,7 +156,6 @@ export function processDiagnosticBatchSplit(
       throw new VerificationTerminalError(
         'batch_cycle_limit',
         `Batch split cycle limit (${MAX_BATCH_SPLIT_CYCLES}) exceeded for "${nextTask.name}" after ${splitCount} cycles.`,
-        snapshotFromState(state)?.verification,
       );
     }
 
@@ -211,14 +207,10 @@ export function processDiagnosticBatchSplit(
       subTaskIds.push(subTask.id);
     }
 
-    // Bump the Session counter BEFORE snapshot capture so the carried
-    // `verification.batchSplitCount` reflects the new cycle.
-    VerificationBudget.bumpBatchSplit(state, {
-      cycle: splitCount,
-      totalErrors: parsed.diagnostics?.totalErrors ?? 0,
-      rootCauses: parsed.diagnostics?.rootCauses ?? [],
-      batchNames: parsed.batches.map((b: any) => b.name),
-    });
+    // Bump the batch-split counter on the originating verification task.
+    // Carried across re-queues by `task.resumeState`; the `batch_cycle_limit`
+    // fail-safe reads it via `VerificationBudget.fromState`.
+    const newBatchSplitCount = (nextTask.batchSplitCount ?? 0) + 1;
 
     // Path A re-enqueues the original to preserve identity / `_failedAttempts`;
     // Path B drops it and (optionally) enqueues a Final Verification.
@@ -233,8 +225,17 @@ export function processDiagnosticBatchSplit(
         _failed: undefined,
         _failureReason: undefined,
         resumeState: snapshot ?? undefined,
+        batchSplitCount: newBatchSplitCount,
       } as CodeTask;
       state.taskQueue.push(requeuedTask);
+      // Clear keyword-RAG dedup so the parent's next plan entry re-fires
+      // keyword RAG (vast-curling-perch D-0). Lazy-required to keep the
+      // batchSplit module free of plan-layer imports at module init time.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { clearKeywordDedupForTask } = require('../../../nodes/plan/rag');
+        clearKeywordDedupForTask(nextTask.id);
+      } catch { /* non-blocking */ }
     } else {
       const shouldAppendFV = taskPolicy?.appendFinalVerification ?? true;
       if (shouldAppendFV) {
@@ -256,6 +257,7 @@ export function processDiagnosticBatchSplit(
             description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
             techTiers,
             resumeState: snapshot ?? undefined,
+            batchSplitCount: newBatchSplitCount,
           };
           state.taskQueue.push(verificationTask);
         }

@@ -18,8 +18,8 @@
  *
  * 의미 변경 0 — `processDiagnosticBatchSplit` 의 호출 시점 / 큐 mutation /
  * Session 변이 / throw 동작 모두 동일. 단지 호출 site 가 plan-layer 의
- * 다른 책임 (assertVerificationPlanIsFanoutOnly / onPlanApplied /
- * tracePlanFinalize) 와 분리되어 grep 시 큐 변이가 본 파일로 국한된다.
+ * 다른 책임 (assertVerificationPlanIsFanoutOnly / tracePlanFinalize) 와
+ * 분리되어 grep 시 큐 변이가 본 파일로 국한된다.
  */
 
 import type { ArchitectGraphState } from '../../../state';

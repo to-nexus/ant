@@ -337,56 +337,27 @@ describe('applyCodeCommandPolicy', () => {
     expect(result!.content).toContain('BLOCKED');
   });
 
-  it('should allow Go build during a verification cycle (verificationSession set)', async () => {
-    // Post verify-shared refactor: Go build is allowed only when an
-    // active verification cycle is in progress. The signal is
-    // `ctx.verificationSession` (composeBundle copies state.verification
-    // → ctx.verificationSession when verify-mode is active). Setting the
-    // taskType alone is no longer sufficient — verification tasks ALWAYS
-    // have a Session before they reach the execute phase, so this is
-    // semantically equivalent to the old check.
+  it('should allow Go build during a verification cycle (verifyModeActive=true)', async () => {
+    // Post plan §5.4: Go build is allowed when `ctx.verifyModeActive` is
+    // `true` (verification responsibility holder + `_verifyEntered`).
     const { applyCodeCommandPolicy } = await import('../../src/agents/common/tool/handlers/codeCommandPolicy');
-    const { VerificationSession } = await import('../../src/agents/architect/graph/code/tasks/_shared/verify/Session');
     ctx.currentTaskType = 'verification';
-    ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
+    (ctx as any).verifyModeActive = true;
     const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
     expect(result).toBeNull();
   });
 
-  it('allows build/test/tsc in verification execute phase (self-validation)', async () => {
-    // Verification-loop postmortem: execute-phase is now allowed to
-    // self-validate its own fix. The blanket "BLOCKED: do not run
-    // build/test during execute" policy was removed. The same
-    // already-passed / ordering guards that police plan-phase apply to
-    // execute too — when no gate has passed yet, build is permitted.
-    // Gate identity is the LLM's `verifies` declaration (see
-    // `docs/tmp/gate-classification-postmortem.md`).
+  it('allows verifies-declared commands when verify-mode is active (no per-gate runtime guards left)', async () => {
+    // The deterministic gate-ordering / already-passed guards retired with
+    // the verification Session (plan §5.4). Verify-mode passes commands
+    // through; runtime safety is delegated to LLM judgment + the
+    // `batch_cycle_limit` fail-safe.
     const { applyCodeCommandPolicy } = await import('../../src/agents/common/tool/handlers/codeCommandPolicy');
-    const { VerificationSession } = await import('../../src/agents/architect/graph/code/tasks/_shared/verify/Session');
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'execute';
-    ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
+    (ctx as any).verifyModeActive = true;
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
-  });
-
-  it('should block build before typecheck passes in plan phase (gate ordering)', async () => {
-    const { applyCodeCommandPolicy } = await import('../../src/agents/common/tool/handlers/codeCommandPolicy');
-    const { VerificationSession } = await import('../../src/agents/architect/graph/code/tasks/_shared/verify/Session');
-    // Plan-phase loop guard is verification-specific per R1 (lives in
-    // tasks/verification/hooks/command.ts); callers without a task type
-    // get the generic `null` pass-through.
-    //
-    // Post-attemptedThisCycle-retirement, all plan-phase guards reduce to
-    // queries on `passed`. A typecheck-required project with no passing
-    // typecheck must still block `npm run build` (ordering).
-    ctx.currentTaskType = 'verification';
-    ctx.activePhase = 'plan';
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    ctx.verificationSession = session;
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
-    expect(result).not.toBeNull();
-    expect(result!.content).toContain('BLOCKED');
   });
 
   it('should pass through non-policy commands', async () => {

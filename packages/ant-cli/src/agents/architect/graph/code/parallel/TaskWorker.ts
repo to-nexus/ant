@@ -20,28 +20,16 @@ import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/workerScope';
 import { VerificationTerminalError } from '../tasks/_shared/verify/errors';
-import { hooksForTaskType } from '../tasks/_shared/registry';
-import type { TaskType } from '@ant/shared';
 import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
 
 /**
  * Produce a `WorkerSnapshot` from any code-graph state object.
  *
- * Extracted to module scope so callers without a live worker instance —
- * notably `plan.processDiagnosticBatchSplit` — can mint a snapshot and
- * attach it to a re-queued task via `task.resumeState`. Before this
- * helper the snapshot shape was inlined inside the `TaskWorker.captureState`
- * method, which was never callable from anywhere else. The connection is
- * the critical link that the 2026-02-11 refactor (`0be5a6b0`) accidentally
- * severed and that every subsequent verification-hardening enhancement silently
- * depended on.
- *
- * T7 — Single snapshot API for the three carry-over boundaries
+ * Single snapshot API for the three carry-over boundaries
  * (`handleInterruption` / `reportFailure` transient re-queue /
- * `plan.processDiagnosticBatchSplit`). Each boundary calls this helper
- * so the persisted shape (`verification: VerificationSnapshot`) is
- * produced uniformly. Task-type-specific snapshot hydration is
- * delegated via `hooksForTaskType(task.type)?.orchestrator?.*`.
+ * `plan.processDiagnosticBatchSplit`). Verification cycle carry-over is
+ * driven entirely by `task.batchSplitCount` (assigned explicitly at the
+ * batch-split re-queue site) — not by a snapshot field.
  */
 export function snapshotFromState(state: any): WorkerSnapshot | null {
   if (!state) return null;
@@ -52,10 +40,6 @@ export function snapshotFromState(state: any): WorkerSnapshot | null {
     violations: state.violations,
     enforcementHistory: state.enforcementHistory,
     tokenUsage: state._currentTaskTokenUsage,
-    // VerificationSession snapshot (undefined for non-verification tasks
-    // or a verification task that was never entered — `initSession`
-    // populates `state.verification` the first time the plan node fires).
-    verification: state.verification?.snapshot?.(),
   };
 }
 
@@ -135,7 +119,6 @@ export class TaskWorker<T extends BaseTask> {
           const err = new VerificationTerminalError(
             'unresolved_violations',
             `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
-            snapshotFromState(result)?.verification,
           );
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
           await this.orchestrator.reportFailure(this.workerId, completedTask, err);
@@ -184,7 +167,6 @@ export class TaskWorker<T extends BaseTask> {
       planText: '',
       conversations: {},
       _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
       _lastToolBatchMutatedFiles: false,
       toolResults: [],
       violations: [],
@@ -212,18 +194,10 @@ export class TaskWorker<T extends BaseTask> {
       _isStopRequested: () => this.stopRequested,
     };
 
-    // Task-type-specific snapshot rehydration (R1 dispatch). The
-    // verification hook rebuilds `state.verification` from the stored
-    // `VerificationSnapshot`; other task types currently have no snapshot
-    // to restore and the call is a no-op.
-    if (task.interrupted && (task as any).resumeState) {
-      hooksForTaskType(task.type as TaskType)?.orchestrator?.restoreIntoWorkerState?.(
-        workerState,
-        (task as any).resumeState.verification,
-      );
-    }
-
-    // Clear resumeState after restoring
+    // Clear resumeState after restoring. Task-type-specific snapshot
+    // rehydration (`orchestrator.restoreIntoWorkerState`) was retired by
+    // plan §5.6.1; verification cycle carry-over now flows through
+    // `task.batchSplitCount` (assigned at the batch-split re-queue site).
     if (task.interrupted && (task as any).resumeState) {
       (task as any).resumeState = undefined;
       task.interrupted = false;

@@ -86,13 +86,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       // to rebuild its framing without re-running decompose.
       ...(state.executionTier !== undefined && { executionTier: state.executionTier }),
       ...(state.directHints && { directHints: state.directHints }),
-      // T7 — Persist the VerificationSession snapshot so resume paths in
-      // `runner.ts` can rehydrate the live diagnostic cycle (required/passed
-      // gates, attempt counter, plan history, dep hash, batch-split count).
-      // Class instances serialise to `{}` under `JSON.stringify` (Sets and
-      // private fields drop), so an explicit `.snapshot()` projection is
-      // mandatory.
-      ...(state.verification && { verification: state.verification.snapshot() }),
     };
     
     // ✅ Only include currentTask if it exists
