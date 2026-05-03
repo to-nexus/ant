@@ -60,6 +60,7 @@ import {
   type Turn,
   type TurnSection,
 } from '@/domain/store/selectors/chat';
+import { shouldSuppressPreviewOnlyStatusCard } from './statusCardVisibility';
 
 interface TurnItemProps {
   turn: Turn;
@@ -80,6 +81,7 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
           <SectionStack
             key={`${turn.turnId}:${section.workerScope}:${idx}`}
             turnId={turn.turnId}
+            turnJobType={turn.jobType}
             section={section}
           />
         ))}
@@ -116,9 +118,11 @@ const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }
 // re-render this one.
 const SectionStack = memo(function SectionStack({
   turnId,
+  turnJobType,
   section,
 }: {
   turnId: string;
+  turnJobType: Turn['jobType'];
   section: TurnSection;
 }) {
   const isStreaming = !!(
@@ -182,6 +186,7 @@ const SectionStack = memo(function SectionStack({
             key={`pending:${cardId}`}
             pending={pending}
             turnId={turnId}
+            turnJobType={turnJobType}
             workerScope={section.workerScope}
             isStreaming
           />
@@ -353,6 +358,10 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
   pending,
   isStreaming,
 }: StatusCardDispatchProps) {
+  if (shouldSuppressPreviewOnlyStatusCard(line)) {
+    return null;
+  }
+
   switch (line.statusType) {
     case 'placeholder':
       return isStreaming ? <ShimmerCard variant="placeholder" /> : null;
@@ -471,11 +480,13 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
 const PendingStatusCard = memo(function PendingStatusCard({
   pending,
   turnId,
+  turnJobType,
   workerScope,
   isStreaming,
 }: {
   pending: PendingCardSnapshot;
   turnId: string;
+  turnJobType: Turn['jobType'];
   workerScope: string;
   isStreaming: boolean;
 }) {
@@ -495,13 +506,13 @@ const PendingStatusCard = memo(function PendingStatusCard({
       ts: `pending:${pending.cardId}`,
       jobId: '',
       turnId,
-      jobType: 'code',
+      jobType: turnJobType,
       cardId: pending.cardId,
       statusType: pending.statusType as ChatStatusType,
       workerScope: workerScope === MAIN_WORKER_SCOPE ? undefined : workerScope,
       metadata: pending.metadata,
     }),
-    [pending, turnId, workerScope],
+    [pending, turnId, turnJobType, workerScope],
   );
   return <StatusCardDispatch line={line} pending={pending} isStreaming={isStreaming} />;
 });
