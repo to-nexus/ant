@@ -7,6 +7,7 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import {
   decideInvalidationScope,
   isDepManifestPath,
@@ -31,6 +32,12 @@ export async function handleEditFile(
 
   try {
     const resolved = await resolveToolPath(ctx, filePath);
+
+    if (shouldRejectCodebaseMutate(ctx, resolved)) {
+      const rejection = rejectCodebaseMutate('edit_file', resolved);
+      await ctx.chatStatus.failFileEdit(filePath, rejection.error);
+      return rejection;
+    }
 
     const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {

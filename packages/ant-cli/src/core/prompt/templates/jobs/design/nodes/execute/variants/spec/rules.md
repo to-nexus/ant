@@ -19,9 +19,10 @@ the plan phase).
 
 - Do NOT change the solution direction recorded in `documentOutline`.
   It is sealed.
-- Use tools ONLY for *detail precision* (exact import paths, function
-  signatures, file conventions, asset values). Do NOT re-explore
-  architecture — that is decided.
+- Use tools to verify the *detail precision of the spec text* (exact
+  import paths, function signatures, file conventions, asset values
+  referenced in the document). Do NOT re-explore architecture — that
+  is decided.
 - If you find new evidence via tools that contradicts the sealed plan,
   DO NOT silently override. Raise it via `<clarify>` so the next plan
   cycle can re-decide.

@@ -125,7 +125,7 @@ export async function callLLMForDecompose(
 
   let orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
-    renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
+    renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined, undefined, undefined, undefined, 'plan'),
     existingFiles: new Set(),
     onAction,
   });
@@ -152,7 +152,7 @@ export async function callLLMForDecompose(
       capturedUsage = undefined;
       orchestrator = new StreamOrchestrator({
         parser: new XMLStreamParser(),
-        renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
+        renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined, undefined, undefined, undefined, 'plan'),
         existingFiles: new Set(),
         onAction,
       });

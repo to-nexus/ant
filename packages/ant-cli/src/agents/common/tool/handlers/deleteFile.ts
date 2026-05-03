@@ -4,6 +4,7 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import {
   decideInvalidationScope,
   isDepManifestPath,
@@ -20,6 +21,10 @@ export async function handleDeleteFile(
   try {
     const resolved = await resolveToolPath(ctx, filePath);
     console.log(`[deleteFile] Deleting file: ${resolved.displayPath} (fsPath: ${resolved.fsPath}, scope: ${resolved.scope})`);
+
+    if (shouldRejectCodebaseMutate(ctx, resolved)) {
+      return rejectCodebaseMutate('delete_file', resolved);
+    }
 
     const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {

@@ -46,7 +46,27 @@ export interface FileRendererConfig {
   fileSystem?: FileSystemPort;  // ✅ Add fileSystem
   fileTreeUpdate?: FileTreeUpdatePort;  // ✅ For real-time file tree updates
   writeImmediately: boolean;
-  jobType?: 'code' | 'design';
+  /**
+   * Job context for the codebase-write guard.
+   * - `code` + `codePhase === 'execute'` → `codebase/` writes allowed
+   * - `code` + `codePhase === 'plan'` → `codebase/` writes rejected
+   * - `design` / `planner` → `codebase/` writes rejected (artifact paths only)
+   *
+   * Mirrors `ToolExecutionContext.allowMutateInCodebase` for the
+   * tool-handler path — the streaming `<file>`/`<append>`/`<edit>`/
+   * `<delete>` path used to bypass that guard, so we close the gate
+   * here on the same policy SSOT (see `docs/architecture/15-design-job.md`
+   * "Codebase mutation gate").
+   */
+  jobType?: 'code' | 'design' | 'planner';
+  /**
+   * For `jobType === 'code'`, identifies whether the renderer is
+   * driven by the plan or the execute phase. Plan-phase artifacts
+   * are the sealed `<plan>` JSON / plan-side documents; mutating
+   * `codebase/` belongs to execute. Defaults to `'execute'` when
+   * absent so legacy callers keep working.
+   */
+  codePhase?: 'plan' | 'execute';
   featurePath?: string;
   codebasePath?: string; // ✅ For code jobs: absolute path to repo root (codebase dir)
   /**
@@ -85,7 +105,8 @@ export class FileRenderer {
   private fileSystem?: FileSystemPort;  // ✅ Add fileSystem property
   private fileTreeUpdate?: FileTreeUpdatePort;  // ✅ For real-time file tree updates
   private writeImmediately: boolean;
-  private jobType?: 'code' | 'design';
+  private jobType?: 'code' | 'design' | 'planner';
+  private codePhase?: 'plan' | 'execute';
   private featurePath?: string;
   private codebasePath?: string;
   private onFileTouched?: (filePath: string) => void;
@@ -125,6 +146,7 @@ export class FileRenderer {
     this.fileTreeUpdate = config.fileTreeUpdate;  // ✅ Store fileTreeUpdate
     this.writeImmediately = config.writeImmediately;
     this.jobType = config.jobType;
+    this.codePhase = config.codePhase;
     this.featurePath = config.featurePath;
     this.codebasePath = config.codebasePath;
     this.onFileTouched = config.onFileTouched;
@@ -484,28 +506,57 @@ export class FileRenderer {
         }
       }
 
-      // Guard: code jobs must write only under codebase/. Reject sibling
-      // domain dirs (architecture/, visual/, assets/, plan/, meta/, sessions/)
-      // — those are legitimate destinations for design / planner / visual
-      // jobs but not for code. resolveFileSystemPath already normalized the
-      // path, so if it still doesn't start with codebase/, the normalizer
-      // intentionally left it unchanged (Rule 3: sibling dir) — wrong for code.
-      if (this.jobType === 'code' && this.codebasePath) {
+      // Codebase mutation gate (XML tag path) — symmetrical to the
+      // tool-handler gate in `agents/common/tool/handlers/codebaseGate.ts`.
+      //
+      // Policy: only the architect/code job's `execute` phase may write
+      // under `codebase/`. `<file>`/`<append>`/`<edit>`/`<delete>` from
+      // design / planner / code-plan are document-side artifact writes,
+      // never source-code mutations. Without this gate the streaming
+      // path bypasses the tool-handler gate (a known regression — see
+      // `docs/architecture/15-design-job.md` "Codebase mutation gate").
+      const codebaseRel = (() => {
         const rootPath = this.fileSystem?.getRootPath?.();
-        const codebaseRel = rootPath
-          ? (path.relative(rootPath, this.codebasePath).replace(/\\/g, '/') || 'codebase')
-          : 'codebase';
-        const codebasePrefix = codebaseRel + '/';
-
-        if (!fsPath.startsWith(codebasePrefix) && fsPath !== codebaseRel) {
-          const msg =
-            `File write REJECTED: "${filePath}" resolved to "${fsPath}" which is outside ` +
-            `the codebase directory ("${codebaseRel}/"). Code files must be under "${codebaseRel}/".`;
-          console.error(`❌ [FileRenderer] ${msg}`);
-          this.fileErrors.push(msg);
-          await this.chatAPI.failFileCreation(filePath, msg);
-          return;
+        if (this.codebasePath && rootPath) {
+          return path.relative(rootPath, this.codebasePath).replace(/\\/g, '/') || 'codebase';
         }
+        return 'codebase';
+      })();
+      const codebasePrefix = codebaseRel + '/';
+      const isCodebaseTarget = fsPath === codebaseRel || fsPath.startsWith(codebasePrefix);
+      const codeExecuteAllowed =
+        this.jobType === 'code' && this.codePhase !== 'plan';
+
+      // Guard 1 (legacy): code-execute writes must land UNDER codebase/.
+      // This rejects sibling domain dirs (architecture/, visual/, assets/,
+      // plan/, meta/, sessions/) for code execute — they are artifact
+      // destinations for design / planner / visual jobs, not for code.
+      if (codeExecuteAllowed && this.codebasePath && !isCodebaseTarget) {
+        const msg =
+          `File write REJECTED: "${filePath}" resolved to "${fsPath}" which is outside ` +
+          `the codebase directory ("${codebaseRel}/"). Code files must be under "${codebaseRel}/".`;
+        console.error(`❌ [FileRenderer] ${msg}`);
+        this.fileErrors.push(msg);
+        await this.chatAPI.failFileCreation(filePath, msg);
+        return;
+      }
+
+      // Guard 2: design / planner / code-plan never write under codebase/.
+      // The artifact this phase produces lives under architecture/ (or
+      // plan/, assets/, etc.); source-code changes are deferred to the
+      // code job's execute phase.
+      if (!codeExecuteAllowed && isCodebaseTarget) {
+        const phaseLabel = this.jobType === 'code' ? 'code-plan' : (this.jobType ?? 'this phase');
+        const msg =
+          `File ${fileInfo.actionType} REJECTED: "${filePath}" is under ${codebaseRel}/, ` +
+          `which is read-only for ${phaseLabel}. Write to artifact paths ` +
+          `(architecture/, plan/, assets/, visual/, meta/, sessions/) instead. ` +
+          `Source-code changes happen in the code job's execute phase — describe the change ` +
+          `in the spec / plan document here.`;
+        console.error(`❌ [FileRenderer] ${msg}`);
+        this.fileErrors.push(msg);
+        await this.chatAPI.failFileCreation(filePath, msg);
+        return;
       }
 
       if (this.jobType === 'design') {

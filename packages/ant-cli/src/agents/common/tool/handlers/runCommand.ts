@@ -429,6 +429,10 @@ export async function handleRunCommand(
   ctx: ToolExecutionContext,
   args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
+  if (ctx.allowMutateInCodebase !== true) {
+    const { rejectRunCommand } = await import('./codebaseGate');
+    return rejectRunCommand();
+  }
   const isInstall = PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(args.command));
   if (isInstall) {
     console.log(`🔒 [RunCommand] Package manager command detected — acquiring mutex: ${args.command}`);

@@ -137,6 +137,11 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       sourceDocuments: state.artifacts,
       uiAssetsList: state.uiAssetsList,
       existingDesignDocs: state.existingDesignDocs,
+      // Codebase mutation gate — design job's artifact lives under
+      // architecture/, plan/, assets/, etc. Any `codebase/` write
+      // belongs to the downstream code job, so close the gate
+      // throughout design (plan + docGen).
+      allowMutateInCodebase: false,
     };
   },
 

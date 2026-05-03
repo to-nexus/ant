@@ -21,6 +21,7 @@ import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, selectArtifactsWithPolicy, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { buildSelfCheckTrailingMessage } from './selfCheck';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -77,10 +78,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const specDir = designDirOf(targetFile);
   const runtimeLines: string[] = [];
   // Sealed plan from plan node — sourced from `state.planText`. When
-  // populated, prepend it so docGen treats it as the authoritative
-  // outline / decision contract (see spec/rules.md "Sealed Plan").
+  // populated, prepend it. The title closes the meaning axis: the
+  // decision recorded here is the content the spec markdown should
+  // record, not an action docGen performs on the codebase. See
+  // spec/base.md and spec/rules.md "Sealed Plan from Plan Node".
   if (state.planText && state.planText.trim().length > 0) {
-    runtimeLines.push(`# Sealed Plan (from plan node)`);
+    runtimeLines.push(`# Sealed Plan (the content the spec markdown should record)`);
     runtimeLines.push(state.planText);
     runtimeLines.push('');
   }
@@ -198,11 +201,22 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const SOFT_DEADLINE = 30;
   const HARD_DEADLINE = 40;
 
+  // R5 self-check trailing message: takes precedence over deadline
+  // reminders because resolving a pending-done-check is the higher-
+  // priority signal. See `selfCheck.ts` for the helper.
+  const targetArtifactPath = `architecture/spec/${targetFile}`;
+  const selfCheck = buildSelfCheckTrailingMessage(state, {
+    artifactPath: targetArtifactPath,
+    sectionScope,
+  });
+
   let trailingUserMessage = 'Continue.';
-  if (callIndex >= HARD_DEADLINE) {
+  if (selfCheck) {
+    trailingUserMessage = selfCheck;
+  } else if (callIndex >= HARD_DEADLINE) {
     trailingUserMessage =
       `Continue.\n\n⚠️ WRITING DEADLINE: You have used ${callIndex} turns exploring. ` +
-      `You MUST generate the spec document NOW using <file> or <append> tag, then output <done>true</done>. ` +
+      `Write the spec document now using <file> or <append> tag, then output <done>true</done>. ` +
       `No more tool calls — write the document with what you have gathered so far.`;
   } else if (callIndex >= SOFT_DEADLINE) {
     trailingUserMessage =

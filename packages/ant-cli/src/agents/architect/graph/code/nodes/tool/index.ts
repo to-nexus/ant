@@ -45,6 +45,11 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       fileTreeUpdate: state.deps?.fileTreeUpdate as any,
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
+      // Codebase mutation gate — `execute` phase produces source code as
+      // its artifact, so it's the only phase that may mutate `codebase/`
+      // paths or run shell commands. `plan` phase produces the sealed
+      // plan JSON; codebase changes are deferred to execute.
+      allowMutateInCodebase: state._activePhase === 'execute',
       currentTaskType: (state.currentTask as any)?.type,
       // Verify-mode dispatch is signalled by `verifyModeActive` below
       // (`requiresVerification(task) && _verifyEntered`). Apply-phase

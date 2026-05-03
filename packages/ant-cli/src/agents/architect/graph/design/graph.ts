@@ -780,6 +780,8 @@ export const DesignGraphChannels = {
   _isStopRequested: Annotation<any>,
   executionTier: Annotation<any>,
   _activePhase: Annotation<any>,
+  _pendingDoneCheck: Annotation<any>,
+  _doneCheckEscalation: Annotation<any>,
 } as const;
 
 const DesignGraphAnnotation = Annotation.Root(DesignGraphChannels);
