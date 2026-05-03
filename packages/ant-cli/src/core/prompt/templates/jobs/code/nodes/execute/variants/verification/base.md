@@ -96,6 +96,8 @@ Output `<done>true</done>` when:
 - The remediation plan is empty (gates already pass), OR
 - You have exhausted a reasonable fix attempt and need the plan phase to re-diagnose.
 
+**Pre-`<done>` lifecycle gate**: If you spawned a long-running process (`run_command keep_running: true`) during this cycle, kill it first. See the Persistent Process Policy injection above for the single rule and the five-step procedure — verification reuses the same rule; nothing additional applies here.
+
 ## PATH CONVENTION
 
 All paths are relative to the feature root.

@@ -6,6 +6,8 @@
 
 {{> jobs/code/base/injections/tool-calling-rules-compact}}
 
+{{> jobs/code/base/injections/persistent-process-policy}}
+
 ## Tool Call Batching
 
 **Principle**: The system processes ALL tool calls from a single response as one batch.
@@ -114,5 +116,6 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 4. Emit `<done>true</done>` once every remediation fix in the plan is applied.
 5. If planText is empty, emit `<done>true</done>` immediately (the error was already resolved upstream).
 6. Do NOT emit `<done>true</done>` while a tool call is still pending a result.
+7. **Process lifecycle**: If you spawned a long-running process during this task (`run_command keep_running: true`), kill it before `<done>`. Same single rule as the Persistent Process Policy injection above — apply phase reuses it; nothing additional applies here.
 
 **Follow these rules for successful error fixing.**
