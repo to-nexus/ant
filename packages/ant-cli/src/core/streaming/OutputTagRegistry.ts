@@ -326,6 +326,105 @@ export function tagsByIntent(intent: TagAxisIntent): readonly OutputTagSpec[] {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Surface-side leak guards
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Strip every registered canonical tag (and its body) from `content`.
+ *
+ * Used by surfaces that bypass `SpecialTagTransformer` — parallel
+ * `task_response` cards, `plan` card metadata, file-card previews,
+ * thinking cards — to make sure raw `<reply>` / `<done>` / `<plan>` /
+ * `<file>` strings never reach `chat.jsonl` or the card viewer.
+ *
+ * This is a defensive net for the `LLM emitted a tag inside a surface
+ * that doesn't run it through the transformer` class of bug. The
+ * canonical contract is still that the LLM emits each tag in the
+ * intended place; this helper keeps a violation from leaking visibly.
+ *
+ * The function is safe to call on tag-free text — it returns the input
+ * unchanged when no tag matches.
+ */
+export function stripRegisteredTags(content: string): string {
+  if (!content) return content;
+  let out = content;
+  for (const entry of REGISTRY.values()) {
+    // Each entry's pattern is non-global by design (single-shot match).
+    // Re-issue with the global flag so every occurrence is removed.
+    const flags = entry.pattern.flags.includes('g')
+      ? entry.pattern.flags
+      : entry.pattern.flags + 'g';
+    const re = new RegExp(entry.pattern.source, flags);
+    out = out.replace(re, '');
+  }
+  return out;
+}
+
+/**
+ * Inspect `content` for any registered tag whose intent axis differs
+ * from `hostIntent`. Returns the list of violator tag names (empty
+ * when the content is well-formed).
+ *
+ * Used by surface-side defensive guards that hold an `artifact` body
+ * (e.g. `<file>`, `<plan>`) — finding a `narrative` or `control` tag
+ * inside is a contract violation per the Output Tag Matrix Invariant 2
+ * ("no nesting across intent axes"). The strip surfaces above hide the
+ * marker from the user; this helper lets callers also surface a dev-mode
+ * warning so the violation is visible during prompt iteration instead
+ * of silently scrubbed.
+ */
+export function detectCrossAxisLeak(
+  content: string,
+  hostIntent: TagAxisIntent,
+): string[] {
+  if (!content) return [];
+  const violators: string[] = [];
+  for (const entry of REGISTRY.values()) {
+    if (entry.axis.intent === hostIntent) continue;
+    // Re-match with a fresh non-stateful regex so a global-flagged
+    // entry pattern doesn't carry `lastIndex` between calls.
+    const re = new RegExp(entry.pattern.source, entry.pattern.flags.replace('g', ''));
+    if (re.test(content)) {
+      violators.push(entry.name);
+    }
+  }
+  return violators;
+}
+
+/**
+ * Replace every registered canonical tag in `content` with the
+ * transform output of its registry entry. Suppressed entries collapse
+ * to the empty string (same as `stripRegisteredTags`); formatted
+ * entries keep their rendered text.
+ *
+ * Use this when a surface needs the registered tags rendered inline —
+ * for example, a parallel `task_response` card whose body should show
+ * the `<reply>` body verbatim while still hiding the wrapper tag.
+ */
+export function transformAndStrip(
+  content: string,
+  language: UserLanguage = 'en',
+): string {
+  if (!content) return content;
+  let out = content;
+  for (const entry of REGISTRY.values()) {
+    const flags = entry.pattern.flags.includes('g')
+      ? entry.pattern.flags
+      : entry.pattern.flags + 'g';
+    const re = new RegExp(entry.pattern.source, flags);
+    out = out.replace(re, (...args: unknown[]) => {
+      // RegExp.replace passes the match array as positional arguments.
+      // Reconstruct the array shape `transform` expects.
+      const matchArr = args.slice(0, args.length - 2) as unknown as RegExpMatchArray;
+      if (!entry.transform) return '';
+      const result = entry.transform(matchArr, { language });
+      return result.text ?? '';
+    });
+  }
+  return out;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Entries
 // ────────────────────────────────────────────────────────────────────────────
 //

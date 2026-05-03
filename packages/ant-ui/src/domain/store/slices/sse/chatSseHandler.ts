@@ -144,9 +144,6 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           chunk: chatEvent.chunk,
           producedAt: chatEvent.producedAt,
         });
-        if (chatEvent.kind === 'card_output' && chatEvent.cardId) {
-          get().appendVirtualEditorTabChunk?.(chatEvent.cardId, chatEvent.chunk);
-        }
         break;
       }
 

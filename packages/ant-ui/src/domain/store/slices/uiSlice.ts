@@ -1,5 +1,27 @@
 import { StateCreator } from 'zustand';
-import { UIState, type EditorTab } from '../types';
+import {
+  UIState,
+  type EditorTab,
+  type MainPanelTabId,
+  type MainPanelTabOrderItem,
+  type StaticMainPanelTab,
+} from '../types';
+import {
+  UNPINNED_EDITOR_TAB_ID,
+  fileTitleFromPath,
+  isEditorTabId,
+  makePinnedRealTabId,
+  makeVirtualEditorTabId,
+  moveTabIdToOrderEnd,
+  reconcileMainPanelActiveTab,
+  sanitizeEditorTabOrder,
+} from '../editor/editorTabMainPanel';
+import {
+  buildTurnInfoMap,
+  getPendingCardFilePath,
+  resolveVirtualTabSource,
+  shouldRenderVirtualPreviewCard,
+} from '../editor/virtualTabModel';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import {
   type ActionMetadata,
@@ -137,9 +159,9 @@ export interface UIActions {
   setIdeConnecting: (connecting: boolean, error?: string) => void;
   setIdeFrameLoaded: (loaded: boolean) => void;
   reloadIdeFrame: () => void;
-  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
-  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
-  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
+  selectMainPanelTab: (tab: MainPanelTabId) => void;
+  openMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
+  closeMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
   // ✅ Pending clarify answers (compound ChoiceCard ↔ ChatInput shared state)
   setPendingClarifyAnswer: (index: number, answer: string) => void;
   removePendingClarifyAnswer: (index: number) => void;
@@ -175,7 +197,6 @@ export interface UIActions {
   syncVirtualEditorTabsFromBuffers: (
     buffers: Record<string, { turnId: string; pendingCards?: Record<string, import('@ant/shared').PendingCardSnapshot> }>,
   ) => void;
-  appendVirtualEditorTabChunk: (cardId: string, chunk: string) => void;
   promoteVirtualEditorTabToReal: (args: { cardId: string; filePath: string; source?: 'plan' | 'design' }) => void;
   removeVirtualEditorTabsByJobId: (jobId: string) => void;
 }
@@ -215,13 +236,6 @@ const getInitialTheme = (): 'light' | 'dark' => {
   
   return 'light';
 };
-
-const UNPINNED_EDITOR_TAB_ID = 'editor:unpinned';
-
-const fileTitleFromPath = (filePath: string | undefined): string =>
-  filePath?.split('/').filter(Boolean).pop() || 'Untitled';
-
-const makePinnedRealTabId = (filePath: string): string => `editor:real:${filePath}`;
 
 function isRealUnpinnedTab(tab: EditorTab): boolean {
   return tab.kind === 'real' && tab.pinned === false;
@@ -395,10 +409,47 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectMainPanelTab: (tab) => {
+    if (tab === 'fileEdit') {
+      const activeEditorTabId = get().activeEditorTabId;
+      set({ mainPanelActiveTab: activeEditorTabId ?? 'job' });
+      return;
+    }
+    if (isEditorTabId(tab)) {
+      get().selectEditorTab(tab);
+      return;
+    }
     set({ mainPanelActiveTab: tab });
   },
 
   openMainPanelTab: (tab) => {
+    if (tab === 'fileEdit') {
+      const activeEditorTabId = get().activeEditorTabId;
+      const editorTabs = get().editorTabs as EditorTab[];
+      const hasTabs = editorTabs.length > 0;
+      const order = sanitizeEditorTabOrder(get().mainPanelTabOrder as string[], editorTabs);
+      if (activeEditorTabId && hasTabs) {
+        const nextOrder = order.filter((candidate) => candidate !== activeEditorTabId);
+        nextOrder.push(activeEditorTabId);
+        set((s: any) => ({
+          mainPanelActiveTab: activeEditorTabId,
+          mainPanelOpenTabs: {
+            ...s.mainPanelOpenTabs,
+            fileEdit: true,
+          },
+          mainPanelTabOrder: nextOrder,
+        }));
+      } else {
+        set((s: any) => ({
+          mainPanelActiveTab: 'job',
+          mainPanelOpenTabs: {
+            ...s.mainPanelOpenTabs,
+            fileEdit: false,
+          },
+          mainPanelTabOrder: order,
+        }));
+      }
+      return;
+    }
     set((s: any) => {
       const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== tab);
       newOrder.push(tab);
@@ -416,13 +467,18 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   closeMainPanelTab: (tab) => {
     if (tab === 'fileEdit') {
+      const activeEditorTabId = get().activeEditorTabId;
+      if (activeEditorTabId) {
+        get().closeEditorTab(activeEditorTabId);
+        return;
+      }
       set((s: any) => ({
         editorTabs: [],
         activeEditorTabId: null,
         selectedFile: undefined,
         mainPanelOpenTabs: { ...s.mainPanelOpenTabs, fileEdit: false },
-        mainPanelActiveTab: s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
-        mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+        mainPanelActiveTab: isEditorTabId(s.mainPanelActiveTab) ? 'job' : s.mainPanelActiveTab,
+        mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => !isEditorTabId(t)),
       }));
       get().resetCurrentFile?.();
       return;
@@ -449,21 +505,26 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         if (existingIdx >= 0) tabs.splice(existingIdx, 1);
         const nextActive =
           s.activeEditorTabId === UNPINNED_EDITOR_TAB_ID
-            ? (tabs[0]?.id ?? null)
-            : s.activeEditorTabId;
+            ? (tabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? tabs[0]?.id ?? null)
+            : (tabs.some((tab) => tab.id === s.activeEditorTabId) ? s.activeEditorTabId : null);
         const hasTabs = tabs.length > 0;
+        const nextOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+          (tab) => tab !== 'fileEdit',
+        );
+        const nextMainActive = reconcileMainPanelActiveTab({
+          currentMainPanelActiveTab: s.mainPanelActiveTab,
+          nextTabs: tabs,
+          nextActiveEditorTabId: nextActive,
+        });
         return {
           editorTabs: tabs,
           activeEditorTabId: nextActive,
           mainPanelOpenTabs: {
             ...s.mainPanelOpenTabs,
-            fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+            fileEdit: hasTabs,
           },
-          mainPanelActiveTab:
-            !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
-          mainPanelTabOrder: hasTabs
-            ? s.mainPanelTabOrder
-            : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+          mainPanelActiveTab: nextMainActive,
+          mainPanelTabOrder: nextOrder,
         };
       }
 
@@ -479,18 +540,21 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       if (existingIdx >= 0) tabs[existingIdx] = unpinned;
       else tabs.push(unpinned);
 
-      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
-      newOrder.push('fileEdit');
+      const newOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
+      const nextOrder = newOrder.filter((tab) => tab !== UNPINNED_EDITOR_TAB_ID);
+      nextOrder.push(UNPINNED_EDITOR_TAB_ID);
 
       return {
         editorTabs: tabs,
         activeEditorTabId: UNPINNED_EDITOR_TAB_ID,
-        mainPanelActiveTab: 'fileEdit',
+        mainPanelActiveTab: UNPINNED_EDITOR_TAB_ID,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
         },
-        mainPanelTabOrder: newOrder,
+        mainPanelTabOrder: nextOrder,
       };
     });
   },
@@ -500,11 +564,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     if (!tab) return;
 
     set((s: any) => {
-      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
-      newOrder.push('fileEdit');
+      const order = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], s.editorTabs ?? []);
+      const withoutFileEdit = order.filter((t) => t !== 'fileEdit');
+      const newOrder = moveTabIdToOrderEnd(withoutFileEdit, tab.id as MainPanelTabOrderItem);
       return {
         activeEditorTabId: tabId,
-        mainPanelActiveTab: 'fileEdit',
+        mainPanelActiveTab: tabId,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
@@ -525,16 +590,23 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const idx = tabs.findIndex((tab) => tab.id === tabId);
       if (idx < 0) return {};
       const target = tabs[idx];
-      if (target.kind !== 'real' || target.pinned || !target.path) return {};
+      if (target.kind !== 'real' || target.pinned || !target.path || target.status === 'streaming') {
+        return {};
+      }
 
       const pinnedId = makePinnedRealTabId(target.path);
       const existingPinned = tabs.find((tab) => tab.id === pinnedId);
       if (existingPinned) {
         tabs.splice(idx, 1);
+        const nextOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs);
+        let nextMainActive = s.mainPanelActiveTab as string;
+        if (nextMainActive === tabId) nextMainActive = existingPinned.id;
         return {
           editorTabs: tabs,
           activeEditorTabId:
             s.activeEditorTabId === tabId ? existingPinned.id : s.activeEditorTabId,
+          mainPanelActiveTab: nextMainActive,
+          mainPanelTabOrder: nextOrder,
         };
       }
 
@@ -544,9 +616,17 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         title: fileTitleFromPath(target.path),
         pinned: true,
       };
+      const baseOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
+      const nextOrder = moveTabIdToOrderEnd(baseOrder, pinnedId as MainPanelTabOrderItem);
+      let nextMainActive = s.mainPanelActiveTab as string;
+      if (nextMainActive === tabId) nextMainActive = pinnedId;
       return {
         editorTabs: tabs,
         activeEditorTabId: s.activeEditorTabId === tabId ? pinnedId : s.activeEditorTabId,
+        mainPanelActiveTab: nextMainActive,
+        mainPanelTabOrder: nextOrder,
       };
     });
   },
@@ -558,16 +638,21 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const idx = tabs.findIndex((tab) => tab.id === tabId);
       if (idx < 0) return {};
       const target = tabs[idx];
-      if (target.kind !== 'real' || !target.pinned) return {};
+      if (target.kind !== 'real' || !target.pinned || target.status === 'streaming') return {};
 
       const unpinnedIdx = tabs.findIndex((tab) => tab.id === UNPINNED_EDITOR_TAB_ID);
       if (unpinnedIdx >= 0) {
         tabs.splice(idx, 1);
         const fallback = tabs[unpinnedIdx] ?? tabs.find(isRealUnpinnedTab) ?? tabs[0];
         if (fallback?.kind === 'real' && fallback.path) nextToOpen = fallback;
+        const nextOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs);
+        let nextMainActive = s.mainPanelActiveTab as string;
+        if (nextMainActive === tabId) nextMainActive = fallback?.id ?? 'job';
         return {
           editorTabs: tabs,
           activeEditorTabId: s.activeEditorTabId === tabId ? (fallback?.id ?? null) : s.activeEditorTabId,
+          mainPanelActiveTab: nextMainActive,
+          mainPanelTabOrder: nextOrder,
         };
       }
 
@@ -577,9 +662,17 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         pinned: false,
       };
       if (tabs[idx].kind === 'real' && tabs[idx].path) nextToOpen = tabs[idx];
+      const baseOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
+      const nextOrder = moveTabIdToOrderEnd(baseOrder, UNPINNED_EDITOR_TAB_ID);
+      let nextMainActive = s.mainPanelActiveTab as string;
+      if (nextMainActive === tabId) nextMainActive = UNPINNED_EDITOR_TAB_ID;
       return {
         editorTabs: tabs,
         activeEditorTabId: s.activeEditorTabId === tabId ? UNPINNED_EDITOR_TAB_ID : s.activeEditorTabId,
+        mainPanelActiveTab: nextMainActive,
+        mainPanelTabOrder: nextOrder,
       };
     });
 
@@ -610,18 +703,25 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       }
 
       const hasTabs = tabs.length > 0;
+      const nextOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
+      const requestedActive =
+        s.mainPanelActiveTab === tabId ? (nextActive ?? 'job') : s.mainPanelActiveTab;
+      const nextMainActive = reconcileMainPanelActiveTab({
+        currentMainPanelActiveTab: requestedActive,
+        nextTabs: tabs,
+        nextActiveEditorTabId: nextActive,
+      });
       return {
         editorTabs: tabs,
         activeEditorTabId: nextActive,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
-          fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+          fileEdit: hasTabs,
         },
-        mainPanelActiveTab:
-          !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
-        mainPanelTabOrder: hasTabs
-          ? s.mainPanelTabOrder
-          : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+        mainPanelActiveTab: nextMainActive,
+        mainPanelTabOrder: nextOrder,
       };
     });
 
@@ -644,8 +744,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         ...s.mainPanelOpenTabs,
         fileEdit: false,
       },
-      mainPanelActiveTab: s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
-      mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+      mainPanelActiveTab: isEditorTabId(s.mainPanelActiveTab) ? 'job' : s.mainPanelActiveTab,
+      mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => !isEditorTabId(t)),
     }));
   },
 
@@ -654,37 +754,27 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
       const byId = new Map(tabs.map((tab) => [tab.id, tab]));
       const seenVirtualIds = new Set<string>();
-      const turnInfo = new Map<string, { jobType?: string; jobId?: string }>();
-      for (const line of s.chatEvents ?? []) {
-        if (!turnInfo.has(line.turnId)) {
-          turnInfo.set(line.turnId, { jobType: line.jobType, jobId: line.jobId });
-        }
-      }
-      const createdIds: string[] = [];
+      const turnInfo = buildTurnInfoMap(s.chatEvents ?? []);
+      const createdIds: Array<`editor:virtual:${string}`> = [];
 
       for (const snapshot of Object.values(buffers ?? {})) {
         const pendingCards = snapshot?.pendingCards ?? {};
-        const meta = turnInfo.get(snapshot.turnId);
-        const source =
-          meta?.jobType === 'plan' ? 'plan' : meta?.jobType === 'design' ? 'design' : undefined;
+        const source = resolveVirtualTabSource({
+          turnInfo,
+          turnId: snapshot.turnId,
+          selectedJobType: s.selectedJobType,
+        });
         if (!source) continue;
+        const meta = turnInfo.get(snapshot.turnId);
 
         for (const pending of Object.values(pendingCards)) {
           const card = pending as import('@ant/shared').PendingCardSnapshot;
-          const isFileStreaming =
-            card.statusType === 'file_creating' ||
-            card.statusType === 'file_writing' ||
-            card.statusType === 'file_editing' ||
-            card.statusType === 'file_updating';
-          const isPlanStreaming = card.statusType === 'plan_generating';
-          if (!isFileStreaming && !isPlanStreaming) continue;
+          if (!shouldRenderVirtualPreviewCard(card)) continue;
 
-          const filePath =
-            typeof card.metadata?.filePath === 'string' ? (card.metadata.filePath as string) : undefined;
-          const taskName =
-            typeof card.metadata?.taskName === 'string' ? (card.metadata.taskName as string) : undefined;
-          const title = filePath ? fileTitleFromPath(filePath) : (taskName || 'Plan Draft');
-          const id = `editor:virtual:${card.cardId}`;
+          const filePath = getPendingCardFilePath(card);
+          if (!filePath) continue;
+          const title = fileTitleFromPath(filePath);
+          const id = makeVirtualEditorTabId(card.cardId);
           seenVirtualIds.add(id);
           const next: EditorTab = {
             id,
@@ -700,7 +790,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             jobId: meta?.jobId,
             source,
           };
-          if (!byId.has(id)) createdIds.push(id);
+          if (!byId.has(id)) createdIds.push(id as `editor:virtual:${string}`);
           byId.set(id, { ...(byId.get(id) ?? {}), ...next });
         }
       }
@@ -710,16 +800,43 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         if (tab.status === 'ready') return true;
         return seenVirtualIds.has(tab.id);
       });
+      const hasTabs = nextTabs.length > 0;
+      const nextOrderBase = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], nextTabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
       if (createdIds.length === 0) {
-        return { editorTabs: nextTabs };
+        const nextActive =
+          s.activeEditorTabId && nextTabs.some((tab) => tab.id === s.activeEditorTabId)
+            ? s.activeEditorTabId
+            : null;
+        const nextMainActive = reconcileMainPanelActiveTab({
+          currentMainPanelActiveTab: s.mainPanelActiveTab,
+          nextTabs,
+          nextActiveEditorTabId: nextActive,
+        });
+        return {
+          editorTabs: nextTabs,
+          activeEditorTabId: nextActive,
+          mainPanelOpenTabs: {
+            ...s.mainPanelOpenTabs,
+            fileEdit: hasTabs,
+          },
+          mainPanelActiveTab: nextMainActive,
+          mainPanelTabOrder: nextOrderBase,
+        };
       }
 
-      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
-      newOrder.push('fileEdit');
+      const newOrder = [...nextOrderBase];
+      for (const createdId of createdIds) {
+        const filtered = newOrder.filter((tab) => tab !== createdId);
+        filtered.push(createdId);
+        newOrder.splice(0, newOrder.length, ...filtered);
+      }
+      const nextActiveId = createdIds[createdIds.length - 1];
       return {
         editorTabs: nextTabs,
-        activeEditorTabId: createdIds[createdIds.length - 1],
-        mainPanelActiveTab: 'fileEdit',
+        activeEditorTabId: nextActiveId,
+        mainPanelActiveTab: nextActiveId,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
@@ -729,25 +846,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     });
   },
 
-  appendVirtualEditorTabChunk: (cardId, chunk) => {
-    if (!cardId || !chunk) return;
-    set((s: any) => {
-      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
-      const idx = tabs.findIndex((tab) => tab.cardId === cardId && tab.kind === 'virtual');
-      if (idx < 0) return {};
-      const prev = tabs[idx];
-      tabs[idx] = {
-        ...prev,
-        content: (prev.content ?? '') + chunk,
-        status: 'streaming',
-      };
-      return { editorTabs: tabs };
-    });
-  },
-
   promoteVirtualEditorTabToReal: ({ cardId, filePath, source }) => {
     if (!cardId || !filePath) return;
     const realId = makePinnedRealTabId(filePath);
+    const virtualId = makeVirtualEditorTabId(cardId);
     set((s: any) => {
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])].filter(
         (tab) => !(tab.kind === 'virtual' && tab.cardId === cardId),
@@ -765,12 +867,20 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         });
       }
 
-      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
-      newOrder.push('fileEdit');
+      const newOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (tab) => tab !== realId && tab !== 'fileEdit',
+      );
+      const fromVirtual = newOrder.findIndex((tab) => tab === virtualId);
+      if (fromVirtual >= 0) {
+        newOrder[fromVirtual] = realId as MainPanelTabOrderItem;
+      } else {
+        const moved = moveTabIdToOrderEnd(newOrder, realId as MainPanelTabOrderItem);
+        newOrder.splice(0, newOrder.length, ...moved);
+      }
       return {
         editorTabs: tabs,
         activeEditorTabId: realId,
-        mainPanelActiveTab: 'fileEdit',
+        mainPanelActiveTab: realId,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
@@ -783,6 +893,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   removeVirtualEditorTabsByJobId: (jobId) => {
     if (!jobId) return;
+    let nextToOpen: EditorTab | undefined;
     set((s: any) => {
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
       const removedIds = new Set(
@@ -794,22 +905,35 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const nextActive = removedIds.has(s.activeEditorTabId)
         ? (nextTabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? nextTabs[0]?.id ?? null)
         : s.activeEditorTabId;
+      const activeTab = nextTabs.find((tab) => tab.id === nextActive);
+      if (activeTab?.kind === 'real' && activeTab.path) nextToOpen = activeTab;
       const hasTabs = nextTabs.length > 0;
+      const nextOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], nextTabs).filter(
+        (tab) => tab !== 'fileEdit',
+      );
+      const requestedActive =
+        removedIds.has(s.mainPanelActiveTab) ? (nextActive ?? 'job') : s.mainPanelActiveTab;
+      const nextMainActive = reconcileMainPanelActiveTab({
+        currentMainPanelActiveTab: requestedActive,
+        nextTabs,
+        nextActiveEditorTabId: nextActive,
+      });
 
       return {
         editorTabs: nextTabs,
         activeEditorTabId: nextActive,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
-          fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+          fileEdit: hasTabs,
         },
-        mainPanelActiveTab:
-          !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
-        mainPanelTabOrder: hasTabs
-          ? s.mainPanelTabOrder
-          : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+        mainPanelActiveTab: nextMainActive,
+        mainPanelTabOrder: nextOrder,
       };
     });
+    if (nextToOpen?.path) {
+      const syncUnpinnedTab = nextToOpen.id === UNPINNED_EDITOR_TAB_ID;
+      get().openFile(nextToOpen.path, { syncUnpinnedTab });
+    }
   },
 
   // ✅ Pending clarify answers

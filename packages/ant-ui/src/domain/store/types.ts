@@ -107,6 +107,19 @@ export interface SSEState {
   connectionStatus: 'connected' | 'disconnected' | 'error';
 }
 
+export type StaticMainPanelTab =
+  | 'job'
+  | 'projectConfig'
+  | 'accountConfig'
+  | 'fileEdit'
+  | 'transfer'
+  | 'previewConfig'
+  | 'actions';
+
+export type EditorMainPanelTabId = `editor:${string}`;
+export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
+export type MainPanelTabOrderItem = Exclude<MainPanelTabId, 'job'>;
+
 export interface UIState {
   theme: 'light' | 'dark';
   language: 'en' | 'ko';
@@ -119,7 +132,7 @@ export interface UIState {
   ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
   ideConnectError: string | undefined;
   ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
-  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions';
+  mainPanelActiveTab: MainPanelTabId;
   mainPanelOpenTabs: {
     projectConfig: boolean;
     accountConfig: boolean;
@@ -128,7 +141,7 @@ export interface UIState {
     previewConfig: boolean;
     actions: boolean;
   };
-  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions'>;
+  mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state
   actionsStep: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit';
   // Ephemeral: which tier the basis wizard should land on when entering

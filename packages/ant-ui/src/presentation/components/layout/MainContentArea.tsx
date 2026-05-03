@@ -11,11 +11,11 @@ import { PreviewConfigEditor } from '../PreviewConfigEditor';
 import { ActionsPanel } from '../Actions';
 import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
+import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
+import { selectActiveEditorTab } from '@/domain/store/selectors/editorTabs';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
-import type { EditorTab } from '@/domain/store/types';
-import { Pin, PinOff, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   AsyncBoundary,
@@ -49,10 +49,6 @@ export function MainContentArea({
   const selectedFile = useStore((s) => s.selectedFile);
   const editorTabs = useStore((s) => s.editorTabs);
   const activeEditorTabId = useStore((s) => s.activeEditorTabId);
-  const selectEditorTab = useStore((s) => s.selectEditorTab);
-  const pinEditorTab = useStore((s) => s.pinEditorTab);
-  const unpinEditorTab = useStore((s) => s.unpinEditorTab);
-  const closeEditorTab = useStore((s) => s.closeEditorTab);
   const showWorkflow = useStore((s) => s.showWorkflow);
   const selectedProject = useStore((s) => s.selectedProject);
   const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
@@ -63,7 +59,11 @@ export function MainContentArea({
     if (!selectedProject) return { success: false, error: 'No project selected' };
     return updateProjectConfig(selectedProject, config);
   };
-  const activeEditorTab = editorTabs.find((tab) => tab.id === activeEditorTabId) as EditorTab | undefined;
+  const activeEditorTab = selectActiveEditorTab({
+    mainPanelActiveTab: activeTab,
+    activeEditorTabId,
+    editorTabs,
+  });
 
   return (
     <MainPanel headerBar={<MainPanelTabsBar />}>
@@ -109,61 +109,16 @@ export function MainContentArea({
             onClose={() => useStore.getState().closeMainPanelTab('accountConfig')}
           />
         </div>
-      ) : activeTab === 'fileEdit' && openTabs.fileEdit ? (
+      ) : (activeTab === 'fileEdit' || isEditorTabId(activeTab)) && openTabs.fileEdit ? (
         <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22] flex flex-col">
-          {editorTabs.length > 0 && (
-            <div className="flex items-center gap-1 px-2 py-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-              {editorTabs.map((tab) => {
-                const isActive = tab.id === activeEditorTabId;
-                return (
-                  <button
-                    key={tab.id}
-                    className={`group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs whitespace-nowrap border ${
-                      isActive
-                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                    onClick={() => selectEditorTab(tab.id)}
-                    type="button"
-                    title={tab.path ?? tab.title}
-                  >
-                    <span className="truncate max-w-[220px]">{tab.title}</span>
-                    {tab.pinned ? (
-                      <Pin
-                        className="w-3.5 h-3.5 opacity-70 hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          unpinEditorTab(tab.id);
-                        }}
-                      />
-                    ) : (
-                      <PinOff
-                        className="w-3.5 h-3.5 opacity-60 hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          pinEditorTab(tab.id);
-                        }}
-                      />
-                    )}
-                    <X
-                      className="w-3.5 h-3.5 opacity-60 hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeEditorTab(tab.id);
-                      }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <div className="flex-1 h-full overflow-hidden">
             {activeEditorTab ? (
               activeEditorTab.kind === 'virtual' ? (
                 <VirtualDocumentViewer tab={activeEditorTab} />
-              ) : selectedFile ? (
+              ) : activeEditorTab.path && selectedFile === activeEditorTab.path ? (
                 <FileEditorPanel onClose={() => useStore.getState().closeMainPanelTab('fileEdit')} />
+              ) : activeEditorTab.path ? (
+                <EmptyFallback description={tAsync('empty.loadingFile', 'Loading selected file...')} />
               ) : (
                 <EmptyFallback description={tAsync('empty.noFile')} />
               )

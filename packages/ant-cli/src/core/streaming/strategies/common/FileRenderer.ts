@@ -12,6 +12,7 @@ import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
 import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
 import { AsyncMutex } from '../../../utils/AsyncMutex';
+import { detectCrossAxisLeak, stripRegisteredTags } from '../../OutputTagRegistry';
 
 const designFileLocks = new Map<string, AsyncMutex>();
 function getDesignFileLock(fsPath: string): AsyncMutex {
@@ -531,7 +532,21 @@ export class FileRenderer {
           this.pendingUnseenPaths.add(filePath);
         }
         this.scheduleFileTreeNotification();
-        await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
+        // Disk already wrote the raw `contentBuffer`. The chat-card
+        // metadata sees a stripped version so a contract-violating
+        // `<reply>` / `<done>` literal in the file body never reaches
+        // the file-card preview as a raw `<…>` marker. Disk file stays
+        // the truth source — read_file tool / git show the raw content.
+        const fileLeaks = detectCrossAxisLeak(fileInfo.contentBuffer, 'artifact');
+        if (fileLeaks.length > 0) {
+          console.warn(
+            `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${fileLeaks.join(', ')}. Stripped from card preview. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+          );
+        }
+        await this.chatAPI.completeFileCreation(
+          filePath,
+          stripRegisteredTags(fileInfo.contentBuffer),
+        );
         this.onFileTouched?.(filePath);
         return;
       }
@@ -611,9 +626,18 @@ export class FileRenderer {
       }
     }
     
+    // See the design-path completeFileCreation note above: card metadata
+    // gets a stripped copy so contract-violating literals never surface
+    // in the file-card preview, while disk holds the raw bytes.
+    const codeFileLeaks = detectCrossAxisLeak(fileInfo.contentBuffer, 'artifact');
+    if (codeFileLeaks.length > 0) {
+      console.warn(
+        `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${codeFileLeaks.join(', ')}. Stripped from card preview. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+      );
+    }
     await this.chatAPI.completeFileCreation(
       filePath,
-      fileInfo.contentBuffer,
+      stripRegisteredTags(fileInfo.contentBuffer),
       diffBeforeLines !== undefined ? { diffBeforeLines } : undefined,
     );
     this.onFileTouched?.(filePath);
