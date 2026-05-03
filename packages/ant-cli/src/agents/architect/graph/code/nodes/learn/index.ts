@@ -142,73 +142,58 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
   traceNodeEntry('learn', state.currentTask ?? undefined);
 
-  // Clean up running servers before completing
+  // Clean up running servers before completing.
+  //
+  // SSOT: this used to be a hand-rolled SIGTERM/SIGKILL escalation, with
+  // a separate Windows path. We delegate to DevProcessControl so the same
+  // descendant kill + Next dev lock cleanup that PreviewService uses also
+  // runs here. A `next dev` started via `run_command keep_running:true`
+  // and a `next dev` started by PreviewService now go down the same way,
+  // including `.next/dev/server.json` lock removal — which is what was
+  // letting verification-time servers block the next preview restart.
   if (state.runningServers && state.runningServers.length > 0) {
     console.log(`\n🧹 [Learn] Cleaning up ${state.runningServers.length} running server(s)...`);
-    
-    for (const server of state.runningServers) {
-      try {
-        if (process.platform === 'win32') {
-          try {
-            const { spawn } = await import('child_process');
-            await new Promise<void>((resolve) => {
-              const child = spawn('taskkill', ['/PID', String(server.pid), '/T', '/F'], {
-                stdio: 'ignore',
-                windowsHide: true
-              });
-              child.on('exit', () => resolve());
-              child.on('error', () => resolve());
-            });
-          } catch {
-            process.kill(server.pid, 'SIGTERM');
-          }
-        } else {
-          try {
-            process.kill(-server.pid, 'SIGTERM');
-          } catch {
-            process.kill(server.pid, 'SIGTERM');
-          }
-        }
+
+    if (process.platform === 'win32') {
+      // DPC's pgrep/lsof primitives are POSIX-only; preserve the legacy
+      // taskkill path on Windows.
+      const { spawn } = await import('child_process');
+      for (const server of state.runningServers) {
+        await new Promise<void>((resolve) => {
+          const child = spawn('taskkill', ['/PID', String(server.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          child.on('exit', () => resolve());
+          child.on('error', () => resolve());
+        });
         console.log(`   ✅ Killed: ${server.command} (PID ${server.pid})`);
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+      }
+    } else {
+      const { getDefaultDevProcessControl } = await import(
+        '../../../../../../core/process/DevProcessControl'
+      );
+      const dev = getDefaultDevProcessControl();
+
+      for (const server of state.runningServers) {
         try {
-          process.kill(server.pid, 0);
-          console.log(`   ⚠️  Process still running, escalating to SIGKILL...`);
-          if (process.platform === 'win32') {
-            try {
-              const { spawn } = await import('child_process');
-              await new Promise<void>((resolve) => {
-                const child = spawn('taskkill', ['/PID', String(server.pid), '/T', '/F'], {
-                  stdio: 'ignore',
-                  windowsHide: true
-                });
-                child.on('exit', () => resolve());
-                child.on('error', () => resolve());
-              });
-            } catch {
-              process.kill(server.pid, 'SIGKILL');
-            }
-          } else {
-            try {
-              process.kill(-server.pid, 'SIGKILL');
-            } catch {
-              process.kill(server.pid, 'SIGKILL');
-            }
+          await dev.killTree(server.pid, { graceMs: 2_000 });
+          // Also clean any framework lock the LLM-spawned dev server may
+          // have left behind in its workingDir (e.g. Next dev lock).
+          if (server.workingDir) {
+            await dev.cleanupStaleLocks(server.workingDir).catch(() => { /* best-effort */ });
           }
-        } catch (e) {
-          // Process already terminated
-        }
-      } catch (e: any) {
-        if (e.code === 'ESRCH') {
-          console.log(`   ℹ️  Already stopped: ${server.command} (PID ${server.pid})`);
-        } else {
-          console.log(`   ⚠️  Failed to kill ${server.command} (PID ${server.pid}): ${e.message}`);
+          console.log(`   ✅ Killed tree: ${server.command} (PID ${server.pid})`);
+        } catch (e: any) {
+          if (e?.code === 'ESRCH') {
+            console.log(`   ℹ️  Already stopped: ${server.command} (PID ${server.pid})`);
+          } else {
+            console.log(`   ⚠️  Failed to killTree ${server.command} (PID ${server.pid}): ${e?.message || e}`);
+          }
         }
       }
     }
-    
+
     state.runningServers = [];
     console.log(`   ✅ Server cleanup complete\n`);
   }

@@ -11,6 +11,7 @@ import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
+import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
@@ -157,6 +158,25 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
             if (shouldWarn && warningMessage && typeof event.result.content === 'string') {
               event.result.content = event.result.content + warningMessage;
             }
+            break;
+          }
+          case 'serverStarted': {
+            // run_command emits this when LONG_RUNNING_PATTERNS matched and
+            // the user passed `keep_running:true` (e.g. `npm run dev`,
+            // `npx next dev`). Without this case the PID never reached
+            // `state.runningServers`, so the learn-node teardown loop ran
+            // against an empty array and detached children survived past
+            // task completion — which is exactly the regression that broke
+            // multi-frontend Preview restarts (`Another next dev server is
+            // already running`). The contract in
+            // persistent-process-policy.md states "the runtime tears the
+            // process down on task completion"; this case fulfils the
+            // tracking half of that contract, learn fulfils the killing half.
+            //
+            // The push/dedup/validation logic lives in `recordServerStarted`
+            // (SSOT) so unit tests can pin the contract without standing up
+            // the whole tool node.
+            recordServerStarted(state, effect);
             break;
           }
         }

@@ -7,8 +7,17 @@ import { ChildProcess } from 'child_process';
 /** Callback for process stdout/stderr output */
 export type LogCallback = (type: 'stdout' | 'stderr', message: string) => void;
 
-/** Callback for process exit */
-export type ExitCallback = (code: number | null, signal: NodeJS.Signals | null) => void;
+/**
+ * Callback for process exit. The optional `pid` is the exited child's PID
+ * (when known) so multi-process tracking can disambiguate between siblings —
+ * using "alive process count" alone is racy when two packages exit close
+ * together (PreviewService.stoppingPidsByServer relies on per-PID accounting).
+ */
+export type ExitCallback = (
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  pid?: number,
+) => void;
 
 // ============================================
 // Package & Project Types
