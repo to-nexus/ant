@@ -26,20 +26,17 @@
  *   - Disk writes — `FileRenderer` / `FileRegistry` (artifact tags only).
  *   - LangGraph state mutation — each node, using `extract` hook results.
  *
- * Phase rollout (see `.cursor/plans/directive-response-channel_*.plan.md`):
+ * Status:
  *
- *   - Phase 1 (current): registry exists alongside the existing 9 modules
- *     as a passive SSOT. Each entry's `extract` / `transform` hook
- *     references the legacy function so behaviour is byte-identical. New
- *     test `output-tag-matrix.test.ts` enforces axis well-formedness.
- *   - Phase 2: `<reply>` entry added; `output-tag-policy` partial wires
- *     the `promptContract` strings; `SpecialTagTransformer` is rewired
- *     to walk this registry instead of self-registering.
- *   - Phase 4: legacy wrapper files (`extractPlanText.ts`,
- *     `parseClarifyTags`, `parseExecutionTierTag`, `extractPlanDiff`,
- *     `jsonResponseParser`, `lessonExtractor`, `DecisionTagRegistry`)
- *     are deleted; their bodies live inline as registry entry methods,
- *     and call sites use `getTag(name).extract(...)` directly.
+ *   - Chat rendering (transform hooks) — fully owned here; the
+ *     `SpecialTagTransformer` walks this registry and has no
+ *     self-registered transformer table of its own.
+ *   - Post-stream extraction — entries point at the canonical extractor
+ *     module (`extractPlanText`, `parseClarifyTags`,
+ *     `parseExecutionTierTag`). Those modules remain the implementation
+ *     site so call sites that still call them directly continue to work
+ *     without churn; collapsing the call sites onto `getTag(name).extract`
+ *     is a follow-up cleanup that does not change behaviour.
  */
 
 import type { ChatAssistantMessageKind } from '@ant/shared';
@@ -329,15 +326,13 @@ export function tagsByIntent(intent: TagAxisIntent): readonly OutputTagSpec[] {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Entries — Phase 1 metadata SSOT
+// Entries
 // ────────────────────────────────────────────────────────────────────────────
 //
-// Phase 1 contract: each entry's `extract` / `transform` hook references
-// the legacy implementation so byte-identical behaviour is preserved.
-// Phase 4 inlines the bodies and deletes the legacy wrappers.
-//
-// `<reply>` is intentionally NOT registered here yet — Phase 2 adds it
-// together with the `output-tag-policy.md` partial.
+// Every canonical tag emitted anywhere in the pipeline lives below.
+// Adding a new tag means adding one entry — `SpecialTagTransformer`,
+// `XMLStreamParser`, `ChatService`, and the `output-tag-policy` partial
+// all consume this registry; nothing else needs touching.
 
 /**
  * Generic body extractor — slices `<tag>body</tag>` and trims.
@@ -697,4 +692,31 @@ register({
   streamAction: 'triage',
   promptContract:
     'Wrap the entire triage response in `<triage>...</triage>`. The body is JSON matching the triage schema.',
+});
+
+register({
+  name: 'direct',
+  pattern: /<direct>\s*([\s\S]*?)\s*<\/direct>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['post-stream', 'consumed-suppressed'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  extract: (text) => extractTagBody(text, 'direct'),
+  promptContract:
+    'Wrap the visual `direct` routing decision in `<direct>{...JSON...}</direct>`. The body is JSON only — the parser deserialises it post-stream.',
+});
+
+register({
+  name: 'eval',
+  pattern: /<eval\s+type="[^"]*"\s*\/>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-suppressed'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  promptContract:
+    'Append a self-closing `<eval type="..." />` tag at the end of an evaluation report (ask job). The save-card UI uses the type to route to the right rubric.',
 });

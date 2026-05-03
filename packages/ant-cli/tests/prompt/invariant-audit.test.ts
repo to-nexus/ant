@@ -86,9 +86,14 @@ describe('Audit 6A: injection-manifest integrity', () => {
     const mcSource = readFileSync(AUTO_INJECTION_RESOLVER_PATH, 'utf-8');
     const allTemplates = await collectAllTemplates(TEMPLATES_DIR);
 
-    // Also check POLICY_TEMPLATE_MAP and agent TS source code for render() calls
+    // Also check POLICY_TEMPLATE_MAP and agent TS source code for render() calls.
+    // Walk every entry in AGENT_SRC_DIRS so call sites in `core/prompt/builder`
+    // (e.g. PromptBuilder's always-on `output-tag-policy` injection) and
+    // `core/context` count alongside the agents/ tree.
     const policyValues = new Set(Object.values(POLICY_TEMPLATE_MAP));
-    const agentTsFiles = await collectTsFiles(AGENT_SRC_DIRS[0]);
+    const agentTsFiles = (
+      await Promise.all(AGENT_SRC_DIRS.map(collectTsFiles))
+    ).flat();
     const agentSources = agentTsFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     const orphans: string[] = [];

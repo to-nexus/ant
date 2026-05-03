@@ -1485,7 +1485,6 @@
   "jobs/shared/injections/output-tag-policy": {
     "sources": [
       "render-call",
-      "partial-ref",
       "manifest"
     ]
   },
