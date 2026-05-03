@@ -19,8 +19,9 @@ the plan phase).
 
 - Do NOT change the architecture model recorded in
   `decision.selected` / `documentOutline`. It is sealed.
-- Use tools ONLY for *detail precision* (DTO field types, exact
-  endpoint paths, contract values verified against reference projects).
+- Use tools to verify the *detail precision of the document text*
+  (DTO field types, exact endpoint paths, contract values verified
+  against reference projects, all referenced inside the document).
   Do NOT re-explore architecture — that is decided.
 - If you find new evidence via tools that contradicts the sealed plan,
   DO NOT silently override. Raise it via `<clarify>` so the next plan

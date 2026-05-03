@@ -150,6 +150,21 @@ export interface ToolExecutionContext {
 
   // === Command policy / verification handlers ===
   activePhase?: 'plan' | 'execute';
+  /**
+   * Codebase mutation gate — when `false` (the safe default), mutate
+   * handlers (`edit_file` / `delete_file` / `mkdir` / `create_file`)
+   * reject paths under `codebase/`, and `run_command` is rejected
+   * outright. Set to `true` ONLY for the architect/code job's
+   * `execute` phase, where mutating source code is the artifact.
+   *
+   * All document- or plan-producing phases (architect/design plan +
+   * docGen, architect/code plan, planner/plan) leave this `false` so
+   * `<file>`/`<append>`/`<edit>`/`<delete>` writes still flow through
+   * the FileRenderer guard but the tool handlers cannot touch
+   * source code under `codebase/`. See `docs/architecture/15-design-job.md`
+   * "Codebase mutation gate" for the policy SSOT.
+   */
+  allowMutateInCodebase?: boolean;
   currentTaskType?: string;
   /**
    * True when the active task was spawned from a parent's batch-split

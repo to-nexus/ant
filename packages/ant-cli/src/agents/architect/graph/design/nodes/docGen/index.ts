@@ -42,6 +42,40 @@ import { buildSpecMessages } from './intent/spec';
 
 const MAX_NO_OUTPUT_CALLS = 15;
 
+const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
+const ARTIFACT_MUTATE_TOOLS = new Set([
+  'edit_file', 'delete_file', 'create_file', 'mkdir',
+]);
+
+/**
+ * Detect "the LLM updated an artifact this turn" — for the
+ * `_pendingDoneCheck` trigger (R5 of the codebase mutation gate plan).
+ *
+ * Counts both:
+ *   - successful XML artifact-axis writes (file/append/edit/delete) on
+ *     non-codebase paths (codebase paths never reach `files` because
+ *     FileRenderer rejects them upstream),
+ *   - pending tool-call mutations on non-codebase paths (edit_file /
+ *     delete_file / create_file / mkdir).
+ *
+ * Returns `true` even when only tool calls are pending (without any
+ * <file> output) so the next-turn self-check still fires after a
+ * tool-only artifact-mutation turn (e.g. refactor mode `edit_file
+ * architecture/spec/...`).
+ */
+function turnHadArtifactMutationIntent(
+  files: Array<{ path: string }>,
+  pendingToolCalls: Array<{ name: string; args?: any }>,
+): boolean {
+  const xmlMut = files.some(f => f.path && !CODEBASE_LIKE(f.path));
+  const toolMut = pendingToolCalls.some(tc => {
+    if (!ARTIFACT_MUTATE_TOOLS.has(tc.name)) return false;
+    const p = tc.args?.path;
+    return typeof p === 'string' && p.length > 0 && !CODEBASE_LIKE(p);
+  });
+  return xmlMut || toolMut;
+}
+
 export async function docGen(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
@@ -368,6 +402,20 @@ export async function docGen(
       console.warn(`⚠️  [DocGen] Safety net triggered: ${reason}`);
     }
 
+    // R5 — artifact-mutation-then-no-done detection. When this turn
+    // produced an artifact mutation (XML <file>/<append>/<edit>/<delete>
+    // landing on an artifact path, or a pending edit_file/delete_file/
+    // create_file/mkdir tool call on an artifact path) but the LLM did
+    // NOT emit `<done>true</done>`, set the pending-done-check flag so
+    // the next docGen turn's trailing user message can ask the LLM
+    // whether the assigned scope is satisfied. Cleared on any turn that
+    // either emits done or has no artifact mutation. See
+    // `docs/architecture/15-design-job.md` "Codebase mutation gate".
+    const turnArtifactMutated = turnHadArtifactMutationIntent(files, pendingToolCalls);
+    const nextPendingDoneCheck = !explicitDone && turnArtifactMutated;
+    const prevEscalation = state._doneCheckEscalation || 0;
+    const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
+
     const warningThreshold = Math.floor(maxCalls * 0.8);
     if (newCallIndex === warningThreshold) {
       console.warn(`⚠️  [DocGen] Approaching call limit (${newCallIndex}/${maxCalls}) — ${maxCalls - newCallIndex} calls remaining`);
@@ -404,12 +452,17 @@ export async function docGen(
           _docGenCallIndex: newCallIndex,
           _noOutputCallCount: 0,
           _callLimitReached: false,
+          // Clarify pause is treated as a stable boundary — not an
+          // artifact-mutation-without-done turn — so reset the gate.
+          _pendingDoneCheck: false,
+          _doneCheckEscalation: 0,
+          _activePhase: 'docGen' as const,
           _currentTaskTokenUsage: state._currentTaskTokenUsage,
           tokenUsage: state.tokenUsage,
         };
       }
     }
-    
+
     return {
       files,
       conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
@@ -417,6 +470,13 @@ export async function docGen(
       _docGenCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
       _callLimitReached: callLimitReached,
+      _pendingDoneCheck: nextPendingDoneCheck,
+      _doneCheckEscalation: nextDoneCheckEscalation,
+      // Phase signal for the tool node + breadcrumbs. Tool routing /
+      // mutate-gate enforcement still keys off
+      // `ToolExecutionContext.allowMutateInCodebase` in the handlers,
+      // not this flag — the field is informational.
+      _activePhase: 'docGen' as const,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,
       llmResponse: hasToolCalls ? {

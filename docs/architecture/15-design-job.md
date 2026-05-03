@@ -206,6 +206,36 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 
 `plan→docGen` 핸드오프가 깨졌다는 가설이 있으면 1·3을 우선 비교한다 (1의 `planTextLen` 과 3의 `planText` 길이 표시가 동일해야 함).
 
+## Codebase mutation gate
+
+Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta/`, `sessions/` 등 **아티팩트 경로**의 문서다. `codebase/` 산하 소스 코드 mutation 은 **architect/code 잡 `execute` phase 만**의 책임이다.
+
+| 잡 / phase | `codebase/` mutate | 아티팩트 mutate | 강제 위치 |
+|---|---|---|---|
+| architect/design — plan / docGen | 차단 | 허용 | `ToolExecutionContext.allowMutateInCodebase = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + FileRenderer XML 가드 (`jobType: 'design'`) |
+| architect/code — plan | 차단 | 허용 | `allowMutateInCodebase = false` (`_activePhase === 'plan'` 분기) + FileRenderer (`codePhase: 'plan'`) |
+| architect/code — execute | 허용 | 허용 | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + FileRenderer 기존 가드 |
+| planner — plan (PRD/계획) | 차단 | 허용 | planner 도구 ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` 가드) + FileRenderer (`jobType: 'planner'`) |
+
+차단 매커니즘은 두 축으로 동시 작동한다:
+
+1. **도구 핸들러** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts)) — `edit_file` / `delete_file` / `mkdir` / `create_file` 가 resolve 된 path 가 `codebase/` 산하면 거부. `run_command` 는 path 추론이 어려워 도구 자체를 거부.
+2. **FileRenderer XML 태그** ([FileRenderer.ts](../../packages/ant-cli/src/core/streaming/strategies/common/FileRenderer.ts) processFile) — `<file>` / `<append>` / `<edit>` / `<delete>` artifact 태그가 `codebase/` 를 가리키면 거부. design / planner / code-plan 모두 동일 정책.
+
+거부 메시지는 LLM 에게 회복 경로를 안내한다 — 아티팩트 경로 사용 또는 spec/plan 문서에 변경 내용을 기술하라는 형태로, "You MUST" 훈계 없는 FPOP 친화적 톤. 차단된 시도는 다음 turn 에서 R5 self-check 와 결합되어 자연스럽게 task 완료(`<done>true</done>`)로 수렴한다.
+
+## R5 — artifact-mutation-then-no-done self-check
+
+docGen 종료 트리거 (`<done>true</done>`) 는 LLM 출력에 의존한다. sealed plan 의 `decision` 이 처방형(예: "rename X to Y")이면 모델이 task 완료 조건을 "decision 실행" 으로 오해할 수 있고, 그 결과 done 을 미출력한 채 codebase 변경을 시도하다 R1/R6 가드에 차단되는 무한 루프 위험이 있다.
+
+이를 자율적으로 끊기 위해 docGen 노드는 turn 종료부에서:
+
+1. **artifact-mutation-intent 검출**: 이번 turn 에 (a) `<file>`/`<append>`/`<edit>`/`<delete>` 가 아티팩트 경로에서 성공했거나, (b) `edit_file`/`delete_file`/`create_file`/`mkdir` pending tool call 이 아티팩트 경로를 가리키면 mutation 의도로 판정. 자세한 truth table 은 [docgen-mutation-intent-detector.test.ts](../../packages/ant-cli/tests/design/docgen-mutation-intent-detector.test.ts) 가 SSOT.
+2. **`<done>` 미출력 시 플래그 세팅**: `state._pendingDoneCheck = true`, `_doneCheckEscalation` 카운트 증가. 둘은 [graph.ts](../../packages/ant-cli/src/agents/architect/graph/design/graph.ts) `DesignGraphChannels` 의 정식 채널.
+3. **다음 turn trailing message 변경**: [selfCheck.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/docGen/intent/selfCheck.ts) 의 `buildSelfCheckTrailingMessage` 가 escalation 단계별로 자가 점검 문구 (1차: 부드러운 결정 요청 / 2차: 동일 의미의 firmer 톤) 를 반환. spec / system-design 두 변형이 공유.
+
+자가 점검 메시지는 **task scope 결정만** 묻고, codebase 차단 안내는 R1/R6 거부 메시지가 별도로 제공한다 (MECE). FPOP 준수 — 도구명 나열 / "You MUST" / 시스템 동작 설명 없음.
+
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)

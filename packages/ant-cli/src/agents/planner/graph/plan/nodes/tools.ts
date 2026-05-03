@@ -27,6 +27,28 @@ export interface PlannerToolContext {
   chatStatus: ChatStatusReporter;
 }
 
+/**
+ * Codebase mutation gate for the planner's bespoke tool system.
+ *
+ * The planner's job is to produce / refine PRDs and plan documents
+ * under `plan/`, `architecture/`, etc. — never to mutate source code
+ * under `codebase/`. The architect's `code` job's `execute` phase is
+ * the only legitimate writer for `codebase/`. Mirrors the architect-
+ * side gate (`agents/common/tool/handlers/codebaseGate.ts`).
+ */
+function codebaseRejection(toolName: string, displayPath: string): string {
+  return (
+    `${toolName} blocked: "${displayPath}" is under codebase/, which is read-only for the planner. ` +
+    `Edit plan/, architecture/, or other artifact paths instead. ` +
+    `Code changes are out of scope here — describe them in the plan/PRD document.`
+  );
+}
+
+function isCodebasePathArg(rel: string): boolean {
+  const normalized = rel.replace(/\\/g, '/').replace(/^\.\/+/, '');
+  return normalized === 'codebase' || normalized.startsWith('codebase/');
+}
+
 const readWorkspaceFile: ToolDefinition = {
   name: 'read_workspace_file',
   description: 'Read a file from the user workspace. Use relative paths from feature root (e.g., "plan/prd.md").',
@@ -120,6 +142,12 @@ const editFile: ToolDefinition = {
       return 'Error: Path traversal not allowed';
     }
 
+    if (isCodebasePathArg(args.path)) {
+      const msg = codebaseRejection('edit_file', args.path);
+      await ctx.chatStatus.failFileEdit(args.path, msg);
+      return msg;
+    }
+
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { applySearchReplace } = await import('../../../../../core/streaming/strategies/common/EditOperations');
@@ -198,6 +226,12 @@ async function handleHallucinatedFileWrite(
 
   if (!resolvedPath.startsWith(ctx.featurePath)) {
     return 'Error: Path traversal not allowed';
+  }
+
+  if (isCodebasePathArg(filePath)) {
+    const msg = codebaseRejection(toolName, filePath);
+    await ctx.chatStatus.failFileEdit(filePath, msg);
+    return msg;
   }
 
   try {

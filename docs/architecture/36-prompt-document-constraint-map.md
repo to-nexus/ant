@@ -143,6 +143,10 @@ flowchart TD
 - Phase 3: design/plan/code-docgen 문서작성 규칙 partial 통합
 - Phase 4: 테스트 강화 및 CI 게이트 고정
 
+## Codebase mutation gate cross-link
+
+문서 생성 잡(design plan/docGen, planner plan, code plan)의 prompt 는 산출물이 markdown / JSON 임을 명시하고 `decision` 같은 입력의 의미 축을 "기술 대상" 으로 닫아 codebase 변경 시도를 사전 억제한다 (FPOP/SBS/MECE 준수). 실제 차단은 도구 핸들러 + FileRenderer XML 가드가 담당 — prompt 가 가드를 대신하지 않는다. 정책 SSOT: [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate).
+
 ## 경계
 
 - 프롬프트 시스템 SSOT: [13-prompt-system.md](13-prompt-system.md)

@@ -36,7 +36,9 @@ describe('docGen runtimeContext — sealed plan injection (system intent)', () =
     });
 
     const out = buildRuntimeContext(state);
-    expect(out).toContain('# Sealed Plan (from plan node)');
+    // Title closes the meaning axis: the decision is content the
+    // markdown should record, not an action this phase performs.
+    expect(out).toContain('# Sealed Plan (the content the system-design markdown should record)');
     expect(out.indexOf('# Sealed Plan')).toBeLessThan(out.indexOf('# Target Document'));
     expect(out).toContain(planText);
   });

@@ -74,7 +74,7 @@ export async function finalizePlanFromExploration(
   const { StreamOrchestrator } = await import('../../../../../../../core/streaming/StreamOrchestrator');
 
   const createStrategy = () => {
-    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
+    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined, undefined, undefined, undefined, 'plan');
     strategy.setPlanTaskTitle(task.name);
     strategy.setParallelTaskName(task.name);
     return strategy;
