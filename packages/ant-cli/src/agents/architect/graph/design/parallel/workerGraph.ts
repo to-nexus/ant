@@ -25,6 +25,7 @@ import { routeAfterDocGen } from '../routers/docGenRouter';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
+import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -148,7 +149,6 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
     // Log task_complete to debug/logs/ (inside workerGraph where state._docGenCallIndex is accessible)
     if (state.context?.featurePath && state._httpJobId) {
-      const { getExecutionLogger } = await import('../../../../../core/utils/executionLogger');
       const execLogger = getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,
