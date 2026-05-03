@@ -1,5 +1,11 @@
 /**
- * STEP 0.9 — plan↔tool loop.
+ * STEP 0.9 — plan↔tool loop (code job).
+ *
+ * Thin wrapper around the shared `runPlanToolLoopPhase` helper in
+ * `agents/common/graph/nodes/plan/`. Code-specific concerns retained:
+ *   - `_activePhase === 'plan'` gating against the code state shape.
+ *   - finalizePlanOutcome / batch-split shape on success.
+ *   - workflowUpdate.exitNode bookkeeping.
  *
  * Drives the plan↔tool loop and either produces a finalised plan state
  * (`kind: 'return'`) or asks the caller to fall through into normal plan
@@ -12,8 +18,12 @@ import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { finalizePlanFromExploration } from './finalize';
-import { PLAN_TOOL_LOOP_MAX, runPlanLLMWithTools } from './tools';
+import { runPlanLLMWithTools } from './tools';
 import { finalizePlanOutcome } from '../outcome/finalize';
+import {
+  runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
+  PLAN_TOOL_LOOP_MAX,
+} from '../../../../../../common/graph/nodes/plan';
 
 export type PlanToolLoopOutcome =
   | { kind: 'return'; state: ArchitectGraphState }
@@ -24,49 +34,43 @@ export async function runPlanToolLoopPhase(
   nextTask: CodeTask,
 ): Promise<PlanToolLoopOutcome> {
   const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
-  if (!(state._activePhase === 'plan' && nodePlan.length > 0)) {
-    return { kind: 'fallthrough' };
-  }
+  const isActive = state._activePhase === 'plan' && nodePlan.length > 0;
 
-  const overLimit = nodePlan.length >= PLAN_TOOL_LOOP_MAX * 2;
-
-  if (overLimit) {
-    console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
-    const finalizedPlan = await finalizePlanFromExploration(state, nodePlan as any, nextTask);
-    if (finalizedPlan) {
-      const returned = finalizePlanOutcome(state, nextTask, {
-        preSplitPlanText: finalizedPlan,
-        callSite: 'plan-llm-overlimit',
-      });
-      if (state.deps?.workflowUpdate && state._httpJobId) {
-        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+  const outcome = await sharedRunPlanToolLoopPhase({
+    history: nodePlan as any,
+    isActive,
+    toolLoopMax: PLAN_TOOL_LOOP_MAX,
+    runRound: async (history) => {
+      const result = await runPlanLLMWithTools(state, history as any, nextTask);
+      if (result === null) return null;
+      if ('planText' in result) {
+        return { kind: 'planText', planText: result.planText };
       }
-      return { kind: 'return', state: returned };
-    }
-    console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
-    return { kind: 'fallthrough', forceNoTools: true };
+      // Tool-calls branch: re-shape to the shared helper's expected output.
+      // The legacy `runPlanLLMWithTools` returns `nodePlanHistory` already
+      // appended; the shared helper expects a single assistant message.
+      const last = result.nodePlanHistory[result.nodePlanHistory.length - 1] as any;
+      return {
+        kind: 'toolCalls',
+        llmResponse: result.llmResponse,
+        assistantMessage: last,
+      };
+    },
+    onOverLimit: async (history) =>
+      (await finalizePlanFromExploration(state, history as any, nextTask)) ?? null,
+  });
+
+  if (outcome.kind === 'fallthrough') {
+    return { kind: 'fallthrough', forceNoTools: outcome.reason === 'over-limit-failed' };
   }
 
-  const result = await runPlanLLMWithTools(state, nodePlan as any, nextTask);
-  if (result && '_activePhase' in result) {
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
-    }
-    const returned: ArchitectGraphState = {
-      ...state,
-      conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
-      _activePhase: 'plan' as const,
-      llmResponse: result.llmResponse,
-      lessons: state.lessons,
-    };
-    return { kind: 'return', state: returned };
-  }
-  if (result && 'planText' in result) {
+  if (outcome.kind === 'planText') {
     const toolLoopOrigin: 'tool-loop-empty' | undefined =
-      result.planText === '' ? 'tool-loop-empty' : undefined;
+      outcome.planText === '' ? 'tool-loop-empty' : undefined;
+    const callSite = outcome.origin === 'over-limit' ? 'plan-llm-overlimit' : 'plan-llm-toolloop';
     const updatedState = finalizePlanOutcome(state, nextTask, {
-      preSplitPlanText: result.planText,
-      callSite: 'plan-llm-toolloop',
+      preSplitPlanText: outcome.planText,
+      callSite,
       planEmptyOrigin: toolLoopOrigin,
     });
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -75,5 +79,18 @@ export async function runPlanToolLoopPhase(
     return { kind: 'return', state: updatedState };
   }
 
-  return { kind: 'fallthrough' };
+  // toolCalls: short-circuit to tool node. Re-build NODE_PLAN history
+  // from previous + assistant message (legacy shape).
+  const updatedHistory = [...nodePlan, outcome.assistantMessage] as any;
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+  }
+  const returned: ArchitectGraphState = {
+    ...state,
+    conversations: { [CONV_KEYS.NODE_PLAN]: updatedHistory },
+    _activePhase: 'plan' as const,
+    llmResponse: outcome.llmResponse as any,
+    lessons: state.lessons,
+  };
+  return { kind: 'return', state: returned };
 }

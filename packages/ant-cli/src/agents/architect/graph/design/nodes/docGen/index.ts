@@ -101,8 +101,15 @@ export async function docGen(
   // Progressive call counter + budget warning injection
   // Figma tasks get higher thresholds to accommodate drill-down queries
   const hasFigmaTools = isFigmaUiDesign || (intentGroup === 'design-spec' && state.figmaAvailable === true);
-  const softWarnAt = hasFigmaTools ? 8 : 5;
-  const hardWarnAt = hasFigmaTools ? 12 : 8;
+  // Plan node now seals exploration before docGen runs, so docGen's
+  // tool budget here is for *precision-checking* (exact paths /
+  // signatures / asset URLs), not architecture re-exploration. Bump
+  // the soft/hard warning thresholds to reflect that docGen has
+  // genuine precision work to do without unleashing a full second
+  // exploration pass — the call-budget safety net at L355 below still
+  // terminates non-productive loops.
+  const softWarnAt = hasFigmaTools ? 10 : 7;
+  const hardWarnAt = hasFigmaTools ? 14 : 10;
   const noOutputCount = state._noOutputCallCount || 0;
   if (noOutputCount >= 1) {
     const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;

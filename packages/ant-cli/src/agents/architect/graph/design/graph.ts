@@ -779,6 +779,7 @@ export const DesignGraphChannels = {
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,
   executionTier: Annotation<any>,
+  _activePhase: Annotation<any>,
 } as const;
 
 const DesignGraphAnnotation = Annotation.Root(DesignGraphChannels);
@@ -861,17 +862,26 @@ export function buildDesignGraph() {
     designRouting.routeAfterRevise as any,
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
-  (graph as any).addEdge("plan", "docGen");
-  
+  // ✅ Conditional routing: plan → tool (tool-loop round) / docGen (<plan> emitted or fallthrough)
+  graph.addConditionalEdges(
+    "plan" as any,
+    designRouting.routeAfterPlan as any,
+    { tool: "tool", docGen: "docGen" } as any
+  );
+
   // ✅ Conditional routing: docGen → tool / checkTaskStatus / docGen (with call budget safety net)
   graph.addConditionalEdges(
     "docGen" as any,
     routeAfterDocGen as any,
     { tool: "tool", checkTaskStatus: "checkTaskStatus", docGen: "docGen" } as any
   );
-  
-  // ✅ Tool → docGen (loop back for next LLM turn)
-  (graph as any).addEdge("tool", "docGen");
+
+  // ✅ Conditional routing: tool → plan (plan↔tool loop) / docGen (docGen↔tool loop) — dispatched via _activePhase
+  graph.addConditionalEdges(
+    "tool" as any,
+    designRouting.routeAfterTool as any,
+    { plan: "plan", docGen: "docGen" } as any
+  );
   
   // ✅ Conditional routing: validation retry → docGen, interrupted → learn, more tasks → plan, all done → learn
   graph.addConditionalEdges(

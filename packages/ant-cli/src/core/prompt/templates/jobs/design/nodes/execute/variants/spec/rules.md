@@ -1,29 +1,40 @@
-## Codebase Exploration Protocol
+## Sealed Plan from Plan Node
 
-**Principle**: A spec grounded in actual code produces actionable implementation tasks. A spec written without codebase knowledge produces generic placeholders.
+**Principle**: The plan node has already decided the solution direction
+through deep exploration and candidate comparison. Your job here is to
+**write the document** following that plan, not to redesign.
 
-**Observation targets** (use tools to investigate):
+The sealed `<plan>` JSON has been injected at the top of your runtime
+context block as `# Sealed Plan (from plan node)` (when populated by
+the plan phase).
 
-| Target | What to observe |
-|--------|----------------|
-| **Architecture boundary** | Where does the requested feature touch existing modules? |
-| **Data flow** | How does data currently move through the relevant area? |
-| **Naming conventions** | What patterns do existing modules follow? |
-| **Integration points** | Which existing files need modification vs new files needed? |
+| Concern | Owned by |
+|---------|----------|
+| Solution direction / approach | plan node (sealed in `<plan>`) |
+| Document outline / sections | plan node (`documentOutline`) |
+| Detail precision (exact paths, signatures, conventions) | docGen (verify with tools) |
+| Final wording / formatting | docGen |
 
-**Constraint**: Do NOT assume code structure. When the directive describes changes to an existing system, use search_code and read_file to verify actual structure before specifying Technical Approach and Implementation Tasks.
+**Constraints**:
 
-**Constraint**: When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally when the context already reveals the needed set.
+- Do NOT change the solution direction recorded in `documentOutline`.
+  It is sealed.
+- Use tools ONLY for *detail precision* (exact import paths, function
+  signatures, file conventions, asset values). Do NOT re-explore
+  architecture — that is decided.
+- If you find new evidence via tools that contradicts the sealed plan,
+  DO NOT silently override. Raise it via `<clarify>` so the next plan
+  cycle can re-decide.
 
-**Constraint**: Do NOT explore the entire codebase. Focus only on the area directly relevant to this section's scope.
+⚠️ **Blind spot**: When the sealed plan looks "incomplete" the instinct
+is to do plan's job again under the docGen prompt. Resist that — plan
+ran with its own budget; if its output looks thin, docGen's correct
+move is to surface the gap (clarify) rather than re-solve from scratch.
 
-⚠️ **Blind spot**: LLMs tend to write specs from imagination rather than observation. If the directive references existing functionality, ALWAYS verify with tools before writing.
-
-### External API Verification
-
-**Observation target**: Does this spec section describe integration with an external SDK, API, or service?
-
-**Constraint**: If yes, use `search_web` to verify the current API surface (endpoints, auth method, rate limits) before specifying technical approach. Do NOT assume training-data accuracy for third-party interfaces.
+⚠️ **Empty plan fallback**: When no sealed plan is injected (legacy
+intent groups, fallthrough cases), the original Codebase Exploration
+heuristics apply — read in broad ranges (300-500+ lines), batch tool
+calls, and start writing as soon as the structural picture is clear.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -72,6 +83,18 @@
 
 ════════════════════════════════════════════════════════════════════════════════
 
+## Single-Document Integrity
+
+**Principle**: One task = one output document. All thinking — outline, structure, decisions, trade-offs — stays inside this single document body. Integrated reasoning across the whole document keeps the spec coherent; scattering thought across "future tasks" produces fragments that lose the through-line.
+
+**Constraint**: Do NOT propose, request, or hint at spawning additional tasks (`batches[]`, "another task should cover X", task-list-style follow-ups). The job has no fan-out mechanism here — any such output is silently discarded and the missing reasoning leaves a hole in the spec.
+
+**Constraint**: When the scope feels too large for one document, deepen the structuring inside the current document (sections, sub-sections, tables) rather than externalizing the work.
+
+⚠️ **Blind spot**: When directives feel multi-topic, the instinct is to defer parts to "another task". For spec docGen there is no such task — the deferred reasoning never happens. Integrate everything into this document.
+
+════════════════════════════════════════════════════════════════════════════════
+
 ## Rules
 
 1. Be specific and concrete. Use your tools to discover actual file paths, function names, and data structures. Reference them in the spec.
@@ -106,11 +129,5 @@
    - You just made a tool call (wait for the result first)
    - You haven't generated the document yet
    - You used `<clarify>` tag (wait for user response)
-
-3. **Typical flow:**
-   ```
-   Turn 1: search_code(...), read_file(...) → Wait
-   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
-   ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

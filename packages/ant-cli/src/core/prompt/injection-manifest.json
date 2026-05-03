@@ -71,5 +71,8 @@
     "game-art-assets-guide-by-desc": ["forceAppend"],
     "game-art-spec-guide-by-figma": ["forceAppend"],
     "game-art-spec-guide-by-desc": ["forceAppend"]
+  },
+  "jobs/design/nodes/plan/injections": {
+    "plan-tools-batch": []
   }
 }

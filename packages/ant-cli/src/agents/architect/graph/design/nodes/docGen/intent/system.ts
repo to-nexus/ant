@@ -366,7 +366,18 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
 export function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
   const lines: string[] = [];
-  
+
+  // ✅ 0. Sealed Plan (from plan node)
+  // Prepended so docGen treats `documentOutline` and `decision` as the
+  // authoritative scope for this turn (see system-design/rules.md
+  // "Sealed Plan from Plan Node"). Cleared when planText is empty
+  // (legacy flow / dispatchOnly fallthrough).
+  if (state.planText && state.planText.trim().length > 0) {
+    lines.push(`# Sealed Plan (from plan node)`);
+    lines.push(state.planText);
+    lines.push('');
+  }
+
   // ✅ 1. Target File
   if (task?.targetFile) {
     lines.push(`# Target Document`);

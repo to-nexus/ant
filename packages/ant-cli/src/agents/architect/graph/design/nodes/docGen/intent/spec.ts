@@ -69,6 +69,14 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const specDir = designDirOf(targetFile);
   const runtimeLines: string[] = [];
+  // Sealed plan from plan node — sourced from `state.planText`. When
+  // populated, prepend it so docGen treats it as the authoritative
+  // outline / decision contract (see spec/rules.md "Sealed Plan").
+  if (state.planText && state.planText.trim().length > 0) {
+    runtimeLines.push(`# Sealed Plan (from plan node)`);
+    runtimeLines.push(state.planText);
+    runtimeLines.push('');
+  }
   runtimeLines.push(`# Target Document`);
   runtimeLines.push(`Write to: \`${specDir}/${targetFile}\``);
   runtimeLines.push(`Use: <file path="${specDir}/${targetFile}">...</file>`);
@@ -175,8 +183,13 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // Deadline message for trailing user
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const callIndex = state._docGenCallIndex || 0;
-  const SOFT_DEADLINE = 20;
-  const HARD_DEADLINE = 30;
+  // Plan node now seals the architectural decision before docGen runs,
+  // so docGen's tool budget is mostly precision-checking. Bump the
+  // deadlines to give that precision phase a couple of extra turns
+  // without unleashing exploration sprawl (the safety net at L355 of
+  // docGen/index.ts still terminates after MAX_NO_OUTPUT_CALLS).
+  const SOFT_DEADLINE = 30;
+  const HARD_DEADLINE = 40;
 
   let trailingUserMessage = 'Continue.';
   if (callIndex >= HARD_DEADLINE) {

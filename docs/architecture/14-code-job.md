@@ -163,6 +163,26 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 > **Verification task 의 책임/불변식/안티패턴 전체**는 [17-code-verification-task.md](./17-code-verification-task.md) 참조 (SSOT — Session, gates, commandGuard, snapshot, terminal 등 12 책임 매트릭스).
 
+## Deep-think Fan-out (feature / ui)
+
+Decompose 가 솔루션을 모르는 directive (Tier 2 / 3 — 디자인 ref 부재) 에서는 deep-think 책임을 plan node 로 위임한다. plan 의 tool-loop 가 사고를 마친 후 작업이 N 개의 물리적으로 분리된 자식으로 갈라져야 한다고 판단하면 `<plan>` 본문에 `batches[]` 를 출력한다. `processDiagnosticBatchSplit` 가 동일 인프라로 fan-out 한다.
+
+| Parent type | Policy `kind` | Sub `subType` | Children plan-loop | parentReasoning |
+|---|---|---|---|---|
+| `verification` | `requeue-parent` | `error` | n/a (`prePlanText` fast-path) | n/a (diagnostics) |
+| `error` | `drop-and-replace` | `error` | n/a (`prePlanText` fast-path) | n/a (diagnostics) |
+| `test-code` | `drop-and-replace` | `test-code` | n/a (`prePlanText` fast-path) | n/a |
+| `feature` | `drop-and-replace` | `feature` | **skip** (`acceptsPrePlanText:true`) | 부모의 cross-batch decisions (이름/시그니처/계약) — 모든 batch 에 동일 복제 |
+| `ui` | `drop-and-replace` | `ui` | **maintained** (`acceptsPrePlanText:false`) | 동일 — ui 자식은 plan-tool-loop 로 정밀화 후 execute |
+
+**Tier 2 escalate**: `selfVerifyOnDone:true` 가 박힌 Tier 2 단일 task 가 plan 에서 `batches[]` 를 내면 `process.ts` 의 `isTier2EscalateCandidate` 분기가 자동 활성화돼 동일 fan-out 경로 (`drop-and-replace` + Final Verification 보충) 를 탄다. 자식들에는 `selfVerifyOnDone` 을 박지 않는다 — 게이트 책임은 새로 추가된 FV 가 가져간다.
+
+**Lineage cycle 방어**: `process.ts` 가 자식 sub-task 에 `batchSplitCount = parent + 1` 을 carry 한다. 자식이 다시 fan-out 하면 누적 카운트가 부모 lineage 에 따라 증가하므로 `MAX_BATCH_SPLIT_CYCLES` 가 grand-child 차원까지 보장된다. 특히 `acceptsPrePlanText:false` 인 ui 가족 (plan-tool-loop 유지) 에서 무한 확장을 차단하는 핵심 안전망.
+
+**parallelGroup 정합성**: 자식 `parallelGroup` 은 부모 group 을 base 로 상속한다 (없으면 `{type}-batch-{ts}` 새로 생성). 부모와 같은 큐의 형제 task 들과 file overlap 이 있을 수 있는 시나리오를 보수적으로 직렬화한다. 자식 batches 간 file overlap 은 `computeBatchFileOverlap` 가 별도로 검사해 overlap 있으면 그룹을 비우고 `exclusive:true` 로 강등한다.
+
+**parentReasoning 의미**: feature / ui fan-out 에서만 사용. plan 이 결정한 "이 batch 묶음을 관통하는 큰 그림" — 공유 API 이름, 계약, 타입, 통합 지점. 모든 batch 의 `prePlanText` JSON 안에 동일하게 직렬화돼 형제 자식 간 시그니처 drift (한 자식이 `connect()`, 다른 자식이 `connectWallet()` 식) 를 방지한다. 명칭은 코드상 `featureBatchShape` 이 emit 하는 JSON 의 `parentReasoning` 필드.
+
 ## Cache Invalidation Scope
 
 편집된 파일의 영향 범위에 따라 `VerificationSession._passed` 를 선택적으로 무효화한다. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`)가 경로와 diff를 관찰해 scope를 결정하고, `tool` 노드의 `verificationInvalidated` side effect 처리기가 해당 scope를 `Session.onFileChanged` 로 전달해 해당 gate 만 떨어뜨린다.

@@ -424,6 +424,12 @@ export function createTaskQueue(
   // gates to run).
   //
   // Tier 3/4 (Task / RefsGrounded): >= 2 tasks, verification task mandatory.
+  //   - Tier 3 deep-think directive shape `[feature × 1 + verification × 1]`
+  //     is LEGITIMATE. The plan node may later fan out via `batches[]` after
+  //     deep-think reasoning. Padding a fake second feature task to satisfy
+  //     `>= 2` is forbidden — the verification task IS the second slot.
+  //   - Tier 3 multi-unit shape `[feature × N + verification × 1]` requires
+  //     unambiguous physical isolation visible at decompose time.
   //
   // Tier 0 / Tier 1: caller short-circuits before reaching this function —
   // it only fires when `executionTier >= 2`. Any task count / shape issue at
@@ -453,8 +459,10 @@ export function createTaskQueue(
       throw new Error(
         `❌ [Decompose] Tier ${executionTier} requires AT LEAST 2 tasks (work task(s) + mandatory ` +
         `verification task), got ${tasks.length}.\n` +
-        `A single-unit breakdown belongs at Tier 2 with selfVerifyOnDone:true on the sole task. ` +
-        `Tier 3/4 are reserved for multi-unit work where a dedicated verification task governs gates.\n`
+        `A truly single-unit breakdown with no separate verification needs belongs at Tier 2 ` +
+        `with selfVerifyOnDone:true on the sole task. Tier 3/4 always pair work task(s) with a ` +
+        `dedicated verification task — even the deep-think single-feature directive case is ` +
+        `[feature × 1 + verification × 1] = 2 tasks.\n`
       );
     }
     if (!hasFinalTask) {
@@ -462,8 +470,25 @@ export function createTaskQueue(
         `❌ [Decompose] Tier ${executionTier} breakdown is missing a Final Verification task ` +
         `(type="verification", priority=1000).\n` +
         `Every Tier 3/4 breakdown MUST include a dedicated verification task — it is the SSOT for ` +
-        `install/typecheck/build/test gates across the multi-task pipeline. Error tasks and ` +
-        `feature tasks both depend on a following verification task to validate their changes.\n`
+        `install/typecheck/build/test gates. The deep-think single-feature shape ` +
+        `[feature × 1 + verification × 1] also satisfies this requirement.\n`
+      );
+    }
+    // Defense-in-depth: a Tier 3+ work task carrying `selfVerifyOnDone:true`
+    // would cross-wire Tier 2/3 semantics. The pass below already drops the
+    // flag (`executionTier !== 2 → undefined`), but rejecting upstream
+    // surfaces the prompt drift instead of silently masking it. Final
+    // Verification tasks are exempted defensively (their type is
+    // `verification`; they shouldn't carry the flag, but skipping them keeps
+    // the gate narrow).
+    const leakedSelfVerify = tasks.find(
+      (t) => (t as any).selfVerifyOnDone === true && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION,
+    );
+    if (leakedSelfVerify) {
+      throw new Error(
+        `❌ [Decompose] Tier ${executionTier} task "${leakedSelfVerify.id || leakedSelfVerify.name}" ` +
+        `has selfVerifyOnDone:true. That flag belongs ONLY to Tier 2 single tasks. ` +
+        `Tier 3/4 work tasks defer build/test/typecheck to the dedicated verification task — drop the flag.\n`
       );
     }
   }
