@@ -7,6 +7,7 @@ import { designDirOf } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import { evaluateBcGate } from './bcGate';
+import { resolveTouchedForLearn } from './resolveTouchedForLearn';
 import {
   collectTouchedFilesFromChatLog,
   type TouchedFromChatLog,
@@ -304,24 +305,29 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     || state.interruption?.reason === 'consecutive_timeouts';
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // I/O dedup: the §19 featureBiases sampler and the §2.4 breadcrumb
-  // matrix (below, inside the session-persistence block) both need the
-  // set of files touched during this turn, which lives in chat.jsonl.
+  // Turn-level touched-files snapshot for featureBiases + breadcrumb.
   //
-  // Compute it once here so the observability path issues a single
-  // `loadChatByTurnIds` call per learn run. Both helpers accept the
-  // pre-computed result and skip their internal fetch.
+  // Why dual-source:
+  // - chat.jsonl (`collectTouchedFilesFromChatLog`) captures op-level
+  //   create/edit/delete metadata but is written fire-and-forget.
+  // - `CodeTask.touchedFiles` (currentTask + completedTasksDetails) is
+  //   durable in-memory/session state and does not race with async flush.
   //
-  // Preconditions mirror the union of the two call sites:
-  //   - isLastTask (both helpers run only at turn boundary)
-  //   - !isWorkerContext (workers never own the classification / matrix)
-  //   - turnId + session present (collector returns empty otherwise)
+  // In production we observed turns with many file_edit lines eventually
+  // present in chat.jsonl, yet learn's BC gate saw touched=0 at decision
+  // time. `resolveTouchedForLearn` merges both sources and prefers the
+  // task-state snapshot whenever chat is not yet flushed.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const learnSession = state.deps?.session;
-  const touchedForLearn: TouchedFromChatLog | undefined =
+  const chatTouchedForLearn: TouchedFromChatLog | undefined =
     isLastTask && !isWorkerContext && state.turnId && learnSession
       ? await collectTouchedFilesFromChatLog(learnSession, state.turnId)
       : undefined;
+  const touchedForLearn: TouchedFromChatLog | undefined = resolveTouchedForLearn({
+    chatTouched: chatTouchedForLearn,
+    currentTask: state.currentTask,
+    completedTasksDetails: state.completedTasksDetails,
+  });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // §19 misclassify_guard — run BEFORE the session-persistence block.
