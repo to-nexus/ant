@@ -144,6 +144,34 @@ describe('chatSseHandler virtual editor tab bridge', () => {
     });
   });
 
+  it('parallel worker file_edit finalization also promotes virtual tab', () => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        workerScope: 'worker-2#task-b',
+        jobType: 'plan',
+        cardId: 'card-2',
+        statusType: 'file_edit',
+        metadata: { filePath: 'plan/prd.md' },
+      },
+    });
+
+    expect(h.state().promoteVirtualEditorTabToReal).toHaveBeenCalledWith({
+      cardId: 'card-2',
+      filePath: 'plan/prd.md',
+      source: 'plan',
+    });
+  });
+
   it('job failed status closes virtual tabs tied to the job', () => {
     const h = createHarness();
     const handler = createChatSseHandler(h.set as any, h.get as any);

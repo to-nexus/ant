@@ -82,6 +82,58 @@ describe('uiSlice editor tab transitions', () => {
     expect(h.state().mainPanelTabOrder).toContain('editor:virtual:card-1');
   });
 
+  it('creates virtual tabs for parallel worker outputs in one turn', () => {
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [{ turnId: 'turn-1', jobType: 'design', jobId: 'job-1' }],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-1:worker-1#task-a': {
+        turnId: 'turn-1',
+        workerScope: 'worker-1#task-a',
+        pendingCards: {
+          'card-a': {
+            cardId: 'card-a',
+            statusType: 'file_creating',
+            metadata: { filePath: 'architecture/spec/spec-a.md' },
+            streamedOutput: 'A chunk',
+          },
+        },
+      } as any,
+      'turn-1:worker-2#task-b': {
+        turnId: 'turn-1',
+        workerScope: 'worker-2#task-b',
+        pendingCards: {
+          'card-b': {
+            cardId: 'card-b',
+            statusType: 'file_editing',
+            metadata: { filePath: 'architecture/spec/spec-b.md' },
+            streamedOutput: 'B chunk',
+          },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(2);
+    expect(h.state().editorTabs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'editor:virtual:card-a',
+          kind: 'virtual',
+          path: 'architecture/spec/spec-a.md',
+          source: 'design',
+        }),
+        expect.objectContaining({
+          id: 'editor:virtual:card-b',
+          kind: 'virtual',
+          path: 'architecture/spec/spec-b.md',
+          source: 'design',
+        }),
+      ]),
+    );
+  });
+
   it('does not create virtual tab for plan_generating cards', () => {
     const h = createHarness({
       selectedJobType: 'plan',
