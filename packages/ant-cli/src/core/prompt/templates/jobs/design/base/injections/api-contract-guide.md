@@ -73,12 +73,14 @@
 | Forbidden Topic | Where It Belongs |
 |----------------|-----------------|
 | Server-side processing flows or implementation steps | Backend system design (be-system) |
-| Backend internal architecture diagrams or data flows | Backend system design (be-system) |
+| Backend INTERNAL flow diagrams (server-side processing sequence, internal service-to-service calls, internal data-flow between layers) | Backend system design (be-system) |
 | Database schemas or internal state management | Backend system design (be-system) |
 | Enumeration/constant definitions as standalone sections | Subsection within Shared Type Definitions |
 | Access control mechanisms as standalone sections | Subsection within Authentication & Authorization |
 | Implementation details (signing algorithms, hashing, caching) | Backend system design or coding phase |
 | Step-by-step numbered procedures | Describe WHAT the endpoint accepts/returns, not HOW the server processes it |
+
+Endpoint-surface diagrams that depict the API boundary itself (resource grouping, auth gateway, public/internal partitioning, MSA service-to-service contract topology) ARE allowed in this document under diagram-contract — they describe the contract surface, not internal flow.
 
 ---
 

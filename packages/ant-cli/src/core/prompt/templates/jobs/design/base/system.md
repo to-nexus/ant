@@ -146,7 +146,7 @@ Every technology/library/tool name must pass the **"Who decided?"** test:
 ### Absolute Rules:
 1. **Conciseness**: 1 sentence per point, NO paragraphs
 2. **Bullet Lists**: Use lists, not prose
-3. **Minimal Code**: Prefer prose; use code blocks only when necessary for cross-boundary clarity (doc-type guides may override)
+3. **Minimal Syntax**: Prefer prose. Use syntax-fenced code blocks only when a cross-boundary contract loses precision in prose. Diagram blocks (mermaid / ASCII) are NOT syntax fences — they are governed by diagram-contract (see partial below). Doc-type guides may tighten (NEVER loosen) this rule.
 4. **No Tutorials**: Design decisions only, NOT "What is React?" explanations
 5. **Chapter Count**: Each chapter maps to one catalog section; be concise
 6. **Technical Precision**: Use exact terms, avoid vague language
@@ -199,7 +199,7 @@ Every technology/library/tool name must pass the **"Who decided?"** test:
 - ✅ Component props (≤5 fields) described as name + purpose (no code fences)
 - ✅ API signatures (operation name + purpose + inputs + outputs, NO DTO field lists)
 - ✅ High-level strategy description (3-5 steps, NO code)
-- ✅ Architecture diagrams (prefer Mermaid; add compact ASCII fallback only when renderer is unavailable/uncertain)
+- ✅ Architecture diagrams when relationships are multi-axis (governed by diagram-contract below — they are NOT syntax fences and have no fence cap)
 
 {{> jobs/shared/injections/diagram-contract}}
 
