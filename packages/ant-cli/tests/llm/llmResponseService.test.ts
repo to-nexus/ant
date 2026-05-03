@@ -597,11 +597,16 @@ describe('LLMResponseService — lifecycle compat', () => {
     expect((messageLines[0] as any).text).toBe('text-content');
   });
 
-  it('removeChatStatus clears the matching pending card', async () => {
+  it('removeChatStatus clears the matching pending card and broadcasts a synchronized buffer snapshot', async () => {
     const { service, store } = makeService();
     const cardId = await service.showChatStatus('retrieving', { query: 'q' });
     await service.removeChatStatus(cardId!);
     expect(store.clearPendingCardCalls.map((c) => c.cardId)).toContain(cardId);
+    const snapshots = emittedSnapshots(store);
+    expect(snapshots.length).toBeGreaterThanOrEqual(1);
+    const last = snapshots[snapshots.length - 1];
+    expect(last.turnId).toBe('turn-1');
+    expect(last.pendingCards?.[cardId!]).toBeUndefined();
   });
 });
 

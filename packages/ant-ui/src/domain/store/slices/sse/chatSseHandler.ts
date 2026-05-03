@@ -20,13 +20,15 @@ import type {
   BufferKey,
   StreamingBuffer,
 } from '@/domain/store/selectors/chat';
-import type { ChatSseEvent, ChatLine, TurnBufferSnapshotMap } from '@ant/shared';
+import type { ChatSseEvent, ChatLine, ChatStatusLine, TurnBufferSnapshotMap } from '@ant/shared';
 import {
   enqueueStreamingDelta,
   flushStreamingDeltaBatch,
 } from './streamingDeltaBatch';
 
 const MAIN_WORKER_SCOPE = '_main_';
+const STREAMING_FILE_STATUS = new Set(['file_create', 'file_edit']);
+const VIRTUAL_TAB_JOB_TYPES = new Set(['plan', 'design']);
 
 function bufferKey(turnId: string, workerScope?: string | null): BufferKey {
   return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
@@ -85,6 +87,7 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         flushStreamingDeltaBatch(get);
         const buffers = snapshotsToMap(chatEvent.turnBuffers);
         get().replaceChatEvents(chatEvent.events, buffers, chatEvent.serverTs);
+        get().syncVirtualEditorTabsFromBuffers?.(buffers);
         console.log(
           `[Store] 💬 chat_initial_state: ${chatEvent.events.length} events, ${Object.keys(buffers).length} buffers`,
         );
@@ -105,6 +108,21 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         get().appendChatEvent(line);
         // file_create / file_edit / downloaded refresh the file tree.
         if (line.type === 'chat_status') {
+          const statusLine = line as ChatStatusLine;
+          const filePath = typeof statusLine.metadata?.filePath === 'string'
+            ? (statusLine.metadata?.filePath as string)
+            : undefined;
+          if (
+            VIRTUAL_TAB_JOB_TYPES.has(statusLine.jobType) &&
+            STREAMING_FILE_STATUS.has(statusLine.statusType) &&
+            filePath
+          ) {
+            get().promoteVirtualEditorTabToReal?.({
+              cardId: statusLine.cardId,
+              filePath,
+              source: statusLine.jobType as 'plan' | 'design',
+            });
+          }
           if (
             line.statusType === 'file_create' ||
             line.statusType === 'file_edit' ||
@@ -126,6 +144,9 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           chunk: chatEvent.chunk,
           producedAt: chatEvent.producedAt,
         });
+        if (chatEvent.kind === 'card_output' && chatEvent.cardId) {
+          get().appendVirtualEditorTabChunk?.(chatEvent.cardId, chatEvent.chunk);
+        }
         break;
       }
 
@@ -143,6 +164,7 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           pendingCards: chatEvent.pendingCards,
           producedAt: chatEvent.producedAt,
         });
+        get().syncVirtualEditorTabsFromBuffers?.(get().streamingBuffers);
         break;
       }
 
@@ -187,6 +209,9 @@ function handleNonChatEvent(event: any, set: any, get: any) {
     case 'job_status': {
       console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
       if (event.status === 'completed' || event.status === 'failed') {
+        if (event.jobId) {
+          get().removeVirtualEditorTabsByJobId?.(event.jobId);
+        }
         const cs = get();
 
         // Timeline + file tree refresh always run for events on the
