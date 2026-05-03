@@ -213,3 +213,4 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 - Code Job: [14-code-job.md](14-code-job.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
 - Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
+- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

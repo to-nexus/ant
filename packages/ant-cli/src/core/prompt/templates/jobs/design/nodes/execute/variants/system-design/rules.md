@@ -268,13 +268,12 @@ If you need multiple file operations, use multiple XML tags:
 
 ### Critical Rules:
 1. **lastSectionNumber exists?** → Use `<append>`, NOT `<file>`
-2. **ALL output must be inside XML tags** (no text before/after)
-3. **NO markdown fences inside XML** (just write markdown directly)
-4. **Path MUST start with** `architecture/system/`
+2. **NO markdown fences inside XML** (just write markdown directly)
+3. **Path MUST start with** `architecture/system/`
 {{#if isLastTaskForDocument}}
-5. **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task)
+4. **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task)
 {{else}}
-5. **ALWAYS add** `<!-- LAST_SECTION: N -->` at end
+4. **ALWAYS add** `<!-- LAST_SECTION: N -->` at end
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

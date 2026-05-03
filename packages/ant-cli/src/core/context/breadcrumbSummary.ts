@@ -92,12 +92,21 @@ export async function buildLlmBreadcrumbSummary(
   }
 
   try {
-    const messages = [{ role: 'user', content: 'Produce the breadcrumb summary.' }];
-    const opts = {
-      system: systemPrompt,
-      maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS,
-    };
-    const text = await withTimeout(llm.invoke(messages, opts), BREADCRUMB_SUMMARY_TIMEOUT_MS);
+    // System prompt MUST go through the `messages` array as a `system`
+    // role entry — every adapter (Anthropic / OpenAI / Gemini) extracts
+    // system content from `messages.find(m => m.role === 'system')` and
+    // ignores any `options.system` field. Passing it via options drops
+    // the entire context and the LLM responds with a generic "what would
+    // you like me to summarize?" message that gets persisted as the BC
+    // summary verbatim.
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Produce the breadcrumb summary.' },
+    ];
+    const text = await withTimeout(
+      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS }),
+      BREADCRUMB_SUMMARY_TIMEOUT_MS,
+    );
     const cleaned = (text ?? '').trim();
     if (!cleaned) {
       console.warn('⚠️  [BCSummary] LLM returned empty content, using fallback');

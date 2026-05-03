@@ -279,9 +279,33 @@ export interface ChatStatusLine extends LineBase {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Discriminator for `ChatAssistantMessageLine`. The 4-axis tag matrix
+ * (`docs/architecture/36-output-tag-matrix.md`) routes every LLM-emitted
+ * `assistant_message` body into one of these surfaces; server-side
+ * notifications (job-error, prereq fail, conflict, triage guide) carry
+ * `system_notice`. `legacy` covers free text from pre-Phase-2 nodes —
+ * kept for backwards compatibility during the rollout and removed in
+ * Phase 4 once every LLM caller emits inside a registered tag.
+ */
+export type ChatAssistantMessageKind =
+  | 'directive_reply' // <reply> body — primary user-facing answer
+  | 'system_notice' // server-emitted (errors, prereq, conflicts, guides)
+  | 'completion' // <done>true</done> formatted notice
+  | 'rendered_payload' // <detect> / <executionTier> / <references> / <learn_command>
+  | 'thinking_chunk' // <thinking> stream → also surfaced as assistant_thinking
+  | 'legacy'; // pre-Phase-2 free text (transitional)
+
 export interface ChatAssistantMessageLine extends LineBase {
   type: 'assistant_message';
   text: string;
+  /**
+   * Surface discriminator. Phase 2 introduces it as optional — readers
+   * MUST treat absence as `'legacy'`. Phase 4 makes it required and
+   * deletes the `legacy` variant after every emit site supplies a
+   * concrete kind.
+   */
+  kind?: ChatAssistantMessageKind;
 }
 
 /**

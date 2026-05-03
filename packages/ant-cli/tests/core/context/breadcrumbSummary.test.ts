@@ -70,6 +70,34 @@ describe('buildLlmBreadcrumbSummary', () => {
     );
   });
 
+  it('passes the rendered system prompt as a system role message (adapter contract)', async () => {
+    // Regression: every adapter (Anthropic / OpenAI / Gemini) extracts the
+    // system prompt from `messages.find(m => m.role === 'system')` and
+    // ignores any `options.system` field. Passing the system body via
+    // options used to silently strip the entire context, leaving only
+    // the bare "Produce the breadcrumb summary." user line — the LLM
+    // then politely answered "what would you like me to summarize?" and
+    // that text got persisted as the BC summary verbatim.
+    const llm = makeLLM('summary text');
+    const promptPort: PromptPort = {
+      render: vi.fn().mockResolvedValue('rendered system prompt'),
+    };
+    await buildLlmBreadcrumbSummary({ ...baseInput, llm, promptPort });
+
+    expect(llm.invoke).toHaveBeenCalledTimes(1);
+    const [messagesArg, optsArg] = (llm.invoke as any).mock.calls[0];
+
+    expect(messagesArg).toEqual([
+      { role: 'system', content: 'rendered system prompt' },
+      { role: 'user', content: 'Produce the breadcrumb summary.' },
+    ]);
+    // System content must NOT be smuggled through options — adapters
+    // ignore that path entirely.
+    expect(optsArg).toBeDefined();
+    expect((optsArg as any).system).toBeUndefined();
+    expect((optsArg as any).maxTokens).toBeGreaterThan(0);
+  });
+
   it('falls back to paraphrase when llm is missing', async () => {
     const result = await buildLlmBreadcrumbSummary({ ...baseInput, promptPort: makePromptPort() });
     expect(result).toContain('OAuth 로그인 추가해줘');

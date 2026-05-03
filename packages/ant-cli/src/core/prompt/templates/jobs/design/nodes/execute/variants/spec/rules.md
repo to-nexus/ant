@@ -99,16 +99,17 @@ calls, and start writing as soon as the structural picture is clear.
 
 1. Be specific and concrete. Use your tools to discover actual file paths, function names, and data structures. Reference them in the spec.
 2. Break down the implementation into ordered, atomic tasks that can each be executed independently.
-3. If you need more information from the user to write a complete spec, wrap your questions in a `<clarify>` tag:
+3. **Spec body in `<file>` / `<append>`. Decision summary in `<reply>` (one tag, after the file).** The spec document is the artifact; the `<reply>` is your narrative answer to the user — what direction you took, key trade-offs, and any follow-up suggestions. Per the Output Tag Contract, narrative outside `<reply>` is silently dropped.
+4. If you need more information from the user to write a complete spec, wrap your questions in a `<clarify>` tag:
    ```xml
    <clarify>
    - Question 1?
    - Question 2?
    </clarify>
    ```
-   **Constraint**: When using `<clarify>`, do NOT output the spec file and do NOT output `<done>`. Only ask questions. Wait for the user's response.
-4. Do NOT include generic placeholder content. If a section requires codebase knowledge, use tools to gather it first. Every section must contain actionable, project-specific information.
-5. The spec should be self-contained: a reader should understand the full scope without needing other documents.
+   **Constraint**: When using `<clarify>`, do NOT output the spec file and do NOT output `<done>`. Only ask questions. Wait for the user's response. (For non-blocking questions or summaries, use `<reply>` instead — `<clarify>` halts the job.)
+5. Do NOT include generic placeholder content. If a section requires codebase knowledge, use tools to gather it first. Every section must contain actionable, project-specific information.
+6. The spec should be self-contained: a reader should understand the full scope without needing other documents.
 
 ════════════════════════════════════════════════════════════════════════════════
 

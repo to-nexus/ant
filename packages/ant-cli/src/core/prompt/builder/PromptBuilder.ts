@@ -275,6 +275,17 @@ export class PromptBuilder implements PromptPort {
   private resolveInjections(config: PromptBuildConfig): string[] {
     const injectionPaths: string[] = [];
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Always-on: output tag policy (Phase 2 — Output Tag Matrix SSOT)
+    //
+    // Every LLM-emitting node MUST receive the canonical tag contract
+    // (first-token discipline + no cross-axis nesting + reply ↔ clarify
+    // disambiguation). Prepended so it leads the injections section and
+    // the LLM internalises the contract before any node-specific guidance.
+    // SSOT: docs/architecture/36-output-tag-matrix.md.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    injectionPaths.push('jobs/shared/injections/output-tag-policy');
+
     // Tier I: Intent-driven static policies
     if (config.intent) {
       const intentPolicy = getPromptPolicies(config.intent);

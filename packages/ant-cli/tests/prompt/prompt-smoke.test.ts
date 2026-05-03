@@ -424,6 +424,26 @@ describe('Template Smoke Tests', () => {
     });
   }
 
+  const DIAGRAM_CONTRACT_HEADER = '## Diagram Contract (Cross-Job)';
+  const DIAGRAM_CONTRACT_VARIANTS = [
+    'jobs/design/base/system',
+    'jobs/plan/nodes/plan/variants/default/base',
+    'jobs/code/nodes/execute/variants/docgen/base',
+  ];
+
+  for (const template of DIAGRAM_CONTRACT_VARIANTS) {
+    it(`diagram-contract partial appears in ${template}`, async () => {
+      await initPartials(TEMPLATES_DIR);
+      const output = await adapter.render(template, {
+        ...SAMPLE_VARS,
+        currentTask: { id: 't', name: 't', type: 'doc', description: 'x', priority: 800 },
+      });
+      expect(output).toContain(DIAGRAM_CONTRACT_HEADER);
+      expect(output).toContain('Mermaid');
+      expect(output).toContain('ASCII/text fallback');
+    });
+  }
+
   // Plan-side preview-* partial inclusion (Defect 1 fix — basePath omission).
   //
   // The plan node must surface the same `preview-setup` (frontend basePath)

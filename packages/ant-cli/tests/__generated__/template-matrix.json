@@ -1443,6 +1443,12 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/diagram-contract": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/directive": {
     "sources": [
       "auto-injection",
@@ -1473,6 +1479,13 @@
     "sources": [
       "auto-injection",
       "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/output-tag-policy": {
+    "sources": [
+      "render-call",
+      "partial-ref",
       "manifest"
     ]
   },
