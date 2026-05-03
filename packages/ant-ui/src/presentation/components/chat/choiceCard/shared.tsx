@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Play, XCircle } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
+import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import { useStore } from '@/domain/store';
 import { resolveChoice } from '@/infrastructure/http/api';
 import type {
@@ -38,6 +39,16 @@ export interface VariantProps {
   presented: ChatChoicePresentedLine;
   resolved?: ChatChoiceResolvedLine;
 }
+
+const TITLE_MARKDOWN_COMPONENTS = createMarkdownComponents({
+  paragraphTag: 'p',
+  paragraphClassName: 'my-1 leading-relaxed break-words',
+  headingClassName: {
+    h1: 'text-base font-semibold my-1 break-words',
+    h2: 'text-base font-semibold my-1 break-words',
+    h3: 'text-sm font-semibold my-1 break-words',
+  },
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Shared Hook: useChoiceCardState
@@ -211,8 +222,8 @@ export function ChoiceCardShell({
           <span className={t.iconColor}>{icon}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 prose prose-sm dark:prose-invert max-w-none [&>p]:my-1 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={TITLE_MARKDOWN_COMPONENTS}>
               {title}
             </ReactMarkdown>
           </div>
