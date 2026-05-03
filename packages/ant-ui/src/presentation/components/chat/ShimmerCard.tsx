@@ -56,19 +56,26 @@ interface ThinkingVariantProps {
 
 function ThinkingVariant({ text, collapsed, durationMs, isStreaming }: ThinkingVariantProps) {
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-  const [isThinkingComplete, setIsThinkingComplete] = useState(false);
   const thinkingScrollRef = useRef<HTMLDivElement>(null);
 
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const prevThinkingLengthRef = useRef(0);
 
+  // Derived from props so the streaming→complete→streaming transition
+  // (trailing-thinking merge: a new `thinking` chunk arrives after a
+  // durable thought, swapping `line` back to `streamingText`) flips the
+  // header back to "Thinking..." and re-opens the body. A previous
+  // implementation latched this as state and never reset, defeating
+  // the merge feature visually.
+  const isThinkingComplete = collapsed === true || !isStreaming;
+
+  // Reset interaction state on any streaming↔complete flip so re-entry
+  // starts with a clean view (collapsed by default when complete; not
+  // user-scrolling when streaming resumes).
   useEffect(() => {
-    if (collapsed === true || !isStreaming) {
-      setIsThinkingComplete(true);
-      setIsThinkingExpanded(false);
-      setIsUserScrolling(false);
-    }
-  }, [collapsed, isStreaming, durationMs]);
+    setIsThinkingExpanded(false);
+    setIsUserScrolling(false);
+  }, [collapsed, isStreaming]);
 
   const isAtBottom = (element: HTMLDivElement) => {
     const threshold = 50;

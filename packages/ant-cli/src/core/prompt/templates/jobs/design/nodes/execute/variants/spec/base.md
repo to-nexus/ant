@@ -44,7 +44,8 @@ A spec body typically follows:
 - **Phase 2+ — feature delivery** — deeper changes after Phase 1.
 - **Verification** — how each phase is verified end-to-end.
 
-When relationships among phases / tasks / files are multi-axis (≥ 2 of: tasks, directions, time-ordering), embed a mermaid (or ASCII fallback) block per diagram-contract. Single linear sequences stay prose. Decorative diagrams added to look complete are FORBIDDEN.
+When relationships among phases / tasks / files are multi-axis (≥ 2 of: tasks, directions, time-ordering), embed a diagram block per diagram-contract (form is selected there from the relationship shape). Single linear sequences stay prose. Decorative diagrams added to look complete are FORBIDDEN.
+When Mermaid is used, follow the Mermaid Syntax Safety constraints defined in diagram-contract.
 
 ════════════════════════════════════════════════════════════════════════════════
 PHASE ROLE

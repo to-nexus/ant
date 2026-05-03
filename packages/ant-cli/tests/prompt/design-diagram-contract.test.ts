@@ -47,6 +47,13 @@ describe('design diagram-contract — SSOT body', () => {
   it('warns that prose-only default itself needs justification', () => {
     expect(partial).toMatch(/omission of a diagram as a decision/);
   });
+
+  it('defines Mermaid syntax-safety constraints for parser-stable output', () => {
+    expect(partial).toMatch(/Mermaid Syntax Safety/);
+    expect(partial).toMatch(/double quotes/);
+    expect(partial).toMatch(/slash-delimited node-shape shorthand/);
+    expect(partial).toMatch(/one edge statement per line/);
+  });
 });
 
 describe('design diagram-contract — design/base/system.md', () => {
@@ -293,6 +300,68 @@ describe('design diagram-contract — DRY guard for the legacy code-block cap', 
           `Use the SYNTAX FENCES (Principle-form) rule in execute/variants/system-design/base.md instead.`,
       );
     }
+    expect(offenders).toHaveLength(0);
+  });
+});
+
+describe('design diagram-contract — unsafe Mermaid shorthand guard', () => {
+  it('no template includes slash-delimited Mermaid node shorthand examples', () => {
+    const roots = [
+      path.join(TEMPLATE_ROOT, 'jobs/design'),
+      path.join(TEMPLATE_ROOT, 'jobs/plan'),
+      path.join(TEMPLATE_ROOT, 'jobs/code'),
+      path.join(TEMPLATE_ROOT, 'jobs/shared'),
+    ];
+    const offenders: Array<{ file: string; line: number; text: string }> = [];
+
+    const slashShorthand = /\[[\\/][^\]\n]{1,80}\]/;
+
+    function scanMermaidBlocks(fullPath: string) {
+      const lines = fs.readFileSync(fullPath, 'utf8').split('\n');
+      let inMermaid = false;
+      lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        if (trimmed === '```mermaid') {
+          inMermaid = true;
+          return;
+        }
+        if (inMermaid && trimmed === '```') {
+          inMermaid = false;
+          return;
+        }
+        if (inMermaid && slashShorthand.test(line)) {
+          offenders.push({
+            file: path.relative(TEMPLATE_ROOT, fullPath),
+            line: idx + 1,
+            text: line.trim(),
+          });
+        }
+      });
+    }
+
+    function walk(dir: string) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          scanMermaidBlocks(full);
+        }
+      }
+    }
+
+    roots.forEach(walk);
+
+    if (offenders.length > 0) {
+      const detail = offenders
+        .map((o) => `  - ${o.file}:${o.line} → ${o.text}`)
+        .join('\n');
+      throw new Error(
+        `Unsafe slash-delimited Mermaid shorthand found in templates:\n${detail}\n` +
+          `Use standard nodes with quoted labels per jobs/shared/injections/diagram-contract.md.`,
+      );
+    }
+
     expect(offenders).toHaveLength(0);
   });
 });
