@@ -3,6 +3,7 @@ import { FileState } from '../types';
 import type { FileNode, FileResource } from '@/infrastructure/http/api';
 import type { AsyncFields } from '@/domain/async';
 import { initialAsyncFields } from '@/domain/async';
+import type { ViewMode } from '@/domain/file/viewMode';
 import { isFigmaDataPopulated } from '@ant/shared';
 
 /**
@@ -49,7 +50,7 @@ export interface FileActions {
   /** Hard reset — used when switching projects/features. */
   resetCurrentFile: () => void;
 
-  setLastViewMode: (mode: 'raw' | 'preview') => void;
+  setFileViewMode: (path: string, mode: ViewMode) => void;
   setUnseenArtifacts: (paths: string[]) => void;
   markArtifactsSeen: (paths: string[]) => void;
   setFigmaPopulated: (value: boolean | null) => void;
@@ -76,7 +77,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   selectedFile: undefined,
   fileTree: [],
   currentFile: initialCurrentFile(),
-  lastViewMode: 'raw',
+  viewModeByPath: {},
   unseenArtifacts: [],
   figmaPopulated: null,
 
@@ -363,8 +364,14 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   // ==================
   // Misc
   // ==================
-  setLastViewMode: (mode) => {
-    set({ lastViewMode: mode });
+  setFileViewMode: (path, mode) => {
+    if (!path) return;
+    set((state: any) => ({
+      viewModeByPath: {
+        ...(state.viewModeByPath ?? {}),
+        [path]: mode,
+      },
+    }));
   },
 
   setUnseenArtifacts: (paths) => {

@@ -317,8 +317,9 @@ Before generating output, verify:
 
 **Diagram Decision (per diagram-contract):**
 - ✅ Did I observe whether the section's relationships are multi-axis (≥2 of: boundaries, directions, time-ordering)?
-- ✅ If yes → mermaid (or ASCII fallback) block embedded; prose stays semantically aligned with the diagram.
+- ✅ If yes → diagram block embedded (form selected per diagram-contract from the relationship shape); prose stays semantically aligned with the diagram.
 - ✅ If no → diagram intentionally omitted (the omission itself is a decision, not a default).
+- ✅ If Mermaid is used → diagram-contract Mermaid Syntax Safety constraints are applied.
 - ❌ Decorative diagrams added to look complete are FORBIDDEN.
 
 **If YES to all → Output. If NO → Fix first!**

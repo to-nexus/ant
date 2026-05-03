@@ -3,6 +3,7 @@ import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/h
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatLine } from '@ant/shared';
 import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
+import type { ViewMode } from '@/domain/file/viewMode';
 import type { CurrentFileState } from './slices/fileSlice';
 
 // ==================
@@ -36,7 +37,7 @@ export interface FileState {
    * slices/fileSlice.ts and docs/architecture/ui-async-policy.md.
    */
   currentFile: CurrentFileState;
-  lastViewMode: 'raw' | 'preview';
+  viewModeByPath: Record<string, ViewMode>;
   unseenArtifacts: string[];  // Unseen artifact file paths for badge notifications
   figmaPopulated: boolean | null;  // null=loading, true=has files, false=empty/error
 }

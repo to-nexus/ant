@@ -2,6 +2,12 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { fetchFileBlob, isBinaryImageFilePath, isHtmlFilePath, isSvgFilePath } from '@/infrastructure/http/api';
+import {
+  canToggleViewMode,
+  DEFAULT_VIEW_MODE,
+  resolveViewMode,
+  type ViewMode,
+} from '@/domain/file/viewMode';
 import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -158,8 +164,8 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
-  const lastViewMode = useStore((state) => state.lastViewMode);
-  const setLastViewMode = useStore((state) => state.setLastViewMode);
+  const viewModeByPath = useStore((state) => state.viewModeByPath);
+  const setFileViewMode = useStore((state) => state.setFileViewMode);
 
   // FileResource slice — the single SSOT for the file being edited.
   const fileStatus = useStore((s) => s.currentFile.status);
@@ -176,7 +182,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
 
-  const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
@@ -240,20 +246,16 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
 
   const isSvgFile = isSvgFilePath(selectedFile);
   const isHtmlFile = isHtmlFilePath(selectedFile);
-  const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
-  const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
-  const isJsonlFile = selectedFile?.toLowerCase().match(/\.jsonl$/);
-  const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
-  const hasMultipleModes =
-    (isMarkdownFile || isSvgFile || isHtmlFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
+  const lowerSelectedFile = selectedFile?.toLowerCase() ?? '';
+  const isMarkdownFile = /\.(md|markdown)$/.test(lowerSelectedFile);
+  const isJsonFile = /\.json$/.test(lowerSelectedFile);
+  const isJsonlFile = /\.jsonl$/.test(lowerSelectedFile);
+  const isYamlFile = /\.(yaml|yml)$/.test(lowerSelectedFile);
+  const showViewModeToggle = canToggleViewMode(selectedFile);
 
   useEffect(() => {
-    if (hasMultipleModes) {
-      setViewMode(lastViewMode);
-    } else {
-      setViewMode('raw');
-    }
-  }, [selectedFile, hasMultipleModes, lastViewMode]);
+    setViewMode(resolveViewMode(selectedFile, viewModeByPath));
+  }, [selectedFile, viewModeByPath]);
 
   // Build/refresh SVG preview URL from edited content (preview mode only)
   useEffect(() => {
@@ -396,11 +398,10 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     discardBuffer();
   }, [discardBuffer]);
 
-  const handleViewModeChange = (mode: 'raw' | 'preview') => {
+  const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
-    if (hasMultipleModes) {
-      setLastViewMode(mode);
-    }
+    if (!selectedFile) return;
+    setFileViewMode(selectedFile, mode);
   };
 
   return (
@@ -487,8 +488,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {(isMarkdownFile || isSvgFile || isHtmlFile || isJsonFile || isJsonlFile || isYamlFile) &&
-            !isBinaryImageFile && (
+          {showViewModeToggle && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
                 onClick={() => handleViewModeChange('raw')}
@@ -585,6 +585,12 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             ) : (
               <div className="p-4 text-sm text-gray-500 dark:text-gray-400">{t('editor.htmlPreviewFailed')}</div>
             )}
+          </div>
+        ) : viewMode === 'preview' ? (
+          <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300 font-mono">
+              {editedContent}
+            </pre>
           </div>
         ) : (
           <>

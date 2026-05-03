@@ -155,6 +155,7 @@ SYNTAX FENCES (interface / DTO / type / config):
 DIAGRAM BLOCKS (mermaid / ASCII):
 - Diagram blocks are NOT counted as syntax fences. Their policy lives in diagram-contract (cross-job SSOT).
 - Length and count are bounded by the multi-axis relationships actually present in this document, not by a fence cap.
+- When Mermaid is used, comply with diagram-contract Mermaid Syntax Safety constraints.
 {{/if}}
 
 ⚠️ Focus on ARCHITECTURE and BOUNDARY INTERACTION, not implementation details!
@@ -530,7 +531,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
     - ✅ Import direction / dependency rules between boundaries stated?
 15. ✅ **DIAGRAM DECISION** (per diagram-contract):
     - ✅ Did I observe whether boundary topology / data-flow direction / time-ordered interaction is multi-axis enough that 1-D prose loses information?
-    - ✅ If yes → mermaid (or ASCII fallback) block embedded; prose stays semantically aligned with the diagram.
+    - ✅ If yes → diagram block embedded (form selected per diagram-contract from the relationship shape); prose stays semantically aligned with the diagram.
     - ✅ If no → diagram intentionally omitted (the omission itself is a decision, not a default).
     - ❌ Decorative diagrams added "to look complete" are FORBIDDEN.
 

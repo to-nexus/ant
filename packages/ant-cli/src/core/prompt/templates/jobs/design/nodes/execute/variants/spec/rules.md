@@ -111,7 +111,7 @@ calls, and start writing as soon as the structural picture is clear.
    **Constraint**: When using `<clarify>`, do NOT output the spec file and do NOT output `<done>`. Only ask questions. Wait for the user's response. (For non-blocking questions or summaries, use `<reply>` instead — `<clarify>` halts the job.)
 5. Do NOT include generic placeholder content. If a section requires codebase knowledge, use tools to gather it first. Every section must contain actionable, project-specific information.
 6. The spec should be self-contained: a reader should understand the full scope without needing other documents.
-7. **Diagram decision (per diagram-contract)**: When implementation order, dependency graphs between tasks, or cross-module interactions are multi-axis (≥2 of: tasks, directions, time-ordering), embed a mermaid (or ASCII fallback) block and keep the prose semantically aligned. Otherwise prose-only — omission is itself a decision, never a default. Decorative diagrams are FORBIDDEN.
+7. **Diagram decision (per diagram-contract)**: When implementation order, dependency graphs between tasks, or cross-module interactions are multi-axis (≥2 of: tasks, directions, time-ordering), embed a diagram block (form selected per diagram-contract from the relationship shape) and keep the prose semantically aligned. Otherwise prose-only — omission is itself a decision, never a default. Decorative diagrams are FORBIDDEN. If Mermaid is used, apply diagram-contract Mermaid Syntax Safety constraints.
 
 ════════════════════════════════════════════════════════════════════════════════
 
