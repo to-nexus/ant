@@ -24,6 +24,8 @@ export function MainPanelTabsBar() {
   const openTabs = useStore((state) => state.mainPanelOpenTabs);
   const tabOrder = useStore((state) => state.mainPanelTabOrder);
   const currentJobId = useStore((state) => state.currentJobId);
+  const activeEditorTabId = useStore((state) => state.activeEditorTabId);
+  const editorTabs = useStore((state) => state.editorTabs);
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
 
@@ -33,10 +35,11 @@ export function MainPanelTabsBar() {
   const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => {
     if (!openTabs[tabKey]) return null;
     
+    const activeEditorTab = editorTabs.find((tab) => tab.id === activeEditorTabId);
     const tabConfig: Record<string, { icon: any; label: string }> = {
       projectConfig: { icon: Settings, label: t('tabs.projectConfig') },
       accountConfig: { icon: User, label: t('tabs.accountConfig') },
-      fileEdit: { icon: FileEdit, label: t('tabs.fileEdit') },
+      fileEdit: { icon: FileEdit, label: activeEditorTab?.title || t('tabs.fileEdit') },
       transfer: { icon: ArrowLeftRight, label: t('tabs.transfer') },
       previewConfig: { icon: Monitor, label: t('tabs.previewConfig', 'Preview Config') },
       actions: { icon: Zap, label: t('tabs.actions', 'Actions') },

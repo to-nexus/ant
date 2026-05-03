@@ -719,16 +719,37 @@ export class LLMResponseService {
     if (!this.enabled || !cardId) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
+    const sessionKey = this.turnContext.context.sessionKey;
+    const scope = this.turnContext.getWorkerScopeKey();
     await this.stateStore
       .clearTurnBufferPendingCard(
-        this.turnContext.context.sessionKey,
+        sessionKey,
         turnId,
-        this.turnContext.getWorkerScopeKey(),
+        scope,
         cardId,
       )
       .catch((err) =>
         logger.warn(`removeChatStatus failed`, { component: 'LLMResponseService' }, err),
       );
+    // Keep FE `streamingBuffers` synchronized with the Redis pending-card
+    // cleanup. Without this snapshot, remove-only progress flows
+    // (`retrieving`/`listing_files` 0-result paths) can leave ghost
+    // pendingCards on the client until another buffer event arrives.
+    const buffer = await this.stateStore
+      .getTurnBuffer(sessionKey, turnId, scope)
+      .catch(() => null);
+    this.broadcaster.broadcastStreamingBufferSnapshot(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        text: buffer?.text,
+        thinking: buffer?.thinking,
+        pendingCards: buffer?.pendingCards,
+      },
+      this.turnContext.context.userContext,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════

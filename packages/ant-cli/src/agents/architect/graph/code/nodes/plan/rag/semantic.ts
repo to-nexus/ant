@@ -206,6 +206,9 @@ export async function loadSemanticFiles(
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) {
     console.warn(`   ⚠️  FileSystemPort not available, skipping file loading`);
+    if (retrievingIndex !== undefined) {
+      await chatAPI.removeChatStatus(retrievingIndex, 'retrieving');
+    }
     return { files: [], lessons: retrievedLessons };
   }
 
@@ -271,6 +274,9 @@ export async function loadSemanticFiles(
       console.log(`   ✅ 'retrieved' status sent successfully\n`);
     } catch (error: any) {
       console.error(`   ❌ 'retrieved' status FAILED:`, error.message);
+      if (retrievingIndex !== undefined) {
+        await chatAPI.removeChatStatus(retrievingIndex, 'retrieving');
+      }
     }
   } else {
     // 0 Vector DB files: remove the 'retrieving' UI element entirely

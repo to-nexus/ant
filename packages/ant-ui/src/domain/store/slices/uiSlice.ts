@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { UIState } from '../types';
+import { UIState, type EditorTab } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import {
   type ActionMetadata,
@@ -166,6 +166,18 @@ export interface UIActions {
   clearHighlightedArtifactDirs: () => void;
   setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => void;
   clearSpotlightTarget: () => void;
+  syncUnpinnedEditorTab: (filePath: string | undefined) => void;
+  selectEditorTab: (tabId: string) => void;
+  pinEditorTab: (tabId: string) => void;
+  unpinEditorTab: (tabId: string) => void;
+  closeEditorTab: (tabId: string) => void;
+  clearEditorTabs: () => void;
+  syncVirtualEditorTabsFromBuffers: (
+    buffers: Record<string, { turnId: string; pendingCards?: Record<string, import('@ant/shared').PendingCardSnapshot> }>,
+  ) => void;
+  appendVirtualEditorTabChunk: (cardId: string, chunk: string) => void;
+  promoteVirtualEditorTabToReal: (args: { cardId: string; filePath: string; source?: 'plan' | 'design' }) => void;
+  removeVirtualEditorTabsByJobId: (jobId: string) => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -203,6 +215,17 @@ const getInitialTheme = (): 'light' | 'dark' => {
   
   return 'light';
 };
+
+const UNPINNED_EDITOR_TAB_ID = 'editor:unpinned';
+
+const fileTitleFromPath = (filePath: string | undefined): string =>
+  filePath?.split('/').filter(Boolean).pop() || 'Untitled';
+
+const makePinnedRealTabId = (filePath: string): string => `editor:real:${filePath}`;
+
+function isRealUnpinnedTab(tab: EditorTab): boolean {
+  return tab.kind === 'real' && tab.pinned === false;
+}
 
 // Apply theme to document
 const applyTheme = (theme: 'light' | 'dark') => {
@@ -283,6 +306,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   bridgeDetected: false,
   figmaDesktopReachable: false,
   accountConfigScrollTarget: null,
+  editorTabs: [],
+  activeEditorTabId: null,
 
   // ==================
   // Actions
@@ -390,6 +415,18 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   closeMainPanelTab: (tab) => {
+    if (tab === 'fileEdit') {
+      set((s: any) => ({
+        editorTabs: [],
+        activeEditorTabId: null,
+        selectedFile: undefined,
+        mainPanelOpenTabs: { ...s.mainPanelOpenTabs, fileEdit: false },
+        mainPanelActiveTab: s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
+        mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+      }));
+      get().resetCurrentFile?.();
+      return;
+    }
     set((s: any) => {
       const nextOpen = { ...s.mainPanelOpenTabs, [tab]: false };
       const nextActive = s.mainPanelActiveTab === tab ? 'job' : s.mainPanelActiveTab;
@@ -399,6 +436,378 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         mainPanelOpenTabs: nextOpen,
         mainPanelActiveTab: nextActive,
         mainPanelTabOrder: nextOrder
+      };
+    });
+  },
+
+  syncUnpinnedEditorTab: (filePath) => {
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const existingIdx = tabs.findIndex((tab) => tab.id === UNPINNED_EDITOR_TAB_ID);
+
+      if (!filePath) {
+        if (existingIdx >= 0) tabs.splice(existingIdx, 1);
+        const nextActive =
+          s.activeEditorTabId === UNPINNED_EDITOR_TAB_ID
+            ? (tabs[0]?.id ?? null)
+            : s.activeEditorTabId;
+        const hasTabs = tabs.length > 0;
+        return {
+          editorTabs: tabs,
+          activeEditorTabId: nextActive,
+          mainPanelOpenTabs: {
+            ...s.mainPanelOpenTabs,
+            fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+          },
+          mainPanelActiveTab:
+            !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
+          mainPanelTabOrder: hasTabs
+            ? s.mainPanelTabOrder
+            : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+        };
+      }
+
+      const unpinned: EditorTab = {
+        id: UNPINNED_EDITOR_TAB_ID,
+        title: fileTitleFromPath(filePath),
+        path: filePath,
+        kind: 'real',
+        pinned: false,
+        readOnly: false,
+        status: 'ready',
+      };
+      if (existingIdx >= 0) tabs[existingIdx] = unpinned;
+      else tabs.push(unpinned);
+
+      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
+      newOrder.push('fileEdit');
+
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: UNPINNED_EDITOR_TAB_ID,
+        mainPanelActiveTab: 'fileEdit',
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: true,
+        },
+        mainPanelTabOrder: newOrder,
+      };
+    });
+  },
+
+  selectEditorTab: (tabId) => {
+    const tab = (get().editorTabs as EditorTab[]).find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+
+    set((s: any) => {
+      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
+      newOrder.push('fileEdit');
+      return {
+        activeEditorTabId: tabId,
+        mainPanelActiveTab: 'fileEdit',
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: true,
+        },
+        mainPanelTabOrder: newOrder,
+      };
+    });
+
+    if (tab.kind === 'real' && tab.path) {
+      const syncUnpinnedTab = tab.id === UNPINNED_EDITOR_TAB_ID;
+      get().openFile(tab.path, { syncUnpinnedTab });
+    }
+  },
+
+  pinEditorTab: (tabId) => {
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const idx = tabs.findIndex((tab) => tab.id === tabId);
+      if (idx < 0) return {};
+      const target = tabs[idx];
+      if (target.kind !== 'real' || target.pinned || !target.path) return {};
+
+      const pinnedId = makePinnedRealTabId(target.path);
+      const existingPinned = tabs.find((tab) => tab.id === pinnedId);
+      if (existingPinned) {
+        tabs.splice(idx, 1);
+        return {
+          editorTabs: tabs,
+          activeEditorTabId:
+            s.activeEditorTabId === tabId ? existingPinned.id : s.activeEditorTabId,
+        };
+      }
+
+      tabs[idx] = {
+        ...target,
+        id: pinnedId,
+        title: fileTitleFromPath(target.path),
+        pinned: true,
+      };
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: s.activeEditorTabId === tabId ? pinnedId : s.activeEditorTabId,
+      };
+    });
+  },
+
+  unpinEditorTab: (tabId) => {
+    let nextToOpen: EditorTab | undefined;
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const idx = tabs.findIndex((tab) => tab.id === tabId);
+      if (idx < 0) return {};
+      const target = tabs[idx];
+      if (target.kind !== 'real' || !target.pinned) return {};
+
+      const unpinnedIdx = tabs.findIndex((tab) => tab.id === UNPINNED_EDITOR_TAB_ID);
+      if (unpinnedIdx >= 0) {
+        tabs.splice(idx, 1);
+        const fallback = tabs[unpinnedIdx] ?? tabs.find(isRealUnpinnedTab) ?? tabs[0];
+        if (fallback?.kind === 'real' && fallback.path) nextToOpen = fallback;
+        return {
+          editorTabs: tabs,
+          activeEditorTabId: s.activeEditorTabId === tabId ? (fallback?.id ?? null) : s.activeEditorTabId,
+        };
+      }
+
+      tabs[idx] = {
+        ...target,
+        id: UNPINNED_EDITOR_TAB_ID,
+        pinned: false,
+      };
+      if (tabs[idx].kind === 'real' && tabs[idx].path) nextToOpen = tabs[idx];
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: s.activeEditorTabId === tabId ? UNPINNED_EDITOR_TAB_ID : s.activeEditorTabId,
+      };
+    });
+
+    if (nextToOpen?.path) {
+      const syncUnpinnedTab = nextToOpen.id === UNPINNED_EDITOR_TAB_ID;
+      get().openFile(nextToOpen.path, { syncUnpinnedTab });
+    }
+  },
+
+  closeEditorTab: (tabId) => {
+    let nextToOpen: EditorTab | undefined;
+    let shouldClearSelected = false;
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const idx = tabs.findIndex((tab) => tab.id === tabId);
+      if (idx < 0) return {};
+
+      tabs.splice(idx, 1);
+      const nextActive =
+        s.activeEditorTabId === tabId
+          ? (tabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? tabs[0]?.id ?? null)
+          : s.activeEditorTabId;
+      const activeTab = tabs.find((tab) => tab.id === nextActive);
+      if (activeTab?.kind === 'real' && activeTab.path) {
+        nextToOpen = activeTab;
+      } else if (!activeTab) {
+        shouldClearSelected = true;
+      }
+
+      const hasTabs = tabs.length > 0;
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: nextActive,
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+        },
+        mainPanelActiveTab:
+          !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
+        mainPanelTabOrder: hasTabs
+          ? s.mainPanelTabOrder
+          : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+      };
+    });
+
+    if (nextToOpen?.path) {
+      const syncUnpinnedTab = nextToOpen.id === UNPINNED_EDITOR_TAB_ID;
+      get().openFile(nextToOpen.path, { syncUnpinnedTab });
+      return;
+    }
+    if (shouldClearSelected) {
+      set({ selectedFile: undefined });
+      get().resetCurrentFile?.();
+    }
+  },
+
+  clearEditorTabs: () => {
+    set((s: any) => ({
+      editorTabs: [],
+      activeEditorTabId: null,
+      mainPanelOpenTabs: {
+        ...s.mainPanelOpenTabs,
+        fileEdit: false,
+      },
+      mainPanelActiveTab: s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
+      mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
+    }));
+  },
+
+  syncVirtualEditorTabsFromBuffers: (buffers) => {
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+      const seenVirtualIds = new Set<string>();
+      const turnInfo = new Map<string, { jobType?: string; jobId?: string }>();
+      for (const line of s.chatEvents ?? []) {
+        if (!turnInfo.has(line.turnId)) {
+          turnInfo.set(line.turnId, { jobType: line.jobType, jobId: line.jobId });
+        }
+      }
+      const createdIds: string[] = [];
+
+      for (const snapshot of Object.values(buffers ?? {})) {
+        const pendingCards = snapshot?.pendingCards ?? {};
+        const meta = turnInfo.get(snapshot.turnId);
+        const source =
+          meta?.jobType === 'plan' ? 'plan' : meta?.jobType === 'design' ? 'design' : undefined;
+        if (!source) continue;
+
+        for (const pending of Object.values(pendingCards)) {
+          const card = pending as import('@ant/shared').PendingCardSnapshot;
+          const isFileStreaming =
+            card.statusType === 'file_creating' ||
+            card.statusType === 'file_writing' ||
+            card.statusType === 'file_editing' ||
+            card.statusType === 'file_updating';
+          const isPlanStreaming = card.statusType === 'plan_generating';
+          if (!isFileStreaming && !isPlanStreaming) continue;
+
+          const filePath =
+            typeof card.metadata?.filePath === 'string' ? (card.metadata.filePath as string) : undefined;
+          const taskName =
+            typeof card.metadata?.taskName === 'string' ? (card.metadata.taskName as string) : undefined;
+          const title = filePath ? fileTitleFromPath(filePath) : (taskName || 'Plan Draft');
+          const id = `editor:virtual:${card.cardId}`;
+          seenVirtualIds.add(id);
+          const next: EditorTab = {
+            id,
+            cardId: card.cardId,
+            title,
+            kind: 'virtual',
+            pinned: true,
+            readOnly: true,
+            path: filePath,
+            content: card.streamedOutput ?? '',
+            status: 'streaming',
+            turnId: snapshot.turnId,
+            jobId: meta?.jobId,
+            source,
+          };
+          if (!byId.has(id)) createdIds.push(id);
+          byId.set(id, { ...(byId.get(id) ?? {}), ...next });
+        }
+      }
+
+      const nextTabs = Array.from(byId.values()).filter((tab) => {
+        if (tab.kind !== 'virtual') return true;
+        if (tab.status === 'ready') return true;
+        return seenVirtualIds.has(tab.id);
+      });
+      if (createdIds.length === 0) {
+        return { editorTabs: nextTabs };
+      }
+
+      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
+      newOrder.push('fileEdit');
+      return {
+        editorTabs: nextTabs,
+        activeEditorTabId: createdIds[createdIds.length - 1],
+        mainPanelActiveTab: 'fileEdit',
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: true,
+        },
+        mainPanelTabOrder: newOrder,
+      };
+    });
+  },
+
+  appendVirtualEditorTabChunk: (cardId, chunk) => {
+    if (!cardId || !chunk) return;
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const idx = tabs.findIndex((tab) => tab.cardId === cardId && tab.kind === 'virtual');
+      if (idx < 0) return {};
+      const prev = tabs[idx];
+      tabs[idx] = {
+        ...prev,
+        content: (prev.content ?? '') + chunk,
+        status: 'streaming',
+      };
+      return { editorTabs: tabs };
+    });
+  },
+
+  promoteVirtualEditorTabToReal: ({ cardId, filePath, source }) => {
+    if (!cardId || !filePath) return;
+    const realId = makePinnedRealTabId(filePath);
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])].filter(
+        (tab) => !(tab.kind === 'virtual' && tab.cardId === cardId),
+      );
+      if (!tabs.some((tab) => tab.id === realId)) {
+        tabs.push({
+          id: realId,
+          title: fileTitleFromPath(filePath),
+          path: filePath,
+          kind: 'real',
+          pinned: true,
+          readOnly: false,
+          status: 'ready',
+          source,
+        });
+      }
+
+      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
+      newOrder.push('fileEdit');
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: realId,
+        mainPanelActiveTab: 'fileEdit',
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: true,
+        },
+        mainPanelTabOrder: newOrder,
+      };
+    });
+    get().openFile(filePath, { syncUnpinnedTab: false });
+  },
+
+  removeVirtualEditorTabsByJobId: (jobId) => {
+    if (!jobId) return;
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const removedIds = new Set(
+        tabs.filter((tab) => tab.kind === 'virtual' && tab.jobId === jobId).map((tab) => tab.id),
+      );
+      if (removedIds.size === 0) return {};
+
+      const nextTabs = tabs.filter((tab) => !removedIds.has(tab.id));
+      const nextActive = removedIds.has(s.activeEditorTabId)
+        ? (nextTabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? nextTabs[0]?.id ?? null)
+        : s.activeEditorTabId;
+      const hasTabs = nextTabs.length > 0;
+
+      return {
+        editorTabs: nextTabs,
+        activeEditorTabId: nextActive,
+        mainPanelOpenTabs: {
+          ...s.mainPanelOpenTabs,
+          fileEdit: hasTabs ? s.mainPanelOpenTabs.fileEdit : false,
+        },
+        mainPanelActiveTab:
+          !hasTabs && s.mainPanelActiveTab === 'fileEdit' ? 'job' : s.mainPanelActiveTab,
+        mainPanelTabOrder: hasTabs
+          ? s.mainPanelTabOrder
+          : s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit'),
       };
     });
   },

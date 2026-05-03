@@ -347,6 +347,14 @@ export async function handleSearchCode(
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[searchCode] Error:`, errorMsg);
+    await ctx.chatStatus.showStatus('searched_code', {
+      pattern,
+      filesCount: 0,
+      totalMatches: 0,
+      filesList: [],
+      error: errorMsg,
+      _mergeIndex: searchingIndex,
+    });
     return { content: `Error: ${errorMsg}`, error: errorMsg };
   }
 }
