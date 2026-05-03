@@ -1,6 +1,6 @@
 ## Diagram Contract (Cross-Job)
 
-Use diagrams when they improve structural clarity of architecture, interaction, or process explanations.
+A diagram is the right form when the relationship is multi-axis (≥2 of: boundaries, directions, time-ordering) and prose bullets lose information by linearizing it. Otherwise prose is the default.
 
 Preferred output order:
 
@@ -26,3 +26,4 @@ Preferred output order:
 - Large decorative diagrams with weak linkage to actionable design decisions.
 - Diagram-only output without concise bullet interpretation.
 - Mixed notations that conflict (e.g., Mermaid flow says A->B while prose says A->C).
+- Default to prose-only when uncertain — that default produces "diagram never appears" even where multi-axis is observable. Treat omission of a diagram as a decision that needs the same justification as inclusion.

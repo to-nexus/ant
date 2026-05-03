@@ -39,7 +39,7 @@ API Contract structure rules:
 - Be precise; this document is a binding spec, not an architecture essay
 - DTO scope rule: in all sections except § Shared Type Definitions, a DTO name reference IS the complete specification — do NOT expand names into field lists or create any type-definition chapter outside § Shared Type Definitions
 - ⚠️ Blind spot: do NOT create variant-named type chapters ("Service DTOs", "Type Definitions (Extended)", etc.)
-- Code blocks are allowed for schema clarity within your assigned sections only
+- Syntax fences are allowed for schema clarity within your assigned sections only (diagram blocks follow diagram-contract — not counted here)
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog
@@ -54,10 +54,15 @@ STRUCTURE PER CHAPTER:
 - Each subsection: 3-8 bullet points
 - Each bullet: 1-2 sentences MAX
 
-CODE BLOCKS:
-- Maximum 3 code blocks in ENTIRE document, each ≤8 lines
-- Use ONLY for critical interfaces/types that cross boundaries
-- Prefer prose descriptions over code
+SYNTAX FENCES (interface / DTO / type / config):
+- A "syntax fence" is a fenced block containing language syntax (TypeScript, JSON, Go, SQL, etc.).
+- Use ONLY when a cross-boundary contract loses precision in prose. Otherwise prose.
+- Count and length are bounded by how many cross-boundary contracts the document actually carries — never by aesthetic completeness.
+- ⚠️ Blind spot: when a design body grows to 5+ syntax fences the abstraction level is broken. Reduce to prose; promote remaining contracts to a single shared types section.
+
+DIAGRAM BLOCKS (mermaid / ASCII):
+- Diagram blocks are NOT counted as syntax fences. Their policy lives in diagram-contract (cross-job SSOT).
+- Length and count are bounded by the multi-axis relationships actually present in this document, not by a fence cap.
 {{/if}}
 
 ⚠️ Focus on ARCHITECTURE and BOUNDARY INTERACTION, not implementation details!
@@ -129,7 +134,7 @@ CODE BLOCKS:
 **Conciseness:**
 - Write the minimum needed to convey each architectural decision
 - Each bullet: 1 sentence; each subsection: 3-8 bullets
-- Code blocks: Max 3 total, each ≤8 lines
+- Syntax fences: bounded by cross-boundary contracts present (see SYNTAX FENCES rule above). Diagram blocks are NOT counted here.
 
 **Focus**: Architecture decisions, boundary responsibilities, interaction patterns. NOT implementation formulas.
 {{/if}}
@@ -411,7 +416,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 4. ✅ Skipped sections not applicable to project type?
 5. ✅ Each chapter maps to an ASSIGNED section (no invented sections, no FORBIDDEN sections)?
 6. ✅ Concise — minimum content for each architectural decision?
-7. ✅ **Code blocks ≤3 total, each ≤8 lines**?
+7. ✅ **Syntax fences** justified per SYNTAX FENCES rule (one fence per cross-boundary contract; prose-first)? **Diagram blocks** governed separately by DIAGRAM DECISION (item 15).
 8. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode, internal state schemas)?
 9. ✅ NO forbidden sections (deployment, ops, monitoring)?
 10. ✅ Covered all critical architectural decisions and boundary interactions?
@@ -436,6 +441,11 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
     - ✅ Boundary-to-directory mapping principle stated?
     - ✅ Coding phase directives included?
     - ✅ Import direction / dependency rules between boundaries stated?
+15. ✅ **DIAGRAM DECISION** (per diagram-contract):
+    - ✅ Did I observe whether boundary topology / data-flow direction / time-ordered interaction is multi-axis enough that 1-D prose loses information?
+    - ✅ If yes → mermaid (or ASCII fallback) block embedded; prose stays semantically aligned with the diagram.
+    - ✅ If no → diagram intentionally omitted (the omission itself is a decision, not a default).
+    - ❌ Decorative diagrams added "to look complete" are FORBIDDEN.
 
 **If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
 
