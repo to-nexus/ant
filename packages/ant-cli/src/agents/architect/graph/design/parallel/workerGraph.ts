@@ -27,6 +27,7 @@ import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
+import { VerificationTerminalError } from '../../code/tasks/_shared/verify/terminal/errors';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -95,10 +96,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
-    
-    throw new Error(
+
+    // Terminal classification — prevents TaskOrchestrator from re-queuing
+    // this task (which would restart the worker subgraph at `__start__`
+    // → `plan`, reproducing the `spare-keeping-metal` task_fail-then-
+    // plan-loop pattern). See `_shared/verify/terminal/errors.ts`.
+    throw new VerificationTerminalError(
+      'call_budget_exhausted',
       `Task "${state.currentTask.name}" exhausted call budget (${callIndex} calls) without producing valid output. ` +
-      `This is a deterministic failure — the LLM could not generate the required document within the call limit.`
+      `This is a deterministic failure — the LLM could not generate the required document within the call limit.`,
     );
   }
 

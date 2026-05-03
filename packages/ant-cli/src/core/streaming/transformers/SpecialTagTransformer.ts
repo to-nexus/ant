@@ -26,7 +26,7 @@
  */
 
 import type { TransformResult } from '../OutputTagRegistry';
-import { allTags } from '../OutputTagRegistry';
+import { allTags, findTag } from '../OutputTagRegistry';
 import { type UserLanguage } from '../../utils/languageDetector';
 
 export type { TransformResult };
@@ -69,5 +69,36 @@ export class SpecialTagTransformer {
     }
 
     return { text: content, consumed: false };
+  }
+
+  /**
+   * Full-buffer scan for `<done>true</done>` — side-effect only. Used by
+   * surfaces that buffer the stream without running per-chunk `transform`
+   * (e.g. parallel task_response card in `CommonRenderStrategy`). The
+   * per-chunk `transform()` path is first-match-only by design; on a
+   * buffer where `<done>` is NOT the first registered tag to match, it
+   * would miss the side effect. This method walks every match globally so
+   * `_explicitDone` reflects the buffer's terminal intent.
+   *
+   * Rendering / suppression policy for `<done>` is NOT touched here — it
+   * still lives in the registry entry's `transform` hook. This method
+   * only promotes the side-effect flag that downstream code
+   * (`docGenRouter` / execute routers) reads to decide task termination.
+   */
+  scanExplicitDone(buffer: string): void {
+    if (!buffer || this._explicitDone) return;
+    const entry = findTag('done');
+    if (!entry) return;
+    const flags = entry.pattern.flags.includes('g')
+      ? entry.pattern.flags
+      : entry.pattern.flags + 'g';
+    const re = new RegExp(entry.pattern.source, flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(buffer)) !== null) {
+      if (m[1]?.toLowerCase() === 'true') {
+        this._explicitDone = true;
+        return;
+      }
+    }
   }
 }

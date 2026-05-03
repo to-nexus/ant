@@ -7,7 +7,14 @@ export type VerificationTerminalKind =
   | 'max_retries_exceeded'
   | 'unresolved_violations'
   | 'batch_cycle_limit'
-  | 'orchestrator_fail_limit';
+  | 'orchestrator_fail_limit'
+  // Worker-scope call-budget safety net — docGen / execute call loops
+  // that overrun the per-task max-call ceiling. Surfaced as terminal so
+  // `TaskOrchestrator.reportFailure` stops re-queuing the task.
+  // Without this, a task that exhausts the call budget is re-entered
+  // from the worker subgraph's `__start__` → `plan` edge, producing the
+  // `spare-keeping-metal` task_fail-then-plan-loop pattern.
+  | 'call_budget_exhausted';
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;

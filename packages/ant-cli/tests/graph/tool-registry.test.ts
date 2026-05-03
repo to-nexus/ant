@@ -91,6 +91,19 @@ describe('JOB_TOOL_MATRIX', () => {
     expect(designTools).not.toContain(ToolName.SEARCH_REFERENCE);
   });
 
+  // Regression: `codebaseGate.rejectRunCommand` unconditionally rejects
+  // `run_command` in design plan + docGen phases. Advertising the tool
+  // produced "unavailable in this phase" turns and token waste (see
+  // `spare-keeping-metal` RCA). Code exploration is covered by
+  // SEARCH_CODE + READ_FILE + LIST_FILES in those phases.
+  it('Design job should NOT include RUN_COMMAND (reserved for code/execute)', () => {
+    const designTools = JOB_TOOL_MATRIX[JobType.DESIGN];
+    expect(designTools).not.toContain(ToolName.RUN_COMMAND);
+    expect(designTools).toContain(ToolName.SEARCH_CODE);
+    expect(designTools).toContain(ToolName.READ_FILE);
+    expect(designTools).toContain(ToolName.LIST_FILES);
+  });
+
   it('Plan job should not include RUN_COMMAND or DELETE_FILE', () => {
     const planTools = JOB_TOOL_MATRIX[JobType.PLAN];
     expect(planTools).not.toContain(ToolName.RUN_COMMAND);
@@ -366,13 +379,16 @@ describe('Registry presets (catalog-driven)', () => {
     }
   });
 
-  it('createDesignToolRegistry should NOT include SEARCH_REFERENCE', async () => {
+  it('createDesignToolRegistry should NOT include SEARCH_REFERENCE or RUN_COMMAND', async () => {
     const { createDesignToolRegistry } = await import('../../src/agents/common/tool/presets');
     const registry = createDesignToolRegistry();
 
     expect(registry.has(ToolName.READ_FILE)).toBe(true);
     expect(registry.has(ToolName.SEARCH_REFERENCE)).toBe(false);
-    expect(registry.has(ToolName.RUN_COMMAND)).toBe(true);
+    // RUN_COMMAND is reserved for code/execute — design plan + docGen are
+    // document-producing phases where `codebaseGate.rejectRunCommand`
+    // unconditionally rejects shell execution.
+    expect(registry.has(ToolName.RUN_COMMAND)).toBe(false);
     expect(registry.has(ToolName.FIGMA_DESIGN_CTX)).toBe(true);
   });
 
