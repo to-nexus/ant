@@ -863,8 +863,14 @@ export class XMLStreamParser implements IStreamParser {
           
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
-          // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|plan|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
+          // Note: detect/references tags are NOT parsed here — they flow
+          // through as normal response so SpecialTagTransformer can format
+          // them. Same for the narrative-axis `<reply>` tag (Phase 2 of the
+          // Output Tag Matrix migration — see docs/architecture/36-output-tag-matrix.md):
+          // including it in this lookahead lets the parser cut free text
+          // BEFORE a `<reply>` opens, so the reply body reaches the
+          // transformer cleanly.
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|plan|file|delete|append|learn_command|clarify|function_calls|done|reply)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);

@@ -17,6 +17,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -43,6 +44,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -69,6 +71,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -95,6 +98,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -120,6 +124,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -145,7 +150,9 @@
     "directiveCountTotal": 0,
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
-    "injectionPaths": []
+    "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy"
+    ]
   },
   "A7": {
     "scenario": "verification: skips action-context",
@@ -165,6 +172,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management"
@@ -188,6 +196,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -214,6 +223,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/directive",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
@@ -241,6 +251,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
@@ -266,7 +277,9 @@
     "directiveCountTotal": 1,
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
-    "injectionPaths": []
+    "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy"
+    ]
   },
   "D4": {
     "scenario": "plan: directive in base template",
@@ -285,6 +298,8 @@
     "directiveCountTotal": 1,
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
-    "injectionPaths": []
+    "injectionPaths": [
+      "jobs/shared/injections/output-tag-policy"
+    ]
   }
 }

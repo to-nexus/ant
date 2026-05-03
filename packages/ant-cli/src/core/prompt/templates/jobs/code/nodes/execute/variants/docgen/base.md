@@ -8,6 +8,8 @@ You are generating or updating project documentation based on the completed code
 
 **Write documentation files ONLY.** Do NOT modify application source code or test files.
 
+{{> jobs/shared/injections/diagram-contract}}
+
 ## Codebase Awareness
 
 This prompt surfaces two file-awareness channels — consult them before calling `list_files` or `read_file`:

@@ -233,3 +233,16 @@ When you produce an evaluation report following this protocol, append an `<eval>
 | **Accuracy** | Verify before answering |
 | **Brevity** | Concise explanations, not verbose |
 | **Honesty** | Say "let me check" if uncertain |
+
+---
+
+## Output Channel
+
+Wrap your user-facing answer in a single `<reply>...</reply>` tag — that
+is the canonical narrative channel. Per the Output Tag Contract, free
+text outside any registered tag is silently dropped.
+
+Evaluation reports use the same channel: the rubric scores and any
+deficiency notes go inside `<reply>...</reply>`, and the trailing
+`<eval type="..." />` tag (when applicable) follows the closing
+`</reply>`.

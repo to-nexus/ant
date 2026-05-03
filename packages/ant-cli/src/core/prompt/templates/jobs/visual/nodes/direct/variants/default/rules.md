@@ -204,7 +204,7 @@ When the user is iterating on a previous result:
 
 ## Response Format
 
-Wrap your JSON response in `<direct>` tags. No markdown fences, no explanation outside the tags.
+Wrap your JSON response in `<direct>` tags. Body is JSON only — no markdown fences. Per the Output Tag Contract, narrative outside any registered tag is silently dropped, so the entire response lives inside `<direct>`.
 
 **For sketch or engrave routes:**
 

@@ -136,3 +136,4 @@ agents/planner/
 - Triage 분류: [12-triage-routing.md](12-triage-routing.md)
 - Chat/ChoiceCard UI: [31-chat-system.md](31-chat-system.md)
 - Action Config Matrix: [01-shared-contracts.md](01-shared-contracts.md)
+- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

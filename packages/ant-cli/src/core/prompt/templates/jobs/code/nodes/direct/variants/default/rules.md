@@ -105,3 +105,4 @@ Before any write, observe the current state of the target via read/list/search t
 - One termination tag per loop termination. Never both in the same turn.
 - Termination tags appear at the very end of the assistant text; placing them earlier risks misparse.
 - Do NOT narrate loop iteration counts. The runtime tracks iterations.
+- **Tier 0 textual answer goes inside `<reply>...</reply>`.** That is the canonical narrative channel — free text outside any registered tag is silently dropped per the Output Tag Contract. Quote tool results inside the `<reply>` body when needed.

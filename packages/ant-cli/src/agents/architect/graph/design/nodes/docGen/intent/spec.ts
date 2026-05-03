@@ -27,7 +27,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   content: MessageContentBlock[];
 }>> {
   const task = state.currentTask;
-  const targetFile = task?.targetFile || 'spec-feature.md';
+  const targetFile = task?.targetFile;
+  if (!targetFile) {
+    throw new Error('[DocGen/Spec] currentTask.targetFile is required');
+  }
   const directive = state.overrideDirective || state.directive || '';
   const jobMode = state.resolvedAction?.mode || 'generate';
 

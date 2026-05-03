@@ -188,23 +188,29 @@ function handleNonChatEvent(event: any, set: any, get: any) {
       console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
       if (event.status === 'completed' || event.status === 'failed') {
         const cs = get();
-        if (cs.jobStartPending && cs.isRunning) {
-          console.log('[Store] 🛡️ Ignoring job_status completion - new job start pending');
-          get().refreshFileTree?.();
-          break;
-        }
-        if (event.jobId && cs.currentJobId && event.jobId !== cs.currentJobId) {
-          console.log(`[Store] 🛡️ Ignoring job_status for stale job ${event.jobId} (current: ${cs.currentJobId})`);
-          get().refreshFileTree?.();
-          break;
-        }
-        cs.setRunning?.(false);
+
+        // Timeline + file tree refresh always run for events on the
+        // selected feature — `loadFeatureBreadcrumbs` re-reads the entire
+        // feature.jsonl (idempotent), so stale jobIds and pending starts
+        // do not invalidate the refresh. The stale / pending guards
+        // below only protect the run-state transition (setRunning false)
+        // from being clobbered by an out-of-order completion.
         get().refreshFileTree?.();
         const project = cs.selectedProject;
         const feature = cs.selectedFeature;
         if (project && feature) {
           void get().loadFeatureBreadcrumbs?.(project, feature);
         }
+
+        if (cs.jobStartPending && cs.isRunning) {
+          console.log('[Store] 🛡️ Skipping setRunning(false) - new job start pending');
+          break;
+        }
+        if (event.jobId && cs.currentJobId && event.jobId !== cs.currentJobId) {
+          console.log(`[Store] 🛡️ Skipping setRunning(false) for stale job ${event.jobId} (current: ${cs.currentJobId})`);
+          break;
+        }
+        cs.setRunning?.(false);
       } else if (event.status === 'running' || event.status === 'started') {
         if (get().jobStartPending) {
           set({ jobStartPending: false });
