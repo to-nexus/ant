@@ -134,10 +134,10 @@ For each per-service document, observe:
 
   | Handle type | Tool | Example invocation |
   |-------------|------|-------------------|
-  | HTTP/HTTPS URL (e.g. `*/swagger-json`, `*/openapi.json`, `*/v3/api-docs`) | `run_command` | `curl --max-time 30 --fail-with-body -sL "<url>" \| head -c 500000` |
   | Local file in codebase | `read_file` | `read_file({ path: "apis/openapi.yaml" })` |
   | File in source documents | `read_source_doc` | `read_source_doc({ path: "swagger.json", startLine, endLine })` |
-  | Shell-emitting handle | `run_command` | `run_command({ command: "<cmd>" })` |
+  | Code surface (types / route handlers / client call sites) | `search_code` | `search_code({ query: "FooResponse\|/v1/foo", path: "codebase/" })` |
+  | Remote URL / shell-emitting handle | — | **NOT retrievable from design phase.** Shell execution is reserved for the code job's execute phase. Re-derive the handle from codebase / source-doc reads, or emit the C3 gap statement when no in-repo evidence exists. |
 
   `search_web` is for handle DISCOVERY (when no source provides a handle) — NOT for retrieving a known handle. C4 already prohibits overlap.
 
