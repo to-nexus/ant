@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { cn } from '@/shared/utils/design-system';
 
 interface StreamingStatusChipProps {
@@ -9,7 +9,13 @@ interface StreamingStatusChipProps {
 }
 
 export function StreamingSpinner({ className }: { className?: string }) {
-  return <Loader2 className={cn('animate-spin text-amber-600 dark:text-amber-400', className)} />;
+  return (
+    <Spinner
+      size="sm"
+      tone="inherit"
+      className={cn('w-3 h-3 text-amber-600 dark:text-amber-400', className)}
+    />
+  );
 }
 
 export function StreamingStatusChip({
