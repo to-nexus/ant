@@ -24,6 +24,8 @@ import {
   findTag,
   getTag,
   tagsByIntent,
+  stripRegisteredTags,
+  transformAndStrip,
 } from '../../src/core/streaming/OutputTagRegistry';
 import { DECISION_TAG_REGISTRY } from '../../src/core/llm-response/DecisionTagRegistry';
 
@@ -163,5 +165,56 @@ describe('OutputTagRegistry — Phase 1 inventory parity', () => {
 
   it('<reply> chatLineKind is directive_reply', () => {
     expect(getTag('reply').chatLineKind).toBe('directive_reply');
+  });
+});
+
+describe('OutputTagRegistry — surface-side leak guards', () => {
+  it('stripRegisteredTags removes a single <reply> block including body', () => {
+    const out = stripRegisteredTags('before <reply>hello</reply> after');
+    expect(out).toBe('before  after');
+  });
+
+  it('stripRegisteredTags removes multiple distinct tag families in one pass', () => {
+    const input = 'a <reply>x</reply> b <done>true</done> c';
+    expect(stripRegisteredTags(input)).toBe('a  b  c');
+  });
+
+  it('stripRegisteredTags is idempotent on tag-free input', () => {
+    expect(stripRegisteredTags('plain markdown body')).toBe(
+      'plain markdown body',
+    );
+  });
+
+  it('stripRegisteredTags handles empty / undefined input safely', () => {
+    expect(stripRegisteredTags('')).toBe('');
+  });
+
+  it('stripRegisteredTags removes case-variant tags', () => {
+    expect(stripRegisteredTags('<REPLY>Body</REPLY>')).toBe('');
+  });
+
+  it('transformAndStrip renders <reply> body verbatim', () => {
+    const out = transformAndStrip('<reply>hello world</reply>', 'en');
+    expect(out).toBe('hello world');
+  });
+
+  it('transformAndStrip renders the locale-aware <done> message', () => {
+    const out = transformAndStrip('<done>true</done>', 'en');
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).not.toMatch(/<done>/);
+  });
+
+  it('transformAndStrip suppresses suppressed-axis tags (<techTier>, <boundary>, ...)', () => {
+    const input = 'pre <techTier>{}</techTier> mid <boundary>x</boundary> post';
+    const out = transformAndStrip(input, 'en');
+    expect(out).toBe('pre  mid  post');
+  });
+
+  it('transformAndStrip preserves narrative body alongside surrounding text', () => {
+    const out = transformAndStrip(
+      'context <reply>answer</reply> trailer',
+      'en',
+    );
+    expect(out).toBe('context answer trailer');
   });
 });

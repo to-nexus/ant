@@ -113,18 +113,13 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     // flashes the previous file's meta (e.g. a template warning lingering
     // when swapping to an image, whose path bypasses openFile).
     set((s: any) => {
-      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'fileEdit');
-      newOrder.push('fileEdit');
-
       return {
         selectedFile: normalized,
         currentFile: initialCurrentFile(),
-        mainPanelActiveTab: 'fileEdit',
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
         },
-        mainPanelTabOrder: newOrder,
       };
     });
     if (syncUnpinnedTab) {

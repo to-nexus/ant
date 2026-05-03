@@ -11,7 +11,6 @@ interface HarnessState {
   appendChatEvent: ReturnType<typeof vi.fn>;
   replaceStreamingBuffer: ReturnType<typeof vi.fn>;
   syncVirtualEditorTabsFromBuffers: ReturnType<typeof vi.fn>;
-  appendVirtualEditorTabChunk: ReturnType<typeof vi.fn>;
   promoteVirtualEditorTabToReal: ReturnType<typeof vi.fn>;
   removeVirtualEditorTabsByJobId: ReturnType<typeof vi.fn>;
   refreshFileTree: ReturnType<typeof vi.fn>;
@@ -38,7 +37,6 @@ function createHarness(overrides: Partial<HarnessState> = {}) {
     appendChatEvent: vi.fn(),
     replaceStreamingBuffer: vi.fn(() => {}),
     syncVirtualEditorTabsFromBuffers: vi.fn(),
-    appendVirtualEditorTabChunk: vi.fn(),
     promoteVirtualEditorTabToReal: vi.fn(),
     removeVirtualEditorTabsByJobId: vi.fn(),
     refreshFileTree: vi.fn(),
@@ -68,21 +66,31 @@ describe('chatSseHandler virtual editor tab bridge', () => {
     vi.spyOn(console, 'debug').mockImplementation(() => {});
   });
 
-  it('card_output streaming delta appends virtual tab chunk', () => {
+  it('card_output streaming delta triggers virtual tab sync path', () => {
     const h = createHarness();
     const handler = createChatSseHandler(h.set as any, h.get as any);
-    handler({
-      type: 'streaming_delta',
-      turnId: 'turn-1',
-      kind: 'card_output',
-      cardId: 'card-1',
-      chunk: 'hello',
-      producedAt: new Date().toISOString(),
-      projectId: 'proj',
-      featureName: 'base',
-    });
+    const originalRaf = globalThis.requestAnimationFrame;
+    const originalCancel = globalThis.cancelAnimationFrame;
+    // Force immediate flush path in tests.
+    (globalThis as any).requestAnimationFrame = undefined;
+    (globalThis as any).cancelAnimationFrame = undefined;
+    try {
+      handler({
+        type: 'streaming_delta',
+        turnId: 'turn-1',
+        kind: 'card_output',
+        cardId: 'card-1',
+        chunk: 'hello',
+        producedAt: new Date().toISOString(),
+        projectId: 'proj',
+        featureName: 'base',
+      });
+    } finally {
+      (globalThis as any).requestAnimationFrame = originalRaf;
+      (globalThis as any).cancelAnimationFrame = originalCancel;
+    }
 
-    expect(h.state().appendVirtualEditorTabChunk).toHaveBeenCalledWith('card-1', 'hello');
+    expect(h.state().syncVirtualEditorTabsFromBuffers).toHaveBeenCalledTimes(1);
   });
 
   it('streaming buffer snapshot resyncs virtual tabs from existing buffers', () => {

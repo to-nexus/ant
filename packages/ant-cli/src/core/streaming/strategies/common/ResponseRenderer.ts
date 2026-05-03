@@ -5,6 +5,7 @@
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../../transformers/SpecialTagTransformer';
 import { ParsedAction } from '../../types';
+import { stripRegisteredTags } from '../../OutputTagRegistry';
 
 export class ResponseRenderer {
   private chatAPI: ChatAPIClient;
@@ -17,20 +18,28 @@ export class ResponseRenderer {
   }
   
   /**
-   * Render thinking output
+   * Render thinking output.
+   *
+   * Strips any complete canonical tag (`<reply>...</reply>` etc.) from
+   * the chunk before forwarding so a thinking-stream that mentions an
+   * intent tag does not surface raw `<…>` markers in the reasoning
+   * panel. Per-chunk strip is best-effort — a tag split across chunks
+   * may still slip through, but the thinking surface is a folded
+   * reasoning view where occasional pass-through is benign.
    */
   async renderThinking(action: ParsedAction): Promise<void> {
-    const content = action.data.content || '';
+    const rawContent = action.data.content || '';
+    const content = rawContent ? stripRegisteredTags(rawContent) : rawContent;
     const isBlockStart = action.data.blockStart === true;
     const isBlockEnd = action.data.blockEnd === true;
-    
+
     if (isBlockStart) {
       this.thinkingStartTime = Date.now();
-      
+
       await this.chatAPI.showChatStatus('thinking', {
         blockStart: true
       });
-      
+
       if (content) {
         await this.chatAPI.sendLLMEvent({
           type: 'thinking',
@@ -42,9 +51,9 @@ export class ResponseRenderer {
         });
       }
     } else if (isBlockEnd) {
-      const durationMs = action.data.durationMs 
+      const durationMs = action.data.durationMs
         || (this.thinkingStartTime ? Date.now() - this.thinkingStartTime : undefined);
-      
+
       await this.chatAPI.sendLLMEvent({
         type: 'thinking',
         thinking: content,
@@ -55,7 +64,7 @@ export class ResponseRenderer {
           durationMs
         }
       });
-      
+
       this.thinkingStartTime = undefined;
     } else {
       if (content) {
