@@ -9,6 +9,7 @@ export async function handleSearchReferenceCode(
   args: { project: string; query: string; maxFiles?: number },
 ): Promise<ToolResult> {
   const { project, query, maxFiles = 5 } = args;
+  let searchingIndex: string | undefined;
 
   console.log(`   🔍 Searching reference project: ${project}`);
   console.log(`   Query: "${query}"`);
@@ -25,7 +26,7 @@ export async function handleSearchReferenceCode(
       return { content: msg, error: msg };
     }
 
-    await ctx.chatStatus.showStatus('searching_reference', { project, query });
+    searchingIndex = await ctx.chatStatus.showStatus('searching_reference', { project, query });
 
     const userContext = {
       userId: ctx.userId || 'local',
@@ -51,6 +52,7 @@ export async function handleSearchReferenceCode(
         project,
         filesCount: 0,
         error: 'No relevant code found',
+        _mergeIndex: searchingIndex,
       });
 
       const content = `⚠️  No relevant code found in reference project "${project}" for query: "${query}"\n\nTry:\n- Using different keywords\n- Being more specific about what you need\n- Searching for broader concepts`;
@@ -64,13 +66,15 @@ export async function handleSearchReferenceCode(
     await ctx.chatStatus.showStatus('searched_reference', {
       project,
       filesCount: searchResult.stats.filesLoaded,
+      _mergeIndex: searchingIndex,
     });
 
     if (filesList.length > 0) {
-      await ctx.chatStatus.showStatus('exploring', { filesCount: 0, totalFiles: 0 });
+      const exploringIndex = await ctx.chatStatus.showStatus('exploring', { filesCount: 0, totalFiles: 0 });
       await ctx.chatStatus.showStatus('explored', {
         filesCount: searchResult.stats.filesLoaded,
         filesList,
+        _mergeIndex: exploringIndex,
       });
     }
 
@@ -79,6 +83,16 @@ export async function handleSearchReferenceCode(
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`   ❌ Failed to search reference project: ${errorMsg}\n`);
+    try {
+      await ctx.chatStatus.showStatus('searched_reference', {
+        project,
+        filesCount: 0,
+        error: errorMsg,
+        _mergeIndex: searchingIndex,
+      });
+    } catch (statusErr) {
+      console.warn('   ⚠️  Failed to emit searched_reference error status:', statusErr);
+    }
     return {
       content: `❌ ERROR: Failed to search reference project "${project}"\nQuery: "${query}"\nError: ${errorMsg}`,
       error: errorMsg,

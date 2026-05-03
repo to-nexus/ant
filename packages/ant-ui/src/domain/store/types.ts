@@ -157,6 +157,23 @@ export interface UIState {
   bridgeDetected: boolean;
   figmaDesktopReachable: boolean;
   accountConfigScrollTarget: string | null;
+  editorTabs: EditorTab[];
+  activeEditorTabId: string | null;
+}
+
+export interface EditorTab {
+  id: string;
+  title: string;
+  path?: string;
+  kind: 'real' | 'virtual';
+  pinned: boolean;
+  readOnly: boolean;
+  cardId?: string;
+  turnId?: string;
+  jobId?: string;
+  source?: 'plan' | 'design';
+  status?: 'streaming' | 'ready';
+  content?: string;
 }
 
 // Git state moved to `domain/git-world/**`. See

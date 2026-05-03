@@ -97,6 +97,8 @@ export const createProjectSlice: StateCreator<
         sseReconnectGrace: false,
         connectionStatus: 'connected',
         figmaPopulated: null,
+        editorTabs: [],
+        activeEditorTabId: null,
         activeJobs: {},
         pendingAutoSelect: false,
       } as any);
@@ -137,6 +139,8 @@ export const createProjectSlice: StateCreator<
         sseReconnectGrace: false,
         connectionStatus: 'connected',
         figmaPopulated: null,
+        editorTabs: [],
+        activeEditorTabId: null,
         activeJobs: {},
         pendingAutoSelect: false,
       } as any);
@@ -186,6 +190,8 @@ export const createProjectSlice: StateCreator<
     set({ 
       selectedFeature: featureName,
       figmaPopulated: null,
+      editorTabs: [],
+      activeEditorTabId: null,
       activeJobs: {},
       pendingAutoSelect: !!featureName,
     } as any);

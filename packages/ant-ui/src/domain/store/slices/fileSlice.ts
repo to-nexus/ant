@@ -28,7 +28,7 @@ export const initialCurrentFile = (): CurrentFileState => ({
 });
 
 export interface FileActions {
-  selectFile: (filePath: string | undefined) => void;
+  selectFile: (filePath: string | undefined, options?: { syncUnpinnedTab?: boolean }) => void;
   setFileTree: (tree: FileNode[]) => void;
   refreshFileTree: (options?: { force?: boolean }) => Promise<void>;
 
@@ -37,7 +37,7 @@ export interface FileActions {
    * populates `currentFile.data`. Safe to call even when already open —
    * re-opens (re-fetches) the same path.
    */
-  openFile: (filePath: string) => Promise<void>;
+  openFile: (filePath: string, options?: { syncUnpinnedTab?: boolean }) => Promise<void>;
   /** Write dirty content to the in-memory buffer (no network). */
   updateBuffer: (content: string) => void;
   /** PUT the buffer (or current data.content) and replace `data` with the response. */
@@ -83,14 +83,18 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   // ==================
   // Actions — tab/tree
   // ==================
-  selectFile: (filePath) => {
+  selectFile: (filePath, options) => {
     const normalized = filePath && filePath.length > 0 ? filePath : undefined;
+    const syncUnpinnedTab = options?.syncUnpinnedTab !== false;
     const { selectedFile } = get();
 
     if (normalized === undefined) {
       set({ selectedFile: undefined, currentFile: initialCurrentFile() });
+      if (syncUnpinnedTab) {
+        get().syncUnpinnedEditorTab?.(undefined);
+      }
       const state = get();
-      if (state.closeMainPanelTab) {
+      if (state.closeMainPanelTab && (state.editorTabs ?? []).length === 0) {
         state.closeMainPanelTab('fileEdit');
       }
       return;
@@ -99,6 +103,9 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     if (selectedFile === normalized) {
       // Toggle: close the currently open file.
       set({ selectedFile: undefined, currentFile: initialCurrentFile() });
+      if (syncUnpinnedTab) {
+        get().syncUnpinnedEditorTab?.(undefined);
+      }
       return;
     }
 
@@ -120,6 +127,9 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
         mainPanelTabOrder: newOrder,
       };
     });
+    if (syncUnpinnedTab) {
+      get().syncUnpinnedEditorTab?.(normalized);
+    }
   },
 
   setFileTree: (tree) => {
@@ -172,7 +182,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   // Actions — FileResource SSOT
   // ==================
 
-  openFile: async (filePath) => {
+  openFile: async (filePath, options) => {
     const normalized = filePath && filePath.length > 0 ? filePath : undefined;
     if (!normalized) {
       get().selectFile(undefined);
@@ -184,7 +194,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     // file. `openFile` must be idempotent when re-invoked by the editor
     // panel's useEffect against the currently open path.
     if (get().selectedFile !== normalized) {
-      get().selectFile(normalized);
+      get().selectFile(normalized, { syncUnpinnedTab: options?.syncUnpinnedTab !== false });
     }
 
     const { selectedProject, selectedFeature } = get();

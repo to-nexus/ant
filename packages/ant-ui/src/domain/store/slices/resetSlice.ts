@@ -40,6 +40,8 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       figmaDesktopReachable: false,
       accountConfigScrollTarget: null,
       figmaPopulated: null,
+      editorTabs: [],
+      activeEditorTabId: null,
       activeJobs: {},
       pendingAutoSelect: false,
     });

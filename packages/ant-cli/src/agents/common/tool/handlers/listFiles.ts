@@ -55,6 +55,13 @@ export async function handleListFiles(
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[listFiles] ❌ Error:`, errorMsg);
+    if (listingIndex !== undefined) {
+      try {
+        await ctx.chatStatus.removeStatus(listingIndex, 'listing_files');
+      } catch (removeErr) {
+        console.warn('[listFiles] failed to remove listing_files status on error:', removeErr);
+      }
+    }
     return { content: `Error: ${errorMsg}`, error: errorMsg };
   }
 }
