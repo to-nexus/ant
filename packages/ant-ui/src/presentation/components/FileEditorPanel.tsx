@@ -10,6 +10,7 @@ import { Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
+import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import { JsonYamlPreview } from './JsonYamlPreview';
 import { isFigmaDataPopulated } from '@ant/shared';
 import { getSmartEditConfig } from './smartEdit/config';
@@ -134,6 +135,10 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
 interface FileEditorPanelProps {
   onClose?: () => void;
 }
+
+const MARKDOWN_PREVIEW_COMPONENTS = createMarkdownComponents({
+  paragraphTag: 'p',
+});
 
 /**
  * FileEditorPanel
@@ -551,6 +556,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
+              components={MARKDOWN_PREVIEW_COMPONENTS}
             >
               {editedContent}
             </ReactMarkdown>
