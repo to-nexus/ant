@@ -631,6 +631,7 @@ describe('ChatService — Phase 9 emission contract', () => {
     await service.appendThinking('proj', 'feat-a', 'reasoning step', {
       jobId: 'job-1',
       cardId: 'thought-1',
+      durationMs: 900,
       userContext: USER_CTX,
     });
 
@@ -639,6 +640,7 @@ describe('ChatService — Phase 9 emission contract', () => {
     expect(thinking).toBeDefined();
     expect((thinking as any).text).toBe('reasoning step');
     expect((thinking as any).cardId).toBe('thought-1');
+    expect((thinking as any).durationMs).toBe(900);
   });
 
   it('autoResolveStaleCancelledCards superseded prior cancelled cards on new emission', async () => {

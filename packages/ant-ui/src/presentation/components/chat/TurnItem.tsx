@@ -39,6 +39,7 @@ import type {
   ChatChoiceResolvedLine,
   ChatUserTurnLine,
   PendingCardSnapshot,
+  LogJobType,
 } from '@ant/shared';
 
 import { ActionMetadataBadges } from './ActionMetadataBadges';
@@ -136,6 +137,10 @@ const SectionStack = memo(function SectionStack({
   // are processed in the section's original order; non-status items
   // (thinking / assistant_message / choice) act as boundaries.
   const renderItems = useMemo(() => buildRenderItems(section), [section]);
+  const trailingThinkingMerge = useMemo(
+    () => buildTrailingThinkingMerge(renderItems, section.activeThinking),
+    [renderItems, section.activeThinking],
+  );
 
   // CardId set of items that have already finalized — used to skip
   // duplicate rendering when a TURN_BUFFER pending card is for a card
@@ -169,11 +174,13 @@ const SectionStack = memo(function SectionStack({
           key={entry.key ?? idx}
           entry={entry}
           isStreaming={isStreaming}
+          trailingThinkingMerge={trailingThinkingMerge}
+          renderIndex={idx}
         />
       ))}
 
       {/* Streaming overlays — appear after the durable section items */}
-      {section.activeThinking && (
+      {section.activeThinking && !trailingThinkingMerge?.hasActiveThinking && (
         <ShimmerCard variant="thinking" streamingText={section.activeThinking} />
       )}
       {section.activeText && (
@@ -211,6 +218,31 @@ function parseScope(scope: string): { workerLabel?: string; taskKey?: string } {
     workerLabel: workerPart || undefined,
     taskKey: taskPart || undefined,
   };
+}
+
+const LOG_JOB_TYPES = new Set<LogJobType>([
+  'code',
+  'design',
+  'learn',
+  'ask',
+  'plan',
+  'inline-ask',
+  'visual',
+]);
+
+function parseLogJobType(value: unknown): LogJobType | undefined {
+  if (typeof value !== 'string') return undefined;
+  return LOG_JOB_TYPES.has(value as LogJobType) ? (value as LogJobType) : undefined;
+}
+
+function resolvePendingJobType(
+  turnJobType: Turn['jobType'],
+  pending: PendingCardSnapshot,
+): Turn['jobType'] {
+  const fromMetadata = parseLogJobType(
+    (pending.metadata as Record<string, unknown> | undefined)?.jobType,
+  );
+  return fromMetadata ?? turnJobType;
 }
 
 /**
@@ -257,6 +289,15 @@ type RenderEntry =
       presented: ChatChoicePresentedLine;
       resolved?: ChatChoiceResolvedLine;
     };
+
+interface TrailingThinkingMerge {
+  startIndex: number;
+  endIndex: number;
+  hasActiveThinking: boolean;
+  mergedText: string;
+  mergedDurationMs?: number;
+  mergedLine: ChatThinkingLine;
+}
 
 /**
  * Walk the section's items and produce a flat render list, applying
@@ -316,6 +357,55 @@ function buildRenderItems(section: TurnSection): RenderEntry[] {
   return out;
 }
 
+function buildTrailingThinkingMerge(
+  renderItems: RenderEntry[],
+  activeThinking?: string,
+): TrailingThinkingMerge | null {
+  if (renderItems.length === 0) return null;
+  let endIndex = renderItems.length - 1;
+  while (endIndex >= 0 && renderItems[endIndex].kind !== 'thinking') {
+    endIndex -= 1;
+  }
+  if (endIndex < 0) return null;
+
+  let startIndex = endIndex;
+  while (startIndex - 1 >= 0 && renderItems[startIndex - 1].kind === 'thinking') {
+    startIndex -= 1;
+  }
+
+  const thinkingEntries = renderItems.slice(startIndex, endIndex + 1);
+  const hasActiveThinking = Boolean(activeThinking);
+  const shouldMerge = hasActiveThinking || thinkingEntries.length > 1;
+  if (!shouldMerge) return null;
+
+  const baseLine = (thinkingEntries[0] as { kind: 'thinking'; line: ChatThinkingLine }).line;
+  const mergedText =
+    thinkingEntries
+      .map((entry) => (entry as { kind: 'thinking'; line: ChatThinkingLine }).line.text)
+      .join('') + (activeThinking ?? '');
+
+  const mergedDurationMs = thinkingEntries.reduce<number | undefined>((acc, entry) => {
+    const duration = (entry as { kind: 'thinking'; line: ChatThinkingLine }).line.durationMs;
+    if (typeof duration !== 'number') return acc;
+    return (acc ?? 0) + duration;
+  }, undefined);
+
+  const mergedLine: ChatThinkingLine = {
+    ...baseLine,
+    text: mergedText,
+    ...(typeof mergedDurationMs === 'number' ? { durationMs: mergedDurationMs } : {}),
+  };
+
+  return {
+    startIndex,
+    endIndex,
+    hasActiveThinking,
+    mergedText,
+    mergedDurationMs,
+    mergedLine,
+  };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Render-entry dispatch
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -327,13 +417,42 @@ function buildRenderItems(section: TurnSection): RenderEntry[] {
 const RenderEntry = memo(function RenderEntry({
   entry,
   isStreaming,
+  trailingThinkingMerge,
+  renderIndex,
 }: {
   entry: RenderEntry;
   isStreaming: boolean;
+  trailingThinkingMerge: TrailingThinkingMerge | null;
+  renderIndex: number;
 }) {
+  if (
+    trailingThinkingMerge &&
+    renderIndex > trailingThinkingMerge.startIndex &&
+    renderIndex <= trailingThinkingMerge.endIndex
+  ) {
+    return null;
+  }
+  if (trailingThinkingMerge && renderIndex === trailingThinkingMerge.startIndex) {
+    if (trailingThinkingMerge.hasActiveThinking) {
+      return (
+        <ShimmerCard
+          variant="thinking"
+          streamingText={trailingThinkingMerge.mergedText}
+          durationMs={trailingThinkingMerge.mergedDurationMs}
+        />
+      );
+    }
+    return (
+      <ShimmerCard
+        variant="thinking"
+        line={trailingThinkingMerge.mergedLine}
+        durationMs={trailingThinkingMerge.mergedDurationMs}
+      />
+    );
+  }
   switch (entry.kind) {
     case 'thinking':
-      return <ShimmerCard variant="thinking" line={entry.line} />;
+      return <ShimmerCard variant="thinking" line={entry.line} durationMs={entry.line.durationMs} />;
     case 'assistant_message':
       return <AssistantTextBlock text={entry.line.text} isStreaming={false} />;
     case 'status':
@@ -506,7 +625,7 @@ const PendingStatusCard = memo(function PendingStatusCard({
       ts: `pending:${pending.cardId}`,
       jobId: '',
       turnId,
-      jobType: turnJobType,
+      jobType: resolvePendingJobType(turnJobType, pending),
       cardId: pending.cardId,
       statusType: pending.statusType as ChatStatusType,
       workerScope: workerScope === MAIN_WORKER_SCOPE ? undefined : workerScope,

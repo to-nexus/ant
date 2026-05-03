@@ -177,6 +177,20 @@ let turnsCache: TurnsCacheEntry | null = null;
 const EMPTY_TURNS: Turn[] = Object.freeze([]) as unknown as Turn[];
 const EMPTY_LINES: ChatLine[] = Object.freeze([]) as unknown as ChatLine[];
 const EMPTY_BUFFER_MAP: Map<string, StreamingBuffer> = new Map();
+const LOG_JOB_TYPES = new Set<LogJobType>([
+  'code',
+  'design',
+  'learn',
+  'ask',
+  'plan',
+  'inline-ask',
+  'visual',
+]);
+
+function parseLogJobType(value: unknown): LogJobType | undefined {
+  if (typeof value !== 'string') return undefined;
+  return LOG_JOB_TYPES.has(value as LogJobType) ? (value as LogJobType) : undefined;
+}
 
 /**
  * Test-only: drop the module-level cache so a test can simulate a
@@ -408,7 +422,10 @@ function projectSingleTurn(
   const firstLine = lines[0];
   const ts = firstLine?.ts ?? new Date().toISOString();
   let jobId = '';
-  let jobType: LogJobType = (firstLine?.jobType as LogJobType) ?? 'code';
+  let jobType: LogJobType =
+    parseLogJobType(firstLine?.jobType) ??
+    resolveJobTypeFromBuffers(buffersByScope) ??
+    'code';
 
   // workerScope → ordered ChatLine[] within the turn.
   const sectionOrder: string[] = [];
@@ -425,7 +442,7 @@ function projectSingleTurn(
     if (line.type === 'user_turn') {
       user = line;
       jobId ||= line.jobId;
-      jobType = (line.jobType as LogJobType) ?? jobType;
+      jobType = parseLogJobType(line.jobType) ?? jobType;
       // user_turn is rendered above sections, not inside them.
       continue;
     }
@@ -437,6 +454,7 @@ function projectSingleTurn(
     linesByScope.get(scope)!.push(line);
     if (!firstTsByScope.has(scope)) firstTsByScope.set(scope, line.ts);
     jobId ||= line.jobId;
+    jobType = parseLogJobType(line.jobType) ?? jobType;
   }
 
   // Section ordering — chronological by first-event timestamp.
@@ -485,6 +503,21 @@ function projectSingleTurn(
     user,
     sections,
   };
+}
+
+function resolveJobTypeFromBuffers(
+  buffersByScope: Map<string, StreamingBuffer>,
+): LogJobType | undefined {
+  for (const buffer of buffersByScope.values()) {
+    const pendingCards = buffer.pendingCards ?? {};
+    for (const pending of Object.values(pendingCards)) {
+      const fromMetadata = parseLogJobType(
+        (pending.metadata as Record<string, unknown> | undefined)?.jobType,
+      );
+      if (fromMetadata) return fromMetadata;
+    }
+  }
+  return undefined;
 }
 
 function foldSection(

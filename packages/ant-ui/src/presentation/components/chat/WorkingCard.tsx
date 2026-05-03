@@ -237,7 +237,7 @@ function WorkingIcon({ icon, iconClass, colorClass }: { icon: IconKind; iconClas
     return <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${colorClass}`} />;
   }
   const IconComp = icon;
-  return <IconComp className={`w-4 h-4 ${colorClass} ${iconClass} flex-shrink-0`} />;
+  return <IconComp className={`w-3.5 h-3.5 ${colorClass} ${iconClass} flex-shrink-0`} />;
 }
 
 /**
@@ -285,12 +285,12 @@ function WorkingCardHeader({
           <TruncatableText
             text={title}
             maxLength={60}
-            className={`text-xs font-medium ${titleClassName}`}
+            className={`text-[11px] font-medium ${titleClassName}`}
             buttonClassName={titleButtonClassName}
           />
         </div>
         {detail && (
-          <div className={`text-xs mt-0.5 ${detailClassName} break-all`}>
+          <div className={`text-[11px] mt-0.5 ${detailClassName} break-all`}>
             {detail}
           </div>
         )}
@@ -298,8 +298,8 @@ function WorkingCardHeader({
       {hasExpandable && (
         <div className="flex-shrink-0">
           {isExpanded
-            ? <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />
-            : <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />}
+            ? <ChevronDown className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400 opacity-60" />
+            : <ChevronRight className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400 opacity-60" />}
         </div>
       )}
     </>
@@ -377,7 +377,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
   // Progress state without a file list → compact inline strip (no chevron).
   if (isProgress && !hasFiles) {
     return (
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${containerClass}`}>
+      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ${containerClass}`}>
         <WorkingCardHeader {...headerProps} isExpanded={false} hasExpandable={false} />
       </div>
     );
@@ -422,7 +422,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
         role="button"
         tabIndex={interactive ? 0 : -1}
         aria-disabled={!interactive}
-        className={`w-full flex items-center gap-2 px-3 py-2 transition-colors 
+        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors 
                     ${containerClass}
                     ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
         onClick={interactive ? handleCardClick : undefined}
