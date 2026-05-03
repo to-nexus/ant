@@ -30,6 +30,7 @@ import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import { designDirOf } from "@ant/shared";
 import path from "node:path";
 import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline';
+import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -368,7 +369,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     // ✅ Log task_complete to debug/logs/
     if (state.context?.featurePath && state._httpJobId) {
       try {
-        const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
         const execLogger = getExecutionLogger({
           featurePath: state.context.featurePath,
           jobId: state._httpJobId,
@@ -500,7 +500,6 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   // ✅ Log parallel_start to debug/logs/
   if (state.context?.featurePath && state._httpJobId) {
     try {
-      const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
       const execLogger = getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,
@@ -556,20 +555,15 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       onTaskFailure: (task, error, workerId) => {
         console.error(`[Design ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
         if (state.context?.featurePath && state._httpJobId) {
-          try {
-            const { getExecutionLogger } = require('../../../../core/utils/executionLogger');
-            const failLogger = getExecutionLogger({
-              featurePath: state.context.featurePath,
-              jobId: state._httpJobId,
-              jobType: 'design',
-            });
-            failLogger.logTaskFail(task.id, {
-              taskName: task.name,
-              errorMessage: error.message,
-              errorStack: error.stack,
-              workerId,
-            });
-          } catch (_) { /* non-critical */ }
+          void getExecutionLogger({
+            featurePath: state.context.featurePath,
+            jobId: state._httpJobId,
+            jobType: 'design',
+          }).logTaskFail(task.id, {
+            taskName: task.name,
+            reason: 'unknown',
+            errorMessage: `[worker=${workerId}] ${error.message}`,
+          }).catch(() => {});
         }
       },
       onWorkerTerminate: (workerId: number) => {
@@ -585,18 +579,15 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       },
       onInterruption: (reason, runningTaskIds) => {
         if (state.context?.featurePath && state._httpJobId) {
-          import('../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-            const execLogger = getExecutionLogger({
-              featurePath: state.context.featurePath!,
-              jobId: state._httpJobId!,
-              jobType: 'design',
-            });
-            execLogger.logJobInterrupted({
-              reason,
-              runningTaskIds,
-              remainingTaskCount: taskQueue.size(),
-              completedTaskCount: orchestrator.getCompletedTasks().length,
-            }).catch(() => {});
+          void getExecutionLogger({
+            featurePath: state.context.featurePath,
+            jobId: state._httpJobId,
+            jobType: 'design',
+          }).logJobInterrupted({
+            reason,
+            runningTaskIds,
+            remainingTaskCount: taskQueue.size(),
+            completedTaskCount: orchestrator.getCompletedTasks().length,
           }).catch(() => {});
         }
       },
@@ -649,7 +640,6 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   // ✅ Log parallel_complete to debug/logs/
   if (state.context?.featurePath && state._httpJobId) {
     try {
-      const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
       const execLogger = getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,

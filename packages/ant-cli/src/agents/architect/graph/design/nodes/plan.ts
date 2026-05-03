@@ -1,4 +1,5 @@
 import { DesignGraphState } from "../state";
+import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 /**
  * Plan Node
@@ -79,7 +80,6 @@ export async function plan(state: DesignGraphState) {
   // ✅ Log task_start to debug/logs/
   if (currentTask && state.context?.featurePath && state._httpJobId) {
     try {
-      const { getExecutionLogger } = await import('../../../../../core/utils/executionLogger');
       const execLogger = getExecutionLogger({
         featurePath: state.context.featurePath,
         jobId: state._httpJobId,
