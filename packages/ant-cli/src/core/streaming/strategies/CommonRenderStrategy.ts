@@ -214,6 +214,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
     await this.fileRenderer.finalize();
 
     if (this.taskResponseIndex !== undefined) {
+      // `<done>true</done>` side-effect — the parallel task_response
+      // buffer path never runs per-chunk `tagTransformer.transform`
+      // (see `render` case 'response' rationale above), so
+      // `_explicitDone` would stay false even when the LLM emitted a
+      // terminal `<done>` marker. Downstream routers (design/code
+      // docGen / execute) branch on `llmResponse.done` which is
+      // sourced from `getExplicitDone()`; missing this scan keeps the
+      // node looping until the call-budget safety net fires. See the
+      // `spare-keeping-metal` RCA.
+      this.tagTransformer.scanExplicitDone(this.taskResponseBuffer);
+
       // Persist the full accumulated text on the terminal line so the FE
       // projector can reproduce the card from this single jsonl entry.
       // `_mergeIndex` keeps the cardId stable so `appendChatStatus` clears

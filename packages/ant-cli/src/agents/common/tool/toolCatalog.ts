@@ -190,8 +190,12 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.EDIT_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
-    // Execute
-    ToolName.RUN_COMMAND,
+    // NOTE: RUN_COMMAND intentionally absent. Design plan + docGen phases
+    // are document-producing — `codebaseGate.rejectRunCommand` already
+    // short-circuits shell execution, so advertising the tool wasted
+    // tokens and produced "unavailable in this phase" failure turns
+    // (see `spare-keeping-metal` RCA). Code exploration is covered by
+    // `search_code` (ripgrep-backed) + `read_file` / `list_files`.
     // Fetch (Figma + asset download)
     ToolName.DOWNLOAD_ASSET,
     ...FIGMA_TOOLS,
@@ -269,10 +273,11 @@ export const TOOL_SETS = {
   designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
   codeExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
 
+  // Design docGen default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
+  // rationale for why `RUN_COMMAND` is absent.
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB,
-    ToolName.RUN_COMMAND,
   ] as ToolName[],
 
   // SEARCH_CODE included so existing-project workspaces can satisfy the
@@ -297,12 +302,13 @@ export const TOOL_SETS = {
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
   ] as ToolName[],
 
+  // Spec-Figma design variant — see JOB_TOOL_MATRIX[JobType.DESIGN]
+  // rationale for why `RUN_COMMAND` is absent.
   specFigma: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
-    ToolName.RUN_COMMAND,
   ] as ToolName[],
 
   figmaExplore: [
