@@ -243,6 +243,8 @@ export interface ChatUserTurnLine extends LineBase {
 export interface ChatThinkingLine extends LineBase {
   type: 'assistant_thinking';
   text: string;
+  /** Duration of the completed thinking block in milliseconds. Optional. */
+  durationMs?: number;
   /**
    * cardId for cross-line linkage (rare — allows UI to merge consecutive
    * thinking lines produced by a single thinking stream). Optional.

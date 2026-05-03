@@ -244,11 +244,12 @@ function emittedSequence(store: FakeStateStore): Array<{ type: string; summary: 
 describe('LLMResponseService — finalized line emission', () => {
   it('appendThinking writes a chat.jsonl line AND broadcasts chat_event_appended', async () => {
     const { service, store } = makeService();
-    await service.appendThinking('reasoning text');
+    await service.appendThinking('reasoning text', undefined, 1200);
     const lines = emittedLines(store);
     expect(lines).toHaveLength(1);
     expect(lines[0].type).toBe('assistant_thinking');
     expect((lines[0] as any).text).toBe('reasoning text');
+    expect((lines[0] as any).durationMs).toBe(1200);
     expect(lines[0].turnId).toBe('turn-1');
     expect(lines[0].jobId).toBe('job-1');
   });
@@ -437,6 +438,10 @@ describe('LLMResponseService — showChatStatus dispatch', () => {
     expect(store.setPendingCardCalls).toHaveLength(1);
     expect(store.setPendingCardCalls[0].card.cardId).toBe(cardId);
     expect(store.setPendingCardCalls[0].card.statusType).toBe('retrieving');
+    expect(store.setPendingCardCalls[0].card.metadata).toMatchObject({
+      query: 'foo',
+      jobType: 'code',
+    });
   });
 
   it('terminal type (read) writes one chat_status line with the carried cardId', async () => {
@@ -525,6 +530,7 @@ describe('LLMResponseService — sendLLMEvent dispatch', () => {
     const lines = emittedLines(store);
     expect(lines.filter((l) => l.type === 'assistant_thinking')).toHaveLength(1);
     expect((lines[0] as any).text).toBe('a b');
+    expect((lines[0] as any).durationMs).toBe(50);
   });
 
   it('mkdir tool_use writes a tool_action chat_status', async () => {

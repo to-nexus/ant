@@ -330,12 +330,13 @@ export class LLMResponseService {
   // Finalized lines (chat.jsonl + chat_event_appended SSE)
   // ═══════════════════════════════════════════════════════════════════
 
-  async appendThinking(text: string, cardId?: string): Promise<void> {
+  async appendThinking(text: string, cardId?: string, durationMs?: number): Promise<void> {
     if (!this.enabled || !text || !this.getTurnId()) return;
     const line: ChatThinkingLine = {
       ...this.lineBase('assistant_thinking'),
       type: 'assistant_thinking',
       text,
+      ...(typeof durationMs === 'number' ? { durationMs } : {}),
       ...(cardId ? { cardId } : {}),
     };
     await this.persistAndBroadcast(line);
@@ -478,10 +479,14 @@ export class LLMResponseService {
     if (!turnId) return;
     const sessionKey = this.turnContext.context.sessionKey;
     const scope = this.turnContext.getWorkerScopeKey();
+    const pendingMetadata: Record<string, unknown> = { ...(metadata ?? {}) };
+    if (typeof pendingMetadata.jobType !== 'string') {
+      pendingMetadata.jobType = this.jobType;
+    }
     const card: PendingCardSnapshot = {
       cardId,
       statusType,
-      metadata: { ...(metadata ?? {}) },
+      metadata: pendingMetadata,
     };
     await this.stateStore
       .setTurnBufferPendingCard(sessionKey, turnId, scope, card)
@@ -549,7 +554,7 @@ export class LLMResponseService {
   // Buffer flush helpers
   // ═══════════════════════════════════════════════════════════════════
 
-  async flushThinkingBuffer(cardId?: string): Promise<void> {
+  async flushThinkingBuffer(cardId?: string, durationMs?: number): Promise<void> {
     if (!this.enabled) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
@@ -564,7 +569,7 @@ export class LLMResponseService {
     const text = buffer?.thinking?.trim();
     const finalCardId = cardId ?? ws.thinking?.cardId;
     if (text && text.length > 0) {
-      await this.appendThinking(text, finalCardId);
+      await this.appendThinking(text, finalCardId, durationMs);
     }
     // Clear ONLY the thinking field — text and pendingCards live on.
     if (buffer) {
@@ -774,8 +779,9 @@ export class LLMResponseService {
       switch (event.type) {
         case 'thinking': {
           const blockEnd = event.metadata?.blockEnd === true;
+          const durationMs = event.metadata?.durationMs;
           if (event.thinking) await this.streamThinkingChunk(event.thinking);
-          if (blockEnd) await this.flushThinkingBuffer();
+          if (blockEnd) await this.flushThinkingBuffer(undefined, durationMs);
           break;
         }
         case 'text': {

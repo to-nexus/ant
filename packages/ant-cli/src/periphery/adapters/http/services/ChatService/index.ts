@@ -214,6 +214,7 @@ export class ChatService {
       turnId?: string | null;
       jobType?: LogJobType;
       cardId?: string;
+      durationMs?: number;
       userContext?: UserContext;
     },
   ): Promise<void> {
@@ -232,6 +233,7 @@ export class ChatService {
       turnId,
       jobType: args.jobType ?? DEFAULT_JOB_TYPE,
       text,
+      ...(typeof args.durationMs === 'number' ? { durationMs: args.durationMs } : {}),
       ...(args.cardId ? { cardId: args.cardId } : {}),
     };
     await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);

@@ -201,9 +201,9 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
       <button 
         onClick={() => hasContentForButton && isCompleted && setIsCollapsed(!isCollapsed)}
         disabled={!hasContentForButton || !isCompleted}
-        className={`w-full ${config.headerBg} px-3 py-2.5 ${hasContentForButton && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
+        className={`w-full ${config.headerBg} px-2.5 py-1.5 ${hasContentForButton && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* File Icon - Shows loading spinner when active, file type icon when complete */}
           {isActive ? (
             <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
@@ -212,7 +212,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
           )}
           
           {/* File Path */}
-          <span className={`text-xs font-mono ${config.textColor} truncate flex-1 text-left`}>
+          <span className={`text-[11px] font-mono ${config.textColor} truncate flex-1 text-left`}>
             {filePath}
           </span>
           
@@ -264,8 +264,8 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
           {isCompleted && hasContentForButton && (
             <div className="flex-shrink-0">
               {isCollapsed ? 
-                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
-                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} />
+                <ChevronRight className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} /> :
+                <ChevronDown className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} />
               }
             </div>
           )}
@@ -278,18 +278,18 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
         <div className="border-t border-gray-200 dark:border-gray-700">
           {isFailed && content.metadata?.reason ? (
             // Error message for failed operations
-            <div className="px-4 py-3 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+            <div className="px-3 py-2 text-[11px] bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
               <div className="font-semibold mb-1">{t('card.error')}</div>
               <div className="whitespace-pre-wrap break-words font-mono">
                 {content.metadata.reason}
               </div>
             </div>
           ) : operation === 'edit' && (diffBefore || diffAfter) ? (
-            // Diff view for edits - 4 lines visible (96px)
-            <div ref={contentRef} className="max-h-[96px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none', lineHeight: '1.5' }} onScroll={handleScroll}>
+            // Diff view for edits - compact body (about 4 lines visible)
+            <div ref={contentRef} className="max-h-[80px] overflow-y-auto scrollbar-thin" style={{ overflowAnchor: 'none', lineHeight: '1.5' }} onScroll={handleScroll}>
               {diffBefore && (
                 <div className="bg-red-50 dark:bg-red-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
+                  <pre className="px-3 py-1.5 text-[11px] font-mono text-red-800 dark:text-red-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
                     {diffBefore.split('\n').map((line, i) => (
                       <div key={i} className="flex">
                         <span className="text-red-600 dark:text-red-400 mr-2">-</span>
@@ -301,7 +301,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
               )}
               {diffAfter && (
                 <div className="bg-green-50 dark:bg-green-900/10">
-                  <pre className="px-4 py-2 text-xs font-mono text-green-800 dark:text-green-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
+                  <pre className="px-3 py-1.5 text-[11px] font-mono text-green-800 dark:text-green-300 whitespace-pre-wrap break-words" style={{ lineHeight: '1.5' }}>
                     {diffAfter.split('\n').map((line, i) => (
                       <div key={i} className="flex">
                         <span className="text-green-600 dark:text-green-400 mr-2">+</span>
@@ -313,12 +313,10 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
               )}
             </div>
           ) : (
-            // ✅ File content with limited height (4 lines visible)
-            // Line height = 1.5 * 12px (text-xs) = 18px per line
-            // 4 lines = 72px + padding (12px top + 12px bottom) = 96px
+            // File content with compact height and typography
             <div 
               ref={contentRef}
-              className="px-4 py-3 text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 max-h-[96px] overflow-y-auto scrollbar-thin"
+              className="px-3 py-2 text-[11px] font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 max-h-[80px] overflow-y-auto scrollbar-thin"
               style={{ overflowAnchor: 'none', lineHeight: '1.5' }}
               onScroll={handleScroll}
             >
