@@ -38,3 +38,17 @@ names, framework hooks, or DOM-level details in `documentOutline`.
 Section descriptions stay at the architectural level — docGen and the
 ABSTRACTION rules in `execute/variants/system-design/rules.md`
 constrain implementation-detail leakage at write time.
+
+**Diagram observation in outline**: When a `documentOutline` entry's
+content covers boundary topology, data-flow direction, or
+time-ordered cross-boundary interactions, the entry's `content`
+field SHOULD note whether the section benefits from a diagram
+(e.g. "...; mermaid flowchart of boundary edges expected" or
+"...; diagram not needed — single linear path"). docGen will honor
+this decision under the sealed-plan contract instead of re-deciding
+under its own checklist.
+
+⚠️ **Blind spot**: Plan models default to prose-only outlines because
+"prose looks safer". Multi-axis relationships lose information when
+forced into 1-D bullet form; that information cannot be recovered
+downstream. The decision lives in plan, not docGen.

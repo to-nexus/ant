@@ -315,6 +315,12 @@ Before generating output, verify:
 - ✅ All headings in the same language?
 - ✅ Technical terms only in English?
 
+**Diagram Decision (per diagram-contract):**
+- ✅ Did I observe whether the section's relationships are multi-axis (≥2 of: boundaries, directions, time-ordering)?
+- ✅ If yes → mermaid (or ASCII fallback) block embedded; prose stays semantically aligned with the diagram.
+- ✅ If no → diagram intentionally omitted (the omission itself is a decision, not a default).
+- ❌ Decorative diagrams added to look complete are FORBIDDEN.
+
 **If YES to all → Output. If NO → Fix first!**
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -339,7 +345,7 @@ Before generating output, verify:
 ❌ Language-specific type/contract syntax: `interface GameEngine { ... }`, `type GameState = { ... }`
 ❌ Local/internal helper state schemas that never cross a boundary (these belong in implementation, not design)
 ❌ HTTP status code enumerations: listing status codes with per-code handling (describe boundary-level error POLICY instead)
-❌ Step-by-step procedural flows: "get credentials → sign payload → call API → store token → load data" (describe ownership POLICY instead)
+❌ Step-by-step procedural flows in PROSE: "get credentials → sign payload → call API → store token → load data" (describe ownership POLICY instead). Time-ordered interactions depicted in a sequence diagram block are governed by diagram-contract — not by this rule.
 ❌ View-model property listings: enumerating individual computed fields (describe what domain concepts the view-model aggregates)
 
 ### UI / Rendering Detail Guardrail
@@ -379,10 +385,11 @@ Before generating output, verify:
   - **Store/state names**: `useNewsStore`, `statsSlice`, `bookmarkStore`, `authState`
   - **Service/class names YOU invented**: `AuthService`, `NewsAPIClient`, `BookmarkManager` (describe architectural roles instead)
   
-- ❌ **Component hierarchies and relationships**:
+- ❌ **Component hierarchies and relationships in PROSE**:
   - "LoginPage contains LoginForm and ErrorDisplay" (unless describing layer boundaries)
   - "NewsCard receives props from NewsList" (props are implementation)
   - "Parent component passes callback to child" (wiring details)
+  - This rule applies to natural-language PROSE narration. Boundary topology / data-flow direction / time-ordered interactions depicted via mermaid or ASCII diagram blocks are governed by diagram-contract — not by this rule.
   
 - ❌ **Framework-specific APIs**:
   - React hooks: `useState`, `useEffect`, `useCallback`, `useMemo`
