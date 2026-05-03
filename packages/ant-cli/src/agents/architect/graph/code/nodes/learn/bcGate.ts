@@ -43,19 +43,22 @@ export interface BcGateInputs {
 export interface BcGateDecision {
   bcShouldEmit: boolean;
   turnTouchedAny: boolean;
+  failureSignal: boolean;
   diagnosticLine: string;
 }
 
 export function evaluateBcGate(inputs: BcGateInputs): BcGateDecision {
   const turnTouchedAny = inputs.touchedSize > 0;
-  const bcShouldEmit = inputs.isLastTask && turnTouchedAny;
+  const failureSignal = inputs.taskFailed || inputs.hasOrchestratorFailure;
+  const bcShouldEmit = inputs.isLastTask && (turnTouchedAny || failureSignal);
   const diagnosticLine =
     `📝 [Learn] BC eval — isLastTask=${inputs.isLastTask}, ` +
     `bcShouldEmit=${bcShouldEmit}, taskFailed=${inputs.taskFailed}, ` +
     `isWorkerContext=${inputs.isWorkerContext}, ` +
     `hasOrchestratorFailure=${inputs.hasOrchestratorFailure}, ` +
+    `failureSignal=${failureSignal}, ` +
     `touched=${inputs.touchedSize}, mode=${inputs.mode}, ` +
     `currentTaskType=${inputs.currentTaskType}, ` +
     `violationsLen=${inputs.violationsLen}`;
-  return { bcShouldEmit, turnTouchedAny, diagnosticLine };
+  return { bcShouldEmit, turnTouchedAny, failureSignal, diagnosticLine };
 }

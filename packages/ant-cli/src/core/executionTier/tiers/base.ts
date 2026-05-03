@@ -17,7 +17,7 @@
 import type { FeatureContext, CompactFeatureContextDeps } from '../../context/featureContextBuilder';
 import type { TouchedFromChatLog } from '../../context/breadcrumb';
 import type { ExecutionTier, ExecutionTierState, ExecutionTierId } from '../types';
-import type { BreadcrumbStrategy } from '../strategies/breadcrumb';
+import type { BreadcrumbEmitOptions, BreadcrumbStrategy } from '../strategies/breadcrumb';
 import type { CompactStrategy } from '../strategies/compact';
 
 export interface TierComposition {
@@ -31,8 +31,12 @@ export abstract class BaseTier implements ExecutionTier {
 
   constructor(protected readonly strategies: TierComposition) {}
 
-  breadcrumb(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void> {
-    return this.strategies.breadcrumb.apply(state, touched);
+  breadcrumb(
+    state: ExecutionTierState,
+    touched?: TouchedFromChatLog,
+    options?: BreadcrumbEmitOptions,
+  ): Promise<void> {
+    return this.strategies.breadcrumb.apply(state, touched, options);
   }
 
   compact(ctx: FeatureContext, deps: CompactFeatureContextDeps): Promise<FeatureContext> {

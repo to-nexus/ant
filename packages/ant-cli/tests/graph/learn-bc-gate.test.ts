@@ -9,8 +9,9 @@
  *   - the previous gate `if (isLastTask && !taskFailed)` silently dropped
  *     the BC even though the turn had clearly modified files
  *
- * The new policy is `isLastTask && turnTouchedAny`. `taskFailed` is still
- * surfaced in the diagnostic line but no longer blocks emission. The
+ * The new policy is `isLastTask && (turnTouchedAny || failureSignal)`.
+ * failureSignal = taskFailed || hasOrchestratorFailure.
+ * `taskFailed` is still surfaced in the diagnostic line. The
  * inner skip sites (`mode='explain'` / `touched=0` / session-or-context
  * missing) are unaffected and live in
  * `tests/core/executionTier/silentSkipDiagnostics.test.ts`.
@@ -75,6 +76,18 @@ describe('evaluateBcGate', () => {
     const out = evaluateBcGate({ ...baseline, touchedSize: 0 });
     expect(out.bcShouldEmit).toBe(false);
     expect(out.turnTouchedAny).toBe(false);
+    expect(out.failureSignal).toBe(false);
+  });
+
+  it('emits when touched=0 but the turn ended in failure (failureSignal=true)', () => {
+    const out = evaluateBcGate({
+      ...baseline,
+      touchedSize: 0,
+      taskFailed: true,
+    });
+    expect(out.bcShouldEmit).toBe(true);
+    expect(out.turnTouchedAny).toBe(false);
+    expect(out.failureSignal).toBe(true);
   });
 
   it('does NOT skip on hasOrchestratorFailure or isWorkerContext alone — the outer learn caller gates those', () => {
@@ -116,6 +129,7 @@ describe('evaluateBcGate — diagnostic line', () => {
       'taskFailed=true',
       'isWorkerContext=false',
       'hasOrchestratorFailure=false',
+      'failureSignal=true',
       'touched=2',
       'mode=refactor',
       'currentTaskType=verification',
