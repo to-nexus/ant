@@ -37,6 +37,7 @@ import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
 import { getChatSyncChannel } from '../constants/redis';
 import { logger } from '../../utils/logger';
+import { transformAndStrip } from '../streaming/OutputTagRegistry';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Status-type taxonomy
@@ -584,9 +585,19 @@ export class LLMResponseService {
         this.turnContext.getWorkerScopeKey(),
       )
       .catch(() => null);
-    const text = buffer?.text?.trim();
-    if (text && text.length > 0) {
-      await this.appendAssistantMessage(text);
+    const rawText = buffer?.text?.trim();
+    if (rawText && rawText.length > 0) {
+      // Streaming chunks may have split a canonical tag across chunk
+      // boundaries — `SpecialTagTransformer` is single-shot per chunk
+      // and would have let the partial through as raw text. Rerun the
+      // registry's transform over the full buffer at flush time so any
+      // complete tag in the accumulated text renders properly (or
+      // strips, for suppressed-axis entries) before the line lands in
+      // chat.jsonl as `assistant_message`.
+      const cleaned = transformAndStrip(rawText, 'en').trim();
+      if (cleaned.length > 0) {
+        await this.appendAssistantMessage(cleaned);
+      }
     }
     if (buffer) {
       const next = { ...buffer, text: undefined };

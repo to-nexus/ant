@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { EditorTab } from '@/domain/store/types';
 import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
+import { StreamingStatusChip } from '@/presentation/components/streaming/StreamingStatusChip';
 
 const MARKDOWN_COMPONENTS = createMarkdownComponents({
   paragraphTag: 'p',
@@ -27,9 +28,7 @@ export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
             <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{tab.path}</div>
           )}
         </div>
-        <div className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-          {tab.status === 'streaming' ? 'Streaming' : 'Read-only'}
-        </div>
+        <StreamingStatusChip isStreaming={tab.status === 'streaming'} />
       </div>
 
       <div className="flex-1 min-h-0 pt-4">

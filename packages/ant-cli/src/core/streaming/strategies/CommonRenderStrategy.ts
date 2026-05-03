@@ -16,6 +16,7 @@ import { GitPort, FileSystemPort } from '../../ports';
 import { FileTreeUpdatePort } from '../../ports/fileTree';
 import { ResponseRenderer } from './common/ResponseRenderer';
 import { FileRenderer } from './common/FileRenderer';
+import { detectCrossAxisLeak, transformAndStrip } from '../OutputTagRegistry';
 
 export class CommonRenderStrategy implements IRenderStrategy {
   private chatAPI: ChatAPIClient;
@@ -34,6 +35,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private parallelTaskName: string | undefined;
   private taskResponseIndex: string | undefined;
   private taskResponseBuffer: string = '';
+  private userLanguage: UserLanguage;
   
   constructor(
     chatAPI: ChatAPIClient,
@@ -48,9 +50,10 @@ export class CommonRenderStrategy implements IRenderStrategy {
     onFileTouched?: (filePath: string) => void,
   ) {
     this.chatAPI = chatAPI;
-    
-    this.tagTransformer = new SpecialTagTransformer(userLanguage || 'en');
-    
+    this.userLanguage = userLanguage || 'en';
+
+    this.tagTransformer = new SpecialTagTransformer(this.userLanguage);
+
     this.responseRenderer = new ResponseRenderer(chatAPI, this.tagTransformer);
     this.fileRenderer = new FileRenderer({
       chatAPI,
@@ -75,12 +78,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
         if (this.parallelTaskName) {
           const content = action.data.content;
           if (!content || !content.trim()) break;
-          const transformed = this.tagTransformer.transform(content);
-          if (transformed.consumed) break;
-          const text = transformed.text || content;
-          if (!text.trim()) break;
 
-          this.taskResponseBuffer += text;
+          // Accumulate the chunk verbatim. Per-chunk `tagTransformer.transform`
+          // is unsafe here for two reasons:
+          //   (a) toggle-token boundaries split tags (`<rep`, `ly>...`),
+          //       so first-match-only transforms drop bodies as raw text;
+          //   (b) `consumed=true` in the old branch caused the entire
+          //       chunk — including the `<reply>` body the user expected
+          //       — to be `break`'d and lost from the card.
+          // The terminal `finalize()` runs `transformAndStrip` on the full
+          // buffer, where every tag is guaranteed to be complete.
+          this.taskResponseBuffer += content;
 
           // First chunk mints the cardId via the progress status. Subsequent
           // chunks stream into the same TURN_BUFFER pendingCard — they don't
@@ -95,7 +103,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
               taskName: this.parallelTaskName,
             });
           } else {
-            await this.chatAPI.streamTaskResponseChunk(this.taskResponseIndex, text);
+            await this.chatAPI.streamTaskResponseChunk(this.taskResponseIndex, content);
           }
         } else {
           await this.responseRenderer.renderResponse(action);
@@ -147,8 +155,27 @@ export class CommonRenderStrategy implements IRenderStrategy {
           // card from a single jsonl entry. The live path keeps
           // `_preserveContent` so the already-appended UI content is
           // untouched.
+          //
+          // `transformAndStrip` is a no-op on a well-formed plan body
+          // (JSON without nested canonical literals). When the LLM
+          // violates the contract and slips a `<reply>` / `<done>` /
+          // `<file>` literal into the JSON, this layer scrubs the raw
+          // marker from the persisted card metadata. `detectCrossAxisLeak`
+          // additionally surfaces a dev-mode warning so the violation
+          // is visible during prompt iteration instead of being silently
+          // scrubbed.
+          const planLeaks = detectCrossAxisLeak(this.planContentBuffer, 'artifact');
+          if (planLeaks.length > 0) {
+            console.warn(
+              `[CommonRenderStrategy] <plan> body contains cross-axis tags: ${planLeaks.join(', ')}. Stripped from card metadata. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+            );
+          }
+          const cleanedPlan = transformAndStrip(
+            this.planContentBuffer,
+            this.userLanguage,
+          );
           await this.chatAPI.showChatStatus('plan', {
-            content: this.planContentBuffer,
+            content: cleanedPlan,
             ...(this.planTaskTitle ? { taskName: this.planTaskTitle } : {}),
             _mergeIndex: this.planContentIndex,
             _preserveContent: true,
@@ -183,8 +210,19 @@ export class CommonRenderStrategy implements IRenderStrategy {
       // projector can reproduce the card from this single jsonl entry.
       // `_mergeIndex` keeps the cardId stable so `appendChatStatus` clears
       // the matching pendingCard from the TURN_BUFFER on transition.
+      //
+      // `transformAndStrip` runs the registry's transform hooks over the
+      // full buffer — at this point every tag is complete (the streaming
+      // ambiguity that breaks per-chunk transform is gone). Result: the
+      // `<reply>` body is rendered verbatim, suppressed-axis tags
+      // disappear, and no raw `<reply>` / `<done>` / `<plan>` literal
+      // ever reaches `chat.jsonl`'s task_response card.
+      const cleanedContent = transformAndStrip(
+        this.taskResponseBuffer,
+        this.userLanguage,
+      ).trim();
       await this.chatAPI.showChatStatus('task_response', {
-        content: this.taskResponseBuffer,
+        content: cleanedContent,
         taskName: this.parallelTaskName,
         _mergeIndex: this.taskResponseIndex,
       });

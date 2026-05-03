@@ -78,19 +78,25 @@ export function flushStreamingDeltaBatch(get: () => any): void {
   pendingDeltas.clear();
 
   const apply = get().applyStreamingDelta;
-  if (typeof apply !== 'function') return;
 
   for (const entry of entries) {
     const merged = entry.chunks.join('');
     if (!merged) continue;
-    apply({
-      turnId: entry.turnId,
-      workerScope: entry.workerScope,
-      kind: entry.kind,
-      cardId: entry.cardId,
-      chunk: merged,
-      producedAt: entry.producedAt,
-    });
+    if (typeof apply === 'function') {
+      apply({
+        turnId: entry.turnId,
+        workerScope: entry.workerScope,
+        kind: entry.kind,
+        cardId: entry.cardId,
+        chunk: merged,
+        producedAt: entry.producedAt,
+      });
+    }
+  }
+
+  const syncVirtualTabs = get().syncVirtualEditorTabsFromBuffers;
+  if (typeof syncVirtualTabs === 'function') {
+    syncVirtualTabs(get().streamingBuffers);
   }
 }
 

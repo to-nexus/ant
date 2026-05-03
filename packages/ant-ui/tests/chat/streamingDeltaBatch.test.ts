@@ -33,6 +33,8 @@ interface ApplyArgs {
 interface FakeStore {
   lastChatSnapshotTs?: string;
   applyStreamingDelta: (args: ApplyArgs) => void;
+  streamingBuffers: Record<string, unknown>;
+  syncVirtualEditorTabsFromBuffers: (buffers: Record<string, unknown>) => void;
   __calls: ApplyArgs[];
 }
 
@@ -43,6 +45,8 @@ function makeStore(snapshotTs?: string): FakeStore {
     applyStreamingDelta: (args) => {
       calls.push(args);
     },
+    streamingBuffers: {},
+    syncVirtualEditorTabsFromBuffers: () => {},
     __calls: calls,
   };
 }
@@ -198,6 +202,26 @@ describe('streamingDeltaBatch — RAF coalescing', () => {
     // RAF tick should now be a no-op — queue empty + cancel scheduled.
     tickRaf();
     expect(store.__calls).toHaveLength(1);
+  });
+
+  it('syncs virtual editor tabs after a flush', () => {
+    const store = makeStore();
+    const syncSpy = vi.fn();
+    store.syncVirtualEditorTabsFromBuffers = syncSpy;
+    const get = () => store;
+
+    enqueueStreamingDelta(get, {
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-1',
+      chunk: 'draft',
+      producedAt: '2026-04-25T00:00:01.000Z',
+    });
+
+    flushStreamingDeltaBatch(get);
+
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(syncSpy).toHaveBeenCalledWith(store.streamingBuffers);
   });
 
   it('rejects card_output without cardId, ignores empty chunks/turnIds', () => {

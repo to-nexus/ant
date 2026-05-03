@@ -4,6 +4,8 @@ import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } fro
 import { TabButton } from './components/TabButton';
 import { JobIdDropdown } from './components/JobIdDropdown';
 import { JobControls } from './components/JobControls';
+import { EditorTabActions } from './components/EditorTabActions';
+import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -24,22 +26,24 @@ export function MainPanelTabsBar() {
   const openTabs = useStore((state) => state.mainPanelOpenTabs);
   const tabOrder = useStore((state) => state.mainPanelTabOrder);
   const currentJobId = useStore((state) => state.currentJobId);
-  const activeEditorTabId = useStore((state) => state.activeEditorTabId);
   const editorTabs = useStore((state) => state.editorTabs);
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
+  const selectEditorTab = useStore((state) => state.selectEditorTab);
+  const pinEditorTab = useStore((state) => state.pinEditorTab);
+  const unpinEditorTab = useStore((state) => state.unpinEditorTab);
+  const closeEditorTab = useStore((state) => state.closeEditorTab);
 
   const getJobTabLabel = () => t('tabs.job');
 
-  // Render dynamic tabs
-  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => {
+  const renderStaticTab = (
+    tabKey: 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions',
+  ) => {
     if (!openTabs[tabKey]) return null;
-    
-    const activeEditorTab = editorTabs.find((tab) => tab.id === activeEditorTabId);
+
     const tabConfig: Record<string, { icon: any; label: string }> = {
       projectConfig: { icon: Settings, label: t('tabs.projectConfig') },
       accountConfig: { icon: User, label: t('tabs.accountConfig') },
-      fileEdit: { icon: FileEdit, label: activeEditorTab?.title || t('tabs.fileEdit') },
       transfer: { icon: ArrowLeftRight, label: t('tabs.transfer') },
       previewConfig: { icon: Monitor, label: t('tabs.previewConfig', 'Preview Config') },
       actions: { icon: Zap, label: t('tabs.actions', 'Actions') },
@@ -61,6 +65,36 @@ export function MainPanelTabsBar() {
     );
   };
 
+  const renderEditorTab = (tabKey: string) => {
+    const tab = editorTabs.find((candidate) => candidate.id === tabKey);
+    if (!tab) return null;
+
+    return (
+      <TabButton
+        key={tab.id}
+        icon={FileEdit}
+        label={tab.title}
+        isActive={activeTab === tab.id}
+        showText={activeTab === tab.id}
+        showCloseButton={false}
+        title={tab.path || tab.title}
+        trailing={(
+          <EditorTabActions
+            tab={tab}
+            pinTitle={t('tabs.pin', 'Pin')}
+            unpinTitle={t('tabs.unpin', 'Unpin')}
+            closeTitle={t('tabs.close', 'Close')}
+            streamingTitle={t('tabs.streamingLocked', 'Streaming in progress')}
+            onPin={() => pinEditorTab(tab.id)}
+            onUnpin={() => unpinEditorTab(tab.id)}
+            onClose={() => closeEditorTab(tab.id)}
+          />
+        )}
+        onClick={() => selectEditorTab(tab.id)}
+      />
+    );
+  };
+
   const controls = Bar.render({
     left: (
       <div className="flex items-center gap-1">
@@ -77,7 +111,11 @@ export function MainPanelTabsBar() {
         />
 
         {/* Dynamic tabs */}
-        {tabOrder.map(tabKey => renderTab(tabKey))}
+        {tabOrder.map((tabKey) => (
+          isEditorTabId(tabKey)
+            ? renderEditorTab(tabKey)
+            : renderStaticTab(tabKey as 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions')
+        ))}
       </div>
     ),
     right: (
