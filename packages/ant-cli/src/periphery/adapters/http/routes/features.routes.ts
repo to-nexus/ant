@@ -9,7 +9,12 @@ import type { SessionableJobType, KanbanData } from '@ant/shared';
 import type { SessionRun } from '../../../../core/types/session';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 import { getAgentForJob, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
-import { sealJobRedisState, deleteJobRunFromSession, broadcastKanbanReset } from './helpers/sessionCleanup';
+import {
+  sealJobRedisState,
+  scrubJobDebugArtifacts,
+  deleteJobRunFromSession,
+  broadcastKanbanReset,
+} from './helpers/sessionCleanup';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import * as fs from 'fs';
@@ -200,6 +205,9 @@ export function createFeaturesRoutes(deps: {
             await sealJobRedisState(
               deps.stateStore,
               deps.kanbanService,
+              job.jobId,
+            );
+            await scrubJobDebugArtifacts(
               featurePath,
               (job.type || 'code') as SessionableJobType,
               job.jobId,
@@ -579,17 +587,17 @@ export function createFeaturesRoutes(deps: {
         );
       }
 
-      // Two-phase cleanup: seal Redis + debug artifacts, then drop the runs[]
+      // Three-step cleanup: seal Redis, scrub debug artifacts explicitly,
+      // then drop the runs[]
       // entry + session state pointer. Order matters: sealing first guarantees
       // the history API can't resurrect this job between steps.
       const featurePath = getFeaturePath(userContext, projectId, featureName);
       await sealJobRedisState(
         deps.stateStore,
         deps.kanbanService,
-        featurePath,
-        jobType,
         jobId,
       );
+      await scrubJobDebugArtifacts(featurePath, jobType, jobId);
       await deleteJobRunFromSession(
         deps.kanbanService,
         featurePath,

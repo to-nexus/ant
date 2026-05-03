@@ -39,6 +39,9 @@ export function createResolveNode<T extends ResolvableState>(
     let initResult: Partial<T> = {} as Partial<T>;
     if (!state.isResume && strategy.initNewJob) {
       initResult = await strategy.initNewJob(state);
+      // Keep a single state object across resolve steps so loadArtifacts can
+      // consume init fields (e.g. jobId) in the same turn.
+      Object.assign(state, initResult);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
