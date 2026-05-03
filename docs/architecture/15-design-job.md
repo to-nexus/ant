@@ -160,6 +160,52 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 - directive, overrideDirective, chatSource
 - jobTiming, tokenUsage
 
+## Plan Observability
+
+### planText 라이프사이클
+
+| 단계 | 위치 | state.planText |
+|---|---|---|
+| 진입 | `plan/index.ts` (fresh entry) | 빈 문자열 또는 이전 task 잔존값 (다음 단계에서 reset) |
+| `<plan>` emit | `plan/finalizeOutcome.ts:finalizePlanOutcome` | `outcome.planText` 로 set |
+| docGen 주입 | `docGen/intent/spec.ts:75-79` / `docGen/intent/system.ts:375-379` | runtimeContext 상단에 `# Sealed Plan (from plan node)` 으로 prepend |
+| task 완료 | `graph.ts:checkTaskStatus` (sequential) / `parallel/workerGraph.ts:189-193` (parallel) | `''` 로 reset (다음 task 의 fresh planning 보장) |
+| session resume | `runner.ts:113-115` | 세션 파일에서 복원 (task 진행 중 재개 시 docGen으로 직행) |
+
+session 파일(`sessions/architect/design.json`)의 final state 에서 `planText: ""` 이 보이는 것은 **마지막 task 가 완료되어 reset 된 후 직렬화된 정상 상태**다. 진행 중 snapshot(checkpoint)에는 sealed plan 이 들어있다.
+
+### 로그 파일 매핑
+
+`{featurePath}/sessions/debug/` 하위 파일별 책임:
+
+| 파일 | 작성자 | 내용 |
+|---|---|---|
+| `plans/plan-{jobId}.json` | `plan/finalizeOutcome.ts:savePlanForDebug` | task 별 sealed `<plan>` JSON 본문 (배열로 누적) |
+| `prompts/prompt-{jobId}.json` | `core/utils/promptLogger.ts:logPrompt` | docGen 프롬프트 빌드 시점 메타데이터 — `injectedVariables.planText` 가 sealed plan 주입 여부를 길이로 표시 |
+| `logs/log-{jobId}.json` | `core/utils/executionLogger.ts:logPhaseComplete` | 구조화 phase 이벤트 (아래 표) |
+| `chat.jsonl` (workspace 루트) | `core/streaming/strategies/CommonRenderStrategy.ts` | 사용자 가시 SSE 이벤트 — `statusType: "plan"` 카드가 `<plan>` JSON 본문을 그대로 운반 |
+
+### Phase 이벤트 (`log-{jobId}.json`)
+
+`logPhaseComplete({ phase, elapsedMs, details })` 로 emit. design plan 단계에서 발생하는 3종:
+
+| `phase` | 발생 조건 | `details` 주요 필드 |
+|---|---|---|
+| `design-plan-sealed` | `intentGroup ∈ {design-spec, design-system-design}` 에서 `<plan>` 추출 성공 | `taskId`, `intentGroup`, `origin` (`tool-loop` / `over-limit`), `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
+| `design-plan-fallthrough` | plan 루프가 ceiling 도달 + `finalizeFromExploration` 도 빈 응답 → docGen 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
+| `design-plan-dispatch-only` | `intentGroup ∈ {design-ui, design-game-art}` 에서 plan-LLM 건너뜀 (`dispatchOnly` 경로) | `taskId`, `intentGroup`, `reason: 'intent-group-not-plan-llm-enabled'` |
+
+### 진단 워크플로우
+
+새로운 design job 트레이스를 분석할 때 권장 순서:
+
+1. **`logs/log-{jobId}.json` grep `design-plan-`** — plan 단계의 결과(sealed / fallthrough / dispatch-only)와 candidate 수를 한 줄로 확인.
+2. **`plans/plan-{jobId}.json`** — sealed 된 경우 실제 JSON 내용으로 candidate 비교 / decision rationale 확인.
+3. **`prompts/prompt-{jobId}.json` 의 `docGen-spec` 또는 `docGen-systemDesign` 항목** — `injectedVariables.planText` 가 1번에서 본 길이와 일치하는지 검증 (plan→docGen 핸드오프 무결성).
+4. **`chat.jsonl`** — 사용자 관점에서 thinking → `statusType: "plan"` → file_create 의 시간 분배 확인.
+
+`plan→docGen` 핸드오프가 깨졌다는 가설이 있으면 1·3을 우선 비교한다 (1의 `planTextLen` 과 3의 `planText` 길이 표시가 동일해야 함).
+
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)

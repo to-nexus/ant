@@ -1,6 +1,32 @@
 import { DesignGraphState } from '../../state';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
+type DesignOutputFile = { path: string; content: string };
+
+const PRIMARY_DESIGN_MATCHERS: Array<(path: string) => boolean> = [
+  // Canonical architecture/system outputs
+  (path) => /(?:^|\/)(?:fe-system-|be-system-|api-contract-).+\.md$/i.test(path),
+  (path) => /(?:^|\/)design\.md$/i.test(path),
+  // Architecture spec markdown (e.g. architecture/spec/*-spec.md)
+  (path) => /(?:^|\/)architecture\/spec\/.+\.md$/i.test(path),
+  // Additional markdown design artifacts under architecture/system
+  (path) => /(?:^|\/)architecture\/system\/.+\.md$/i.test(path),
+  // UI design JSON artifacts from ANT design outputs
+  (path) => /(?:^|\/)visual\/ui\/ant\/.+\.json$/i.test(path),
+  // Last-resort fallbacks
+  (path) => /\.md$/i.test(path),
+  (path) => /\.json$/i.test(path),
+];
+
+function pickPrimaryDesignFile(files: DesignOutputFile[] | undefined): DesignOutputFile | undefined {
+  if (!files || files.length === 0) return undefined;
+  for (const match of PRIMARY_DESIGN_MATCHERS) {
+    const hit = files.find((file) => match(file.path));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 /**
  * Store lessons to vector memory with chunking
  */
@@ -92,9 +118,7 @@ export function extractDesignLessons(state: DesignGraphState): string {
   
   sections.push(`\n## Design Document Summary`);
   
-  const primaryDesign = state.files?.find(f => 
-    f.path.includes('fe-system-') || f.path.includes('be-system-') || f.path.includes('design.md')
-  );
+  const primaryDesign = pickPrimaryDesignFile(state.files as DesignOutputFile[] | undefined);
 
   if (primaryDesign) {
     const lines = primaryDesign.content.split('\n').length;
@@ -124,9 +148,7 @@ export function extractDesignLessons(state: DesignGraphState): string {
 export function extractDesignDecisions(state: DesignGraphState): string {
   const decisions: string[] = [];
   
-  const primaryDesign = state.files?.find(f => 
-    f.path.includes('fe-system-') || f.path.includes('be-system-') || f.path.includes('design.md')
-  );
+  const primaryDesign = pickPrimaryDesignFile(state.files as DesignOutputFile[] | undefined);
   
   if (!primaryDesign) {
     return '- No design document available for analysis';

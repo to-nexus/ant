@@ -32,6 +32,7 @@
  *      cancelled chat message (when interruption present).
  *   4. `updateJobStatus(finalStatus)` — null-safe; no-op if already sealed.
  *   5. `sealJobRedisState` — DEL all Redis keys + SREM jobsByFeature SET.
+ *      (Disk debug artifacts are preserved for post-mortem.)
  *   6. `stateTracker.cleanup` — drop in-memory snapshot (already done by
  *      `broadcastFinalUpdate` when the job has a kanban, but this is a
  *      belt-and-suspenders call for the no-kanban path).
@@ -71,7 +72,7 @@ export interface FinalizeTerminalJobArgs {
   userContext?: UserContext;
   /** Present for user-initiated stop / dismiss / cancel / crash recovery. */
   interruption?: InterruptionDetails;
-  /** Resolved feature path — required to scrub per-job debug files. */
+  /** Resolved feature path (kept for call-site compatibility). */
   featurePath?: string;
   /**
    * Skip `cleanupJobState` (session-patch + broadcast). Used by Feature
@@ -99,7 +100,6 @@ export async function finalizeTerminalJob(
     jobType,
     userContext,
     interruption,
-    featurePath,
     skipSessionPatch = false,
   } = args;
 
@@ -171,15 +171,11 @@ export async function finalizeTerminalJob(
     );
   }
 
-  // 4. Seal Redis. Debug-file scrub is driven by DEBUG_SUBDIRS[agent],
-  //    which auto-derives from CANONICAL_FEATURE_DIRS — jobTypes without
-  //    a debug subdir (e.g. `visual` under the `creator` agent) yield an
-  //    empty list and the scrub phase becomes a no-op.
+  // 4. Seal Redis only. Disk debug artifacts are preserved here and are
+  //    scrubbed only in explicit destructive flows (job delete/reset/delete feature).
   await sealJobRedisState(
     stateStore,
     deps.kanbanService,
-    featurePath ?? '',
-    jobType,
     jobId,
   );
 

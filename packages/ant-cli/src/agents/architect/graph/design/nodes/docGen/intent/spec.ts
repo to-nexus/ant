@@ -62,7 +62,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     }
   }
 
-  console.log(`📋 [DocGen/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections})`);
+  const sealedPlanLen = state.planText?.trim().length ?? 0;
+  console.log(
+    `📋 [DocGen/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections}) ` +
+    `· sealedPlan=${sealedPlanLen > 0 ? `${sealedPlanLen} chars` : 'none'}`,
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Build runtime context → vars.runtimeContext
@@ -240,6 +244,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             hasExistingSpec: jobMode === 'refactor',
             hasPrd: new ArtifactPoolView(state.artifacts || []).hasSources(),
             hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,
+            // Sealed plan injection visibility — mirrors system.ts so an
+            // operator can confirm the plan→docGen handoff at a glance.
+            // `undefined` = no sealed plan (legacy/dispatchOnly path).
+            planText: state.planText && state.planText.trim().length > 0 ? `[${state.planText.length} chars]` : undefined,
           },
         }
       );
