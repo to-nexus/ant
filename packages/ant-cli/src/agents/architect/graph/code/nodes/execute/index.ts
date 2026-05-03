@@ -267,6 +267,7 @@ export async function execute(
       const arr = (state.currentTask.touchedFiles ??= []);
       if (!arr.includes(filePath)) arr.push(filePath);
     },
+    'execute',  // ✅ codePhase: execute — codebase/ writes allowed via the FileRenderer gate
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   

@@ -26,6 +26,7 @@ import {
   parseCatalogSections,
   resolveTemplateDir,
 } from '../../decompose/catalogLookup';
+import { buildSelfCheckTrailingMessage } from './selfCheck';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -41,6 +42,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
   let useSourceFileTool = false;
   let prdSpecForLog = '';
   let blocks: CacheableContent[] = [];
+  let selfCheckTrailing: string | undefined;
   
   // NOTE: UI Design mode is handled separately in docGen() entry point
   // This function handles system-design messages only
@@ -69,6 +71,20 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // ✅ Build section scope from assignedSections (exclusive scope enforcement)
     const sectionScope = await buildSectionScope(state, targetFile);
     const filteredCatalog = await buildFilteredCatalog(state, targetFile);
+
+    // R5 self-check trailing message — when the prior turn updated the
+    // system-design artifact without emitting <done>, ask the LLM
+    // whether the assigned section scope is satisfied (helper in
+    // `selfCheck.ts`). Computed inside this block so `sectionScope` /
+    // `targetFile` are in scope; the result is hoisted out via
+    // `selfCheckTrailing` for the composeMessages call below.
+    {
+      const targetArtifactPath = `${designDirOf(targetFile)}/${targetFile}`;
+      selfCheckTrailing = buildSelfCheckTrailingMessage(state, {
+        artifactPath: targetArtifactPath,
+        sectionScope,
+      });
+    }
     
     try {
       // ✅ FIX: Convert absolute path to workspace-relative path for FileSystemPort
@@ -297,10 +313,13 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     }
   }
 
-  // Compose messages via MessageComposer
+  // Compose messages via MessageComposer. `selfCheckTrailing` was
+  // computed inside the system-prompt build block above, where
+  // `sectionScope` is in scope.
   const { messages } = composeMessages({
     initialBlocks: blocks,
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
+    trailingUserMessage: selfCheckTrailing,
   });
   
   // ✅ Log prompt structure (not content) - full message
@@ -367,13 +386,13 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
   const lines: string[] = [];
 
-  // ✅ 0. Sealed Plan (from plan node)
-  // Prepended so docGen treats `documentOutline` and `decision` as the
-  // authoritative scope for this turn (see system-design/rules.md
-  // "Sealed Plan from Plan Node"). Cleared when planText is empty
-  // (legacy flow / dispatchOnly fallthrough).
+  // ✅ 0. Sealed Plan — content the system-design markdown should record.
+  // The title closes the meaning axis: the decision recorded here is
+  // what the document narrates, not an action this phase performs on
+  // the codebase. See system-design/rules.md "Sealed Plan from Plan
+  // Node". Skipped when planText is empty (legacy / dispatchOnly).
   if (state.planText && state.planText.trim().length > 0) {
-    lines.push(`# Sealed Plan (from plan node)`);
+    lines.push(`# Sealed Plan (the content the system-design markdown should record)`);
     lines.push(state.planText);
     lines.push('');
   }

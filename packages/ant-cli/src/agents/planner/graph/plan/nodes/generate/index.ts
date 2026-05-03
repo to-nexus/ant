@@ -177,6 +177,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     undefined,
     undefined,
     false,
+    // jobType — closes the codebase/ mutation gate for planner artifact tags.
+    'planner',
   );
   const orchestrator = new StreamOrchestrator({
     parser,

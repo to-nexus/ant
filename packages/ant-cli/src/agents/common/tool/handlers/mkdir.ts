@@ -4,6 +4,7 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 
 export async function handleMkdir(
   ctx: ToolExecutionContext,
@@ -15,6 +16,10 @@ export async function handleMkdir(
   try {
     const resolved = await resolveToolPath(ctx, dirPath);
     console.log(`[mkdir] Creating directory: ${resolved.fsPath}`);
+
+    if (shouldRejectCodebaseMutate(ctx, resolved)) {
+      return rejectCodebaseMutate('mkdir', resolved);
+    }
 
     await fileSystem.createDirectory(resolved.fsPath);
     console.log(`[mkdir] ✅ Created directory: ${resolved.displayPath}`);

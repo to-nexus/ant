@@ -57,6 +57,10 @@ function makeCtx(
     chatStatus: createNoopChatStatusReporter(),
     workingDir: '/',
     currentTaskType: task.type,
+    // Mirrors code job's execute-phase context. Code execute is the
+    // only phase where the codebase mutation gate opens — the per-task
+    // touchedFiles SSOT exists precisely to track those mutations.
+    allowMutateInCodebase: true,
     recordFileTouch: (_op, p) => {
       const arr = (task.touchedFiles ??= []);
       if (!arr.includes(p)) arr.push(p);
@@ -120,6 +124,8 @@ describe('CodeTask.touchedFiles — per-task SSOT', () => {
       chatStatus: createNoopChatStatusReporter(),
       workingDir: '/',
       // recordFileTouch intentionally omitted
+      // Code-execute-style context (codebase mutation gate open).
+      allowMutateInCodebase: true,
     };
 
     await expect(

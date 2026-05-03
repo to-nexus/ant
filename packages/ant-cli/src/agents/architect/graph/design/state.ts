@@ -87,21 +87,52 @@ export interface DesignGraphState extends TriageableState {
   planText: string;
 
   /**
-   * Active phase signal for plan↔tool re-entry (design plan-LLM).
+   * Active phase signal for plan↔tool / docGen↔tool re-entry.
    *
-   * - `'plan'` while the plan↔tool loop is in flight (set by plan node
-   *   on the first round; preserved through the tool node).
-   * - `undefined` after `<plan>` is emitted, after a clarify pause, or
-   *   when plan-LLM is not used (e.g. ui-design / game-art-design intents
-   *   that fall through to the dispatcher-only path).
+   * - `'plan'` while the plan↔tool loop is in flight.
+   * - `'docGen'` while the docGen↔tool loop is in flight (set by
+   *   docGen node on each turn; preserved through the tool node).
+   *   Drives debug/log/breadcrumb visibility into which phase
+   *   produced a tool call. Mutate-gate enforcement itself is
+   *   handled by `ToolExecutionContext.allowMutateInCodebase` in the
+   *   tool handlers — the phase signal is informational here.
+   * - `undefined` after `<plan>`/`<done>` is emitted, after a clarify
+   *   pause, or when plan-LLM is not used (e.g. ui-design /
+   *   game-art-design intents that fall through to the dispatcher-only
+   *   path).
    *
    * NOTE: code job's `_activePhase` has a wider domain (plan / execute /
-   * apply / verify). Design's is narrower — only `'plan'` or undefined.
+   * apply / verify). Design's is narrower — `'plan' | 'docGen' | undefined`.
    * The same channel name is reused intentionally to ease cross-job grep
    * but the two are NOT unified via a shared base interface — see
    * `agents/common/graph/nodes/plan/README.md` for the rationale.
    */
-  _activePhase?: 'plan';
+  _activePhase?: 'plan' | 'docGen';
+
+  /**
+   * Set by docGen at end-of-turn when:
+   *   - the turn produced an artifact mutation (file/append/edit/delete
+   *     XML tag landing on an artifact path, or edit_file/delete_file
+   *     tool call on an artifact path), AND
+   *   - the LLM did NOT output `<done>true</done>` in the same turn.
+   *
+   * The next docGen turn reads this to swap the trailing user message
+   * for a self-check prompt that asks the model to commit done or
+   * continue the same artifact. Cleared on the turn that satisfies the
+   * self-check (done emitted, or another mutation cycle started).
+   *
+   * Drives R5 of the codebase mutation gate plan (artifact-mutation-
+   * then-no-done detection). See `docs/architecture/15-design-job.md`.
+   */
+  _pendingDoneCheck?: boolean;
+
+  /**
+   * Escalation counter for repeated `_pendingDoneCheck` turns. The
+   * first turn after a missing-done event is escalation = 1 (gentle
+   * self-check). The second is escalation = 2 (firmer reminder). Reset
+   * to 0 once `<done>` is emitted or the gate fires safety-net.
+   */
+  _doneCheckEscalation?: number;
   
   // ✅ UNIFIED: Files generated (same structure as code job)
   files?: Array<{ 

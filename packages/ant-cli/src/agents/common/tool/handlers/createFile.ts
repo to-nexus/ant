@@ -7,6 +7,7 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import {
   decideInvalidationScope,
   isDepManifestPath,
@@ -34,6 +35,12 @@ export async function handleCreateFile(
 
   try {
     const resolved = await resolveToolPath(ctx, filePath);
+
+    if (shouldRejectCodebaseMutate(ctx, resolved)) {
+      const rejection = rejectCodebaseMutate('create_file', resolved);
+      await ctx.chatStatus.failFileCreation(filePath, rejection.error);
+      return rejection;
+    }
 
     // Manifest creates share `packageManagerMutex` with the run_command
     // install guards so the snapshot scan + policy check + actual write

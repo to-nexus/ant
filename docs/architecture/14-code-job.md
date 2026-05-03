@@ -362,6 +362,10 @@ Code job 의 verification 사이클(필드·리셋 규칙·gate·정책·snapsho
 
 > 새 verification 필드 추가, gate 추가, commandGuard 정책 변경, snapshot 필드 변경, terminal kind 추가 시 — 17-code-verification-task.md 의 책임 매트릭스 / 불변식 / 안티패턴 섹션을 먼저 갱신하고, 본 문서에는 cross-link 만 둔다.
 
+## Codebase mutation gate
+
+Code job 은 `codebase/` 산하 소스 코드 mutation 이 정당한 **유일한** phase 인 `execute` 를 보유한다. `plan` phase 는 sealed `<plan>` JSON 산출이 책임이며 `codebase/` 쓰기는 차단된다 (도구 핸들러 `allowMutateInCodebase = (state._activePhase === 'execute')`, FileRenderer `codePhase: 'plan' | 'execute'` 분기). 정책 SSOT 와 다른 잡과의 매트릭스는 [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate) 참고.
+
 ## 경계
 
 - Verification task 책임/불변식/안티패턴 (SSOT): [17-code-verification-task.md](17-code-verification-task.md)
