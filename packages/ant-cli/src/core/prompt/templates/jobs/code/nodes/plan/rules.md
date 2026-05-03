@@ -54,7 +54,7 @@ Generate a **concrete implementation plan** for this task.
 </plan>
 ```
 
-Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be shown to the user verbatim — keep prose minimal and focused.
+If you have user-facing narrative (rationale, summary, follow-up question), put it in a `<reply>...</reply>` tag — emit it AFTER `<plan>` is closed. Per the Output Tag Contract, the first output token must be `<` of a registered tag, so do NOT write any prose before `<plan>` opens.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 JSON SCHEMA FOR `<plan>`

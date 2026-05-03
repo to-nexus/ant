@@ -3,8 +3,10 @@
   "jobs/shared/injections": {
     "directive": ["directive"],
     "memory": ["content"],
+    "output-tag-policy": [],
     "visual-source-authority": [],
     "ui-design-policy": [],
+    "diagram-contract": [],
     "action-context": ["resolvedAction"],
     "role-guide": [],
     "refactor-guidance": ["resolvedAction"],

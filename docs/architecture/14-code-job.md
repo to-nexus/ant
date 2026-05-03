@@ -370,3 +370,4 @@ Code job 의 verification 사이클(필드·리셋 규칙·gate·정책·snapsho
 - Tool 시스템 (도구 카탈로그, 레지스트리, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)
 - Design Job: [15-design-job.md](15-design-job.md)
 - Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
+- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

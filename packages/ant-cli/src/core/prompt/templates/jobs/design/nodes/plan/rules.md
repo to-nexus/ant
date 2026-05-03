@@ -135,3 +135,9 @@ round when it needs to verify low-level details.
 hoping to "save the work so far". The system treats the first
 sufficiently-long `<plan>` block as final and discards subsequent
 exploration. Wait until you are ready to seal.
+
+**Constraint**: User-facing narrative for the directive (approach
+summary, key trade-off, follow-up question) goes in a `<reply>...</reply>`
+tag emitted AFTER `<plan>` is closed. The Output Tag Contract bans free
+text outside any registered tag, so do NOT write prose before `<plan>`
+or alongside it.

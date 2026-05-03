@@ -52,6 +52,40 @@ interface SpecDecomposeResponse {
   executionTier: ExecutionTierId;
 }
 
+function stripDesignTargetPrefix(file: string): string {
+  return file.split('/').pop() ?? file;
+}
+
+function isValidSpecFileName(file: string): boolean {
+  return /^spec-[a-z0-9-]+\.md$/.test(file);
+}
+
+export function resolveSpecTargetFileForMode(
+  state: DesignGraphState,
+  jobMode: string,
+  slug: string,
+): string {
+  if (jobMode !== 'refactor') {
+    return `spec-${slug}.md`;
+  }
+
+  const targets = state.resolvedAction?.target ?? [];
+  if (targets.length !== 1) {
+    throw new Error(
+      `[specDecompose] rev-spec requires exactly one target file, got ${targets.length}`,
+    );
+  }
+
+  const fileName = stripDesignTargetPrefix(targets[0]);
+  if (!isValidSpecFileName(fileName)) {
+    throw new Error(
+      `[specDecompose] rev-spec target must match "spec-*.md": ${fileName}`,
+    );
+  }
+
+  return fileName;
+}
+
 // ─────────────────────────────────────────────────────────────
 // LLM call: decompose directive into slug + sections
 // ─────────────────────────────────────────────────────────────
@@ -184,7 +218,8 @@ export async function decomposeSpec(
 
   const { slug, title, tasks, executionTier } = await decomposeSpecSections(state);
   console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
-  const targetFile = `spec-${slug}.md`;
+  const targetFile = resolveSpecTargetFileForMode(state, jobMode, slug);
+  const parallelGroup = targetFile.replace(/\.md$/, '');
 
   console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${tasks.length} chapter(s)`);
   tasks.forEach((t, i) => console.log(`   ${i + 1}. ${t.name}: ${t.scope.slice(0, 80)}`));
@@ -207,7 +242,7 @@ export async function decomposeSpec(
       artifactPolicy: {
         refs: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
       },
-      parallelGroup: `spec-${slug}`,
+      parallelGroup,
       completed: false,
     };
     taskQueue.push(task);

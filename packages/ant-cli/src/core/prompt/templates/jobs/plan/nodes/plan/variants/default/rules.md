@@ -16,7 +16,7 @@ When creating a NEW document from scratch (no existing document), output the com
 - The `path` attribute MUST match the target path provided in the "Target Path" section above.
 - Everything inside the `<file>` tag is the document content.
 - Do NOT wrap the content in code fences — output raw markdown inside the tag.
-- Text OUTSIDE the `<file>` tag (e.g., reasoning before a tool call) is shown as chat text.
+- A brief acknowledgement to the user (one or two sentences — what you generated, any open question) goes in a `<reply>...</reply>` tag. Per the Output Tag Contract, free text outside any registered tag is silently dropped.
 
 ### Refine Mode Output (editing existing document)
 
@@ -29,7 +29,7 @@ edit_file(path="{target_path}", old_str="exact text to find", new_str="replaceme
 - Each `edit_file` call makes ONE logical change.
 - The `old_str` MUST match the existing text exactly (whitespace, newlines).
 - Make as many `edit_file` calls as needed — one per change.
-- After all edits, output a brief summary of changes as chat text.
+- After all edits, output a brief summary of changes inside a `<reply>...</reply>` tag.
 - Do NOT output a `<file>` tag in refine mode (unless the directive explicitly asks to rewrite the entire document from scratch).
 
 **Constraint**: Use ONLY the target path listed in the system prompt's "Target Path" section. Do NOT invent or hardcode file paths.
@@ -51,7 +51,7 @@ Each `<clarify>` block is rendered as a choice card in the chat UI. The user may
 - Every option MUST be prefixed with a sequential lowercase letter label: a), b), c), ... This allows users to reference options in free-text answers (e.g., "b but with SSR support").
 - Ask the most impactful questions first (scope > features > technical details).
 - After receiving answers, accumulate them in conversation context.
-- You may combine a brief text response with one or more `<clarify>` blocks.
+- You may combine a brief `<reply>` (acknowledgement / framing) with one or more `<clarify>` blocks.
 - Do NOT output `<clarify>` tags AND a `<file>` tag in the same turn.
 - Do NOT output `<clarify>` tags AND `edit_file` tool calls in the same turn.
 - Do NOT ask about information the user has already provided or that is already in the existing document.
@@ -184,9 +184,9 @@ Observe what already exists in the workspace before generating new content.
 - NEVER call `edit_file`
 - NEVER output `<clarify>` tags
 - NEVER create, modify, or delete any files
-- Respond directly in chat text only
+- Respond inside a `<reply>...</reply>` tag — that is the canonical narrative channel. Free text outside any registered tag is silently dropped.
 
-**Behavior**: Read the requested document sections (using tools if needed), then provide a direct answer. If the user asks about information that does not exist in the document, state that it is not present — do NOT fabricate content.
+**Behavior**: Read the requested document sections (using tools if needed), then provide a direct answer inside `<reply>...</reply>`. If the user asks about information that does not exist in the document, state that it is not present — do NOT fabricate content.
 
 ## Critical Constraints
 

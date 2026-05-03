@@ -209,11 +209,12 @@ Key variables for `packages/ant-cli/.env`:
 
 ## Documentation
 
-Detailed architecture docs live in [`docs/architecture/`](docs/architecture). The numeric range is currently **00–35**, with three intentionally-shared prefixes for distinct topics:
+Detailed architecture docs live in [`docs/architecture/`](docs/architecture). The numeric range is currently **00–36**, with four intentionally-shared prefixes for distinct topics:
 
 - `17-` → [`17-ask-system.md`](docs/architecture/17-ask-system.md), [`17-code-verification-task.md`](docs/architecture/17-code-verification-task.md)
 - `18-` → [`18-visual-job.md`](docs/architecture/18-visual-job.md), [`18-session-redesign.md`](docs/architecture/18-session-redesign.md)
 - `35-` → [`35-codebase-meta-policy.md`](docs/architecture/35-codebase-meta-policy.md), [`35-token-usage-tracking.md`](docs/architecture/35-token-usage-tracking.md)
+- `36-` → [`36-prompt-document-constraint-map.md`](docs/architecture/36-prompt-document-constraint-map.md), [`36-output-tag-matrix.md`](docs/architecture/36-output-tag-matrix.md)
 
 Two documents have no numeric prefix: [`NODE_GRAPH_LAYOUT.md`](docs/architecture/NODE_GRAPH_LAYOUT.md) and [`ui-async-policy.md`](docs/architecture/ui-async-policy.md). Testing strategy lives in `docs/testing/`.
 

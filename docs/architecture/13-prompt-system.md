@@ -563,3 +563,4 @@ pnpm build        → prebuild(=test) → esbuild → cp templates to dist/
 
 - 각 에이전트의 프롬프트 사용: [14-code-job.md](14-code-job.md), [15-design-job.md](15-design-job.md), [16-planner-job.md](16-planner-job.md), [18-visual-job.md](18-visual-job.md)
 - Preview 관련 프롬프트: [22-preview-system.md](22-preview-system.md)
+- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

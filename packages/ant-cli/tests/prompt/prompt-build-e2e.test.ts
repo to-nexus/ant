@@ -387,17 +387,17 @@ describe('E2E: Design spec', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: no injections (no techContext, no intent)', () => {
-    expect(result.injections).toHaveLength(0);
+  it('stage 1: only the always-on output-tag-policy injection (no Tier A/D, no static policies)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
   });
 
   it('stage 2: no templates fail to render', () => {
     assertNoFailedTemplates(result);
   });
 
-  it('stage 3: design system base present, injections section empty', () => {
+  it('stage 3: design system base present, only output-tag-policy in injections section', () => {
     assertSystemContains(result, FP.DESIGN_SYSTEM, 'design system');
-    expect(result.sections.injections).toBe('');
+    expect(result.sections.injections).toContain('Output Tag Contract');
   });
 });
 
@@ -424,8 +424,8 @@ describe('E2E: Ask agent', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: no injections (no pipeline flags)', () => {
-    expect(result.injections).toHaveLength(0);
+  it('stage 1: only the always-on output-tag-policy injection (no Tier A/D, no static policies)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
   });
 
   it('stage 2: no templates fail to render', () => {
@@ -462,8 +462,8 @@ describe('E2E: Plan', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: no injections (plan has no static policies, no techContext)', () => {
-    expect(result.injections).toHaveLength(0);
+  it('stage 1: only the always-on output-tag-policy injection (plan has no static policies, no techContext)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
   });
 
   it('stage 2: no templates fail to render', () => {
