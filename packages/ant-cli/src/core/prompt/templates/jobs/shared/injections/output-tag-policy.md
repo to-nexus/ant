@@ -27,7 +27,7 @@ Tags from different intent axes MUST NOT nest inside each other.
 | narrative | `<reply>` |
 | control | `<done>` `<clarify>` |
 | decision | `<executionTier>` `<domain>` `<gameArtTier>` `<gameContentTier>` `<techTier>` |
-| metadata | `<tasks>` `<task>` `<references>` `<thinking>` `<lesson>` `<detect>` `<learn_command>` `<boundary>` `<directHints>` `<specClarify>` `<triage>` |
+| metadata | `<tasks>` `<task>` `<references>` `<thinking>` `<detect>` `<learn_command>` `<boundary>` `<directHints>` `<specClarify>` `<triage>` `<direct>` `<eval>` |
 
 A `<file>` body is the file content verbatim — no `<reply>` inside, no
 `<plan>` inside, no commentary. A `<reply>` body is the user-facing

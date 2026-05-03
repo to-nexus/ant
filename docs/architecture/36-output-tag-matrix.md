@@ -76,8 +76,9 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 | `<boundary>` | metadata | consumed-suppressed | sealed-state | non-blocking | detect 내부 |
 | `<directHints>` | metadata | consumed-suppressed | sealed-state | non-blocking | detect 내부 |
 | `<specClarify>` | metadata | consumed-suppressed | sealed-state | non-blocking | detect 내부 |
-| `<lesson>` | metadata | post-stream | sealed-state | non-blocking | learn |
 | `<triage>` | metadata | stream-action (wrapper) | sealed-state | non-blocking | triage |
+| `<direct>` | metadata | post-stream + consumed-suppressed | sealed-state | non-blocking | visual direct |
+| `<eval>` | metadata | consumed-suppressed | sealed-state | non-blocking | ask (evaluation report 끝) |
 
 **태그 밖 free text** 는 등록 셀이 없다. `XMLStreamParser` 가 unhandled-text-policy 로 처리:
 - Phase 1 (현재): `chat-line` 의 `kind=legacy` 로 영속 (관찰)
@@ -134,9 +135,10 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 | design detect | `<detect>` `<domain>` `<gameArtTier>` `<gameContentTier>` `<techTier>` `<specClarify>` | detect-specific |
 | design decompose | `<tasks>` `<task>` `<executionTier>` `<techTier>` | decompose-specific |
 | planner generate | `<file>` `<reply>` `<clarify>` `<done>` `<thinking>` | explain mode 는 `<reply>` 만 |
-| ask / inline-ask | `<reply>` `<done>` `<thinking>` | — |
+| ask / inline-ask | `<reply>` `<eval>` `<done>` `<thinking>` | "답변은 `<reply>` 안. evaluation report 끝에 `<eval type=\"...\" />`." |
 | triage | `<triage>` `<thinking>` | — |
-| learn | `<learn_command>` `<lesson>` `<references>` | — |
+| learn | `<learn_command>` `<references>` | — |
+| visual direct | `<direct>` `<thinking>` | — |
 
 ## 추가/변경 절차
 
