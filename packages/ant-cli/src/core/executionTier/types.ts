@@ -18,6 +18,7 @@ import type { LLMClient } from '../ports/llm';
 import type { PromptPort } from '../ports/prompt';
 import type { FeatureContext, CompactFeatureContextDeps } from '../context/featureContextBuilder';
 import type { TouchedFromChatLog } from '../context/breadcrumb';
+import type { BreadcrumbEmitOptions } from './strategies/breadcrumb';
 
 export { ExecutionTierId };
 
@@ -50,12 +51,17 @@ export interface ExecutionTier {
 
   /**
    * Append a breadcrumb (§12 Breadcrumb). Skip semantics live in
-   * `writeBreadcrumb` (mode='explain' / touched=0); the tier slot
-   * dispatches to a single FullBreadcrumb implementation.
+   * `writeBreadcrumb` (mode='explain' / touched=0). Callers can pass
+   * {@link BreadcrumbEmitOptions.forceEmit} to record failure breadcrumbs
+   * even when those default gates would skip.
    *
    * Side-effect only; caller's responsibility to log failures.
    */
-  breadcrumb(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void>;
+  breadcrumb(
+    state: ExecutionTierState,
+    touched?: TouchedFromChatLog,
+    options?: BreadcrumbEmitOptions,
+  ): Promise<void>;
 
   /**
    * Compact `FeatureContext` (§13 compaction_policy). Returns the input
