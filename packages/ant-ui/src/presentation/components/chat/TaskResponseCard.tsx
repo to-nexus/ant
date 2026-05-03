@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { lineToContent } from './cards/lineToContent';
 
@@ -22,6 +23,8 @@ interface TaskResponseCardProps {
   pending?: PendingCardSnapshot;
   isStreaming?: boolean;
 }
+
+const MARKDOWN_COMPONENTS = createMarkdownComponents();
 
 export const TaskResponseCard = memo(function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCardProps) {
   const content = lineToContent(line, pending);
@@ -123,67 +126,7 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending, 
                  style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{
-                  pre: ({ node, className, children, ...props }: any) => (
-                    <pre
-                      className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
-                      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                      {...props}
-                    >
-                      {children}
-                    </pre>
-                  ),
-                  code: ({ node, className, children, ...props }: any) => {
-                    const hasLanguage = /language-\w+/.test(className || '');
-                    const isMultiLine = String(children).includes('\n');
-
-                    if (hasLanguage || isMultiLine) {
-                      return <code className={className} {...props}>{children}</code>;
-                    }
-
-                    return (
-                      <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-words" {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
-                  a: ({ node, children, ...props }: any) => (
-                    <a className="text-blue-600 dark:text-blue-400 hover:underline break-words" target="_blank" rel="noopener noreferrer" {...props}>
-                      {children}
-                    </a>
-                  ),
-                  table: ({ node, children, ...props }: any) => (
-                    <div className="overflow-x-auto my-4">
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props}>
-                        {children}
-                      </table>
-                    </div>
-                  ),
-                  th: ({ node, children, ...props }: any) => (
-                    <th className="px-4 py-2 bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold break-words" {...props}>
-                      {children}
-                    </th>
-                  ),
-                  td: ({ node, children, ...props }: any) => (
-                    <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-sm break-words" {...props}>
-                      {children}
-                    </td>
-                  ),
-                  p: ({ node, children, ...props }: any) => (
-                    <div className="my-2 leading-relaxed break-words" {...props}>
-                      {children}
-                    </div>
-                  ),
-                  h1: ({ node, children, ...props }: any) => (
-                    <h1 className="text-xl font-bold my-3 break-words" {...props}>{children}</h1>
-                  ),
-                  h2: ({ node, children, ...props }: any) => (
-                    <h2 className="text-lg font-bold my-2 break-words" {...props}>{children}</h2>
-                  ),
-                  h3: ({ node, children, ...props }: any) => (
-                    <h3 className="text-base font-bold my-2 break-words" {...props}>{children}</h3>
-                  )
-                }}
+                components={MARKDOWN_COMPONENTS}
               >
                 {textContent}
               </ReactMarkdown>

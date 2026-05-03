@@ -64,6 +64,18 @@ Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
 
 Placeholder는 contents[] 배열의 **어느 위치에나** 존재할 수 있다 (informational 타입이 뒤에 추가될 수 있기 때문). 모든 콘텐츠 추가는 반드시 `ContentMerger.addContent()`를 경유해야 한다.
 
+## Markdown 렌더링 (UI)
+
+chat/카드/파일 프리뷰는 공통 markdown renderer를 사용하며, fenced code block의 `language-mermaid`는 Mermaid SVG로 렌더된다. Mermaid 렌더 실패 시 원문 코드블록 fallback을 유지한다.
+
+| 표면 | 경로 |
+|---|---|
+| Turn assistant text | `packages/ant-ui/src/presentation/components/chat/TurnItem.tsx` |
+| Task response card | `packages/ant-ui/src/presentation/components/chat/TaskResponseCard.tsx` |
+| Choice card title | `packages/ant-ui/src/presentation/components/chat/choiceCard/shared.tsx` |
+| File markdown preview | `packages/ant-ui/src/presentation/components/FileEditorPanel.tsx` |
+| 공통 renderer | `packages/ant-ui/src/presentation/components/markdown/createMarkdownComponents.tsx` / `MermaidBlock.tsx` |
+
 ## Chat Activity Indicator (CAI)
 
 사용자에게 "시스템이 작업 중"임을 알려주는 시각적 피드백 시스템.

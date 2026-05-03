@@ -199,7 +199,9 @@ Every technology/library/tool name must pass the **"Who decided?"** test:
 - ✅ Component props (≤5 fields) described as name + purpose (no code fences)
 - ✅ API signatures (operation name + purpose + inputs + outputs, NO DTO field lists)
 - ✅ High-level strategy description (3-5 steps, NO code)
-- ✅ Architecture diagrams (ASCII/text, if helpful)
+- ✅ Architecture diagrams (prefer Mermaid; add compact ASCII fallback only when renderer is unavailable/uncertain)
+
+{{> jobs/shared/injections/diagram-contract}}
 
 ### Interface Contract Writing Pattern (Language-Neutral)
 - For each important boundary (e.g., `GameEngine`, `StateProvider`, `InputProvider`, services, ports, repositories, systems):
