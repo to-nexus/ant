@@ -29,11 +29,30 @@ import { buildLlmBreadcrumbSummary } from '../../context/breadcrumbSummary';
 import type { ExecutionTierState } from '../types';
 
 export interface BreadcrumbStrategy {
-  apply(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void>;
+  apply(
+    state: ExecutionTierState,
+    touched?: TouchedFromChatLog,
+    options?: BreadcrumbEmitOptions,
+  ): Promise<void>;
+}
+
+export interface BreadcrumbEmitOptions {
+  /**
+   * Bypass default skip gates (`mode='explain'`, `touched=0`).
+   * Used for failure-context breadcrumbs where mutation anchors may be empty
+   * but the failure itself must remain visible for the next turn.
+   */
+  forceEmit?: boolean;
+  /** Optional summary override (e.g. failure-focused 1-line digest). */
+  summaryOverride?: string;
 }
 
 export class NoopBreadcrumb implements BreadcrumbStrategy {
-  async apply(): Promise<void> {
+  async apply(
+    _state?: ExecutionTierState,
+    _touched?: TouchedFromChatLog,
+    _options?: BreadcrumbEmitOptions,
+  ): Promise<void> {
     /* intentionally empty — kept for callers that explicitly opt out of
      * BC emission (e.g. legacy tier slots). FullBreadcrumb already handles
      * mode='explain' / touched=0 internally, so most call sites should
@@ -50,6 +69,7 @@ export class NoopBreadcrumb implements BreadcrumbStrategy {
 async function writeBreadcrumb(
   state: ExecutionTierState,
   preComputedTouched: TouchedFromChatLog | undefined,
+  options: BreadcrumbEmitOptions = {},
 ): Promise<void> {
   const session = state.deps?.session;
   if (!session) {
@@ -77,7 +97,7 @@ async function writeBreadcrumb(
   // contract; emitting a BC with empty anchors would inflate feature.jsonl
   // without giving the next job any pointer. Logged at debug level — this
   // is an expected skip, not a fault.
-  if (mode === 'explain') {
+  if (mode === 'explain' && options.forceEmit !== true) {
     console.log("📝 [Tier] writeBreadcrumb skipped: mode='explain' (no anchors to record)");
     return;
   }
@@ -89,7 +109,7 @@ async function writeBreadcrumb(
   // MINI_BREADCRUMB_TOUCHED_THRESHOLD=3 gate; touched===0 is the only
   // case where a BC carries no information value (every other count is
   // a meaningful anchor target for the next job's tools).
-  if (touchedCount === 0) {
+  if (touchedCount === 0 && options.forceEmit !== true) {
     console.log('📝 [Tier] writeBreadcrumb skipped: touched=0 (no code change)');
     return;
   }
@@ -99,16 +119,19 @@ async function writeBreadcrumb(
   // self-falls-back to the legacy directive paraphrase on any failure
   // path (missing llm/promptBuilder, timeout, empty output). BC line
   // emission is therefore never blocked on the LLM side.
-  const summary = await buildLlmBreadcrumbSummary({
-    directive: state.directive || '',
-    mode,
-    created: touched.created,
-    modified: touched.modified,
-    deleted: touched.deleted,
-    touchedCount,
-    llm: state.deps?.llm,
-    promptPort: state.deps?.promptBuilder,
-  });
+  const summary =
+    typeof options.summaryOverride === 'string' && options.summaryOverride.trim().length > 0
+      ? options.summaryOverride.trim()
+      : await buildLlmBreadcrumbSummary({
+          directive: state.directive || '',
+          mode,
+          created: touched.created,
+          modified: touched.modified,
+          deleted: touched.deleted,
+          touchedCount,
+          llm: state.deps?.llm,
+          promptPort: state.deps?.promptBuilder,
+        });
   const breadcrumb = buildBreadcrumb({
     jobId,
     turnId,
@@ -149,8 +172,9 @@ export class FullBreadcrumb implements BreadcrumbStrategy {
   async apply(
     state: ExecutionTierState,
     touched?: TouchedFromChatLog,
+    options?: BreadcrumbEmitOptions,
   ): Promise<void> {
-    await writeBreadcrumb(state, touched);
+    await writeBreadcrumb(state, touched, options);
   }
 }
 

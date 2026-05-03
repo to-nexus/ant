@@ -16,6 +16,11 @@ import {
   getExecutionLogger,
 } from '../../../../../../core/utils/executionLogger';
 
+interface DesignBreadcrumbOptions {
+  forceEmit?: boolean;
+  summaryOverride?: string;
+}
+
 /**
  * Append a breadcrumb for a completed design job (§12).
  *
@@ -34,6 +39,7 @@ import {
  */
 async function applyDesignBreadcrumbBoundary(
   state: DesignGraphState,
+  options: DesignBreadcrumbOptions = {},
 ): Promise<void> {
   const session = state.deps?.session;
   if (!session) return;
@@ -88,27 +94,30 @@ async function applyDesignBreadcrumbBoundary(
   }
   const mode = state.resolvedAction?.mode;
   // Skip explain mode — no anchor information to record (job-context-bridge T3).
-  if (mode === 'explain') {
+  if (mode === 'explain' && options.forceEmit !== true) {
     console.log("📝 [Design Learn] breadcrumb skipped: mode='explain' (no anchors)");
     return;
   }
-  if (pathsFromTrace.length === 0) {
+  if (pathsFromTrace.length === 0 && options.forceEmit !== true) {
     console.log('📝 [Design Learn] breadcrumb skipped: touched=0 (no doc change)');
     return;
   }
 
   // job-context-bridge T4 — LLM-generated noun-form summary; falls back to
   // directive paraphrase on any failure.
-  const summary = await buildLlmBreadcrumbSummary({
-    directive: state.directive || '',
-    mode,
-    created,
-    modified,
-    deleted,
-    touchedCount: pathsFromTrace.length,
-    llm: state.deps?.llm,
-    promptPort: state.deps?.promptBuilder,
-  });
+  const summary =
+    typeof options.summaryOverride === 'string' && options.summaryOverride.trim().length > 0
+      ? options.summaryOverride.trim()
+      : await buildLlmBreadcrumbSummary({
+          directive: state.directive || '',
+          mode,
+          created,
+          modified,
+          deleted,
+          touchedCount: pathsFromTrace.length,
+          llm: state.deps?.llm,
+          promptPort: state.deps?.promptBuilder,
+        });
 
   const breadcrumb = buildBreadcrumb({
     jobId,
@@ -133,6 +142,16 @@ async function applyDesignBreadcrumbBoundary(
 
   // job-context-bridge T2 — auto boundary deprecated for design too.
   // Hard Reset is recorded by SessionPersistence; nothing to do here.
+}
+
+function buildDesignFailureBreadcrumbSummary(state: DesignGraphState): string | undefined {
+  if (!state.designError && !state.interruption?.reason) return undefined;
+  const mode = state.resolvedAction?.mode ?? 'generate';
+  const reason = state.designError ? 'design_error' : state.interruption?.reason ?? 'design_failed';
+  const detail = state.designError?.message || state.interruption?.message || 'design job ended before completion';
+  const normalizedDetail =
+    detail.length > 180 ? `${detail.slice(0, 177)}...` : detail;
+  return `failure: ${reason} · ${mode} · ${normalizedDetail}`;
 }
 
 /**
@@ -325,18 +344,24 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     runId = session.runs[session.runs.length - 1]?.runId;
     
     console.log(`💾 Session run saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/design.json`);
+  }
 
-    // Session redesign §2.4 — design learn appends BC + Boundary so resolve
-    // in subsequent jobs sees the design job's outcome via featureContext.
-    // Each completed design run is treated as a full boundary event
-    // regardless of the tier Decompose emitted (D5: sub-graph untouched,
-    // only the terminal learn surface is extended here).
-    if (isLastTask) {
-      try {
-        await applyDesignBreadcrumbBoundary(state);
-      } catch (err) {
-        console.warn('⚠️  [Design Learn] breadcrumb/boundary write failed:', err);
-      }
+  // Session redesign §2.4 — design breadcrumb append.
+  //
+  // Unified failure policy with code job:
+  //   - success: original gates (`mode='explain'`, touched=0) stay intact
+  //   - failure/interruption: force-emit a failure summary BC so the next
+  //     turn can observe why this run stopped, even when touched=0.
+  if (isLastTask && !_isWorkerContext && state.deps?.session) {
+    try {
+      await applyDesignBreadcrumbBoundary(state, {
+        forceEmit: hasEarlyTermination,
+        summaryOverride: hasEarlyTermination
+          ? buildDesignFailureBreadcrumbSummary(state)
+          : undefined,
+      });
+    } catch (err) {
+      console.warn('⚠️  [Design Learn] breadcrumb write failed:', err);
     }
   }
   

@@ -124,6 +124,23 @@ export async function recordClassificationBias(
   }
 }
 
+function buildCodeFailureBreadcrumbSummary(input: {
+  state: ArchitectGraphState;
+  taskFailed: boolean;
+  hasOrchestratorFailure: boolean;
+}): string | undefined {
+  const { state, taskFailed, hasOrchestratorFailure } = input;
+  if (!taskFailed && !hasOrchestratorFailure) return undefined;
+  const mode = state.resolvedAction?.mode ?? 'generate';
+  const taskLabel = state.currentTask?.name || state.currentTask?.type || 'unknown-task';
+  if (hasOrchestratorFailure) {
+    const reason = state.interruption?.reason ?? 'orchestrator_failure';
+    const message = state.interruption?.message || 'job interrupted before completion';
+    return `failure: ${reason} · ${mode} · ${message}`;
+  }
+  return `failure: verification_failed · ${mode} · task "${taskLabel}" has unresolved violations`;
+}
+
 /**
  * Learn node - Incremental lesson extraction after each task completion:
  * 1. Extract lessons from completed task
@@ -328,6 +345,20 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     currentTask: state.currentTask,
     completedTasksDetails: state.completedTasksDetails,
   });
+  const taskFailed = Boolean(state.violations && state.violations.length > 0);
+  const bcGate =
+    isLastTask && !isWorkerContext
+      ? evaluateBcGate({
+          isLastTask,
+          taskFailed,
+          isWorkerContext,
+          hasOrchestratorFailure,
+          touchedSize: touchedForLearn?.all.size ?? 0,
+          mode: state.resolvedAction?.mode,
+          currentTaskType: state.currentTask?.type,
+          violationsLen: state.violations?.length ?? 0,
+        })
+      : undefined;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // §19 misclassify_guard — run BEFORE the session-persistence block.
@@ -404,26 +435,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'code'
     );
     
-    const taskFailed = state.violations && state.violations.length > 0;
-    // BC 적기는 turn 단위 신호로 결정한다. verification/error tail의
-    // `state.violations` 잔존(=taskFailed)은 본래 `interruption` 마킹용
-    // 신호이며 BC 적기에는 영향을 주지 않아야 한다 — turn 안에서 다른
-    // task가 코드를 정상 변경했다면(`touchedForLearn`에 file_* 흔적이
-    // 남았다면) 마지막 task가 verification이라도 BC를 기록한다.
-    // SSOT: packages/ant-cli/src/core/context/breadcrumb.ts:239
-    // (`collectTouchedFilesFromChatLog`).
-    // The gate decision + diagnostic line live in `bcGate.ts` so they
-    // remain unit-testable without standing up the full learn node.
-    const bcGate = evaluateBcGate({
-      isLastTask,
-      taskFailed: !!taskFailed,
-      isWorkerContext,
-      hasOrchestratorFailure,
-      touchedSize: touchedForLearn?.all.size ?? 0,
-      mode: state.resolvedAction?.mode,
-      currentTaskType: state.currentTask?.type,
-      violationsLen: state.violations?.length ?? 0,
-    });
     const completedJobTiming = state.jobTiming ? {
       ...state.jobTiming,
       ...(isLastTask && !taskFailed && { completedAt: new Date().toISOString() })
@@ -453,48 +464,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Session redesign §2.4 — Breadcrumb via tier facade.
-    // Runs once at the end of a code job (isLastTask) to capture the
-    // job's trace into feature.jsonl for future resolve/plan/direct use.
-    //
-    // `getExecutionTier(state)` reads `state.executionTier` (written by
-    // decompose after `validateExecutionTier` confirms the LLM's
-    // `<executionTier>` tag); when absent (legacy session / pre-decompose
-    // node), it defaults to Tier 0 Reflex.
-    //
-    // Auto boundary was deprecated by job-context-bridge T2; only
-    // Hard Reset (`reason: 'user_reset'`) still cuts the timeline, and
-    // that path is handled by SessionPersistence — not here.
-    //
-    // BC emission policy is now uniform across tiers: writeBreadcrumb
-    // self-skips for `mode='explain'` and `touched=0`. Every other
-    // code-change task records a BC line.
-    //
-    // Gate: `bcShouldEmit = isLastTask && turnTouchedAny` — see the
-    // `turnTouchedAny` derivation above. The earlier `!taskFailed` gate
-    // mistakenly conflated `interruption` marking (verification-tail
-    // violations) with BC emission, which silently dropped BCs on turns
-    // whose tail task was verification/error. The interruption marking
-    // path (`if (isLastTask && taskFailed)` above) keeps its original
-    // semantics. §19 featureBiases has a different failure contract and
-    // runs earlier, outside this block (see above).
-    //
-    // The `📝 [Learn] BC eval — …` log is the SSOT diagnostic for "why
-    // didn't a BC appear?" — `silentSkipDiagnostics` covers the four
-    // inner skip sites in writeBreadcrumb, and this line covers the
-    // outer gate that decides whether writeBreadcrumb was called at all.
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log(bcGate.diagnosticLine);
-    if (bcGate.bcShouldEmit) {
-      try {
-        const executionTier = getExecutionTier(state);
-        await executionTier.breadcrumb(state, touchedForLearn);
-      } catch (err) {
-        console.warn('⚠️  [Learn] tier breadcrumb failed:', err);
-      }
-    }
-
     if (isLastTask && !taskFailed) {
       // Mark consumed documents with metadata
       if (state.deps?.fileSystem && state.context.featurePath) {
@@ -573,6 +542,34 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`💾 Session run saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/code.json`);
     if (state.taskQueue && !state.taskQueue.isEmpty()) {
       console.log(`💾 State snapshot saved: ${state.completedTasks?.length || 0} completed, ${state.taskQueue.size()} remaining`);
+    }
+  }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Session redesign §2.4 — Breadcrumb via tier facade.
+  //
+  // Runs once at the end of a code job (isLastTask). Gate policy:
+  //   - success path: `isLastTask && touched>0`
+  //   - failure path: `isLastTask && failureSignal` (even touched=0)
+  //
+  // This keeps successful explain/touched=0 skips unchanged while ensuring
+  // failed turns still leave a breadcrumb for the next LLM turn.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (bcGate) {
+    console.log(bcGate.diagnosticLine);
+    if (bcGate.bcShouldEmit && state.deps?.session) {
+      try {
+        const executionTier = getExecutionTier(state);
+        await executionTier.breadcrumb(state, touchedForLearn, {
+          forceEmit: bcGate.failureSignal,
+          summaryOverride: buildCodeFailureBreadcrumbSummary({
+            state,
+            taskFailed,
+            hasOrchestratorFailure,
+          }),
+        });
+      } catch (err) {
+        console.warn('⚠️  [Learn] tier breadcrumb failed:', err);
+      }
     }
   }
   

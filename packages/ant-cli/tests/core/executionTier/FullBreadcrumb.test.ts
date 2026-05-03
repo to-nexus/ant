@@ -80,6 +80,29 @@ describe('FullBreadcrumb — unified emit policy', () => {
     await new FullBreadcrumb().apply(state, makeTouched(5));
     expect(session.appendBreadcrumb).not.toHaveBeenCalled();
   });
+
+  it('force-emits when touched=0 for failure-context breadcrumbs', async () => {
+    const session = makeSession();
+    const state = makeState('generate', session);
+    await new FullBreadcrumb().apply(state, makeTouched(0), {
+      forceEmit: true,
+      summaryOverride: 'failure: verification_failed · generate · unresolved violations',
+    });
+    expect(session.appendBreadcrumb).toHaveBeenCalledTimes(1);
+    const bc = session.appendBreadcrumb.mock.calls[0][0];
+    expect(bc.summary).toContain('failure: verification_failed');
+    expect(bc.stats.touched).toBe(0);
+  });
+
+  it("force-emits even when mode='explain' for failure-context breadcrumbs", async () => {
+    const session = makeSession();
+    const state = makeState('explain', session);
+    await new FullBreadcrumb().apply(state, makeTouched(0), {
+      forceEmit: true,
+      summaryOverride: 'failure: design_error · explain · downstream timeout',
+    });
+    expect(session.appendBreadcrumb).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**
