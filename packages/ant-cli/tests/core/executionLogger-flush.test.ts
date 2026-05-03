@@ -177,7 +177,8 @@ describe('design graph executionLogger fire pattern contract', () => {
   const targetFiles = [
     path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'graph.ts'),
     path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'parallel', 'workerGraph.ts'),
-    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'plan.ts'),
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'plan', 'index.ts'),
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'plan', 'dispatchOnly.ts'),
     path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'learn', 'index.ts'),
   ];
 

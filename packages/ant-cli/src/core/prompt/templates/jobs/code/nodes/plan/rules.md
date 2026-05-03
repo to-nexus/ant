@@ -99,6 +99,48 @@ Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be 
 
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
+{{#if (or (eq taskType "feature") (eq taskType "ui"))}}
+────────────────────────────────────────────────────────────────────────────────
+## 🌿 OPTIONAL FAN-OUT (feature / ui only)
+────────────────────────────────────────────────────────────────────────────────
+
+**Principle**: When the task is a deep-think parent whose work splits cleanly
+across independent physical units (different package, different runtime layer,
+different deployment unit), you MAY emit `batches[]` instead of a single
+`<plan>` body. Each batch becomes an independent child task that applies its
+own slice; siblings inherit your reasoning so naming/signatures stay coherent.
+
+**Constraints**:
+- Multiple files inside ONE coherent unit are NOT a fan-out signal — keep them
+  in a single plan.
+- `parentReasoning` MUST capture the cross-batch decisions (chosen API names,
+  shared types, integration contract). Each batch sees this verbatim.
+- When `batches[]` is omitted (default), the standard single-plan schema below
+  applies. Fan-out is opt-in by judgement, not a procedure.
+- Tier 4 breakdowns are typically already enumerated by decompose — fan-out at
+  plan time is rare and only justified by genuine physical isolation.
+
+**Schema (when emitted)**:
+
+```
+<plan>
+{
+  "task": { "id": "{{taskId}}", "goal": "..." },
+  "parentReasoning": "<cross-batch decisions: names, contracts, shared types>",
+  "batches": [
+    {
+      "name": "<unit name>",
+      "rationale": "<why this batch is one isolated unit>",
+      "modify": [...],
+      "create": [...],
+      "delete": []
+    }
+  ]
+}
+</plan>
+```
+{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 MODIFY FIELD CONSTRAINT
 ────────────────────────────────────────────────────────────────────────────────

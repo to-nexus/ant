@@ -22,6 +22,7 @@ import path from 'node:path';
 import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from '../routers/docGenRouter';
+import { routeAfterPlan, routeAfterTool } from '../routing';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
@@ -242,7 +243,13 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
 
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
-  graph.addEdge('plan' as any, 'docGen' as any);
+
+  // plan routing (tool-loop / sealed-plan handoff to docGen)
+  graph.addConditionalEdges(
+    'plan' as any,
+    routeAfterPlan as any,
+    { tool: 'tool', docGen: 'docGen' } as any,
+  );
 
   // docGen routing (tool call / done / retry — with call budget safety net)
   graph.addConditionalEdges(
@@ -251,8 +258,12 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
     { tool: 'tool', checkTaskStatus: 'checkTaskStatus', docGen: 'docGen' } as any,
   );
 
-  // Tool → docGen loop
-  graph.addEdge('tool' as any, 'docGen' as any);
+  // tool routing (plan↔tool / docGen↔tool dispatched via _activePhase)
+  graph.addConditionalEdges(
+    'tool' as any,
+    routeAfterTool as any,
+    { plan: 'plan', docGen: 'docGen' } as any,
+  );
 
   // checkTaskStatus → learn (design tasks always succeed or error out at docGen level)
   graph.addEdge('checkTaskStatus' as any, 'learn' as any);

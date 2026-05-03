@@ -126,7 +126,7 @@ describe('createTaskQueue — Tier 2 (Exploratory, single unit of work)', () => 
 });
 
 describe('createTaskQueue — Tier 3/4 (Task / RefsGrounded)', () => {
-  it('accepts a feature task + verification task (n=2)', () => {
+  it('accepts deep-think single-feature shape [feature × 1 + FV × 1]', () => {
     const tasks: CodeTask[] = [featureTask(), finalVerificationTask()];
     const { taskQueue } = createTaskQueue(
       tasks,
@@ -135,6 +135,23 @@ describe('createTaskQueue — Tier 3/4 (Task / RefsGrounded)', () => {
       ExecutionTierId.Task,
     );
     expect(taskQueue.size()).toBe(2);
+    const feat = taskQueue.getAll().find(t => t.type === 'feature');
+    expect((feat as any)?.selfVerifyOnDone).toBeUndefined();
+  });
+
+  it('accepts physical-isolation shape [feature × N + FV × 1]', () => {
+    const tasks: CodeTask[] = [
+      featureTask({ id: 'feature-be', packages: ['be-main'] }),
+      featureTask({ id: 'feature-fe', packages: ['fe-main'] }),
+      finalVerificationTask(),
+    ];
+    const { taskQueue } = createTaskQueue(
+      tasks,
+      null,
+      undefined,
+      ExecutionTierId.Task,
+    );
+    expect(taskQueue.size()).toBe(3);
   });
 
   it('accepts an error task + verification task (n=2) — the former "n=1 error-only" case must now ship verification explicitly', () => {
@@ -162,6 +179,21 @@ describe('createTaskQueue — Tier 3/4 (Task / RefsGrounded)', () => {
     ).toThrow(/requires AT LEAST 2 tasks/);
   });
 
+  it('accepts Tier 4 [feature × N + FV] (refs-grounded multi-unit)', () => {
+    const tasks: CodeTask[] = [
+      featureTask({ id: 'feat-a' }),
+      featureTask({ id: 'feat-b' }),
+      finalVerificationTask(),
+    ];
+    const { taskQueue } = createTaskQueue(
+      tasks,
+      null,
+      undefined,
+      ExecutionTierId.RefsGrounded,
+    );
+    expect(taskQueue.size()).toBe(3);
+  });
+
   it('throws when Tier 3 has 2+ tasks but no verification task', () => {
     const tasks: CodeTask[] = [
       errorTask(),
@@ -172,19 +204,25 @@ describe('createTaskQueue — Tier 3/4 (Task / RefsGrounded)', () => {
     ).toThrow(/missing a Final Verification task/);
   });
 
-  it('strips selfVerifyOnDone from Tier 3/4 tasks (flag is Tier-2-only)', () => {
+  it('rejects selfVerifyOnDone leak on a Tier 3 work task', () => {
     const tasks: CodeTask[] = [
       featureTask({ selfVerifyOnDone: true } as any),
       finalVerificationTask(),
     ];
-    const { taskQueue } = createTaskQueue(
-      tasks,
-      null,
-      undefined,
-      ExecutionTierId.Task,
-    );
-    const feat = taskQueue.getAll().find(t => t.type === 'feature');
-    expect((feat as any)?.selfVerifyOnDone).toBeUndefined();
+    expect(() =>
+      createTaskQueue(tasks, null, undefined, ExecutionTierId.Task),
+    ).toThrow(/selfVerifyOnDone:true/);
+  });
+
+  it('rejects selfVerifyOnDone leak on a Tier 4 work task', () => {
+    const tasks: CodeTask[] = [
+      featureTask({ id: 'feat-a' }),
+      featureTask({ id: 'feat-b', selfVerifyOnDone: true } as any),
+      finalVerificationTask(),
+    ];
+    expect(() =>
+      createTaskQueue(tasks, null, undefined, ExecutionTierId.RefsGrounded),
+    ).toThrow(/selfVerifyOnDone:true/);
   });
 });
 

@@ -141,9 +141,17 @@ import { composeBundle } from '../_shared/verify';
 // `manifestPinPolicy.ts` is the authoritative guard; this hook gives
 // the LLM read-only visibility ahead of time, turning rejection rate
 // to zero on well-behaved plans.
+//
+// `acceptsPrePlanText:true` — children of a deep-think feature parent
+// (fan-out via `BATCH_SPLIT_POLICY['feature']`) skip plan-tool-loop and
+// apply the parent's solution directly via execute. Prevents sibling
+// signature/naming drift that re-planning would risk.
 export const hooks = composeBundle({
   apply: {
-    plan: { extraTemplateVars: planExtraTemplateVars },
+    plan: {
+      extraTemplateVars: planExtraTemplateVars,
+      acceptsPrePlanText: true,
+    },
   },
   taskTypeSpecific: {
     scheduling: {

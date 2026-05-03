@@ -249,6 +249,23 @@ export const TOOL_SETS = {
     ToolName.SEARCH_WEB, ToolName.RUN_COMMAND,
   ] as ToolName[],
 
+  // Design plan-LLM read-only exploration. NO file-write tools and NO
+  // download_asset — plan is for "deciding the solution" only; writing
+  // (and asset download) is the docGen node's responsibility.
+  designPlanExplore: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
+  ] as ToolName[],
+
+  // Figma-augmented design plan exploration — adds Figma MCP read tools
+  // for UI/spec tasks that need to consult Figma metadata before sealing
+  // the plan. Still strictly read-only.
+  designPlanFigma: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
+    ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
+  ] as ToolName[],
+
   designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
   codeExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
 

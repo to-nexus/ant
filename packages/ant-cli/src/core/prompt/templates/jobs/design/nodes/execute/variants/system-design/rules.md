@@ -1,39 +1,38 @@
-## Architectural Context Gathering
+## Sealed Plan from Plan Node
 
-### Principle
+**Principle**: The plan node has already decided the architecture model
+and selected sections through candidate comparison. Your job here is to
+**write the document** following that plan, not to redesign.
 
-The prompt contains the PRD — either as **full content** or as a **source file index** (when documents are large). Both are your primary architectural input.
+The sealed `<plan>` JSON has been injected at the top of your runtime
+context block as `# Sealed Plan (from plan node)` (when populated by
+the plan phase).
 
-### Observation Targets
+| Concern | Owned by |
+|---------|----------|
+| Architectural model & boundary inventory | plan node (sealed in `<plan>`) |
+| Document outline / chapters | plan node (`documentOutline`) |
+| Field-level DTO shapes / signatures | docGen (verify with tools) |
+| Final wording / abstraction-level enforcement | docGen |
 
-| Target | When to read | How |
-|--------|-------------|-----|
-| Your target document (`task.targetFile`) | Continuation task (lastSectionNumber exists) AND you need `edit_file` | `read_file` on the target path only |
-| Other system design documents for this project | Only if your task explicitly references cross-document dependencies not already in the prompt | `read_file` on the specific file |
+**Constraints**:
 
-### Source Document Reading
+- Do NOT change the architecture model recorded in
+  `decision.selected` / `documentOutline`. It is sealed.
+- Use tools ONLY for *detail precision* (DTO field types, exact
+  endpoint paths, contract values verified against reference projects).
+  Do NOT re-explore architecture — that is decided.
+- If you find new evidence via tools that contradicts the sealed plan,
+  DO NOT silently override. Raise it via `<clarify>` so the next plan
+  cycle can re-decide.
 
-**Scope clarification**: This entire subsection (Principle, Observation Target, Constraints, blind-spot) governs reading of *injected source documents* — PRD, system-design, prior design — through `read_source_doc`. It does NOT apply to External Contract Discovery: contract retrieval is a separate trace governed by the "External Contract Discovery" section in `api-contract-guide.md` and is exempt from the call-budget heuristic below. Skipping contract retrieval to honour this budget is a misapplication of scope.
+### Source Document Reading (legacy fallback)
 
-When the prompt contains a **source file index** (table with filenames, sizes, and line-numbered outlines) instead of full content:
-
-#### Principle
-
-Read in broad ranges (300-500+ lines per call) to gather context quickly. Prioritize breadth over precision — you MUST start writing output by call 5-7. Do NOT exhaustively read every section before writing.
-
-#### Observation Target
-
-Identify the most relevant headings from the outline, then use `read_source_doc` with `startLine`/`endLine` to read those sections in large ranges. Combine adjacent sections into a single call.
-
-#### Constraint
-
-Do NOT call `read_source_doc` without `startLine`/`endLine` on large documents. Full reads will be truncated and waste token budget. However, prefer fewer calls with larger ranges (300-500+ lines) over many calls with small ranges (100-200 lines).
-
-#### Constraint
-
-Do NOT re-read source document sections already present in your conversation history. Previous tool results remain available.
-
-⚠️ **Blind spot**: LLMs default to making many small, cautious reads for "precision." This exhausts the call budget before any output is produced. A single 500-line read is far more efficient than five 100-line reads — and you can start writing sooner.
+When no sealed plan is injected (legacy intent group / fallthrough),
+the original heuristic applies: read in broad ranges (300-500+ lines
+per `read_source_doc` call), batch tool calls, and prefer breadth over
+precision. Do NOT re-read documents already in your conversation
+history — previous tool results remain available.
 
 ### Constraint
 
@@ -45,13 +44,9 @@ Do NOT read session metadata under `sessions/*`. These are internal system files
 
 ### Constraint
 
-Do NOT re-read files already present in your conversation history. If you read a file in a previous turn, its content is still available — issuing a duplicate `read_file` wastes budget without adding information.
-
-### Constraint
-
 When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally (read one file, then decide the next) when the context already reveals the needed set.
 
-⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD in your prompt is sufficient for most tasks. Additional reads should be the exception, not the default.
+⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the sealed plan plus PRD in your prompt are usually sufficient — additional reads should be the exception, not the default.
 
 ---
 
@@ -577,10 +572,5 @@ Before generating output, verify:
 **Rules:**
 1. Output `<done>true</done>` ONLY after document content has been generated with `<file>` or `<append>` tag
 2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
-3. **Typical flow:**
-   ```
-   Turn 1: read_file(...) → Wait (if needed)
-   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
-   ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

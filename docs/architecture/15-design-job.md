@@ -9,11 +9,12 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | 항목 | Code Job | Design Job |
 |------|----------|------------|
 | 실행 노드 | plan -> execute -> tool | plan -> docGen -> tool |
-| plan 역할 | LLM으로 planText 생성 | taskQueue 관리만 (LLM 호출 없음) |
+| plan 역할 | LLM+tools 로 planText 생성 (5단계 entry/shortcut/RAG/llm/outcome) | LLM+tools 로 sealed `<plan>` 생성 (lean per-doc; intentGroup ∈ {design-spec, design-system-design} 만 적용. ui-design / game-art-design 은 dispatcher-only fallback) |
 | 검증 루프 | enforce -> plan (violations) | 없음 |
 | 태스크 타입 | setup, feature, testgen, error, verification | doc |
 | 출력물 | 소스 코드 파일 | 설계 문서 (MD, JSON) |
 | 고유 속성 | - | workType, documentType |
+| 공유 헬퍼 | `agents/common/graph/nodes/plan/` 의 `runPlanWithTools` / `runPlanToolLoopPhase` / `extractPlanText` / `PLAN_TOOL_LOOP_MAX` 를 두 job 모두 사용. 노드 본체는 각자 별도 구현 (구조 차이가 큼 — adapter/strategy 인터페이스는 만들지 않음) | 동일 |
 
 ## workType
 
@@ -70,10 +71,18 @@ __start__ -> resolve -> [4-way router]
     +-> plan (직행)
     +-> decompose (detectEnv 이후 중단 resume)
 
-plan -> docGen -> [router]
-    +-> tool -> docGen (도구 호출 루프)
+plan -> [router]
+    +-> tool (plan↔tool 도구 루프, _activePhase='plan' + tool_use 있음)
+    +-> docGen (sealed <plan> 또는 dispatchOnly fallthrough)
+
+docGen -> [router]
+    +-> tool -> [router]  (도구 호출 루프, _activePhase 미설정)
     +-> checkTaskStatus (done=true)
     +-> docGen (retry, done=false)
+
+tool -> [router]  (_activePhase 로 분기)
+    +-> plan (_activePhase='plan' → plan↔tool 루프)
+    +-> docGen (그 외 → docGen↔tool 루프)
 
 checkTaskStatus -> [router]
     +-> plan (다음 태스크)
@@ -98,7 +107,14 @@ Worker Subgraph는 `DesignGraphChannels`를 spread하여 메인 그래프와 채
 
 ### plan
 
-LLM 호출 없이 taskQueue에서 pop하여 currentTask를 설정한다. refactor 모드 시 smart context loading(코드베이스 재로드)을 수행한다.
+intentGroup 분기로 두 동작을 가진다:
+
+- **`design-spec` / `design-system-design`**: LLM+tools 의 lean plan↔tool 루프를 실행해 `<plan>{...}</plan>` JSON 을 생성한다. plan 결과는 `state.planText` 로 sealed 되어 docGen 의 `runtimeContext` 상단 (`# Sealed Plan (from plan node)`) 에 주입된다. 도구 셋은 read-only 의 `TOOL_SETS.designPlanExplore` (Figma 활성화 시 `designPlanFigma`) — file-write / download_asset 은 노출하지 않는다 (작성·다운로드는 docGen 의 책임).
+- **`design-ui` / `design-game-art`**: 기존 dispatcher-only 동작 유지. taskQueue 에서 pop, currentTask 설정, kanban / workflow / task_start 로그만 처리하고 즉시 docGen 으로 라우팅한다. 향후 `variants/{ui-design,game-art-design}/` 프롬프트가 추가되면 진입 가드만 풀고 LLM+tools 흐름에 합류 가능.
+
+re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 plan↔tool 루프 한 라운드를 실행한다. 라운드 ceiling 은 공유 상수 `PLAN_TOOL_LOOP_MAX = 15`; 초과 시 `finalizeFromExploration` 으로 가드 합성된 `<plan>` 을 강제로 받아낸다.
+
+공유 헬퍼 (`agents/common/graph/nodes/plan/`) 를 사용한다. code 와 동일한 stream / `<plan>` 추출 / over-limit 합성 로직을 함수형 utilities 로만 공유 — adapter/strategy 인터페이스는 의도적으로 두지 않음 (구조 차이가 큼; 자세한 정책은 해당 디렉토리 README 와 [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
 
 ### docGen
 
