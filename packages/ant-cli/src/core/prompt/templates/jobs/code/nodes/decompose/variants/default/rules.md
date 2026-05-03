@@ -35,6 +35,11 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 
 **Constraint**: Tier 2 emits EXACTLY ONE task. If the directive truly needs more than one independent unit of work, classify as Tier 3 (or 4 when refs-grounded) instead. Tier 3/4 emit `>= 2` tasks AND MUST include a dedicated verification task (`type: "verification"`, `priority: 1000`).
 
+**Constraint — deep-think principle (Tier 2 / Tier 3 directive cases, no design refs)**: You do NOT yet know the solution. The solution is the responsibility of the `plan` node, which has 15 rounds of tool-loop reasoning to settle approach, naming, signatures, and physical layout. Your job at decompose is to set the SCOPE for that thinking, NOT to invent a solution and freeze it into task descriptions.
+- A Tier 3 directive case where deep-think will likely converge on a single coherent unit is a **legitimate `[feature × 1 + verification × 1]` shape** (2 tasks total, satisfies the `>= 2` rule). The plan node may later decide to fan out into N siblings via `batches[]`; it MUST NOT be pre-decided here.
+- A Tier 3 directive case is `[feature × N + verification × 1]` ONLY when the directive itself names a clear, unambiguous physical isolation (different package, different runtime layer such as FE/BE, different artefact file). Otherwise default to the deep-think single-feature shape and let plan decide.
+- task `name` and `description` describe the SCOPE OF THINKING, not the solution. Forbidden: choosing concrete file paths, choosing API names / signatures, choosing data structures, prescribing implementation steps. Required: stating the user-visible outcome and the surface to investigate.
+
 **Constraint — Tier 4 task enumeration**: When the active reference document enumerates work units (numbered tasks, sections, requirements, acceptance criteria), every enumerated unit MUST appear as a distinct task in `<tasks>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units the document lists. The breakdown is faithful to the document — not optimized for brevity.
 
 ### Output shape by mode × tier
@@ -90,7 +95,11 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 
 ⚠️ **Blind spot**: Tiers `0` and `1` skip task breakdown entirely. Populate ONLY `<executionTier>`, `<directHints>`, `<techTier>`, and `<tasks></tasks>` (empty). Do not add boilerplate tasks to "make decomposition look complete".
 
-⚠️ **Blind spot**: The "single concrete action / one-task-is-enough" situation belongs to Tier 2 (with self-verify), NOT Tier 3 with one task. Tier 3 is reserved for `>= 2` tasks. If you were about to emit a single-task Tier 3 breakdown, downgrade to Tier 2 and set `selfVerifyOnDone: true` on that sole task.
+⚠️ **Blind spot**: Two distinct situations both produce a small task count and are easily confused:
+- **Single concrete action, no verification needed across multiple gates** = Tier 2 with `selfVerifyOnDone: true`. The sole task self-verifies inline.
+- **Single deep-think work unit + dedicated verification task** = Tier 3 with `[feature × 1 + verification × 1]` (2 tasks total). This is the LEGITIMATE Tier 3 deep-think shape — do NOT downgrade it to Tier 2. Tier 3 selection is correct when the work warrants a separate verification task because the build/test surface is heavier than self-verify can cleanly cover, OR when the plan node may later fan out via `batches[]` after deep reasoning.
+
+⚠️ **Blind spot**: NEVER pre-decide siblings just to satisfy "Tier 3 ≥ 2 tasks". The constraint is satisfied by `[feature × 1 + verification × 1]`. Inventing a fake second feature task to pad the count is exactly the parent-fragmentation anti-pattern this design prevents.
 
 ### Mode shapes the meaning of each tier
 
@@ -174,6 +183,11 @@ First, analyze step by step (think through):
   - Does it need setup/configuration tasks?
     - ONLY for NEW projects without any code
     - If ANY files exist, setup is already done
+  - **Tier 3 directive case (no design refs)** — apply the deep-think principle:
+    - Default shape is `[feature × 1 + verification × 1]`. Plan will decide later if fan-out is needed.
+    - Emit `[feature × N + verification × 1]` ONLY when the directive itself names unambiguous physical isolation (different package, FE/BE split, separate artefact file).
+    - task `description` states scope of thinking, NOT a prescribed solution.
+  - **Tier 4 (refs-grounded)** — the reference document IS the solution; enumerate every work unit it lists. Solution-prescribing in `description` is fine here because the source of truth is the document.
   - What are the main features to implement?
   - What is the optimal task breakdown?
   - Does test-code apply? (see Test Generation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)

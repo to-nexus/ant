@@ -1314,6 +1314,43 @@
       "partial-ref"
     ]
   },
+  "jobs/design/nodes/plan/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/plan/injections/plan-tools-batch": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/plan/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/plan/variants/spec/base": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/plan/variants/spec/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/plan/variants/system-design/base": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/plan/variants/system-design/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/revise/variants/default/base": {
     "sources": [
       "render-call"

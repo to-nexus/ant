@@ -11,7 +11,7 @@
  */
 
 import { DesignGraphState } from '../../state';
-import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
+import { CONV_KEYS, getConv, type ConversationKey } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../../core/utils/toolResultManager';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
@@ -74,6 +74,21 @@ const designToolResultManager = new ToolResultManager(tokenManager, {
 });
 
 /**
+ * Resolve which conversation key the tool node should mutate based on
+ * the active phase signal set by the upstream node:
+ *  - `_activePhase === 'plan'`  → plan↔tool loop (NODE_PLAN)
+ *  - otherwise                  → docGen↔tool loop (NODE_DOCGEN)
+ *
+ * Both loops share the same physical tool node and the read-only
+ * `_toolResultCache`. That means a `read_file` performed during plan
+ * can be served from cache when docGen reads the same path — token
+ * savings without any cross-phase coupling beyond the cache.
+ */
+function activeConvKey(state: DesignGraphState): ConversationKey {
+  return state._activePhase === 'plan' ? CONV_KEYS.NODE_PLAN : CONV_KEYS.NODE_DOCGEN;
+}
+
+/**
  * Registry is built lazily. State-dependent handlers use ctx fields
  * (sourceDocuments, uiAssetsList, figmaExplorationResult, etc.)
  * populated by buildContext at call time — no _cachedState closure.
@@ -129,7 +144,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
   resultManager: designToolResultManager,
 
   getHistory(state) {
-    return getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
+    return getConv(state.conversations, activeConvKey(state));
   },
 
   getCache(state) {
@@ -162,11 +177,12 @@ const toolNodeFn = createToolNode<DesignGraphState>({
             resultPreview: isImageContent ? resultStr : (resultStr.length <= 500 ? resultStr : undefined),
             wasTruncated: false,
             error: event.result.error,
-            // design jobs don't carry `_activePhase` / verification side
-            // effects, but pass through what's available so log readers
-            // can use the same shape across job types.
+            // `phase` distinguishes plan↔tool from docGen↔tool calls so
+            // log analysis can attribute exploration vs document-writing
+            // tool budget separately.
+            phase: state._activePhase ?? 'docGen',
             sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
-          }).catch(() => { /* non-blocking */ });
+          } as any).catch(() => { /* non-blocking */ });
         } catch { /* non-blocking */ }
       }
 
@@ -182,7 +198,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
 
   buildReturn(state, { updatedHistory, updatedCache, hookUpdates }) {
     return {
-      conversations: { [CONV_KEYS.NODE_DOCGEN]: updatedHistory },
+      conversations: { [activeConvKey(state)]: updatedHistory },
       files: state.files,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,

@@ -46,6 +46,38 @@ export function testCodeBatchShape(ctx: BatchPlanShapeCtx): string {
   });
 }
 
+/**
+ * Feature batch shape — emitted by deep-think feature task plan when it
+ * concludes the work needs to fan out into N physically-isolated child
+ * tasks. `parentReasoning` is the parent's solution rationale, replicated
+ * onto EVERY child batch so siblings share the same big-picture context
+ * (prevents naming/signature drift across siblings — e.g. parent decides
+ * `startPreview`; if one child renames it, sibling caller breaks).
+ *
+ * Children carry this JSON as `prePlanText`; combined with feature's
+ * `acceptsPrePlanText:true` hook the child plan node short-circuits to
+ * execute, which uses the implementation directives + parentReasoning to
+ * apply changes (cursor/codex-style execution).
+ */
+export function featureBatchShape(ctx: BatchPlanShapeCtx): string {
+  const parentReasoning =
+    (ctx.parsed as any).parentReasoning ??
+    (ctx.parsed as any).rationale ??
+    (ctx.parsed as any).reasoning ??
+    '';
+  return JSON.stringify({
+    task: { id: `batch-${ctx.batchIndex}`, goal: ctx.batch.name },
+    goal: ctx.batch.name,
+    rationale: ctx.batch.rationale || ctx.batch.name,
+    implementation: {
+      modify: ctx.batch.modify || [],
+      create: ctx.batch.create || [],
+      delete: ctx.batch.delete || [],
+    },
+    parentReasoning,
+  });
+}
+
 export type BatchSplitPolicyEntry = {
   kind: 'requeue-parent' | 'drop-and-replace';
   subType: CodeTask['type'];
@@ -73,6 +105,32 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     kind: 'drop-and-replace',
     subType: 'test-code',
     shape: testCodeBatchShape,
+    populateRemediationMode: false,
+    appendFinalVerification: true,
+  },
+  // Deep-think feature task fan-out (Tier 2/3 directive cases). Parent
+  // owns the integrated reasoning, children carry fixed-scope prePlanText
+  // and bypass the plan-tool-loop via `acceptsPrePlanText:true`. FV is
+  // appended unless one is already in the queue (hasFinalVerification
+  // guard). For Tier 2 selfVerifyOnDone parents, the existing
+  // `isTier2EscalateCandidate` branch routes through this same policy
+  // (taskPolicy lookup wins over the escalate-only fallback).
+  feature: {
+    kind: 'drop-and-replace',
+    subType: 'feature',
+    shape: featureBatchShape,
+    populateRemediationMode: false,
+    appendFinalVerification: true,
+  },
+  // UI tasks share feature's fan-out shape (parentReasoning replicated
+  // across batches). Unlike feature, ui hooks intentionally KEEP
+  // `acceptsPrePlanText:false` — ui children re-enter plan-tool-loop
+  // for skeleton/style refinement. Lineage cycle protection rides on
+  // batchSplitCount carry-over (process.ts) instead of plan-skip.
+  ui: {
+    kind: 'drop-and-replace',
+    subType: 'ui',
+    shape: featureBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,
   },

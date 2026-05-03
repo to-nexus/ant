@@ -54,9 +54,9 @@ function makeTask(overrides: Partial<CodeTask> = {}): CodeTask {
 
 describe('processDiagnosticBatchSplit — always-fan-out', () => {
   describe('task type gating', () => {
-    it('non-verification / non-error / non-test-code task → noop (returns original)', () => {
+    it('task type without a policy entry (e.g. setup) → noop (returns original)', () => {
       const state = makeState();
-      const task = makeTask({ type: 'feature', priority: 50, name: 'implement login form' });
+      const task = makeTask({ type: 'setup', priority: 100, name: 'init project' });
       const planText = JSON.stringify({
         batches: [{ name: 'a', modify: ['f1.ts'] }, { name: 'b', modify: ['f2.ts'] }],
         implementation: { modify: ['f1.ts', 'f2.ts'] },
@@ -427,6 +427,155 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       expect(errors.length).toBe(2);
       // batch a stays grouped (2 modify entries), batch b stays grouped (1 modify entry).
       // top-level modify is ignored when batches are already provided.
+    });
+  });
+
+  describe('feature parent (Tier 3 deep-think fan-out)', () => {
+    it('drops original, spawns feature sub-tasks with parentReasoning, enqueues Final Verification', () => {
+      const state = makeState();
+      const task = makeTask({
+        type: 'feature',
+        priority: 300,
+        name: 'add wallet connect button',
+        parallelGroup: 'fe-main',
+      });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'wallet connect button across header + checkout' },
+        parentReasoning: 'Header and checkout share the same wallet adapter; both call connectWallet() then signMessage(payload).',
+        batches: [
+          {
+            name: 'header button',
+            rationale: 'header navbar entry point',
+            modify: [{ target: 'src/header/Nav.tsx', action: 'add ConnectButton' }],
+            create: [],
+            delete: [],
+          },
+          {
+            name: 'checkout button',
+            rationale: 'checkout flow entry point',
+            modify: [{ target: 'src/checkout/Confirm.tsx', action: 'add ConnectButton' }],
+            create: [],
+            delete: [],
+          },
+        ],
+      });
+
+      const out = processDiagnosticBatchSplit(state, plan, task);
+
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const all = state.taskQueue.getAll();
+      expect(all.some((t: any) => t.id === task.id)).toBe(false);
+
+      const subs = all.filter((t: any) => t.priority === (task.priority! - 1));
+      const fvs = all.filter((t: any) => t.priority === 1000);
+      expect(subs.length).toBe(2);
+      expect(fvs.length).toBe(1);
+
+      for (const s of subs) {
+        const sub = s as any;
+        expect(sub.type).toBe('feature');
+        expect(sub.prePlanText).toBeTruthy();
+        const parsed = JSON.parse(sub.prePlanText);
+        expect(parsed.parentReasoning).toMatch(/wallet adapter/i);
+        expect(parsed.implementation).toBeTruthy();
+        expect(parsed.diagnostics).toBeUndefined();
+        expect(sub.batchSplitCount).toBe(1);
+        // parallelGroup inherits parent's group name when files are disjoint.
+        expect(sub.parallelGroup).toMatch(/^fe-main-/);
+      }
+    });
+
+    it('Tier 2 escalate: selfVerifyOnDone feature parent + batches[] → drop-and-replace + FV', () => {
+      const state = makeState();
+      state.executionTier = 2;
+      const task = makeTask({
+        type: 'feature',
+        priority: 300,
+        name: 'tier-2 feature',
+        selfVerifyOnDone: true,
+      });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'split a Tier-2 feature across packages' },
+        parentReasoning: 'Plan discovered the unit truly spans BE + FE and must escalate.',
+        batches: [
+          { name: 'be slice', modify: [{ target: 'be/handler.ts' }], create: [], delete: [] },
+          { name: 'fe slice', modify: [{ target: 'fe/page.tsx' }], create: [], delete: [] },
+        ],
+      });
+
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+
+      const all = state.taskQueue.getAll();
+      expect(all.some((t: any) => t.id === task.id)).toBe(false);
+      const subs = all.filter((t: any) => t.type === 'feature');
+      const fvs = all.filter((t: any) => t.priority === 1000);
+      expect(subs.length).toBe(2);
+      expect(fvs.length).toBe(1);
+      // Tier 2 escalate sub-tasks MUST NOT carry the flag — gate moves to FV.
+      for (const s of subs) {
+        expect((s as any).selfVerifyOnDone).toBeUndefined();
+      }
+    });
+
+    it('children carry batchSplitCount = parent + 1 (lineage cycle protection)', () => {
+      const state = makeState();
+      const task = makeTask({
+        type: 'feature',
+        priority: 300,
+        name: 'grandchild test',
+        batchSplitCount: 3,
+      });
+      const plan = JSON.stringify({
+        batches: [
+          { name: 'a', modify: [{ target: 'a.ts' }], create: [], delete: [] },
+          { name: 'b', modify: [{ target: 'b.ts' }], create: [], delete: [] },
+        ],
+      });
+      processDiagnosticBatchSplit(state, plan, task);
+      const subs = state.taskQueue
+        .getAll()
+        .filter((t: any) => t.priority === (task.priority! - 1));
+      for (const s of subs) {
+        expect((s as any).batchSplitCount).toBe(4);
+      }
+    });
+  });
+
+  describe('ui parent fan-out', () => {
+    it('drops original, spawns ui sub-tasks (acceptsPrePlanText:false → still goes through plan-tool-loop)', () => {
+      const state = makeState();
+      const task = makeTask({
+        type: 'ui',
+        priority: 660,
+        name: 'render dashboard widgets',
+      });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'split dashboard widgets' },
+        parentReasoning: 'Each widget is independent; share Card/Widget primitives.',
+        batches: [
+          { name: 'metrics widget', modify: [{ target: 'src/dashboard/Metrics.tsx' }], create: [], delete: [] },
+          { name: 'chart widget', modify: [{ target: 'src/dashboard/Chart.tsx' }], create: [], delete: [] },
+        ],
+      });
+
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+
+      const all = state.taskQueue.getAll();
+      const subs = all.filter((t: any) => t.type === 'ui');
+      const fvs = all.filter((t: any) => t.priority === 1000);
+      expect(subs.length).toBe(2);
+      expect(fvs.length).toBe(1);
+      for (const s of subs) {
+        const sub = s as any;
+        expect(sub.prePlanText).toBeTruthy();
+        const parsed = JSON.parse(sub.prePlanText);
+        expect(parsed.parentReasoning).toMatch(/widget/i);
+      }
     });
   });
 

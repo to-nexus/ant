@@ -161,7 +161,17 @@ export function processDiagnosticBatchSplit(
     }
 
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
-    const batchGroupBase = hasFileOverlap ? null : `${nextTask.type}-batch-${Date.now()}`;
+    // Parent's parallelGroup, if any, becomes the children's group base —
+    // siblings of the parent in the same queue may already touch related
+    // files, so carrying the parent's group avoids cross-task overlap that
+    // sibling-only `computeBatchFileOverlap` cannot see. When the parent
+    // has no group, fall back to a fresh per-fan-out group id.
+    const inheritedGroup = typeof nextTask.parallelGroup === 'string' && nextTask.parallelGroup.length > 0
+      ? nextTask.parallelGroup
+      : null;
+    const batchGroupBase = hasFileOverlap
+      ? null
+      : (inheritedGroup ?? `${nextTask.type}-batch-${Date.now()}`);
 
     // `rootCauseSelfCheck.mode` propagates to each sub-task; fall back to
     // a heuristic when the LLM did not self-report.
@@ -178,6 +188,14 @@ export function processDiagnosticBatchSplit(
       );
       planMode = maxAffected >= 5 ? 'upstream' : 'patch';
     }
+
+    // Bump the batch-split counter on the originating parent task, then
+    // carry the cycle count down to children so lineage exhaustion is
+    // bounded across recursive fan-outs (parent → child → grandchild).
+    // Without carry-over, a child's plan-tool-loop (e.g. ui kids that keep
+    // `acceptsPrePlanText:false`) could emit `batches[]` again with a
+    // fresh count of 0 and bypass `MAX_BATCH_SPLIT_CYCLES` indefinitely.
+    const newBatchSplitCount = (nextTask.batchSplitCount ?? 0) + 1;
 
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
@@ -200,6 +218,7 @@ export function processDiagnosticBatchSplit(
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
         parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
+        batchSplitCount: newBatchSplitCount,
       };
       if (taskPolicy?.populateRemediationMode !== false) {
         subTask.remediationMode = planMode;
@@ -207,11 +226,6 @@ export function processDiagnosticBatchSplit(
       state.taskQueue.push(subTask);
       subTaskIds.push(subTask.id);
     }
-
-    // Bump the batch-split counter on the originating verification task.
-    // Carried across re-queues by `task.resumeState`; the `batch_cycle_limit`
-    // fail-safe reads it via `VerificationBudget.fromState`.
-    const newBatchSplitCount = (nextTask.batchSplitCount ?? 0) + 1;
 
     // Path A re-enqueues the original to preserve identity / `_failedAttempts`;
     // Path B drops it and (optionally) enqueues a Final Verification.

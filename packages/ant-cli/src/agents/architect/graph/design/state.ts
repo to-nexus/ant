@@ -85,6 +85,23 @@ export interface DesignGraphState extends TriageableState {
 
   // Execution
   planText: string;
+
+  /**
+   * Active phase signal for plan↔tool re-entry (design plan-LLM).
+   *
+   * - `'plan'` while the plan↔tool loop is in flight (set by plan node
+   *   on the first round; preserved through the tool node).
+   * - `undefined` after `<plan>` is emitted, after a clarify pause, or
+   *   when plan-LLM is not used (e.g. ui-design / game-art-design intents
+   *   that fall through to the dispatcher-only path).
+   *
+   * NOTE: code job's `_activePhase` has a wider domain (plan / execute /
+   * apply / verify). Design's is narrower — only `'plan'` or undefined.
+   * The same channel name is reused intentionally to ease cross-job grep
+   * but the two are NOT unified via a shared base interface — see
+   * `agents/common/graph/nodes/plan/README.md` for the rationale.
+   */
+  _activePhase?: 'plan';
   
   // ✅ UNIFIED: Files generated (same structure as code job)
   files?: Array<{ 

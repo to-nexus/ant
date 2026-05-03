@@ -53,6 +53,24 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 | **Gather** | Identify ALL files needed from Plan and the `Existing Codebase Files` section. Batch-read ALL in ONE tool response. |
 | **Implement** | Create, modify, copy per plan fields. |
 
+────────────────────────────────────────────────────────────────────────────────
+### 1-1. Pre-Planned Sub-Task (when `parentReasoning` is in the plan)
+
+If the plan JSON contains a top-level `parentReasoning` field, this task is a **child of a deep-think parent** that already settled the solution. The plan you received is the parent's confirmed sub-slice for you. The plan-thinking phase has been skipped on purpose.
+
+**Constraint — Solution direction is FROZEN**:
+
+| ✅ Allowed (refinement) | ❌ Forbidden (re-litigation) |
+|---|---|
+| Use `read_file` / `search_code` to confirm exact import paths, function signatures, type shapes, file conventions | Change the chosen approach, library, naming, or architecture |
+| Adapt to existing-file conventions discovered while reading | Propose alternative solutions or "better" patterns |
+| Fill in edge cases / error handling the plan didn't spell out | Question or override `parentReasoning` |
+| Resolve trivially missing details consistent with `parentReasoning` | Skip implementation entries or add unrelated work |
+
+**Why**: sibling sub-tasks share the SAME `parentReasoning` and rely on identical naming / signatures decided by the parent. Renaming a parent-specified symbol breaks any sibling that imports or calls it. The parent owned integrated reasoning across siblings; your job is faithful application + tool-driven refinement, not re-design.
+
+If something in the plan looks impossible to apply (e.g. `modify` target file does not exist), do NOT improvise an alternative — emit `<done>false</done>` with a brief diagnostic so the parent's verification task surfaces the gap.
+
 ### Dependency Compliance
 
 **Constraint**: When a `create`/`modify` entry names a specific package import path or inlines an observed API signature, use those exactly. Do NOT substitute with alternative packages. If the entry's `purpose`/`changes` describes a function call with specific parameter or return types, call the function with those types — do NOT reinfer from the package name.

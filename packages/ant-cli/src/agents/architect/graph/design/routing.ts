@@ -18,8 +18,13 @@ export function routeAfterResolve(s: DesignGraphState): string {
   }
 
   if (isResume && s.awaitingClarify && hasNewDirective) {
-    console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → docGen (clarify direct)`);
-    return 'docGen';
+    // Clarify response is fresh information; route through plan so the
+    // LLM gets to re-decide candidates / outline against the new
+    // directive instead of jumping straight back to docGen with stale
+    // sealed plan. NODE_DOCGEN history is preserved for docGen's later
+    // re-entry so any partial doc draft remains as reference.
+    console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → plan (clarify response → re-plan)`);
+    return 'plan';
   }
 
   if (isResume && hasNewDirective && !hasTaskQueue && s.resolvedAction?.intentGroup === 'design-spec') {
@@ -103,4 +108,29 @@ export function routeAfterCheckTaskStatus(s: DesignGraphState): string {
   } else {
     return 'learn';
   }
+}
+
+/**
+ * Plan node response router.
+ *
+ * - `_activePhase === 'plan'` AND tool calls present → tool node (next
+ *   plan↔tool round).
+ * - Otherwise → docGen (sealed `<plan>` ready, or unsupported intent
+ *   group fell through `dispatchOnly`).
+ */
+export function routeAfterPlan(s: DesignGraphState): string {
+  const hasToolCalls = (s.llmResponse?.toolCalls?.length ?? 0) > 0;
+  if (s._activePhase === 'plan' && hasToolCalls) return 'tool';
+  return 'docGen';
+}
+
+/**
+ * Tool node response router (design job).
+ *
+ * Plan↔tool and docGen↔tool loops share the same physical tool node,
+ * dispatched via `_activePhase`. Routing back honours the same flag so
+ * the loop the tool node served is the loop control returns to.
+ */
+export function routeAfterTool(s: DesignGraphState): string {
+  return s._activePhase === 'plan' ? 'plan' : 'docGen';
 }
