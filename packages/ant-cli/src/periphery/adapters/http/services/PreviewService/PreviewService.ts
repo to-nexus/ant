@@ -22,6 +22,7 @@ import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../../../../utils/userConfig';
+import { DevProcessControl, isPortConflictOutput } from '../../../../../core/process/DevProcessControl';
 
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -86,6 +87,11 @@ export class PreviewService {
   private infrastructureManager: InfrastructureManager;
   private healthChecker: HealthChecker;
   private issueDetector: IssueDetector;
+
+  /** SSOT for descendant kill / Next-lock cleanup / port detection.
+   *  Shared instance from `processSpawner` so both classes operate on the
+   *  same logger sink and platform gates. */
+  private dev: DevProcessControl;
   
   constructor(
     portManager?: PortManager,
@@ -114,6 +120,7 @@ export class PreviewService {
     this.infrastructureManager = new InfrastructureManager();
     this.healthChecker = new HealthChecker();
     this.issueDetector = new IssueDetector();
+    this.dev = this.processSpawner.getDevProcessControl();
   }
   
   /**
@@ -503,9 +510,18 @@ export class PreviewService {
     if (this.previewServers.has(serverKey)) {
       if (forceRestart) {
         logger.info(`Force restarting: stopping existing server for ${serverKey}`, { component: 'PreviewService' });
-        await this.stopPreview(tenantId, userId, projectId, feature);
-        // Small delay to ensure port is released
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Suppress the trailing 'stopped' broadcast so the UI keeps the
+        // restart loading state continuously: stopping → installing →
+        // starting → running. Without this the browser briefly sees
+        // 'stopped' and disables the cancel button + clears the log feed
+        // until the next 'installing' broadcast lands.
+        //
+        // stopPreview already polls `waitForCleanState` (3s) for ports +
+        // Next dev locks, so we don't need an additional wait here — the
+        // SSOT guarantee lives inside stopPreview, not at every caller.
+        await this.stopPreview(tenantId, userId, projectId, feature, {
+          suppressStoppedBroadcast: true,
+        });
       } else {
         // Release lock — not starting
         if (this.stateStore && lockAcquired) {
@@ -543,14 +559,25 @@ export class PreviewService {
       }
     }
     
-    // Clean up orphan processes (from server restarts or crashed processes)
-    // localPath is already the correct worktree path (set by PreviewServer.resolveWorkspacePath)
+    // Pre-flight cleanup: kill any lingering dev processes for this codebase
+    // BEFORE we start spawning. The previous behaviour only scanned the
+    // workspace root via `killOrphanProcesses(localPath)`, which missed
+    // (a) detached `next dev` grandchildren whose ps line referenced only
+    // the package cwd (e.g. `apps/hub`), and (b) Next dev locks
+    // (`.next/dev/server.json`) that block the new spawn even when the
+    // recorded PID is dead.
+    //
+    // Pre-spawn we don't yet know per-package cwds (structure detection
+    // happens further down), so we sweep the workspace root first; the
+    // package-cwd sweep happens at the spawn site below where the cwds
+    // are known. See B' in the preview-cleanup plan.
     const fs = await import('fs');
-    const orphansKilled = this.processSpawner.killOrphanProcesses(localPath);
-    if (orphansKilled > 0) {
-      logger.info(`Cleaned up ${orphansKilled} orphan process(es) before starting`, { component: 'PreviewService' });
-      // Small delay after killing orphans
-      await new Promise(resolve => setTimeout(resolve, 300));
+    const preflightFound = await this.dev.detect({ cwds: [localPath], ports: [] });
+    if (preflightFound.length > 0) {
+      this.appendLog(serverKey, 'stdout',
+        `⚠️  Detected ${preflightFound.length} stale dev process(es) under ${localPath}. Cleaning up before start...`);
+      await this.dev.forceCleanup(preflightFound);
+      await this.dev.waitForCleanState({ cwds: [localPath], ports: [], timeoutMs: 5_000 });
     }
     
     // Check if installing
@@ -568,6 +595,15 @@ export class PreviewService {
     this.startAbortControllers.set(serverKey, startAbort);
     const startSignal = startAbort.signal;
     
+    // Track every ChildProcess we successfully spawn so the catch block
+    // below can tear them down. Without this, an exception thrown after
+    // the spawn loop but BEFORE `previewServers.set(serverKey, processes)`
+    // would leave detached children running forever (cleanupIfAllDead
+    // early-returns when the serverKey is missing from the map).
+    // We carry cwd + port alongside so the catch handler can also clean
+    // Next dev locks and release allocated ports for the failed packages.
+    const spawned: Array<{ child: ChildProcess; cwd: string; port: number }> = [];
+
     try {
       // 0. Register in Redis immediately with phase: 'installing'
       //    This ensures ANY pod can report the current state, even before processes start.
@@ -720,24 +756,45 @@ export class PreviewService {
 
       if (startSignal.aborted) throw new Error('Preview start cancelled');
 
-      // Spawn processes with connections (filtered by source in ProcessSpawner)
+      // Per-package pre-flight: now that ports are allocated and cwds known,
+      // sweep each package cwd + port for stale dev processes/locks. This
+      // closes the gap where a previous run's `next dev` survived in
+      // `apps/hub` but the workspace-root sweep above didn't match.
+      const allPkgCwds = orderedPackages.map(p => p.path);
+      const allPkgPorts = orderedPackages.map(p => p.port!).filter((n): n is number => typeof n === 'number');
+      const pkgFlightFound = await this.dev.detect({ cwds: allPkgCwds, ports: allPkgPorts });
+      if (pkgFlightFound.length > 0) {
+        this.appendLog(serverKey, 'stdout',
+          `⚠️  Detected ${pkgFlightFound.length} stale dev process(es) on package ports/cwds. Cleaning up...`);
+        await this.dev.forceCleanup(pkgFlightFound);
+        await this.dev.waitForCleanState({ cwds: allPkgCwds, ports: allPkgPorts, timeoutMs: 5_000 });
+      }
+
+      // Spawn processes with connections (filtered by source in ProcessSpawner).
+      // `spawnWithConflictRetry` watches each child for ~6s after spawn — if
+      // it dies with a port-conflict signature (Next "Another dev server",
+      // EADDRINUSE, Vite "Port X is already in use"), DPC cleans the port +
+      // lock and we re-spawn ONCE for that package. Other packages are
+      // unaffected; non-conflict failures fall through to normal handling.
       for (const pkg of orderedPackages) {
         const pkgPort = pkg.port!;
         const packageSource = path.relative(localPath, pkg.path) || '*';
-        
-        const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
+
+        const childProcess = await this.spawnWithConflictRetry(pkg, pkgPort, {
           serverKey,
           packageUrlKey: pkg.urlKey,
           projectRoot: localPath,
           connections,
           packageSource,
-          onLog: (type, msg) => this.appendLog(serverKey, type, msg),
-          onExit: (code, signal) => this.handleProcessExit(serverKey, pkg.name, code, signal),
-          onError: (error) => this.handleProcessError(serverKey, pkg.name, error)
+          baseLog: (type, msg) => this.appendLog(serverKey, type, msg),
+          baseExit: (code, signal, exitedPid) =>
+            this.handleProcessExit(serverKey, pkg.name, exitedPid ?? null, code, signal),
+          baseError: (error) => this.handleProcessError(serverKey, pkg.name, error),
         });
-        
+
         pkg.process = childProcess;
         processes.push(childProcess);
+        spawned.push({ child: childProcess, cwd: pkg.path, port: pkgPort });
       }
 
       // Record spawn timestamp for early-exit detection
@@ -958,7 +1015,34 @@ export class PreviewService {
       if (this.stateStore && lockAcquired) {
         await this.stateStore.releaseLock(lockKey).catch(() => {});
       }
-      
+
+      // Tear down any children that successfully spawned BEFORE the error.
+      // This covers two regression scenarios:
+      //   • Multi-package fail-fast: spawn loop completed for pkg A, threw
+      //     for pkg B. Without this, A's `next dev` keeps running and the
+      //     next preview start hits "Another next dev server is already running".
+      //   • Failure between spawn loop and `previewServers.set(...)` — same
+      //     symptom because `cleanupIfAllDead` early-returns on missing key.
+      // killTree handles descendant + Next dev lock; we also release ports
+      // so subsequent allocations don't leak.
+      if (spawned.length > 0) {
+        for (const { child } of spawned) {
+          try { await this.processSpawner.killAndWait(child, { graceMs: 2_000 }); }
+          catch { /* best-effort */ }
+        }
+        const failedCwds = Array.from(new Set(spawned.map(s => s.cwd)));
+        for (const cwd of failedCwds) {
+          await this.dev.cleanupStaleLocks(cwd).catch(() => {});
+        }
+        if (this.portManager) {
+          for (const { port } of spawned) {
+            try { this.portManager.release(port); } catch { /* best-effort */ }
+          }
+        }
+        this.appendLog(serverKey, 'stderr',
+          `🧹 Cleaned up ${spawned.length} partially-started process tree(s) due to start failure`);
+      }
+
       if (wasCancelled) {
         // User-initiated cancellation — clean up properly and report 'stopped'
         logger.info(`[Preview] Start cancelled for ${serverKey}, cleaning up`, { component: 'PreviewService' });
@@ -1021,12 +1105,20 @@ export class PreviewService {
     validation: ValidationResult
   ) {
     logger.info(`Frontend setup validation failed - stopping server`, { component: 'PreviewService' });
-    
-    // Stop all processes
-    for (const process of processes) {
-      this.processSpawner.kill(process);
+
+    // Tree-kill (descendants + lock cleanup) every spawned child. Same
+    // SSOT as stopPreview / startPreview catch — DPC handles the
+    // SIGKILL escalation if anything refuses to exit.
+    await Promise.all(
+      processes.map(proc =>
+        this.processSpawner.killAndWait(proc, { graceMs: 2_000 })
+          .catch(() => { /* best-effort */ }),
+      ),
+    );
+    for (const pkg of orderedPackages) {
+      await this.dev.cleanupStaleLocks(pkg.path).catch(() => { /* best-effort */ });
     }
-    
+
     // Stop infrastructure services before clearing paths
     const localPath = this.previewServerPaths.get(serverKey);
     if (localPath) {
@@ -1100,7 +1192,153 @@ export class PreviewService {
       issues,
     };
   }
-  
+
+  /**
+   * Spawn a package's dev server, watching for an early port-conflict exit.
+   *
+   * Why a wrapper instead of a flag on `ProcessSpawner.spawn`?
+   * Lifecycle policy (settling window, retry budget, conflict patterns)
+   * lives in the orchestrator (PreviewService), not the spawner. The
+   * spawner stays purely about "how do I exec this command for this
+   * package profile". Multi-call sites that don't want retry just call
+   * `processSpawner.spawn` directly.
+   *
+   * Behaviour:
+   *   1. Spawn child via `processSpawner.spawn`.
+   *   2. Race the child's first close event against a 6s settling window.
+   *   3. If the child survives the window → install caller's lifecycle
+   *      handlers (onLog/onExit/onError) and return.
+   *   4. If the child exits inside the window AND its accumulated stderr
+   *      matches a port-conflict pattern (`isPortConflictOutput`) AND
+   *      retry budget remains → DPC cleanup + waitForCleanState + 1 more
+   *      spawn attempt.
+   *   5. Anything else → forward the captured exit to the caller's
+   *      `baseExit` so normal error reporting / cleanupIfAllDead runs.
+   *
+   * Hard cap: ONE retry per package. After that we fall through with the
+   * second child (whose exit will be handled by the normal pipeline).
+   * This is intentional — repeated retries on real config errors would
+   * mask bugs and burn the user's lock budget.
+   */
+  private async spawnWithConflictRetry(
+    pkg: PackageInfo,
+    port: number,
+    opts: {
+      serverKey: string;
+      packageUrlKey?: string;
+      projectRoot: string;
+      connections: ServiceConnection[];
+      packageSource: string;
+      baseLog: (type: 'stdout' | 'stderr', msg: string) => void;
+      baseExit: (code: number | null, signal: NodeJS.Signals | null, exitedPid?: number) => void;
+      baseError: (error: Error) => void;
+    },
+  ): Promise<ChildProcess> {
+    const SETTLING_MS = 6_000;
+    const MAX_ATTEMPTS = 2;  // 1 initial + 1 retry
+
+    let attempt = 0;
+    while (attempt < MAX_ATTEMPTS) {
+      attempt += 1;
+
+      // Per-attempt buffer + settling barrier. The wrapper intercepts
+      // onLog/onExit until either the settling window elapses or the
+      // child closes; once "promoted" we forward to the caller's handlers.
+      let stderrBuf = '';
+      let promoted = false;
+      let earlyExit:
+        | { code: number | null; signal: NodeJS.Signals | null; pid?: number }
+        | undefined;
+      let resolveSettled!: () => void;
+      const settledP = new Promise<void>(r => { resolveSettled = r; });
+
+      const child = this.processSpawner.spawn(pkg, port, {
+        serverKey: opts.serverKey,
+        packageUrlKey: opts.packageUrlKey,
+        projectRoot: opts.projectRoot,
+        connections: opts.connections,
+        packageSource: opts.packageSource,
+        onLog: (type, msg) => {
+          if (!promoted && type === 'stderr') stderrBuf += msg;
+          opts.baseLog(type, msg);
+        },
+        onExit: (code, signal, exitedPid) => {
+          if (promoted) {
+            opts.baseExit(code, signal, exitedPid);
+            return;
+          }
+          earlyExit = { code, signal, pid: exitedPid };
+          resolveSettled();
+        },
+        onError: (error) => {
+          // Errors during settling window: surface to caller AND end the
+          // window so we don't hang. We don't retry on `error` events
+          // (those are spawn-time failures like ENOENT, not port conflicts).
+          if (!promoted) resolveSettled();
+          opts.baseError(error);
+        },
+      });
+
+      const winner = await Promise.race([
+        settledP.then(() => 'exited' as const),
+        new Promise<'survived'>(r => setTimeout(() => r('survived'), SETTLING_MS)),
+      ]);
+
+      if (winner === 'survived' || !earlyExit) {
+        // Healthy enough — promote so subsequent stderr / exit go to caller.
+        promoted = true;
+        return child;
+      }
+
+      // Child died inside settling window. Decide retry.
+      const isConflict = isPortConflictOutput(stderrBuf);
+      const canRetry = isConflict && attempt < MAX_ATTEMPTS;
+
+      if (!canRetry) {
+        // Surface the last few stderr lines so the user can see WHY the
+        // package died. Without this, multi-package monorepos silently
+        // ran with one frontend dead (handleProcessExit logs only the
+        // "exited with code N" header and the actual error scrolls past
+        // unseen). The user-visible "Open" button on the dead package
+        // would then return ECONNREFUSED with no diagnostic trail —
+        // exactly the apps/hub failure the restart_freeze_diagnosis
+        // plan §3 traced. We cap to the last ~10 non-empty lines to
+        // avoid flooding the log feed with stack traces.
+        const tail = extractDiagnosticTail(stderrBuf);
+        if (tail.length > 0) {
+          opts.baseLog('stderr',
+            `❌ ${pkg.name} crashed within ${SETTLING_MS}ms of spawn (code ${earlyExit.code ?? 'null'}). Recent stderr:\n${tail}`);
+        }
+        // Forward the captured exit to the caller exactly as if we never
+        // intercepted it, then return the (already-dead) child for bookkeeping.
+        promoted = true;
+        opts.baseExit(earlyExit.code, earlyExit.signal, earlyExit.pid);
+        return child;
+      }
+
+      // Conflict + retry budget available → cleanup and try once more.
+      opts.baseLog('stdout',
+        `↻ Port conflict detected on ${pkg.name} (port ${port}). Cleaning stale dev server and retrying once...`);
+      try {
+        const found = await this.dev.detect({ cwds: [pkg.path], ports: [port] });
+        if (found.length > 0) await this.dev.forceCleanup(found);
+        await this.dev.cleanupStaleLocks(pkg.path);
+        await this.dev.waitForCleanState({
+          cwds: [pkg.path],
+          ports: [port],
+          timeoutMs: 5_000,
+        });
+      } catch (cleanupErr: any) {
+        opts.baseLog('stderr',
+          `⚠️  Conflict cleanup encountered an error (continuing retry): ${cleanupErr?.message || cleanupErr}`);
+      }
+      // Loop continues → next spawn attempt.
+    }
+
+    // Defensive — loop always either returns or continues; we never reach here.
+    throw new Error(`spawnWithConflictRetry: exhausted attempts for ${pkg.name}`);
+  }
+
   /**
    * Handle process exit
    * 
@@ -1109,20 +1347,34 @@ export class PreviewService {
    * 2. Check if ALL processes for this serverKey are dead
    * 3. If so, clean up all state (maps, Redis, ports)
    */
-  private handleProcessExit(serverKey: string, pkgName: string, code: number | null, signal: NodeJS.Signals | null): void {
-    const pid = this.getCurrentPidForServer(serverKey);
+  private handleProcessExit(
+    serverKey: string,
+    pkgName: string,
+    exitedPid: number | null,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    void signal;  // currently unused — handler differentiates only on `code`.
     const stoppingPids = this.stoppingPidsByServer.get(serverKey);
+    const trackedExitedPid = exitedPid != null && stoppingPids?.has(exitedPid)
+      ? exitedPid
+      : undefined;
     const isExpectedStop =
       this.stoppingServers.has(serverKey) ||
-      (pid != null && stoppingPids?.has(pid));
-    
+      trackedExitedPid != null;
+
     if (isExpectedStop) {
-      if (pid != null && stoppingPids) {
-        stoppingPids.delete(pid);
+      // Multi-package SSOT: delete the EXACT exited PID rather than always
+      // popping `processes[0].pid`. The previous behaviour misattributed
+      // sibling exits and left stale PIDs in the set, which delayed the
+      // `stoppingServers.delete` cleanup and could mark a normal-exit child
+      // as "unexpected" on a second pass.
+      if (trackedExitedPid != null && stoppingPids) {
+        stoppingPids.delete(trackedExitedPid);
         if (stoppingPids.size === 0) {
           this.stoppingPidsByServer.delete(serverKey);
           this.stoppingServers.delete(serverKey);
-          
+
           const t = this.stoppingCleanupTimers.get(serverKey);
           if (t) {
             clearTimeout(t);
@@ -1204,11 +1456,6 @@ export class PreviewService {
         await this.stateStore.publish(channel, message);
       }
     }
-  }
-  
-  private getCurrentPidForServer(serverKey: string): number | undefined {
-    const processes = this.previewServers.get(serverKey);
-    return processes?.[0]?.pid;
   }
   
   /**
@@ -1304,13 +1551,23 @@ export class PreviewService {
   }
   
   /**
-   * Stop preview server
+   * Stop preview server.
+   *
+   * `opts.suppressStoppedBroadcast` (default `false`) — used by the
+   * forceRestart code path. When `true`, the function still emits the
+   * intermediate `'stopping'` broadcast (so the UI shows a loading state)
+   * but withholds the final `'stopped'` broadcast. The caller is then
+   * expected to immediately move the phase forward (e.g. `'installing'`),
+   * giving the user a continuous progression `stopping → installing →
+   * starting → running` instead of a flicker through `'stopped'` that
+   * would disable the cancel button mid-restart and clear the log feed.
    */
   async stopPreview(
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string
+    feature: string,
+    opts?: { suppressStoppedBroadcast?: boolean },
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
@@ -1392,48 +1649,54 @@ export class PreviewService {
       await this.infrastructureManager.stopInfrastructure(localPath, logCallback, infraProjectName);
     }
     
-    // Kill local processes (process group kill via detached + -pid) and wait for exit
+    // Kill local processes via DevProcessControl.killTree (descendant aware
+    // + SIGKILL escalation), then verify ports/lock files are clear.
     let stoppedCount = 0;
     const portsToKill: number[] = [];
-    if (hasLocalProcesses) {
-      // Collect package ports before killing (for safety-net cleanup)
-      if (this.portRegistry) {
-        try {
-          const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
-          for (const pkg of state?.packages || []) {
-            if (pkg.port) portsToKill.push(pkg.port);
-          }
-        } catch { /* best-effort */ }
-      }
-      
-      // Send SIGTERM to process groups and wait for exit
-      const exitPromises: Promise<void>[] = [];
-      for (const proc of processes) {
-        if (!proc.killed && proc.exitCode === null) {
-          exitPromises.push(new Promise<void>((resolve) => {
-            const timeout = setTimeout(() => {
-              // SIGKILL the entire process group as fallback
-              try { process.kill(-proc.pid!, 'SIGKILL'); } catch { /* ignore */ }
-              try { proc.kill('SIGKILL'); } catch { /* ignore */ }
-              resolve();
-            }, 3_000);
-            proc.once('exit', () => { clearTimeout(timeout); resolve(); });
-          }));
+    const cwdsToClean: string[] = [];
+    if (this.portRegistry) {
+      try {
+        const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        for (const pkg of state?.packages || []) {
+          if (pkg.port) portsToKill.push(pkg.port);
         }
-        this.processSpawner.kill(proc);
-      }
-      if (exitPromises.length > 0) {
-        await Promise.all(exitPromises);
-      }
+      } catch { /* best-effort */ }
+    }
+    const localPathForCwds = this.previewServerPaths.get(serverKey);
+    if (localPathForCwds) cwdsToClean.push(localPathForCwds);
+
+    if (hasLocalProcesses) {
+      // killTree handles process-group SIGTERM, descendants, and SIGKILL
+      // escalation in one call. Doing this in parallel speeds up multi-package
+      // teardown without losing the per-tree timeout guarantee.
+      await Promise.all(
+        processes.map(proc =>
+          this.processSpawner.killAndWait(proc, { graceMs: 3_000 })
+            .catch(err => logger.debug(`killAndWait error: ${err?.message}`, { component: 'PreviewService' })),
+        ),
+      );
       stoppedCount = processes.length;
     }
-    
-    // Safety net: kill anything still on the allocated ports (defense-in-depth)
-    for (const port of portsToKill) {
-      this.processSpawner.killProcessOnPort(port);
-    }
-    if (portsToKill.length > 0) {
-      await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Safety net: kill anything still on the allocated ports + clean Next
+    // dev locks. Both go through the SSOT detect/forceCleanup path so we
+    // don't reimplement port + lock heuristics here.
+    if (portsToKill.length > 0 || cwdsToClean.length > 0) {
+      const survivors = await this.dev.detect({ cwds: cwdsToClean, ports: portsToKill });
+      if (survivors.length > 0) {
+        await this.dev.forceCleanup(survivors);
+      }
+      for (const cwd of cwdsToClean) {
+        await this.dev.cleanupStaleLocks(cwd);
+      }
+      // Wait until ports are actually unbound + lock files gone before we
+      // proceed to unregister. This shrinks the window where a fast
+      // forceRestart caller can race a not-yet-dead `next dev`.
+      await this.dev.waitForCleanState({
+        cwds: cwdsToClean,
+        ports: portsToKill,
+        timeoutMs: 3_000,
+      });
     }
     
     // Read connections from Redis BEFORE unregister (so we can include them in broadcast)
@@ -1469,17 +1732,21 @@ export class PreviewService {
     this.previewServerPaths.delete(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey} (local=${stoppedCount}, redis=${isRunningInRedis})`, { component: 'PreviewService' });
-    
-    // Broadcast stopped status with reset connections (Redis already unregistered above)
-    this.broadcastStatus(serverKey, {
-      running: false,
-      ready: false,
-      phase: 'stopped',
-      port: null,
-      packages: [],
-      issues: [],
-      connections: resetConnections,
-    });
+
+    // Final 'stopped' broadcast — skipped during forceRestart so the UI
+    // doesn't flash idle between teardown and the next 'installing' phase
+    // (which itself disabled the cancel button and cleared logs).
+    if (!opts?.suppressStoppedBroadcast) {
+      this.broadcastStatus(serverKey, {
+        running: false,
+        ready: false,
+        phase: 'stopped',
+        port: null,
+        packages: [],
+        issues: [],
+        connections: resetConnections,
+      });
+    }
     
     if (this.onStatusChange) {
       this.onStatusChange(serverKey);
@@ -1861,4 +2128,38 @@ export class PreviewService {
     
     logger.info(`Cleanup complete (${serverKeys.length} server(s) stopped)`, { component: 'PreviewService' });
   }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helpers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Extract the most informative tail of a stderr buffer for surfacing to
+ * the log feed when a dev-server child dies during the spawn settling
+ * window. Strategy:
+ *   - drop empty lines
+ *   - drop ANSI escape sequences (Next/Vite color output)
+ *   - keep the last `MAX_LINES` non-empty lines
+ *   - cap the total length so a single mega-line stack trace can't blow
+ *     out the SSE log feed
+ *
+ * Returns '' when the buffer carries nothing useful (silent crash —
+ * caller already prints the "exited with code N" header). 10 lines is
+ * empirically enough for `next dev` startup errors (port bind, missing
+ * config, syntax error in next.config.js) without bringing full stack
+ * traces into the user's view.
+ */
+function extractDiagnosticTail(stderrBuf: string): string {
+  const MAX_LINES = 10;
+  const MAX_CHARS = 2_000;
+  if (!stderrBuf) return '';
+  // ANSI strip (CSI sequences).
+  // eslint-disable-next-line no-control-regex
+  const stripped = stderrBuf.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  const nonEmpty = stripped.split('\n').map(l => l.trimEnd()).filter(l => l.length > 0);
+  if (nonEmpty.length === 0) return '';
+  const tailLines = nonEmpty.slice(-MAX_LINES);
+  const joined = tailLines.join('\n');
+  return joined.length > MAX_CHARS ? `…${joined.slice(-MAX_CHARS)}` : joined;
 }

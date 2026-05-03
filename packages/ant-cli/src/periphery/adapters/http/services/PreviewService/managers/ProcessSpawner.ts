@@ -1,9 +1,10 @@
-import { spawn, ChildProcess, execSync, execFileSync } from 'child_process';
+import { spawn, ChildProcess, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
+import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 
 export interface SpawnOptions {
   serverKey: string;
@@ -36,80 +37,94 @@ export interface OrphanProcess {
 
 /**
  * ProcessSpawner
- * 
+ *
  * Handles spawning dev server processes for different package types.
  * Supports Vite, Next.js, React Scripts, and generic npm scripts.
+ *
+ * Process termination, descendant collection, port-based fallback kill
+ * and Next dev lock handling are delegated to {@link DevProcessControl}
+ * (SSOT). This class should not reimplement any kill / lsof / pgrep
+ * logic — call the injected `dev` instance instead.
  */
 export class ProcessSpawner {
+  private readonly dev: DevProcessControl;
+
+  constructor(dev?: DevProcessControl) {
+    this.dev = dev ?? getDefaultDevProcessControl();
+  }
+
   /**
-   * Find orphan processes running in a specific codebase path
-   * These are processes that were spawned previously but lost tracking
+   * Find orphan dev-server processes whose ps line contains any of the
+   * given paths. Accepts a single path (back-compat) or an array of
+   * cwds (project root + per-package paths). Pure read — never kills.
    */
-  findOrphanProcesses(codebasePath: string): OrphanProcess[] {
-    const orphans: OrphanProcess[] = [];
-    
+  findOrphanProcesses(codebasePathOrPaths: string | string[]): OrphanProcess[] {
+    const cwds = Array.isArray(codebasePathOrPaths) ? codebasePathOrPaths : [codebasePathOrPaths];
+    // detect() is async but findProcessesByCwd part is purely sync; we use
+    // the Promise here for API symmetry. Callers wanting the simpler sync
+    // semantics typically use `killOrphanProcesses` (Promise-returning).
+    // Note: this synchronous call uses ps inside execFileSync — safe.
+    // We call the private path indirectly via detect with empty ports.
+    // Wrap with a deasyncified read by short-circuiting: detect may run
+    // pgrep-less branches and is in practice synchronous for our inputs.
+    // For strict typing we do return an empty array if anything throws.
     try {
-      const psOutput = execFileSync('ps', ['aux'], { encoding: 'utf-8', timeout: 5000 }).trim();
-      
-      if (!psOutput) {
-        return orphans;
-      }
-      
-      const runtimePattern = /node|next|vite|npm/;
-      const lines = psOutput.split('\n').filter(line =>
-        runtimePattern.test(line) && line.includes(codebasePath)
-      );
-      
-      for (const line of lines) {
+      const out: OrphanProcess[] = [];
+      // We deliberately bypass detect() here to avoid awaiting in callers
+      // that haven't migrated; reach into the same primitive instead.
+      const psOutput = execFileSync('ps', ['aux'], {
+        encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'],
+      });
+      const runtimePattern = /node|next|vite|npm|pnpm|yarn/;
+      for (const line of psOutput.split('\n')) {
+        if (!runtimePattern.test(line)) continue;
+        const matched = cwds.find(c => c && line.includes(c));
+        if (!matched) continue;
         const parts = line.trim().split(/\s+/);
-        if (parts.length >= 2) {
-          const pid = parseInt(parts[1], 10);
-          if (!isNaN(pid)) {
-            orphans.push({
-              pid,
-              command: parts.slice(10).join(' '),
-              cwd: codebasePath
-            });
-          }
-        }
+        if (parts.length < 11) continue;
+        const pid = parseInt(parts[1], 10);
+        if (isNaN(pid)) continue;
+        out.push({ pid, command: parts.slice(10).join(' '), cwd: matched });
       }
-      
-      logger.debug(`Found ${orphans.length} orphan process(es) in ${codebasePath}`, { component: 'ProcessSpawner' });
+      logger.debug(`Found ${out.length} orphan process(es) across ${cwds.length} cwd(s)`, { component: 'ProcessSpawner' });
+      return out;
     } catch (error: any) {
       logger.debug(`Error finding orphan processes: ${error.message}`, { component: 'ProcessSpawner' });
+      return [];
     }
-    
-    return orphans;
   }
-  
+
   /**
-   * Kill orphan processes found in a codebase path
-   * Returns number of processes killed
+   * Kill orphan processes (and their descendant trees) under the given
+   * codebase path(s). Returns number of unique parents that were targeted.
+   *
+   * Multi-cwd form: pass an array to scan project root + every package
+   * cwd in one shot — preferred over per-cwd loops since `pgrep`/`lsof`
+   * each have setup cost.
    */
-  killOrphanProcesses(codebasePath: string): number {
-    const orphans = this.findOrphanProcesses(codebasePath);
+  async killOrphanProcesses(codebasePathOrPaths: string | string[]): Promise<number> {
+    const cwds = Array.isArray(codebasePathOrPaths) ? codebasePathOrPaths : [codebasePathOrPaths];
+    const orphans = this.findOrphanProcesses(cwds);
+    if (orphans.length === 0) return 0;
+
     let killed = 0;
-    
     for (const orphan of orphans) {
       try {
-        process.kill(orphan.pid, 'SIGTERM');
+        await this.dev.killTree(orphan.pid);
         killed++;
-        logger.info(`Killed orphan process PID=${orphan.pid}`, { component: 'ProcessSpawner' });
       } catch (error: any) {
-        // Process might have already exited
         if (error.code !== 'ESRCH') {
-          logger.warn(`Failed to kill orphan process PID=${orphan.pid}: ${error.message}`, { component: 'ProcessSpawner' });
+          logger.warn(`Failed to killTree orphan PID=${orphan.pid}: ${error.message}`, { component: 'ProcessSpawner' });
         }
       }
     }
-    
+
     if (killed > 0) {
-      logger.info(`Cleaned up ${killed} orphan process(es) in ${codebasePath}`, { component: 'ProcessSpawner' });
+      logger.info(`Cleaned up ${killed} orphan process tree(s) across ${cwds.length} cwd(s)`, { component: 'ProcessSpawner' });
     }
-    
     return killed;
   }
-  
+
   /**
    * Check if a port is in use
    */
@@ -118,45 +133,22 @@ export class ProcessSpawner {
       const output = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
         encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'ignore'],
       }).trim();
-      
+
       return output.length > 0;
     } catch {
       return false;
     }
   }
-  
+
   /**
-   * Kill process using a specific port
+   * Kill any process listening on the given port (process-tree aware via DPC).
+   * Returns true when at least one PID was found and targeted.
    */
-  killProcessOnPort(port: number): boolean {
-    try {
-      const pids = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
-        encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
-      
-      if (!pids) {
-        return false;
-      }
-      
-      for (const pidStr of pids.split('\n')) {
-        const pid = parseInt(pidStr.trim(), 10);
-        if (!isNaN(pid)) {
-          try {
-            process.kill(pid, 'SIGTERM');
-            logger.info(`Killed process on port ${port}: PID=${pid}`, { component: 'ProcessSpawner' });
-          } catch (error: any) {
-            if (error.code !== 'ESRCH') {
-              logger.warn(`Failed to kill PID=${pid}: ${error.message}`, { component: 'ProcessSpawner' });
-            }
-          }
-        }
-      }
-      
-      return true;
-    } catch (error: any) {
-      logger.debug(`Error killing process on port ${port}: ${error.message}`, { component: 'ProcessSpawner' });
-      return false;
-    }
+  async killProcessOnPort(port: number): Promise<boolean> {
+    const found = await this.dev.detect({ cwds: [], ports: [port] });
+    if (found.length === 0) return false;
+    await this.dev.forceCleanup(found);
+    return true;
   }
   /**
    * Load environment variables from .env files.
@@ -353,7 +345,7 @@ export class ProcessSpawner {
     
     childProcess.on('close', (code, signal) => {
       logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'ProcessSpawner' });
-      options.onExit(code, signal);
+      options.onExit(code, signal, childProcess.pid ?? undefined);
     });
     
     childProcess.on('error', (error) => {
@@ -464,7 +456,7 @@ export class ProcessSpawner {
     
     childProcess.on('close', (code, signal) => {
       logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'ProcessSpawner' });
-      options.onExit(code, signal);
+      options.onExit(code, signal, childProcess.pid ?? undefined);
     });
     
     childProcess.on('error', (error) => {
@@ -570,32 +562,43 @@ export class ProcessSpawner {
   }
   
   /**
-   * Kill a process and its entire process group.
-   * Processes are spawned with detached:true (new process group), so killing
-   * with -pid sends the signal to the shell, make/npm, and the actual binary.
+   * Terminate a spawned dev-server process and its entire descendant tree.
+   *
+   * Delegates to {@link DevProcessControl.killTree} which handles:
+   *   - process-group SIGTERM
+   *   - descendant SIGTERM via `pgrep -P` BFS
+   *   - polled wait for graceful exit
+   *   - SIGKILL escalation for any survivors
+   *
+   * Fire-and-forget contract preserved (returns boolean) — internal
+   * escalation runs in the background but callers that need to await
+   * exit should listen on `childProcess.once('exit')` themselves.
    */
   kill(childProcess: ChildProcess): boolean {
     try {
       if (childProcess.killed) return false;
-      const pid = childProcess.pid;
-      if (pid != null) {
-        try {
-          // Kill the entire process group (negative PID = group signal)
-          process.kill(-pid, 'SIGTERM');
-        } catch (groupErr: any) {
-          if (groupErr.code !== 'ESRCH') {
-            // Fallback: kill just the direct process
-            childProcess.kill('SIGTERM');
-          }
-        }
-      } else {
-        childProcess.kill('SIGTERM');
-      }
+      void this.dev.killTree(childProcess).catch(err => {
+        logger.warn(`killTree failed for PID=${childProcess.pid}`, { component: 'ProcessSpawner' }, err);
+      });
       return true;
     } catch (error) {
       logger.warn(`Failed to kill process`, { component: 'ProcessSpawner' }, error);
       return false;
     }
+  }
+
+  /**
+   * Awaitable variant of {@link kill}. Use when callers need confirmed
+   * exit before the next step (e.g. `stopPreview` cleanup chain).
+   */
+  async killAndWait(childProcess: ChildProcess, opts?: { graceMs?: number }): Promise<void> {
+    if (childProcess.killed) return;
+    await this.dev.killTree(childProcess, opts);
+  }
+
+  /** Expose the DPC instance for callers that need detect/lock cleanup. */
+  getDevProcessControl(): DevProcessControl {
+    return this.dev;
   }
 
   private isCommandAvailable(cmd: string): boolean {

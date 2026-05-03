@@ -6,6 +6,8 @@
 
 {{> jobs/code/base/injections/tool-calling-rules-compact}}
 
+{{> jobs/code/base/injections/persistent-process-policy}}
+
 ## Tool Call Batching
 
 **Principle**: The system processes ALL tool calls from a single response as one batch.
@@ -154,5 +156,6 @@ Matrix — apply the filter to the kind of deviation at hand:
 2. If planText is empty, output `<done>true</done>` immediately (gates already passed).
 3. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first).
 4. If a fix attempt fails to make progress after one round, output `<done>true</done>` and let the diagnostic (plan) phase re-analyze.
+5. **If you spawned a long-running process during this verification cycle (`run_command` with `keep_running: true`), stop it before `<done>`.** Same single rule as the [Persistent Process Policy](#) above — "you start it, you stop it, before `<done>`". Skipping the explicit kill leaves a `next dev` / watcher running and blocks the next preview restart with "Another dev server is already running"; the runtime sweep is a safety net, not your cleanup pass.
 
 **Follow these rules for successful verification.**
