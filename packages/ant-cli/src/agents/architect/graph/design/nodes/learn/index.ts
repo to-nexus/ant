@@ -10,6 +10,11 @@ import {
   collectTouchedFilesFromChatLog,
 } from '../../../../../../core/context/breadcrumb';
 import { buildLlmBreadcrumbSummary } from '../../../../../../core/context/breadcrumbSummary';
+import {
+  clearExecutionLogger,
+  flushExecutionLogger,
+  getExecutionLogger,
+} from '../../../../../../core/utils/executionLogger';
 
 /**
  * Append a breadcrumb for a completed design job (§12).
@@ -366,7 +371,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
   // Log job_complete to debug/logs/ and cleanup loggers
   if (!_isWorkerContext && state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../../core/utils/tokenLogger');
     const { clearPromptLogger } = await import('../../../../../../core/utils/promptLogger');
     
@@ -393,6 +397,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
     
     await clearTokenLogger(state._httpJobId);
+    await flushExecutionLogger(state._httpJobId);
     await clearExecutionLogger(state._httpJobId);
     clearPromptLogger('design', state._httpJobId);
   }

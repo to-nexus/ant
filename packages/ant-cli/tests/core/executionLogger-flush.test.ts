@@ -172,3 +172,23 @@ describe('ExecutionLogger — vast-curling-perch C-3 fix', () => {
     expect(events[0].data.good).toBe(true);
   });
 });
+
+describe('design graph executionLogger fire pattern contract', () => {
+  const targetFiles = [
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'graph.ts'),
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'parallel', 'workerGraph.ts'),
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'plan.ts'),
+    path.join(__dirname, '..', '..', 'src', 'agents', 'architect', 'graph', 'design', 'nodes', 'learn', 'index.ts'),
+  ];
+
+  const dynamicImportPattern = /await\s+import\((['"`])[^'"`]*core\/utils\/executionLogger\1\)/;
+  const importThenPattern = /import\((['"`])[^'"`]*core\/utils\/executionLogger\1\)\.then/;
+  const requirePattern = /require\((['"`])[^'"`]*core\/utils\/executionLogger\1\)/;
+
+  it.each(targetFiles)('does not use dynamic executionLogger import in %s', async (filePath) => {
+    const content = await fs.readFile(filePath, 'utf-8');
+    expect(content).not.toMatch(dynamicImportPattern);
+    expect(content).not.toMatch(importThenPattern);
+    expect(content).not.toMatch(requirePattern);
+  });
+});
