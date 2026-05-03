@@ -889,6 +889,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       };
     });
     get().openFile(filePath, { syncUnpinnedTab: false });
+    get().setFileViewMode(filePath, 'preview');
   },
 
   removeVirtualEditorTabsByJobId: (jobId) => {

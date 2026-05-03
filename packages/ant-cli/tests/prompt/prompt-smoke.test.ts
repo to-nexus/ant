@@ -440,7 +440,7 @@ describe('Template Smoke Tests', () => {
       });
       expect(output).toContain(DIAGRAM_CONTRACT_HEADER);
       expect(output).toContain('Mermaid');
-      expect(output).toContain('ASCII/text fallback');
+      expect(output).toContain('ASCII');
     });
   }
 

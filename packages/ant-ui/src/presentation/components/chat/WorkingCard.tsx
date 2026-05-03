@@ -315,7 +315,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
 
   const selectedFile = useStore(state => state.selectedFile);
   const selectFile = useStore(state => state.selectFile);
-  const setLastViewMode = useStore(state => state.setLastViewMode);
+  const setFileViewMode = useStore(state => state.setFileViewMode);
   const hasImagePreview = !isProgress && (variant === 'figma_called' || variant === 'downloaded') && !!content.metadata?.imagePath;
   const previewUrl = useImagePreview(hasImagePreview ? content.metadata!.imagePath : undefined);
   
@@ -390,7 +390,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
     if (selectedFile === path) {
       selectFile(undefined);
     } else {
-      setLastViewMode('preview');
+      setFileViewMode(path, 'preview');
       selectFile(path);
     }
   };
