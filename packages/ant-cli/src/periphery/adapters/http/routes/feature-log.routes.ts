@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { broadcastKanbanReset } from './helpers/sessionCleanup';
+import { broadcastKanbanReset, scrubJobDebugArtifacts } from './helpers/sessionCleanup';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 import { logger } from '../../../../utils/logger';
@@ -197,6 +197,7 @@ export function createFeatureLogRoutes(deps: {
                     skipSessionPatch: true,
                   },
                 );
+                await scrubJobDebugArtifacts(featurePath, jt, job.jobId);
               } else {
                 // Fallback: lifecycle deps not wired — bare seal via the
                 // helper is still reachable through the legacy path below.

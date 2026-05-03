@@ -106,13 +106,13 @@ export async function appendJobSnapshotToSession(
  *    taskQueue (+ checkpoint), workflow state, user-stopped flag, mapping,
  *    kill reason
  *  - In-memory: kanbanService.clearJobMemory (evicts per-job kanban cache)
- *  - Disk: debug files whose names contain the jobId (plan-{jobId}.json,
- *    token-{jobId}.json, etc.) under sessions/{agent}/debug/...
  *
  * Does NOT touch:
  *  - `runs[]` in the session file — by the time we seal, the terminal run
  *    is already appended via `appendJobSnapshotToSession`
  *  - `feature.jsonl` — the terminal job's turns stay as history
+ *  - debug artifacts on disk — explicit destructive routes (`job delete`,
+ *    `context reset`, `feature delete`) own disk cleanup
  *
  * Silent when stateStore is missing (local-mode without state store does
  * not happen in practice — factory always wires RedisStateStore).
@@ -120,8 +120,6 @@ export async function appendJobSnapshotToSession(
 export async function sealJobRedisState(
   stateStore: StateStorePort | undefined,
   kanbanService: KanbanService | undefined,
-  featurePath: string,
-  jobType: SessionableJobType,
   jobId: string,
 ): Promise<void> {
   if (stateStore) {
@@ -156,11 +154,21 @@ export async function sealJobRedisState(
       );
     }
   }
+}
 
-  // Best-effort: featurePath may be empty when called from Phase 3 orphan
-  // sweep (no mapping left). Skip debug scrubbing in that case — the files
-  // are isolated to a single feature and will be cleaned up on feature
-  // deletion or natural cleanup.
+/**
+ * Remove per-job debug artifacts from disk.
+ *
+ * This helper is intentionally NOT part of `sealJobRedisState` because
+ * finalize paths must preserve debug evidence for post-mortem analysis.
+ * Call this only from explicit destructive user flows (trash-can delete,
+ * feature reset/delete).
+ */
+export async function scrubJobDebugArtifacts(
+  featurePath: string,
+  jobType: SessionableJobType,
+  jobId: string,
+): Promise<void> {
   if (!featurePath) return;
 
   const agent = getAgentForJob(jobType);
@@ -174,16 +182,15 @@ export async function sealJobRedisState(
       continue;
     }
     for (const entry of entries) {
-      if (entry.isFile() && entry.name.includes(jobId)) {
-        try {
-          await fs.promises.unlink(path.join(debugDir, entry.name));
-        } catch (err) {
-          logger.warn(
-            `[SessionCleanup] Failed to unlink debug file`,
-            { component: 'SessionCleanup' },
-            err,
-          );
-        }
+      if (!entry.isFile() || !entry.name.includes(jobId)) continue;
+      try {
+        await fs.promises.unlink(path.join(debugDir, entry.name));
+      } catch (err) {
+        logger.warn(
+          `[SessionCleanup] Failed to unlink debug file`,
+          { component: 'SessionCleanup' },
+          err,
+        );
       }
     }
   }

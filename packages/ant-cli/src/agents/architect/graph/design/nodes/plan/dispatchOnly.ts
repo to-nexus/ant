@@ -86,11 +86,32 @@ export async function dispatchOnly(state: DesignGraphState): Promise<Partial<Des
         isParallel: false,
         parallelGroup: (currentTask as any).parallelGroup,
       });
+
+      // Phase event so the operator can distinguish "plan-LLM ran and
+      // sealed a <plan>" (design-plan-sealed) from "plan-LLM was
+      // skipped because the intent group is not yet plan-LLM enabled"
+      // (design-plan-dispatch-only). Both paths reach docGen but only
+      // the former injects a sealed plan into the runtime context.
+      void execLogger
+        .logPhaseComplete({
+          phase: 'design-plan-dispatch-only',
+          elapsedMs: 0,
+          details: {
+            taskId: currentTask.id,
+            taskName: currentTask.name,
+            taskType: currentTask.type || 'doc',
+            intentGroup: state.resolvedAction?.intentGroup,
+            reason: 'intent-group-not-plan-llm-enabled',
+            recursionCount: state.recursionCount,
+          },
+        })
+        .catch(() => { /* non-blocking */ });
     } catch (_) { /* non-critical */ }
   }
 
   console.log(`\n✅ [Plan/dispatch] Task prepared for execution`);
   console.log(`   Task: ${currentTask?.name}`);
+  console.log(`   IntentGroup: ${state.resolvedAction?.intentGroup ?? 'unknown'} (plan-LLM skipped)`);
   console.log(`   Next node: docGen will generate document\n`);
 
   return { ...state, currentTask };

@@ -195,6 +195,36 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
   console.warn(
     `⚠️ [DesignPlan] Plan loop yielded no <plan> (${outcome.reason}). Falling through to docGen with empty planText.`,
   );
+
+  // Structured event so a post-hoc operator scanning log-{jobId}.json
+  // can spot tasks that reached docGen without a sealed plan (i.e. the
+  // worst-case path where docGen has no architectural decision to
+  // anchor on). Mirrors `design-plan-sealed` from the success path so
+  // the two outcomes are queryable with the same `phase` prefix.
+  if (state.context?.featurePath && state._httpJobId && currentTask) {
+    const startedAt = (currentTask as DesignTask).timing?.startedAt;
+    const elapsedMs = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
+    void getExecutionLogger({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'design',
+    })
+      .logPhaseComplete({
+        phase: 'design-plan-fallthrough',
+        elapsedMs,
+        details: {
+          taskId: currentTask.id,
+          taskName: currentTask.name,
+          taskType: currentTask.type,
+          intentGroup: state.resolvedAction?.intentGroup,
+          reason: outcome.reason,
+          nodePlanHistoryLen: nodePlan.length,
+          recursionCount: state.recursionCount,
+        },
+      })
+      .catch(() => { /* non-blocking */ });
+  }
+
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
   }
