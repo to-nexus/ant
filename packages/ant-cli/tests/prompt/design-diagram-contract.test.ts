@@ -58,11 +58,119 @@ describe('design diagram-contract — design/base/system.md', () => {
   });
 
   it('cross-references diagram-contract instead of restating diagram policy in body', () => {
-    expect(file).toMatch(/Architecture diagrams when relationships are multi-axis \(governed by diagram-contract below/);
+    // markdown bold around "Architecture diagrams" is allowed (universal rule formatting)
+    expect(file).toMatch(/Architecture diagrams[*\s]*when relationships are multi-axis\s*\(governed by diagram-contract below/);
   });
 
   it('still includes the diagram-contract partial', () => {
     expect(file).toMatch(/\{\{>\s*jobs\/shared\/injections\/diagram-contract\s*\}\}/);
+  });
+});
+
+describe('design base/system.md is universal-only (post architectural-design relocation)', () => {
+  const base = read('jobs/design/base/system.md');
+
+  it('declares a design_role spanning system-design / spec / ui-design', () => {
+    expect(base).toMatch(/<design_role>/);
+    expect(base).toMatch(/system-design documents/);
+    expect(base).toMatch(/specification documents/);
+    expect(base).toMatch(/UI design documents/);
+  });
+
+  it('does NOT carry architectural-design identity wording (relocated to system-design variant)', () => {
+    expect(base).not.toMatch(/<design_specialization>/);
+    expect(base).not.toMatch(/ARCHITECTURAL DESIGN DOCUMENTS/);
+    expect(base).not.toMatch(/SYSTEM DESIGN = ARCHITECTURE/);
+    expect(base).not.toMatch(/Three-Tier Abstraction Model/);
+    expect(base).not.toMatch(/Tier 1: Architectural Constraints/);
+    expect(base).not.toMatch(/Tier 3: Implementation Details \(Omit Entirely\)/);
+    expect(base).not.toMatch(/THIS IS IMPLEMENTATION SPEC, NOT SYSTEM DESIGN/);
+    expect(base).not.toMatch(/Internal identifiers YOU invent/);
+    expect(base).not.toMatch(/Interface Contract Writing Pattern/);
+  });
+
+  it('keeps universal blocks (operational forbidden + writing rules + diagram-contract)', () => {
+    expect(base).toMatch(/Operational Concerns/);
+    expect(base).toMatch(/If it's not in the PRD/);
+    expect(base).toMatch(/UNIVERSAL WRITING RULES/);
+    expect(base).toMatch(/\*\*Conciseness\*\*/);
+    expect(base).toMatch(/\*\*Bullet Lists\*\*/);
+    expect(base).toMatch(/\*\*Minimal Syntax\*\*/);
+    expect(base).toMatch(/\{\{>\s*jobs\/shared\/injections\/diagram-contract\s*\}\}/);
+  });
+
+  it('is short (radical simplify target ~80 lines or fewer)', () => {
+    const lines = base.split('\n').length;
+    expect(lines).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('execute/variants/system-design carries architectural identity', () => {
+  const file = read('jobs/design/nodes/execute/variants/system-design/base.md');
+
+  it('declares architectural design specialization', () => {
+    expect(file).toMatch(/<design_specialization>/);
+    expect(file).toMatch(/ARCHITECTURAL DESIGN DOCUMENT/);
+    expect(file).toMatch(/paired with the PRD/);
+  });
+
+  it('owns Three-Tier Abstraction + WHAT vs HOW + Forbidden Content', () => {
+    expect(file).toMatch(/Three-Tier Abstraction Model/);
+    expect(file).toMatch(/SYSTEM DESIGN = ARCHITECTURE/);
+    expect(file).toMatch(/Internal identifiers YOU invent/);
+  });
+
+  it('legacy "THIS IS IMPLEMENTATION SPEC, NOT SYSTEM DESIGN" excised (tone aligned)', () => {
+    expect(file).not.toMatch(/THIS IS IMPLEMENTATION SPEC, NOT SYSTEM DESIGN/);
+    expect(file).toMatch(/these details belong in implementation spec, not system design/i);
+  });
+
+  it('legacy vendor list / specific component-name examples are removed (FPOP)', () => {
+    expect(file).not.toMatch(/"LocalStorage"\s*\/\s*"Redis"\s*\/\s*"SQLite"/);
+    expect(file).not.toMatch(/`NewsCard`,\s*`UserProfile`/);
+    expect(file).not.toMatch(/Contract.*GameEngine.*Operations/s);
+  });
+});
+
+describe('execute/variants/spec carries implementation-spec identity', () => {
+  const file = read('jobs/design/nodes/execute/variants/spec/base.md');
+
+  it('declares spec specialization (self-contained, identifier-required)', () => {
+    expect(file).toMatch(/<spec_specialization>/);
+    expect(file).toMatch(/IMPLEMENTATION SPEC DOCUMENT/);
+    expect(file).toMatch(/self-contained/);
+    expect(file).toMatch(/A spec without identifiers is not a spec/);
+  });
+
+  it('owns Phase / Task / Verification structure + Required Content', () => {
+    expect(file).toMatch(/Phase \/ Task \/ Verification Structure/);
+    expect(file).toMatch(/Required Content/);
+  });
+
+  it('does NOT regress into architectural-design identity', () => {
+    expect(file).not.toMatch(/ARCHITECTURAL DESIGN DOCUMENTS/);
+    expect(file).not.toMatch(/Three-Tier Abstraction Model/);
+  });
+
+  it('multi-axis diagram trigger inline (mirror of execute/spec/rules Rule 7)', () => {
+    expect(file).toMatch(/multi-axis \(≥ 2 of: tasks, directions, time-ordering\)/);
+    expect(file).toMatch(/Decorative diagrams added to look complete are FORBIDDEN/);
+  });
+});
+
+describe('plan/variants both carry their identity (compact form)', () => {
+  it('plan/variants/system-design/base.md mentions architectural-design identity', () => {
+    const file = read('jobs/design/nodes/plan/variants/system-design/base.md');
+    expect(file).toMatch(/<design_specialization>/);
+    expect(file).toMatch(/ARCHITECTURAL DESIGN DOCUMENT/);
+    expect(file).toMatch(/paired with the PRD/);
+  });
+
+  it('plan/variants/spec/base.md mentions self-contained spec identity', () => {
+    const file = read('jobs/design/nodes/plan/variants/spec/base.md');
+    expect(file).toMatch(/<spec_specialization>/);
+    expect(file).toMatch(/IMPLEMENTATION SPEC DOCUMENT/);
+    expect(file).toMatch(/self-contained/);
   });
 });
 

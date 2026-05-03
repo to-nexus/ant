@@ -53,7 +53,9 @@ const FP = {
   FRONTEND_GUIDE: 'FRONTEND SYSTEM DESIGN GUIDE',
   BACKEND_GUIDE: 'BACKEND DESIGN DOCUMENT GUIDE',
   CODE_SYSTEM: 'Task Priority Hierarchy',
-  DESIGN_SYSTEM: 'ARCHITECTURAL DESIGN DOCUMENTS',
+  DESIGN_ROLE: '<design_role>',
+  DESIGN_ARCHITECTURE: 'ARCHITECTURAL DESIGN DOCUMENT',
+  DESIGN_SPEC: 'IMPLEMENTATION SPEC DOCUMENT',
   PREVIEW_CONTRACT: 'Dev Server Runtime Contract',
 } as const;
 
@@ -348,7 +350,11 @@ describe('E2E: Design system-design (FE)', () => {
   });
 
   it('stage 3: injection content present', () => {
-    assertSystemContains(result, FP.DESIGN_SYSTEM, 'design system base');
+    assertSystemContains(result, FP.DESIGN_ROLE, 'design universal role (base/system.md)');
+    expect(
+      result.user,
+      'system-design variant identity (<design_specialization>) should appear in user prompt',
+    ).toContain(FP.DESIGN_ARCHITECTURE);
     assertSystemContains(result, FP.FRONTEND_GUIDE, 'frontend-guide');
     assertSystemContains(result, FP.DOC_LANGUAGE, 'document-language');
     assertSystemNotContains(result, FP.BACKEND_GUIDE, 'no backend-guide for FE');
@@ -395,8 +401,12 @@ describe('E2E: Design spec', () => {
     assertNoFailedTemplates(result);
   });
 
-  it('stage 3: design system base present, only output-tag-policy in injections section', () => {
-    assertSystemContains(result, FP.DESIGN_SYSTEM, 'design system');
+  it('stage 3: design universal role present + spec variant identity in user; only output-tag-policy in injections', () => {
+    assertSystemContains(result, FP.DESIGN_ROLE, 'design universal role (base/system.md)');
+    expect(
+      result.user,
+      'spec variant identity (<spec_specialization>) should appear in user prompt',
+    ).toContain(FP.DESIGN_SPEC);
     expect(result.sections.injections).toContain('Output Tag Contract');
   });
 });
