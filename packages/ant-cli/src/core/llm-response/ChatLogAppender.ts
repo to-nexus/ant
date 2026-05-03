@@ -83,12 +83,13 @@ export class ChatLogAppender {
     return Boolean(this.turnId && this.cfg.jobId && this.cfg.featurePath);
   }
 
-  appendThinking(text: string, cardId?: string): void {
+  appendThinking(text: string, cardId?: string, durationMs?: number): void {
     if (!text || !this.turnId) return;
     const line: ChatThinkingLine = {
       ...this.base(),
       type: 'assistant_thinking',
       text,
+      ...(typeof durationMs === 'number' ? { durationMs } : {}),
       ...(cardId ? { cardId } : {}),
     };
     this.safeAppend(line);

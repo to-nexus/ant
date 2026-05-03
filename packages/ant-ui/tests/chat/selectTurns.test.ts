@@ -705,6 +705,32 @@ describe('selectTurns — streaming overlay', () => {
     expect(turns[0].sections[0].activeThinking).toBe('pre-flight thought');
   });
 
+  it('derives orphan turn jobType from pendingCard metadata when no events exist', () => {
+    const buffers: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-orphan-plan', MAIN_WORKER_SCOPE)]: {
+        turnId: 't-orphan-plan',
+        workerScope: MAIN_WORKER_SCOPE,
+        pendingCards: {
+          'card-plan': {
+            cardId: 'card-plan',
+            statusType: 'file_creating',
+            metadata: {
+              filePath: 'plan/prd.md',
+              jobType: 'plan',
+            },
+          },
+        },
+      },
+    };
+
+    const turns = selectTurns({ chatEvents: [], streamingBuffers: buffers });
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0].turnId).toBe('t-orphan-plan');
+    expect(turns[0].jobType).toBe('plan');
+    expect(turns[0].sections[0].pendingCards?.['card-plan']).toBeDefined();
+  });
+
   it('overlays buffer pendingCards even when a chat_status with the same cardId already exists', () => {
     const u = userTurn('t-overlay');
     const finalized = status('t-overlay', 'card-cmd', 'tool_action', { tool: 'run' });

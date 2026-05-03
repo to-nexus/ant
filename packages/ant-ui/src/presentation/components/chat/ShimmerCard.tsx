@@ -112,15 +112,15 @@ function ThinkingVariant({ text, collapsed, durationMs, isStreaming }: ThinkingV
       {/* Header - clickable when completed */}
       <button
         onClick={() => isThinkingComplete && hasThinkingContent && setIsThinkingExpanded(!isThinkingExpanded)}
-        className={`w-full flex items-center gap-2 px-3 py-2 transition-colors rounded-md ${isThinkingComplete && hasThinkingContent ? 'hover:bg-gray-100/50 dark:hover:bg-gray-800/30 cursor-pointer' : ''}`}
+        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors rounded-md ${isThinkingComplete && hasThinkingContent ? 'hover:bg-gray-100/50 dark:hover:bg-gray-800/30 cursor-pointer' : ''}`}
         disabled={!isThinkingComplete || !hasThinkingContent}
       >
-        <Brain className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-        <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">
+        <Brain className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+        <span className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">
           {!isThinkingComplete ? 'Thinking...' : durationText ? `Thought for ${durationText}` : 'Thought'}
         </span>
         {isThinkingComplete && hasThinkingContent && (
-          <ChevronRight className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3 h-3 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
         )}
       </button>
 
