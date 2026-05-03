@@ -405,56 +405,47 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   };
 
   return (
-    <div className="w-full bg-white dark:bg-gray-800 p-4 flex flex-col h-full">
+    <div className="w-full bg-white dark:bg-gray-800 px-3 pt-1.5 pb-3 flex flex-col h-full">
       {/* Header */}
-      <div className="pb-3 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="text-sm text-gray-700 dark:text-gray-300 truncate" title={selectedFile}>
-              {selectedFile}
-            </div>
-            {hasChanges && (
-              <div className="text-xs text-orange-500 mt-0.5">● Modified</div>
-            )}
-          </div>
+      <div className="pb-1.5 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-end gap-1.5">
+          {hasChanges && (
+            <span className="text-[10px] text-orange-500 leading-none">● Modified</span>
+          )}
 
-          {isBinaryImageFile && (
-            <div className="flex items-center gap-2 ml-4">
-              {binaryPreviewUrl && (
-                <Button size="sm" variant="ghost" asChild>
-                  <a
-                    href={binaryPreviewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={t('actions.openInNewTab')}
-                  >
-                    Open
-                  </a>
-                </Button>
-              )}
-            </div>
+          {isBinaryImageFile && binaryPreviewUrl && (
+            <Button size="sm" variant="ghost" asChild className="h-6 px-2 text-[11px]">
+              <a
+                href={binaryPreviewUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={t('actions.openInNewTab')}
+              >
+                Open
+              </a>
+            </Button>
           )}
 
           {headerWarning === 'syntax_error' && (
-            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-              <span className="text-xs text-red-700 dark:text-red-300">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+              <span className="text-[11px] text-red-700 dark:text-red-300">
                 {t('editor.syntaxError')}
               </span>
             </div>
           )}
           {headerWarning === 'figma_empty' && (
-            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">
                 {t('editor.figmaEmpty')}
               </span>
             </div>
           )}
           {headerWarning === 'figma_not_connected' && (
-            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">
                 {t('editor.figmaNotConnected')}
               </span>
               <button
@@ -462,16 +453,16 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                   openMainPanelTab('accountConfig');
                   setAccountConfigScrollTarget('figma');
                 }}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0 ml-1"
+                className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0 ml-0.5"
               >
                 {t('editor.figmaSetup')}
               </button>
             </div>
           )}
           {headerWarning === 'template_marker' && (
-            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">
                 {t('editor.templateMarker', {
                   contentLength: fileData?.meta.templateContentLength ?? 0,
                   threshold: fileData?.meta.templateThreshold ?? 50,
@@ -480,38 +471,38 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
           {headerWarning === 'template_empty' && (
-            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+              <span className="text-[11px] text-amber-700 dark:text-amber-300">
                 {t('editor.templateEmpty')}
               </span>
             </div>
           )}
 
           {showViewModeToggle && (
-            <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
+            <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-900 rounded-md h-6 p-[2px]">
               <button
                 onClick={() => handleViewModeChange('raw')}
-                className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 h-5 px-2 rounded text-[11px] font-medium transition-colors ${
                   viewMode === 'raw'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
                 title={t('editor.raw')}
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3 h-3" />
                 {t('editor.raw')}
               </button>
               <button
                 onClick={() => handleViewModeChange('preview')}
-                className={`flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 h-5 px-2 rounded text-[11px] font-medium transition-colors ${
                   viewMode === 'preview'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
                 title={t('editor.preview')}
               >
-                <Eye className="w-3.5 h-3.5" />
+                <Eye className="w-3 h-3" />
                 {t('editor.preview')}
               </button>
             </div>
@@ -520,7 +511,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col overflow-hidden pt-4">
+      <div className="flex-1 flex flex-col overflow-hidden pt-3">
         {loading ? (
           <div className="text-sm text-gray-500 dark:text-gray-400 p-4">{t('common:status.loading')}</div>
         ) : isBinaryImageFile ? (
