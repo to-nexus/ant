@@ -566,7 +566,14 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set((s: any) => {
       const order = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], s.editorTabs ?? []);
       const withoutFileEdit = order.filter((t) => t !== 'fileEdit');
-      const newOrder = moveTabIdToOrderEnd(withoutFileEdit, tab.id as MainPanelTabOrderItem);
+      // Preserve the clicked tab's existing position. Moving it to the end
+      // (the previous behaviour) reshuffled the visible order every click,
+      // and because only the active tab renders its label the rearranged
+      // tabs appeared as if the last tab's content had been replaced.
+      const tabOrderId = tab.id as `editor:${string}`;
+      const newOrder = withoutFileEdit.includes(tabOrderId)
+        ? (withoutFileEdit as MainPanelTabOrderItem[])
+        : ([...withoutFileEdit, tabOrderId] as MainPanelTabOrderItem[]);
       return {
         activeEditorTabId: tabId,
         mainPanelActiveTab: tabId,

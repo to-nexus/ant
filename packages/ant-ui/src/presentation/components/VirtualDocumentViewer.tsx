@@ -20,18 +20,12 @@ export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
   }, [tab.path]);
 
   return (
-    <div className="w-full h-full bg-white dark:bg-gray-800 p-4 flex flex-col">
-      <div className="pb-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm text-gray-800 dark:text-gray-100 truncate">{tab.title}</div>
-          {tab.path && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{tab.path}</div>
-          )}
-        </div>
+    <div className="w-full h-full bg-white dark:bg-gray-800 px-3 pt-1.5 pb-3 flex flex-col">
+      <div className="pb-1.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end">
         <StreamingStatusChip isStreaming={tab.status === 'streaming'} />
       </div>
 
-      <div className="flex-1 min-h-0 pt-4">
+      <div className="flex-1 min-h-0 pt-3">
         {isLikelyMarkdown ? (
           <div className="h-full overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
