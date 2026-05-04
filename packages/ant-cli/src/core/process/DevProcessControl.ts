@@ -263,7 +263,7 @@ export class DevProcessControl {
    * Detect any lingering dev-server processes for the given working
    * directories and ports. Combines three independent signals:
    *   1. `next-lock`     — `.next/dev/server.json` with a live PID
-   *   2. `port`          — listener lookup (lsof/ss/netstat fallback)
+   *   2. `port`          — listener lookup (lsof/ss/netstat/procfs fallback)
    *   3. `process-tree`  — `ps aux` lines containing one of the cwds
    *                        AND matching a runtime token (node/next/vite/npm/pnpm).
    *
@@ -344,7 +344,10 @@ export class DevProcessControl {
     const fromSs = this.pidsOnPortFromSs(port);
     if (fromSs.length > 0) return fromSs;
 
-    return this.pidsOnPortFromNetstat(port);
+    const fromNetstat = this.pidsOnPortFromNetstat(port);
+    if (fromNetstat.length > 0) return fromNetstat;
+
+    return this.pidsOnPortFromProcfs(port);
   }
 
   private pidsOnPortFromLsof(port: number): number[] {
@@ -417,6 +420,89 @@ export class DevProcessControl {
           .filter(n => !isNaN(n)),
       ),
     );
+  }
+
+  private pidsOnPortFromProcfs(port: number): number[] {
+    if (process.platform !== 'linux') return [];
+
+    const socketInodes = this.socketInodesListeningOnPort(port);
+    if (socketInodes.size === 0) return [];
+
+    const pids = new Set<number>();
+    let procEntries: string[] = [];
+    try {
+      procEntries = fs.readdirSync('/proc');
+    } catch {
+      return [];
+    }
+
+    for (const entry of procEntries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      if (!pid || isNaN(pid)) continue;
+
+      const fdDir = `/proc/${entry}/fd`;
+      let fds: string[] = [];
+      try {
+        fds = fs.readdirSync(fdDir);
+      } catch {
+        continue;
+      }
+
+      let matched = false;
+      for (const fd of fds) {
+        try {
+          const link = fs.readlinkSync(path.join(fdDir, fd));
+          const m = link.match(/^socket:\[(\d+)\]$/);
+          if (!m) continue;
+          if (!socketInodes.has(m[1])) continue;
+          pids.add(pid);
+          matched = true;
+          break;
+        } catch {
+          // Per-fd permission/race errors are expected under /proc.
+        }
+      }
+
+      if (matched) continue;
+    }
+
+    return Array.from(pids);
+  }
+
+  private socketInodesListeningOnPort(port: number): Set<string> {
+    const inodes = new Set<string>();
+    const targetHexPort = port.toString(16).toUpperCase().padStart(4, '0');
+    const parseFile = (procFile: string) => {
+      let text = '';
+      try {
+        text = fs.readFileSync(procFile, 'utf-8');
+      } catch {
+        return;
+      }
+
+      for (const line of text.split('\n').slice(1)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const cols = trimmed.split(/\s+/);
+        if (cols.length < 10) continue;
+
+        const localAddr = cols[1] ?? '';
+        const state = cols[3] ?? '';
+        const inode = cols[9] ?? '';
+        const localPortHex = localAddr.split(':')[1]?.toUpperCase();
+
+        // TCP LISTEN state is 0A.
+        if (state !== '0A') continue;
+        if (localPortHex !== targetHexPort) continue;
+        if (!inode) continue;
+        inodes.add(inode);
+      }
+    };
+
+    parseFile('/proc/net/tcp');
+    parseFile('/proc/net/tcp6');
+    return inodes;
   }
 
   private findProcessesByCwd(cwds: string[]): DetectedDevServer[] {
