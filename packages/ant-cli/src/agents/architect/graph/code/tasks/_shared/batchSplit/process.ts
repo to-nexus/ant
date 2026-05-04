@@ -214,7 +214,13 @@ export function processDiagnosticBatchSplit(
         name: `${namePrefix}: ${batch.name}`,
         description: batch.rationale || batch.name,
         type: subType,
-        priority: (nextTask.priority || 500) - 1,
+        // Sub-tasks land just before the parent in the priority-sorted
+        // queue (`parent - 1`). `Math.max(1, ...)` clamps the lower bound
+        // so spec-mode parents with `priority === 1` cannot produce zero
+        // or negative priorities that would destabilise the TaskQueue
+        // sort. Ties at priority 1 are tie-broken by insertion order via
+        // TaskQueue's stable sort.
+        priority: Math.max(1, (nextTask.priority || 500) - 1),
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
         parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,

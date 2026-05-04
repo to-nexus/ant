@@ -17,6 +17,7 @@ import {
   blocksUi,
   blocksTestgen,
   blocksDoc,
+  classify as schedClassify,
 } from '../../../src/agents/architect/graph/code/tasks/setup/hooks/scheduling';
 import { hooks as setupBundle } from '../../../src/agents/architect/graph/code/tasks/setup';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
@@ -88,6 +89,21 @@ describe('tasks/setup/hooks/scheduling', () => {
     expect(blocksUi).toBe(true);
     expect(blocksTestgen).toBe(true);
     expect(blocksDoc).toBe(true);
+  });
+
+  describe('classify — setup@100–199 slips the foundation gate', () => {
+    it('priority 100–199 ⇒ isTokens (foundation-gate exemption)', () => {
+      expect(schedClassify(task('root', { priority: 100 }))).toEqual({ isTokens: true });
+      expect(schedClassify(task('pkg1', { priority: 101 }))).toEqual({ isTokens: true });
+      expect(schedClassify(task('pkg-max', { priority: 189 }))).toEqual({ isTokens: true });
+      // Defensive reach to 199 in case future bands extend.
+      expect(schedClassify(task('defensive', { priority: 199 }))).toEqual({ isTokens: true });
+    });
+
+    it('priority < 100 or >= 200 ⇒ no flags (inert)', () => {
+      expect(schedClassify(task('low', { priority: 50 }))).toEqual({ isTokens: false });
+      expect(schedClassify(task('foundation', { priority: 200 }))).toEqual({ isTokens: false });
+    });
   });
 });
 

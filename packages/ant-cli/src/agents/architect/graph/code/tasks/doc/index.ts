@@ -42,12 +42,12 @@
 
 import type { TaskHooks } from '../_shared/types';
 
-import { preDocBarrier } from './hooks/scheduling';
+import { preDocBarrier, classify as schedulingClassify } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { executeHook } from './hooks/execute';
 
 export const hooks: TaskHooks = {
-  scheduling: { preDocBarrier },
+  scheduling: { preDocBarrier, classify: schedulingClassify },
   conversations: { convKey },
   execute: executeHook,
   plan: {

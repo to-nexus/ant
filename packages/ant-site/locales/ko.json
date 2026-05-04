@@ -1,5 +1,5 @@
 {
-  "tabTitle": "1 Ant - 일개미",
+  "tabTitle": "ANT",
   "nav": {
     "product": "제품소개",
     "figma": "Figma 연동",
@@ -20,7 +20,7 @@
   },
   "home": {
     "brandPrefix": "",
-    "brandHighlight": "일개미",
+    "brandHighlight": "ANT",
     "brandSuffix": "와 함께",
     "title1": "아이디어를 스펙으로.",
     "title2": "스펙을 제품으로.",
@@ -83,8 +83,8 @@
     "step2Desc": "Ant Desktop은 로컬 Figma와 ANT 클라우드를 연결하는 브리지입니다. 설치 후 트레이에서 실행하고, ANT 계정으로 로그인하세요.",
     "step2Link": "다운로드 페이지로 이동 →",
     "step3Title": "프로젝트에서 Figma URL 연결",
-    "step3Desc": "1 Ant에서 피처(Feature) 생성 시 Figma 파일 URL을 입력합니다. Design Job 실행 → Figma 데이터 자동 탐색 → 설계 문서 생성.",
-    "step3Link": "1 Ant 시작하기 →",
+    "step3Desc": "Ant에서 피처(Feature) 생성 시 Figma 파일 URL을 입력합니다. Design Job 실행 → Figma 데이터 자동 탐색 → 설계 문서 생성.",
+    "step3Link": "Ant 시작하기 →",
     "faqTitle": "자주 묻는 질문",
     "faq1Q": "Figma 웹 버전도 되나요?",
     "faq1A": "아니요. MCP 접근을 위해 Figma Desktop App이 필요합니다.",
@@ -128,7 +128,7 @@
     "heroTitle1": "지금은 베타,",
     "heroTitle2": "모든 기능이 무료",
     "heroTitle3": "입니다",
-    "heroDesc": "1 Ant는 현재 클로즈드 베타 운영 중입니다. 정식 출시 전까지 모든 기능을 무료로 제공합니다.",
+    "heroDesc": "Ant는 현재 클로즈드 베타 운영 중입니다. 정식 출시 전까지 모든 기능을 무료로 제공합니다.",
     "betaTitle": "베타 기간 포함 기능",
     "betaFeatures": [
       "AI 에이전트 (Planner, Architect) 무제한 사용",

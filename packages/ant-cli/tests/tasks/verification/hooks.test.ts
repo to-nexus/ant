@@ -55,6 +55,14 @@ describe('tasks/_shared/registry — verification entry', () => {
     expect(hooks?.router?.routeAfterDone).toBe(routerHook.routeAfterDone);
     expect(hooks?.decompose?.isExclusive).toBe(decompHook.isExclusive);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
+    expect(typeof hooks?.scheduling?.classify).toBe('function');
+  });
+
+  it('scheduling.classify ⇒ isFinal for priority >= FINAL_VERIFICATION', () => {
+    const classify = verificationBundle.scheduling?.classify;
+    expect(classify?.(task('final', { priority: 1000 }))).toEqual({ isFinal: true });
+    expect(classify?.(task('beyond', { priority: 1500 }))).toEqual({ isFinal: true });
+    expect(classify?.(task('low', { priority: 999 }))).toEqual({ isFinal: false });
   });
 
   it('explain task type carries only R1 plan dispatch flags', () => {

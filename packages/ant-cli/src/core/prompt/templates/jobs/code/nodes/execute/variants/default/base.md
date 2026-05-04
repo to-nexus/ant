@@ -121,7 +121,7 @@ Output `<done>true</done>` when complete.
 
 {{#if currentTask}}
 {{#if (eq currentTask.type "setup")}}
-{{#unless (eq currentTask.priority 1000)}}
+{{#unless currentTaskIsFinal}}
 ## 🔧 SETUP TASK: Project Configuration
 
 Create config files only. **NO source code, NO tests.**
@@ -210,7 +210,7 @@ Follow the framework/language-specific setup instructions from:
 
 {{#if currentTask}}
 {{#if (eq currentTask.type "feature")}}
-{{#unless (eq currentTask.priority 1000)}}
+{{#unless currentTaskIsFinal}}
 ## 💻 FEATURE TASK: Source Code Implementation
 
 ┌─────────────────────────────────────────────────────────────────────────────┐

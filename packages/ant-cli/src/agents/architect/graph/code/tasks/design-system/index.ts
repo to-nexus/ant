@@ -4,56 +4,45 @@
  * Design-system tasks build the visual infrastructure in the code
  * pipeline — token→CSS bridge (priority 200) and shared component
  * library (priority 201+), all sharing `parallelGroup: "design-system"`.
- * Their ordering is enforced entirely by **priority + parallelGroup**,
- * not by type-level hook flags, so this bundle is the thinnest of the
- * task-type bundles: it publishes only the conversation-key landing
- * slot.
  *
  * Hooks published:
  *   - conversations.convKey    — per-task conversation scope (pre-wiring;
  *                                phase layer still shares
  *                                `CONV_KEYS.NODE_EXECUTE`).
+ *   - scheduling.classify      — per-task scheduling role based on
+ *                                priority band: priority 200–299
+ *                                returns `isFoundation=true` +
+ *                                `expandedRagQuota=true`. Activates
+ *                                `hasPreFeatureWork` in the
+ *                                orchestrator (foundation barrier)
+ *                                and extended RAG quota in
+ *                                `nodes/plan/rag/combine.ts`.
+ *   - plan.extraTemplateVars   — workspace-dep-snapshot reader.
  *
  * Intentionally absent:
- *   - scheduling.{pre*Barrier, blocks*} — design-system's ordering is
- *     priority-based (SSOT). See `hooks/scheduling.ts` for the full
- *     argument; the short version is that (a) the `isFoundationTask`
- *     priority window 200–299 in `parallel/TaskOrchestrator.ts` already
- *     activates `hasPreFeatureWork` to gate priority ≥ 300 tasks, and
- *     (b) `parallelGroup: "design-system"` + priority-ordered assignment
- *     serialises siblings. Publishing any type-level flag would
- *     duplicate those semantics in a second place.
- *   - plan.buildPrompt / extraTemplateVars — design-system tasks DO run
- *     through the plan phase (they are not in the `taskRequiresPlan`
- *     skip list at `planGeneration.ts` L227–235), but they flow through
- *     the shared `jobs/code/nodes/plan/base` template and the generic
- *     artifact-resolution pipeline. There is no `plan/variants/
- *     design-system/` template and no planGeneration.ts branch to port.
+ *   - scheduling.{pre*Barrier, blocks*} — design-system's ordering role
+ *     is expressed via classify (priority-band SSOT owned by THIS
+ *     bundle). Publishing a separate type-level flag would duplicate
+ *     that semantic — classify is the single dispatch point.
  *   - decompose.isExclusive — design-system tasks are parallel-safe
  *     within the foundation priority tier; serialisation comes from the
  *     shared `parallelGroup`, not from type-level exclusivity.
  *   - check.evaluate / budgetExhaustedHint — the LLM <done> signal is
- *     sufficient for design-system artefact tasks; there is no
- *     disk-level completion gate analogous to test-code's
- *     `detectTestFilesFromDisk`, and the generic budget-exhausted hint
- *     is correct.
+ *     sufficient; no disk-level completion gate needed.
  *
  * Phase-layer `task.type === 'design-system'` predicate adoption is
- * completed at T6b-κ: `isDesignSystemTask` (re-exported below) backs
- * the `isFrontendTask` OR chain in `nodes/execute/tools.ts`
- * and the artifact-policy disjunction inside
- * `nodes/decompose/responseParser.ts deriveArtifactPolicy`. The
- * remaining residuals (`nodes/decompose/validation.ts` allowed-type
- * string array and `nodes/revise/index.ts` intermediate typed field
- * declaration) are literal enumerations rather than behavioural
- * branches — they are considered R3-equivalent and do not need
- * predicate adoption.
+ * completed at T6b-κ via `isDesignSystemTask`. Before the
+ * classify-adoption change, this bundle published NO scheduling slot
+ * at all and the orchestrator relied on an inline priority window
+ * predicate (`isFoundationTask`, priority 200–299). classify closes
+ * that R1 residual.
  */
 
 import type { TaskHooks } from '../_shared/types';
 
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
+import { classify as schedulingClassify } from './hooks/scheduling';
 
 // `plan.extraTemplateVars` publishes the workspace-dep-snapshot template
 // variables so design-system tasks see existing pins for libraries they
@@ -65,6 +54,7 @@ import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 export const hooks: TaskHooks = {
   conversations: { convKey },
   plan: { extraTemplateVars: planExtraTemplateVars },
+  scheduling: { classify: schedulingClassify },
 };
 
 export { isDesignSystemTask } from './model/is';

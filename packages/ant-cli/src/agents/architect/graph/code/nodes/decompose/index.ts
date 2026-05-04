@@ -410,6 +410,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           .join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
+    // Free-priority gate — `gen-code-spec` is the single intent whose
+    // source document dictates task ordering (the spec writer chose
+    // the numbers). Every other intent (gen-code-sys / gen-code-directive
+    // / rev-code / explain-code) keeps the canonical priority bands so
+    // the LLM's ordering aligns with the scheduling barriers owned by
+    // each bundle's `classify` hook. Runtime is NOT branched — this
+    // flag only swaps the priority-row guidance in the decompose prompt.
+    isPriorityFromSpec: state.resolvedAction?.intent === 'gen-code-spec',
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
     // active intent (redirect_to_design = job switch, proceed_without_spec
     // = skip source contract) and MUST NOT fire when the upstream

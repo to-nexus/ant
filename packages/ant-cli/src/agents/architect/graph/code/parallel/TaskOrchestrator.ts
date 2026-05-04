@@ -15,7 +15,7 @@
 
 import type { BaseTask, TaskTokenUsage } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
-import { TASK_PRIORITIES, TaskTimingHelper } from '../state';
+import { TaskTimingHelper } from '../state';
 import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
 import { TaskWorker } from './TaskWorker';
 import type {
@@ -101,21 +101,20 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 3;
 // Barrier predicates — shared by findAndAssignNonConflictingTask + spawnAvailableWorkers
 // ============================================
 //
-// Priority-based predicates stay inline — they are cross-type and have no
-// sensible home in a per-task bundle. Type-based predicates (the former
-// `isFeatureOrSetupTask` / `isPreDocTask` / `isNonIntegrationFeatureTask`)
-// have been replaced by `schedBlocks(t, flag)` which queries each task's
-// scheduling hook. This keeps the parallel layer blind to `task.type`
-// per R1 (NODE_GRAPH_LAYOUT.md).
-function isFoundationTask<T extends BaseTask>(t: T): boolean {
-  return t.priority >= 200 && t.priority <= 299;
-}
-function isTokensTask<T extends BaseTask>(t: T): boolean {
-  return t.priority >= 100 && t.priority <= 199;
-}
-function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
-  return t.priority >= 100 && t.priority <= 299;
-}
+// The parallel layer is blind to BOTH `task.type` AND raw `task.priority`
+// bands (R1 + D31 — NODE_GRAPH_LAYOUT.md / classify model). Every predicate
+// below dispatches through a task's scheduling hook:
+//
+//   - Static boolean flags (blocksUi / blocksTestgen / blocksDoc /
+//     blocksIntegration / preIntegrationBarrier / preTestgenBarrier /
+//     preDocBarrier / preUiBarrier) — uniform across a bundle's tasks.
+//     Looked up via `schedBlocks(t, flag)`.
+//   - Per-task classifier flags (isFoundation / isTokens / isFinal /
+//     producesIntegrationGate / consumesIntegrationGate / expandedRagQuota)
+//     — priority-band-driven. Looked up via `schedClassify(t, flag)`.
+//
+// The bundles are the SSOT for "my priority band X means scheduling role Y";
+// the orchestrator never reads `task.priority` as a number comparator.
 
 /** Ask a task's scheduling hook whether it activates the named barrier. */
 function schedBlocks<T extends BaseTask>(
@@ -126,17 +125,43 @@ function schedBlocks<T extends BaseTask>(
 }
 
 /**
- * Integration barrier producer — a task counts as "pre-integration work" when
- * its bundle sets `blocksIntegration` AND its priority sits in the
- * FEATURE_CRITICAL..INTEGRATION_MIN window. The priority window is a
- * cross-type concern and stays inline; the type concern is delegated.
+ * Dispatch a per-task classifier flag through the bundle's `classify`
+ * function. Returns `false` when either (a) the bundle publishes no
+ * classify hook, or (b) the classify result's flag is unset/false.
+ */
+function schedClassify<T extends BaseTask>(
+  t: T,
+  flag:
+    | 'isFoundation'
+    | 'isTokens'
+    | 'isFinal'
+    | 'producesIntegrationGate'
+    | 'consumesIntegrationGate'
+    | 'expandedRagQuota',
+): boolean {
+  const classify = hooksForTaskType(t.type as TaskType)?.scheduling?.classify;
+  if (!classify) return false;
+  return !!classify(t)[flag];
+}
+
+function isFoundationTask<T extends BaseTask>(t: T): boolean {
+  return schedClassify(t, 'isFoundation');
+}
+function isTokensTask<T extends BaseTask>(t: T): boolean {
+  return schedClassify(t, 'isTokens');
+}
+function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
+  return schedClassify(t, 'isTokens') || schedClassify(t, 'isFoundation');
+}
+
+/**
+ * Integration barrier producer — a task counts as "pre-integration work"
+ * when its bundle's classify reports `producesIntegrationGate: true`.
+ * The priority window (FEATURE_CRITICAL..INTEGRATION_MIN) is owned by the
+ * feature bundle's classify implementation; the orchestrator only asks.
  */
 function isPreIntegrationWork<T extends BaseTask>(t: T): boolean {
-  return (
-    schedBlocks(t, 'blocksIntegration') &&
-    t.priority >= TASK_PRIORITIES.FEATURE_CRITICAL &&
-    t.priority < TASK_PRIORITIES.INTEGRATION_MIN
-  );
+  return schedClassify(t, 'producesIntegrationGate');
 }
 
 export class TaskOrchestrator<T extends BaseTask> {
@@ -557,9 +582,11 @@ export class TaskOrchestrator<T extends BaseTask> {
         }
 
         // Skip remaining verification/final tasks — running them after failure is pointless.
-        // A "final" task is identified solely by `priority >= FINAL_VERIFICATION`.
+        // A "final" task is identified by the verification bundle's
+        // `classify(...).isFinal` flag (SSOT for "queue-terminal, drain-skip
+        // on predecessor failure").
         const remaining = this.taskQueue.getAll();
-        const isFinalTask = (t: T): boolean => t.priority >= TASK_PRIORITIES.FINAL_VERIFICATION;
+        const isFinalTask = (t: T): boolean => schedClassify(t, 'isFinal');
         const allRemainingAreFinal = remaining.length > 0 && remaining.every(isFinalTask);
         if (allRemainingAreFinal && this.runningTasks.size === 0) {
           for (const t of remaining) {
@@ -674,18 +701,20 @@ export class TaskOrchestrator<T extends BaseTask> {
       // bundle whether it wants to be gated behind the named barrier.
       const sched = hooksForTaskType(task.type as TaskType)?.scheduling;
 
-      // Feature barrier: don't assign feature/integration tasks while foundation work exists
-      // Foundation tasks (setup + design-system) have priority 200–299. Their
-      // "hasPreFeatureWork" is a cross-type predicate owned by the orchestrator
-      // and stays inline; the priority check guards misclassified test-code/doc
-      // tasks so they still slip through the foundation gate.
-      if (hasPreFeatureWork && task.priority >= 300
+      // Feature barrier: don't assign feature/integration tasks while foundation work exists.
+      // Foundation identity is now owned by each bundle's `classify` — the
+      // orchestrator asks via `isFoundationTask(task) / isTokensTask(task)`,
+      // not by a hard-coded priority window. test-code / doc tasks have their
+      // own barrier (`preTestgenBarrier` / `preDocBarrier`) so they slip
+      // through this foundation gate.
+      if (hasPreFeatureWork && !isFoundationTask(task) && !isTokensTask(task)
           && !sched?.preTestgenBarrier && !sched?.preDocBarrier) {
         break;
       }
 
       // Integration barrier: don't assign integration tasks while feature work exists
-      if (hasPreIntegrationWork && sched?.preIntegrationBarrier && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) {
+      if (hasPreIntegrationWork && sched?.preIntegrationBarrier
+          && schedClassify(task, 'consumesIntegrationGate')) {
         break;
       }
 
@@ -702,11 +731,11 @@ export class TaskOrchestrator<T extends BaseTask> {
       // UI barrier: don't assign ui tasks while feature/setup work exists
       if (hasPreUiWork && sched?.preUiBarrier) break;
 
-      // Assets barrier: don't assign assets (200+) while tokens (100-199) work exists
-      if (hasPreAssetsWork && task.priority >= 200) break;
+      // Assets barrier (design job): block non-tokens while tokens work exists.
+      if (hasPreAssetsWork && !isTokensTask(task)) break;
 
-      // Spec barrier: don't assign spec (300+) while tokens+assets (100-299) work exists
-      if (hasPreSpecWork && task.priority >= 300) break;
+      // Spec barrier (design job): block non-(tokens|assets) while tokens+assets work exists.
+      if (hasPreSpecWork && !isTokensOrAssetsTask(task)) break;
 
       // No parallelGroup = conservative solo execution
       if (!task.parallelGroup) {
@@ -764,14 +793,15 @@ export class TaskOrchestrator<T extends BaseTask> {
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
       const sched = hooksForTaskType(task.type as TaskType)?.scheduling;
-      if (hasPreFeatureWork && task.priority >= 300
+      if (hasPreFeatureWork && !isFoundationTask(task) && !isTokensTask(task)
           && !sched?.preTestgenBarrier && !sched?.preDocBarrier) break;
-      if (hasPreIntegrationWork && sched?.preIntegrationBarrier && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) break;
+      if (hasPreIntegrationWork && sched?.preIntegrationBarrier
+          && schedClassify(task, 'consumesIntegrationGate')) break;
       if (hasPreTestgenWork && sched?.preTestgenBarrier) break;
       if (hasPreDocWork && sched?.preDocBarrier) break;
       if (hasPreUiWork && sched?.preUiBarrier) break;
-      if (hasPreAssetsWork && task.priority >= 200) break;
-      if (hasPreSpecWork && task.priority >= 300) break;
+      if (hasPreAssetsWork && !isTokensTask(task)) break;
+      if (hasPreSpecWork && !isTokensOrAssetsTask(task)) break;
       if (!task.parallelGroup) {
         if (this.runningTasks.size === 0 && potentialTasks === 0) potentialTasks++;
         continue;

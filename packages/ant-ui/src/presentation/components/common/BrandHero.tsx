@@ -14,7 +14,7 @@ export function BrandHero({ logoSize = 64, className = '' }: BrandHeroProps) {
     <div className={`inline-flex items-center gap-4 ${className}`}>
       <img
         src={`${BASE}logo.png`}
-        alt="1 Ant"
+        alt="Ant"
         width={logoSize}
         height={logoSize}
         className="drop-shadow-[0_0_20px_rgba(251,146,60,0.15)]"

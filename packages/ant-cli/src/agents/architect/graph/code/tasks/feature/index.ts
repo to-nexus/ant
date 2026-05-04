@@ -3,56 +3,57 @@
  *
  * Feature tasks implement the primary application work (priority
  * 300–599). They run in parallel via `parallelGroup`, subject to three
- * cross-type barriers:
+ * cross-type barriers (all dispatched through the bundle's scheduling
+ * hook — the orchestrator never compares raw priority bands):
  *
- *   - `hasPreFeatureWork` — foundation work (setup / design-system,
- *     priority 200–299) must finish first. Cross-type and owned by the
- *     orchestrator's priority-window predicate `isFoundationTask`, so
- *     feature does NOT publish a type-level consumer flag for it.
- *   - `hasPreIntegrationWork` — non-integration feature tasks gate
- *     integration-priority feature tasks (priority ≥ INTEGRATION_MIN,
- *     600). The type gate is opt-in via `preIntegrationBarrier`; the
- *     priority window stays inline in the orchestrator because it is
- *     cross-type / priority-driven.
+ *   - `hasPreFeatureWork` — shared foundation feature work
+ *     (classify.isFoundation for priority 200–299) must finish before
+ *     normal / integration feature tasks start. The classify function
+ *     (see `hooks/scheduling.ts`) is the SSOT for this band; feature
+ *     does NOT publish a static consumer flag.
+ *   - `hasPreIntegrationWork` — non-integration feature tasks
+ *     (classify.producesIntegrationGate for the [FEATURE_CRITICAL,
+ *     INTEGRATION_MIN) band) gate integration feature tasks. The
+ *     consumer side uses the static `preIntegrationBarrier` flag
+ *     paired with classify.consumesIntegrationGate.
  *   - Producer barriers (`hasPreUiWork / hasPreTestgenWork /
- *     hasPreDocWork / hasPreIntegrationWork`) — feature is the primary
- *     activator of these gates for ui / test-code / doc / integration
- *     tasks, hence the four `blocks*` producer flags below.
+ *     hasPreDocWork / hasPreIntegrationWork`) — feature activates
+ *     these gates uniformly for every feature task via the four
+ *     static `blocks*` flags below.
  *
  * Hooks published:
- *   - scheduling.preIntegrationBarrier — consumer: gate integration-
- *                                        priority feature tasks behind
- *                                        other feature work (paired
- *                                        with the orchestrator's
- *                                        priority-window check).
- *   - scheduling.blocksUi              — producer: ui tasks wait for
- *                                        feature work to finish
- *                                        (layout/data scaffolding must
- *                                        exist before rendering).
- *   - scheduling.blocksTestgen         — producer: test-code tasks
- *                                        wait for feature work so the
- *                                        generated tests see stable
- *                                        source files.
- *   - scheduling.blocksDoc             — producer: doc tasks wait for
- *                                        feature work so the docs
- *                                        describe the final shape.
- *   - scheduling.blocksIntegration     — producer: non-integration
- *                                        feature tasks gate
- *                                        integration-priority work
- *                                        (paired with the orchestrator
- *                                        priority-window check — only
- *                                        priority ∈ [FEATURE_CRITICAL,
- *                                        INTEGRATION_MIN) participates).
- *   - decompose.isExclusive            — returns `false` for ordinary
- *                                        feature tasks; `true` only
- *                                        when `priority === 1000`
- *                                        (regression guard against
- *                                        retyping skip, see
+ *   - scheduling.preIntegrationBarrier — consumer (uniform across the
+ *                                        bundle): opts feature into
+ *                                        the integration barrier.
+ *   - scheduling.blocksUi              — producer (uniform): ui tasks
+ *                                        wait for feature work to
+ *                                        finish.
+ *   - scheduling.blocksTestgen         — producer (uniform): test-code
+ *                                        tasks wait for feature work
+ *                                        so tests see stable source.
+ *   - scheduling.blocksDoc             — producer (uniform): doc tasks
+ *                                        wait so docs describe the
+ *                                        final shape.
+ *   - scheduling.blocksIntegration     — producer (uniform): paired
+ *                                        with classify's per-task
+ *                                        `producesIntegrationGate`
+ *                                        band so only the pre-
+ *                                        integration window gates
+ *                                        integration work.
+ *   - scheduling.classify              — per-task band classifier
+ *                                        (isFoundation /
+ *                                        producesIntegrationGate /
+ *                                        consumesIntegrationGate /
+ *                                        expandedRagQuota). SSOT for
+ *                                        "this priority band means
+ *                                        scheduling role X".
+ *   - decompose.isExclusive            — false for ordinary feature
+ *                                        tasks; true only when
+ *                                        priority === FINAL_VERIFICATION
+ *                                        (defence against retyping
+ *                                        regression, see
  *                                        `hooks/decompose.ts`).
- *   - conversations.convKey            — per-task conversation scope
- *                                        (pre-wiring; phase layer
- *                                        still shares
- *                                        `CONV_KEYS.NODE_EXECUTE`).
+ *   - conversations.convKey            — per-task conversation scope.
  *
  * Intentionally absent:
  *   - plan.buildPrompt / extraTemplateVars / toolLoopLogTemplate —
@@ -119,6 +120,7 @@ import {
   blocksTestgen,
   blocksDoc,
   blocksIntegration,
+  classify as schedulingClassify,
 } from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
@@ -160,6 +162,7 @@ export const hooks = composeBundle({
       blocksTestgen,
       blocksDoc,
       blocksIntegration,
+      classify: schedulingClassify,
     },
     decompose: { isExclusive },
     conversations: { convKey },
