@@ -356,10 +356,12 @@ export function createProjectsRoutes(deps: {
               retryable: true,
               suggestedAction: null,
             };
+        const statusCode = error instanceof GitOperationError ? error.statusCode : 500;
         logger.warn(`Git op ${userOp} failed: ${errorPayload.message}`, {
           component: 'Projects',
           projectId,
         });
+        res.status(statusCode);
         res.end(JSON.stringify({ success: false, error: errorPayload }));
         return;
       }

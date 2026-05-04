@@ -15,6 +15,7 @@ import {
   BATCH_SPLIT_POLICY,
   diagnosticBatchShape,
 } from './policy';
+import { BatchSplitSchemaViolation } from './schemaViolation';
 
 /**
  * Detect a diagnostic / remediation plan and fan it out into sub-tasks.
@@ -92,6 +93,77 @@ export function processDiagnosticBatchSplit(
     const topLevelImplCount = modifyArr.length + createArr.length + deleteArr.length;
 
     if (!hasExistingBatches && topLevelImplCount > 0) {
+      // LLM-authored semantic fields are the SSOT for child task name +
+      // description. Missing fields throw `BatchSplitSchemaViolation` so
+      // the plan node's retry loop can re-issue the call with framing —
+      // the system MUST NOT fabricate names. See docstring of
+      // `schemaViolation.ts` for the contract.
+      const batchesAcc: any[] = [];
+
+      for (let i = 0; i < modifyArr.length; i++) {
+        const m = modifyArr[i];
+        if (!m || typeof m !== 'object' || typeof (m as any).action !== 'string' || (m as any).action.trim() === '') {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'modify',
+            ordinal: i,
+            missingField: 'action',
+            observed: m,
+          });
+        }
+        const action = (m as any).action as string;
+        const changes = (m as any).changes;
+        const rationale = Array.isArray(changes) && changes.length > 0
+          ? changes.map(String).join('; ')
+          : action;
+        batchesAcc.push({
+          name: action,
+          rationale,
+          modify: [m],
+          create: [],
+          delete: [],
+        });
+      }
+      for (let i = 0; i < createArr.length; i++) {
+        const c = createArr[i];
+        if (!c || typeof c !== 'object' || typeof (c as any).name !== 'string' || (c as any).name.trim() === '') {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'create',
+            ordinal: i,
+            missingField: 'name',
+            observed: c,
+          });
+        }
+        const cName = (c as any).name as string;
+        const purpose = (c as any).purpose;
+        const rationale = typeof purpose === 'string' && purpose.trim() !== '' ? purpose : cName;
+        batchesAcc.push({
+          name: cName,
+          rationale,
+          modify: [],
+          create: [c],
+          delete: [],
+        });
+      }
+      for (let i = 0; i < deleteArr.length; i++) {
+        const d = deleteArr[i];
+        if (!d || typeof d !== 'object' || typeof (d as any).reason !== 'string' || (d as any).reason.trim() === '') {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'delete',
+            ordinal: i,
+            missingField: 'reason',
+            observed: d,
+          });
+        }
+        const reason = (d as any).reason as string;
+        batchesAcc.push({
+          name: reason,
+          rationale: reason,
+          modify: [],
+          create: [],
+          delete: [d],
+        });
+      }
+
       logBatchSplit({
         action: 'auto_convert_top_level',
         modifyCount: modifyArr.length,
@@ -100,43 +172,35 @@ export function processDiagnosticBatchSplit(
         totalErrors,
         taskName: nextTask.name,
       });
-      const batchesAcc: any[] = [];
-      for (const m of modifyArr) {
-        const target = typeof m === 'string' ? m : (m.target || m.file || `modify-${batchesAcc.length}`);
-        batchesAcc.push({
-          name: `Fix ${target}`,
-          rationale: (m && m.action) || `Apply modifications to ${target}`,
-          modify: [m],
-          create: [],
-          delete: [],
-        });
-      }
-      for (const c of createArr) {
-        const target = typeof c === 'string' ? c : (c.target || c.file || `create-${batchesAcc.length}`);
-        batchesAcc.push({
-          name: `Create ${target}`,
-          rationale: (c && c.purpose) || `Create ${target}`,
-          modify: [],
-          create: [c],
-          delete: [],
-        });
-      }
-      for (const d of deleteArr) {
-        const target = typeof d === 'string' ? d : (d.target || d.file || `delete-${batchesAcc.length}`);
-        batchesAcc.push({
-          name: `Delete ${target}`,
-          rationale: (d && d.reason) || `Delete ${target}`,
-          modify: [],
-          create: [],
-          delete: [d],
-        });
-      }
       parsed.batches = batchesAcc;
     }
 
     if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length === 0) {
       logBatchSplit({ action: 'skipped', reason: 'no_implementation_entries', batchCount: 0, taskName: nextTask.name });
       return planText;
+    }
+
+    // Validate LLM-authored semantic fields on explicit batches[] too.
+    // Same throw pattern as auto-convert above; missing name/rationale =
+    // schema violation = plan-node retry.
+    for (let i = 0; i < parsed.batches.length; i++) {
+      const b = parsed.batches[i];
+      if (!b || typeof b !== 'object' || typeof b.name !== 'string' || b.name.trim() === '') {
+        throw new BatchSplitSchemaViolation({
+          entryKind: 'batch',
+          ordinal: i,
+          missingField: 'name',
+          observed: b,
+        });
+      }
+      if (typeof b.rationale !== 'string' || b.rationale.trim() === '') {
+        throw new BatchSplitSchemaViolation({
+          entryKind: 'batch',
+          ordinal: i,
+          missingField: 'rationale',
+          observed: b,
+        });
+      }
     }
 
     // Cycle counter lives on `task.batchSplitCount` (carried across re-queue
@@ -208,11 +272,14 @@ export function processDiagnosticBatchSplit(
       const shape = taskPolicy?.shape ?? diagnosticBatchShape;
       const batchPlanText = shape({ parsed, batch, batchIndex: i, planMode });
 
-      const namePrefix = subType === 'test-code' ? 'Tests' : 'Fix';
+      // Child task `name` and `description` are LLM-authored verbatim —
+      // no system prefix, no synthesis. The auto-convert + explicit
+      // batches[] validations above guarantee `batch.name` and
+      // `batch.rationale` are present non-empty strings.
       const subTask: CodeTask = {
         id: `${subType}-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        name: `${namePrefix}: ${batch.name}`,
-        description: batch.rationale || batch.name,
+        name: batch.name,
+        description: batch.rationale,
         type: subType,
         // Sub-tasks land just before the parent in the priority-sorted
         // queue (`parent - 1`). `Math.max(1, ...)` clamps the lower bound
@@ -382,7 +449,13 @@ export function processDiagnosticBatchSplit(
   } catch (err) {
     // T8 — `VerificationTerminalError` must propagate; only swallow JSON-
     // parse / coercion errors that would otherwise lose the terminal signal.
+    // `BatchSplitSchemaViolation` also propagates so the plan-node retry
+    // loop (decompose's `ExecutionTierViolation` pattern, ported) can
+    // re-issue the LLM call with violation framing.
     if (err instanceof VerificationTerminalError) {
+      throw err;
+    }
+    if (err instanceof BatchSplitSchemaViolation) {
       throw err;
     }
     logBatchSplit({ action: 'skipped', reason: 'json_parse_error', error: (err as Error).message, planTextPreview: planText.substring(0, 120), taskName: nextTask.name });

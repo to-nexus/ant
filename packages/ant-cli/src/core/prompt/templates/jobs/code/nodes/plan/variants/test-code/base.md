@@ -152,8 +152,8 @@ Execute phase then writes every `create` entry itself.
   },
   "batches": [
     {
-      "name": "[slice name, e.g. 'domain layer']",
-      "rationale": "[why this slice is independent of the others]",
+      "name": "[REQUIRED — slice name, e.g. 'domain layer'. Becomes the child test-code task's name verbatim. NOT a verb (`Tests`, `Add`), NOT a path.]",
+      "rationale": "[REQUIRED — why this slice is independent of the others. Becomes the child test-code task's description verbatim.]",
       "create": [
         { "target": "[test file path]", "purpose": "[what this test verifies]" }
       ],

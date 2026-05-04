@@ -13,6 +13,63 @@ export interface SavePATResult {
   error?: string;
 }
 
+interface GitHubErrorPayload {
+  message?: string;
+  documentation_url?: string;
+  errors?: Array<string | { message?: string; code?: string; field?: string; resource?: string }>;
+}
+
+export class GitHubRepoCreateError extends Error {
+  public readonly statusCode: number;
+  public readonly requestId: string | null;
+  public readonly endpointType: 'org' | 'user';
+  public readonly documentationUrl: string | null;
+  public readonly apiMessage: string;
+  public readonly details: string[];
+  public readonly owner: string;
+  public readonly repoName: string;
+
+  constructor(args: {
+    endpointType: 'org' | 'user';
+    owner: string;
+    repoName: string;
+    statusCode: number;
+    requestId: string | null;
+    documentationUrl: string | null;
+    apiMessage: string;
+    details: string[];
+  }) {
+    const contextParts = [`HTTP ${args.statusCode}`];
+    if (args.requestId) {
+      contextParts.push(`request_id=${args.requestId}`);
+    }
+    const detailSuffix = args.details.length > 0 ? ` | details: ${args.details.join('; ')}` : '';
+    super(
+      `Failed to create GitHub repo (${args.endpointType}) [${contextParts.join(', ')}]: ${args.apiMessage}${detailSuffix}`
+    );
+    this.name = 'GitHubRepoCreateError';
+    this.statusCode = args.statusCode;
+    this.requestId = args.requestId;
+    this.endpointType = args.endpointType;
+    this.documentationUrl = args.documentationUrl;
+    this.apiMessage = args.apiMessage;
+    this.details = args.details;
+    this.owner = args.owner;
+    this.repoName = args.repoName;
+  }
+
+  isAlreadyExistsError(): boolean {
+    const message = this.apiMessage.toLowerCase();
+    const details = this.details.join(' ').toLowerCase();
+    return (
+      message.includes('already exists') ||
+      message.includes('name already exists') ||
+      details.includes('already exists') ||
+      details.includes('name already exists')
+    );
+  }
+}
+
 /**
  * GitHub Authentication Service
  * Manages GitHub Personal Access Tokens (PAT) for users
@@ -22,6 +79,34 @@ export class GitHubAuthService {
   
   constructor(workspaceRoot: string) {
     this.userConfig = new UserConfigManager(workspaceRoot);
+  }
+
+  private parseGitHubErrorPayload(rawText: string): GitHubErrorPayload | null {
+    if (!rawText) return null;
+    try {
+      return JSON.parse(rawText) as GitHubErrorPayload;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractGitHubErrorDetails(payload: GitHubErrorPayload | null): string[] {
+    if (!payload?.errors || !Array.isArray(payload.errors)) return [];
+    const details: string[] = [];
+    for (const entry of payload.errors) {
+      if (typeof entry === 'string') {
+        details.push(entry);
+        continue;
+      }
+      if (!entry || typeof entry !== 'object') continue;
+      const segments = [entry.message, entry.code, entry.field, entry.resource]
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean);
+      if (segments.length > 0) {
+        details.push(segments.join(' / '));
+      }
+    }
+    return details;
   }
   
   /**
@@ -325,6 +410,7 @@ export class GitHubAuthService {
 
     console.log(`[GitHubAuthService] Creating repo via ${isOrg ? 'org' : 'user'} endpoint: ${apiUrl}`);
 
+    const endpointType: 'org' | 'user' = isOrg ? 'org' : 'user';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: commonHeaders,
@@ -337,8 +423,25 @@ export class GitHubAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.json() as { message?: string };
-      throw new Error(`Failed to create GitHub repo (${isOrg ? 'org' : 'user'}): ${error.message || response.statusText}`);
+      const responseText = await response.text();
+      const payload = this.parseGitHubErrorPayload(responseText);
+      const apiMessage =
+        payload?.message?.trim() ||
+        response.statusText ||
+        'GitHub API request failed';
+      const details = this.extractGitHubErrorDetails(payload);
+      const requestId = response.headers.get('x-github-request-id');
+      const documentationUrl = payload?.documentation_url?.trim() || null;
+      throw new GitHubRepoCreateError({
+        endpointType,
+        owner,
+        repoName,
+        statusCode: response.status,
+        requestId,
+        documentationUrl,
+        apiMessage,
+        details,
+      });
     }
 
     console.log(`✅ GitHub repo created: ${parsed} (${isOrg ? 'organization' : 'user'})`);

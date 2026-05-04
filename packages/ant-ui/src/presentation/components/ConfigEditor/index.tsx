@@ -60,18 +60,21 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   // Load GitHub owner info (user override > org > personal) for quick-fill.
-  // Re-runs on mount; AccountConfigEditor triggers authoritative git-world
-  // refreshes (`fetchGitWorldState`) when PAT changes propagate.
+  // Re-runs when `patState` updates so `personalOwner` is not stuck empty after
+  // async PAT prime. Read PAT from the store after org/user await so the value
+  // is not stale across a slow network.
   useEffect(() => {
+    let cancelled = false;
     async function loadGithubOwners() {
       try {
         const [orgConfig, userConfig] = await Promise.all([
           fetchOrgConfig(),
           fetchUserConfig(),
         ]);
+        if (cancelled) return;
         const orgOwner = orgConfig.github?.owner;
         const userOverride = userConfig.github?.ownerOverride;
-        const personalOwner = patState?.username;
+        const personalOwner = useStore.getState().pat?.data?.username;
         const effectiveOrgOwner = userOverride || orgOwner;
         setGithubOwnerInfo({ orgOwner: effectiveOrgOwner, personalOwner });
 
@@ -84,11 +87,16 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           });
         }
       } catch (error) {
-        console.error('[ConfigEditor] Failed to load GitHub owners:', error);
+        if (!cancelled) {
+          console.error('[ConfigEditor] Failed to load GitHub owners:', error);
+        }
       }
     }
-    loadGithubOwners();
-  }, []);
+    void loadGithubOwners();
+    return () => {
+      cancelled = true;
+    };
+  }, [patState, setEditedConfig]);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     if (key === 'githubRepo') {

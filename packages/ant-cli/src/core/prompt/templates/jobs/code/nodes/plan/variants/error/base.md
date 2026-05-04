@@ -168,12 +168,12 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships �
   },
   "batches": [
     {
-      "name": "[short descriptive name for this batch]",
-      "rationale": "[why these errors are grouped together]",
+      "name": "[REQUIRED — short descriptive name. Becomes the child error task's name verbatim. NOT a verb (`Fix`, `Add`), NOT a path.]",
+      "rationale": "[REQUIRED — why these errors are grouped together. Becomes the child error task's description verbatim.]",
       "modify": [
         {
           "target": "[file path]",
-          "action": "[what to fix]",
+          "action": "[REQUIRED — what to fix]",
           "changes": ["[specific change 1]", "[specific change 2]"],
           "rootCause": "[which root cause this addresses]"
         }

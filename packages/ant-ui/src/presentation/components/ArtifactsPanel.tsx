@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
@@ -18,7 +18,7 @@ import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
-import { UI_VISIBLE_TOP_LEVEL_DIRS, UI_VISIBLE_FILES } from '@ant/shared';
+import { UI_VISIBLE_TOP_LEVEL_DIRS, UI_VISIBLE_FILES, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -797,6 +797,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // Figma config state — from Zustand store (updated by SSE fileTree handler + direct save)
   const figmaPopulated = useStore((state) => state.figmaPopulated);
   const refreshFigmaPopulated = useStore((state) => state.refreshFigmaPopulated);
+  const workspaceDomain = useStore((state) => state.actionMetadata?.domain);
 
   useEffect(() => {
     refreshFigmaPopulated();
@@ -1066,7 +1067,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
   // top-level dir auto-renders here once tagged.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const topLevelByName = new Map(fileTree?.map(n => [n.name, n]) ?? []);
+  const prunedFileTree = useMemo(
+    () => (fileTree?.length ? pruneFileTreeForWorkspaceDomain(fileTree, workspaceDomain) : fileTree),
+    [fileTree, workspaceDomain],
+  );
+  const topLevelByName = new Map(prunedFileTree?.map(n => [n.name, n]) ?? []);
   const visibleTopLevelDirs = UI_VISIBLE_TOP_LEVEL_DIRS;
 
   const planNode = topLevelByName.get('plan');

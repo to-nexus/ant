@@ -1,3 +1,6 @@
+import type { Domain } from './detection';
+import type { FileNode } from './file-resource';
+
 /**
  * Canonical Feature Structure Definitions (Single Source of Truth)
  *
@@ -167,6 +170,43 @@ export const UI_VISIBLE_FILES: ReadonlyArray<string> =
   CANONICAL_FILE_DEFS
     .filter(f => f.visibility.startsWith('ui:'))
     .map(f => f.path.split('/').pop()!);
+
+/**
+ * Returns a shallow-cloned file tree with `visual/` and `assets/` immediate
+ * directory children narrowed to the workspace {@link Domain} (D28 — service:
+ * `visual/ui` + `assets/service`; game: `visual/game-art` + `assets/game`).
+ * `assets/gen` and other non-pool siblings stay visible in both domains.
+ */
+export function pruneFileTreeForWorkspaceDomain(
+  tree: FileNode[],
+  domain: Domain | undefined | null,
+): FileNode[] {
+  const d: Domain = domain === 'game' || domain === 'service' ? domain : 'service';
+  return tree.map(node => pruneFileTreeNodeForWorkspaceDomain(node, d));
+}
+
+function pruneFileTreeNodeForWorkspaceDomain(node: FileNode, domain: Domain): FileNode {
+  if (!node.children?.length) return node;
+  let nextChildren = node.children;
+  if (node.path === 'visual') {
+    nextChildren = nextChildren.filter(
+      c => c.type !== 'directory' || (domain === 'service' ? c.name === 'ui' : c.name === 'game-art'),
+    );
+  } else if (node.path === 'assets') {
+    nextChildren = nextChildren.filter(
+      c =>
+        c.type !== 'directory' ||
+        c.name === 'gen' ||
+        (c.name === 'service' && domain === 'service') ||
+        (c.name === 'game' && domain === 'game') ||
+        (c.name !== 'service' && c.name !== 'game'),
+    );
+  }
+  return {
+    ...node,
+    children: nextChildren.map(c => pruneFileTreeNodeForWorkspaceDomain(c, domain)),
+  };
+}
 
 // ============================================
 // Derived: O(1) canonical lookup

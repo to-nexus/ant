@@ -4,10 +4,17 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { isVectorDbEnabled } from '../../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../../core/types/user';
-import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
+import { GitHubAuthService, GitHubRepoCreateError } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { GitignoreGenerator } from '../helpers/GitignoreGenerator';
-import { GitNotFoundError, GitOperationError } from '../../errors';
+import {
+  GitAuthError,
+  GitConfigError,
+  GitConflictError,
+  GitNetworkError,
+  GitNotFoundError,
+  GitOperationError,
+} from '../../errors';
 
 /**
  * BaseGitSetupOperation
@@ -149,14 +156,44 @@ export abstract class BaseGitSetupOperation {
       );
       console.log(`[${this.operationName}] ✅ GitHub repository created`);
     } catch (error: any) {
-      const errorMsg = error.message || error.toString();
-      // Only ignore "already exists" errors — the repo is usable in that case
-      if (errorMsg.includes('already exists') || errorMsg.includes('name already exists')) {
+      if (error instanceof GitHubRepoCreateError && error.isAlreadyExistsError()) {
         console.log(`[${this.operationName}] GitHub repo already exists, continuing...`);
         return;
       }
-      // All other errors must propagate so the caller sees the real failure
-      throw error;
+      if (error instanceof GitHubRepoCreateError) {
+        const requestIdSuffix = error.requestId ? ` (request_id=${error.requestId})` : '';
+        if (error.statusCode === 401 || error.statusCode === 403) {
+          throw new GitAuthError(
+            `GitHub authentication failed while creating ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false }
+          );
+        }
+        if (error.statusCode === 409) {
+          throw new GitConflictError(
+            `GitHub repository conflict for ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false, suggestedAction: 'reconfigureRepo' }
+          );
+        }
+        if (error.statusCode === 422) {
+          throw new GitConfigError(
+            `GitHub rejected repository settings for ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false, suggestedAction: 'reconfigureRepo' }
+          );
+        }
+        if (error.statusCode >= 500) {
+          throw new GitNetworkError(
+            `GitHub server error while creating ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: true }
+          );
+        }
+        throw new GitOperationError(
+          `Failed to create GitHub repository ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+          error.statusCode
+        );
+      }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new GitOperationError(`Failed to create GitHub repository ${githubRepo}: ${errorMsg}`, 'unknown');
     }
   }
 

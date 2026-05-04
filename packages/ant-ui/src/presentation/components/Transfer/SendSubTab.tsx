@@ -12,7 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { UI_VISIBLE_TOP_LEVEL_DIRS } from '@ant/shared';
+import { UI_VISIBLE_TOP_LEVEL_DIRS, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
 import {
@@ -25,6 +25,7 @@ import {
   fetchMemberProjects,
   fetchMemberFeatures,
   fetchFileTree,
+  fetchProjectConfig,
   type FileNode,
   type TransferRequest,
 } from '@/infrastructure/http/api';
@@ -124,10 +125,17 @@ export function SendSubTab() {
   // Load source file tree (only show artifact dirs from UI_VISIBLE_TOP_LEVEL_DIRS:
   // plan / architecture / visual / assets / meta — sessions/codebase 는 제외)
   useEffect(() => {
-    if (!srcProjectId || !srcFeatureId) { setSrcFileTree([]); return; }
-    fetchFileTree(srcProjectId, srcFeatureId).then(tree => {
-      setSrcFileTree(filterArtifactDirs(tree || []));
-    }).catch(() => setSrcFileTree([]));
+    if (!srcProjectId || !srcFeatureId) {
+      setSrcFileTree([]);
+      return;
+    }
+    Promise.all([fetchFileTree(srcProjectId, srcFeatureId), fetchProjectConfig(srcProjectId)])
+      .then(([tree, cfg]) => {
+        const domain = cfg?.domain === 'game' || cfg?.domain === 'service' ? cfg.domain : 'service';
+        const filtered = filterArtifactDirs(tree || []);
+        setSrcFileTree(pruneFileTreeForWorkspaceDomain(filtered, domain));
+      })
+      .catch(() => setSrcFileTree([]));
   }, [srcProjectId, srcFeatureId]);
 
   // Load dest features
@@ -775,7 +783,8 @@ function InlineWarning({ message }: { message: string }) {
  * `sessions` / `codebase` / non-canonical entries. The whitelist is pulled
  * from the canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
  * UI-visible top-level dir auto-propagates here. This matches
- * `ArtifactsPanel`'s filtering logic.
+ * `ArtifactsPanel`'s filtering logic; domain narrowing uses
+ * `pruneFileTreeForWorkspaceDomain` from `@ant/shared` (same as ArtifactsPanel).
  */
 const ALLOWED_TOP_LEVEL = new Set(UI_VISIBLE_TOP_LEVEL_DIRS.map(d => d.name));
 
