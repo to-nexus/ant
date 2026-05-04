@@ -263,7 +263,7 @@ export class DevProcessControl {
    * Detect any lingering dev-server processes for the given working
    * directories and ports. Combines three independent signals:
    *   1. `next-lock`     — `.next/dev/server.json` with a live PID
-   *   2. `port`          — `lsof -i :PORT -t`
+   *   2. `port`          — listener lookup (lsof/ss/netstat fallback)
    *   3. `process-tree`  — `ps aux` lines containing one of the cwds
    *                        AND matching a runtime token (node/next/vite/npm/pnpm).
    *
@@ -338,6 +338,16 @@ export class DevProcessControl {
   }
 
   private pidsOnPort(port: number): number[] {
+    const fromLsof = this.pidsOnPortFromLsof(port);
+    if (fromLsof.length > 0) return fromLsof;
+
+    const fromSs = this.pidsOnPortFromSs(port);
+    if (fromSs.length > 0) return fromSs;
+
+    return this.pidsOnPortFromNetstat(port);
+  }
+
+  private pidsOnPortFromLsof(port: number): number[] {
     try {
       const out = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
         encoding: 'utf-8',
@@ -345,12 +355,68 @@ export class DevProcessControl {
         stdio: ['pipe', 'pipe', 'ignore'],
       }).trim();
       if (!out) return [];
-      return out.split('\n')
-        .map(s => parseInt(s.trim(), 10))
-        .filter(n => !isNaN(n));
+      return this.parsePidLines(out);
     } catch {
       return [];
     }
+  }
+
+  private pidsOnPortFromSs(port: number): number[] {
+    try {
+      const out = execFileSync('ss', ['-ltnp'], {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+      if (!out) return [];
+
+      const pids = new Set<number>();
+      for (const line of out.split('\n')) {
+        if (!line.includes(`:${port}`)) continue;
+        const matches = line.matchAll(/pid=(\d+)/g);
+        for (const match of matches) {
+          const pid = parseInt(match[1], 10);
+          if (!isNaN(pid)) pids.add(pid);
+        }
+      }
+      return Array.from(pids);
+    } catch {
+      return [];
+    }
+  }
+
+  private pidsOnPortFromNetstat(port: number): number[] {
+    try {
+      const out = execFileSync('netstat', ['-lntp'], {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+      if (!out) return [];
+
+      const pids = new Set<number>();
+      for (const line of out.split('\n')) {
+        if (!line.includes(`:${port}`)) continue;
+        const m = line.match(/\s(\d+)\/[^\s]+\s*$/);
+        if (!m) continue;
+        const pid = parseInt(m[1], 10);
+        if (!isNaN(pid)) pids.add(pid);
+      }
+      return Array.from(pids);
+    } catch {
+      return [];
+    }
+  }
+
+  private parsePidLines(text: string): number[] {
+    return Array.from(
+      new Set(
+        text
+          .split('\n')
+          .map(s => parseInt(s.trim(), 10))
+          .filter(n => !isNaN(n)),
+      ),
+    );
   }
 
   private findProcessesByCwd(cwds: string[]): DetectedDevServer[] {
