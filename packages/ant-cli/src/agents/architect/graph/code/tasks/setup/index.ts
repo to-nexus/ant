@@ -6,18 +6,26 @@
  *
  * Hooks published:
  *   - scheduling.blocksUi / blocksTestgen / blocksDoc — setup work
- *     activates the UI / testgen / doc barriers for downstream tasks
- *     (T6b-ε; replaces `task.type === 'setup'` predicates in
- *     `parallel/TaskOrchestrator.ts`).
+ *     activates the UI / testgen / doc barriers for downstream tasks.
+ *   - scheduling.classify      — per-task scheduling role. Publishes
+ *     `isTokens=true` for priority 100–199 so setup tasks slip
+ *     through the foundation gate (`hasPreFeatureWork` blocks only
+ *     `!isFoundation ∧ !isTokens` — i.e., the feature band 300+).
+ *     Without this, monorepo package-level setup tasks deadlock
+ *     while design-system tasks sit queued (see
+ *     `hooks/scheduling.ts` for the regression rationale).
  *   - decompose.isExclusive      — setup is always exclusive
  *   - conversations.convKey      — per-task conversation scope
  *   - plan.extraTemplateVars     — injects `setupConstraints` into the
- *     generic plan base render (T6b-β; port of planGeneration.ts L204).
- *     Setup does not override the full `buildPrompt` because it still
- *     flows through the generic artifact-resolution / RAC pipeline.
+ *     generic plan base render.
  */
 
-import { blocksUi, blocksTestgen, blocksDoc } from './hooks/scheduling';
+import {
+  blocksUi,
+  blocksTestgen,
+  blocksDoc,
+  classify as schedulingClassify,
+} from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
@@ -35,7 +43,7 @@ export const hooks = composeBundle({
     execute: executeHook,
   },
   taskTypeSpecific: {
-    scheduling: { blocksUi, blocksTestgen, blocksDoc },
+    scheduling: { blocksUi, blocksTestgen, blocksDoc, classify: schedulingClassify },
     decompose: { isExclusive },
     conversations: { convKey },
   },

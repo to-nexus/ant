@@ -2,6 +2,7 @@ import { CodeTask } from "../../../../types/task";
 import type { TaskType, ResolvedArtifact } from '@ant/shared';
 import { getDesignDocByPackageFromPool } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { isErrorTask } from '../../tasks/error';
+import { hooksForTaskType } from '../../tasks/_shared/registry';
 
 /**
  * Post-validation: Check if LLM correctly classified error vs feature
@@ -81,8 +82,13 @@ export function validateTasks(
     }
   }
 
-  // Warn if a single shared foundation task has broad scope (likely spans multiple functional concerns)
-  const sharedTasks = tasks.filter(t => t.priority >= 200 && t.priority < 300);
+  // Warn if a single shared foundation task has broad scope (likely spans multiple functional concerns).
+  // Foundation identity is owned by each bundle's `classify` — the
+  // decompose phase never compares raw priority bands.
+  const sharedTasks = tasks.filter(t => {
+    const classify = hooksForTaskType(t.type)?.scheduling?.classify;
+    return !!classify?.({ priority: t.priority }).isFoundation;
+  });
   if (sharedTasks.length === 1 && sharedTasks[0].description.length > 1200) {
     console.warn(
       `\n⚠️  [Decompose Validation] Single shared foundation task with broad scope (${sharedTasks[0].description.length} chars)\n` +

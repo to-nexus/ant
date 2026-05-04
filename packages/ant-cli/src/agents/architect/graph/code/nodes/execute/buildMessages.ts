@@ -36,6 +36,8 @@ import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/Pr
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { activeExecuteHook } from "../../tasks/_shared/verify/activeHooks";
+import { hooksForTaskType } from "../../tasks/_shared/registry";
+import type { TaskType } from "@ant/shared";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
@@ -56,6 +58,23 @@ const DEFAULT_PLAN_FRAMING = {
 } as const;
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
+
+/**
+ * Dispatch a per-task classifier flag through the bundle's `classify`
+ * function. Mirrors `schedClassify` in `parallel/TaskOrchestrator.ts`.
+ * Used for the foundation-contract injection (`isFoundation`) and the
+ * final-verification template gate (`isFinal`) — R1 SSOT, the bundle
+ * owns "priority band X means scheduling role Y".
+ */
+function schedClassify(
+  task: { type?: string; priority?: number } | null | undefined,
+  flag: 'isFoundation' | 'isFinal',
+): boolean {
+  if (!task || !task.type || typeof task.priority !== 'number') return false;
+  const classify = hooksForTaskType(task.type as TaskType)?.scheduling?.classify;
+  if (!classify) return false;
+  return !!classify({ priority: task.priority })[flag];
+}
 
 /**
  * Observe `codebase/node_modules` against `codebase/package.json` so the
@@ -165,7 +184,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // apply phase). Phase code never inspects `_verifyEntered`.
   const execHook = activeExecuteHook(state);
 
-  if (!state.planText && !execHook && state.currentTask.priority !== 1000) {
+  if (!state.planText && !execHook && !schedClassify(state.currentTask, 'isFinal')) {
     console.warn(`⚠️  [Execute] planText is empty (task: ${state.currentTask.type}, priority: ${state.currentTask.priority})`);
   }
   
@@ -314,6 +333,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       } : null,
+      // R1 template dispatch — the final-verification guard in templates
+      // (previously `{{#unless (eq currentTask.priority 1000)}}`) now reads
+      // `currentTaskIsFinal` so the verification bundle's classify is the
+      // SSOT for "this task is the queue-terminal final verification".
+      currentTaskIsFinal: schedClassify(state.currentTask, 'isFinal'),
       directive: execHook?.sanitizeDirective
         ? execHook.sanitizeDirective(state.directive || '')
         : (state.directive || ''),
@@ -945,7 +969,9 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
 
   const completedTasks = state.completedTasksDetails || [];
-  const foundationTasks = completedTasks.filter(t => t.priority >= 200 && t.priority <= 299);
+  // Foundation identity is owned by each bundle's `classify` — phase layer
+  // never compares raw priority bands (see TaskSchedulingHook.classify).
+  const foundationTasks = completedTasks.filter(t => schedClassify(t, 'isFoundation'));
   if (foundationTasks.length === 0) return null;
 
   const foundationTaskNames = new Set(foundationTasks.map(t => t.name));

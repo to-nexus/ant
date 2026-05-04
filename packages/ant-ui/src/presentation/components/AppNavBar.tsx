@@ -193,7 +193,7 @@ export function AppNavBar({}: AppNavBarProps) {
                 alt={t('brand.logoAlt')} 
                 className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
               />
-              <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">1 Ant</h1>
+              <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">Ant</h1>
             </a>
             
             {/* Deployment Mode Selector (hidden: only cloud mode active for now) */}

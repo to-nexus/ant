@@ -16,7 +16,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { preDocBarrier } from '../../../src/agents/architect/graph/code/tasks/doc/hooks/scheduling';
+import {
+  preDocBarrier,
+  classify as schedClassify,
+} from '../../../src/agents/architect/graph/code/tasks/doc/hooks/scheduling';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/doc/hooks/conversations';
 import { hooks as docBundle } from '../../../src/agents/architect/graph/code/tasks/doc';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
@@ -80,12 +83,61 @@ describe('tasks/_shared/registry — doc entry', () => {
     expect(docBundle.scheduling?.blocksTestgen).toBeUndefined();
     expect(docBundle.scheduling?.blocksDoc).toBeUndefined();
     expect(docBundle.scheduling?.blocksIntegration).toBeUndefined();
+    // classify — priority-band classifier. Dual-role: design-job tasks
+    // all carry `type: 'doc'` and use priority bands (100–199 tokens,
+    // 200–299 assets) to drive the `hasPreAssetsWork` /
+    // `hasPreSpecWork` barriers. Code-job doc tasks at priority 800
+    // fall outside both bands and the classifier returns `false`
+    // cleanly.
+    expect(typeof docBundle.scheduling?.classify).toBe('function');
   });
 });
 
 describe('tasks/doc/hooks/scheduling', () => {
   it('preDocBarrier — true', () => {
     expect(preDocBarrier).toBe(true);
+  });
+
+  describe('classify — dual-role (design-job tokens/assets + code-job doc@800 inert)', () => {
+    it('priority 100–199 ⇒ isTokens (design-job tokens band)', () => {
+      expect(schedClassify(task('tokens-100', { priority: 100 }))).toEqual({
+        isTokens: true,
+        isFoundation: false,
+      });
+      expect(schedClassify(task('tokens-150', { priority: 150 }))).toEqual({
+        isTokens: true,
+        isFoundation: false,
+      });
+      expect(schedClassify(task('tokens-199', { priority: 199 }))).toEqual({
+        isTokens: true,
+        isFoundation: false,
+      });
+    });
+
+    it('priority 200–299 ⇒ isFoundation (design-job assets band)', () => {
+      expect(schedClassify(task('assets-200', { priority: 200 }))).toEqual({
+        isTokens: false,
+        isFoundation: true,
+      });
+      expect(schedClassify(task('assets-299', { priority: 299 }))).toEqual({
+        isTokens: false,
+        isFoundation: true,
+      });
+    });
+
+    it('code-job doc@800 ⇒ no classify flags set (inert)', () => {
+      expect(schedClassify(task('doc-800', { priority: 800 }))).toEqual({
+        isTokens: false,
+        isFoundation: false,
+      });
+    });
+
+    it('priority < 100 ⇒ no flags (design-job emits priority >= 100)', () => {
+      expect(schedClassify(task('low', { priority: 50 }))).toEqual({
+        isTokens: false,
+        isFoundation: false,
+      });
+    });
   });
 });
 

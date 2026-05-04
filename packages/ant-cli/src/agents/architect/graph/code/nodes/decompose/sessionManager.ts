@@ -3,6 +3,8 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import type { Session } from '../../../../../../core/types/session';
 import { isFeatureTask } from '../../tasks/feature';
+import { hooksForTaskType } from '../../tasks/_shared/registry';
+import type { TaskType } from '@ant/shared';
 
 /**
  * Check if session exists and should be restored
@@ -115,9 +117,13 @@ export function restoreFromSession(
   });
 
   // Count task types for progress display. R1 — no `task.type === '...'`
-  // comparisons; use task.type as a generic key and alias the
-  // FINAL_VERIFICATION priority into the verification bucket so historical
-  // decompositions that didn't retype still report accurately.
+  // comparisons; use task.type as a generic key and route final-
+  // verification tasks into the `verification` bucket via the
+  // bundle's classify hook. `responseParser.createTaskQueue` retypes
+  // any priority=FINAL_VERIFICATION task to `type: 'verification'` at
+  // decompose time (single upstream SSOT — see `responseParser.ts`
+  // resolvedType branch), so the classify lookup here always finds
+  // the verification bundle for final-priority tasks.
   const tasksByType: Record<string, number> = {
     setup: 0,
     feature: 0,
@@ -128,7 +134,9 @@ export function restoreFromSession(
   };
 
   const classifyTask = (task: { type: string; priority: number }) => {
-    const bucket = task.priority === 1000 ? 'verification' : task.type;
+    const classify = hooksForTaskType(task.type as TaskType)?.scheduling?.classify;
+    const isFinal = !!classify?.({ priority: task.priority }).isFinal;
+    const bucket = isFinal ? 'verification' : task.type;
     tasksByType[bucket] = (tasksByType[bucket] ?? 0) + 1;
   };
 

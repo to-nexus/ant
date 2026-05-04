@@ -72,7 +72,7 @@
 - Location: Fixed at top of screen
 - **Note**: GNB는 일반 Bar가 아닌 독립적인 네비게이션 바입니다
 - Responsibilities:
-  - App branding (1 Ant)
+  - App branding (Ant)
   - Theme toggle (light/dark mode)
   - Connection status
   - Agent/Task selection

@@ -216,13 +216,24 @@ following the schema below:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, `"verification"`, or `"explain"` |
+{{#if isPriorityFromSpec}}
+| `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
+{{else}}
 | `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+{{/if}}
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `uiSections` | When type is 'ui' or 'design-system' | Array of UI doc section IDs to inject (see specification for available sections) |
 | `selfVerifyOnDone` | Tier 2 only | `true` when the task should run install/typecheck/build/test gates as part of its lifecycle (Tier 2 Exploratory, single unit of work). The runtime transitions the task into a verify cycle automatically after the apply phase emits `<done>`. Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
 | `description` | Yes | Scope boundary + design doc section reference |
+
+{{#unless isPriorityFromSpec}}
+**Note**: `priority` is the ordering key (lower = earlier). Scheduling
+lanes — when each task type starts relative to others — are determined
+by `type`, not by the priority number. The bands above are ordering
+guidance; `type` is the SSOT for scheduling.
+{{/unless}}
 
 CRITICAL:
 - The body inside each `<task>...</task>` element MUST be a single valid JSON object (no trailing commas, proper quotes)
