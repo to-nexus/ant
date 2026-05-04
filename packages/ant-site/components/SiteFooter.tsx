@@ -20,8 +20,8 @@ export function SiteFooter() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <img src="/logo.png" alt="1 Ant" className="w-7 h-7" />
-              <span className="text-base font-display font-bold text-white">1 Ant</span>
+              <img src="/logo.png" alt="ANT" className="w-7 h-7" />
+              <span className="text-base font-display font-bold text-white">ANT</span>
             </div>
             <p className="text-sm text-gray-500 leading-relaxed whitespace-pre-line">
               {t('footer.tagline')}

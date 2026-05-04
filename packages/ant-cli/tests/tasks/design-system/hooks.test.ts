@@ -1,30 +1,30 @@
 /**
  * L2 — `tasks/design-system/hooks/*` adapter invariants.
  *
- * Design-system tasks in the code pipeline are ordered by **priority +
- * parallelGroup**, not by type-level scheduling flags. The bundle
- * therefore publishes NO `scheduling` slot at all — every consumer
- * barrier (`preUiBarrier / preTestgenBarrier / preDocBarrier /
- * preIntegrationBarrier`) and every producer barrier (`blocksUi /
- * blocksTestgen / blocksDoc / blocksIntegration`) is intentionally
- * absent because:
+ * Design-system tasks in the code pipeline are classified via the
+ * bundle's `scheduling.classify` hook (priority-band → role mapping).
+ * classify returns `isFoundation: true` + `expandedRagQuota: true` for
+ * priority 200–299 (tokens + wiring) and the empty object for any
+ * priority outside that band. The orchestrator's `schedClassify(t,
+ * 'isFoundation')` helper then activates `hasPreFeatureWork` — the
+ * cross-type barrier that gates priority ≥ 300 tasks (feature / ui /
+ * test-code / doc / integration).
  *
- *   - The "design-system blocks priority ≥ 300 tasks" semantic is
- *     already expressed by the priority-window predicate
- *     `isFoundationTask` (200–299) that drives `hasPreFeatureWork` in
- *     `parallel/TaskOrchestrator.ts` — a cross-type predicate owned by
- *     the orchestrator, not by per-task bundles.
+ * Invariants locked here:
+ *   - classify is published and returns { isFoundation, expandedRagQuota }
+ *     for in-band priorities.
+ *   - Static consumer / producer flags (`preUiBarrier` etc.,
+ *     `blocksUi` etc.) remain absent — design-system's scheduling role
+ *     is expressed SOLELY through classify, not through a second
+ *     type-level flag. Publishing a static flag alongside classify
+ *     would duplicate SSOT (the historical dual-SSOT drift guard).
  *   - Sibling ordering (tokens before wiring) is driven by the shared
  *     `parallelGroup: "design-system"` + the priority-ordered task queue.
- *   - The `hasPreAssetsWork` / `hasPreSpecWork` barriers that mention
- *     "tokens"/"assets"/"spec" in `TaskOrchestrator.ts` are inert for
- *     the code job (`graph.ts` L282 does not enable `barriers.assets` /
- *     `barriers.spec`) — they run in the design-job orchestrator only.
  *
  * This test pins those invariants so the bundle cannot silently acquire
- * a type-level barrier without an explicit orchestrator contract change.
- * Any `scheduling` flag added here without also updating this test is a
- * drift signal.
+ * a static type-level barrier without an explicit orchestrator contract
+ * change. Any new static scheduling flag without updating this test is
+ * a drift signal.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -53,19 +53,17 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes only conversations + plan.extraTemplateVars slots — all other slots undefined', () => {
+  it('bundle publishes conversations + plan.extraTemplateVars + scheduling.classify — all other slots undefined', () => {
     // Slot-level absence — mirrors the ui / doc / test-code precedents
     // so a future drive-by hook addition forces an explicit test update
     // (and forces the author to justify it in index.ts).
     //
-    // `plan.extraTemplateVars` is the workspace-dep-snapshot reader
-    // shared across setup / feature / ui / design-system / test-code:
-    // design-system tasks routinely add `tailwindcss` / `radix-ui` /
-    // `@emotion/*`, so they need read-only visibility into existing
-    // pins before the policy guard rejects a conflicting spec at write
-    // time. The bundle MUST NOT publish any other plan slot — buildPrompt,
-    // toolLoopLogTemplate, finalizeNudge, etc. all stay absent.
-    expect(dsBundle.scheduling).toBeUndefined();
+    // `plan.extraTemplateVars` is the workspace-dep-snapshot reader.
+    // `scheduling.classify` is the foundation-role SSOT (priority band
+    // → `isFoundation` + `expandedRagQuota`). Every OTHER scheduling
+    // member — static consumer / producer flags — MUST stay absent so
+    // classify remains the single source of truth.
+    expect(typeof dsBundle.scheduling?.classify).toBe('function');
     expect(dsBundle.plan?.buildPrompt).toBeUndefined();
     expect(dsBundle.plan?.toolLoopLogTemplate).toBeUndefined();
     expect(dsBundle.plan?.finalizeNudge).toBeUndefined();
@@ -80,22 +78,42 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(dsBundle.orchestrator).toBeUndefined();
   });
 
-  it('scheduling slot absence implies ALL barrier flags are undefined (consumer + producer)', () => {
-    // Redundant with the slot-level check above, but spelled out per
-    // individual flag so a future refactor that introduces `scheduling:
-    // {}` (empty object) still fails here instead of silently accepting
-    // any future flag addition. Each of these MUST remain undefined:
-    //
+  it('classify reports isFoundation + expandedRagQuota for priority 200–299 only', () => {
+    // In-band — foundation role activates hasPreFeatureWork.
+    expect(dsBundle.scheduling?.classify?.(task('t-200', { priority: 200 }))).toEqual({
+      isFoundation: true,
+      expandedRagQuota: true,
+    });
+    expect(dsBundle.scheduling?.classify?.(task('t-250', { priority: 250 }))).toEqual({
+      isFoundation: true,
+      expandedRagQuota: true,
+    });
+    expect(dsBundle.scheduling?.classify?.(task('t-299', { priority: 299 }))).toEqual({
+      isFoundation: true,
+      expandedRagQuota: true,
+    });
+
+    // Out-of-band — no flags published.
+    expect(dsBundle.scheduling?.classify?.(task('t-199', { priority: 199 }))).toEqual({
+      isFoundation: false,
+      expandedRagQuota: false,
+    });
+    expect(dsBundle.scheduling?.classify?.(task('t-300', { priority: 300 }))).toEqual({
+      isFoundation: false,
+      expandedRagQuota: false,
+    });
+  });
+
+  it('static consumer + producer flags stay absent — classify is the SSOT', () => {
     // Consumer flags — design-system is below FEATURE_CRITICAL (300),
     // so it never waits on a type-level barrier.
     expect(dsBundle.scheduling?.preUiBarrier).toBeUndefined();
     expect(dsBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(dsBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(dsBundle.scheduling?.preIntegrationBarrier).toBeUndefined();
-    // Producer flags — the "design-system blocks feature+" semantic is
-    // owned by the priority-window predicate `isFoundationTask`
-    // (200–299) that drives `hasPreFeatureWork` in TaskOrchestrator.
-    // Publishing any of these here would duplicate that SSOT.
+    // Producer flags — the "design-system blocks priority ≥ 300 tasks"
+    // semantic is owned by classify.isFoundation. Publishing a
+    // type-level `blocksXxx` flag here would duplicate that SSOT.
     expect(dsBundle.scheduling?.blocksUi).toBeUndefined();
     expect(dsBundle.scheduling?.blocksTestgen).toBeUndefined();
     expect(dsBundle.scheduling?.blocksDoc).toBeUndefined();

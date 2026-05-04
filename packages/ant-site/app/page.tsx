@@ -22,7 +22,7 @@ export default function HomePage() {
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="animate-fade-in-up">
             <div className="inline-flex items-center gap-4 mb-10">
-              <img src="/logo.png" alt="1 Ant" className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-[0_0_24px_rgba(16,185,129,0.15)]" />
+              <img src="/logo.png" alt="ANT" className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-[0_0_24px_rgba(16,185,129,0.15)]" />
               <span className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
                 {t('home.brandPrefix')}<span className="text-orange-400">{t('home.brandHighlight')}</span>{t('home.brandSuffix')}
               </span>

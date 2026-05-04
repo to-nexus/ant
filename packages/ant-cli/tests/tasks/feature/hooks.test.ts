@@ -37,6 +37,7 @@ import {
   blocksTestgen,
   blocksDoc,
   blocksIntegration,
+  classify as schedClassify,
 } from '../../../src/agents/architect/graph/code/tasks/feature/hooks/scheduling';
 import * as decompHook from '../../../src/agents/architect/graph/code/tasks/feature/hooks/decompose';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/feature/hooks/conversations';
@@ -110,6 +111,9 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(featureBundle.scheduling?.blocksTestgen).toBe(true);
     expect(featureBundle.scheduling?.blocksDoc).toBe(true);
     expect(featureBundle.scheduling?.blocksIntegration).toBe(true);
+    // classify — per-task priority-band role, wired through
+    // `TaskOrchestrator.schedClassify` (R1 SSOT).
+    expect(typeof featureBundle.scheduling?.classify).toBe('function');
   });
 });
 
@@ -123,6 +127,68 @@ describe('tasks/feature/hooks/scheduling', () => {
     expect(blocksTestgen).toBe(true);
     expect(blocksDoc).toBe(true);
     expect(blocksIntegration).toBe(true);
+  });
+
+  describe('classify — per-task priority-band role', () => {
+    it('priority 200–299 ⇒ isFoundation + expandedRagQuota', () => {
+      expect(schedClassify(task('sf-200', { priority: 200 }))).toEqual({
+        isFoundation: true,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        expandedRagQuota: true,
+      });
+      expect(schedClassify(task('sf-299', { priority: 299 }))).toEqual({
+        isFoundation: true,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        expandedRagQuota: true,
+      });
+    });
+
+    it('priority 300–599 ⇒ producesIntegrationGate (normal feature)', () => {
+      expect(schedClassify(task('feat-300', { priority: 300 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: true,
+        consumesIntegrationGate: false,
+        expandedRagQuota: false,
+      });
+      expect(schedClassify(task('feat-599', { priority: 599 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: true,
+        consumesIntegrationGate: false,
+        expandedRagQuota: false,
+      });
+    });
+
+    it('priority 600–649 ⇒ consumesIntegrationGate + expandedRagQuota', () => {
+      expect(schedClassify(task('int-600', { priority: 600 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: true,
+        expandedRagQuota: true,
+      });
+      expect(schedClassify(task('int-649', { priority: 649 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: true,
+        expandedRagQuota: true,
+      });
+    });
+
+    it('priority outside [200, 649] ⇒ no flags published', () => {
+      expect(schedClassify(task('low', { priority: 50 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        expandedRagQuota: false,
+      });
+      expect(schedClassify(task('post', { priority: 700 }))).toEqual({
+        isFoundation: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        expandedRagQuota: false,
+      });
+    });
   });
 });
 

@@ -11,6 +11,7 @@ import type { TaskHooks } from '../_shared/types';
 
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
+import { classify as schedulingClassify } from './hooks/scheduling';
 
 import { buildPrompt as planBuildPrompt } from '../_shared/verify/prompt/buildPlanPrompt';
 import { executeHook } from '../_shared/verify/hooks/executeHook';
@@ -40,6 +41,7 @@ export const hooks: TaskHooks = {
   router: { routeAfterDone },
   decompose: { isExclusive },
   conversations: { convKey },
+  scheduling: { classify: schedulingClassify },
 };
 
 export { isVerificationTask } from './model/is';

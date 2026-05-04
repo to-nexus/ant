@@ -1,8 +1,8 @@
 {
   "brand": {
-    "title": "1 Ant",
-    "logoAlt": "1 Ant Logo",
-    "tabTitle": "1 Ant - Worker Ant"
+    "title": "Ant",
+    "logoAlt": "Ant Logo",
+    "tabTitle": "Ant - Worker Ant"
   },
   "deploymentMode": {
     "local": "Local",

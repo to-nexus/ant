@@ -18,7 +18,7 @@
 
 import path from "path";
 import { GitPort, FileSystemPort } from "../../../../../../../core/ports";
-import { ArchitectGraphState, TASK_PRIORITIES } from "../../../state";
+import { ArchitectGraphState } from "../../../state";
 import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
 import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNormalizer";
 import { loadErrorFiles, LoadedFile } from "./errorFiles";
@@ -237,13 +237,15 @@ export async function combineCodeContext(
   }
 
   // Determine if this task needs an extended file quota (integration tasks
-  // and foundation tasks both need broader codebase visibility).
-  const isIntegrationOrFoundation = (state.currentTask?.priority != null && (
-      (state.currentTask.priority >= TASK_PRIORITIES.INTEGRATION_MIN
-        && state.currentTask.priority <= TASK_PRIORITIES.INTEGRATION_MAX)
-      || (state.currentTask.priority >= TASK_PRIORITIES.SHARED_FOUNDATION
-        && state.currentTask.priority <= TASK_PRIORITIES.FOUNDATION_MAX)
-    ));
+  // and foundation tasks both need broader codebase visibility). The
+  // "which priority bands qualify" decision is owned by each bundle's
+  // `classify` — the phase layer never compares raw priority windows.
+  const isIntegrationOrFoundation = (() => {
+    const t = state.currentTask;
+    if (!t) return false;
+    const classify = hooksForTaskType(t.type)?.scheduling?.classify;
+    return !!classify?.({ priority: t.priority }).expandedRagQuota;
+  })();
 
   const taskQuota = state.currentTask
     ? hooksForTaskType(state.currentTask.type)?.plan?.ragQuota

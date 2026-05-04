@@ -6,13 +6,13 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: '1 Ant - 일개미',
-    template: '%s — 1 Ant',
+    default: 'ANT',
+    template: '%s — ANT',
   },
   description: '아이디어를 스펙으로, 스펙을 제품으로. AI 에이전트가 PRD 작성부터 설계, 코드 생성, 미리보기까지 전체 개발 사이클을 수행합니다.',
   openGraph: {
     type: 'website',
-    siteName: '1 Ant',
+    siteName: 'ANT',
     locale: 'ko_KR',
   },
   icons: { icon: '/favicon.png' },

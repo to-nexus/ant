@@ -1,8 +1,8 @@
 {
   "brand": {
-    "title": "1 Ant",
-    "logoAlt": "1 Ant 로고",
-    "tabTitle": "1 Ant - 일개미"
+    "title": "Ant",
+    "logoAlt": "Ant 로고",
+    "tabTitle": "Ant"
   },
   "deploymentMode": {
     "local": "로컬",
