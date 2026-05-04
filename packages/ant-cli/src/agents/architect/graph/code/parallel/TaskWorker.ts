@@ -165,8 +165,16 @@ export class TaskWorker<T extends BaseTask> {
           && result?.violations?.length > 0;
 
         if (batchSplit) {
-          // Task was re-enqueued via batch split — release worker slot, don't mark as completed
-          await this.orchestrator.reportBatchSplit(this.workerId, task);
+          // Task was re-enqueued via batch split — release worker slot, don't mark as completed.
+          // `_supersededDetails` carries any Path B parents that need to surface in the
+          // orchestrator's `completedTasks` snapshot (kanban done column tooltip rows).
+          // Worker-local `state.completedTasksDetails` is read-only (orchestrator snapshot
+          // at task-assignment time), so this dedicated channel is the only writer that
+          // crosses the worker→orchestrator boundary.
+          const supersededDetails = Array.isArray(result?._supersededDetails)
+            ? (result._supersededDetails as BaseTask[])
+            : undefined;
+          await this.orchestrator.reportBatchSplit(this.workerId, task, supersededDetails);
         } else if (result?._taskCompleted === false && !hasUnresolvedViolations) {
           // Task was stopped (e.g. user stop) — return to queue, don't mark as completed.
           // handleInterruption's checkpoint will include it as interrupted.

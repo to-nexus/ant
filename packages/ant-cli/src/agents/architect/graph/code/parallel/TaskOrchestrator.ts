@@ -370,13 +370,38 @@ export class TaskOrchestrator<T extends BaseTask> {
   /**
    * Task was batch-split and re-enqueued — release worker slot WITHOUT marking task as completed.
    * The task will run again from the queue after its generated sub-tasks complete.
+   *
+   * `supersededDetails` carries Path B (drop-and-replace) parents that the
+   * worker subgraph captured via `_supersededDetails`. They are appended to
+   * `completedTasks` here (NOT marked `completed:true` — `supersededBy` is
+   * the lineage marker) so kanban tooltip rows + per-task accounting
+   * (`task.timing.elapsedTime`, `task.tokenUsage`) survive the worker
+   * boundary. Without this merge, Path B parents disappear silently in
+   * parallel mode (worker-local `state.completedTasksDetails` is read-only).
    */
-  async reportBatchSplit(workerId: number, task: T): Promise<void> {
+  async reportBatchSplit(
+    workerId: number,
+    task: T,
+    supersededDetails?: BaseTask[],
+  ): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
-      // Do NOT add to completedTasks — task is back in todo (re-enqueued by processDiagnosticBatchSplit)
+      // Do NOT add the requeued task itself to completedTasks — it is back in
+      // todo (Path A) or replaced by sub-tasks + FV (Path B). However, Path B
+      // parent snapshots (carried in `supersededDetails`) DO go in so they
+      // surface as their own kanban-done rows with timing/token attribution.
+      if (supersededDetails && supersededDetails.length > 0) {
+        for (const superseded of supersededDetails) {
+          // Defence-in-depth: skip duplicates (e.g. retries that re-emit the
+          // same parent id — shouldn't happen because the channel is drained
+          // per cycle, but guards against any future writer that double-emits).
+          if (this.completedTasks.some(t => t.id === superseded.id)) continue;
+          this.completedTasks.push(superseded as T);
+          console.log(`[Orchestrator] Task "${superseded.name}" superseded by batch-split (lineage=${(superseded as any).supersededBy?.join(',') ?? 'unknown'})`);
+        }
+      }
       this.broadcastKanban();
-      console.log(`[Orchestrator] Task "${task.name}" batch-split by worker ${workerId}. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}`);
+      console.log(`[Orchestrator] Task "${task.name}" batch-split by worker ${workerId}. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}, superseded=${supersededDetails?.length ?? 0}`);
 
       // Save checkpoint after batch split (ensures re-enqueued state persists)
       try {
@@ -760,11 +785,31 @@ export class TaskOrchestrator<T extends BaseTask> {
     delete (task as any)._failed;
     delete (task as any)._failureReason;
 
-    // Always reset timing — stale startedAt from failed/checkpoint-restored tasks
-    // would cause cumulative elapsed time across sequential tasks. Routed
-    // through `TaskTimingHelper.restartTask` so this Orchestrator is no
-    // longer an independent writer of the timing field.
-    task = TaskTimingHelper.restartTask(task) as T;
+    // Timing dispatch — two distinct sources of "stale timing" need
+    // opposite treatment:
+    //
+    //   1. batch-split Path A re-queue carries a fresh `pausedAt` set by
+    //      `TaskTimingHelper.pauseTask` so the gap between split and
+    //      re-pick counts as paused (not active). `startTask` accumulates
+    //      that gap into `totalPausedDuration` and clears `pausedAt`,
+    //      preserving the parent's pre-split runtime in
+    //      `task.timing.elapsedTime` at the eventual `completeTask`.
+    //
+    //   2. failed-task / checkpoint-restored tasks carry a stale
+    //      `startedAt` from a prior assignment (no `pausedAt`). Without
+    //      a hard reset, sequential reassignments of the same task
+    //      instance would accumulate elapsed time across attempts.
+    //      `restartTask` is the SSOT for that reset.
+    //
+    // The `pausedAt` discriminator is reliable: only `pauseTask` writes
+    // it on a queued (non-completed) task, and `startTask` clears it
+    // immediately on resume. A task with `pausedAt` set is by definition
+    // a paused-and-requeued task whose timing carry MUST be preserved.
+    if ((task as any).timing?.pausedAt) {
+      task = TaskTimingHelper.startTask(task) as T;
+    } else {
+      task = TaskTimingHelper.restartTask(task) as T;
+    }
 
     this.runningTasks.set(workerId, task);
     // Broadcast kanban immediately when task starts (not just on completion)
@@ -967,6 +1012,22 @@ export class TaskOrchestrator<T extends BaseTask> {
 
   getCompletedTasks(): T[] {
     return [...this.completedTasks];
+  }
+
+  /**
+   * IDs of *real* completions only — Path B superseded parents (carrying
+   * `supersededBy: string[]`) are filtered out so the canonical
+   * `state.completedTasks` (string[]) array used by resume / routing /
+   * progress logs stays semantically aligned with the main graph
+   * (`checkTaskStatus` only pushes a parent's id on the success path,
+   * never on batchSplit Path B). Full task objects — including
+   * superseded — remain available via `getCompletedTasks()` for
+   * `completedTasksDetails` / kanban tooltip rendering.
+   */
+  getRealCompletedTaskIds(): string[] {
+    return this.completedTasks
+      .filter(t => !(t as any).supersededBy)
+      .map(t => t.id);
   }
 
   isDraining(): boolean {

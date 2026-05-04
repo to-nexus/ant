@@ -64,6 +64,9 @@ export function MainContentArea({
     activeEditorTabId,
     editorTabs,
   });
+  const shouldRenderStreamingPreView =
+    activeEditorTab?.status === 'streaming' &&
+    (activeEditorTab.source === 'design' || activeEditorTab.source === 'plan');
 
   return (
     <MainPanel headerBar={<MainPanelTabsBar />}>
@@ -113,7 +116,7 @@ export function MainContentArea({
         <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22] flex flex-col">
           <div className="flex-1 h-full overflow-hidden">
             {activeEditorTab ? (
-              activeEditorTab.kind === 'virtual' ? (
+              activeEditorTab.kind === 'virtual' || shouldRenderStreamingPreView ? (
                 <VirtualDocumentViewer tab={activeEditorTab} />
               ) : activeEditorTab.path && selectedFile === activeEditorTab.path ? (
                 <FileEditorPanel onClose={() => useStore.getState().closeMainPanelTab('fileEdit')} />

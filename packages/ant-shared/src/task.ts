@@ -162,6 +162,22 @@ export interface BaseTask {
    * Kept BE-internal (routing + prompt dispatch only); not rendered in Kanban.
    */
   uiSource?: UiSource;
+
+  /**
+   * Set when this task was finalised by `batchSplit` Path B (drop-and-replace) —
+   * the parent task's lifecycle ends here even though it never produced its
+   * own files. The array carries the spawned sub-task IDs so the UI / debug
+   * surface can trace lineage. Truthy check distinguishes superseded entries
+   * from regular completions; `completed` stays false so superseded items
+   * never inflate the "X / Y completed" counter while still rendering as a
+   * separate row in `completedTasksDetails`.
+   *
+   * Mutually exclusive with `completed=true` semantically — a superseded
+   * task carries its own `timing.elapsedTime` + `tokenUsage` (captured at
+   * the split moment) so per-task accounting in the kanban tooltip stays
+   * accurate.
+   */
+  supersededBy?: string[];
 }
 
 // ============================================

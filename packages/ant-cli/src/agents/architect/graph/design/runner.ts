@@ -8,6 +8,7 @@ import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
 } from "../../../common/graph/runnerHelpers";
+import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { saveInterruptionCheckpoint } from "./session/checkpoint";
 
 /**
@@ -140,7 +141,13 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.jobId = session.state.jobId;
         }
         if (session.state.jobTiming) {
-          initial.jobTiming = session.state.jobTiming;
+          // Settle any persisted `pausedAt` into `totalPausedDuration` so
+          // resume cycles do not double-count the idle window as runtime.
+          const { jobTiming: resumed } = JobTimingManager.resumeJob(
+            initial.jobId ?? session.state.jobId ?? '',
+            session.state.jobTiming,
+          );
+          initial.jobTiming = resumed ?? session.state.jobTiming;
         }
         
         if (session.state.userLanguage) {

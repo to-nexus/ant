@@ -6,7 +6,7 @@ import { ProjectContext } from "../../types";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify, BaseTask } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
@@ -416,6 +416,18 @@ export interface ArchitectGraphState extends TriageableState {
   _batchSplitRequeued?: boolean;
 
   /**
+   * Tasks finalised by `batchSplit` Path B (drop-and-replace) inside the
+   * current node's execution. Carries each parent task with its `timing`
+   * + `tokenUsage` snapshot and `supersededBy` lineage already populated.
+   * `checkTaskStatus` (main + worker) drains this channel into the long-
+   * lived `completedTasksDetails` (or, in worker context, forwards via
+   * `_supersededDetails` → `TaskWorker` → `orchestrator.reportBatchSplit`).
+   * Always reset to undefined after consumption so subsequent batch-split
+   * cycles do not double-emit the same parent.
+   */
+  _supersededByBatchSplit?: BaseTask[];
+
+  /**
    * Phase mode signal — `true` when the active task has entered its
    * verify phase. Drives apply-vs-verify hook dispatch in
    * `composeBundle` and the task-type-blind predicate generalisations
@@ -610,9 +622,9 @@ export class TaskTimingHelper {
   /**
    * Start timing for a task
    */
-  static startTask(task: CodeTask): CodeTask {
+  static startTask<T extends { timing?: CodeTask['timing'] }>(task: T): T {
     const now = new Date().toISOString();
-    
+
     if (!task.timing) {
       // First time starting
       return {
