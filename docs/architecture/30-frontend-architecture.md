@@ -2,7 +2,7 @@
 
 ## 개요
 
-ant-ui는 React 19 + Vite 기반 SPA이다. Clean Architecture 레이어 구조를 따르며, Zustand로 상태를 관리하고, SSEManager를 통해 백엔드와 실시간 통신한다. 브랜드명은 **1 Ant**.
+ant-ui는 React 19 + Vite 기반 SPA이다. Clean Architecture 레이어 구조를 따르며, Zustand로 상태를 관리하고, SSEManager를 통해 백엔드와 실시간 통신한다. 브랜드명은 **Ant**.
 
 ## 레이어 구조
 

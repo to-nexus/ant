@@ -129,15 +129,8 @@ export class ProcessSpawner {
    * Check if a port is in use
    */
   async isPortInUse(port: number): Promise<boolean> {
-    try {
-      const output = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
-        encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
-
-      return output.length > 0;
-    } catch {
-      return false;
-    }
+    const found = await this.dev.detect({ cwds: [], ports: [port] });
+    return found.some(f => f.source === 'port' && f.port === port);
   }
 
   /**
