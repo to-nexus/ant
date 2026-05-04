@@ -37,7 +37,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| `@ant/shared/action-config-matrix.ts` | (intent, basis) → ConfigSlots 매트릭스. getConfigSlots, getAvailableBases, formatExpectedFile |
+| `@ant/shared/action-config-matrix.ts` | (intent, basis) → ConfigSlots 매트릭스. `getConfigSlots`, `getAvailableBases`, `formatOutputSpec` (legacy alias `formatExpectedFile` deprecated) |
 | `@ant/shared/actions.ts` | ActionDefinition (Intent Group), INTENT_DEFINITIONS, deriveFromIntent, ActionMetadata, Basis 타입 |
 | `useActionFooterPolicy.ts` | 채팅으로시작/BUILD 버튼 정책. 매트릭스 기반 refs/target/context 검증 |
 | `ActionConfigView.tsx` | Config 화면. 매트릭스 → SlotEntryList (refs/context) + TargetDisplay (target) |
@@ -48,37 +48,63 @@
 
 ```typescript
 interface ConfigSlots {
-  refs: SlotDef[];           // 주요 참조 (default ON)
-  context: SlotDef[];        // 보조 컨텍스트 (default OFF)
-  target: TargetDef;         // 산출물
+  refs: SlotDef[];           // 주요 참조 (required=true 가 기본 ON)
+  context: SlotDef[];        // 보조 컨텍스트 (required는 항상 false)
+  target: TargetDef;         // 산출물 (kind 별 union)
+  basis?: BasisSlotConfig;   // basis preset 셀렉터 가시성
+  chatRequiresRefs?: boolean;
+  buildRequiresRefs?: boolean;
   buildRequiresContext?: boolean;  // BUILD 시 context 필수 여부
+  buildDisabled?: boolean;         // BUILD 항상 비활성 (chat-only intent)
+  refsSingleSelect?: boolean;      // 단일 ref 선택 강제 (rev-plan 등)
 }
 
 interface SlotDef {
-  path: string;              // 디렉터리 또는 파일 경로
-  type: 'dir' | 'file';
-  defaultSelected: boolean;
-  locked?: boolean;          // 해제 불가 (revise refs)
-  emptyHint?: {...};         // 빈 슬롯 안내
-  excludeSelectedRefs?: boolean;  // ref/context 상호 배제
+  path: string;
+  label: { en: string; ko: string };
+  type: 'dir' | 'file' | 'ui-source';
+  required: boolean;          // (구 defaultSelected) — refs default true, context 항상 false
+  locked?: boolean;
+  emptyHint?: { en: string; ko: string };
+  excludeSelectedRefs?: boolean;
+  createIntent?: string;      // 빈 슬롯의 "만들기" 버튼이 이동할 intent
+  humanLabel?: { en: string; ko: string };
+  codebase?: boolean;         // feature-relative 가 아닌 프로젝트 codebase 슬롯
+  auto?: boolean;             // 동적 주입된 readonly 슬롯 (Codebase Channel SSOT)
+  excludeFiles?: string[];
+  uiSources?: UiSourceSubgroup[];   // type='ui-source' 일 때만
+  applicableDomains?: Domain[];     // D28 — 도메인-제한 슬롯
 }
 
-interface TargetDef {
-  dir?: string;
-  expectedFiles?: ExpectedFile[];  // 예상 파일명 패턴
-  codebase?: boolean;
-  mirrorRefs?: boolean;      // target = selectedRefs (revise)
+// 산출물은 union (구 interface 단일 형 → kind 별 분기)
+type TargetDef =
+  | { kind: 'generate'; dir: string; outputs: OutputSpec[] }   // (구 dir + expectedFiles)
+  | { kind: 'revise' }                                          // (구 mirrorRefs:true)
+  | { kind: 'codebase'; outputs?: OutputSpec[] }                // (구 codebase:true)
+  | { kind: 'chat-only'; hint: { en: string; ko: string } };
+
+interface OutputSpec {        // (구 ExpectedFile, deprecated alias 유지)
+  prefix: string;
+  ext: string;
+  label: { en: string; ko: string };
+  isPattern: boolean;
+  warnIfExists?: boolean;
 }
 ```
+
+> 마이그레이션 메모: `defaultSelected` → `required`, `expectedFiles` → `outputs`,
+> `mirrorRefs:true` → `target.kind:'revise'`, `codebase:true` → `target.kind:'codebase'`,
+> `dir`+`expectedFiles` → `target.kind:'generate'`. `formatExpectedFile`/`ExpectedFile` 은
+> deprecated alias로 남아있으나 신규 코드는 `formatOutputSpec`/`OutputSpec` 사용.
 
 ### 버튼 정책 (useActionFooterPolicy)
 
 - workspace + intent + basis 필수
-- explicit 활성이면 둘 다 비활성
-- directive basis면 BUILD 비활성 (채팅만 가능)
-- refs 필수인데 선택 안 됨 → 둘 다 비활성
-- mirrorRefs인데 target 없음 → 둘 다 비활성
-- buildRequiresContext인데 context 선택 없음 → BUILD만 비활성
+- `buildDisabled:true` (chat-only intent) → BUILD 비활성
+- `buildRequiresRefs` 기본 true: refs 미선택 → BUILD 비활성 (false 로 끄면 directive-capable)
+- `chatRequiresRefs:true` → 채팅도 refs 필요 (기본은 build gate 와 동일)
+- `target.kind:'revise'` 인데 ref 미선택 → BUILD 비활성 (revise 는 ref 자체가 target)
+- `buildRequiresContext`:true 인데 context 미선택 → BUILD 비활성
 
 ### 파이프라인 흐름
 

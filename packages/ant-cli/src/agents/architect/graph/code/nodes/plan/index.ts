@@ -37,9 +37,20 @@ import {
   maybePrePlannedFastPath,
   maybeSetupFastPath,
 } from './shortcut';
-import { MAX_BATCH_SPLIT_CYCLES } from '../../tasks/_shared/batchSplit';
+import {
+  MAX_BATCH_SPLIT_CYCLES,
+  BatchSplitSchemaViolation,
+  buildBatchSplitSchemaViolationFraming,
+} from '../../tasks/_shared/batchSplit';
 import { runPlanRAG } from './rag';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
+
+/**
+ * Inline retry budget for `BatchSplitSchemaViolation` (see
+ * `tasks/_shared/batchSplit/schemaViolation.ts`). Mirrors decompose's
+ * `MAX_ATTEMPTS = 3` SSOT in `nodes/decompose/index.ts:548`.
+ */
+const PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS = 3;
 
 // Back-compat re-exports.
 export type { PlanEntryContext } from './entry';
@@ -203,33 +214,93 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // STEP 0.8 ~ STEP 2.5 — RAG.
   const rag = await runPlanRAG(state, { nextTask, isRetry, skipKeywordAndRAG });
 
-  // STEP 3 — plan LLM.
-  const llmOutcome = await runMainPlanLLM(state, entry, rag, forceNoTools);
-  if ('_activePhase' in llmOutcome) return mergeDelta(llmOutcome, entryDelta) as ArchitectGraphState;
-  const planTextRaw = llmOutcome.planText;
+  // STEP 3 ~ STEP 4 — plan LLM call + finalize, wrapped in an inline
+  // retry loop for `BatchSplitSchemaViolation`. Mirrors
+  // `nodes/decompose/index.ts:548-826` SSOT — when the LLM emits an
+  // `<plan>` body whose entries are missing the LLM-authored semantic
+  // fields the framework uses verbatim as child task names/descriptions,
+  // we re-issue the call with violation framing rather than fabricating
+  // names. The framing is carried via `state._batchSplitViolationFraming`
+  // and read by `buildPlanPrompt`.
+  let attempt = 0;
+  // Carries the latest LLM-emitted planText across attempts so the
+  // graceful-skip branch (retry exhausted) can hand the parent its own
+  // most recent plan to execute. Without this, the fallback would feed
+  // an empty preSplitPlanText to `finalizePlanOutcome` and the parent
+  // would lose its own work.
+  let lastPlanTextRaw = '';
+  while (true) {
+    attempt++;
+    try {
+      const llmOutcome = await runMainPlanLLM(state, entry, rag, forceNoTools);
+      if ('_activePhase' in llmOutcome) {
+        // Tool-loop entry — clear framing so it doesn't leak into the
+        // tool-loop's prompt. (toolLoop.ts has its own graceful skip on
+        // violation; retry of a tool-loop is too expensive.)
+        state._batchSplitViolationFraming = undefined;
+        return mergeDelta(llmOutcome, entryDelta) as ArchitectGraphState;
+      }
+      const planTextRaw = llmOutcome.planText;
+      lastPlanTextRaw = planTextRaw;
 
-  if (state.violations && state.violations.length > 0) {
-    console.log(`📋 [Plan] Passing ${state.violations.length} violation(s) to CodeGen for prompt injection`);
+      if (state.violations && state.violations.length > 0) {
+        console.log(`📋 [Plan] Passing ${state.violations.length} violation(s) to CodeGen for prompt injection`);
+      }
+
+      const planNeedsText = (hooksForTaskType(nextTask.type)?.plan?.requiresPlanText ?? true);
+      const stepFourOrigin: 'verification-short-circuit' | undefined =
+        planTextRaw === '' && !planNeedsText ? 'verification-short-circuit' : undefined;
+
+      // STEP 3.5 ~ STEP 4 — single SSOT for batchSplit + emptyImpl shortcut +
+      // tracePlanFinalize + state shape. Throws `BatchSplitSchemaViolation`
+      // when the LLM-authored semantic fields are missing.
+      const updatedState = finalizePlanOutcome(state, nextTask, {
+        preSplitPlanText: planTextRaw,
+        callSite: 'plan-index',
+        lessons: rag.lessons,
+        planEmptyOrigin: stepFourOrigin,
+      });
+
+      // Success — clear framing so it doesn't leak into a future plan call.
+      state._batchSplitViolationFraming = undefined;
+      await workflowExit(state);
+      return mergeDelta(updatedState, entryDelta) as ArchitectGraphState;
+    } catch (e) {
+      if (!(e instanceof BatchSplitSchemaViolation)) throw e;
+
+      if (attempt >= PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS) {
+        // Retry exhausted — graceful fallback. The most recent attempt's
+        // planText still gets executed (parent runs its own plan as a
+        // single task); only the fan-out is bypassed. The system MUST
+        // NOT fabricate placeholder names. Operators should treat any
+        // hit on this branch as a regression signal for prompt drift.
+        console.error(
+          `❌ [Plan] BatchSplitSchemaViolation exhausted ${PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS} attempts: ` +
+          `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — ` +
+          `proceeding without fan-out (parent will execute its own plan).`,
+        );
+        // Clear framing — this attempt's framing has fired its budget.
+        state._batchSplitViolationFraming = undefined;
+        // Hand the parent its most recent planText so it can execute its
+        // own plan (single task, no fan-out). The schema violation only
+        // blocks fan-out — the body of the plan (modify/create/delete
+        // entries) is still actionable for a single-task execution.
+        const updatedState = finalizePlanOutcome(state, nextTask, {
+          preSplitPlanText: lastPlanTextRaw,
+          callSite: 'plan-index',
+          lessons: rag.lessons,
+          planEmptyOrigin: undefined,
+          skipBatchSplit: true,
+        });
+        await workflowExit(state);
+        return mergeDelta(updatedState, entryDelta) as ArchitectGraphState;
+      }
+
+      console.warn(
+        `⚠️  [Plan] BatchSplitSchemaViolation attempt ${attempt}/${PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS}: ` +
+        `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — retrying with framing`,
+      );
+      state._batchSplitViolationFraming = buildBatchSplitSchemaViolationFraming(e);
+    }
   }
-
-  // Empty planText reaching here came from the `!requiresPlanText`
-  // branch in `runMainPlanLLM`; other empty-plan paths classify origin
-  // at their own finalize call site.
-  const planNeedsText = (hooksForTaskType(nextTask.type)?.plan?.requiresPlanText ?? true);
-  const stepFourOrigin: 'verification-short-circuit' | undefined =
-    planTextRaw === '' && !planNeedsText ? 'verification-short-circuit' : undefined;
-
-  // STEP 3.5 ~ STEP 4 — single SSOT for batchSplit + emptyImpl shortcut +
-  // tracePlanFinalize + state shape. The two former call sites (this one
-  // and `runPlanToolLoopPhase`) converge on `finalizePlanOutcome`; drift
-  // between them is no longer possible.
-  const updatedState = finalizePlanOutcome(state, nextTask, {
-    preSplitPlanText: planTextRaw,
-    callSite: 'plan-index',
-    lessons: rag.lessons,
-    planEmptyOrigin: stepFourOrigin,
-  });
-
-  await workflowExit(state);
-  return mergeDelta(updatedState, entryDelta) as ArchitectGraphState;
 }

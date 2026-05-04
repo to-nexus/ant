@@ -186,7 +186,14 @@ export async function buildPlanPrompt(
   });
 
   const composed = basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
-  return { prompt: composed, vars: typeVars };
+  // Plan-node retry loop carries `BatchSplitSchemaViolation` framing on
+  // `state._batchSplitViolationFraming` between attempts (mirrors decompose's
+  // `prompts.user += buildExecutionTierViolationFraming(e)` pattern). The
+  // framing names the violating entry kind/index/field so the next attempt
+  // can correct the schema deviation. See state.ts for lifecycle.
+  const violationFraming = state._batchSplitViolationFraming;
+  const composedWithFraming = violationFraming ? `${composed}\n\n${violationFraming}` : composed;
+  return { prompt: composedWithFraming, vars: typeVars };
 }
 
 /**

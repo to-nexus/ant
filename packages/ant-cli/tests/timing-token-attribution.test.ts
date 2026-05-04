@@ -121,8 +121,8 @@ const BATCHED_PLAN = JSON.stringify({
   diagnostics: { totalErrors: 2 },
   implementation: { modify: [] },
   batches: [
-    { name: 'fix a', modify: ['a.ts'] },
-    { name: 'fix b', modify: ['b.ts'] },
+    { name: 'fix a', rationale: 'remediate a', modify: ['a.ts'] },
+    { name: 'fix b', rationale: 'remediate b', modify: ['b.ts'] },
   ],
 });
 
