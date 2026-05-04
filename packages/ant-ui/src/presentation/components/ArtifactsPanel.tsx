@@ -1054,7 +1054,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     }
   }, [uploadState?.completed, dismissUpload]);
 
-  // Don't show if no feature is selected
+  const prunedFileTree = useMemo(
+    () => (fileTree?.length ? pruneFileTreeForWorkspaceDomain(fileTree, workspaceDomain) : fileTree),
+    [fileTree, workspaceDomain],
+  );
+
+  // Don't show if no feature is selected (must be after all hooks — prunedFileTree useMemo above)
   if (!selectedProject || !selectedFeature) {
     return null;
   }
@@ -1067,10 +1072,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
   // top-level dir auto-renders here once tagged.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const prunedFileTree = useMemo(
-    () => (fileTree?.length ? pruneFileTreeForWorkspaceDomain(fileTree, workspaceDomain) : fileTree),
-    [fileTree, workspaceDomain],
-  );
   const topLevelByName = new Map(prunedFileTree?.map(n => [n.name, n]) ?? []);
   const visibleTopLevelDirs = UI_VISIBLE_TOP_LEVEL_DIRS;
 
