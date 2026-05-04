@@ -9,12 +9,17 @@ interface TabButtonProps {
   isActive: boolean;
   isJobTab?: boolean;
   /**
+   * When true, the label uses a capped width with ellipsis (file editor tabs).
+   */
+  truncateLabel?: boolean;
+  /**
    * Optional inline trailing element (e.g. the JobIdDropdown trigger on the
    * job tab). Replaces the legacy `jobId` + `onCopyJobId` props — copy /
    * delete are now per-row actions inside the dropdown, not on the tab.
    */
   trailing?: ReactNode;
   showText?: boolean;
+  showTrailingWhenCollapsed?: boolean;
   showCloseButton?: boolean;
   title?: string;
   onClick: () => void;
@@ -33,14 +38,23 @@ export function TabButton({
   label,
   isActive,
   isJobTab = false,
+  truncateLabel = false,
   trailing,
   showText = true,
+  showTrailingWhenCollapsed = false,
   showCloseButton = false,
   title,
   onClick,
   onClose,
 }: TabButtonProps) {
   const { t } = useTranslation('nav');
+  const truncatedLabelStyle = truncateLabel
+    ? {
+        // Ellipsis(...) 대신 우측으로 갈수록 사라지는 페이드 처리.
+        WebkitMaskImage: 'linear-gradient(to right, black 0%, black 82%, transparent 100%)',
+        maskImage: 'linear-gradient(to right, black 0%, black 82%, transparent 100%)',
+      }
+    : undefined;
   // The job tab's "remove" surface moved into the dropdown's per-row trash
   // icon. Force-suppress the X button here regardless of the prop value so
   // no caller can re-introduce a tab-level reset.
@@ -50,6 +64,7 @@ export function TabButton({
       className={cn(
         'flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
         showText ? 'px-3' : 'px-2 min-w-[36px] min-h-[36px] justify-center',
+        truncateLabel && showText && 'max-w-[300px] min-w-0',
         isActive
           ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
           : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128] cursor-pointer'
@@ -57,10 +72,23 @@ export function TabButton({
       title={title}
       onClick={onClick}
     >
-      <div className="flex items-center gap-2 flex-1">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         <Icon className="w-4 h-4 flex-shrink-0" />
-        {showText && <span className={isJobTab ? "whitespace-nowrap" : ""}>{label}</span>}
-        {showText && trailing}
+        {showText && (
+          <span
+            className={cn(
+              isJobTab && 'whitespace-nowrap',
+              truncateLabel &&
+                'min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[10px] font-mono font-normal leading-tight',
+            )}
+            style={truncatedLabelStyle}
+          >
+            {label}
+          </span>
+        )}
+        {(showText || showTrailingWhenCollapsed) && trailing && (
+          <span className="flex-shrink-0">{trailing}</span>
+        )}
       </div>
       {showCloseButtonEffective && (
         <button

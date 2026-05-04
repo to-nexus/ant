@@ -75,7 +75,9 @@ export function MainPanelTabsBar() {
         icon={FileEdit}
         label={tab.title}
         isActive={activeTab === tab.id}
+        truncateLabel
         showText={activeTab === tab.id}
+        showTrailingWhenCollapsed={tab.status === 'streaming'}
         showCloseButton={false}
         title={tab.path || tab.title}
         trailing={(

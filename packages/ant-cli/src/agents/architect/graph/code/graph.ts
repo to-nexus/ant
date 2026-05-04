@@ -232,7 +232,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               {
                 state: {
                   taskQueue: mergedQueue,
-                  completedTasks: checkpoint.completedTasks.map(t => t.id),
+                  // String-ID array stays Path B-superseded-free so it
+                  // matches main graph's invariant (`state.completedTasks`
+                  // = real completions only). Full objects (incl.
+                  // superseded for kanban tooltip rendering) live in
+                  // `completedTasksDetails`.
+                  completedTasks: checkpoint.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
                   failedTasks: checkpoint.failedTasks.map(f => ({
                     taskId: f.task.id,
@@ -397,7 +402,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         {
           state: {
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: result.completedTasks.map(t => t.id),
+            completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
             failedTasks: result.failedTasks.map(f => ({
               taskId: f.task.id,
@@ -435,7 +440,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
           'code',
           {
             state: {
-              completedTasks: result.completedTasks.map(t => t.id),
+              completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
               completedTasksDetails: result.completedTasks,
               tokenUsage: result.tokenUsage,
               estimatingTokenUsage: state._estimatingTokenUsage,
@@ -469,7 +474,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         {
           state: {
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: result.completedTasks.map(t => t.id),
+            completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
             failedTasks: result.failedTasks.map(f => ({
               taskId: f.task.id,
@@ -501,7 +506,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   }
 
   return {
-    completedTasks: result.completedTasks.map(t => t.id),
+    completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
     completedTasksDetails: result.completedTasks,
     failedTasks: result.failedTasks.map(f => f.task) as any,
     currentTask: undefined,
@@ -629,6 +634,7 @@ export const CodeGraphChannels = {
       workerId: Annotation<any>,
       _isStopRequested: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
+      _supersededByBatchSplit: Annotation<any>,
       verifiedTasks: Annotation<any>,
       _verifyEntered: Annotation<any>({
         reducer: (_prev: any, next: any) => next,

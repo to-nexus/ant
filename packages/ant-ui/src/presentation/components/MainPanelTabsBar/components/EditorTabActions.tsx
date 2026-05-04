@@ -27,7 +27,7 @@ export function EditorTabActions({
   const policy = getEditorTabActionPolicy(tab);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-0.5">
       {policy.isStreaming ? (
         <span
           title={streamingTitle}

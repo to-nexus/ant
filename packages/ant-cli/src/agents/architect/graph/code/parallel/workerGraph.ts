@@ -38,6 +38,10 @@ const CodeWorkerSubgraphAnnotation = Annotation.Root({
   // Worker-only fields (not in main graph)
   _taskCompleted: Annotation<any>,
   _batchSplitCompleted: Annotation<any>,
+  // Drained from `_supersededByBatchSplit` by `workerCheckTaskStatus` and
+  // forwarded to `TaskOrchestrator.reportBatchSplit` so Path B parents
+  // surface in the orchestrator's `completedTasks` snapshot (kanban done).
+  _supersededDetails: Annotation<any>,
 });
 
 /**
