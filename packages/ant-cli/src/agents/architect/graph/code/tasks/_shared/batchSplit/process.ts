@@ -1,5 +1,5 @@
 import type { TechTier } from '@ant/shared';
-import { ArchitectGraphState, TASK_PRIORITIES } from '../../../state';
+import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
@@ -245,9 +245,29 @@ export function processDiagnosticBatchSplit(
       taskPolicy?.kind ?? 'drop-and-replace';
     if (effectiveKind === 'requeue-parent') {
       const snapshot = snapshotFromState(state);
+      // Carry the parent's accumulated timing across the re-queue so the
+      // wall-clock window between split and re-pick counts as paused (not
+      // active). `pauseTask` marks `pausedAt = now`; the next `assignTask`
+      // / fresh-entry path that calls `TaskTimingHelper.startTask` will
+      // accumulate the gap into `totalPausedDuration` and clear `pausedAt`.
+      // Without this, the requeued parent restarts its timer from zero
+      // and its pre-split runtime (which is real LLM work) disappears
+      // from `task.timing.elapsedTime` at the eventual `completeTask`.
+      const carriedTiming = TaskTimingHelper.pauseTask(nextTask).timing;
+      // Stash the in-flight task-level token usage onto the requeued task
+      // so the next `handleFreshTaskEntry` can seed `_currentTaskTokenUsage`
+      // from `task.tokenUsage`. Re-using the existing `BaseTask.tokenUsage`
+      // field avoids a parallel "carriedTokenUsage" channel — the meaning is
+      // identical ("LLM tokens this task has used so far"). Job-level
+      // `state.tokenUsage` is unaffected; it has been accumulating since
+      // the job started and the carry is task-scoped only.
+      const carriedTokenUsage = state._currentTaskTokenUsage
+        ? { ...state._currentTaskTokenUsage }
+        : nextTask.tokenUsage;
       const requeuedTask: CodeTask = {
         ...nextTask,
-        timing: undefined,
+        ...(carriedTiming ? { timing: carriedTiming } : {}),
+        ...(carriedTokenUsage ? { tokenUsage: carriedTokenUsage } : {}),
         interrupted: !!snapshot ? true : undefined,
         _failed: undefined,
         _failureReason: undefined,
@@ -264,6 +284,33 @@ export function processDiagnosticBatchSplit(
         clearKeywordDedupForTask(nextTask.id);
       } catch { /* non-blocking */ }
     } else {
+      // Path B — the parent disappears from the queue. Capture its
+      // lifetime accounting (timing + tokens) into a superseded snapshot
+      // so it still surfaces as its own row in `completedTasksDetails`
+      // and the kanban tooltip's "Tasks (N): … parent (Xs / Y tokens)"
+      // entry. `completeTask` snapshots `_currentTaskTokenUsage` onto
+      // `task.tokenUsage` and computes `timing.elapsedTime` from
+      // `startedAt + totalPausedDuration` (state.ts:681-700). The
+      // `supersededBy` array marks lineage and (via truthy check) lets
+      // UI distinguish superseded entries from regular completions; the
+      // entry stays out of `state.completedTasks` (string[]) so the
+      // "X / Y completed" counter is unaffected.
+      const supersededParent = TaskTimingHelper.completeTask(
+        nextTask,
+        state._currentTaskTokenUsage,
+      );
+      (supersededParent as CodeTask).supersededBy = [...subTaskIds];
+      // Drop `completed:true` set by `completeTask` — superseded items
+      // are NOT regular completions; we keep the timing/token snapshot
+      // but signal lineage via `supersededBy` only. Without this, UI
+      // surfaces (`completedTasks.length`, "completed" badges) would
+      // mistakenly count the parent.
+      (supersededParent as CodeTask).completed = false;
+      state._supersededByBatchSplit = [
+        ...(state._supersededByBatchSplit ?? []),
+        supersededParent,
+      ];
+
       const shouldAppendFV = taskPolicy?.appendFinalVerification ?? true;
       if (shouldAppendFV) {
         const alreadyHasFinalVerification = hasFinalVerification(

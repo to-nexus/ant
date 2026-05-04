@@ -106,6 +106,15 @@ export async function checkTaskStatus(
         console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${cycle})`);
       }
     }
+    // Drain superseded Path B parents into the long-lived
+    // `completedTasksDetails` so they show up as their own row in the
+    // kanban tooltip ("Tasks (N): … parent (Xs / Y tokens)") with their
+    // captured timing + tokenUsage. Stays out of `state.completedTasks`
+    // (string[]) — the "X / Y completed" counter must not include them.
+    const supersededDrain = state._supersededByBatchSplit ?? [];
+    const mergedCompletedDetails = supersededDrain.length > 0
+      ? [...(state.completedTasksDetails ?? []), ...supersededDrain]
+      : state.completedTasksDetails;
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
     }
@@ -114,6 +123,8 @@ export async function checkTaskStatus(
       retries: 0,
       violations: [],
       _batchSplitRequeued: false,
+      _supersededByBatchSplit: undefined,
+      ...(mergedCompletedDetails !== undefined && { completedTasksDetails: mergedCompletedDetails }),
       _executeCallIndex: 0,
       planText: '',
       // Task boundary delta — single SSOT writer for verify-mode reset.

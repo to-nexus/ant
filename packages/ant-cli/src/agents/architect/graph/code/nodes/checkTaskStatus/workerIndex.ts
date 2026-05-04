@@ -84,12 +84,25 @@ export async function workerCheckTaskStatus(
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
+    // Forward Path B superseded parents up to `TaskWorker.run` so they
+    // reach `TaskOrchestrator.reportBatchSplit` and merge into the
+    // orchestrator's `completedTasks` snapshot. Worker-local
+    // `state.completedTasksDetails` is a read-only snapshot (TaskWorker
+    // populates it from `orchestrator.getCompletedTasks()` at task
+    // assignment) so writing back here would NOT propagate — the
+    // dedicated channel is the only path that survives the worker→
+    // orchestrator boundary.
+    const supersededDrain = (state as any)._supersededByBatchSplit as any[] | undefined;
     return {
       _taskCompleted: false,       // NOT completed — task is re-enqueued (back in todo)
       _batchSplitCompleted: true,  // Signal TaskWorker to release slot via reportBatchSplit()
+      ...(supersededDrain && supersededDrain.length > 0
+        ? { _supersededDetails: supersededDrain }
+        : {}),
       currentTask: undefined,
       violations: [],
       _batchSplitRequeued: false,
+      _supersededByBatchSplit: undefined,
       _executeCallIndex: 0,
       planText: '',
       // Task boundary delta — keeps the worker symmetric with main

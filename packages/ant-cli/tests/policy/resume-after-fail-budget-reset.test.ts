@@ -304,8 +304,11 @@ describe('Path A still-lacing-north invariant — in-session re-queue MUST NOT r
     const requeueIdx = batchSplitSource.indexOf("'requeue-parent'");
     expect(requeueIdx).toBeGreaterThan(0);
     // Walk forward to the requeuedTask object; its batchSplitCount must
-    // bind to `newBatchSplitCount` (the bumped value), not 0.
-    const slice = batchSplitSource.slice(requeueIdx, requeueIdx + 1500);
+    // bind to `newBatchSplitCount` (the bumped value), not 0. Slice
+    // window sized generously to accommodate inline JSDoc / carry-comments
+    // around the requeue branch (the literal binding is what matters,
+    // not its byte offset within the branch).
+    const slice = batchSplitSource.slice(requeueIdx, requeueIdx + 3500);
     expect(slice).toMatch(/batchSplitCount:\s*newBatchSplitCount\b/);
     // Defence: the cross-resume `: 0` reset literal must not have leaked
     // into the in-session re-queue site (still-lacing-north regression

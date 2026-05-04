@@ -199,6 +199,17 @@ async function handleFreshTaskEntry(
   const { resetTaskTokenUsage } = await import('../../../../../../common/graph/llmHelpers');
   resetTaskTokenUsage(state);
 
+  // Token carry seed for batch-split Path A re-queue. The requeued task
+  // arrives with `tokenUsage` populated by `processDiagnosticBatchSplit`
+  // (snapshot of `_currentTaskTokenUsage` at split time). Seeding the
+  // task-level counter from it lets the task own its full lifetime usage
+  // (pre-split + post-split LLM calls) by the time `completeTask` snapshots.
+  // Job-level `state.tokenUsage` is unaffected — it has been accumulating
+  // since the job started, so re-applying the carry would double-count.
+  if (nextTask.tokenUsage) {
+    state._currentTaskTokenUsage = { ...nextTask.tokenUsage };
+  }
+
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
   state.conversations = {

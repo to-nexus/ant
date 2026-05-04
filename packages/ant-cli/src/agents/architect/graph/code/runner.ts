@@ -7,6 +7,7 @@ import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
 } from "../../../common/graph/runnerHelpers";
+import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
 import type { InterruptionDetails } from "@ant/shared";
 import type { TriageResult } from "../../../common/graph/nodes/triage/types";
@@ -123,7 +124,15 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
           initial.jobId = session.state.jobId;
         }
         if (session.state.jobTiming) {
-          initial.jobTiming = session.state.jobTiming;
+          // Settle any persisted `pausedAt` into `totalPausedDuration` so the
+          // UI's `(end - start - totalPaused)` formula stops counting the
+          // gap as active runtime. Without this, every Stop+Resume cycle
+          // attributes its idle window to the job total.
+          const { jobTiming: resumed } = JobTimingManager.resumeJob(
+            initial.jobId ?? session.state.jobId ?? '',
+            session.state.jobTiming,
+          );
+          initial.jobTiming = resumed ?? session.state.jobTiming;
         }
 
         // Restores `_verifyEntered=true` when a resumed code-job session
@@ -213,6 +222,15 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
           // Same load-boundary safety net as the primary resume path —
           // see normalizeResumedQueueBudgets JSDoc for rationale.
           const restoredQueue = (session.state.taskQueue ?? []) as CodeTask[];
+          // Settle `pausedAt` on the recursion-limit recovery branch too,
+          // otherwise the immediate re-pause window after the limit hit
+          // counts as active runtime once the user resumes.
+          const restoredJobTiming = session.state.jobTiming
+            ? (JobTimingManager.resumeJob(
+                session.state.jobId ?? initial.jobId ?? '',
+                session.state.jobTiming,
+              ).jobTiming ?? session.state.jobTiming)
+            : undefined;
           state = {
             ...initial,
             taskQueue: TaskQueue.from<CodeTask>(normalizeResumedQueueBudgets(restoredQueue)),
@@ -229,7 +247,7 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
             ...(session.state.profile && { profile: session.state.profile }),
             ...(session.state.jobId && { jobId: session.state.jobId }),
-            ...(session.state.jobTiming && { jobTiming: session.state.jobTiming }),
+            ...(restoredJobTiming && { jobTiming: restoredJobTiming }),
             ...(session.state.resolvedAction && { resolvedAction: session.state.resolvedAction }),
             ...(session.state.referenceRequests && { referenceRequests: session.state.referenceRequests }),
           } as any;

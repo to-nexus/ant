@@ -188,6 +188,8 @@ export interface EditorTab {
   source?: 'plan' | 'design';
   status?: 'streaming' | 'ready';
   content?: string;
+  streamPreviewContent?: string;
+  streamingSourceCardId?: string;
 }
 
 // Git state moved to `domain/git-world/**`. See

@@ -157,6 +157,102 @@ describe('uiSlice editor tab transitions', () => {
     expect(h.state().editorTabs).toHaveLength(0);
   });
 
+  it('reuses existing real tab for streaming preview on same file path', () => {
+    const realTab = makeRealTab({
+      id: 'editor:real:architecture/spec/spec-main.md',
+      title: 'spec-main.md',
+      path: 'architecture/spec/spec-main.md',
+      source: 'design',
+    });
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [{ turnId: 'turn-1', jobType: 'design', jobId: 'job-1' }],
+      editorTabs: [realTab],
+      activeEditorTabId: realTab.id,
+      mainPanelActiveTab: realTab.id,
+      mainPanelOpenTabs: {
+        projectConfig: false,
+        accountConfig: false,
+        fileEdit: true,
+        transfer: false,
+        previewConfig: false,
+        actions: false,
+      },
+      mainPanelTabOrder: [realTab.id],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-1:_main_': {
+        turnId: 'turn-1',
+        pendingCards: {
+          'card-1': {
+            cardId: 'card-1',
+            statusType: 'file_editing',
+            metadata: { filePath: 'architecture/spec/spec-main.md' },
+            streamedOutput: 'updated chunk',
+          },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0]).toMatchObject({
+      id: realTab.id,
+      kind: 'real',
+      status: 'streaming',
+      streamPreviewContent: 'updated chunk',
+      streamingSourceCardId: 'card-1',
+    });
+    expect(h.state().activeEditorTabId).toBe(realTab.id);
+    expect(h.state().mainPanelActiveTab).toBe(realTab.id);
+  });
+
+  it('restores streamed real tab to ready when pending preview disappears', () => {
+    const realTab = makeRealTab({
+      id: 'editor:real:architecture/spec/spec-main.md',
+      title: 'spec-main.md',
+      path: 'architecture/spec/spec-main.md',
+      source: 'design',
+      status: 'streaming',
+      streamPreviewContent: 'updated chunk',
+      streamingSourceCardId: 'card-1',
+      turnId: 'turn-1',
+      jobId: 'job-1',
+    });
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [{ turnId: 'turn-1', jobType: 'design', jobId: 'job-1' }],
+      editorTabs: [realTab],
+      activeEditorTabId: realTab.id,
+      mainPanelActiveTab: realTab.id,
+      mainPanelOpenTabs: {
+        projectConfig: false,
+        accountConfig: false,
+        fileEdit: true,
+        transfer: false,
+        previewConfig: false,
+        actions: false,
+      },
+      mainPanelTabOrder: [realTab.id],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-1:_main_': {
+        turnId: 'turn-1',
+        pendingCards: {},
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0]).toMatchObject({
+      id: realTab.id,
+      kind: 'real',
+      status: 'ready',
+    });
+    expect(h.state().editorTabs[0].streamPreviewContent).toBeUndefined();
+    expect(h.state().editorTabs[0].streamingSourceCardId).toBeUndefined();
+  });
+
   it('removes unpinned target when another unpinned tab exists', () => {
     const pinnedId = 'editor:pinned:docs/plan.md';
     const h = createHarness();

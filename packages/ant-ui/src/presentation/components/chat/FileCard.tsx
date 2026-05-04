@@ -10,6 +10,7 @@ import { ChevronDown, ChevronRight, Ban } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { FileIcon } from '@/shared/utils/file-icons';
+import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 import { lineToContent } from './cards/lineToContent';
 
 interface FileCardProps {
@@ -37,6 +38,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
   const isActive = isCreating || isWriting || isEditing || isUpdating || isDeleting;
   const isFailed = content.type === 'file_create_failed' || content.type === 'file_edit_failed' || content.type === 'file_delete_failed';
   const isCompleted = content.type === 'file_create' || content.type === 'file_edit' || content.type === 'file_delete' || isFailed;
+  const isCancelled = isCompleted && !isFailed && !!content.metadata?.reason;
   
   // ✅ Cursor/Copilot style: Default to expanded (show content), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -190,20 +192,39 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
   
   const config = operationConfig[operation];
   
-  // Check if there's content to show for collapse button
-  const hasContentForButton = (operation === 'create' && fileContent) || 
-                               (operation === 'edit' && (diffBefore || diffAfter)) ||
-                               (operation === 'delete' && fileContent);
+  const lineStatsText = (() => {
+    if (!isCompleted || isFailed || isCancelled) return '';
+
+    if ((operation === 'edit' || isOverwriteCreate) && (lineStats.added > 0 || lineStats.removed > 0)) {
+      const parts: string[] = [];
+      if (lineStats.added >= 0) parts.push(`+${lineStats.added}`);
+      if (lineStats.removed >= 0) parts.push(`-${lineStats.removed}`);
+      return parts.join(' ');
+    }
+
+    if (operation === 'create' && !isOverwriteCreate && lineStats.total != null) {
+      return `+${lineStats.total}`;
+    }
+
+    if (operation === 'delete' && lineStats.total != null) {
+      return `-${lineStats.total}`;
+    }
+
+    return '';
+  })();
+
+  const headerText = lineStatsText ? `${filePath} ${lineStatsText}` : filePath;
+  const canToggleContent = isCompleted && (hasAnyContent || isFailed);
   
   return (
     <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
       {/* Header - Copilot/Cursor Style (Single Row, Compact) */}
       <button 
-        onClick={() => hasContentForButton && isCompleted && setIsCollapsed(!isCollapsed)}
-        disabled={!hasContentForButton || !isCompleted}
-        className={`w-full ${config.headerBg} px-2.5 py-1.5 ${hasContentForButton && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
+        onClick={() => canToggleContent && setIsCollapsed(!isCollapsed)}
+        disabled={!canToggleContent}
+        className={`w-full ${config.headerBg} px-2.5 py-1.5 ${canToggleContent ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           {/* File Icon - Shows loading spinner when active, file type icon when complete */}
           {isActive ? (
             <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
@@ -211,12 +232,20 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
             <FileIcon filePath={filePath} size={16} />
           )}
           
-          {/* File Path */}
-          <span className={`text-[11px] font-mono ${config.textColor} truncate flex-1 text-left`}>
-            {filePath}
-          </span>
+          {/* File path (+line stats) text area with dedicated expand toggle */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 min-w-0">
+              <TruncatableText
+                text={headerText}
+                maxLength={60}
+                overflowAware
+                className={`text-[11px] font-mono ${config.textColor}`}
+                buttonClassName={`${config.textColor} opacity-60`}
+              />
+            </div>
+          </div>
           
-          {/* Failed/Cancelled Indicator or Line Stats */}
+          {/* Header metadata slot (status badges) */}
           {isFailed ? (
             <div className="flex items-center gap-1 flex-shrink-0">
               <Ban className="w-3 h-3 text-red-500 dark:text-red-400" />
@@ -224,44 +253,17 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
                 {t('card.failed')}
               </span>
             </div>
-          ) : isCompleted && content.metadata?.reason ? (
+          ) : isCancelled ? (
             <div className="flex items-center gap-1 flex-shrink-0">
               <Ban className="w-3 h-3 text-orange-500 dark:text-orange-400" />
               <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
                 {t('card.cancelled')}
               </span>
             </div>
-          ) : isCompleted && (
-            <>
-              {(operation === 'edit' || isOverwriteCreate) && (lineStats.added > 0 || lineStats.removed > 0) && (
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {lineStats.added >= 0 && (
-                    <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium">
-                      +{lineStats.added}
-                    </span>
-                  )}
-                  {lineStats.removed >= 0 && (
-                    <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium">
-                      -{lineStats.removed}
-                    </span>
-                  )}
-                </div>
-              )}
-              {operation === 'create' && !isOverwriteCreate && lineStats.total != null && (
-                <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium flex-shrink-0">
-                  +{lineStats.total}
-                </span>
-              )}
-              {operation === 'delete' && lineStats.total != null && (
-                <span className="text-[10px] text-red-600 dark:text-red-400 font-mono font-medium flex-shrink-0">
-                  -{lineStats.total}
-                </span>
-              )}
-            </>
-          )}
+          ) : null}
           
-          {/* Expand/Collapse Icon */}
-          {isCompleted && hasContentForButton && (
+          {/* Content scaffold slot (right-most) */}
+          {canToggleContent && (
             <div className="flex-shrink-0">
               {isCollapsed ? 
                 <ChevronRight className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} /> :

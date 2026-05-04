@@ -761,8 +761,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
       const byId = new Map(tabs.map((tab) => [tab.id, tab]));
       const seenVirtualIds = new Set<string>();
+      const seenStreamingRealIds = new Set<string>();
       const turnInfo = buildTurnInfoMap(s.chatEvents ?? []);
       const createdIds: Array<`editor:virtual:${string}`> = [];
+      const activatedStreamingIds: Array<`editor:${string}`> = [];
 
       for (const snapshot of Object.values(buffers ?? {})) {
         const pendingCards = snapshot?.pendingCards ?? {};
@@ -780,6 +782,28 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
           const filePath = getPendingCardFilePath(card);
           if (!filePath) continue;
+
+          const existingRealTab = tabs.find(
+            (tab) => tab.kind === 'real' && tab.path === filePath,
+          );
+          if (existingRealTab) {
+            const previousStatus = existingRealTab.status;
+            seenStreamingRealIds.add(existingRealTab.id);
+            byId.set(existingRealTab.id, {
+              ...existingRealTab,
+              status: 'streaming',
+              source,
+              turnId: snapshot.turnId,
+              jobId: meta?.jobId,
+              streamPreviewContent: card.streamedOutput ?? '',
+              streamingSourceCardId: card.cardId,
+            });
+            if (previousStatus !== 'streaming') {
+              activatedStreamingIds.push(existingRealTab.id as `editor:${string}`);
+            }
+            continue;
+          }
+
           const title = fileTitleFromPath(filePath);
           const id = makeVirtualEditorTabId(card.cardId);
           seenVirtualIds.add(id);
@@ -792,6 +816,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             readOnly: true,
             path: filePath,
             content: card.streamedOutput ?? '',
+            streamPreviewContent: card.streamedOutput ?? '',
+            streamingSourceCardId: card.cardId,
             status: 'streaming',
             turnId: snapshot.turnId,
             jobId: meta?.jobId,
@@ -802,7 +828,19 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         }
       }
 
-      const nextTabs = Array.from(byId.values()).filter((tab) => {
+      const nextTabs = Array.from(byId.values())
+        .map((tab) => {
+          if (tab.kind === 'real' && tab.status === 'streaming' && !seenStreamingRealIds.has(tab.id)) {
+            return {
+              ...tab,
+              status: 'ready' as const,
+              streamPreviewContent: undefined,
+              streamingSourceCardId: undefined,
+            };
+          }
+          return tab;
+        })
+        .filter((tab) => {
         if (tab.kind !== 'virtual') return true;
         if (tab.status === 'ready') return true;
         return seenVirtualIds.has(tab.id);
@@ -811,7 +849,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const nextOrderBase = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], nextTabs).filter(
         (tab) => tab !== 'fileEdit',
       );
-      if (createdIds.length === 0) {
+      const focusIds = [...createdIds, ...activatedStreamingIds];
+      if (focusIds.length === 0) {
         const nextActive =
           s.activeEditorTabId && nextTabs.some((tab) => tab.id === s.activeEditorTabId)
             ? s.activeEditorTabId
@@ -834,12 +873,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       }
 
       const newOrder = [...nextOrderBase];
-      for (const createdId of createdIds) {
-        const filtered = newOrder.filter((tab) => tab !== createdId);
-        filtered.push(createdId);
+      for (const focusId of focusIds) {
+        const filtered = newOrder.filter((tab) => tab !== focusId);
+        filtered.push(focusId);
         newOrder.splice(0, newOrder.length, ...filtered);
       }
-      const nextActiveId = createdIds[createdIds.length - 1];
+      const nextActiveId = focusIds[focusIds.length - 1];
       return {
         editorTabs: nextTabs,
         activeEditorTabId: nextActiveId,
@@ -855,15 +894,28 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   promoteVirtualEditorTabToReal: ({ cardId, filePath, source }) => {
     if (!cardId || !filePath) return;
-    const realId = makePinnedRealTabId(filePath);
+    const pinnedRealId = makePinnedRealTabId(filePath);
     const virtualId = makeVirtualEditorTabId(cardId);
     set((s: any) => {
-      const tabs = [...((s.editorTabs ?? []) as EditorTab[])].filter(
-        (tab) => !(tab.kind === 'virtual' && tab.cardId === cardId),
-      );
-      if (!tabs.some((tab) => tab.id === realId)) {
+      let resolvedRealId: string = pinnedRealId;
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])]
+        .filter((tab) => !(tab.kind === 'virtual' && tab.cardId === cardId))
+        .map((tab) => {
+          if (tab.kind !== 'real') return tab;
+          const isMatched = tab.path === filePath || tab.streamingSourceCardId === cardId;
+          if (!isMatched) return tab;
+          resolvedRealId = tab.id;
+          return {
+            ...tab,
+            status: 'ready' as const,
+            source: source ?? tab.source,
+            streamPreviewContent: undefined,
+            streamingSourceCardId: undefined,
+          };
+        });
+      if (!tabs.some((tab) => tab.id === resolvedRealId)) {
         tabs.push({
-          id: realId,
+          id: pinnedRealId,
           title: fileTitleFromPath(filePath),
           path: filePath,
           kind: 'real',
@@ -871,23 +923,26 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           readOnly: false,
           status: 'ready',
           source,
+          streamPreviewContent: undefined,
+          streamingSourceCardId: undefined,
         });
+        resolvedRealId = pinnedRealId;
       }
 
       const newOrder = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
-        (tab) => tab !== realId && tab !== 'fileEdit',
+        (tab) => tab !== resolvedRealId && tab !== 'fileEdit',
       );
       const fromVirtual = newOrder.findIndex((tab) => tab === virtualId);
       if (fromVirtual >= 0) {
-        newOrder[fromVirtual] = realId as MainPanelTabOrderItem;
+        newOrder[fromVirtual] = resolvedRealId as MainPanelTabOrderItem;
       } else {
-        const moved = moveTabIdToOrderEnd(newOrder, realId as MainPanelTabOrderItem);
+        const moved = moveTabIdToOrderEnd(newOrder, resolvedRealId as MainPanelTabOrderItem);
         newOrder.splice(0, newOrder.length, ...moved);
       }
       return {
         editorTabs: tabs,
-        activeEditorTabId: realId,
-        mainPanelActiveTab: realId,
+        activeEditorTabId: resolvedRealId,
+        mainPanelActiveTab: resolvedRealId,
         mainPanelOpenTabs: {
           ...s.mainPanelOpenTabs,
           fileEdit: true,
@@ -904,12 +959,24 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     let nextToOpen: EditorTab | undefined;
     set((s: any) => {
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
-      const removedIds = new Set(
-        tabs.filter((tab) => tab.kind === 'virtual' && tab.jobId === jobId).map((tab) => tab.id),
-      );
-      if (removedIds.size === 0) return {};
+      const removedIds = new Set<string>();
+      const nextTabs = tabs
+        .filter((tab) => {
+          const shouldRemove = tab.kind === 'virtual' && tab.jobId === jobId;
+          if (shouldRemove) removedIds.add(tab.id);
+          return !shouldRemove;
+        })
+        .map((tab) => {
+          if (tab.kind !== 'real' || tab.jobId !== jobId || tab.status !== 'streaming') return tab;
+          return {
+            ...tab,
+            status: 'ready' as const,
+            streamPreviewContent: undefined,
+            streamingSourceCardId: undefined,
+          };
+        });
+      if (removedIds.size === 0 && nextTabs.length === tabs.length) return {};
 
-      const nextTabs = tabs.filter((tab) => !removedIds.has(tab.id));
       const nextActive = removedIds.has(s.activeEditorTabId)
         ? (nextTabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? nextTabs[0]?.id ?? null)
         : s.activeEditorTabId;

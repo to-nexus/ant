@@ -4,6 +4,30 @@
  * Utilities for normalizing file/directory path lists.
  */
 
+/** Directory prefix (with trailing slash) and basename for one-line editor headers. */
+export interface EditorHeaderPathParts {
+  dirWithSlash: string;
+  base: string;
+}
+
+/**
+ * Split a file path into a directory prefix and basename for UI (forward slashes).
+ * Empty segments are dropped. Single-segment paths yield an empty `dirWithSlash`.
+ */
+export function splitPathForEditorHeader(filePath: string): EditorHeaderPathParts {
+  const normalized = filePath.replace(/\\/g, '/').trim();
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length === 0) {
+    return { dirWithSlash: '', base: filePath };
+  }
+  if (segments.length === 1) {
+    return { dirWithSlash: '', base: segments[0]! };
+  }
+  const base = segments[segments.length - 1]!;
+  const dir = segments.slice(0, -1).join('/');
+  return { dirWithSlash: `${dir}/`, base };
+}
+
 export interface PathItem {
   path: string;
   type: 'file' | 'directory';
