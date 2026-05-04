@@ -416,6 +416,27 @@ export interface ArchitectGraphState extends TriageableState {
   _batchSplitRequeued?: boolean;
 
   /**
+   * Plan-LLM violation framing carried across attempts of the plan-node
+   * inline retry loop (decompose's `ExecutionTierViolation` retry pattern,
+   * ported for `BatchSplitSchemaViolation`).
+   *
+   * Lifecycle:
+   *   - SET by `plan/index.ts` retry loop after catching a
+   *     `BatchSplitSchemaViolation` thrown from `processDiagnosticBatch
+   *     Split`. Value is the result of `buildBatchSplitSchemaViolation
+   *     Framing(e)`.
+   *   - READ by `buildPlanPrompt` — appended to the rendered plan-base
+   *     user prompt for the next attempt so the LLM sees exactly which
+   *     entry kind / index / field violated the schema.
+   *   - CLEARED to `undefined` after the attempt that triggered it
+   *     completes (success or final-attempt graceful skip), so leakage
+   *     into the next task's plan is impossible.
+   *
+   * Per-attempt only — there is no Session cache.
+   */
+  _batchSplitViolationFraming?: string;
+
+  /**
    * Tasks finalised by `batchSplit` Path B (drop-and-replace) inside the
    * current node's execution. Carries each parent task with its `timing`
    * + `tokenUsage` snapshot and `supersededBy` lineage already populated.

@@ -39,7 +39,10 @@ function buildVerificationTask(overrides: Partial<CodeTask> = {}): CodeTask {
 function buildErrorSubTask(prePlanText: string): CodeTask {
   return {
     id: 'err-batch-1',
-    name: 'Fix: thing',
+    // LLM-authored verbatim shape (per BatchSplit naming contract — no system
+    // prefix). Sub-task fixtures here are illustrative; the prefix-test
+    // checks are owned by `processDiagnosticBatchSplit.test.ts`.
+    name: 'remediate import resolution failures',
     description: 'sub',
     type: 'error',
     priority: 999,

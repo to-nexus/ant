@@ -7,11 +7,18 @@
  *        - 0 entries / non-verification task / short planText / bad JSON → noop
  *        - hard limit: MAX_BATCH_SPLIT_CYCLES → throw VerificationTerminalError
  *
- *   2. classifyTerminalError dispatcher — typed terminal errors are
+ *   2. Schema-violation channel — LLM-authored semantic fields are SSOT
+ *      for child task name/description (the system MUST NOT fabricate).
+ *      Missing `create.name` / `modify.action` / `delete.reason` /
+ *      `batches[].name` / `batches[].rationale` throws
+ *      `BatchSplitSchemaViolation` for the plan-node retry loop to
+ *      catch and re-issue with framing.
+ *
+ *   3. classifyTerminalError dispatcher — typed terminal errors are
  *      recognised by the orchestrator BEFORE the legacy regex-based
  *      `isDeterministicError` runs.
  *
- *   3. hasEmptyImplementation (Axis F-1) — detects empty modify/create/delete
+ *   4. hasEmptyImplementation (Axis F-1) — detects empty modify/create/delete
  *      with no batches; treats markdown-fenced JSON, missing keys, and
  *      invalid JSON safely.
  */
@@ -20,6 +27,7 @@ import { describe, it, expect } from 'vitest';
 import {
   processDiagnosticBatchSplit,
   MAX_BATCH_SPLIT_CYCLES,
+  BatchSplitSchemaViolation,
 } from '../../../src/agents/architect/graph/code/tasks/_shared/batchSplit';
 import {
   VerificationTerminalError,
@@ -58,7 +66,10 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const state = makeState();
       const task = makeTask({ type: 'setup', priority: 100, name: 'init project' });
       const planText = JSON.stringify({
-        batches: [{ name: 'a', modify: ['f1.ts'] }, { name: 'b', modify: ['f2.ts'] }],
+        batches: [
+          { name: 'a', rationale: 'a slice', modify: ['f1.ts'] },
+          { name: 'b', rationale: 'b slice', modify: ['f2.ts'] },
+        ],
         implementation: { modify: ['f1.ts', 'f2.ts'] },
       });
       const out = processDiagnosticBatchSplit(state, planText, task);
@@ -74,8 +85,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },
         batches: [
-          { name: 'fix a', modify: ['a.ts'] },
-          { name: 'fix b', modify: ['b.ts'] },
+          { name: 'fix a', rationale: 'fix import errors in a', modify: ['a.ts'] },
+          { name: 'fix b', rationale: 'fix import errors in b', modify: ['b.ts'] },
         ],
       });
       const out = processDiagnosticBatchSplit(state, planText, task);
@@ -115,8 +126,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },
         batches: [
-          { name: 'fix a', modify: ['a.ts'] },
-          { name: 'fix b', modify: ['b.ts'] },
+          { name: 'fix a', rationale: 'fix import errors in a', modify: ['a.ts'] },
+          { name: 'fix b', rationale: 'fix import errors in b', modify: ['b.ts'] },
         ],
       });
       const fenced = '```json\n' + inner + '\n```';
@@ -134,8 +145,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 3, rootCauses: ['type error'] },
         implementation: { modify: [] },
         batches: [
-          { name: 'fix a', modify: ['a.ts'] },
-          { name: 'fix b', modify: ['b.ts'] },
+          { name: 'fix a', rationale: 'remediate type error in a', modify: ['a.ts'] },
+          { name: 'fix b', rationale: 'remediate type error in b', modify: ['b.ts'] },
         ],
       });
 
@@ -164,7 +175,7 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: [] },
-        batches: [{ name: 'fix a', modify: ['a.ts'] }],
+        batches: [{ name: 'fix a', rationale: 'remediate failure in a', modify: ['a.ts'] }],
       });
       const out = processDiagnosticBatchSplit(state, plan, task);
       expect(out).toBe('');
@@ -180,8 +191,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },
         batches: [
-          { name: 'fix a', modify: ['a.ts'] },
-          { name: 'fix b', modify: ['b.ts'] },
+          { name: 'fix a', rationale: 'compile error in a', modify: ['a.ts'] },
+          { name: 'fix b', rationale: 'compile error in b', modify: ['b.ts'] },
         ],
       });
 
@@ -224,13 +235,13 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
           {
             name: 'domain tests',
             rationale: 'independent of API layer',
-            create: [{ target: 'src/domain/__tests__/order.test.ts', purpose: 'verify order logic' }],
+            create: [{ name: 'order-test', target: 'src/domain/__tests__/order.test.ts', purpose: 'verify order logic' }],
             modify: [],
           },
           {
             name: 'api tests',
             rationale: 'independent of domain',
-            create: [{ target: 'src/api/__tests__/routes.test.ts', purpose: 'verify routes' }],
+            create: [{ name: 'routes-test', target: 'src/api/__tests__/routes.test.ts', purpose: 'verify routes' }],
             modify: [],
           },
         ],
@@ -264,7 +275,9 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         expect(sub.remediationMode).toBeUndefined();
         expect(sub.parallelGroup).toBeTruthy();
         expect(sub.exclusive).toBe(false);
-        expect(sub.name.startsWith('Tests:')).toBe(true);
+        // Child name is `batch.name` verbatim — no system-side prefix.
+        expect(sub.name === 'domain tests' || sub.name === 'api tests').toBe(true);
+        expect(sub.description === 'independent of API layer' || sub.description === 'independent of domain').toBe(true);
       }
 
       const groups = subTasks.map((t: any) => t.parallelGroup);
@@ -282,7 +295,7 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const plan = JSON.stringify({
         task: { id: 'parent', goal: 'tests' },
         batches: [
-          { name: 'one slice only', create: [{ target: 'a.test.ts' }], modify: [] },
+          { name: 'one slice only', rationale: 'sole slice', create: [{ target: 'a.test.ts' }], modify: [] },
         ],
       });
       const out = processDiagnosticBatchSplit(state, plan, task);
@@ -305,8 +318,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const plan = JSON.stringify({
         task: { id: 'parent', goal: 'tests' },
         batches: [
-          { name: 'slice a', create: [{ target: 'a.test.ts' }], modify: [] },
-          { name: 'slice b', create: [{ target: 'b.test.ts' }], modify: [] },
+          { name: 'slice a', rationale: 'a slice', create: [{ target: 'a.test.ts' }], modify: [] },
+          { name: 'slice b', rationale: 'b slice', create: [{ target: 'b.test.ts' }], modify: [] },
         ],
       });
 
@@ -327,11 +340,13 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         batches: [
           {
             name: 'slice a',
+            rationale: 'a tests with shared',
             create: [{ target: 'shared.test.ts' }, { target: 'a.test.ts' }],
             modify: [],
           },
           {
             name: 'slice b',
+            rationale: 'b tests with shared',
             create: [{ target: 'shared.test.ts' }, { target: 'b.test.ts' }],
             modify: [],
           },
@@ -399,7 +414,7 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 3 },
         implementation: {
           modify: [{ target: 'a.ts', action: 'edit' }],
-          create: [{ target: 'b.ts', purpose: 'new file' }],
+          create: [{ name: 'new-module', target: 'b.ts', purpose: 'new file' }],
           delete: [{ target: 'c.ts', reason: 'obsolete' }],
         },
       });
@@ -417,8 +432,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
           modify: [{ target: 'top-level.ts', action: 'should be ignored' }],
         },
         batches: [
-          { name: 'batch a', modify: [{ target: 'a.ts' }, { target: 'b.ts' }] },
-          { name: 'batch b', modify: [{ target: 'c.ts' }] },
+          { name: 'batch a', rationale: 'a slice', modify: [{ target: 'a.ts' }, { target: 'b.ts' }] },
+          { name: 'batch b', rationale: 'b slice', modify: [{ target: 'c.ts' }] },
         ],
       });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
@@ -499,8 +514,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         task: { id: 'parent', goal: 'split a Tier-2 feature across packages' },
         parentReasoning: 'Plan discovered the unit truly spans BE + FE and must escalate.',
         batches: [
-          { name: 'be slice', modify: [{ target: 'be/handler.ts' }], create: [], delete: [] },
-          { name: 'fe slice', modify: [{ target: 'fe/page.tsx' }], create: [], delete: [] },
+          { name: 'be slice', rationale: 'backend handler implementation', modify: [{ target: 'be/handler.ts' }], create: [], delete: [] },
+          { name: 'fe slice', rationale: 'frontend page implementation', modify: [{ target: 'fe/page.tsx' }], create: [], delete: [] },
         ],
       });
 
@@ -530,8 +545,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       });
       const plan = JSON.stringify({
         batches: [
-          { name: 'a', modify: [{ target: 'a.ts' }], create: [], delete: [] },
-          { name: 'b', modify: [{ target: 'b.ts' }], create: [], delete: [] },
+          { name: 'a', rationale: 'a unit', modify: [{ target: 'a.ts' }], create: [], delete: [] },
+          { name: 'b', rationale: 'b unit', modify: [{ target: 'b.ts' }], create: [], delete: [] },
         ],
       });
       processDiagnosticBatchSplit(state, plan, task);
@@ -556,8 +571,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         task: { id: 'parent', goal: 'split dashboard widgets' },
         parentReasoning: 'Each widget is independent; share Card/Widget primitives.',
         batches: [
-          { name: 'metrics widget', modify: [{ target: 'src/dashboard/Metrics.tsx' }], create: [], delete: [] },
-          { name: 'chart widget', modify: [{ target: 'src/dashboard/Chart.tsx' }], create: [], delete: [] },
+          { name: 'metrics widget', rationale: 'metrics widget unit', modify: [{ target: 'src/dashboard/Metrics.tsx' }], create: [], delete: [] },
+          { name: 'chart widget', rationale: 'chart widget unit', modify: [{ target: 'src/dashboard/Chart.tsx' }], create: [], delete: [] },
         ],
       });
 
@@ -579,6 +594,232 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
     });
   });
 
+  describe('Schema-violation throw → plan-node retry signal', () => {
+    it('top-level modify entry missing `action` throws BatchSplitSchemaViolation(modify, missingField=action)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 1 },
+        implementation: {
+          modify: [{ target: 'a.ts' }], // ← `action` 누락
+        },
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('modify');
+      expect(v.detail.ordinal).toBe(0);
+      expect(v.detail.missingField).toBe('action');
+    });
+
+    it('top-level create entry missing `name` throws BatchSplitSchemaViolation(create, missingField=name)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 1 },
+        implementation: {
+          create: [{ target: 'b.ts', purpose: 'new module' }], // ← `name` 누락
+        },
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('create');
+      expect(v.detail.missingField).toBe('name');
+    });
+
+    it('top-level delete entry missing `reason` throws BatchSplitSchemaViolation(delete, missingField=reason)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 1 },
+        implementation: {
+          delete: [{ target: 'c.ts' }], // ← `reason` 누락
+        },
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('delete');
+      expect(v.detail.missingField).toBe('reason');
+    });
+
+    it('explicit batches[] entry missing `name` throws BatchSplitSchemaViolation(batch, missingField=name)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 2 },
+        implementation: { modify: [] },
+        batches: [
+          { rationale: 'unit a', modify: ['a.ts'] }, // ← `name` 누락
+          { name: 'fix b', rationale: 'unit b', modify: ['b.ts'] },
+        ],
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('batch');
+      expect(v.detail.ordinal).toBe(0);
+      expect(v.detail.missingField).toBe('name');
+    });
+
+    it('explicit batches[] entry missing `rationale` throws BatchSplitSchemaViolation(batch, missingField=rationale)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 2 },
+        implementation: { modify: [] },
+        batches: [
+          { name: 'fix a', rationale: 'unit a', modify: ['a.ts'] },
+          { name: 'fix b', modify: ['b.ts'] }, // ← `rationale` 누락
+        ],
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('batch');
+      expect(v.detail.ordinal).toBe(1);
+      expect(v.detail.missingField).toBe('rationale');
+    });
+
+    it('empty-string `action` is treated as missing (whitespace-only too)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        implementation: {
+          modify: [{ target: 'a.ts', action: '   ' }],
+        },
+      });
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, makeTask());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+    });
+  });
+
+  describe('Child task name/description == LLM-authored verbatim', () => {
+    it('explicit batches[] → child name === batch.name (no system prefix)', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'parent feat' });
+      const plan = JSON.stringify({
+        batches: [
+          {
+            name: 'firebase-web-singleton',
+            rationale: 'Firebase Web SDK client singleton with Google OAuth popup',
+            create: [{ name: 'fb', target: 'firebase.ts', purpose: 'firebase singleton' }],
+            modify: [],
+            delete: [],
+          },
+        ],
+      });
+      processDiagnosticBatchSplit(state, plan, task);
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+      expect(subs).toHaveLength(1);
+      const sub = subs[0] as any;
+      expect(sub.name).toBe('firebase-web-singleton');
+      expect(sub.description).toBe('Firebase Web SDK client singleton with Google OAuth popup');
+      // Regression guard — historical "Fix: " / "Tests: " / "Add: " prefixes
+      // MUST NOT appear at the start of any LLM-authored name.
+      expect(sub.name.startsWith('Fix: ')).toBe(false);
+      expect(sub.name.startsWith('Tests: ')).toBe(false);
+    });
+
+    it('auto-convert create → child name === entry.name (LLM module name verbatim)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        implementation: {
+          create: [
+            { name: 'axios-http-client', target: 'http.ts', purpose: 'axios instance' },
+            { name: 'firebase-web-singleton', target: 'fb.ts', purpose: 'firebase singleton' },
+          ],
+        },
+      });
+      processDiagnosticBatchSplit(state, plan, makeTask());
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      const names = subs.map((s: any) => s.name).sort();
+      expect(names).toEqual(['axios-http-client', 'firebase-web-singleton']);
+      // No path-as-name leakage.
+      for (const n of names) {
+        expect(n).not.toMatch(/\.ts$/);
+        expect(n).not.toMatch(/^Fix /);
+      }
+    });
+
+    it('auto-convert modify → child name === entry.action (LLM verb phrase verbatim); description joins changes', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        implementation: {
+          modify: [
+            {
+              target: 'package.json',
+              action: 'Add runtime dependencies for shared layer',
+              changes: ['Add firebase ^10.12', 'Add axios ^1.0', 'Add next-intl ^3.0'],
+            },
+          ],
+        },
+      });
+      processDiagnosticBatchSplit(state, plan, makeTask());
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(subs).toHaveLength(1);
+      const sub = subs[0] as any;
+      expect(sub.name).toBe('Add runtime dependencies for shared layer');
+      expect(sub.description).toBe('Add firebase ^10.12; Add axios ^1.0; Add next-intl ^3.0');
+    });
+
+    it('auto-convert delete → child name === entry.reason (LLM verbatim)', () => {
+      const state = makeState();
+      const plan = JSON.stringify({
+        implementation: {
+          delete: [{ target: 'old.ts', reason: 'Replace with new implementation in shared/' }],
+        },
+      });
+      processDiagnosticBatchSplit(state, plan, makeTask());
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(subs).toHaveLength(1);
+      const sub = subs[0] as any;
+      expect(sub.name).toBe('Replace with new implementation in shared/');
+    });
+
+    it('regression guard — no system-side prefix or placeholder shape leaks into any sub-task name', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'parent' });
+      const plan = JSON.stringify({
+        batches: [
+          { name: 'unit-a', rationale: 'a slice', create: [{ target: 'a.ts' }], modify: [], delete: [] },
+          { name: 'unit-b', rationale: 'b slice', create: [{ target: 'b.ts' }], modify: [], delete: [] },
+        ],
+      });
+      processDiagnosticBatchSplit(state, plan, task);
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+      const FORBIDDEN = /^(Fix: |Tests: |Add: |Update: |Remove: |Create create-|modify-|delete-|create-\d+|modify-\d+|delete-\d+)/;
+      for (const s of subs) {
+        expect((s as any).name).not.toMatch(FORBIDDEN);
+      }
+    });
+  });
+
   describe('Hard limit: MAX_BATCH_SPLIT_CYCLES', () => {
     it(`task.batchSplitCount at ceiling throws VerificationTerminalError('batch_cycle_limit')`, () => {
       const state = makeState();
@@ -587,8 +828,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },
         batches: [
-          { name: 'fix a', modify: ['a.ts'] },
-          { name: 'fix b', modify: ['b.ts'] },
+          { name: 'fix a', rationale: 'remediate a', modify: ['a.ts'] },
+          { name: 'fix b', rationale: 'remediate b', modify: ['b.ts'] },
         ],
       });
       let thrown: unknown;

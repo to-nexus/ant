@@ -6,3 +6,11 @@ export {
   testCodeBatchShape,
 } from './policy';
 export type { BatchPlanShapeCtx, BatchSplitPolicyEntry } from './policy';
+export {
+  BatchSplitSchemaViolation,
+  buildBatchSplitSchemaViolationFraming,
+} from './schemaViolation';
+export type {
+  BatchSplitEntryKind,
+  BatchSplitSchemaViolationDetail,
+} from './schemaViolation';

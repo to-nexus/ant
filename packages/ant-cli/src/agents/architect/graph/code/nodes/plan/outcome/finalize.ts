@@ -44,6 +44,15 @@ export interface FinalizePlanOutcomeInput {
   lessons?: ArchitectGraphState['lessons'];
   /** Caller-classified empty-`planText` origin; see `outcome/trace.ts`. */
   planEmptyOrigin?: PlanEmptyOrigin;
+  /**
+   * Skip the `dispatchBatchSplit` step; pass `preSplitPlanText` through
+   * unchanged. Used by the plan-node retry-loop after a
+   * `BatchSplitSchemaViolation` exhausts its attempts (graceful fallback —
+   * parent runs its own plan as a single task) and by the tool-loop path
+   * on schema violation (re-running tool loop is too expensive). Default
+   * `false` — normal flow always attempts fan-out.
+   */
+  skipBatchSplit?: boolean;
 }
 
 export function finalizePlanOutcome(
@@ -51,9 +60,11 @@ export function finalizePlanOutcome(
   nextTask: CodeTask,
   input: FinalizePlanOutcomeInput,
 ): ArchitectGraphState {
-  const { preSplitPlanText, callSite, lessons, planEmptyOrigin } = input;
+  const { preSplitPlanText, callSite, lessons, planEmptyOrigin, skipBatchSplit } = input;
 
-  const planText = dispatchBatchSplit(state, preSplitPlanText, nextTask);
+  const planText = skipBatchSplit
+    ? preSplitPlanText
+    : dispatchBatchSplit(state, preSplitPlanText, nextTask);
 
   const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
   const diagnosticPass = isVerificationPassWithoutCodeGen(nextTask, planText, batchSplitOccurred);

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
-import { useGitSnapshot, useGitPat, useGitPatDispatch, dispatchGitOpOneShot } from '@/domain/git-world';
+import { useGitSnapshot, useGitPat, useGitPatDispatch, useGitDispatch } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
   deleteProject, uploadFiles, type UploadFileEntry,
@@ -89,6 +89,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const patStatus: { configured: boolean; username?: string } | null =
     worldPat ? { configured: worldPat.configured, username: worldPat.username } : null;
   const { fetchGitPat, savePat: savePatToWorld } = useGitPatDispatch();
+  const { runGitOperation } = useGitDispatch();
   const setSelectedProject = useStore((s) => s.setSelectedProject);
   const setSelectedFeature = useStore((s) => s.setSelectedFeature);
   const setSelectedAgent = useStore((s) => s.setSelectedAgent);
@@ -355,7 +356,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           try {
             updateExecStep(gitStepId, 'active');
             if (gitAction === 'clone') {
-              const cloneResult = await dispatchGitOpOneShot(projectId, { kind: 'clone' });
+              const cloneResult = await runGitOperation(projectId, { kind: 'clone' });
               if (!cloneResult.success) {
                 throw new Error(cloneResult.error?.message || 'Git clone failed');
               }
@@ -371,7 +372,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
               }
               if (!cloned) throw new Error('Git clone timed out');
             } else {
-              const initResult = await dispatchGitOpOneShot(projectId, { kind: 'publish' });
+              const initResult = await runGitOperation(projectId, { kind: 'publish' });
               if (!initResult.success) {
                 throw new Error(initResult.error?.message || 'Git init failed');
               }
@@ -479,7 +480,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     featureName, directive, showDirective, sourcesFiles, assetsFiles,
     designDocsFiles, mode, backendMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
-    setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig,
+    setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig, runGitOperation,
   ]);
 
   // ── Render ──

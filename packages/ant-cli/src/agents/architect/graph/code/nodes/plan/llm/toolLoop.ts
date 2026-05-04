@@ -20,6 +20,7 @@ import { CodeTask } from '../../../../../types/task';
 import { finalizePlanFromExploration } from './finalize';
 import { runPlanLLMWithTools } from './tools';
 import { finalizePlanOutcome } from '../outcome/finalize';
+import { BatchSplitSchemaViolation } from '../../../tasks/_shared/batchSplit';
 import {
   runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
   PLAN_TOOL_LOOP_MAX,
@@ -68,11 +69,34 @@ export async function runPlanToolLoopPhase(
     const toolLoopOrigin: 'tool-loop-empty' | undefined =
       outcome.planText === '' ? 'tool-loop-empty' : undefined;
     const callSite = outcome.origin === 'over-limit' ? 'plan-llm-overlimit' : 'plan-llm-toolloop';
-    const updatedState = finalizePlanOutcome(state, nextTask, {
-      preSplitPlanText: outcome.planText,
-      callSite,
-      planEmptyOrigin: toolLoopOrigin,
-    });
+    let updatedState: ArchitectGraphState;
+    try {
+      updatedState = finalizePlanOutcome(state, nextTask, {
+        preSplitPlanText: outcome.planText,
+        callSite,
+        planEmptyOrigin: toolLoopOrigin,
+      });
+    } catch (e) {
+      if (!(e instanceof BatchSplitSchemaViolation)) throw e;
+      // Tool-loop already burned its rounds producing this planText —
+      // re-running for a retry is too expensive. Graceful skip: log the
+      // violation and proceed with the parent task's own plan (no fan-out).
+      // The main `plan/index.ts` retry path handles the high-frequency
+      // case where retry is cheap. Toolloop violations are rare in
+      // practice (tool-loop output is more constrained than top-level
+      // emissions) but the safety net is here for completeness.
+      console.warn(
+        `⚠️  [Plan/toolLoop] BatchSplitSchemaViolation in ${callSite}: ` +
+        `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — ` +
+        `proceeding without fan-out (parent will execute its own plan).`,
+      );
+      updatedState = finalizePlanOutcome(state, nextTask, {
+        preSplitPlanText: outcome.planText,
+        callSite,
+        planEmptyOrigin: toolLoopOrigin,
+        skipBatchSplit: true,
+      });
+    }
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
     }

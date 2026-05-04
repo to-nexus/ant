@@ -69,17 +69,23 @@ If you have user-facing narrative (rationale, summary, follow-up question), put 
   "implementation": {
     "create": [
       {
-        "name": "[module name]",
+        "name": "[REQUIRED — concise noun phrase identifying the module, e.g. \"firebase-web-singleton\". The framework uses this verbatim as a child task name when the plan is fanned out into sub-tasks. NOT a path, NOT a placeholder, NOT a verb phrase.]",
         "type": "[component | util | hook | api | service | class]",
         "location": "[semantic area - observe from directory tree]",
-        "purpose": "[what this module does, which packages it imports (with exact import path), and which observed API signatures it calls — behavior + inline dependency wiring]"
+        "purpose": "[REQUIRED — what this module does, which packages it imports (with exact import path), and which observed API signatures it calls. Becomes the child task description.]"
       }
     ],
     "modify": [
       {
         "target": "[file path or semantic description]",
-        "action": "[what to do]",
-        "changes": ["[specific change 1, with any observed API signatures the change relies on, quoted inline]", "[specific change 2]"]
+        "action": "[REQUIRED — short verb phrase that becomes the child task name when the plan is fanned out into sub-tasks, e.g. \"Add runtime dependencies for shared layer\". NOT a path, NOT a placeholder.]",
+        "changes": ["[REQUIRED — array of specific changes, with any observed API signatures the change relies on quoted inline]", "[specific change 2]"]
+      }
+    ],
+    "delete": [
+      {
+        "target": "[file path or semantic description]",
+        "reason": "[REQUIRED — why this is being deleted, e.g. \"Replace with new module\". The framework uses this verbatim as a child task name when the plan is fanned out into sub-tasks.]"
       }
     ],
     "assets": [
@@ -97,28 +103,32 @@ If you have user-facing narrative (rationale, summary, follow-up question), put 
 }
 ```
 
+⚠️ **Naming contract**: The framework uses your `create[].name` / `modify[].action` / `delete[].reason` (or `batches[].name` when fanning out — see PROACTIVE FAN-OUT below) **verbatim** as the child task name and `create[].purpose` / `modify[].changes` (joined) / `delete[].reason` / `batches[].rationale` **verbatim** as the child task description. The system MUST NOT fabricate names — when these REQUIRED fields are missing, fan-out is rejected and the plan call is re-issued with violation framing. Do NOT use paths-as-names, placeholders (`task-2`, `feature-batch`), or empty strings. Provide a 4-8 word noun/verb phrase that identifies the unit semantically.
+
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
 {{#if (or (eq taskType "feature") (eq taskType "ui"))}}
 ────────────────────────────────────────────────────────────────────────────────
-## 🌿 OPTIONAL FAN-OUT (feature / ui only)
+## 🌿 PROACTIVE FAN-OUT (feature / ui)
 ────────────────────────────────────────────────────────────────────────────────
 
-**Principle**: When the task is a deep-think parent whose work splits cleanly
-across independent physical units (different package, different runtime layer,
-different deployment unit), you MAY emit `batches[]` instead of a single
-`<plan>` body. Each batch becomes an independent child task that applies its
-own slice; siblings inherit your reasoning so naming/signatures stay coherent.
+**Principle**: When your work splits cleanly across independent units, emit `batches[]` at plan emission time so each batch becomes its own sub-task. Siblings inherit your `parentReasoning` so naming/signatures stay coherent across the fan-out.
 
-**Constraints**:
-- Multiple files inside ONE coherent unit are NOT a fan-out signal — keep them
-  in a single plan.
-- `parentReasoning` MUST capture the cross-batch decisions (chosen API names,
-  shared types, integration contract). Each batch sees this verbatim.
-- When `batches[]` is omitted (default), the standard single-plan schema below
-  applies. Fan-out is opt-in by judgement, not a procedure.
-- Tier 4 breakdowns are typically already enumerated by decompose — fan-out at
-  plan time is rare and only justified by genuine physical isolation.
+**Observation target**: Will the planned implementation list (`create` + `modify` + `delete`) exceed 6 entries OR span 3+ independent output directories?
+
+**Constraint**: When the observation above is **yes**, emit `batches[]` instead of a flat plan. A flat plan with N>6 entries forces system-side fan-out; the system uses your per-entry semantic fields verbatim, but expressing N units as N batches at plan emit time keeps boundaries explicit and lets each batch carry its own `rationale`.
+
+**Constraint**: Multiple files inside ONE coherent unit are NOT a fan-out signal — keep them in a single plan.
+
+**Constraint**: `parentReasoning` MUST capture the cross-batch decisions (chosen API names, shared types, integration contract). Each batch sees this verbatim.
+
+**Constraint**: Each `batches[].name` is a **noun phrase** identifying the unit (e.g. `"firebase-web-singleton"`, `"axios-http-client-instance"`). Do NOT include framework verbs (`Fix`, `Create`, `Add`, `Update`, `Remove`) — verb-style framing is owned by the runtime UI. Do NOT include paths.
+
+**Constraint**: Each `batches[].rationale` MUST be a complete sentence explaining why this batch is one isolated unit. Becomes the child task description verbatim.
+
+⚠️ **Blind spot**: Trying to express N independent output units in a single flat plan body produces overlimit at execute and forces system-side conversion. Express N units as N batches at plan emit time — your `name` and `rationale` propagate verbatim and avoid the overlimit cost.
+
+⚠️ **Blind spot**: Tier 4 breakdowns enumerate work units at decompose time. Fan-out at plan time is then layered: each decompose-emitted task may itself fan out at plan time when its own implementation list crosses the 6-entries / 3-directories observation threshold.
 
 **Schema (when emitted)**:
 
@@ -129,8 +139,8 @@ own slice; siblings inherit your reasoning so naming/signatures stay coherent.
   "parentReasoning": "<cross-batch decisions: names, contracts, shared types>",
   "batches": [
     {
-      "name": "<unit name>",
-      "rationale": "<why this batch is one isolated unit>",
+      "name": "[REQUIRED — noun phrase identifying the unit, e.g. \"firebase-web-singleton\". Becomes the child task name verbatim. NOT a verb, NOT a path, NOT a placeholder.]",
+      "rationale": "[REQUIRED — why this batch is one isolated unit. Becomes the child task description verbatim.]",
       "modify": [...],
       "create": [...],
       "delete": []
@@ -139,6 +149,8 @@ own slice; siblings inherit your reasoning so naming/signatures stay coherent.
 }
 </plan>
 ```
+
+⚠️ **Naming contract (same as the JSON SCHEMA above)**: The framework uses `batches[].name` and `batches[].rationale` **verbatim** as child task name + description. The system MUST NOT fabricate names. Missing `name` or `rationale` = schema violation = the plan call is re-issued with framing.
 {{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────

@@ -634,6 +634,10 @@ export const CodeGraphChannels = {
       workerId: Annotation<any>,
       _isStopRequested: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
+      _batchSplitViolationFraming: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => undefined,
+      }),
       _supersededByBatchSplit: Annotation<any>,
       verifiedTasks: Annotation<any>,
       _verifyEntered: Annotation<any>({

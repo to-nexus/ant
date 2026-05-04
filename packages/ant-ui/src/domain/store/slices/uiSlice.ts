@@ -370,6 +370,13 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       if (state.connectionStatus === 'connected' && state.selectedProject && state.selectedFeature) {
         // File tree refresh
         state.refreshFileTree();
+        // Git snapshot (Commit vs Publish CTA) — same SSOT as lifecycle / PAT flows
+        if (typeof state.fetchGitWorldState === 'function') {
+          void state.fetchGitWorldState(state.selectedProject, {
+            feature: state.selectedFeature,
+            fresh: true,
+          });
+        }
         // Transfer count refresh
         import('@/infrastructure/http/api').then(({ fetchTransferRequests }) => {
           fetchTransferRequests('received')
