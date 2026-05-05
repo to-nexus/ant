@@ -67,13 +67,10 @@ describe('git bootstrap SSOT regression guard', () => {
     expect(content).toContain("repoType: 'cloud'");
   });
 
-  it("FE config.ts 의 mode 자동 매핑 (mode='local' → repoType:'local') 이 제거되어 있다", () => {
-    const content = read('../ant-ui/src/infrastructure/http/api/config.ts');
-    // The auto-mapping pattern: ternary that picks 'local' from `mode`.
-    expect(content).not.toMatch(/repoType:\s*mode\s*===\s*['"]cloud['"]\s*\?\s*['"]cloud['"]\s*:\s*['"]local['"]/);
-    // Inverse form: assigning localPath conditionally on mode !== 'cloud'.
-    expect(content).not.toMatch(/mode\s*!==\s*['"]cloud['"]\s*\?\s*\{\s*localPath:/);
-  });
+  // NOTE: FE config.ts 의 mode 자동 매핑 가드는 패키지 경계상 ant-ui 테스트
+  // 슈트가 소유한다 — `packages/ant-ui/tests/git-world/repotype-default.test.ts`.
+  // BE 가 FE 파일을 가로질러 읽으면 ant-cli Dockerfile builder stage 처럼
+  // ant-ui 소스가 없는 환경에서 ENOENT 가 난다.
 
   it('WorktreeService 가 mainCodebasePath === worktreePath path-collision 가드를 가진다', () => {
     const content = read('src/periphery/adapters/http/services/GitService/worktree/index.ts');
