@@ -121,7 +121,52 @@ Connected Mode에서 ActionButton이 상황에 따라 Commit / Publish Branch / 
 ### .git 파일 vs .git 디렉터리
 
 - `projectPath/codebase/.git/` (디렉터리) — main worktree, 실제 git 데이터 저장
-- `features/{name}/codebase/.git` (파일) — worktree 참조 파일, `gitdir: ../../codebase/.git/worktrees/{name}` 형태
+- `features/{name}/codebase/.git` (파일) — worktree 참조 파일, **항상 절대경로** `gitdir: <absolute path>/codebase/.git/worktrees/{id}` 형태로 git 이 작성한다 (CLI flag 로 변경 불가). worktree 메타 디렉토리 이름은 worktree 경로의 마지막 path 컴포넌트(보통 `codebase`)에서 파생되며, 충돌 시 git 이 자동 disambiguate 해 `codebase1` 등으로 만든다.
+
+### Worktree validity (Stage-4 SSOT)
+
+**`GitHelper.isWorktreeStructureValid(featureCodebasePath)`** 가 단일 진실 원천이다. 4 단계 검사:
+
+1. `.git` 파일 존재 (worktree marker 있음)
+2. `gitdir:` 형식 파싱 성공
+3. 그 절대경로 디렉토리 (`<main>/.git/worktrees/<id>/`) 존재
+4. 그 디렉토리에 `HEAD` + `commondir` 두 파일 모두 존재
+
+검사가 cheap (4 stat) 이라 모든 critical path 에서 호출. 새 helper 추가 금지 — partial worktree (NFS partial write / interrupted `git worktree add`) 는 단일 SSOT 로 검출.
+
+### Worktree validity 호출 site
+
+| Phase | Call site | 효과 |
+|-------|-----------|------|
+| pre-existing dir 검사 | `WorktreeService.createWorktree` | partial gitdir 가 valid 로 false-positive 되는 회귀 차단 |
+| post-create probe | `WorktreeService.createWorktree` | `git worktree add` exit-code 0 인데 partial 인 케이스 검출 + throw |
+| orphan 강화 | `WorktreeService.pruneCorruptWorktreeMeta` | partial meta 디렉토리도 자동 회수 |
+| Stage-4 self-heal | `ensureGitRepository` | git instance 만들어진 partial worktree 도 backup → recreate → restore |
+| defense-in-depth | `StatusService.getGitChanges` | "not a git repository" 에러 시 structured `worktreeValidityFailure` 로그 emit |
+
+### IDE Pod Multi-Mount Topology (Cloud / K8s)
+
+worktree marker 가 절대경로를 가리키므로, IDE pod 가 그 절대경로를 컨테이너 안에서 실제로 해소할 수 있어야 한다. K8s pod 는 단일 subPath 마운트만 가지면 `/mnt/workspaces/<...>/codebase/.git/worktrees/<id>` 경로가 컨테이너 안에 존재하지 않아 git 인식 실패.
+
+해결: **alias-model multi-mount** (Docker `resolveWorktreeBindMounts` 와 K8s `resolveK8sWorktreeMounts` 모두 동형):
+
+| Mount | mountPath | subPath | 책임 |
+|-------|-----------|---------|------|
+| Primary alias | `/workspace` | `<tenant>/<user>/<project>[/features/<feat>]/codebase` | 사용자에게 노출되는 작업 경로 |
+| mainGitDir | `<base>/<...>/codebase/.git` (절대) | 동일 prefix | worktree marker 의 gitdir 절대경로가 컨테이너 안에서 해소되도록 |
+| worktreePath | `<base>/<...>/features/<feat>/codebase` (절대) | 동일 prefix | 메타 dir 의 back-reference (`<gitdir>/gitdir` 파일이 가리키는 worktree 절대경로) 가 해소되도록 |
+
+기준 브랜치 (`_base`) 는 `.git` 가 디렉토리이므로 worktree mount 0 — primary alias 만 마운트.
+
+`.git` 파싱은 `GitHelper.resolveWorktreeAbsPaths` 가 단일 SSOT — Docker/K8s 두 함수는 path 결과만 받아 자기 format (Docker bind 문자열 / K8s mount 객체) 만 책임. 새로 같은 파싱 로직 만들면 `tests/policy/worktree-mount-dedup.test.ts` 가 차단.
+
+### ANT_WORKSPACE_BASE_PATH 동일성 invariant
+
+API 서버 / IDE pod / job worker 가 **모두 같은** `ANT_WORKSPACE_BASE_PATH` 값을 보아야 한다. 다르면 worktree marker 의 절대경로가 한쪽에서만 해소돼 IDE 가 git 을 인식 못하거나 API 서버가 worktree 를 valid 로 잘못 판정한다. `KubernetesIDEOrchestrator.assertWorkspacePathInBase` 가 startup 시 fail-fast 검증.
+
+### IDE Pod Mount Drift Auto-Recreate
+
+존재하는 pod 의 `volumeMounts.length` 가 `resolveK8sWorktreeMounts` 가 지금 돌려주는 expected count 와 다르면 (예: 옛 race 케이스에서 만들어진 1-mount pod 가 지금은 worktree valid 라 3 mount 가 expected) `KubernetesIDEOrchestrator.start` 가 자동으로 pod 를 delete + recreate. pod spec 은 immutable 이므로 stale broken pod 는 이 경로로만 복구 가능.
 
 ### Feature의 Git 상태 전이
 
@@ -158,9 +203,11 @@ Push 또는 Commit 시 feature codebase에 유효한 `.git`이 없으면:
 ### Worktree 안전성
 
 WorktreeService.createWorktree는 기존 디렉터리 발견 시:
-1. `.git` 파일이 존재하면 gitdir 경로의 유효성 검증
-2. 유효한 worktree → early return (재생성 불필요)
-3. 손상/누락 → `git worktree remove` → `git worktree prune` → 재생성
+1. `GitHelper.isWorktreeStructureValid` (Stage-4: `.git` marker + gitdir 디렉토리 + HEAD + commondir) 로 검증
+2. valid → early return (재생성 불필요)
+3. 손상/누락 (`worktreeValidityFailure` 로그 emit) → `git worktree remove` → `git worktree prune` → 재생성
+
+`git worktree add` 직후에는 `pollWorktreeValidity` (3 회 × 100ms) 로 EFS NFS 의 eventual consistency lag 흡수 후 최종 invalid 면 `GitOperationError` throw — silent partial create 차단.
 
 ## Publish Branch
 

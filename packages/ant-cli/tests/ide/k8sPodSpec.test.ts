@@ -73,6 +73,7 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
       'ide-org-user-proj-base',
       fx.mainCodebase,
       userContext,
+      '_base',
     );
 
     const container = spec.spec.containers[0];
@@ -93,6 +94,7 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
       'ide-org-user-proj-feat-x',
       fx.featureCodebase,
       userContext,
+      'feat-x',
     );
 
     const container = spec.spec.containers[0];
@@ -116,9 +118,41 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
         'ide-org-user-proj-base',
         path.join(outsideDir),
         userContext,
+        '_base',
       ),
     ).toThrow(/outside ANT_WORKSPACE_BASE_PATH/);
 
     rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it('FAIL-FAST: feature pod with no worktree mounts (missing .git marker) throws — silent broken pod prevention', () => {
+    // Feature codebase exists but no .git marker → resolveK8sWorktreeMounts
+    // returns []. Without the fail-fast, the pod would be created with only
+    // the alias mount and the user would see "Initialize Repository" forever.
+    const orch = makeOrch();
+    expect(() =>
+      (orch as any).createPodSpec(
+        'org:user:proj:feat-x',
+        'ide-org-user-proj-feat-x',
+        fx.featureCodebase,
+        userContext,
+        'feat-x',
+      ),
+    ).toThrow(/requires worktree mounts but resolveK8sWorktreeMounts returned/);
+  });
+
+  it('FAIL-FAST: base pod with no worktree mounts is allowed (always 1-mount)', () => {
+    // _base feature is special — main repo `.git` is a directory, no worktree
+    // marker. resolveK8sWorktreeMounts returns [] which is correct here.
+    const orch = makeOrch();
+    expect(() =>
+      (orch as any).createPodSpec(
+        'org:user:proj:_base',
+        'ide-org-user-proj-base',
+        fx.mainCodebase,
+        userContext,
+        '_base',
+      ),
+    ).not.toThrow();
   });
 });

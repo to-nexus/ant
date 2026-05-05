@@ -119,29 +119,36 @@ export class WorktreeService {
     // Ensure worktree parent directory exists
     await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });
 
-    // Handle existing directory at worktree path
+    // Handle existing directory at worktree path.
+    // Stage-4 validity check (HEAD/commondir verified) — partial gitdir from a
+    // previous interrupted attempt no longer false-positives as valid.
     if (fs.existsSync(worktreePath)) {
-      const gitFile = path.join(worktreePath, '.git');
-      if (fs.existsSync(gitFile)) {
-        // Validate .git file points to a real gitdir
-        try {
-          const content = await fs.promises.readFile(gitFile, 'utf-8');
-          const gitdirRel = content.replace('gitdir:', '').trim();
-          const gitdirAbs = path.resolve(worktreePath, gitdirRel);
-          if (fs.existsSync(gitdirAbs)) {
-            logger.info(`Valid worktree already exists, skipping creation`, {
-              component: 'WorktreeService', projectId, featureName
-            });
-            return { path: worktreePath, branch: branchName, isMain: false };
-          }
-        } catch { /* corrupted .git file - fall through to cleanup */ }
+      const validity = GitHelper.isWorktreeStructureValid(worktreePath);
+      if (validity.valid) {
+        logger.info(`Valid worktree already exists, skipping creation`, {
+          component: 'WorktreeService', projectId, featureName
+        });
+        return { path: worktreePath, branch: branchName, isMain: false };
       }
-      // Directory exists without valid .git - clean up properly
+      // Surface diagnostic so we can correlate user-reported breakages with
+      // partial-write scenarios (S2/S3) without manual EFS inspection.
+      emitWorktreeValidityFailure({
+        callSite: 'createWorktree.preExisting',
+        projectId, featureName,
+        workspacePath: worktreePath,
+        validity,
+      });
+      // Directory exists without valid worktree structure — clean up properly.
       try { await git.raw(['worktree', 'remove', worktreePath, '--force']); } catch { /* may not be registered */ }
       try { await git.raw(['worktree', 'prune']); } catch { /* non-critical */ }
       if (fs.existsSync(worktreePath)) {
         await fs.promises.rm(worktreePath, { recursive: true, force: true });
       }
+      // Second prune AFTER rm — `git worktree add` does NOT auto-prune, so a
+      // partial meta dir whose worktree path was just removed would otherwise
+      // make the next add fail with "missing but already registered worktree".
+      // `--expire=now` bypasses the 1h safe.expire window.
+      try { await git.raw(['worktree', 'prune', '--expire=now']); } catch { /* non-critical */ }
     }
 
     // Check if remote branch exists
@@ -198,6 +205,29 @@ export class WorktreeService {
 
     // Ensure safe.directory for the worktree
     await GitHelper.ensureSafeDirectory(worktreePath);
+
+    // Post-create probe — verify gitdir actually has HEAD/commondir on EFS.
+    // `git worktree add` returning exit-code 0 is not enough: NFS partial
+    // writes on EFS can leave the meta directory incomplete. We poll briefly
+    // to absorb eventual-consistency lag, then throw if still invalid so the
+    // caller surfaces the failure to the user (retry → ensureGitRepository
+    // self-heal). Without this, silent partial worktrees survive and only
+    // break later in GitStatusService.
+    const probe = await pollWorktreeValidity(worktreePath, 3, 100);
+    if (!probe.valid) {
+      emitWorktreeValidityFailure({
+        callSite: 'createWorktree.postCreate',
+        projectId, featureName,
+        workspacePath: worktreePath,
+        validity: probe,
+      });
+      throw new GitOperationError(
+        `Worktree creation reported success but validity check failed (${probe.reason}). ` +
+          `Likely cause: NFS partial write on EFS. ` +
+          `Retry — ensureGitRepository will self-heal.`,
+        500,
+      );
+    }
 
     return { path: worktreePath, branch: branchName, isMain: false };
   }
@@ -340,10 +370,29 @@ export class WorktreeService {
           // gitdir file missing → meta is corrupt; remove
         }
 
-        const orphan =
+        // Weak orphan check: marker file or worktree dir gone.
+        const physicalOrphan =
           worktreeMarkerPath === null ||
           !fs.existsSync(worktreeMarkerPath) ||
           !fs.existsSync(path.dirname(worktreeMarkerPath));
+        // Strong orphan check (Stage-4): worktree dir exists but the meta gitdir
+        // is partial (HEAD or commondir missing). Catches NFS partial-write
+        // remnants that would otherwise survive bare `git worktree prune`.
+        let structuralOrphan = false;
+        if (!physicalOrphan && worktreeMarkerPath) {
+          const validity = GitHelper.isWorktreeStructureValid(path.dirname(worktreeMarkerPath));
+          if (!validity.valid) {
+            structuralOrphan = true;
+            emitWorktreeValidityFailure({
+              callSite: 'pruneCorruptWorktreeMeta',
+              projectId: undefined,
+              featureName: undefined,
+              workspacePath: path.dirname(worktreeMarkerPath),
+              validity,
+            });
+          }
+        }
+        const orphan = physicalOrphan || structuralOrphan;
         if (!orphan) continue;
 
         try {
@@ -460,4 +509,116 @@ export class WorktreeService {
       // Non-critical
     }
   }
+}
+
+/**
+ * Poll {@link GitHelper.isWorktreeStructureValid} to absorb NFS eventual
+ * consistency lag immediately after `git worktree add`. Returns the first
+ * `valid` result, or the last `invalid` result after exhausting retries.
+ */
+async function pollWorktreeValidity(
+  worktreePath: string,
+  retries: number,
+  delayMs: number,
+): Promise<ReturnType<typeof GitHelper.isWorktreeStructureValid>> {
+  let result = GitHelper.isWorktreeStructureValid(worktreePath);
+  for (let i = 0; i < retries && !result.valid; i += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    result = GitHelper.isWorktreeStructureValid(worktreePath);
+  }
+  return result;
+}
+
+/**
+ * Diagnostic logging — single emit point for worktree validity failures so we
+ * can correlate user-reported breakages with the underlying scenario without
+ * manual EFS inspection. Heuristic scenario classification:
+ * - `no-git-file`        → S1 (race / never created)
+ * - `head-missing` /
+ *   `commondir-missing`  → S2 (NFS partial write)
+ * - `gitdir-missing`     → S3 (stale `.git` marker from previous attempt)
+ * - `invalid-marker`     → S4 (corrupted marker file)
+ *
+ * Single SSOT — three call sites (createWorktree.preExisting /
+ * createWorktree.postCreate / pruneCorruptWorktreeMeta) plus the
+ * `ensureGitRepository` stage-4 path emit through this helper.
+ */
+type WorktreeValidityCallSite =
+  | 'createWorktree.preExisting'
+  | 'createWorktree.postCreate'
+  | 'pruneCorruptWorktreeMeta'
+  | 'ensureGitRepository.stage4'
+  | 'StatusService.autoRecover';
+
+export interface EmitWorktreeValidityFailureInput {
+  callSite: WorktreeValidityCallSite;
+  projectId: string | undefined;
+  featureName: string | undefined;
+  workspacePath: string;
+  validity: ReturnType<typeof GitHelper.isWorktreeStructureValid>;
+}
+
+export function emitWorktreeValidityFailure(input: EmitWorktreeValidityFailureInput): void {
+  if (input.validity.valid) return;
+  const reason = input.validity.reason;
+
+  // Best-effort filesystem snapshot — read the .git marker (if any) and
+  // list the meta gitdir (if reachable) so the operator can confirm the
+  // exact partial-write shape from the log alone.
+  let gitFile: { exists: boolean; size: number | null; content: string | null } = {
+    exists: false,
+    size: null,
+    content: null,
+  };
+  let gitdirContents: string[] | null = null;
+  try {
+    const gitPath = path.join(input.workspacePath, '.git');
+    if (fs.existsSync(gitPath)) {
+      const stat = fs.statSync(gitPath);
+      gitFile = {
+        exists: true,
+        size: stat.isFile() ? stat.size : null,
+        content: stat.isFile() ? fs.readFileSync(gitPath, 'utf-8').trim() : null,
+      };
+    }
+  } catch { /* best-effort */ }
+  try {
+    const abs = GitHelper.resolveWorktreeAbsPaths(input.workspacePath);
+    if (abs) {
+      // Try to derive the meta gitdir from the marker; if marker is a directory
+      // (base case) or missing, abs would be null and we skip the listing.
+      const markerContent = gitFile.content;
+      const match = markerContent ? markerContent.match(/^gitdir:\s*(.+)$/) : null;
+      const gitdirPath = match ? match[1].trim() : null;
+      if (gitdirPath && fs.existsSync(gitdirPath)) {
+        gitdirContents = fs.readdirSync(gitdirPath).slice(0, 20);
+      }
+    }
+  } catch { /* best-effort */ }
+
+  const scenario =
+    reason === 'no-git-file'
+      ? 'S1-race-or-never-created'
+      : reason === 'head-missing' || reason === 'commondir-missing'
+        ? 'S2-nfs-partial-write'
+        : reason === 'gitdir-missing'
+          ? 'S3-stale-marker-from-previous-attempt'
+          : 'S4-corrupt-marker';
+
+  logger.warn(
+    'worktreeValidityFailure',
+    {
+      component: 'WorktreeValidity',
+      projectId: input.projectId,
+      featureName: input.featureName,
+    },
+    {
+      callSite: input.callSite,
+      reason,
+      scenario,
+      workspacePath: input.workspacePath,
+      gitFile,
+      gitdirContents,
+    },
+  );
 }
