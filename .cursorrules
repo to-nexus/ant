@@ -1278,9 +1278,14 @@ rg "figmaAvailable\?\s*:\s*boolean" packages/ant-cli/src/agents/architect/graph/
 ### Enforcement
 
 ```bash
-# 1. Auto-local 분류 / FE 자동 매핑 / worktree 가드 잔존 검증
+# 1. Auto-local 분류 (BE) / worktree 가드 잔존 검증
 pnpm vitest run tests/policy/git-bootstrap-ssot-regression.test.ts --reporter=dot
-# Expected: 7 passed (legacy 4 + new 3)
+# Expected: 6 passed (legacy 4 + Phase 3.4 BE-side 2)
+
+# 1b. FE 자동 매핑 가드 (ant-ui) — BE 가 FE 파일을 가로질러 읽으면 Docker 빌드가
+# 깨지므로 FE 정규성 검사는 ant-ui 슈트가 소유한다.
+cd packages/ant-ui && pnpm vitest run tests/git-world/repotype-default.test.ts --reporter=dot
+# Expected: 2 passed
 
 # 2. K8s mount 회귀 가드
 pnpm vitest run tests/ide/ --reporter=dot
