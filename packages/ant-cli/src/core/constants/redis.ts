@@ -20,6 +20,8 @@ export const REDIS_DOMAINS = {
   INDEX: `${APP_PREFIX}:index`,
   TRANSFER: `${APP_PREFIX}:transfer`,
   ARTIFACTS: `${APP_PREFIX}:artifacts`,
+  /** Cross-process lifecycle signaling (cleanup request/ack between API and ant-preview / future ant-* workers). */
+  LIFECYCLE: `${APP_PREFIX}:lifecycle`,
 } as const;
 
 // ============================================
@@ -166,6 +168,22 @@ export const REDIS_KEYS = {
     UNSEEN: `${REDIS_DOMAINS.ARTIFACTS}:unseen:`,
     /** Cached file tree per user/project/feature - ant:artifacts:filetree:{userId}:{projectId}:{featureName} */
     FILETREE: `${REDIS_DOMAINS.ARTIFACTS}:filetree:`,
+  },
+
+  /**
+   * Lifecycle keys (ant:lifecycle:*)
+   *
+   * Cross-process project / feature cleanup signaling. The API server publishes
+   * a `CLEANUP_REQUEST` when a project or feature is deleted; ant-preview (and
+   * future workers that own EFS-bound infra state) subscribe and reply on
+   * `CLEANUP_ACK`. See [ProjectService.requestPreviewCleanup](../../periphery/adapters/http/services/ProjectService/previewCleanup.ts).
+   *
+   * Both are pub/sub channels (NOT keys with values). Listed here so the
+   * naming convention stays in one place.
+   */
+  LIFECYCLE: {
+    CLEANUP_REQUEST: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:request`,
+    CLEANUP_ACK: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:ack`,
   },
 } as const;
 

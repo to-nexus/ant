@@ -2083,6 +2083,48 @@ export class PreviewService {
   }
   
   /**
+   * Cleanup every preview server attached to a single project (all features).
+   *
+   * Cross-process delete cascade calls this through the Redis pub/sub
+   * `ant:lifecycle:cleanup:request` channel — see PreviewServer subscriber.
+   */
+  async cleanupProject(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<void> {
+    const targetPrefix = `${organizationId}:${userId}:${projectId}:`;
+    const serverKeys = Array.from(this.previewServers.keys()).filter((k) => k.startsWith(targetPrefix));
+    logger.info(`[PreviewService] cleanupProject — ${serverKeys.length} server(s)`, { component: 'PreviewService' }, { organizationId, userId, projectId });
+    for (const serverKey of serverKeys) {
+      const { tenantId, userId: keyUserId, projectId: keyProjectId, feature } = this.parseServerKey(serverKey);
+      try {
+        await this.stopPreview(tenantId, keyUserId, keyProjectId, feature);
+      } catch (err) {
+        logger.warn(`[PreviewService] cleanupProject stop failed (continuing)`, { component: 'PreviewService' }, { serverKey, err });
+      }
+    }
+  }
+
+  /**
+   * Cleanup the preview server for a single feature.
+   *
+   * Idempotent — no-op if no preview is running for that feature.
+   */
+  async cleanupFeature(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+    featureName: string,
+  ): Promise<void> {
+    try {
+      await this.stopPreview(organizationId, userId, projectId, featureName);
+    } catch (err) {
+      logger.warn(`[PreviewService] cleanupFeature stop failed (continuing)`, { component: 'PreviewService' }, { organizationId, userId, projectId, featureName, err });
+    }
+  }
+
+  /**
    * Cleanup all preview servers
    */
   async cleanup(): Promise<void> {

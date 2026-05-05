@@ -5,8 +5,17 @@ export function fetchProjects(): Promise<string[]> {
   return apiGet(`${API_BASE()}/projects`);
 }
 
-export function createProject(projectId: string): Promise<void> {
-  return apiPost(`${API_BASE()}/projects`, { id: projectId });
+/**
+ * Create a project. Pass `opts.force = true` to overwrite a stale existing
+ * directory (server-side cascade deletes first). The 409 path returns an
+ * `ApiError` with `canForceCleanup: true` so the wizard can prompt the user.
+ */
+export function createProject(
+  projectId: string,
+  opts?: { force?: boolean },
+): Promise<void> {
+  const url = `${API_BASE()}/projects${opts?.force ? '?force=true' : ''}`;
+  return apiPost(url, { id: projectId });
 }
 
 export function renameProject(oldId: string, newId: string): Promise<{ success: boolean; oldId: string; newId: string }> {

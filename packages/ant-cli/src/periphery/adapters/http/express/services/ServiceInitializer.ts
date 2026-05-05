@@ -104,10 +104,12 @@ export function initializeServices(
   );
   const githubAuthService = new GitHubAuthService(config.workspacesPath);
   const projectService = new ProjectService(
-    workspaceResolver, 
-    githubAuthService, 
-    chatService, 
-    ideOrchestrator
+    workspaceResolver,
+    githubAuthService,
+    chatService,
+    ideOrchestrator,
+    stateStore,
+    factory.getJobQueue(),
   );
   const kanbanService = new KanbanService(config.workspacesPath, workspaceResolver, stateStore);
   

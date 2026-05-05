@@ -62,7 +62,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     if (!selectedProject) return;
     if (projectConfigMissing) {
       try {
-        await createProjectConfig(selectedProject, backendMode);
+        await createProjectConfig(selectedProject);
       } catch (error) {
         console.error('Failed to create config:', error);
         showError(t('workspace.createFailed'));

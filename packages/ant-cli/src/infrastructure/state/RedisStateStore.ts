@@ -41,7 +41,7 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import type { PreviewStructureType } from '../../core/ports/preview';
-import { createIDEKey, createPreviewKey, createDeployKey } from './redisKeyUtils';
+import { createIDEKey, createPreviewKey, createDeployKey, parseIDEKey, parsePreviewKey, parseDeployKey } from './redisKeyUtils';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import {
   APP_PREFIX,
@@ -470,6 +470,162 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   ): Promise<void> {
     const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
     await this.redis.srem(featureKey, jobId);
+  }
+
+  /**
+   * Bulk-delete every Redis key tied to (organizationId, userId, projectId).
+   * See `StateStorePort.cleanupProject` for the scope contract. Errors are
+   * logged + swallowed — caller's fs.rm verification loop is the final guard.
+   */
+  async cleanupProject(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<void> {
+    logger.info(`[StateStore] cleanupProject start`, { component: 'RedisStateStore' }, { organizationId, userId, projectId });
+
+    // 1) Job-related keys via INDEX.JOBS_BY_FEATURE:{projectId}:* SETs.
+    try {
+      const jobsByFeaturePattern = `${REDIS_KEYS.INDEX.JOBS_BY_FEATURE}${projectId}:*`;
+      let cursor = '0';
+      const indexKeys: string[] = [];
+      do {
+        const [next, keys] = await this.redis.scan(cursor, 'MATCH', jobsByFeaturePattern, 'COUNT', 100);
+        cursor = next;
+        indexKeys.push(...keys);
+      } while (cursor !== '0');
+
+      const jobIdSet = new Set<string>();
+      for (const idxKey of indexKeys) {
+        const ids = await this.redis.smembers(idxKey);
+        for (const id of ids) jobIdSet.add(id);
+      }
+
+      const pipeline = this.redis.pipeline();
+      for (const jobId of jobIdSet) {
+        pipeline.del(this.key(REDIS_KEYS.JOB.STATUS, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.LOGS, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.MAPPING, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.USER_STOPPED, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.WORKFLOW, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.KILL_REASON, jobId));
+      }
+      // Drop the index sets themselves.
+      for (const idxKey of indexKeys) {
+        pipeline.del(idxKey);
+      }
+      if (jobIdSet.size > 0 || indexKeys.length > 0) {
+        await pipeline.exec();
+      }
+
+      logger.debug(`[StateStore] cleaned ${jobIdSet.size} job(s) across ${indexKeys.length} feature index(es)`, {
+        component: 'RedisStateStore',
+      }, { projectId });
+    } catch (err) {
+      logger.warn(`[StateStore] job-key cleanup failed (continuing)`, { component: 'RedisStateStore' }, { projectId, err });
+    }
+
+    // 2) Infra IDE / Preview / Deploy entries — SCAN each prefix, parse the
+    //    portKey tail, drop entries whose project matches.
+    const infraSweep = async (
+      prefix: string,
+      parser: (key: string) => { tenantId: string; userId: string; projectId: string } | null,
+      listSetKey?: string,
+      byPodPrefix?: string,
+    ): Promise<number> => {
+      let cursor = '0';
+      const matches: string[] = [];
+      const pattern = `${prefix}*`;
+      try {
+        do {
+          const [next, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+          cursor = next;
+          for (const fullKey of keys) {
+            const tail = fullKey.substring(prefix.length);
+            const parsed = parser(tail);
+            if (!parsed) continue;
+            if (
+              parsed.projectId === projectId &&
+              parsed.tenantId === organizationId &&
+              parsed.userId === userId
+            ) {
+              matches.push(fullKey);
+            }
+          }
+        } while (cursor !== '0');
+
+        if (matches.length === 0) return 0;
+        const pipeline = this.redis.pipeline();
+        for (const k of matches) {
+          pipeline.del(k);
+          if (listSetKey) {
+            const tail = k.substring(prefix.length);
+            pipeline.srem(listSetKey, tail);
+          }
+        }
+        await pipeline.exec();
+
+        // Cleanup byPod indexes — best effort, scan + srem for every pod set.
+        if (byPodPrefix) {
+          let podCursor = '0';
+          do {
+            const [next, podKeys] = await this.redis.scan(podCursor, 'MATCH', `${byPodPrefix}*`, 'COUNT', 100);
+            podCursor = next;
+            for (const podSet of podKeys) {
+              for (const k of matches) {
+                const tail = k.substring(prefix.length);
+                await this.redis.srem(podSet, tail).catch(() => undefined);
+              }
+            }
+          } while (podCursor !== '0');
+        }
+        return matches.length;
+      } catch (err) {
+        logger.warn(`[StateStore] infra sweep failed`, { component: 'RedisStateStore' }, { prefix, err });
+        return 0;
+      }
+    };
+
+    const ideCount = await infraSweep(
+      REDIS_KEYS.INFRA.IDE,
+      (tail) => parseIDEKey(tail),
+      REDIS_KEYS.INFRA.IDE_LIST,
+    );
+    const ideInstanceCount = await infraSweep(
+      REDIS_KEYS.INFRA.IDE_INSTANCE,
+      (tail) => parseIDEKey(tail),
+    );
+    const ideLastAccessCount = await infraSweep(
+      REDIS_KEYS.INFRA.IDE_LAST_ACCESS,
+      (tail) => parseIDEKey(tail),
+    );
+    const previewCount = await infraSweep(
+      REDIS_KEYS.INFRA.PREVIEW,
+      (tail) => parsePreviewKey(tail),
+      REDIS_KEYS.INFRA.PREVIEW_LIST,
+      REDIS_KEYS.INFRA.PREVIEW_BY_POD,
+    );
+    const previewConfigCount = await infraSweep(
+      REDIS_KEYS.INFRA.PREVIEW_CONFIG,
+      (tail) => parsePreviewKey(tail),
+    );
+    const deployCount = await infraSweep(
+      REDIS_KEYS.INFRA.DEPLOY,
+      (tail) => parseDeployKey(tail),
+      REDIS_KEYS.INFRA.DEPLOY_LIST,
+    );
+
+    logger.info(`[StateStore] cleanupProject done`, { component: 'RedisStateStore' }, {
+      projectId,
+      ideCount,
+      ideInstanceCount,
+      ideLastAccessCount,
+      previewCount,
+      previewConfigCount,
+      deployCount,
+    });
   }
 
   // ============================================

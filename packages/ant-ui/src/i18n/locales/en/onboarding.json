@@ -48,6 +48,10 @@
       "createEmptyHint": "Just set up a blank workspace"
     },
     "projectWizard": {
+      "forceCleanupTitle": "Existing project data found",
+      "forceCleanupMessage": "A project named \"{{projectName}}\" already exists, possibly leftover from an earlier failed delete. Continuing will permanently delete the existing project (IDE, preview, jobs, files) and recreate it. This cannot be undone.",
+      "forceCleanupConfirm": "Yes, delete and recreate",
+      "forceCleanupCancel": "Cancel",
       "title": "Setup Wizard",
       "step1Title": "Project Setup",
       "step2Title": "Git Integration",

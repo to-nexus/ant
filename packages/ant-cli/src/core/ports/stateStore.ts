@@ -700,6 +700,29 @@ export interface StateStorePort {
     jobId: string,
   ): Promise<void>;
 
+  /**
+   * Bulk delete every Redis key tied to the given (organizationId, userId,
+   * projectId). Used by `ProjectService.deleteProject` so stale state can't
+   * survive deletion and surface to the user as ghost data on the next
+   * createProject.
+   *
+   * Scope (best-effort, idempotent):
+   *   - JOB.*  for every jobId in INDEX.JOBS_BY_FEATURE:{projectId}:* SETs
+   *   - INDEX.JOBS_BY_FEATURE:{projectId}:* SETs themselves
+   *   - INFRA.IDE / INFRA.IDE_INSTANCE / INFRA.IDE_LAST_ACCESS entries whose
+   *     parsed key matches the project (SCAN MATCH + filter)
+   *   - INFRA.PREVIEW / INFRA.PREVIEW_BY_POD entries matching the project
+   *   - INFRA.DEPLOY entries matching the project
+   *
+   * Errors during individual ops are logged + swallowed — caller's fs.rm
+   * verification loop is the final backstop.
+   */
+  cleanupProject(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<void>;
+
   // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)
   // ============================================
