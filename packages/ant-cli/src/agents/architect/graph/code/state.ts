@@ -692,13 +692,17 @@ export class TaskTimingHelper {
 
   /**
    * Pause timing for a task (recursion limit, etc.)
+   *
+   * Generic over the task variant — operates only on `timing` and works
+   * for both CodeTask and DesignTask. The discriminated-union narrowing
+   * is irrelevant here.
    */
-  static pauseTask(task: CodeTask): CodeTask {
+  static pauseTask<T extends { timing?: CodeTask['timing'] }>(task: T): T {
     if (!task.timing) {
       console.warn('[TaskTiming] Cannot pause task without timing info');
       return task;
     }
-    
+
     return {
       ...task,
       timing: {
@@ -707,11 +711,15 @@ export class TaskTimingHelper {
       }
     };
   }
-  
+
   /**
-   * Complete timing for a task
+   * Complete timing for a task. Generic over task variant — works for
+   * both CodeTask and DesignTask.
    */
-  static completeTask(task: CodeTask, tokenUsage?: TokenUsage): CodeTask {
+  static completeTask<T extends { timing?: CodeTask['timing']; completed?: boolean; tokenUsage?: TokenUsage }>(
+    task: T,
+    tokenUsage?: TokenUsage,
+  ): T {
     if (!task.timing?.startedAt) {
       console.warn('[TaskTiming] Cannot complete task without start time');
       return { ...task, completed: true, tokenUsage };

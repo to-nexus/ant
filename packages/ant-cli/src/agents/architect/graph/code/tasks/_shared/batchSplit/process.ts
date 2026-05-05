@@ -39,7 +39,8 @@ export function processDiagnosticBatchSplit(
   // tasks are dropped and the queue is morphed into the Tier 3 shape
   // (N sub-tasks + 1 Final Verification).
   const isTier2EscalateCandidate =
-    state.executionTier === 2 && (nextTask as CodeTask).selfVerifyOnDone === true;
+    state.executionTier === 2 &&
+    (nextTask as { selfVerifyOnDone?: boolean }).selfVerifyOnDone === true;
   const taskPolicy = BATCH_SPLIT_POLICY[nextTask.type];
   const isBatchSplitCandidate = !!taskPolicy || isTier2EscalateCandidate;
 
@@ -261,6 +262,34 @@ export function processDiagnosticBatchSplit(
     // fresh count of 0 and bypass `MAX_BATCH_SPLIT_CYCLES` indefinitely.
     const newBatchSplitCount = (nextTask.batchSplitCount ?? 0) + 1;
 
+    // Path A re-enqueues the original to preserve identity / `_failedAttempts`;
+    // Path B drops it and (optionally) enqueues a Final Verification.
+    //
+    // Decide BEFORE building sub-tasks so the priority semantics are wired
+    // off the parent's `effectiveKind`:
+    //   - Path A (requeue-parent)   — sub-task priority = `parent - 1`. Sub-task
+    //                                 lands ahead of the still-queued parent so
+    //                                 it dequeues first.
+    //   - Path B (drop-and-replace) — sub-task priority = `parent`. Parent is
+    //                                 gone from the queue; preserving the
+    //                                 priority keeps the band classification
+    //                                 stable (e.g. foundation parent at 200 →
+    //                                 sub-task at 200 stays foundation).
+    //
+    // Three-Axis SSOT: `band` is carried verbatim from the parent. The
+    // legacy `parent - 1` priority was the deadlock root cause — a
+    // foundation parent at priority 200 would split into priority-199
+    // sub-tasks that the orchestrator's foundation gate (priority-derived)
+    // rejected, leaving the queue stuck. Carrying `band` decouples
+    // scheduling identity from the priority decrement entirely.
+    const effectiveKind: 'requeue-parent' | 'drop-and-replace' =
+      taskPolicy?.kind ?? 'drop-and-replace';
+    const parentPriority = nextTask.priority || 500;
+    const subPriority = effectiveKind === 'requeue-parent'
+      ? Math.max(1, parentPriority - 1)
+      : parentPriority;
+    const parentBand = nextTask.type === 'feature' ? nextTask.band : undefined;
+
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
       const batch = parsed.batches[i];
@@ -273,43 +302,31 @@ export function processDiagnosticBatchSplit(
       const batchPlanText = shape({ parsed, batch, batchIndex: i, planMode });
 
       // Child task `name` and `description` are LLM-authored verbatim —
-      // no system prefix, no synthesis. The auto-convert + explicit
-      // batches[] validations above guarantee `batch.name` and
-      // `batch.rationale` are present non-empty strings.
+      // no system prefix, no synthesis.
       const subTask: CodeTask = {
         id: `${subType}-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         name: batch.name,
         description: batch.rationale,
         type: subType,
-        // Sub-tasks land just before the parent in the priority-sorted
-        // queue (`parent - 1`). `Math.max(1, ...)` clamps the lower bound
-        // so spec-mode parents with `priority === 1` cannot produce zero
-        // or negative priorities that would destabilise the TaskQueue
-        // sort. Ties at priority 1 are tie-broken by insertion order via
-        // TaskQueue's stable sort.
-        priority: Math.max(1, (nextTask.priority || 500) - 1),
+        priority: subPriority,
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
         parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
         batchSplitCount: newBatchSplitCount,
-      };
+        ...(subType === 'feature' ? { band: parentBand } : {}),
+      } as CodeTask;
       if (taskPolicy?.populateRemediationMode !== false) {
-        subTask.remediationMode = planMode;
+        (subTask as { remediationMode?: 'patch' | 'upstream' | 'refactor' }).remediationMode = planMode;
       }
       state.taskQueue.push(subTask);
       subTaskIds.push(subTask.id);
     }
 
-    // Path A re-enqueues the original to preserve identity / `_failedAttempts`;
-    // Path B drops it and (optionally) enqueues a Final Verification.
-    //
     // `snapshotFromState(state)` is taken inside the Path A branch only —
     // Path B spawns a NEW Final Verification with `resumeState: undefined`
     // (raw-clinging-beach regression guard), so carrying the parent's
     // conversation snapshot here would be dead state. Keeping the call
     // site inside the branch that consumes it makes the data flow obvious.
-    const effectiveKind: 'requeue-parent' | 'drop-and-replace' =
-      taskPolicy?.kind ?? 'drop-and-replace';
     if (effectiveKind === 'requeue-parent') {
       const snapshot = snapshotFromState(state);
       // Carry the parent's accumulated timing across the re-queue so the
@@ -340,7 +357,7 @@ export function processDiagnosticBatchSplit(
         _failureReason: undefined,
         resumeState: snapshot ?? undefined,
         batchSplitCount: newBatchSplitCount,
-      } as CodeTask;
+      } as unknown as CodeTask;
       state.taskQueue.push(requeuedTask);
       // Clear keyword-RAG dedup so the parent's next plan entry re-fires
       // keyword RAG (vast-curling-perch D-0). Lazy-required to keep the

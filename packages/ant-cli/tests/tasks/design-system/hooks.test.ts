@@ -78,8 +78,9 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(dsBundle.orchestrator).toBeUndefined();
   });
 
-  it('classify reports isFoundation + expandedRagQuota for priority 200–299 only', () => {
-    // In-band — foundation role activates hasPreFeatureWork.
+  it('classify reports isFoundation + expandedRagQuota — type-fixed (Three-Axis SSOT)', () => {
+    // Every design-system task is foundation work by virtue of its type;
+    // priority is irrelevant to scheduling decisions.
     expect(dsBundle.scheduling?.classify?.(task('t-200', { priority: 200 }))).toEqual({
       isFoundation: true,
       expandedRagQuota: true,
@@ -88,19 +89,11 @@ describe('tasks/_shared/registry — design-system entry', () => {
       isFoundation: true,
       expandedRagQuota: true,
     });
-    expect(dsBundle.scheduling?.classify?.(task('t-299', { priority: 299 }))).toEqual({
+    // Type-fixed: priority outside the historical 200-299 window still
+    // classifies as foundation (the discriminator is `type`, not band).
+    expect(dsBundle.scheduling?.classify?.(task('t-999', { priority: 999 }))).toEqual({
       isFoundation: true,
       expandedRagQuota: true,
-    });
-
-    // Out-of-band — no flags published.
-    expect(dsBundle.scheduling?.classify?.(task('t-199', { priority: 199 }))).toEqual({
-      isFoundation: false,
-      expandedRagQuota: false,
-    });
-    expect(dsBundle.scheduling?.classify?.(task('t-300', { priority: 300 }))).toEqual({
-      isFoundation: false,
-      expandedRagQuota: false,
     });
   });
 

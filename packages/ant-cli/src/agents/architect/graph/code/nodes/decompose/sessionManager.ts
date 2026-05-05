@@ -3,8 +3,6 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import type { Session } from '../../../../../../core/types/session';
 import { isFeatureTask } from '../../tasks/feature';
-import { hooksForTaskType } from '../../tasks/_shared/registry';
-import type { TaskType } from '@ant/shared';
 
 /**
  * Check if session exists and should be restored
@@ -133,9 +131,12 @@ export function restoreFromSession(
     verification: 0,
   };
 
-  const classifyTask = (task: { type: string; priority: number }) => {
-    const classify = hooksForTaskType(task.type as TaskType)?.scheduling?.classify;
-    const isFinal = !!classify?.({ priority: task.priority }).isFinal;
+  // Three-Axis SSOT: verification is type-fixed — `task.type === 'verification'`
+  // is the canonical "final" predicate. The classify hook is consulted as a
+  // safety net for legacy snapshots that may omit `type` while carrying
+  // `priority: 1000`; for those, the doc bundle's classify reads priority.
+  const classifyTask = (task: CodeTask) => {
+    const isFinal = task.type === 'verification';
     const bucket = isFinal ? 'verification' : task.type;
     tasksByType[bucket] = (tasksByType[bucket] ?? 0) + 1;
   };
@@ -143,7 +144,7 @@ export function restoreFromSession(
   taskQueue.getAll().forEach(classifyTask);
 
   if (session.state.currentTask) {
-    classifyTask(session.state.currentTask);
+    classifyTask(session.state.currentTask as CodeTask);
   }
   
   const completedCount = session.state.completedTasks?.length || 0;

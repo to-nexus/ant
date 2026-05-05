@@ -18,6 +18,7 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import type { CodeTask } from "../../../../types/task";
+import type { BaseTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { formatViolations } from "../../utils/violationFormatter";
@@ -63,17 +64,17 @@ let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string }
  * Dispatch a per-task classifier flag through the bundle's `classify`
  * function. Mirrors `schedClassify` in `parallel/TaskOrchestrator.ts`.
  * Used for the foundation-contract injection (`isFoundation`) and the
- * final-verification template gate (`isFinal`) — R1 SSOT, the bundle
- * owns "priority band X means scheduling role Y".
+ * final-verification template gate (`isFinal`) — Three-Axis SSOT, the
+ * bundle owns "my band means scheduling role X".
  */
 function schedClassify(
-  task: { type?: string; priority?: number } | null | undefined,
+  task: CodeTask | null | undefined,
   flag: 'isFoundation' | 'isFinal',
 ): boolean {
-  if (!task || !task.type || typeof task.priority !== 'number') return false;
+  if (!task || !task.type) return false;
   const classify = hooksForTaskType(task.type as TaskType)?.scheduling?.classify;
   if (!classify) return false;
-  return !!classify({ priority: task.priority })[flag];
+  return !!classify(task as BaseTask)[flag];
 }
 
 /**

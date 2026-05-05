@@ -6,8 +6,10 @@ import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { GitHelper } from '../helper/GitHelper';
 import { ensureCanonicalStructure } from '../../../../../../core/utils/sessionPaths';
-import { RESERVED_FEATURE_NAME } from '../../../../../../core/utils/branchUtils';
+import { readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../../utils/logger';
+import { GitOperationError } from '../errors';
+import { GitBootstrapSSOT } from '../remote/operations/BaseGitSetupOperation';
 
 export interface WorktreeInfo {
   path: string;
@@ -30,10 +32,14 @@ export interface WorktreeInfo {
  * - listWorktrees: Lists all active worktrees
  */
 export class WorktreeService {
+  private readonly gitBootstrap: GitBootstrapSSOT;
+
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
     private readonly githubAuthService?: GitHubAuthService
-  ) {}
+  ) {
+    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'WorktreeService');
+  }
 
   /**
    * Create a worktree for a feature.
@@ -70,34 +76,22 @@ export class WorktreeService {
       await ensureCanonicalStructure(featurePath);
     }
 
-    // Ensure main codebase has git initialized
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const baseBranch = readBranchBaseFromConfig(projectPath);
+    await this.gitBootstrap.ensureLocalGitReadyOrThrow({
+      projectId,
+      codebasePath: mainCodebasePath,
+      baseBranch,
+      userContext,
+    });
+
     const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
     if (!git) {
-      // No git repo yet - just create the directory for the worktree
-      // The worktree will be created later when git is initialized
-      logger.info(`Git not initialized, creating codebase directory only`, {
-        component: 'WorktreeService',
-        projectId,
-        featureName
-      });
-      await fs.promises.mkdir(worktreePath, { recursive: true });
-      return { path: worktreePath, branch: branchName, isMain: false };
+      throw new GitOperationError('Main repository is not ready after bootstrap');
     }
 
     await GitHelper.ensureSafeDirectory(mainCodebasePath);
     await GitHelper.ensureUserConfig(git, userContext);
-
-    // Check if repository has any commits
-    const log = await git.log({ maxCount: 1 }).catch(() => null);
-    if (!log?.latest) {
-      logger.info(`Empty repository, creating codebase directory only`, {
-        component: 'WorktreeService',
-        projectId,
-        featureName
-      });
-      await fs.promises.mkdir(worktreePath, { recursive: true });
-      return { path: worktreePath, branch: branchName, isMain: false };
-    }
 
     // Ensure worktree parent directory exists
     await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });

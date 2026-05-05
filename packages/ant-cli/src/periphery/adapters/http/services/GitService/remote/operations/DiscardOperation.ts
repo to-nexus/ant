@@ -1,7 +1,9 @@
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../core/types/user';
-import { GitHelper } from '../../helper/GitHelper';
-import { GitOperationError } from '../../errors';
+import { WorktreeService } from '../../worktree';
+import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
+import { GitBootstrapSSOT } from './BaseGitSetupOperation';
+import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * DiscardOperation
@@ -10,7 +12,16 @@ import { GitOperationError } from '../../errors';
  * Handles tracked (modified/deleted) and untracked (new) files differently.
  */
 export class DiscardOperation {
-  constructor(private readonly workspaceResolver: WorkspaceResolver) {}
+  private readonly featureBackup: FeatureCodebaseBackup;
+  private readonly gitBootstrap: GitBootstrapSSOT;
+
+  constructor(
+    private readonly workspaceResolver: WorkspaceResolver,
+    private readonly worktreeService: WorktreeService
+  ) {
+    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'DiscardOperation');
+  }
 
   async execute(
     projectId: string,
@@ -18,14 +29,16 @@ export class DiscardOperation {
     featureName?: string,
     files?: string[]
   ): Promise<{ success: boolean; discardedFiles: number }> {
-    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-
-    await GitHelper.ensureSafeDirectory(codebasePath);
-
-    const git = GitHelper.getGitInstanceSafe(codebasePath);
-    if (!git) {
-      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
-    }
+    const { git } = await ensureGitRepository({
+      workspaceResolver: this.workspaceResolver,
+      gitBootstrap: this.gitBootstrap,
+      projectId,
+      userContext,
+      featureName,
+      operationName: 'DiscardOperation',
+      worktreeService: this.worktreeService,
+      featureBackup: this.featureBackup,
+    });
 
     // Unstage all staged changes first
     await git.reset(['HEAD']);

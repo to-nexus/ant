@@ -3,7 +3,7 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
-import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify, type UiSource } from '@ant/shared';
+import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify, type UiSource, type TaskBand } from '@ant/shared';
 import { parseExecutionTierTag } from '../../../../../../core/executionTier';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
@@ -21,6 +21,35 @@ import { SUPPORTED_GAME_ENGINES } from '@ant/shared';
 import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
 
 type ArtifactPolicy = { refs?: string[]; context?: string[] };
+
+/**
+ * Three-Axis SSOT — the SOLE phase site that translates `priority` into a
+ * semantic `band`. After this point, `task.band` is the canonical input
+ * for feature scheduling (the orchestrator never reads `priority` for
+ * scheduling decisions).
+ *
+ *   - priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX] (200–299) → 'foundation'
+ *   - priority ∈ [INTEGRATION_MIN,   INTEGRATION_MAX] (600–649) → 'integration'
+ *   - everything else → undefined (ordinary feature)
+ *
+ * Only invoked for feature tasks. Verification tasks DO NOT carry band
+ * (their type alone is the discriminator).
+ */
+export function deriveBandFromPriority(priority: number): TaskBand | undefined {
+  if (
+    priority >= TASK_PRIORITIES.SHARED_FOUNDATION &&
+    priority <= TASK_PRIORITIES.FOUNDATION_MAX
+  ) {
+    return 'foundation';
+  }
+  if (
+    priority >= TASK_PRIORITIES.INTEGRATION_MIN &&
+    priority <= TASK_PRIORITIES.INTEGRATION_MAX
+  ) {
+    return 'integration';
+  }
+  return undefined;
+}
 
 /**
  * Pipeline mode discriminator for `deriveArtifactPolicy`.
@@ -413,7 +442,7 @@ export function createTaskQueue(
   const taskQueue = new TaskQueue<CodeTask>();
   const featureTasks = new Map<string, CodeTask>();
 
-  const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+  const hasFinalTask = tasks.some(task => isVerificationTask(task));
 
   // ─────────────────────────────────────────────────────────────
   // Tier-Verification Alignment — count / shape validation
@@ -445,7 +474,7 @@ export function createTaskQueue(
     }
     const sole = tasks[0];
     const isExplain = (sole.type as string) === 'explain';
-    const flag = (sole as any).selfVerifyOnDone;
+    const flag = (sole as { selfVerifyOnDone?: boolean }).selfVerifyOnDone;
     if (!isExplain && flag !== true) {
       throw new Error(
         `❌ [Decompose] Tier 2 task "${sole.id || sole.name}" is missing selfVerifyOnDone:true.\n` +
@@ -482,7 +511,7 @@ export function createTaskQueue(
     // `verification`; they shouldn't carry the flag, but skipping them keeps
     // the gate narrow).
     const leakedSelfVerify = tasks.find(
-      (t) => (t as any).selfVerifyOnDone === true && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION,
+      (t) => (t as { selfVerifyOnDone?: boolean }).selfVerifyOnDone === true && !isVerificationTask(t),
     );
     if (leakedSelfVerify) {
       throw new Error(
@@ -520,8 +549,10 @@ export function createTaskQueue(
     // Determine task type: final verification tasks are always 'verification'.
     // When the decompose LLM omits `type`, fall back to the canonical default
     // declared by `tasks/_shared/types.ts` (`DEFAULT_TASK_TYPE = 'feature'`)
-    // so the literal lives in exactly one place (R1-compliant).
-    const resolvedType = task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+    // so the literal lives in exactly one place (R1-compliant). The
+    // priority=1000 alias is the LLM-facing legacy contract; isVerificationTask
+    // recognises it AND any explicit `type: 'verification'`.
+    const resolvedType = isVerificationTask(task)
       ? 'verification' as const
       : (task.type || DEFAULT_TASK_TYPE);
 
@@ -557,20 +588,26 @@ export function createTaskQueue(
     //     governs gates there; letting the flag leak onto a Tier 3 task would
     //     trick the command guard into allowing build/test/typecheck during
     //     execute for tasks that are supposed to defer to verification.
-    const rawSelfVerify = (task as any).selfVerifyOnDone;
+    const rawSelfVerify = (task as { selfVerifyOnDone?: boolean }).selfVerifyOnDone;
     const selfVerifyOnDone =
       executionTier === 2 && typeof rawSelfVerify === 'boolean'
         ? rawSelfVerify
         : undefined;
 
+    const resolvedPriority = task.priority || TASK_PRIORITIES.FEATURE_NORMAL;
+    // Three-Axis SSOT: feature tasks carry an explicit `band` derived from
+    // the priority window. After decompose, scheduling reads `task.band`
+    // (deadlock-immune across batch-split priority decrements).
+    const band: TaskBand | undefined =
+      resolvedType === 'feature' ? deriveBandFromPriority(resolvedPriority) : undefined;
+    const errorFields = (task as any) as { errors?: string[]; category?: string };
+
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
       type: resolvedType,
-      priority: task.priority || TASK_PRIORITIES.FEATURE_NORMAL,
+      priority: resolvedPriority,
       description: task.description,
-      errors: task.errors,
-      category: task.category,
       uiSections,
       packages,
       include,
@@ -579,7 +616,11 @@ export function createTaskQueue(
       exclusive: exclusive || undefined,
       parallelGroup,
       selfVerifyOnDone,
-    };
+      ...(resolvedType === 'feature' ? { band } : {}),
+      ...(resolvedType === 'error'
+        ? { errors: errorFields.errors, category: errorFields.category }
+        : {}),
+    } as CodeTask;
     
     taskQueue.push(normalizedTask);
 
@@ -601,12 +642,12 @@ export function logTaskSummary(
   console.log(`\n✅ Task breakdown complete:`);
 
   // Count task types via task.type as a generic key (R1 — no `task.type === '...'`
-  // literal comparisons). FINAL_VERIFICATION alias re-routes feature→verification
+  // literal comparisons). The verification alias re-routes feature→verification
   // so historical decompositions that set priority=1000 without retype still
   // show up under the correct bucket.
   const countByType: Record<string, number> = {};
   for (const t of tasks) {
-    const bucket = t.priority === TASK_PRIORITIES.FINAL_VERIFICATION ? 'verification' : (t.type as string);
+    const bucket = isVerificationTask(t) ? 'verification' : (t.type as string);
     countByType[bucket] = (countByType[bucket] ?? 0) + 1;
   }
 

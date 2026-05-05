@@ -244,7 +244,7 @@ export async function combineCodeContext(
     const t = state.currentTask;
     if (!t) return false;
     const classify = hooksForTaskType(t.type)?.scheduling?.classify;
-    return !!classify?.({ priority: t.priority }).expandedRagQuota;
+    return !!classify?.(t).expandedRagQuota;
   })();
 
   const taskQuota = state.currentTask

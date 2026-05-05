@@ -360,24 +360,28 @@ export interface TaskExecuteHook {
 /**
  * Per-task scheduling classification. Returned by `TaskSchedulingHook.classify`.
  *
- * All flags are `Partial<...>` at the type level — a bundle need only
- * populate the flags it cares about. `undefined` is treated as `false` by
- * every phase-layer consumer via the `schedClassify(t, flag)` helper in
+ * All flags are optional — a bundle need only populate the flags it cares
+ * about. `undefined` is treated as `false` by every phase-layer consumer
+ * via the `schedClassify(t, flag)` helper in
  * `parallel/TaskOrchestrator.ts`.
  *
- * Semantic mapping (priority bands → flag):
- *   - `isTokens`                  ↔ priority ∈ [100, 199]
- *   - `isFoundation`              ↔ priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX]
- *   - `isFinal`                   ↔ priority >= FINAL_VERIFICATION
- *   - `producesIntegrationGate`   ↔ feature priority ∈ [FEATURE_CRITICAL, INTEGRATION_MIN)
- *   - `consumesIntegrationGate`   ↔ feature priority ∈ [INTEGRATION_MIN, INTEGRATION_MAX]
- *   - `expandedRagQuota`          ↔ isFoundation ∨ consumesIntegrationGate
+ * Three-Axis SSOT (`.cursorrules` "Three-Axis Task Modeling"):
  *
- * Bundles compute these from their own priority bands — the bundle IS the
- * SSOT for "this priority band means X". Phase-layer callers never compare
- * priority directly; they ask the hook. See
- * `docs/architecture/NODE_GRAPH_LAYOUT.md` (R1 — phases blind to
- * `task.type` AND to raw `task.priority` bands).
+ * | Bundle           | Input read by classify       | Decided observer |
+ * |------------------|------------------------------|------------------|
+ * | feature          | `task.band`                  | Orchestrator     |
+ * | setup            | (ignored — type-fixed)       | Orchestrator     |
+ * | design-system    | (ignored — type-fixed)       | Orchestrator     |
+ * | verification     | (ignored — type-fixed)       | Orchestrator     |
+ * | doc (design-job) | `task.priority` (band hint)  | Orchestrator     |
+ *
+ * Bundles read whatever discriminator their type uses; `priority`
+ * comparisons are LEGAL inside `tasks/{type}/hooks/scheduling.ts` because
+ * that file IS the SSOT for "my band means scheduling role X" — but they
+ * are FORBIDDEN in phase-layer code (orchestrator/router/parallel/nodes).
+ * The decompose `priority → band` mapping (`responseParser.ts`) is the
+ * one phase site that may translate priority into a semantic band, after
+ * which `task.band` is the SSOT for feature scheduling decisions.
  */
 export interface SchedulingClassification {
   isTokens?: boolean;
@@ -397,42 +401,35 @@ export interface TaskSchedulingHook {
 
   // ─── Producer-side flags (running/queued tasks of this type ACTIVATE the named barrier) ───
   //
-  // Replaces the three module-level predicates that used to live inside
-  // `parallel/TaskOrchestrator.ts` (`isFeatureOrSetupTask`, `isPreDocTask`,
-  // `isNonIntegrationFeatureTask`). The orchestrator iterates all
-  // running/queued tasks and asks each bundle via these flags whether it
-  // should participate in a barrier's "work pending" check — no more
-  // `task.type === 'feature' | 'setup' | 'test-code'` branches in the
-  // parallel layer.
+  // Static boolean flags below are uniform across a bundle's tasks. The
+  // orchestrator iterates all running/queued tasks and asks each bundle
+  // via these flags whether it should participate in a barrier's "work
+  // pending" check — no `task.type === '...'` branches in the parallel layer.
   blocksUi?: boolean;
   blocksTestgen?: boolean;
   blocksDoc?: boolean;
   blocksIntegration?: boolean;
 
-  // ─── Per-task classifier (priority-band-driven flags) ─────────────
+  // ─── Per-task classifier (band-driven flags) ─────────────
   //
   // Static boolean flags above are uniform across a bundle's tasks.
-  // `classify` returns flags that depend on the task instance — chiefly
-  // `task.priority`'s band (foundation / tokens / integration / final).
-  // A bundle CAN read `task.priority` inside classify; the phase layer
-  // CANNOT. This keeps the bundle as the single source of truth for
-  // "my priority band X means scheduling role Y".
+  // `classify` returns flags that depend on the task instance. The
+  // input shape is `BaseTask` (the discriminated union); each bundle
+  // narrows internally and reads only the discriminator it owns
+  // (`task.band` for feature, `task.priority` for design-job doc, etc.).
   //
-  // Signature note: classify accepts `Pick<BaseTask, 'priority'>`
-  // rather than the full `BaseTask`. This lets call sites that only
-  // have `{ type, priority }` handles (e.g. checkpoint-restored task
-  // snapshots in `sessionManager.classifyTask`) dispatch without an
-  // `as any` cast. Full `BaseTask` values still satisfy the narrower
-  // shape via TypeScript's structural widening.
+  // Phase-layer call sites pass the whole task; bundles do their own
+  // narrowing — which keeps the bundle as the single source of truth
+  // for "my band means scheduling role X".
   //
   // Retired predicates absorbed by classify (previously inline in
   // `parallel/TaskOrchestrator.ts`):
-  //   - `isFoundationTask`        — priority ∈ [200, 299]
-  //   - `isTokensTask`            — priority ∈ [100, 199]
+  //   - `isFoundationTask`        — feature.band === 'foundation' (was priority ∈ [200, 299])
+  //   - `isTokensTask`            — setup type-fixed (was priority ∈ [100, 199])
   //   - `isTokensOrAssetsTask`    — isFoundation ∨ isTokens
   //   - `isPreIntegrationWork`    — producesIntegrationGate
-  //   - `isFinalTask` (drain)     — isFinal
-  classify?(task: Pick<BaseTask, 'priority'>): SchedulingClassification;
+  //   - `isFinalTask` (drain)     — verification type-fixed (was priority ≥ 1000)
+  classify?(task: BaseTask): SchedulingClassification;
 }
 
 /**

@@ -91,94 +91,106 @@ export interface PhaseTokenUsage {
 }
 
 // ============================================
-// Base Task
+// Three-Axis Task Modeling — type / band / priority
 // ============================================
+//
+// Three orthogonal observers (see `.cursorrules` "Three-Axis Task Modeling
+// SSOT"):
+//   - `task.type`     — LLM observer: "what to do" (action mode)
+//   - `task.band`     — Orchestrator observer: scheduling sub-classification,
+//                       type-bound to FeatureTask (foundation/integration/
+//                       undefined). Other types' scheduling role is already
+//                       fully expressed by their `type` alone.
+//   - `task.priority` — TaskQueue observer: integer sort key. Semantic
+//                       comparison is BANNED outside the decompose
+//                       priority→band mapping site.
 
-/** Base task interface shared by all job types */
-export interface BaseTask {
+/**
+ * Scheduling-axis sub-classification. Type-bound to {@link FeatureTask} —
+ * other types do NOT carry band (their `type` alone determines scheduling).
+ *
+ *   - `'foundation'`  — shared types / interfaces. Decompose maps priority
+ *                       band [SHARED_FOUNDATION, FOUNDATION_MAX] to this
+ *                       value. Activates the `hasPreFeatureWork` barrier.
+ *   - `'integration'` — cross-feature wiring. Decompose maps priority band
+ *                       [INTEGRATION_MIN, INTEGRATION_MAX] to this value.
+ *                       Consumes the `hasPreIntegrationWork` barrier.
+ *
+ * `undefined` = an ordinary feature task (the common case).
+ */
+export type TaskBand = 'foundation' | 'integration';
+
+interface BaseTaskCommon {
   id: string;
   name: string;
-  type: TaskType;
-  priority: number;
   description: string;
+  /** Sort key only. Semantic comparisons (`priority === FINAL_VERIFICATION`,
+   *  band windows) are forbidden outside the decompose priority→band site. */
+  priority: number;
   completed?: boolean;
   interrupted?: boolean;
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
   packages?: string[];
-
-  /**
-   * Exclusive execution flag (set by decompose).
-   * When true, this task cannot run concurrently with any other task.
-   * The orchestrator waits until all running tasks complete before starting
-   * an exclusive task, and no new tasks are started until it finishes.
-   *
-   * Code job: setup, error, final → exclusive: true
-   * Design job: api-contract → exclusive: true
-   */
   exclusive?: boolean;
-
-  /**
-   * Parallel execution group ID (set by decompose LLM).
-   * Tasks sharing the same parallelGroup cannot execute simultaneously.
-   * Tasks with different parallelGroup values can run in parallel.
-   *
-   * Ignored when exclusive is true.
-   * When undefined, the task runs alone (conservative default).
-   */
   parallelGroup?: string;
-
   /**
    * Artifact path prefix patterns for task-level document selection.
    * When set, only artifacts matching these prefixes are injected into the prompt.
    * When unset, taskType-based default rules apply (backward compatible).
-   *
-   * Examples:
-   * - `['architecture/spec/spec-auth']` → specific spec only
-   * - `['architecture/system/fe-system-main.md']` → specific system design
-   * - `['visual/ui/tokens', 'visual/ui/ant/spec/header']` → UI subset
    */
   include?: string[];
-
   /**
    * Role-annotated artifact selection policy. When present, overrides `include`
    * for role-aware selection via `selectArtifactsWithPolicy`.
-   * - refs: path prefixes → select and inject as role='ref' (primary reference)
-   * - context: path prefixes → select and inject as role='context' (background)
-   *
-   * `include` is kept as backward-compat flat projection of this policy.
    */
   artifactPolicy?: {
     refs?: string[];
     context?: string[];
   };
-
   /**
    * Which UiSource feeds this task (only meaningful for UI-related task types:
-   * 'ui' and 'design-system'). Orthogonal to `type`:
-   *   - `type` decides WHAT the task produces (e.g. design-system skeleton).
-   *   - `uiSource` decides HOW to interpret the UI input (ant canonical / figma MCP / handoff observation).
-   *
-   * Kept BE-internal (routing + prompt dispatch only); not rendered in Kanban.
+   * 'ui' and 'design-system'). Kept BE-internal (routing + prompt dispatch only);
+   * not rendered in Kanban.
    */
   uiSource?: UiSource;
-
   /**
    * Set when this task was finalised by `batchSplit` Path B (drop-and-replace) —
    * the parent task's lifecycle ends here even though it never produced its
    * own files. The array carries the spawned sub-task IDs so the UI / debug
-   * surface can trace lineage. Truthy check distinguishes superseded entries
-   * from regular completions; `completed` stays false so superseded items
+   * surface can trace lineage. `completed` stays false so superseded items
    * never inflate the "X / Y completed" counter while still rendering as a
    * separate row in `completedTasksDetails`.
-   *
-   * Mutually exclusive with `completed=true` semantically — a superseded
-   * task carries its own `timing.elapsedTime` + `tokenUsage` (captured at
-   * the split moment) so per-task accounting in the kanban tooltip stays
-   * accurate.
    */
   supersededBy?: string[];
 }
+
+export type FeatureTask       = BaseTaskCommon & { type: 'feature'; band?: TaskBand };
+export type ErrorTask         = BaseTaskCommon & { type: 'error' };
+export type SetupTask         = BaseTaskCommon & { type: 'setup' };
+export type UiTask            = BaseTaskCommon & { type: 'ui' };
+export type DesignSystemTask  = BaseTaskCommon & { type: 'design-system' };
+export type VerificationTask  = BaseTaskCommon & { type: 'verification' };
+export type TestCodeTask      = BaseTaskCommon & { type: 'test-code' };
+export type DocTask           = BaseTaskCommon & { type: 'doc' };
+export type ExplainTask       = BaseTaskCommon & { type: 'explain' };
+
+/**
+ * Discriminated union over `type`. Compile-time gate prevents `band` from
+ * appearing on non-feature variants — narrowing `task.type === 'verification'`
+ * proves no `band` field. The decompose priority→band mapping site is the
+ * one location that may write `band` (only on feature tasks).
+ */
+export type BaseTask =
+  | FeatureTask
+  | ErrorTask
+  | SetupTask
+  | UiTask
+  | DesignSystemTask
+  | VerificationTask
+  | TestCodeTask
+  | DocTask
+  | ExplainTask;
 
 // ============================================
 // Active Job Info (SSE initial state)

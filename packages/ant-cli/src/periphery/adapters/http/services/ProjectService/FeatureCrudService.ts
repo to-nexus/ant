@@ -154,20 +154,10 @@ export class FeatureCrudService {
       await fs.promises.writeFile(path.join(planDir, 'prd.md'), prdTemplate, 'utf-8');
     }
 
-    // ✅ Create Git worktree for feature (if WorktreeService is available)
-    if (this.worktreeService) {
-      try {
-        await this.worktreeService.createWorktree(projectId, featureName, userContext);
-      } catch (error: any) {
-        // If Git not initialized, silently skip (not an error for feature creation)
-        if (error.message?.includes('not initialized')) {
-          // Silently skip
-        } else {
-          console.error(`[FeatureCrudService] Failed to create worktree for ${featureName}:`, error);
-          // Don't throw - feature directories are created successfully
-        }
-      }
+    if (!this.worktreeService) {
+      throw new Error('Worktree service is not configured');
     }
+    await this.worktreeService.createWorktree(projectId, featureName, userContext);
 
     // Post-create canonical invariant probe: if any of the three UiSource
     // sibling dirs is missing after ensureCanonicalStructure + worktree
