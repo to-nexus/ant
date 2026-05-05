@@ -40,6 +40,8 @@ import { ProjectStructureDetector } from '../../periphery/adapters/http/services
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
 import { sendErrorResponse } from '../../periphery/adapters/http/routes/helpers/errorResponse';
+import { REDIS_KEYS } from '../../core/constants/redis';
+import type { CleanupRequestPayload, CleanupAckPayload } from '../../periphery/adapters/http/services/ProjectService/previewCleanup';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -65,6 +67,7 @@ export class PreviewServer {
   private stateStore!: StateStorePort & PortRegistryPort;
   private server: any;
   private options: PreviewServerOptions;
+  private cleanupUnsubscribe?: () => void;
 
   constructor(options: PreviewServerOptions) {
     this.options = options;
@@ -109,6 +112,42 @@ export class PreviewServer {
       stateStore: this.stateStore,
       workspacesPath: workspaceRoot,
     });
+
+    // Register cross-process cleanup subscriber. ProjectService (API) publishes
+    // requests on `ant:lifecycle:cleanup:request`; we run the matching cleanup
+    // and ack on `ant:lifecycle:cleanup:ack` so the API can confirm before
+    // running fs.rm. See `previewCleanup.ts` for the publisher contract.
+    this.cleanupUnsubscribe = await this.stateStore.subscribe(
+      REDIS_KEYS.LIFECYCLE.CLEANUP_REQUEST,
+      async (raw: any) => {
+        const msg = raw as Partial<CleanupRequestPayload> | undefined;
+        if (!msg || !msg.requestId || !msg.scope || !msg.organizationId || !msg.userId || !msg.projectId) {
+          logger.warn('[PreviewServer] Ignored malformed cleanup request', { component: 'PreviewServer' }, { msg });
+          return;
+        }
+        try {
+          if (msg.scope === 'project') {
+            await this.previewService.cleanupProject(msg.organizationId, msg.userId, msg.projectId);
+          } else if (msg.scope === 'feature') {
+            if (!msg.featureName) {
+              throw new Error('cleanup request scope=feature missing featureName');
+            }
+            await this.previewService.cleanupFeature(msg.organizationId, msg.userId, msg.projectId, msg.featureName);
+          }
+          const ack: CleanupAckPayload = { requestId: msg.requestId, source: 'preview', success: true };
+          await this.stateStore.publish(REDIS_KEYS.LIFECYCLE.CLEANUP_ACK, ack);
+        } catch (err: any) {
+          logger.warn('[PreviewServer] cleanup request failed', { component: 'PreviewServer' }, { requestId: msg.requestId, err });
+          const ack: CleanupAckPayload = {
+            requestId: msg.requestId,
+            source: 'preview',
+            success: false,
+            error: err?.message ?? String(err),
+          };
+          await this.stateStore.publish(REDIS_KEYS.LIFECYCLE.CLEANUP_ACK, ack);
+        }
+      },
+    );
 
     logger.info('[PreviewServer] Services initialized', {
       component: 'PreviewServer'
@@ -1119,6 +1158,16 @@ export class PreviewServer {
    */
   async stop(): Promise<void> {
     logger.info('[PreviewServer] Stopping...', { component: 'PreviewServer' });
+
+    // Drop the cross-process cleanup subscription before tearing down services.
+    if (this.cleanupUnsubscribe) {
+      try {
+        this.cleanupUnsubscribe();
+      } catch (err) {
+        logger.warn('[PreviewServer] Error unsubscribing cleanup channel', { component: 'PreviewServer' }, err);
+      }
+      this.cleanupUnsubscribe = undefined;
+    }
 
     // Cleanup preview service
     try {

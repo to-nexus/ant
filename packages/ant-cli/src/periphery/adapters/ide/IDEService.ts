@@ -78,13 +78,35 @@ export class IDEService {
           && labels['ant.project'] === projectId;
       });
       for (const cInfo of matches) {
+        const c = this.docker.getContainer(cInfo.Id);
+        // stop() can fail when the container is already stopped — that's
+        // expected, log + proceed. remove({force: true}) is the source of
+        // truth; if THAT fails the container is genuinely stuck.
         try {
-          const c = this.docker.getContainer(cInfo.Id);
-          await c.stop().catch(() => undefined);
-          await c.remove({ force: true }).catch(() => undefined);
-          logger.info(`Removed IDE container (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { containerId: cInfo.Id, name: (cInfo.Names || [])[0] });
-        } catch (e) {
-          logger.warn(`Failed to remove IDE container (project cleanup)`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, e);
+          await c.stop();
+        } catch (stopErr: any) {
+          logger.debug(`IDE container stop returned non-fatal error (likely already stopped)`, {
+            component: 'IDEService',
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+          }, { containerId: cInfo.Id, error: stopErr?.message });
+        }
+        try {
+          await c.remove({ force: true });
+          logger.info(`Removed IDE container (project cleanup)`, {
+            component: 'IDEService',
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+          }, { containerId: cInfo.Id, name: (cInfo.Names || [])[0] });
+        } catch (removeErr) {
+          logger.warn(`Failed to remove IDE container (project cleanup)`, {
+            component: 'IDEService',
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+          }, removeErr);
         }
       }
     } catch (e) {

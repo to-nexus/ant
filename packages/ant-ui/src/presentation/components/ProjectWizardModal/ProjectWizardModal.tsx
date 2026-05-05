@@ -10,6 +10,7 @@ import {
   addChatUserMessage, fetchProjectConfig,
   fetchOrgConfig, fetchUserConfig,
 } from '@/infrastructure/http/api';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { cn } from '@/shared/utils/design-system';
 
@@ -325,7 +326,38 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
       if (needsProject) {
         updateExecStep('project', 'active');
-        await createProject(projectId);
+        try {
+          await createProject(projectId);
+        } catch (createErr) {
+          // Server returns 409 + canForceCleanup when stale state survives a
+          // failed delete. Surface a confirm dialog so the user can opt-in
+          // to a force-recreate (which deletes the leftover project first).
+          if (
+            createErr instanceof ApiError &&
+            createErr.status === 409 &&
+            createErr.canForceCleanup
+          ) {
+            const confirmed = await new Promise<boolean>((resolve) => {
+              showConfirm(
+                t('quickstart.projectWizard.forceCleanupMessage', { projectName: projectId }),
+                {
+                  type: 'warning',
+                  title: t('quickstart.projectWizard.forceCleanupTitle'),
+                  confirmText: t('quickstart.projectWizard.forceCleanupConfirm'),
+                  cancelText: t('quickstart.projectWizard.forceCleanupCancel'),
+                  onConfirm: () => resolve(true),
+                  onCancel: () => resolve(false),
+                },
+              );
+            });
+            if (!confirmed) {
+              throw createErr;
+            }
+            await createProject(projectId, { force: true });
+          } else {
+            throw createErr;
+          }
+        }
         await delay(500);
         updateExecStep('project', 'done');
       }
@@ -337,7 +369,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         // Fetch the server-created config and merge wizard overrides on top.
         let serverConfig = await fetchProjectConfig(projectId);
         if (!serverConfig) {
-          serverConfig = await createProjectConfig(projectId, backendMode);
+          serverConfig = await createProjectConfig(projectId);
         }
         const updates: Record<string, any> = {};
         if (repositoryName) updates.repositoryName = repositoryName;

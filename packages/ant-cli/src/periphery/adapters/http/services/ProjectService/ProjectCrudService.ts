@@ -70,8 +70,14 @@ export class ProjectCrudService {
   }
 
   /**
-   * Create a new project
-   * 
+   * Create a new project.
+   *
+   * Throws `Error('Project already exists')` when the project directory is
+   * already on disk. The HTTP route maps that to a 409 with
+   * `canForceCleanup: true` so the FE wizard can offer a "force overwrite"
+   * confirmation flow. Force-recreate is wired in `ProjectService.createProject`
+   * (it deletes first when `opts.force` is set).
+   *
    * @param id - Project ID
    * @param userContext - User context for workspace path
    */
@@ -108,29 +114,30 @@ export class ProjectCrudService {
     const modelOpus = envModel || 'claude-opus-4-7';
     const modelSonnet = envModel || 'claude-sonnet-4-6';
     
-    // ✅ Determine if Cloud Mode
-    const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
-    
     // ✅ Read effective GitHub owner: user override > org config
     const effectiveOwner = await this.resolveEffectiveGitHubOwner(userContext);
     const defaultGithubRepo = effectiveOwner
       ? buildDefaultGitHubRepoUrl({ github: { owner: effectiveOwner } }, sanitizedName)
       : undefined;
-    
+
     logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
-      isCloudMode,
       modelOpus,
       modelSonnet,
       defaultGithubRepo,
     });
-    
-    // ✅ Create config based on mode
+
+    // repoType defaults to 'cloud' (workspace-managed codebase). 'local' is an
+    // opt-in mode where the user explicitly maps the codebase to an external
+    // localPath; it is reachable only when the user provides those fields
+    // through the wizard's advanced config — never auto-derived from
+    // userContext (auto-local previously caused the worktree path-collision
+    // class of bugs). Three-axis split: repoType is independent of git
+    // bootstrap (`.git`) and of remote linkage (githubRepo).
     // branchBase is intentionally omitted — it will be auto-detected at clone/init time.
     // All runtime reads already fall back to 'main' when branchBase is absent.
     const config: Record<string, any> = {
       repositoryName: sanitizedName,
-      repoType: isCloudMode ? 'cloud' : 'local',
-      ...(isCloudMode ? {} : { localPath: `../${sanitizedName}` }),
+      repoType: 'cloud',
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       llmModels: {
         design: {
@@ -304,20 +311,64 @@ export class ProjectCrudService {
   }
 
   /**
-   * Delete a project
+   * Delete a project (disk-level only).
+   *
+   * Verification loop closes the NFS/EFS eventual-consistency window: an
+   * IDE pod / job-runner child / preview process holding open file handles
+   * causes silly-rename `.nfsXXXX` orphans to survive the initial `fs.rm`,
+   * leaving the project dir partially populated. Without verification the
+   * next createProject's `fs.access` succeeds and surfaces a confusing 409.
+   *
+   * Caller (`ProjectService.deleteProject`) is responsible for the cascade
+   * BEFORE this runs: K8s pod wait → preview pub/sub ack → child exit wait
+   * → Redis state cleanup → THIS deleteProject.
+   *
+   * On timeout, throws an error that includes leftover paths (top-N) so the
+   * user / FE wizard can identify which infra owner is still holding the
+   * directory open.
    */
   async deleteProject(id: string, userContext: UserContext): Promise<void> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
-    
+
     // Check if project exists
     try {
       await fs.promises.access(projectPath);
     } catch {
       throw new Error('Project not found');
     }
-    
-    // Delete project directory
+
+    // Initial recursive remove. Errors are tolerated here — the verification
+    // loop below is the source of truth for completion.
     await fs.promises.rm(projectPath, { recursive: true, force: true });
+
+    // Verify completion. NFS silly-rename + slow file-handle release means
+    // the path can briefly resurface after the rm resolves; poll for up to 10s.
+    const POLL_INTERVAL_MS = 200;
+    const MAX_POLL_ATTEMPTS = 50; // 50 × 200ms = 10s
+    for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+      const exists = await fs.promises
+        .access(projectPath)
+        .then(() => true)
+        .catch(() => false);
+      if (!exists) return;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+
+    // Still there → collect diagnostic info so the user can identify the holder.
+    let leftovers: string[] = [];
+    try {
+      const all = await fs.promises.readdir(projectPath);
+      leftovers = all.slice(0, 20);
+    } catch {
+      // Path read failed — likely transient; leave leftovers empty.
+    }
+
+    throw new Error(
+      `Project deletion verification timed out: ${projectPath} still exists after fs.rm. ` +
+        `Leftovers (top ${leftovers.length}): ${leftovers.join(', ') || '<unreadable>'}. ` +
+        `Likely causes: open file handles in IDE pod / job-worker child / preview process. ` +
+        `Use POST /projects/:id?force=true to retry after waiting briefly.`,
+    );
   }
   
   /**
@@ -408,12 +459,13 @@ export class ProjectCrudService {
       
       return config;
     } catch (error) {
-      // If config doesn't exist, return minimal default config
+      // If config doesn't exist, return minimal default config.
+      // repoType defaults to 'cloud' regardless of userContext — same SSOT as
+      // createProject (auto-local is forbidden; explicit user opt-in only).
       console.warn('[ProjectCrudService] Config not found, returning defaults');
-      const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
       return {
         repositoryName: this.sanitizeProjectName(id),
-        repoType: isCloudMode ? 'cloud' : 'local',
+        repoType: 'cloud',
         llmModels: {
           design: {
             default: fallbackSonnet,

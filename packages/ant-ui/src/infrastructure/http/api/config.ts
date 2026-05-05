@@ -59,16 +59,22 @@ function sanitizeRepositoryName(workspaceId: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-/** Create project config with defaults */
-export async function createProjectConfig(
-  projectId: string,
-  mode: 'local' | 'cloud' = 'local',
-): Promise<ProjectConfig> {
+/**
+ * Create project config with defaults.
+ *
+ * `repoType` always defaults to `'cloud'` — the workspace-managed codebase
+ * mode. The previous auto-mapping (`mode='local' -> repoType:'local' + localPath`)
+ * was removed because it caused worktree path-collision (same codebase shared
+ * between base and every feature) without explicit user opt-in. Users who want
+ * the external `localPath` mode must set `repoType` and `localPath` explicitly
+ * via `updateProjectConfig` (advanced wizard step) — see Three-Axis Task Modeling
+ * principle in CLAUDE.md.
+ */
+export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
   const sanitizedName = sanitizeRepositoryName(projectId);
   const defaultConfig: ProjectConfig = {
     repositoryName: sanitizedName,
-    repoType: mode === 'cloud' ? 'cloud' : 'local',
-    ...(mode !== 'cloud' ? { localPath: `~/dev/${sanitizedName}` } : {}),
+    repoType: 'cloud',
   };
   await apiPut(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/config`,

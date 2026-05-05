@@ -31,6 +31,7 @@ import { UserContext } from '../../core/types/user';
 import { createIDEKey, parseIDEKey } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+import { resolveK8sWorktreeMounts } from './k8sWorktreeMounts';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -50,6 +51,7 @@ interface K8sPod {
     containers: Array<{
       name: string;
       image: string;
+      workingDir?: string;
       ports: Array<{ containerPort: number }>;
       command?: string[];
       args?: string[];
@@ -117,9 +119,15 @@ const DEFAULT_OPTIONS: Required<Omit<KubernetesIDEOrchestratorOptions, 'kubeApiU
   idleTimeoutMs: 30 * 60 * 1000  // 30 minutes
 };
 
-// EFS PVC configuration (default matches DevOps naming convention)
-const EFS_PVC_NAME = process.env.ANT_EFS_PVC_NAME || 'ant-workspaces-pvc';
-const WORKSPACE_BASE_PATH = process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
+// EFS PVC configuration (default matches DevOps naming convention).
+// Read lazily so tests can override env per case; production K8s sets env
+// before the process starts so dynamic read costs nothing.
+function getEfsPvcName(): string {
+  return process.env.ANT_EFS_PVC_NAME || 'ant-workspaces-pvc';
+}
+function getWorkspaceBasePath(): string {
+  return process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
+}
 
 // ============================================
 // Timeout Constants
@@ -130,11 +138,24 @@ const TIMEOUTS = {
   K8S_API_REQUEST: 10000,
   /** Pod ready wait timeout (ms) - DevOps 권고: 노드 할당 + Pod 생성 시간 고려하여 4분 */
   POD_READY: 240000,
-  /** Pod deletion wait timeout (ms) */
-  POD_DELETION: 30000,
+  /**
+   * Pod deletion wait timeout (ms). Doubled (60s) so the wait outlives the
+   * grace period (5s — see `POD_DELETION_GRACE_SECONDS`) plus kubelet teardown
+   * margin. Closes the previous "grace == wait timeout" boundary collision
+   * that allowed `fs.rm` to start while a pod was still terminating.
+   */
+  POD_DELETION: 60000,
   /** State store operation timeout (ms) */
   STATE_STORE: 5000
 } as const;
+
+/**
+ * Grace period passed in the K8s DELETE body. Shorter than the K8s default
+ * (30s) so termination is fast; the IDE container has no critical persistent
+ * state to flush. waitForPodDeletion still honors POD_DELETION (60s) for
+ * safety margin in slow clusters.
+ */
+const POD_DELETION_GRACE_SECONDS = 5;
 
 /** OpenVSCode Server port (same as IDEService for Docker) */
 const IDE_PORT = 3000;
@@ -289,6 +310,16 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
   /**
    * Create Pod spec
+   *
+   * Mount topology — keep aligned with [`k8sWorktreeMounts.ts`](./k8sWorktreeMounts.ts):
+   * - Primary workspace mount uses the alias mountPath `/workspace` (mirrors
+   *   Docker's `dockerWorkspacePath` alias). This guarantees absolute-path
+   *   worktree mounts NEVER collide with the primary mount.
+   * - Worktree-aware additional mounts (mainGitDir + worktreePath) come from
+   *   `resolveK8sWorktreeMounts` and use absolute mountPaths so the worktree
+   *   marker's `gitdir: <abs path>` back-reference resolves inside the pod.
+   * - `workingDir: '/workspace'` makes openvscode-server open the alias as
+   *   the default folder (1:1 with Docker's `WorkingDir: dockerWorkspacePath`).
    */
   private createPodSpec(
     instanceKey: string,
@@ -296,6 +327,14 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     workspacePath: string,
     userContext: UserContext
   ): K8sPod {
+    // Strict validation: any workspacePath outside ANT_WORKSPACE_BASE_PATH would
+    // produce silent broken pods (subPath becomes a non-existent path inside the
+    // PVC, the user sees an empty `/workspace`). Fail fast instead.
+    this.assertWorkspacePathInBase(workspacePath);
+
+    const primarySubPath = this.getSubPath(workspacePath);
+    const worktreeMounts = resolveK8sWorktreeMounts(workspacePath, getWorkspaceBasePath());
+
     return {
       metadata: {
         name: resourceName,
@@ -314,6 +353,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         containers: [{
           name: 'openvscode-server',
           image: this.options.image,
+          // Default open folder for openvscode-server. Mirrors Docker's WorkingDir.
+          workingDir: '/workspace',
           ports: [{ containerPort: 3000 }],  // openvscode-server uses port 3000
           // Command to start openvscode-server without authentication
           // ANT already has Google OIDC auth at the API layer, so IDE-level auth is unnecessary
@@ -337,33 +378,50 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
               memory: '512Mi'
             }
           },
-          volumeMounts: [{
-            name: 'workspace',
-            mountPath: '/workspace',
-            subPath: this.getSubPath(workspacePath)
-          }]
+          volumeMounts: [
+            // Primary alias mount — keeps `/workspace` as the user-facing path.
+            { name: 'workspace', mountPath: '/workspace', subPath: primarySubPath },
+            // Absolute-path worktree mounts (empty for base / non-worktree).
+            ...worktreeMounts,
+          ]
         }],
         volumes: [{
           name: 'workspace',
-          persistentVolumeClaim: { claimName: EFS_PVC_NAME }
+          persistentVolumeClaim: { claimName: getEfsPvcName() }
         }]
       }
     };
   }
 
   /**
-   * Convert full workspace path to EFS subPath
+   * Strict prefix check: workspacePath must live under ANT_WORKSPACE_BASE_PATH
+   * so the PVC subPath can be derived. Misconfiguration (e.g. mismatched env
+   * between API server and IDE pod) used to silently produce empty-folder pods;
+   * surfacing the error here makes the failure mode obvious.
+   */
+  private assertWorkspacePathInBase(workspacePath: string): void {
+    const base = getWorkspaceBasePath();
+    if (!workspacePath.startsWith(base)) {
+      throw new Error(
+        `K8s IDE: workspacePath '${workspacePath}' is outside ANT_WORKSPACE_BASE_PATH '${base}'. ` +
+        `EFS PVC subPath cannot be derived. Check ANT_WORKSPACE_BASE_PATH on both API server and IDE pod.`
+      );
+    }
+  }
+
+  /**
+   * Convert full workspace path to EFS subPath.
+   *
+   * Throws (via `assertWorkspacePathInBase`) when the input is outside the
+   * configured base — see Phase 1.3 of the K8s mount fix plan.
+   *
    * e.g., /mnt/workspaces/to.nexus/probe/ant-ogf/codebase -> to.nexus/probe/ant-ogf/codebase (main)
    *        /mnt/workspaces/to.nexus/probe/ant-ogf/features/login/codebase -> to.nexus/probe/ant-ogf/features/login/codebase (feature)
    */
   private getSubPath(workspacePath: string): string {
-    // Remove WORKSPACE_BASE_PATH prefix to get relative subPath
-    let subPath = workspacePath;
-    if (workspacePath.startsWith(WORKSPACE_BASE_PATH)) {
-      subPath = workspacePath.slice(WORKSPACE_BASE_PATH.length);
-    }
-    // Remove leading slash if present
-    return subPath.replace(/^\/+/, '');
+    this.assertWorkspacePathInBase(workspacePath);
+    // Remove leading slash on the relative remainder.
+    return workspacePath.slice(getWorkspaceBasePath().length).replace(/^\/+/, '');
   }
 
   /**
@@ -698,19 +756,26 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
-   * Delete pod and service
+   * Delete pod and service.
+   *
+   * The DELETE body sets `gracePeriodSeconds` so termination is fast (default
+   * is 30s). `waitForPodDeletion` honors a longer 60s timeout for safety
+   * margin in slow clusters — see TIMEOUTS.POD_DELETION rationale.
    */
   private async deleteResources(resourceName: string): Promise<void> {
     logger.info(`Deleting K8s resources: ${resourceName}`, {
       component: 'KubernetesIDEOrchestrator'
     });
 
+    const gracePeriodBody = { gracePeriodSeconds: POD_DELETION_GRACE_SECONDS };
+
     try {
       await this.k8sRequest(
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`,
-        'DELETE'
+        'DELETE',
+        gracePeriodBody
       );
-      logger.info(`Pod ${resourceName} delete request sent`, {
+      logger.info(`Pod ${resourceName} delete request sent (grace=${POD_DELETION_GRACE_SECONDS}s)`, {
         component: 'KubernetesIDEOrchestrator'
       });
     } catch (err: any) {
@@ -760,6 +825,17 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     try {
       await this.deleteResources(resourceName);
+      // Block until the pod is fully gone so the caller (e.g. project deletion)
+      // can safely run fs.rm without racing with EFS open file handles.
+      // Tolerate timeout: log + proceed — the deletion is in progress, and
+      // the caller's own fs.rm verification loop will catch leftovers.
+      try {
+        await this.waitForPodDeletion(resourceName);
+      } catch (waitErr: any) {
+        logger.warn(`Pod deletion wait timed out (continuing): ${waitErr.message} resource=${resourceName}`, {
+          component: 'KubernetesIDEOrchestrator',
+        });
+      }
 
       await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
 

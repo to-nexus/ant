@@ -1241,6 +1241,52 @@ rg "figmaAvailable\?\s*:\s*boolean" packages/ant-cli/src/agents/architect/graph/
 
 ---
 
+## Project / Feature Lifecycle SSOT — repoType / cleanup cascade / cross-process pubsub
+
+**프로젝트·피처 라이프사이클은 세 정책의 합집합이다. 셋 모두 위반하면 "Project already exists" 회귀 / git worktree path-collision / preview 누수가 재발한다.**
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- `userContext` (`local:local` vs cloud) 로부터 `repoType` 자동 매핑 부활. `repoType: 'local'` 진입은 사용자가 wizard advanced 옵션에서 명시 입력했을 때만 합법. `isCloudMode` / `mode === 'local' ? 'local' : 'cloud'` 등 자동 분류 패턴은 BE / FE 어디에도 두지 않는다 (path-collision 의 근본 원인).
+- `ProjectService.deleteProject` 의 cascade 단축: K8s pod 종료 대기 (`waitForPodDeletion`) → preview pub/sub ack → child exit 대기 → Redis state cleanup → fs.rm verification 5 단계 중 하나라도 건너뛰면 EFS open file handle 이 NFS silly-rename `.nfsXXXX` orphan 을 남기고, 다음 createProject 가 stale projectPath 를 보고 409 를 던진다.
+- Cross-process cleanup 을 in-process 호출로 처리. `PreviewService` 는 `ant-preview` 별도 프로세스에 살아있으므로 `ProjectService` 가 직접 메소드 호출하면 빈 Map 만 만진다. **반드시** Redis pub/sub 채널 `ant:lifecycle:cleanup:request` / `ant:lifecycle:cleanup:ack` (`REDIS_KEYS.LIFECYCLE.CLEANUP_*`) 으로 흘리고, publisher 는 ack 매칭 전까지 await.
+- `WorktreeService.createWorktree` / `removeWorktree` 가 `mainCodebasePath === worktreePath` 가드 없이 실행. `repoType:'local'` 모드에서는 base 와 모든 feature 가 같은 codebase 를 공유하므로 가드 없이 `git worktree add` 를 호출하면 메인 repo 자체에 worktree 를 만들어 .git 디렉토리를 손상시킨다.
+- `ideOrchestrator.stop().catch(() => undefined)` / `c.remove(...).catch(() => undefined)` 같은 silent partial-delete 패턴. cleanup 경로 (`IDEService.cleanupProject`, `ProjectService.deleteFeature`) 안에서는 실패가 surface 되어야 한다 (regression guard: `tests/cleanup/silent-catch-removed.test.ts`).
+- K8s pod DELETE 시 grace period 명시 누락 + `waitForPodDeletion` timeout == grace period 인 경계 충돌. `gracePeriodSeconds: 5` (DELETE body) + `TIMEOUTS.POD_DELETION = 60_000` 이 SSOT.
+
+### ✅ CORRECT
+
+- `repoType` 기본값은 항상 `'cloud'` (BE `ProjectCrudService.createProject` / `getProjectConfig` fallback, FE `createProjectConfig`). 사용자 명시 입력 채널만 `'local'` 진입.
+- `K8s IDE pod` 의 mount topology 는 alias 모델 — workspace mount 는 `mountPath: '/workspace'` 유지, 헬퍼 (`resolveK8sWorktreeMounts`) 가 추가 mount (mainGitDir + worktreePath) 를 절대경로로만 spread, `container.workingDir = '/workspace'` 가 기본 폴더 (Docker `WorkingDir` 와 1:1 동형).
+- `ANT_WORKSPACE_BASE_PATH` 불일치 시 `createPodSpec` 진입에서 fail-fast throw — silent broken pod 차단.
+- `ProjectService.deleteProject` 5 단계 cascade: (1) `cancelAllProjectJobs` (USER_STOPPED + KILL_REASON + jobQueue.cancel + sealJobRedisState + child exit polling) → (2) `ideOrchestrator.cleanupProject` (pod 종료 대기 포함) → (3) `requestPreviewCleanup` (Redis pub/sub ack) → (4) `stateStore.cleanupProject` (project-scoped Redis 키 일괄 삭제) → (5) `projectCrud.deleteProject` (fs.rm + verification loop + 진단 leftovers).
+- 409 응답에는 `canForceCleanup: true` + `hint` 추가. FE wizard 가 confirm 다이얼로그로 `?force=true` 재시도를 옵트인한다.
+- `cancelAllProjectJobs` 는 BullMQ + Redis seal + Redis `JOB.STATUS` polling (terminal: failed/completed/cancelled/null) 으로 child exit 까지 대기.
+
+### Why This Matters
+
+`feature-ide-k8s-mount-fix` plan (May 5 2026) 의 RCA: K8s feature pod 가 worktree marker 의 절대경로 gitdir 를 단일 `/workspace` mount 로 해소 못 해 git 인식 실패 + 프로젝트 삭제 후 같은 이름 재생성 시 (a) IDE pod 가 EFS open file handle 을 들고 있고 (b) ant-preview 프로세스가 in-process 호출 받지 못해 preview server 잔존 (c) job-runner child 가 EFS 에 쓰는 동안 fs.rm 실행 — 셋이 합쳐 silly-rename `.nfsXXXX` partial directory 를 만들고 다음 createProject 의 fs.access 가 success → 409.
+
+### Enforcement
+
+```bash
+# 1. Auto-local 분류 / FE 자동 매핑 / worktree 가드 잔존 검증
+pnpm vitest run tests/policy/git-bootstrap-ssot-regression.test.ts --reporter=dot
+# Expected: 7 passed (legacy 4 + new 3)
+
+# 2. K8s mount 회귀 가드
+pnpm vitest run tests/ide/ --reporter=dot
+# Expected: 9 passed (k8sWorktreeMounts.test.ts + k8sPodSpec.test.ts)
+
+# 3. cleanup cascade 회귀 가드
+pnpm vitest run tests/cleanup/ --reporter=dot
+# Expected: 12 passed (deleteProject + preview pubsub + job child wait + silent .catch lint)
+```
+
+전체 plan: [`feature-ide-k8s-mount-fix_2402a191.plan.md`](.cursor/plans/feature-ide-k8s-mount-fix_2402a191.plan.md).
+
+---
+
 ## Code Style
 
 - TypeScript strict mode

@@ -56,6 +56,29 @@ export class WorktreeService {
     const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
     const branchName = GitHelper.sanitizeBranchName(featureName);
 
+    // Path-collision guard: in `repoType: 'local'` mode (user-mapped external
+    // codebase) all features resolve to the same shared codebase path. A real
+    // `git worktree add` here would target the main repo itself and corrupt
+    // it. Guarantee main-repo bootstrap is done and short-circuit; the feature
+    // operates as a logical alias of base. (Three-axis split: repoType=local
+    // is intentionally a single shared codebase by design.)
+    if (mainCodebasePath === worktreePath) {
+      logger.info(`Worktree skipped — main and feature paths are identical (repoType:'local' or RESERVED feature)`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName,
+      });
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+      const baseBranch = readBranchBaseFromConfig(projectPath);
+      await this.gitBootstrap.ensureLocalGitReadyOrThrow({
+        projectId,
+        codebasePath: mainCodebasePath,
+        baseBranch,
+        userContext,
+      });
+      return { path: worktreePath, branch: baseBranch || 'HEAD', isMain: true };
+    }
+
     logger.info(`Creating worktree for feature: ${featureName}`, {
       component: 'WorktreeService',
       projectId,
@@ -191,6 +214,31 @@ export class WorktreeService {
     const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
     const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
     const branchName = GitHelper.sanitizeBranchName(featureName);
+
+    // Path-collision guard (mirror of createWorktree): in repoType:'local' the
+    // feature path equals the main codebase. Removing a "worktree" here would
+    // delete the main repo. Skip directory cleanup; only the local branch is
+    // removed (best-effort).
+    if (mainCodebasePath === worktreePath) {
+      logger.info(`Worktree remove skipped — main and feature paths are identical`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName,
+      });
+      const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+      if (git) {
+        try {
+          await git.branch(['-D', branchName]);
+        } catch (err: any) {
+          logger.info(`Could not delete branch ${branchName} (may not exist): ${err.message}`, {
+            component: 'WorktreeService',
+            projectId,
+            featureName,
+          });
+        }
+      }
+      return;
+    }
 
     logger.info(`Removing worktree for feature: ${featureName}`, {
       component: 'WorktreeService',
