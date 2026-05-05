@@ -34,6 +34,7 @@ import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { RemoteChecker } from '../remote/helpers/RemoteChecker';
+import { emitWorktreeValidityFailure } from '../worktree';
 
 /**
  * TTL for the GitHub "repo exists" probe cache (milliseconds). Keeps the
@@ -212,6 +213,27 @@ export class StatusService {
         hasUpstream,
       };
     } catch (error) {
+      // Defense-in-depth: surface partial-worktree breakages with structured
+      // telemetry so the operator can correlate them with createWorktree /
+      // ensureGitRepository self-heal events without manual EFS inspection.
+      // The next cloud-ide.start will self-heal via Phase 4 — this branch
+      // exists to capture status-poll-only callers.
+      const errorMessage = (error as Error)?.message ?? String(error);
+      if (/not a git repository/i.test(errorMessage)) {
+        try {
+          const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+          const validity = GitHelper.isWorktreeStructureValid(codebasePath);
+          if (!validity.valid) {
+            emitWorktreeValidityFailure({
+              callSite: 'StatusService.autoRecover',
+              projectId,
+              featureName,
+              workspacePath: codebasePath,
+              validity,
+            });
+          }
+        } catch { /* best-effort diagnostic only */ }
+      }
       console.error('[GitStatusService] Error getting Git changes:', error);
       throw error;
     }

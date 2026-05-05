@@ -325,7 +325,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     instanceKey: string,
     resourceName: string,
     workspacePath: string,
-    userContext: UserContext
+    userContext: UserContext,
+    feature: string,
   ): K8sPod {
     // Strict validation: any workspacePath outside ANT_WORKSPACE_BASE_PATH would
     // produce silent broken pods (subPath becomes a non-existent path inside the
@@ -334,6 +335,20 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     const primarySubPath = this.getSubPath(workspacePath);
     const worktreeMounts = resolveK8sWorktreeMounts(workspacePath, getWorkspaceBasePath());
+
+    // Fail-fast: a non-base feature requires worktree mounts. If the helper
+    // returned `[]`, the worktree marker is missing or invalid on EFS — most
+    // likely the caller skipped `ensureGitRepository`. Surface the failure
+    // to the user instead of producing a silent broken pod with an empty
+    // `/mnt/workspaces/.../codebase/.git` path inside the container.
+    if (feature !== RESERVED_FEATURE_NAME && worktreeMounts.length === 0) {
+      throw new Error(
+        `K8s IDE: feature pod '${feature}' requires worktree mounts but resolveK8sWorktreeMounts returned []. ` +
+          `Likely cause: ensureGitRepository was not invoked before start(). ` +
+          `Worktree path: ${workspacePath}. ` +
+          `Check that the .git marker file exists and references a fully-formed gitdir.`
+      );
+    }
 
     return {
       metadata: {
@@ -425,6 +440,45 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
+   * Detect mount drift on an existing pod — does its volumeMount count
+   * match what `resolveK8sWorktreeMounts` would produce now?
+   *
+   * Existed cases that produce drift:
+   * - Pod created during a race when the worktree marker was missing →
+   *   1 mount. Now worktree is valid → 3 mounts expected. Drift = true.
+   * - Pod for the base branch (always 1 mount) accidentally surveyed
+   *   against feature expectations. Drift = false (we compute expected
+   *   from the same `feature` arg used to compute workspacePath).
+   *
+   * Returns `true` when a recreate is needed, `false` when reuse is safe.
+   * Falls back to `false` (reuse) on inspection error so a transient k8s
+   * API hiccup doesn't churn pods.
+   */
+  private hasMountDrift(existingPod: K8sPod, workspacePath: string, feature: string): boolean {
+    try {
+      const expectedExtraMounts = resolveK8sWorktreeMounts(workspacePath, getWorkspaceBasePath());
+      const expectedCount = 1 + expectedExtraMounts.length; // alias mount + worktree mounts
+      const actualCount = existingPod.spec?.containers?.[0]?.volumeMounts?.length ?? 0;
+      if (expectedCount === actualCount) return false;
+      logger.warn(`Mount count mismatch on existing pod`, {
+        component: 'KubernetesIDEOrchestrator',
+      }, {
+        feature,
+        actualCount,
+        expectedCount,
+        workspacePath,
+      });
+      return true;
+    } catch (err: any) {
+      // Inspection error (e.g. malformed pod spec) — keep existing pod, don't churn.
+      logger.warn(`hasMountDrift inspection failed (treating as no drift)`, {
+        component: 'KubernetesIDEOrchestrator',
+      }, err);
+      return false;
+    }
+  }
+
+  /**
    * Create Service spec
    */
   private createServiceSpec(instanceKey: string, resourceName: string): K8sService {
@@ -484,9 +538,23 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           logger.info(`Pod is being deleted, waiting for deletion: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
           await this.waitForPodDeletion(resourceName);
         } else if (existingPod.status?.phase === 'Running') {
-          // Pod is running - return existing instance
-          logger.info(`Pod already running, reusing: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
-          return this.createInstanceResult(existingPod, userContext.organizationId, userContext, projectId, feature, instanceKey);
+          // Pod is running — but first check for mount drift. If the worktree
+          // was self-healed AFTER this pod was created (or the pod was created
+          // during a race when the worktree marker was missing), the pod's
+          // volumeMounts no longer match what `resolveK8sWorktreeMounts` would
+          // produce now. Reusing such a pod leaves the user stuck on broken
+          // mounts forever (pod spec is immutable). Detect drift and recreate.
+          if (this.hasMountDrift(existingPod, workspacePath, feature)) {
+            logger.warn(`Mount drift detected — recreating pod: ${resourceName}`, {
+              component: 'KubernetesIDEOrchestrator',
+            }, { resourceName });
+            await this.deleteResources(resourceName);
+            await this.waitForPodDeletion(resourceName);
+            // fall through to fresh create
+          } else {
+            logger.info(`Pod already running, reusing: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
+            return this.createInstanceResult(existingPod, userContext.organizationId, userContext, projectId, feature, instanceKey);
+          }
         } else {
           // Pod exists but not running (Failed, Pending, etc) - delete and recreate
           logger.info(`Pod not running (${existingPod.status?.phase}), recreating: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
@@ -497,7 +565,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
       // Create Pod
       logger.info(`Creating Pod: ${resourceName} in namespace ${this.options.namespace}`, { component: 'KubernetesIDEOrchestrator' });
-      const podSpec = this.createPodSpec(instanceKey, resourceName, workspacePath, userContext);
+      const podSpec = this.createPodSpec(instanceKey, resourceName, workspacePath, userContext, feature);
       await this.k8sRequest(
         `/api/v1/namespaces/${this.options.namespace}/pods`,
         'POST',

@@ -19,6 +19,10 @@ import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { tryAcquireThrottle } from '../../../../core/redis/distributedLock';
 import { REDIS_KEYS } from '../../../../core/constants/redis';
 import { WorktreeService } from '../services/GitService/worktree';
+import { GitBootstrapSSOT } from '../services/GitService/remote/operations/BaseGitSetupOperation';
+import { ensureGitRepository } from '../services/GitService/remote/operations/helpers/ensureGitRepository';
+import { FeatureCodebaseBackup } from '../services/GitService/worktree/FeatureCodebaseBackup';
+import type { GitHubAuthService } from '../../auth/GitHubAuthService';
 
 const WORKTREE_PRUNE_THROTTLE_SEC = 60 * 60; // 1h — enough that hot-path entries skip cheaply
 
@@ -26,8 +30,38 @@ export function createCloudIDERoutes(
   ideOrchestrator: IDEOrchestratorPort,
   workspaceResolver: any,
   stateStore?: StateStorePort,
+  githubAuthService?: GitHubAuthService,
 ): Router {
   const router = Router();
+
+  // Construct the per-route deps needed by `ensureGitRepository`. These are
+  // cheap stateless objects — no need to share singletons with other routers.
+  // Sharing GitService here would create a circular import (cloud-ide ↔ Git facade).
+  const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
+  const gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'CloudIDEStart');
+  const featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+
+  /**
+   * Race fix — IDE start guarantees worktree validity before pod creation.
+   * Without this, POST /cloud-ide/start can race the createFeature flow:
+   * - If `.git` marker is missing or partial when `resolveK8sWorktreeMounts`
+   *   runs, the helper returns `[]` silently → pod gets only the alias mount
+   *   → IDE shows "Initialize Repository" forever (pod spec is immutable).
+   * `ensureGitRepository` is the same SSOT used by remote ops; it covers
+   * Stage-4 partial-write self-heal too.
+   */
+  async function ensureWorktreeForIDE(userContext: UserContext, projectId: string, featureName: string): Promise<void> {
+    await ensureGitRepository({
+      workspaceResolver,
+      gitBootstrap,
+      projectId,
+      userContext,
+      featureName,
+      operationName: 'CloudIDEStart',
+      worktreeService,
+      featureBackup,
+    });
+  }
 
   /**
    * Throttled worktree-meta sweep — first cloud-ide.start per (org,user,
@@ -90,6 +124,20 @@ export function createCloudIDERoutes(
       // Throttled corrupt-meta sweep on the main codebase before mounting.
       // No-op when the throttle key still has TTL (1h window).
       await maybePruneWorktreeMeta(userContext, projectId);
+
+      // Race + Stage-4 self-heal — must run BEFORE workspacePath / pod spec
+      // resolution so `resolveK8sWorktreeMounts` sees a fully-formed worktree.
+      if (featureName && featureName !== RESERVED_FEATURE_NAME) {
+        try {
+          await ensureWorktreeForIDE(userContext, projectId, featureName);
+        } catch (err: any) {
+          logger.warn(`[CloudIDE] ensureWorktreeForIDE failed (proceeding — fail-fast in createPodSpec)`, {
+            component: 'CloudIDERoutes', projectId, featureName,
+          }, err);
+          // Don't swallow silently — surface to user via fail-fast in createPodSpec
+          // when worktree mounts cannot be resolved.
+        }
+      }
 
       // Get workspace path (feature-aware: worktree for features)
       const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName || RESERVED_FEATURE_NAME);
