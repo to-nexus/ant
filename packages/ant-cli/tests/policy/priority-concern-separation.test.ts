@@ -105,46 +105,56 @@ describe('priority concern separation — static grep gate', () => {
 });
 
 describe('priority concern separation — classify behaviour', () => {
-  it('feature@250 ⇒ isFoundation + expandedRagQuota', () => {
+  it('feature.band==="foundation" ⇒ isFoundation + expandedRagQuota', () => {
     const classify = hooksForTaskType('feature')?.scheduling?.classify;
     expect(classify).toBeDefined();
-    expect(classify!(task({ type: 'feature', priority: 250 }))).toMatchObject({
+    expect(classify!(task({ type: 'feature', band: 'foundation' }))).toMatchObject({
       isFoundation: true,
       expandedRagQuota: true,
     });
   });
 
-  it('feature@400 ⇒ producesIntegrationGate', () => {
+  it('feature.band===undefined ⇒ producesIntegrationGate', () => {
     const classify = hooksForTaskType('feature')?.scheduling?.classify;
-    expect(classify!(task({ type: 'feature', priority: 400 }))).toMatchObject({
+    expect(classify!(task({ type: 'feature' }))).toMatchObject({
       producesIntegrationGate: true,
       consumesIntegrationGate: false,
       isFoundation: false,
     });
   });
 
-  it('feature@620 ⇒ consumesIntegrationGate + expandedRagQuota', () => {
+  it('feature.band==="integration" ⇒ consumesIntegrationGate + expandedRagQuota', () => {
     const classify = hooksForTaskType('feature')?.scheduling?.classify;
-    expect(classify!(task({ type: 'feature', priority: 620 }))).toMatchObject({
+    expect(classify!(task({ type: 'feature', band: 'integration' }))).toMatchObject({
       consumesIntegrationGate: true,
       expandedRagQuota: true,
       producesIntegrationGate: false,
     });
   });
 
-  it('design-system@200 ⇒ isFoundation', () => {
+  it('design-system ⇒ isFoundation (type-fixed, ignores priority)', () => {
     const classify = hooksForTaskType('design-system')?.scheduling?.classify;
     expect(classify).toBeDefined();
     expect(classify!(task({ type: 'design-system', priority: 200 }))).toMatchObject({
       isFoundation: true,
       expandedRagQuota: true,
     });
+    // Type-fixed: priority is irrelevant.
+    expect(classify!(task({ type: 'design-system', priority: 999 }))).toMatchObject({
+      isFoundation: true,
+      expandedRagQuota: true,
+    });
   });
 
-  it('verification@1000 ⇒ isFinal', () => {
+  it('verification ⇒ isFinal (type-fixed, ignores priority)', () => {
     const classify = hooksForTaskType('verification')?.scheduling?.classify;
     expect(classify).toBeDefined();
     expect(classify!(task({ type: 'verification', priority: 1000 }))).toMatchObject({
+      isFinal: true,
+    });
+    // Type-fixed: priority irrelevant — the system has no
+    // "non-final verification task" (see verification/model/is.ts).
+    expect(classify!(task({ type: 'verification', priority: 999 }))).toMatchObject({
       isFinal: true,
     });
   });
@@ -174,13 +184,11 @@ describe('priority concern separation — classify behaviour', () => {
     });
   });
 
-  it('setup@100-199 ⇒ isTokens (foundation-gate exemption)', () => {
+  it('setup ⇒ isTokens (type-fixed, foundation-gate exemption)', () => {
     // Setup tasks must slip through `hasPreFeatureWork` so monorepo
-    // package-level setup (priority 101+) does not deadlock while
-    // design-system tasks sit queued. Without classify.isTokens the
-    // foundation gate would fire on setup because its condition is
-    // `!isFoundation && !isTokens` and setup is neither 200-299 nor
-    // classified through any other flag. See regression rationale in
+    // package-level setup does not deadlock while design-system tasks
+    // sit queued. Type-fixed under Three-Axis SSOT — every setup task
+    // is "below-foundation, runs first". See regression rationale in
     // `tasks/setup/hooks/scheduling.ts`.
     const classify = hooksForTaskType('setup')?.scheduling?.classify;
     expect(classify).toBeDefined();
@@ -190,8 +198,9 @@ describe('priority concern separation — classify behaviour', () => {
     expect(classify!(task({ type: 'setup', priority: 189 }))).toMatchObject({
       isTokens: true,
     });
-    expect(classify!(task({ type: 'setup', priority: 200 }))).toMatchObject({
-      isTokens: false,
+    // Type-fixed: priority is irrelevant.
+    expect(classify!(task({ type: 'setup', priority: 999 }))).toMatchObject({
+      isTokens: true,
     });
   });
 

@@ -18,6 +18,7 @@ import {
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import * as fs from 'fs';
+import { GitOperationError } from '../services/GitService/errors';
 
 /**
  * Allowed job types for the per-jobId history / restore / delete endpoints.
@@ -108,10 +109,6 @@ export function createFeaturesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
-
-      // ✅ Git guard removed: features can be created without Git.
-      // Users can publish to Git later via POST /projects/:id/publish.
-      // Branch creation is silently skipped when Git is not initialized.
       
       await deps.projectService.createFeature(projectId, featureName, userContext, language, { skipPrdTemplate: !!skipPrdTemplate });
       
@@ -123,6 +120,8 @@ export function createFeaturesRoutes(deps: {
     } catch (error: any) {
       if (error.message === 'Feature already exists') {
         res.status(409).json({ error: error.message });
+      } else if (error instanceof GitOperationError) {
+        res.status(error.statusCode).json({ error: error.message });
       } else {
         sendErrorResponse(res, 500, error, 'Features');
       }

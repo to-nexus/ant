@@ -104,19 +104,34 @@ phase 노드 아닌 **phase-공유 헬퍼 (state-aware)** 가 필요하면 `node
 
 ### R1 (phase blind) — **불변식**
 
-phase 노드 (`nodes/`), routers, parallel, common/tool handlers 는 `task.type` 을 모른다. task-specific 로직은 반드시 `tasks/{taskType}/hooks/` 훅을 통해 주입한다.
+phase 노드 (`nodes/`), routers, parallel, common/tool handlers 는 `task.type` 도 `task.priority` 의미적 비교도 모른다. task-specific 로직은 반드시 `tasks/{taskType}/hooks/` 훅을 통해 주입한다.
 
 - 어떤 위치에서든 `if (task.type === '...')` / `task.type === '...'` 비교 표현식이 나오면 **R1 위반**이다.
+- `task.priority === N` / `task.priority < N` / `task.priority >= TASK_PRIORITIES.X` 같은 의미적 priority 비교도 phase 코드에서 금지된다 (Three-Axis SSOT — `.cursorrules` 참고). priority 는 `TaskQueue.push()` 의 정렬 비교만 합법.
 - 해당 조건은 `tasks/{taskType}/hooks/` 로 이주시킨다. **예외 없음.**
 - state 없는 컨텍스트(tool handlers 등)는 `hooksForTaskType(ctx.currentTaskType)` 로 호출한다.
 - **`{ currentTask: { type: '...' } } as any` 같은 fake state 캐스트 금지**. R1 우회이며 리뷰 reject 대상.
 - **routers 는 순수 predicate** — `state.llmResponse = ...` 같은 state mutation 금지. phase 노드가 반환한 `Partial<State>` 를 router 가 읽기만 한다. routers 의 mutation 은 task.type 로직을 잠재하기 쉬워 R1 우회 경로가 되므로 금지한다. (이전 초안 R7 의 흡수 결과)
+- **scheduling 분류 dispatch** 는 `hooksForTaskType(t.type)?.scheduling?.classify?.(t)` 한 곳으로 통일. classify 의 input 은 BaseTask 전체이며, 각 bundle 이 자기 type 의 discriminator (`task.band` for feature, `task.type` for design-system/verification/setup, `task.priority` for design-job doc) 만 읽는다. **decompose 의 `deriveBandFromPriority` 가 priority → semantic 변환의 유일한 phase 사이트** — 그 외 phase 는 어떤 priority window 도 비교하지 않는다. (Three-Axis SSOT 의 R1 확장.)
 
 **검증 명령**:
 ```bash
 rg "task\.type === '[a-z-]+'" \
   packages/ant-cli/src/agents/architect/graph/code \
   --glob '!packages/ant-cli/src/agents/architect/graph/code/tasks/**'
+# 기대: 0 matches
+
+# Three-Axis SSOT — phase 레이어에 의미적 priority 비교 0 보장.
+# decompose responseParser (priority → band 매핑 단일 site) +
+# tasks/_shared/batchSplit/process.ts (parent − 1 정렬 클램프) 만 예외.
+rg -n "\.priority\s*[<>!=]=?\s*(\d+|TASK_PRIORITIES\.)" \
+  packages/ant-cli/src/agents/architect/graph/code/parallel \
+  packages/ant-cli/src/agents/architect/graph/code/routers \
+  packages/ant-cli/src/agents/architect/graph/code/nodes/plan \
+  packages/ant-cli/src/agents/architect/graph/code/nodes/execute \
+  packages/ant-cli/src/agents/architect/graph/code/nodes/checkTaskStatus \
+  packages/ant-cli/src/agents/architect/graph/design/nodes \
+  packages/ant-cli/src/agents/architect/graph/common
 # 기대: 0 matches
 ```
 

@@ -19,19 +19,19 @@
  */
 
 import type { CodeTask } from '../../../../../types/task';
-import { TASK_PRIORITIES } from '../../../state';
+import { isVerificationTask } from '../../verification';
 
 /**
  * Feature tasks are not exclusive by type. Priority-1000 (final
  * verification) is a historical alias that decompose re-types to
- * `'verification'` at normalisation time (see `responseParser.ts`
- * L393–394 `resolvedType`). This hook is invoked BEFORE the retyping
- * step (at L383–385 on the still-`'feature'` task), so returning
- * `true` for `priority === FINAL_VERIFICATION` is the defensive
- * regression guard: if the retyping step is ever skipped or reordered,
- * the priority-1000 task would stay `type: 'feature'` but still be
- * marked exclusive, preserving the barrier semantics.
+ * `'verification'` at normalisation time. This hook is invoked BEFORE
+ * the retyping step, so returning `true` when `isVerificationTask`
+ * (which recognises both `type === 'verification'` and the priority=1000
+ * alias) is the defensive regression guard: if retyping is ever
+ * skipped or reordered, the priority-1000 task would stay
+ * `type: 'feature'` but still be marked exclusive, preserving the
+ * barrier semantics.
  */
 export function isExclusive(task: CodeTask): boolean {
-  return task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+  return isVerificationTask(task);
 }

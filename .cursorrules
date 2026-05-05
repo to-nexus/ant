@@ -336,6 +336,111 @@ For full 8-axis layout and rules R1~R5, see [docs/architecture/NODE_GRAPH_LAYOUT
 
 ---
 
+## Three-Axis Task Modeling SSOT — type / band / priority
+
+**Task 분류는 세 직교 axis 로 분리된다. 각 axis 의 관찰자가 다르므로 한 field 에 두 책임을 묶지 않는다.**
+
+| Axis | 관찰자 | 결정하는 것 | 단위 |
+|---|---|---|---|
+| `task.type` | **LLM** | "이 task 에서 무엇을 하라" — 행동 모드 | `feature` / `error` / `verification` / `ui` / `design-system` / `test-code` / `doc` / `setup` / `explain` |
+| `task.band` | **Orchestrator** | feature type 안에서의 scheduling 위치 (type-bound to FeatureTask) | `'foundation'` / `'integration'` / `undefined` (= 일반 feature) |
+| `task.priority` | **TaskQueue** | 정렬상 몇 번째인가 | 정수 (의미적 사용 금지) |
+
+### 분리 기준 — type 으로 vs band 로
+
+```
+이 분류 차이가 prompt 본질에 영향을 주는가?
+├─ YES → 새 type 으로 분리
+│   예: design-system (token 인프라) 은 feature (코드 작성) 와 prompt 본질 다름.
+│
+└─ NO  → 같은 type, band 로 분리
+    예: foundation feature 와 integration feature 는 둘 다 "feature 코드 작성"
+        이고 prompt 본질 동일. 큐 위치만 다름 → band 로 분리.
+        Orchestrator 만 변별하는 axis.
+```
+
+### priority 의 의미적 사용 금지
+
+`task.priority` 는 **`TaskQueue.push()` 의 정렬 비교** 가 *유일한 합법 사용처*. 모든 다른 곳 (phase node / router / parallel / classify / barrier / type 결정) 에서 priority 의 비교는 금지된다.
+
+**유일한 priority → 의미 변환 site** 는 `decompose/responseParser.ts::deriveBandFromPriority` — LLM 이 emit 한 priority 를 보고 feature task 에 `band` 를 붙인다. 그 이후 모든 site 는 `task.band` (feature) 또는 `task.type` (다른 변종) 만 본다.
+
+bundle 코드 (`tasks/{type}/hooks/scheduling.ts`) 는 phase 코드 가 아니라 SSOT 자체이므로 priority 를 읽어도 된다 — `doc` bundle 의 design-job tokens/foundation 분기가 그 예. 단, 그 bundle 의 priority 해석 결정이 phase 로 누수되지 않는다 (classify 출력 flag 만이 phase 와 인터페이스).
+
+### Discriminated Union 강제
+
+`@ant/shared/task.ts` 의 `BaseTask` 는 `type` 으로 discriminated union — `band` 는 `FeatureTask` 한 변종에만 존재한다. 따라서:
+
+- `if (task.type === 'verification') { task.band }` — **컴파일 에러** (narrow 후 VerificationTask 에 band 없음)
+- `{ type: 'verification', band: 'foundation', ... }` — **컴파일 에러**
+- `{ type: 'feature', band: 'foundation', ... }` — OK
+- `{ type: 'feature' }` (band 생략) — OK, "일반 feature"
+
+### batchSplit Path 별 priority 의미
+
+`tasks/_shared/batchSplit/process.ts` 의 sub-task 는 parent 의 path 별로 priority 가 다르다:
+
+| parent path | sub priority | 이유 |
+|---|---|---|
+| `requeue-parent` (verification → error) | `parent − 1` | parent 가 큐에 남아있어야 sub 가 먼저 dequeue. priority 차이로 ordering 보장. |
+| `drop-and-replace` (error / test-code / feature / ui) | `parent` | parent 가 큐에서 제거됨. priority 보존이 band classification 안정성에 필수 (foundation parent@200 → sub@200 stays foundation). |
+
+**`band` 는 양 path 모두에서 parent verbatim carry-over** — feature parent 의 `band` 가 그대로 sub 에게 상속된다. 이게 `log-satin-feeling-orbit` deadlock 의 근본 fix: 사전엔 sub priority decrement 가 foundation window (200-299) 를 벗어나면서 classify (priority-based) 가 ordinary feature 로 잘못 분류 → orchestrator foundation gate 가 reject → 모든 worker 종료 + 큐 정체.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- 새 phase 코드에 `task.priority === N` / `task.priority < N` / `task.priority >= TASK_PRIORITIES.X` 같은 의미적 priority 비교 추가. 정렬 (queue push 의 sort callback) 만 합법.
+- `band` 를 non-feature task 에 박는 시도 (discriminated union 이 차단).
+- decompose 외 다른 phase site 에서 priority → band 매핑 helper 신설.
+- batchSplit Path B 가 sub priority 를 `parent − 1` 로 떨어뜨리는 옛 동작 부활. 또는 Path A 가 sub priority 를 `parent` 로 같이 놓는 변형 (queue ordering 깨진다).
+
+### ✅ CORRECT
+
+- 모든 phase 분류 dispatch 는 `hooksForTaskType(t.type)?.scheduling?.classify?.(t)` (반환 flag 로 분기). bundle 가 SSOT.
+- 새 task 종류 추가는 `TaskType` union + 새 bundle (`tasks/{type}/`) + registry entry 한 줄 — phase 코드 변경 0.
+- feature 의 새 scheduling 위치 추가 (예: `'staging'`) 는 `TaskBand` union 한 줄 + decompose mapping + feature classify 분기. type 신설 불필요.
+- decompose 의 `deriveBandFromPriority` 가 priority 표 변경 시 갱신되는 단일 site.
+
+### Why This Matters
+
+`log-satin-feeling-orbit` deadlock (May 4 2026) 의 RCA: foundation parent (priority 200) 가 batch-split Path B 로 priority 199 sub-task 들을 큐 앞에 넣음 → classify (당시 priority window 기반) 가 199 를 ordinary feature 로 분류 → orchestrator 의 `hasPreFeatureWork && !isFoundation && !isTokens` gate 가 sub-task 거절 → 모든 worker 종료 + spawn 트리거 부재 → 60s 체크포인트만 영원히 같은 큐 사이즈 토해냄.
+
+핵심 통찰: **classify 의 input 을 priority 에서 explicit `band` field 로 옮기면 priority 변환이 분류를 흔들 수 없다.** Three-Axis 가 진정한 D31 ("phase 가 task.type / priority 직접 비교 안 함") 의 실현이다.
+
+### Enforcement
+
+```bash
+# 1. 산발 priority 비교가 phase 레이어에 부활하지 않았는지.
+#    `decompose/responseParser.ts` 와 `tasks/_shared/batchSplit/process.ts`
+#    (Path A `Math.max(1, parent - 1)` 클램프 — 정렬 산술) 가 유일한
+#    합법 site 이므로 검증 시 두 파일은 단독으로 보고 의미적 비교 0 인지 확인.
+rg -n "\.priority\s*[<>!=]=?\s*(\d+|TASK_PRIORITIES\.)" \
+  packages/ant-cli/src/agents/architect/graph/code/parallel \
+  packages/ant-cli/src/agents/architect/graph/code/routers \
+  packages/ant-cli/src/agents/architect/graph/code/nodes \
+  packages/ant-cli/src/agents/architect/graph/design/nodes \
+  packages/ant-cli/src/agents/architect/graph/ask/nodes \
+  packages/ant-cli/src/agents/architect/graph/learn/nodes \
+  packages/ant-cli/src/agents/common/graph \
+  --glob '!**/decompose/responseParser.ts'
+# Expected: 0 matches.
+
+# 2. priority → band 매핑이 단일 site (decompose) 에 있는지
+rg -n "deriveBandFromPriority" packages/ant-cli/src
+# Expected: definition + import in responseParser only.
+
+# 3. 회귀 가드 — 새 deadlock 시그니처가 fail 시그널을 내는지
+pnpm vitest run tests/parallel/orchestrator-deadlock-regression.test.ts \
+  tests/verification/unit/batchSplitBandCarryover.test.ts \
+  tests/policy/priority-isolation.test.ts \
+  --reporter=dot
+# Expected: all pass.
+```
+
+회귀 테스트: [`packages/ant-cli/tests/parallel/orchestrator-deadlock-regression.test.ts`](packages/ant-cli/tests/parallel/orchestrator-deadlock-regression.test.ts), [`packages/ant-cli/tests/verification/unit/batchSplitBandCarryover.test.ts`](packages/ant-cli/tests/verification/unit/batchSplitBandCarryover.test.ts), [`packages/ant-cli/tests/policy/priority-isolation.test.ts`](packages/ant-cli/tests/policy/priority-isolation.test.ts).
+
+---
+
 ## Retry Authority SSOT — `violation.isRetryable`
 
 **재시도 가능 여부는 `violation.isRetryable` 플래그 하나가 SSOT다. `checkTaskStatus` 는 이 플래그만 읽어 라우팅하고, 절대 score / retry count / 타입 매핑표로 재판단하지 않는다.** (기존 `enforce/` 노드 표현은 리팩터링으로 `nodes/checkTaskStatus/` 에 통합되었다. `enforce` 는 더 이상 노드 이름이 아닌 함수적 역할 이름이다.)

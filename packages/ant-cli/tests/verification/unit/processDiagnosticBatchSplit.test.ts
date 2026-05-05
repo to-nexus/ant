@@ -203,7 +203,10 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const all = state.taskQueue.getAll();
 
       expect(all.some((t: any) => t.id === task.id)).toBe(false);
-      const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
+      // Path B: sub-task priority equals parent priority (Three-Axis SSOT —
+      // the parent is gone, so preserving priority keeps the band
+      // classification stable and prevents foundation-window drift).
+      const subTasks = all.filter((t: any) => t.priority === task.priority);
       const finalVerifications = all.filter((t: any) => t.priority === 1000);
       expect(subTasks.length).toBe(2);
       expect(finalVerifications.length).toBe(1);
@@ -255,7 +258,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const all = state.taskQueue.getAll();
       expect(all.some((t: any) => t.id === task.id)).toBe(false);
 
-      const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
+      // Path B: sub-task priority equals parent priority.
+      const subTasks = all.filter((t: any) => t.priority === task.priority);
       const finalVerifications = all.filter((t: any) => t.priority === 1000);
 
       expect(subTasks.length).toBe(2);
@@ -482,7 +486,8 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       const all = state.taskQueue.getAll();
       expect(all.some((t: any) => t.id === task.id)).toBe(false);
 
-      const subs = all.filter((t: any) => t.priority === (task.priority! - 1));
+      // Path B (drop-and-replace): sub-task priority equals parent priority.
+      const subs = all.filter((t: any) => t.priority === task.priority);
       const fvs = all.filter((t: any) => t.priority === 1000);
       expect(subs.length).toBe(2);
       expect(fvs.length).toBe(1);
@@ -550,9 +555,10 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         ],
       });
       processDiagnosticBatchSplit(state, plan, task);
+      // Path B (feature parent = drop-and-replace): sub priority = parent priority.
       const subs = state.taskQueue
         .getAll()
-        .filter((t: any) => t.priority === (task.priority! - 1));
+        .filter((t: any) => t.priority === task.priority);
       for (const s of subs) {
         expect((s as any).batchSplitCount).toBe(4);
       }

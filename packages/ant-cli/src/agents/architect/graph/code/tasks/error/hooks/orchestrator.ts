@@ -45,20 +45,19 @@ import type { CodeTask } from '../../../../../types/task';
 import type { TechTier } from '@ant/shared';
 import type { TaskCompleteCtx } from '../../_shared/types';
 import { TASK_PRIORITIES } from '../../../state';
+import { isVerificationTask } from '../../verification';
 
 function hasFinalVerification(
   queue: readonly CodeTask[],
   running: readonly CodeTask[],
   completed: readonly CodeTask[],
 ): boolean {
-  const inFinalPriority = (t: CodeTask): boolean =>
-    t.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
-  if (queue.some(inFinalPriority)) return true;
-  if (running.some(inFinalPriority)) return true;
+  if (queue.some(isVerificationTask)) return true;
+  if (running.some(isVerificationTask)) return true;
   // The parallel orchestrator's legacy check treats any completed
   // verification task as evidence the final recheck already ran; keep
   // that semantic so behaviour is equivalent to the inline branch.
-  if (completed.some((t: CodeTask) => t.type === 'verification')) return true;
+  if (completed.some(isVerificationTask)) return true;
   return false;
 }
 
@@ -75,7 +74,9 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
   // a Final Verification would double-verify the same single-unit work
   // and violate the "tasks.length === 1" invariant of Tier 2. NEVER fire
   // for Tier 2 (detected via selfVerifyOnDone — the decompose-time marker).
-  if ((task as any).selfVerifyOnDone === true) return;
+  // narrow ✅ — line above guarantees task is ErrorCodeTask, which carries
+  // SelfVerifyCapable.selfVerifyOnDone.
+  if (task.selfVerifyOnDone === true) return;
 
   if (hasFinalVerification(queueSnapshot, runningSnapshot, completedSnapshot)) return;
 

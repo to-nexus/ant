@@ -34,6 +34,10 @@ export function buildResumableFailedTask(
   task: CodeTask,
   errorMessage: string,
 ): CodeTask {
+  // `_failed`/`_failureReason`/`_failedAttempts` are runtime-only state
+  // markers (UI render gate + orchestrator retry counter), not declared
+  // on the discriminated union. `unknown` cast bypasses excess-property
+  // checks while preserving the parent task's type/discriminator.
   return {
     ...task,
     interrupted: true,
@@ -41,7 +45,7 @@ export function buildResumableFailedTask(
     _failureReason: errorMessage,
     batchSplitCount: 0,
     _failedAttempts: 0,
-  } as CodeTask;
+  } as unknown as CodeTask;
 }
 
 /**
@@ -72,7 +76,7 @@ export function buildResumableFailedTask(
 export function normalizeResumedQueueBudgets(tasks: CodeTask[]): CodeTask[] {
   return tasks.map(t => {
     if ((t as { _failed?: boolean })._failed === true) {
-      return { ...t, batchSplitCount: 0, _failedAttempts: 0 } as CodeTask;
+      return { ...t, batchSplitCount: 0, _failedAttempts: 0 } as unknown as CodeTask;
     }
     return t;
   });

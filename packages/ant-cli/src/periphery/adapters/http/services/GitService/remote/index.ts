@@ -42,10 +42,10 @@ export class RemoteService {
     this.initOp = new InitOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
     this.pushOp = new PushOperation(workspaceResolver, worktreeService, githubAuthService);
     this.pullOp = new PullOperation(workspaceResolver, worktreeService, githubAuthService);
-    this.fetchOp = new FetchOperation(workspaceResolver, githubAuthService);
+    this.fetchOp = new FetchOperation(workspaceResolver, worktreeService, githubAuthService);
     this.syncOp = new SyncOperation(workspaceResolver, worktreeService, githubAuthService);
     this.commitOp = new CommitOperation(workspaceResolver, worktreeService);
-    this.discardOp = new DiscardOperation(workspaceResolver);
+    this.discardOp = new DiscardOperation(workspaceResolver, worktreeService);
   }
 
   async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {

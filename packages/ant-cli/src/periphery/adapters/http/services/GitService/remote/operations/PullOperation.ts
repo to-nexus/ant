@@ -1,12 +1,12 @@
-import * as fs from 'fs';
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
-import { GitHelper } from '../../helper/GitHelper';
 import { WorktreeService } from '../../worktree';
 import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
 import { GitOperationError, GitConflictError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
+import { GitBootstrapSSOT } from './BaseGitSetupOperation';
+import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * PullOperation
@@ -15,6 +15,7 @@ import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
  */
 export class PullOperation {
   private readonly featureBackup: FeatureCodebaseBackup;
+  private readonly gitBootstrap: GitBootstrapSSOT;
 
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
@@ -22,6 +23,7 @@ export class PullOperation {
     private readonly githubAuthService?: GitHubAuthService
   ) {
     this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'PullOperation');
   }
 
   async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
@@ -29,31 +31,17 @@ export class PullOperation {
       throw new GitOperationError('GitHub integration not configured');
     }
 
-    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
     const config = await loadGitHubConfig(this.workspaceResolver, projectId, userContext);
-
-    await GitHelper.ensureSafeDirectory(codebasePath);
-
-    let git = GitHelper.getGitInstanceSafe(codebasePath);
-
-    if (!git && featureName) {
-      const backups = await this.featureBackup.backup(projectId, [featureName], userContext);
-      try {
-        await this.worktreeService.createWorktree(projectId, featureName, userContext);
-        const backupPath = backups.get(featureName);
-        if (backupPath && fs.existsSync(backupPath)) {
-          await this.featureBackup.restoreToWorktree(backupPath, codebasePath);
-        }
-      } finally {
-        await this.featureBackup.cleanup(backups);
-      }
-      await GitHelper.ensureSafeDirectory(codebasePath);
-      git = GitHelper.getGitInstanceSafe(codebasePath);
-    }
-
-    if (!git) {
-      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
-    }
+    const { git } = await ensureGitRepository({
+      workspaceResolver: this.workspaceResolver,
+      gitBootstrap: this.gitBootstrap,
+      projectId,
+      userContext,
+      featureName,
+      operationName: 'PullOperation',
+      worktreeService: this.worktreeService,
+      featureBackup: this.featureBackup,
+    });
 
     const credentialContext = {
       org: userContext.organizationId,

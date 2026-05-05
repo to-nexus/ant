@@ -1,15 +1,32 @@
 /**
  * Agent-Specific Task Types
- * 
- * Extends core BaseTask with agent-specific fields.
+ *
+ * Extends the shared discriminated union ({@link BaseTask}) with agent-
+ * specific fields. CodeTask / DesignTask are themselves discriminated
+ * unions (one variant per `type`), so the type system enforces:
+ *
+ *   - `band` is reachable ONLY on FeatureCodeTask (Three-Axis SSOT)
+ *   - verification-only fields (`batchSplitCount`, `selfVerifyOnDone`) are
+ *     scoped to the variants where they are actually used
+ *
  * Core types (TaskType, BaseTask, TaskTiming, TaskTokenUsage) are
- * defined in core/types/task.ts (single source of truth).
+ * defined in `@ant/shared` and re-exported through `core/types/task.ts`.
  */
 
-// Re-export core types for convenience (consumers can import from here)
 export type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
-import type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
-import type { TechTier } from '@ant/shared';
+import type { BaseTask, TaskType, TaskTiming, TaskTokenUsage } from '../../../core/types/task';
+import type {
+  TechTier,
+  FeatureTask,
+  ErrorTask,
+  SetupTask,
+  UiTask,
+  DesignSystemTask,
+  VerificationTask,
+  TestCodeTask,
+  DocTask,
+  ExplainTask,
+} from '@ant/shared';
 
 /**
  * Token Usage Breakdown (for job-level analytics)
@@ -68,149 +85,117 @@ export interface CodeTaskResumeState extends BaseTaskResumeState {}
 export interface DesignTaskResumeState extends BaseTaskResumeState {}
 
 /**
- * Code-specific Task
+ * Cross-variant code-task fields.
+ *
+ * Most fields are populated by execute / plan / verify phases regardless
+ * of task type, so they live here. Variants below add only the slots that
+ * are TRULY type-specific (e.g. `errors`/`category` on error tasks).
  */
-export interface CodeTask extends BaseTask {
+interface CodeTaskCommon {
   /**
    * Per-task technology tiers resolved from decompose's packageTiers map.
-   * In fullstack projects, each task inherits techTiers from the
-   * packageTiers mapping based on task.packages.
    * Array preserves per-package stack info (e.g., [frontend/ts, backend/go]).
    */
   techTiers?: TechTier[];
-  errors?: string[];               // Error messages (for error tasks)
-  category?: string;               // Error category (for error tasks)
   /**
-   * Tier-Verification Alignment: Tier 2 (Exploratory, single unit of work) flag.
-   *
-   * When `true`, this task owns a verification cycle that runs after the
-   * apply phase emits `<done>`. The runtime detects the flag via
-   * `tasks/_shared/verify/predicate.requiresVerification(task)` and:
-   *
-   *   1. Apply phase — task-type-specific plan/execute applies fixes.
-   *      `command.guard` blocks build/test/typecheck (verification is
-   *      handled in the next phase).
-   *   2. Reverify phase — `executeRouter.routeAfterDone` routes to the
-   *      plan node with `_nextPlanEntry='reverify'`, which fires
-   *      `_shared/verify/initSession`. From here, the task uses the
-   *      shared verify-mode plan/execute/command/check/router surface
-   *      identical to a Tier 3/4 dedicated verification task.
-   *
-   * Set ONLY by decompose for Tier 2 (exactly one task) breakdowns. Tier 3/4
-   * breakdowns never set this flag — their dedicated verification task (priority
-   * 1000) governs the gates instead.
-   */
-  selfVerifyOnDone?: boolean;
-  /**
-   * Number of batch-split cycles this verification responsibility task
-   * has triggered. SSOT for the `batch_cycle_limit` fail-safe (cap =
-   * `MAX_BATCH_SPLIT_CYCLES = 10`). Carried across re-queues by the
-   * orchestrator's `task.resumeState` round-trip.
-   */
-  batchSplitCount?: number;
-  /**
-   * Per-task SSOT for files mutated during execution.
-   *
-   * Written by tool handlers (create/edit/delete) via
-   * `ToolExecutionContext.recordFileTouch` at the same point where
-   * `chatStatus.completeFile*` emits the UI event. chat.jsonl is an
-   * ephemeral UI feed — this field is the authoritative session record
-   * and gets persisted into `code.json.state.completedTasksDetails[i]`
-   * when `checkTaskStatus` pushes the completed `CodeTask`.
-   *
-   * Dedup-preserving array (first-seen order). Readers: learn node
-   * (lessonMetadata.relatedFiles, SessionRun.output.files, console
-   * "files modified" log).
+   * SSOT for files mutated during execution. Written by tool handlers
+   * via `ToolExecutionContext.recordFileTouch`; persisted into
+   * `code.json.state.completedTasksDetails[i]` when checkTaskStatus
+   * marks the task complete.
    */
   touchedFiles?: string[];
   /**
-   * Pre-built planText from diagnostic batch split.
-   * When present, plan node skips diagnostic generation and uses this directly as planText.
-   * Created when a diagnostic task detects many errors and splits into sub-tasks.
+   * Number of batch-split cycles this task has triggered. SSOT for the
+   * `batch_cycle_limit` fail-safe (cap = MAX_BATCH_SPLIT_CYCLES = 10).
+   * Carried across re-queues by the orchestrator's `task.resumeState` round-trip.
+   */
+  batchSplitCount?: number;
+  /**
+   * Pre-built planText from diagnostic batch split. When present, plan node
+   * skips diagnostic generation and uses this directly as planText.
    */
   prePlanText?: string;
   /**
-   * Phase 3-11 — remediation scope mode inherited from the verification plan's
-   * `rootCauseSelfCheck.mode` (or a fallback heuristic based on the rootCauses'
-   * affectedFiles fan-out). Consumed by the error execute variant to branch
-   * its "Minimal changes" rule between patch / upstream / refactor scopes.
+   * Remediation scope mode inherited from the verification plan's
+   * `rootCauseSelfCheck.mode`. Consumed by the error execute variant to
+   * branch its "Minimal changes" rule between patch / upstream / refactor.
    */
   remediationMode?: 'patch' | 'upstream' | 'refactor';
   /**
-   * UI sections required for this task (set by decompose LLM).
-   * Used for split injection - only specified sections are loaded into prompt.
-   *
-   * Applies when type is 'ui' or 'design-system'.
-   * Section types:
-   * - Component sections: "gnb", "hero", "about", "ecosystem", "token", "technology", "social", "footer"
-   * - Common sections: "layout", "responsive", "accessibility"
-   * - Special: "tokens" (ui-tokens.json), "assets" (ui-assets.json)
-   *
-   * If uiSections is empty/undefined, all UI docs are injected.
+   * UI sections required for this task (set by decompose LLM). Used for
+   * split injection — only specified sections are loaded into prompt.
+   * Meaningful only for `ui` / `design-system` variants.
    */
   uiSections?: string[];
   /**
-   * Target packages for this task (set by decompose LLM).
-   * Used for split injection - only specified package design docs are loaded into prompt.
-   * 
-   * **REQUIRED**: Every task MUST have packages set by decompose.
-   * If missing, plan/execute falls back to all design artifacts in the pool
-   * (ARTIFACT_PREFIX.SYSTEM_DESIGN + API_CONTRACT) with a warning.
-   * 
-   * ## Normalized Tag Format (unified naming: always `{type}-{name}.md`)
-   * 
-   * | Tag Pattern | Maps To | Description |
-   * |-------------|---------|-------------|
-   * | `fe-main` | `fe-system-main.md` | Single frontend |
-   * | `fe-{pkg}` | `fe-system-{pkg}.md` | Multi frontend (monorepo) |
-   * | `be-main` | `be-system-main.md` | Single backend |
-   * | `be-{svc}` | `be-system-{svc}.md` | MSA service |
-   * | `shared` | all api-contract-*.md | Shared/utility package (types, DTOs, configs) |
-   * 
-   * ## Examples
-   * 
-   * ### Single Package Projects
-   * - `['fe-main']` → fe-system-main.md
-   * - `['be-main']` → be-system-main.md
-   * - `['fe-main', 'be-main']` → both (fullstack integration)
-   * 
-   * ### Multi-Package Frontend (Monorepo)
-   * - `['fe-web']` → fe-system-web.md
-   * - `['fe-admin']` → fe-system-admin.md
-   * 
-   * ### MSA Backend
-   * - `['be-auth']` → be-system-auth.md + api-contract-auth.md
-   * - `['be-auth', 'be-order']` → auth + order (inter-service)
-   * 
-   * ### Cross-Tier Integration
-   * - `['fe-web', 'be-auth']` → frontend + specific backend service
-   * 
-   * ### Shared / Root Workspace
-   * - `['shared']` → all api-contract-*.md only
-   * 
-   * ## Note
-   * - All api-contract-*.md files are ALWAYS injected when any package is specified
-   * - `shared` tag has no system design mapping — only api-contracts are injected
-   * - If undefined, falls back to environment-based selection (all docs) — this is a decompose bug
-   */
-  packages?: string[];
-  
-  /**
-   * Per-task resume state (exists only when interrupted during parallel execution).
-   * Contains the worker's execution context at the time of interruption.
-   *
-   * Narrowed to `CodeTaskResumeState` so the verification snapshot is
-   * visible only on code tasks — design tasks consume `DesignTaskResumeState`.
-   * Batch-split cycle tracking that used to live on `_batchSplitCount`
-   * task fields now rides in `resumeState.verification.batchSplitCount`.
+   * Per-task resume state (exists only when interrupted during parallel
+   * execution). Contains the worker's execution context at the time of
+   * interruption.
    */
   resumeState?: CodeTaskResumeState;
 }
 
 /**
- * Design-specific Task
+ * Tier-Verification Alignment: Tier 2 (Exploratory, single unit of work) flag.
+ *
+ * When `true`, this task owns a verification cycle that runs after the
+ * apply phase emits `<done>`. Detected via
+ * `tasks/_shared/verify/predicate.requiresVerification(task)`:
+ *
+ *   1. Apply phase — task-type-specific plan/execute applies fixes.
+ *      `command.guard` blocks build/test/typecheck (verification is
+ *      handled in the next phase).
+ *   2. Reverify phase — `executeRouter.routeAfterDone` routes to the
+ *      plan node with `_nextPlanEntry='reverify'`, which fires
+ *      `_shared/verify/initSession`. From here, the task uses the
+ *      shared verify-mode plan/execute/command/check/router surface
+ *      identical to a Tier 3/4 dedicated verification task.
+ *
+ * Set ONLY by decompose for Tier 2 (exactly one task) breakdowns —
+ * available on the four task types that can be the sole Tier 2 unit:
+ * feature / error / ui / setup. Tier 3/4 breakdowns never set this flag —
+ * their dedicated verification task (priority 1000) governs the gates instead.
  */
-export interface DesignTask extends BaseTask {
+interface SelfVerifyCapable {
+  selfVerifyOnDone?: boolean;
+}
+
+export type FeatureCodeTask       = FeatureTask       & CodeTaskCommon & SelfVerifyCapable;
+export type ErrorCodeTask         = ErrorTask         & CodeTaskCommon & SelfVerifyCapable & {
+  errors?: string[];
+  category?: string;
+};
+export type SetupCodeTask         = SetupTask         & CodeTaskCommon & SelfVerifyCapable;
+export type UiCodeTask            = UiTask            & CodeTaskCommon & SelfVerifyCapable;
+export type DesignSystemCodeTask  = DesignSystemTask  & CodeTaskCommon;
+export type VerificationCodeTask  = VerificationTask  & CodeTaskCommon;
+export type TestCodeCodeTask      = TestCodeTask      & CodeTaskCommon;
+export type DocCodeTask           = DocTask           & CodeTaskCommon;
+export type ExplainCodeTask       = ExplainTask       & CodeTaskCommon;
+
+/**
+ * Code-specific task — discriminated union over `type`. Narrow with
+ * `task.type === '...'` to expose variant-specific fields (e.g.
+ * `band` on FeatureCodeTask, `errors` on ErrorCodeTask).
+ */
+export type CodeTask =
+  | FeatureCodeTask
+  | ErrorCodeTask
+  | SetupCodeTask
+  | UiCodeTask
+  | DesignSystemCodeTask
+  | VerificationCodeTask
+  | TestCodeCodeTask
+  | DocCodeTask
+  | ExplainCodeTask;
+
+/**
+ * Design-specific Task — every design-job task currently has `type: 'doc'`,
+ * but this declaration narrows the design surface explicitly so the union
+ * shape is consistent with CodeTask. If a future design intent ships a new
+ * task type, add a variant here and `decompose` will route accordingly.
+ */
+export type DesignTask = DocTask & {
   targetFile?: string;             // Which design document (e.g., "be-system-main.md")
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
 
@@ -285,7 +270,7 @@ export interface DesignTask extends BaseTask {
    * snapshot cannot bleed onto the design surface.
    */
   resumeState?: DesignTaskResumeState;
-}
+};
 
 /**
  * Generic Task Queue

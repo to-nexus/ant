@@ -13,18 +13,19 @@
  * only inside `tasks/{type}/model/is.ts` (consumed by each bundle when
  * declaring the flag).
  *
- * The `FINAL_VERIFICATION` priority guard is kept as a defence against
+ * The `isVerificationTask` guard is kept as a defence against
  * dynamically-constructed tasks whose `type` is missing — such tasks
  * would otherwise fall through to the default `true` branch and
  * re-introduce planText generation for what `isVerificationTask`
- * (priority-based) already classifies as final verification.
+ * (priority alias for legacy snapshots) already classifies as final
+ * verification.
  */
 
-import { TASK_PRIORITIES } from "../../../state";
 import { CodeTask } from "../../../../../types/task";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
+import { isVerificationTask } from "../../../tasks/verification";
 
 export function taskRequiresPlan(task: CodeTask): boolean {
-  if (task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) return false;
+  if (isVerificationTask(task)) return false;
   return hooksForTaskType(task.type)?.plan?.requiresPlanText ?? true;
 }

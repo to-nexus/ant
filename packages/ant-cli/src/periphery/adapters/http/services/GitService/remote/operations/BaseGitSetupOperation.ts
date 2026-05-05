@@ -15,6 +15,31 @@ import {
   GitNotFoundError,
   GitOperationError,
 } from '../../errors';
+import { logger } from '../../../../../../../utils/logger';
+
+export type GitBootstrapFailureReason =
+  | 'permissionDenied'
+  | 'gitBinaryMissing'
+  | 'gitInitFailed'
+  | 'gitCommitFailed'
+  | 'safeDirectory'
+  | 'userConfig'
+  | 'commitMissing'
+  | 'unknown';
+
+export interface GitBootstrapResult {
+  created: boolean;
+  ready: boolean;
+  reason?: GitBootstrapFailureReason;
+  error?: string;
+}
+
+export interface GitBootstrapRequest {
+  projectId: string;
+  codebasePath: string;
+  baseBranch: string;
+  userContext: UserContext;
+}
 
 /**
  * BaseGitSetupOperation
@@ -316,4 +341,191 @@ export abstract class BaseGitSetupOperation {
 
   /** Main execution method */
   abstract execute(projectId: string, userContext: UserContext, ...args: any[]): Promise<any>;
+}
+
+/**
+ * GitBootstrapSSOT
+ *
+ * Reuses the already battle-tested setup steps from BaseGitSetupOperation and
+ * exposes them as a shared bootstrap entry point for project/feature/remote flows.
+ */
+export class GitBootstrapSSOT extends BaseGitSetupOperation {
+  constructor(
+    workspaceResolver: WorkspaceResolver,
+    private readonly sourceComponent = 'GitBootstrapSSOT'
+  ) {
+    super(workspaceResolver);
+  }
+
+  protected get operationName(): string {
+    return this.sourceComponent;
+  }
+
+  async execute(_projectId: string, _userContext: UserContext, ..._args: any[]): Promise<never> {
+    throw new Error('GitBootstrapSSOT.execute is not used directly');
+  }
+
+  async ensureLocalGitReady(request: GitBootstrapRequest): Promise<GitBootstrapResult> {
+    const { projectId, codebasePath, baseBranch, userContext } = request;
+    let created = false;
+    let seededInitialCommit = false;
+
+    try {
+      await fs.promises.mkdir(codebasePath, { recursive: true });
+
+      let git = GitHelper.getGitInstanceSafe(codebasePath);
+
+      if (!git) {
+        const hasFiles = await this.prepareCodebase(codebasePath, projectId);
+        git = await this.initializeGit(codebasePath, baseBranch, userContext);
+        await this.createGitignore(codebasePath);
+        await this.createInitialCommit(git, codebasePath, hasFiles);
+        created = true;
+        seededInitialCommit = true;
+      } else {
+        await GitHelper.ensureSafeDirectory(codebasePath);
+        await GitHelper.ensureUserConfig(git, userContext);
+        await this.createGitignore(codebasePath);
+
+        const hasCommit = await this.hasCommit(git);
+        if (!hasCommit) {
+          const hasFiles = await this.hasNonGitFiles(codebasePath);
+          await this.createInitialCommit(git, codebasePath, hasFiles);
+          seededInitialCommit = true;
+        }
+      }
+
+      const ready = await this.validateReady(codebasePath);
+      if (!ready) {
+        logger.error(
+          'gitBootstrapFailure',
+          {
+            component: this.sourceComponent,
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+          },
+          {
+            codebasePath,
+            baseBranch,
+            reason: 'commitMissing',
+          }
+        );
+        return {
+          created,
+          ready: false,
+          reason: 'commitMissing',
+          error: 'git repository exists but has no commit',
+        };
+      }
+
+      if (created || seededInitialCommit) {
+        logger.info(
+          'gitBootstrapRecovered',
+          {
+            component: this.sourceComponent,
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+          },
+          {
+            codebasePath,
+            baseBranch,
+            created,
+            seededInitialCommit,
+          }
+        );
+      }
+
+      return { created, ready: true };
+    } catch (error) {
+      const reason = this.classifyFailureReason(error);
+      const message = error instanceof Error ? error.message : String(error);
+
+      logger.error(
+        'gitBootstrapFailure',
+        {
+          component: this.sourceComponent,
+          organizationId: userContext.organizationId,
+          userId: userContext.userId,
+          projectId,
+        },
+        {
+          codebasePath,
+          baseBranch,
+          reason,
+          error: message,
+        }
+      );
+
+      return {
+        created,
+        ready: false,
+        reason,
+        error: message,
+      };
+    }
+  }
+
+  async ensureLocalGitReadyOrThrow(request: GitBootstrapRequest): Promise<GitBootstrapResult> {
+    const result = await this.ensureLocalGitReady(request);
+    if (result.ready) {
+      return result;
+    }
+
+    const reason = result.reason ?? 'unknown';
+    throw new GitConfigError(
+      `Failed to prepare local git repository (${reason}): ${result.error ?? 'unknown error'}`,
+      {
+        retryable: false,
+      }
+    );
+  }
+
+  private async validateReady(codebasePath: string): Promise<boolean> {
+    const git = GitHelper.getGitInstanceSafe(codebasePath);
+    if (!git) return false;
+    return this.hasCommit(git);
+  }
+
+  private async hasCommit(git: SimpleGit): Promise<boolean> {
+    try {
+      const log = await git.log({ maxCount: 1 });
+      return Boolean(log.latest);
+    } catch {
+      return false;
+    }
+  }
+
+  private async hasNonGitFiles(codebasePath: string): Promise<boolean> {
+    const files = await fs.promises.readdir(codebasePath);
+    return files.some((entry) => entry !== '.git');
+  }
+
+  private classifyFailureReason(error: unknown): GitBootstrapFailureReason {
+    const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+
+    if (message.includes('permission denied') || message.includes('eacces') || message.includes('eperm')) {
+      return 'permissionDenied';
+    }
+    if (
+      message.includes('git') &&
+      (message.includes('not found') || message.includes('enoent') || message.includes('spawn'))
+    ) {
+      return 'gitBinaryMissing';
+    }
+    if (message.includes('safe.directory') || message.includes('dubious ownership')) {
+      return 'safeDirectory';
+    }
+    if (message.includes('user.email') || message.includes('user.name') || message.includes('author identity')) {
+      return 'userConfig';
+    }
+    if (message.includes('commit')) {
+      return 'gitCommitFailed';
+    }
+    if (message.includes('init') || message.includes('initialize')) {
+      return 'gitInitFailed';
+    }
+    return 'unknown';
+  }
 }

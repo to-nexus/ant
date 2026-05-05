@@ -1,10 +1,10 @@
-import * as fs from 'fs';
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHelper } from '../../helper/GitHelper';
 import { WorktreeService } from '../../worktree';
 import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
-import { GitOperationError } from '../../errors';
+import { GitBootstrapSSOT } from './BaseGitSetupOperation';
+import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * CommitOperation
@@ -14,12 +14,14 @@ import { GitOperationError } from '../../errors';
  */
 export class CommitOperation {
   private readonly featureBackup: FeatureCodebaseBackup;
+  private readonly gitBootstrap: GitBootstrapSSOT;
 
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
     private readonly worktreeService: WorktreeService
   ) {
     this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'CommitOperation');
   }
 
   async execute(
@@ -29,31 +31,16 @@ export class CommitOperation {
     featureName?: string,
     files?: string[]
   ): Promise<{ success: boolean; commitHash?: string }> {
-    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-
-    await GitHelper.ensureSafeDirectory(codebasePath);
-
-    let git = GitHelper.getGitInstanceSafe(codebasePath);
-
-    if (!git && featureName) {
-      console.log(`[CommitOperation] No git found for feature ${featureName}, creating worktree lazily...`);
-      const backups = await this.featureBackup.backup(projectId, [featureName], userContext);
-      try {
-        await this.worktreeService.createWorktree(projectId, featureName, userContext);
-        const backupPath = backups.get(featureName);
-        if (backupPath && fs.existsSync(backupPath)) {
-          await this.featureBackup.restoreToWorktree(backupPath, codebasePath);
-        }
-      } finally {
-        await this.featureBackup.cleanup(backups);
-      }
-      await GitHelper.ensureSafeDirectory(codebasePath);
-      git = GitHelper.getGitInstanceSafe(codebasePath);
-    }
-
-    if (!git) {
-      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
-    }
+    const { git } = await ensureGitRepository({
+      workspaceResolver: this.workspaceResolver,
+      gitBootstrap: this.gitBootstrap,
+      projectId,
+      userContext,
+      featureName,
+      operationName: 'CommitOperation',
+      worktreeService: this.worktreeService,
+      featureBackup: this.featureBackup,
+    });
 
     await GitHelper.ensureUserConfig(git, userContext);
 
