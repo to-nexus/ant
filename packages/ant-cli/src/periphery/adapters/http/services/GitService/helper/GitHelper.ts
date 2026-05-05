@@ -5,6 +5,21 @@ import { logger } from '../../../../../../utils/logger';
 import { UserContext } from '../../../../../../core/types/user';
 
 /**
+ * Worktree validity reasons emitted by {@link GitHelper.isWorktreeStructureValid}.
+ * - `no-git-file`     — `.git` marker file does not exist (worktree never created)
+ * - `invalid-marker`  — `.git` exists but has malformed `gitdir:` line / read failure
+ * - `gitdir-missing`  — `.git/worktrees/<id>/` directory referenced by marker is absent
+ * - `head-missing`    — meta directory exists but lacks `HEAD`
+ * - `commondir-missing` — meta directory exists but lacks `commondir`
+ */
+export type WorktreeValidityReason =
+  | 'no-git-file'
+  | 'invalid-marker'
+  | 'gitdir-missing'
+  | 'head-missing'
+  | 'commondir-missing';
+
+/**
  * GitHelper
  * 
  * Utility functions for Git operations
@@ -131,68 +146,144 @@ export class GitHelper {
   }
 
   /**
+   * Resolve absolute paths derived from a worktree's `.git` marker file.
+   *
+   * Single source of truth for parsing `.git` marker → `mainGitDir` + `worktreePath`.
+   * Used by both Docker (`resolveWorktreeBindMounts`) and K8s
+   * (`resolveK8sWorktreeMounts`) — keeps the `.git` parsing logic in one place.
+   *
+   * @returns `{ mainGitDir, worktreePath }` when marker is valid AND mainGitDir
+   *   exists on disk; `null` otherwise. Caller may distinguish reasons via
+   *   {@link isWorktreeStructureValid}.
+   */
+  static resolveWorktreeAbsPaths(featureCodebasePath: string): {
+    mainGitDir: string;
+    worktreePath: string;
+  } | null {
+    const gitPath = path.join(featureCodebasePath, '.git');
+
+    if (!fs.existsSync(gitPath)) return null;
+
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) {
+      // Regular .git directory — not a worktree (base branch case)
+      return null;
+    }
+
+    let content: string;
+    try {
+      content = fs.readFileSync(gitPath, 'utf-8').trim();
+    } catch (error) {
+      logger.warn(`Failed to read .git marker`, { component: 'GitHelper' }, { featureCodebasePath, error });
+      return null;
+    }
+
+    const match = content.match(/^gitdir:\s*(.+)$/);
+    if (!match) {
+      logger.warn(`Unexpected .git file format in worktree`, { component: 'GitHelper' }, { featureCodebasePath, content });
+      return null;
+    }
+
+    const gitdirPath = match[1].trim();
+    // gitdirPath = /<base>/<proj>/codebase/.git/worktrees/{id}
+    // mainGitDir = /<base>/<proj>/codebase/.git
+    const worktreesDir = path.dirname(gitdirPath);
+    const mainGitDir = path.dirname(worktreesDir);
+
+    if (!fs.existsSync(mainGitDir)) {
+      logger.warn(`Main .git directory not found`, { component: 'GitHelper' }, { mainGitDir, featureCodebasePath });
+      return null;
+    }
+
+    return { mainGitDir, worktreePath: featureCodebasePath };
+  }
+
+  /**
+   * Stage-4 worktree validity check.
+   *
+   * Verifies that a feature codebase is a fully-formed git worktree, NOT just
+   * "has a .git marker". Catches partial NFS writes where `git worktree add`
+   * reports exit-code 0 but some meta files (`HEAD` / `commondir`) failed to
+   * land on EFS.
+   *
+   * Cheap (4 stat calls). Used by:
+   * - `WorktreeService.createWorktree` early-return + post-create probe
+   * - `WorktreeService.pruneCorruptWorktreeMeta` orphan detection
+   * - `ensureGitRepository` stage-4 check (lazy worktree self-heal)
+   * - `StatusService.getGitChanges` defense-in-depth auto-recovery
+   */
+  static isWorktreeStructureValid(featureCodebasePath: string):
+    | { valid: true }
+    | { valid: false; reason: WorktreeValidityReason } {
+    const gitPath = path.join(featureCodebasePath, '.git');
+
+    if (!fs.existsSync(gitPath)) {
+      return { valid: false, reason: 'no-git-file' };
+    }
+
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) {
+      // .git is a directory → main repo, treat as valid (worktree validity is per-feature only)
+      return { valid: true };
+    }
+
+    let content: string;
+    try {
+      content = fs.readFileSync(gitPath, 'utf-8').trim();
+    } catch {
+      return { valid: false, reason: 'invalid-marker' };
+    }
+
+    const match = content.match(/^gitdir:\s*(.+)$/);
+    if (!match) return { valid: false, reason: 'invalid-marker' };
+
+    const gitdirPath = match[1].trim();
+    if (!fs.existsSync(gitdirPath)) {
+      return { valid: false, reason: 'gitdir-missing' };
+    }
+
+    if (!fs.existsSync(path.join(gitdirPath, 'HEAD'))) {
+      return { valid: false, reason: 'head-missing' };
+    }
+
+    if (!fs.existsSync(path.join(gitdirPath, 'commondir'))) {
+      return { valid: false, reason: 'commondir-missing' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Resolve Git worktree bind mounts needed for Docker containers.
-   * 
+   *
    * A worktree's .git is a file (not a directory) containing a gitdir reference
    * to the main repository's .git/worktrees/{name} directory. For Docker containers,
    * both the main .git directory and the worktree path must be accessible at their
    * original host absolute paths for git operations to work.
-   * 
+   *
+   * Implementation note: `.git` parsing is delegated to {@link resolveWorktreeAbsPaths}
+   * (shared with K8s side via `resolveK8sWorktreeMounts`) — keeps the duplicated
+   * parsing logic in one place. This function only owns the Docker bind format.
+   *
    * @param worktreePath - Absolute path to the worktree codebase directory
    * @returns Additional bind mount strings for Docker, or empty array if not a worktree
    */
   static resolveWorktreeBindMounts(worktreePath: string): string[] {
-    const gitPath = path.join(worktreePath, '.git');
-    
-    if (!fs.existsSync(gitPath)) {
-      return [];
-    }
-    
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) {
-      // Regular .git directory, not a worktree
-      return [];
-    }
-    
-    // .git is a file — this is a worktree
-    try {
-      const content = fs.readFileSync(gitPath, 'utf-8').trim();
-      // Format: "gitdir: /absolute/path/to/main/.git/worktrees/{name}"
-      const match = content.match(/^gitdir:\s*(.+)$/);
-      if (!match) {
-        logger.warn(`Unexpected .git file format in worktree`, { component: 'GitHelper' }, { worktreePath, content });
-        return [];
-      }
-      
-      const gitdirPath = match[1].trim();
-      // gitdirPath = /host/path/codebase/.git/worktrees/{branchName}
-      // We need the main .git directory: /host/path/codebase/.git
-      const worktreesDir = path.dirname(gitdirPath); // .../codebase/.git/worktrees
-      const mainGitDir = path.dirname(worktreesDir);  // .../codebase/.git
-      
-      if (!fs.existsSync(mainGitDir)) {
-        logger.warn(`Main .git directory not found`, { component: 'GitHelper' }, { mainGitDir, worktreePath });
-        return [];
-      }
-      
-      const binds: string[] = [];
-      
-      // Mount the main .git directory at its original host path
-      binds.push(`${mainGitDir}:${mainGitDir}:rw`);
-      
-      // The main .git/worktrees/{name}/gitdir file references the worktree's absolute path.
-      // We also need the worktree itself mounted at its host path so the back-reference resolves.
-      binds.push(`${worktreePath}:${worktreePath}:rw`);
-      
-      logger.info(`Resolved worktree bind mounts`, { component: 'GitHelper' }, { 
-        worktreePath, mainGitDir, bindCount: binds.length 
-      });
-      
-      return binds;
-    } catch (error) {
-      logger.warn(`Failed to resolve worktree bind mounts`, { component: 'GitHelper' }, { worktreePath, error });
-      return [];
-    }
+    const abs = GitHelper.resolveWorktreeAbsPaths(worktreePath);
+    if (!abs) return [];
+
+    const binds: string[] = [
+      `${abs.mainGitDir}:${abs.mainGitDir}:rw`,
+      `${abs.worktreePath}:${abs.worktreePath}:rw`,
+    ];
+
+    logger.info(`Resolved worktree bind mounts`, { component: 'GitHelper' }, {
+      worktreePath: abs.worktreePath,
+      mainGitDir: abs.mainGitDir,
+      bindCount: binds.length,
+    });
+
+    return binds;
   }
 
   static async ensureUserConfig(git: SimpleGit, userContext: UserContext): Promise<void> {

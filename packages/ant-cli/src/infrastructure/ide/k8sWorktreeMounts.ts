@@ -17,14 +17,19 @@
  * - This helper returns ONLY the absolute-path entries (mainGitDir, worktreePath).
  * - For the base branch (`.git` is a directory) the returned array is empty.
  *
+ * Implementation note: `.git` parsing + mainGitDir derivation is delegated to
+ * the SSOT [`GitHelper.resolveWorktreeAbsPaths`](../../periphery/adapters/http/services/GitService/helper/GitHelper.ts) —
+ * shared with the Docker side. This file owns ONLY the K8s mount format
+ * (`{name, mountPath, subPath}`) and the workspaceBasePath strict prefix
+ * validation.
+ *
  * Risk closed: silent broken pod when `WORKSPACE_BASE_PATH` is wrong. The
  * helper throws if a returned mountPath does not start with the configured
  * base path, surfacing the misconfiguration at startup instead of presenting
  * an empty `/workspace` to the user.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { GitHelper } from '../../periphery/adapters/http/services/GitService/helper/GitHelper';
 import { logger } from '../../utils/logger';
 
 export interface K8sWorktreeMount {
@@ -48,7 +53,6 @@ function stripBase(absPath: string, workspaceBasePath: string): string {
         `Cannot derive PVC subPath. Check ANT_WORKSPACE_BASE_PATH on both API server and IDE pod.`,
     );
   }
-  // Keep relative — leading slash stripped to avoid PVC root being treated absolute.
   return absPath.slice(workspaceBasePath.length).replace(/^\/+/, '');
 }
 
@@ -67,49 +71,14 @@ export function resolveK8sWorktreeMounts(
   workspaceBasePath: string,
   pvcVolumeName: string = 'workspace',
 ): K8sWorktreeMount[] {
-  const gitPath = path.join(workspacePath, '.git');
-
-  if (!fs.existsSync(gitPath)) {
-    return [];
-  }
-
-  const stat = fs.statSync(gitPath);
-  if (stat.isDirectory()) {
-    // Regular `.git` directory → base branch / non-worktree case. No extra mounts.
-    return [];
-  }
-
-  // `.git` is a file — worktree marker.
-  let content: string;
-  try {
-    content = fs.readFileSync(gitPath, 'utf-8').trim();
-  } catch (error) {
-    logger.warn(`[k8sWorktreeMounts] Failed to read .git file`, { component: 'k8sWorktreeMounts' }, { workspacePath, error });
-    return [];
-  }
-
-  const match = content.match(/^gitdir:\s*(.+)$/);
-  if (!match) {
-    logger.warn(`[k8sWorktreeMounts] Unexpected .git file format`, { component: 'k8sWorktreeMounts' }, { workspacePath, content });
-    return [];
-  }
-
-  const gitdirPath = match[1].trim();
-  // gitdirPath = /<base>/<proj>/codebase/.git/worktrees/{branchName}
-  // mainGitDir = /<base>/<proj>/codebase/.git
-  const worktreesDir = path.dirname(gitdirPath);
-  const mainGitDir = path.dirname(worktreesDir);
-
-  if (!fs.existsSync(mainGitDir)) {
-    logger.warn(`[k8sWorktreeMounts] Main .git directory not found`, { component: 'k8sWorktreeMounts' }, { mainGitDir, workspacePath });
-    return [];
-  }
+  const abs = GitHelper.resolveWorktreeAbsPaths(workspacePath);
+  if (!abs) return [];
 
   const mounts: K8sWorktreeMount[] = [
     {
       name: pvcVolumeName,
-      mountPath: mainGitDir,
-      subPath: stripBase(mainGitDir, workspaceBasePath),
+      mountPath: abs.mainGitDir,
+      subPath: stripBase(abs.mainGitDir, workspaceBasePath),
     },
   ];
 
@@ -117,17 +86,17 @@ export function resolveK8sWorktreeMounts(
   // workspacePath and mainGitDir collide, skip the worktree-self mount.
   // Otherwise add the worktree's own path so the
   // `.git/worktrees/{branch}/gitdir` back-reference resolves inside the pod.
-  if (workspacePath !== mainGitDir) {
+  if (abs.worktreePath !== abs.mainGitDir) {
     mounts.push({
       name: pvcVolumeName,
-      mountPath: workspacePath,
-      subPath: stripBase(workspacePath, workspaceBasePath),
+      mountPath: abs.worktreePath,
+      subPath: stripBase(abs.worktreePath, workspaceBasePath),
     });
   }
 
   logger.info(`[k8sWorktreeMounts] Resolved worktree mounts`, { component: 'k8sWorktreeMounts' }, {
-    workspacePath,
-    mainGitDir,
+    workspacePath: abs.worktreePath,
+    mainGitDir: abs.mainGitDir,
     mountCount: mounts.length,
   });
 

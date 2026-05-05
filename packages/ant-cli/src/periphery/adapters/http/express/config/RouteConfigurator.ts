@@ -175,6 +175,7 @@ export class RouteConfigurator {
       ideOrchestrator,
       this.deps.workspaceResolver,
       factory.getStateStore(),
+      this.deps.githubAuthService,
     );
     app.use('/api/cloud-ide', cloudIDERoutes);
   }

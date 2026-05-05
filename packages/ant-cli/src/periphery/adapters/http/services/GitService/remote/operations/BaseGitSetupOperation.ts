@@ -482,10 +482,28 @@ export class GitBootstrapSSOT extends BaseGitSetupOperation {
     );
   }
 
-  private async validateReady(codebasePath: string): Promise<boolean> {
+  /**
+   * Public stage-2 readiness check for the main git repository.
+   *
+   * Verifies BOTH `.git` exists AND at least one commit is reachable.
+   * Other ready-check call sites (e.g. status probes, defense-in-depth
+   * recovery) must use this helper instead of duplicating the
+   * `getGitInstanceSafe` + `git.log` pair.
+   */
+  async isLocalGitReady(codebasePath: string): Promise<{
+    ready: boolean;
+    reason?: 'no-git' | 'no-commit';
+  }> {
     const git = GitHelper.getGitInstanceSafe(codebasePath);
-    if (!git) return false;
-    return this.hasCommit(git);
+    if (!git) return { ready: false, reason: 'no-git' };
+    const hasCommit = await this.hasCommit(git);
+    if (!hasCommit) return { ready: false, reason: 'no-commit' };
+    return { ready: true };
+  }
+
+  private async validateReady(codebasePath: string): Promise<boolean> {
+    const result = await this.isLocalGitReady(codebasePath);
+    return result.ready;
   }
 
   private async hasCommit(git: SimpleGit): Promise<boolean> {
