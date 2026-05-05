@@ -724,6 +724,26 @@ export interface StateStorePort {
   ): Promise<void>;
 
   // ============================================
+  // Distributed Lock — SETNX + value-aware DEL
+  // ============================================
+
+  /**
+   * Atomic `SET key value NX EX ttlSec`. Returns `true` when this caller
+   * acquired the lock (key was unset), `false` on contention.
+   *
+   * `value` MUST be a fresh per-attempt token (e.g. uuid) so the matching
+   * `releaseLockIfOwner` only deletes when the same caller still owns the
+   * lock — protects against TTL-then-reacquire races.
+   */
+  tryAcquireLock(key: string, value: string, ttlSec: number): Promise<boolean>;
+
+  /**
+   * Compare-and-delete via Lua: `if GET(key)==value then DEL(key)`. No-op
+   * when the lock has expired or another caller holds it. Always safe.
+   */
+  releaseLockIfOwner(key: string, value: string): Promise<void>;
+
+  // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)
   // ============================================
   

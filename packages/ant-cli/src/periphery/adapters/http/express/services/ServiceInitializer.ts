@@ -23,6 +23,7 @@ import { getInfrastructureFactory } from '../../../../../infrastructure/adapters
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
 import { ArtifactTransferService } from '../../../../../infrastructure/workspace/ArtifactTransferService';
 import { RedisStateStore } from '../../../../../infrastructure/state/RedisStateStore';
+import { startDebugRetentionTimer } from '../../../../../core/maintenance/debugRetentionTimer';
 
 /**
  * Initialize all services and dependencies for the Express server
@@ -137,6 +138,14 @@ export function initializeServices(
     workspaceResolver, 
     stateStore as unknown as RedisStateStore
   );
+
+  // Periodic debug-artifact retention sweep (sessions/{agent}/debug/*).
+  // Independent of IDE pod existence — debug files accumulate even after
+  // a feature's IDE has terminated.
+  startDebugRetentionTimer({
+    workspacesPath: config.workspacesPath,
+    stateStore,
+  });
   
   return {
     workspaceService,

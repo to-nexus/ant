@@ -24,6 +24,7 @@ import { StepFilesAndStart } from './StepFilesAndStart';
 
 import { ExecutionProgress } from './ExecutionProgress';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useGitErrorRouting } from '@/application/hooks/git/useGitErrorRouting';
 
 interface ProjectWizardModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ interface ProjectWizardModalProps {
 export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProjectId }: ProjectWizardModalProps) {
   const { t } = useTranslation('onboarding');
   const { showConfirm } = useAlertModalContext();
+  const handleGitError = useGitErrorRouting();
 
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
@@ -390,6 +392,13 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             if (gitAction === 'clone') {
               const cloneResult = await runGitOperation(projectId, { kind: 'clone' });
               if (!cloneResult.success) {
+                // Auth failures route to the PAT dialog (Account Config tab)
+                // and abort the wizard — the skip/retry/abort decision UI
+                // would offer the wrong recovery path here.
+                if (handleGitError(cloneResult.error).handled) {
+                  updateExecStep(gitStepId, 'error', cloneResult.error?.message || 'PAT not configured');
+                  throw new Error(cloneResult.error?.message || 'PAT not configured');
+                }
                 throw new Error(cloneResult.error?.message || 'Git clone failed');
               }
               // Back-compat: some server builds still complete clone
@@ -406,6 +415,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             } else {
               const initResult = await runGitOperation(projectId, { kind: 'publish' });
               if (!initResult.success) {
+                if (handleGitError(initResult.error).handled) {
+                  updateExecStep(gitStepId, 'error', initResult.error?.message || 'PAT not configured');
+                  throw new Error(initResult.error?.message || 'PAT not configured');
+                }
                 throw new Error(initResult.error?.message || 'Git init failed');
               }
             }

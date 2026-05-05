@@ -70,7 +70,7 @@ export class ProjectService {
     this.projectCrud = new ProjectCrudService(workspaceResolver);
     this.featureCrud = new FeatureCrudService(workspaceResolver);
     this.fileOps = new FileOperationService(workspaceResolver);
-    this.git = new GitService(workspaceResolver, githubAuthService, chatService);
+    this.git = new GitService(workspaceResolver, githubAuthService, chatService, stateStore);
     
     // ✅ Inject WorktreeService into FeatureCrudService for worktree-based feature isolation
     const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
@@ -104,14 +104,24 @@ export class ProjectService {
     return this.projectCrud.createProject(id, userContext);
   }
 
+  /**
+   * Rename a project — full cascade: stop runtime → fs.rename + verify → lazy restart.
+   *
+   * Pod / preview / Redis-state cleanup mirrors `deleteProject` because the
+   * old `subPath` mounts and old projectId-keyed state are stale after the
+   * directory rename. New IDE / preview start lazily when the user re-enters
+   * with the new id.
+   */
   async renameProject(oldId: string, newId: string, userContext: UserContext): Promise<void> {
+    await this.stopProjectRuntime(oldId, userContext);
     return this.projectCrud.renameProject(oldId, newId, userContext);
   }
 
   /**
-   * Delete a project end-to-end.
+   * Delete a project end-to-end. Step 1-4 share `stopProjectRuntime`
+   * with `renameProject`; only the final disk action differs (rm vs rename).
    *
-   * Cascade order — each step closes a "Project already exists" failure mode:
+   * Each step closes a "Project already exists" failure mode:
    *   1. cancelAllProjectJobs — Redis seal + child exit wait so EFS open
    *      file handles are released before fs.rm runs.
    *   2. ideOrchestrator.cleanupProject — stop pods/containers + delete IDE
@@ -122,51 +132,58 @@ export class ProjectService {
    *   5. projectCrud.deleteProject — fs.rm with verification loop.
    */
   async deleteProject(id: string, userContext: UserContext): Promise<void> {
-    // Step 1 — cancel all jobs and wait for children to exit.
+    await this.stopProjectRuntime(id, userContext);
+    return this.projectCrud.deleteProject(id, userContext);
+  }
+
+  /**
+   * SSOT cascade: cancel jobs → stop IDE → preview cleanup → Redis cleanup.
+   *
+   * Shared by `deleteProject` and `renameProject` so the four lifecycle
+   * steps cannot drift. Each step is best-effort with explicit warn on
+   * failure; continuing past a failure is intentional (we still want fs.rm
+   * / fs.rename to run, and the disk-level verification loop is the final
+   * gate that throws when state is unrecoverable).
+   */
+  private async stopProjectRuntime(projectId: string, userContext: UserContext): Promise<void> {
     if (this.stateStore && this.jobQueue) {
       try {
-        const features = await this.featureCrud.listFeatures(id, userContext);
+        const features = await this.featureCrud.listFeatures(projectId, userContext);
         await cancelAllProjectJobs({
           stateStore: this.stateStore,
           jobQueue: this.jobQueue,
-          projectId: id,
+          projectId,
           features,
           userContext,
         });
       } catch (e: any) {
-        logger.warn(`[ProjectService] cancelAllProjectJobs failed for project ${id} (continuing)`, { component: 'ProjectService' }, e);
+        logger.warn(`[ProjectService] cancelAllProjectJobs failed for project ${projectId} (continuing)`, { component: 'ProjectService' }, e);
       }
     }
 
-    // Step 2 — IDE pods/containers (waitForPodDeletion inside K8s stop).
     if (this.ideOrchestrator) {
       try {
-        await this.ideOrchestrator.cleanupProject(userContext, id, { deleteHome: true });
+        await this.ideOrchestrator.cleanupProject(userContext, projectId, { deleteHome: true });
       } catch (e: any) {
-        logger.warn(`[ProjectService] IDE cleanup for project ${id} failed (continuing)`, { component: 'ProjectService' }, e);
+        logger.warn(`[ProjectService] IDE cleanup for project ${projectId} failed (continuing)`, { component: 'ProjectService' }, e);
       }
     }
 
-    // Step 3 — preview cleanup via Redis pub/sub.
     if (this.stateStore) {
       try {
-        await requestPreviewCleanup(this.stateStore, 'project', userContext, id);
+        await requestPreviewCleanup(this.stateStore, 'project', userContext, projectId);
       } catch (e: any) {
-        logger.warn(`[ProjectService] Preview cleanup ack timed out (continuing)`, { component: 'ProjectService' }, { projectId: id, error: e?.message });
+        logger.warn(`[ProjectService] Preview cleanup ack timed out (continuing)`, { component: 'ProjectService' }, { projectId, error: e?.message });
       }
     }
 
-    // Step 4 — Redis project-scoped keys.
     if (this.stateStore) {
       try {
-        await this.stateStore.cleanupProject(userContext.organizationId, userContext.userId, id);
+        await this.stateStore.cleanupProject(userContext.organizationId, userContext.userId, projectId);
       } catch (e: any) {
-        logger.warn(`[ProjectService] Redis state cleanup failed (continuing)`, { component: 'ProjectService' }, { projectId: id, error: e?.message });
+        logger.warn(`[ProjectService] Redis state cleanup failed (continuing)`, { component: 'ProjectService' }, { projectId, error: e?.message });
       }
     }
-
-    // Step 5 — disk delete with verification (throws if it can't complete).
-    return this.projectCrud.deleteProject(id, userContext);
   }
   
   async getProjectConfig(id: string, userContext: UserContext): Promise<any> {
