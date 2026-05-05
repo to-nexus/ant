@@ -129,15 +129,9 @@ describe('tasks/feature/hooks/scheduling', () => {
     expect(blocksIntegration).toBe(true);
   });
 
-  describe('classify — per-task priority-band role', () => {
-    it('priority 200–299 ⇒ isFoundation + expandedRagQuota', () => {
-      expect(schedClassify(task('sf-200', { priority: 200 }))).toEqual({
-        isFoundation: true,
-        producesIntegrationGate: false,
-        consumesIntegrationGate: false,
-        expandedRagQuota: true,
-      });
-      expect(schedClassify(task('sf-299', { priority: 299 }))).toEqual({
+  describe('classify — band-driven scheduling role (Three-Axis SSOT)', () => {
+    it('band==="foundation" ⇒ isFoundation + expandedRagQuota', () => {
+      expect(schedClassify(task('sf-foundation', { band: 'foundation' }))).toEqual({
         isFoundation: true,
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
@@ -145,14 +139,8 @@ describe('tasks/feature/hooks/scheduling', () => {
       });
     });
 
-    it('priority 300–599 ⇒ producesIntegrationGate (normal feature)', () => {
-      expect(schedClassify(task('feat-300', { priority: 300 }))).toEqual({
-        isFoundation: false,
-        producesIntegrationGate: true,
-        consumesIntegrationGate: false,
-        expandedRagQuota: false,
-      });
-      expect(schedClassify(task('feat-599', { priority: 599 }))).toEqual({
+    it('band===undefined ⇒ producesIntegrationGate (normal feature)', () => {
+      expect(schedClassify(task('feat-normal'))).toEqual({
         isFoundation: false,
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
@@ -160,14 +148,8 @@ describe('tasks/feature/hooks/scheduling', () => {
       });
     });
 
-    it('priority 600–649 ⇒ consumesIntegrationGate + expandedRagQuota', () => {
-      expect(schedClassify(task('int-600', { priority: 600 }))).toEqual({
-        isFoundation: false,
-        producesIntegrationGate: false,
-        consumesIntegrationGate: true,
-        expandedRagQuota: true,
-      });
-      expect(schedClassify(task('int-649', { priority: 649 }))).toEqual({
+    it('band==="integration" ⇒ consumesIntegrationGate + expandedRagQuota', () => {
+      expect(schedClassify(task('int', { band: 'integration' }))).toEqual({
         isFoundation: false,
         producesIntegrationGate: false,
         consumesIntegrationGate: true,
@@ -175,16 +157,14 @@ describe('tasks/feature/hooks/scheduling', () => {
       });
     });
 
-    it('priority outside [200, 649] ⇒ no flags published', () => {
-      expect(schedClassify(task('low', { priority: 50 }))).toEqual({
+    it('priority is ignored — band is the SSOT', () => {
+      // Pre-three-axis classify read priority directly. Now band drives
+      // every flag; priority is the sort key only. A priority that used
+      // to map to the foundation window (200) classifies as ordinary
+      // feature work UNLESS band is explicitly set to 'foundation'.
+      expect(schedClassify(task('sneaky-priority', { priority: 250 }))).toEqual({
         isFoundation: false,
-        producesIntegrationGate: false,
-        consumesIntegrationGate: false,
-        expandedRagQuota: false,
-      });
-      expect(schedClassify(task('post', { priority: 700 }))).toEqual({
-        isFoundation: false,
-        producesIntegrationGate: false,
+        producesIntegrationGate: true,
         consumesIntegrationGate: false,
         expandedRagQuota: false,
       });

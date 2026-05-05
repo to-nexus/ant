@@ -84,10 +84,11 @@ export function validateTasks(
 
   // Warn if a single shared foundation task has broad scope (likely spans multiple functional concerns).
   // Foundation identity is owned by each bundle's `classify` — the
-  // decompose phase never compares raw priority bands.
+  // decompose phase never compares raw priority bands. Three-Axis SSOT:
+  // feature uses `band`, design-system is type-fixed.
   const sharedTasks = tasks.filter(t => {
     const classify = hooksForTaskType(t.type)?.scheduling?.classify;
-    return !!classify?.({ priority: t.priority }).isFoundation;
+    return !!classify?.(t).isFoundation;
   });
   if (sharedTasks.length === 1 && sharedTasks[0].description.length > 1200) {
     console.warn(

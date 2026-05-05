@@ -141,7 +141,7 @@ function schedClassify<T extends BaseTask>(
 ): boolean {
   const classify = hooksForTaskType(t.type as TaskType)?.scheduling?.classify;
   if (!classify) return false;
-  return !!classify(t)[flag];
+  return !!classify(t as BaseTask)[flag];
 }
 
 function isFoundationTask<T extends BaseTask>(t: T): boolean {
@@ -300,7 +300,21 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
 
       // Non-exclusive: find a compatible task
-      return this.findAndAssignNonConflictingTask(workerId);
+      const assigned = this.findAndAssignNonConflictingTask(workerId);
+      if (assigned == null && this.runningTasks.size === 0) {
+        // No running tasks AND head was rejected — barrier likely
+        // blocking. Surface the head's discriminators so deadlocks
+        // become observable instead of looping silently on the 60s
+        // checkpoint timer.
+        const band = (next as { band?: string }).band ?? '<none>';
+        console.warn(
+          `[Orchestrator] requestTask(${workerId}) returned null with non-empty queue ` +
+          `(size=${this.taskQueue.size()}); head: id=${next.id}, priority=${next.priority}, ` +
+          `type=${next.type}, band=${band}, exclusive=${next.exclusive ?? false} — ` +
+          `barrier likely blocking`,
+        );
+      }
+      return assigned;
     });
   }
 
@@ -894,9 +908,28 @@ export class TaskOrchestrator<T extends BaseTask> {
       // stays visible in the UI until ALL workers finish.
       this.callbacks.onWorkerTerminate?.(workerId);
 
-      // After a worker dies, check if everything is done
       this.lock.runExclusive(() => {
         this.checkAllDone();
+        // Defense-in-depth respawn guard: if every worker has died but
+        // the queue is non-empty and the orchestrator is not draining,
+        // a barrier-blocked head task left the worker pool empty with
+        // no respawn trigger (the deadlock signature traced in
+        // log-satin-feeling-orbit). The primary deadlock root cause is
+        // fixed by the band-based classify, but this guard recovers
+        // any future regression by re-spawning workers — the next
+        // `requestTask` will return null cleanly and the `requestTask`
+        // diagnostic below surfaces the remaining barrier reason.
+        if (
+          !this.draining &&
+          this.workers.size === 0 &&
+          this.runningTasks.size === 0 &&
+          !this.taskQueue.isEmpty()
+        ) {
+          console.warn(
+            `[Orchestrator] All workers terminated with non-empty queue (${this.taskQueue.size()}); attempting respawn`,
+          );
+          this.spawnAvailableWorkers();
+        }
       });
     });
   }

@@ -53,7 +53,13 @@ export const preDocBarrier = true;
 const TOKENS_BAND_MIN = 100;
 const TOKENS_BAND_MAX = 199;
 
-export function classify(task: Pick<BaseTask, 'priority'>): SchedulingClassification {
+// Three-Axis SSOT exception: doc is dual-role (code-job + design-job).
+// Design-job emits ALL tasks as `type: 'doc'` and discriminates scheduling
+// by priority band (tokens 100-199, assets/foundation 200-299, spec 300+).
+// Reading `task.priority` here is legal because this lives INSIDE the
+// bundle (= SSOT for "my band means scheduling role X"). Phase-layer
+// code never reads priority — it asks the hook.
+export function classify(task: BaseTask): SchedulingClassification {
   const p = task.priority;
   return {
     isTokens: p >= TOKENS_BAND_MIN && p <= TOKENS_BAND_MAX,

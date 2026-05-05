@@ -116,6 +116,8 @@ export function createProjectsRoutes(deps: {
     } catch (error: any) {
       if (error.message === 'Project already exists') {
         res.status(409).json({ error: error.message });
+      } else if (error instanceof GitOperationError) {
+        res.status(error.statusCode).json({ error: error.message });
       } else {
         sendErrorResponse(res, 500, error, 'Projects');
       }

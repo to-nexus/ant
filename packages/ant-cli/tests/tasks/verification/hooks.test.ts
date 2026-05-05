@@ -58,11 +58,14 @@ describe('tasks/_shared/registry — verification entry', () => {
     expect(typeof hooks?.scheduling?.classify).toBe('function');
   });
 
-  it('scheduling.classify ⇒ isFinal for priority >= FINAL_VERIFICATION', () => {
+  it('scheduling.classify ⇒ isFinal — type-fixed (Three-Axis SSOT)', () => {
+    // Verification is type-fixed: every verification task IS the final
+    // verification task. The system has no "non-final verification" task
+    // (see tasks/verification/model/is.ts). Classify ignores priority.
     const classify = verificationBundle.scheduling?.classify;
     expect(classify?.(task('final', { priority: 1000 }))).toEqual({ isFinal: true });
     expect(classify?.(task('beyond', { priority: 1500 }))).toEqual({ isFinal: true });
-    expect(classify?.(task('low', { priority: 999 }))).toEqual({ isFinal: false });
+    expect(classify?.(task('alias', { priority: 999 }))).toEqual({ isFinal: true });
   });
 
   it('explain task type carries only R1 plan dispatch flags', () => {
