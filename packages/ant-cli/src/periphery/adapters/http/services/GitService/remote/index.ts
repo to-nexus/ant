@@ -1,6 +1,7 @@
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
+import type { StateStorePort } from '../../../../../../core/ports/stateStore';
 import { CloneOperation } from './operations/CloneOperation';
 import { InitOperation } from './operations/InitOperation';
 import { PushOperation } from './operations/PushOperation';
@@ -10,17 +11,26 @@ import { SyncOperation } from './operations/SyncOperation';
 import { CommitOperation } from './operations/CommitOperation';
 import { DiscardOperation } from './operations/DiscardOperation';
 import { WorktreeService } from '../worktree';
+import { acquireLock } from '../../../../../../core/redis/distributedLock';
+import { REDIS_KEYS } from '../../../../../../core/constants/redis';
+import { GitConflictError } from '../errors';
+
+const LOCK_TTL_CLONE_SEC = 600; // clone is the longest single-flight (full bare clone + flatten)
+const LOCK_TTL_INIT_SEC = 300;
+const LOCK_TTL_FETCH_SEC = 180;
 
 /**
  * RemoteService (Facade)
- * 
- * Main facade for Git remote operations.
- * Delegates to specific operation classes.
+ *
+ * Single-flight clone / init / fetch is enforced via a Redis distributed
+ * lock (`tryAcquireLock` / `releaseLockIfOwner`) — works across pod
+ * replicas, unlike the old in-process Map. Per the parent plan's
+ * "Unified Distributed System Principle", in-memory mirrors of Redis
+ * SSOT state are forbidden; if `stateStore` is missing the wrapper
+ * throws (dev parity is guaranteed by `pnpm dev:infra`).
  */
 export class RemoteService {
-  private readonly inFlightFetch = new Map<string, Promise<void>>();
-  private readonly inFlightClone = new Map<string, Promise<{ warnings?: string[] }>>();
-  private readonly inFlightInit = new Map<string, Promise<{ warnings?: string[] }>>();
+  private readonly stateStore?: StateStorePort;
 
   private readonly cloneOp: CloneOperation;
   private readonly initOp: InitOperation;
@@ -34,8 +44,10 @@ export class RemoteService {
   constructor(
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
-    onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
+    onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void,
+    stateStore?: StateStorePort,
   ) {
+    this.stateStore = stateStore;
     const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
 
     this.cloneOp = new CloneOperation(workspaceResolver, worktreeService, githubAuthService);
@@ -48,26 +60,52 @@ export class RemoteService {
     this.discardOp = new DiscardOperation(workspaceResolver, worktreeService);
   }
 
-  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
-    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
-    const existing = this.inFlightClone.get(key);
-    if (existing) return existing;
+  /**
+   * SSOT wrapper for distributed single-flight. Used by clone / init /
+   * fetch — each provides its own lock key, TTL, and conflict message.
+   *
+   * Contention behavior: throws `GitConflictError` (HTTP 409) so the
+   * caller can decide to display "another op in progress, retry later"
+   * rather than queueing. Queueing on top of HTTP would inflate timeout
+   * windows beyond what the wizard / git menu expects.
+   */
+  private async withLock<T>(
+    key: string,
+    ttlSec: number,
+    conflictMessage: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.stateStore) {
+      throw new Error(
+        `[RemoteService] stateStore not injected — distributed lock unavailable. ` +
+          `Ensure ServiceInitializer wires stateStore (cloud + local dev both require it).`,
+      );
+    }
+    const lock = await acquireLock(this.stateStore, key, ttlSec);
+    if (!lock) throw new GitConflictError(conflictMessage);
+    try {
+      return await fn();
+    } finally {
+      await lock.release();
+    }
+  }
 
-    const promise = this.cloneOp.execute(projectId, userContext)
-      .finally(() => this.inFlightClone.delete(key));
-    this.inFlightClone.set(key, promise);
-    return promise;
+  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
+    return this.withLock(
+      REDIS_KEYS.LOCK.CLONE(userContext.organizationId, userContext.userId, projectId),
+      LOCK_TTL_CLONE_SEC,
+      'Another clone is in progress for this project. Please wait and retry.',
+      () => this.cloneOp.execute(projectId, userContext),
+    );
   }
 
   async initializeGitHubRepo(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
-    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
-    const existing = this.inFlightInit.get(key);
-    if (existing) return existing;
-
-    const promise = this.initOp.execute(projectId, userContext, activeFeature)
-      .finally(() => this.inFlightInit.delete(key));
-    this.inFlightInit.set(key, promise);
-    return promise;
+    return this.withLock(
+      REDIS_KEYS.LOCK.INIT(userContext.organizationId, userContext.userId, projectId),
+      LOCK_TTL_INIT_SEC,
+      'Another init is in progress for this project. Please wait and retry.',
+      () => this.initOp.execute(projectId, userContext, activeFeature),
+    );
   }
 
   async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
@@ -79,19 +117,12 @@ export class RemoteService {
   }
 
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName || 'main'}`;
-    const existing = this.inFlightFetch.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const promise = this.fetchOp.execute(projectId, userContext, featureName)
-      .finally(() => {
-        this.inFlightFetch.delete(key);
-      });
-
-    this.inFlightFetch.set(key, promise);
-    return promise;
+    return this.withLock(
+      REDIS_KEYS.LOCK.FETCH(userContext.organizationId, userContext.userId, projectId, featureName || 'main'),
+      LOCK_TTL_FETCH_SEC,
+      'Another fetch is in progress for this project / feature. Please wait and retry.',
+      () => this.fetchOp.execute(projectId, userContext, featureName),
+    );
   }
 
   async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{

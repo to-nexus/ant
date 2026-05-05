@@ -629,6 +629,36 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Distributed Lock — SETNX + value-aware DEL
+  // ============================================
+
+  async tryAcquireLock(key: string, value: string, ttlSec: number): Promise<boolean> {
+    const result = await this.redis.set(key, value, 'EX', ttlSec, 'NX');
+    return result === 'OK';
+  }
+
+  async releaseLockIfOwner(key: string, value: string): Promise<void> {
+    // Compare-and-delete: only DEL when the current value still matches.
+    // Protects against the TTL-expire-then-reacquire race.
+    const script = `
+      if redis.call('get', KEYS[1]) == ARGV[1] then
+        return redis.call('del', KEYS[1])
+      else
+        return 0
+      end
+    `;
+    try {
+      await this.redis.eval(script, 1, key, value);
+    } catch (err) {
+      logger.warn(
+        `[StateStore] releaseLockIfOwner eval failed (lock will TTL-expire)`,
+        { component: 'RedisStateStore' },
+        { key, err: err instanceof Error ? err.message : String(err) },
+      );
+    }
+  }
+
+  // ============================================
   // Port Registry - Preview (Full State Management)
   // ============================================
 

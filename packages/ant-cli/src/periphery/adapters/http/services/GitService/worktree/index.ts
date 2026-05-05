@@ -265,7 +265,7 @@ export class WorktreeService {
       });
     } catch (err: any) {
       // Worktree might not be registered (e.g., if git wasn't initialized when feature was created)
-      logger.info(`Worktree remove failed (cleaning up directory): ${err.message}`, {
+      logger.warn(`Worktree remove failed (cleaning up directory): ${err.message}`, {
         component: 'WorktreeService',
         projectId,
         featureName
@@ -275,12 +275,9 @@ export class WorktreeService {
       }
     }
 
-    // Prune worktree references
-    try {
-      await git.raw(['worktree', 'prune']);
-    } catch {
-      // Non-critical
-    }
+    // Sweep corrupt `.git/worktrees/{branch}` metadata that bare prune
+    // would leave behind for `safe.expire` (1h default).
+    await WorktreeService.pruneCorruptWorktreeMeta(mainCodebasePath);
 
     // Delete the local branch
     try {
@@ -291,10 +288,90 @@ export class WorktreeService {
         featureName
       });
     } catch (err: any) {
-      logger.info(`Could not delete branch ${branchName} (may not exist): ${err.message}`, {
+      logger.warn(`Could not delete branch ${branchName} (may not exist): ${err.message}`, {
         component: 'WorktreeService',
         projectId,
         featureName
+      });
+    }
+  }
+
+  /**
+   * Sweep corrupted / orphaned worktree metadata under `.git/worktrees/`.
+   *
+   * Distinct from `ProjectCrudService.repairGitWorktrees` (which calls
+   * `git worktree repair {paths}` to refresh absolute paths after a project
+   * rename). This helper covers the opposite case: the worktree on disk is
+   * gone but the metadata directory under `.git/worktrees/` lingers.
+   *
+   * Steps:
+   *   1. Walk `.git/worktrees/` directly. Each subdir's `gitdir` file
+   *      contains the absolute path to the worktree's `.git` marker —
+   *      its dirname is the actual worktree directory.
+   *   2. If that directory is missing OR its `.git` marker is gone,
+   *      `fs.rm` the meta directory. (Independent of branch name —
+   *      git names meta dirs after the worktree path basename, not the
+   *      branch.)
+   *   3. `git worktree prune --expire=now` — bypass the 1h safe-expire
+   *      window that bare `prune` honours.
+   *
+   * Public + static so cloud-ide.routes.ts can call it (throttled) before
+   * pod start without instantiating WorktreeService.
+   */
+  static async pruneCorruptWorktreeMeta(mainCodebasePath: string): Promise<void> {
+    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    if (!git) return;
+
+    const worktreesDir = path.join(mainCodebasePath, '.git', 'worktrees');
+    let removed = 0;
+
+    try {
+      const metaEntries = await fs.promises.readdir(worktreesDir, { withFileTypes: true });
+      for (const entry of metaEntries) {
+        if (!entry.isDirectory()) continue;
+        const metaDir = path.join(worktreesDir, entry.name);
+        const gitdirFile = path.join(metaDir, 'gitdir');
+
+        let worktreeMarkerPath: string | null = null;
+        try {
+          const content = await fs.promises.readFile(gitdirFile, 'utf-8');
+          worktreeMarkerPath = content.trim();
+        } catch {
+          // gitdir file missing → meta is corrupt; remove
+        }
+
+        const orphan =
+          worktreeMarkerPath === null ||
+          !fs.existsSync(worktreeMarkerPath) ||
+          !fs.existsSync(path.dirname(worktreeMarkerPath));
+        if (!orphan) continue;
+
+        try {
+          await fs.promises.rm(metaDir, { recursive: true, force: true });
+          removed += 1;
+          logger.info(`[WorktreeService] Pruned orphan worktree meta: ${metaDir}`, { component: 'WorktreeService' });
+        } catch (err: any) {
+          logger.warn(`[WorktreeService] Failed to rm orphan meta ${metaDir}: ${err.message}`, { component: 'WorktreeService' });
+        }
+      }
+    } catch (err: any) {
+      // worktrees dir may not exist yet (single-worktree repo) — that's fine
+      if (err?.code !== 'ENOENT') {
+        logger.warn(`[WorktreeService] readdir worktrees failed: ${err.message}`, { component: 'WorktreeService' });
+      }
+    }
+
+    // Final prune — bypass the 1-hour safe.expire window so any internal
+    // bookkeeping git tracks separately from the meta dirs is also cleared.
+    try {
+      await git.raw(['worktree', 'prune', '--expire=now']);
+    } catch (err: any) {
+      logger.warn(`[WorktreeService] worktree prune --expire=now failed: ${err.message}`, { component: 'WorktreeService' });
+    }
+
+    if (removed > 0) {
+      logger.info(`[WorktreeService] pruneCorruptWorktreeMeta removed ${removed} orphan(s) under ${worktreesDir}`, {
+        component: 'WorktreeService',
       });
     }
   }

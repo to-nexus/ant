@@ -22,6 +22,9 @@ export const REDIS_DOMAINS = {
   ARTIFACTS: `${APP_PREFIX}:artifacts`,
   /** Cross-process lifecycle signaling (cleanup request/ack between API and ant-preview / future ant-* workers). */
   LIFECYCLE: `${APP_PREFIX}:lifecycle`,
+  /** Distributed locks + throttle markers (SETNX + value-aware DEL via stateStore.tryAcquireLock / releaseLockIfOwner). */
+  LOCK: `${APP_PREFIX}:lock`,
+  THROTTLE: `${APP_PREFIX}:throttle`,
 } as const;
 
 // ============================================
@@ -184,6 +187,35 @@ export const REDIS_KEYS = {
   LIFECYCLE: {
     CLEANUP_REQUEST: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:request`,
     CLEANUP_ACK: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:ack`,
+  },
+
+  /**
+   * Distributed lock keys — `SET key value NX EX ttl` (acquire) +
+   * Lua compare-and-DEL (release). See `core/redis/distributedLock.ts`
+   * for the helper SSOT.
+   *
+   * Functions return the full key so callers don't reassemble pieces.
+   */
+  LOCK: {
+    /** Repository clone in progress for (org, user, projectId). */
+    CLONE: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:clone:${org}:${user}:${projectId}`,
+    /** Repository init in progress for (org, user, projectId). */
+    INIT: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:init:${org}:${user}:${projectId}`,
+    /** Repository fetch in progress for (org, user, projectId, feature). */
+    FETCH: (org: string, user: string, projectId: string, feature: string): string =>
+      `${REDIS_DOMAINS.LOCK}:fetch:${org}:${user}:${projectId}:${feature || 'main'}`,
+  },
+
+  /**
+   * Throttle markers — same SETNX-EX semantics as LOCK but never released:
+   * the TTL itself is the throttle window.
+   */
+  THROTTLE: {
+    /** "worktree corruption sweep already ran for this project recently". */
+    WORKTREE_PRUNE: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.THROTTLE}:worktree-prune:${org}:${user}:${projectId}`,
   },
 } as const;
 

@@ -1,22 +1,20 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { isVectorDbEnabled } from '../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../core/types/user';
 import { ChatService } from '../../ChatService';
-import { GitHelper } from '../helper/GitHelper';
 import { logger } from '../../../../../../utils/logger';
 
 /**
- * IndexService
- * 
- * Handles Git repository indexing for AI/LLM context
+ * IndexService — git-aware codebase indexing for AI/LLM context.
+ *
+ * Vector-DB capability gate: every public method short-circuits when
+ * `isVectorDbEnabled()` is false (see `core/config/vectorDbCapability.ts`
+ * for the SSOT).
  */
 export class IndexService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly chatService?: ChatService;
-  
+
   constructor(
     workspaceResolver: WorkspaceResolver,
     chatService?: ChatService
@@ -24,34 +22,7 @@ export class IndexService {
     this.workspaceResolver = workspaceResolver;
     this.chatService = chatService;
   }
-  
-  /**
-   * Auto-index new branch
-   * TODO: Move implementation from ProjectService.ts line 2312-2456
-   */
-  private async autoIndexNewBranch(
-    projectId: string,
-    codebasePath: string,
-    branchName: string,
-    baseBranch: string,
-    userContext: UserContext,
-    featureName: string
-  ): Promise<void> {
-    throw new Error('Not implemented yet - to be migrated');
-  }
-  
-  /**
-   * Auto-index codebase
-   * 
-   * Indexes the entire codebase for AI/LLM context.
-   * - If featureName is provided, sends status to chat UI
-   * - If featureName is undefined, sends status via SSE project broadcast
-   * 
-   * @param projectId - Project identifier
-   * @param codebasePath - Path to codebase directory
-   * @param userContext - User context
-   * @param featureName - Optional feature name for chat feedback
-   */
+
   async autoIndexCodebase(
     projectId: string,
     codebasePath: string,
@@ -106,43 +77,4 @@ export class IndexService {
       );
     }
   }
-  
-  /**
-   * Perform full indexing
-   * TODO: Move implementation from ProjectService.ts line 2457-2509
-   */
-  private async performFullIndexing(
-    projectId: string,
-    codebasePath: string,
-    userContext: UserContext
-  ): Promise<void> {
-    throw new Error('Not implemented yet - to be migrated');
-  }
-  
-  /**
-   * Perform fast copy
-   * TODO: Move implementation from ProjectService.ts line 2510-2560
-   */
-  private async performFastCopy(
-    projectId: string,
-    sourceBranch: string,
-    targetBranch: string,
-    userContext: UserContext
-  ): Promise<void> {
-    throw new Error('Not implemented yet - to be migrated');
-  }
-  
-  /**
-   * Update base branch
-   * TODO: Move implementation from ProjectService.ts line 2561-2604
-   */
-  private async updateBaseBranch(
-    projectId: string,
-    codebasePath: string,
-    baseBranch: string,
-    userContext: UserContext
-  ): Promise<void> {
-    throw new Error('Not implemented yet - to be migrated');
-  }
 }
-

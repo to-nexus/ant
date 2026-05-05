@@ -256,6 +256,32 @@ export class ProjectCrudService {
 
     await fs.promises.rename(oldPath, newPath);
 
+    // EFS / NFS rename is not strictly atomic across pod boundaries — open
+    // file handles can leave silly-rename `.nfsXXXX` orphans or leave
+    // `oldPath` partially populated. Mirror the deleteProject verification
+    // loop (200ms × 50 = 10s) before declaring success.
+    let oldExists = false;
+    let newExists = false;
+    for (let i = 0; i < 50; i++) {
+      oldExists = await fs.promises.access(oldPath).then(() => true).catch(() => false);
+      newExists = await fs.promises.access(newPath).then(() => true).catch(() => false);
+      if (!oldExists && newExists) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (oldExists || !newExists) {
+      let leftovers: string[] = [];
+      try {
+        leftovers = (await fs.promises.readdir(oldPath)).slice(0, 20);
+      } catch {
+        // oldPath may not exist — that's fine; the throw still surfaces newPath absence
+      }
+      throw new Error(
+        `Project rename verification failed: oldPath=${oldPath} (exists=${oldExists}) newPath=${newPath} (exists=${newExists}). ` +
+          `Leftovers (top ${leftovers.length}): ${leftovers.join(', ') || '<none>'}. ` +
+          `Likely partial rename due to EFS/NFS open file handles — retry after 30s.`,
+      );
+    }
+
     try {
       await this.repairGitWorktrees(newPath);
     } catch (error: any) {
