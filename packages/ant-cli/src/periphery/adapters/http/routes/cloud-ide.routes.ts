@@ -15,9 +15,49 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import * as path from 'path';
 import { logger } from '../../../../utils/logger';
 import { RESERVED_FEATURE_NAME } from '../../../../core/utils/branchUtils';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { tryAcquireThrottle } from '../../../../core/redis/distributedLock';
+import { REDIS_KEYS } from '../../../../core/constants/redis';
+import { WorktreeService } from '../services/GitService/worktree';
 
-export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, workspaceResolver: any): Router {
+const WORKTREE_PRUNE_THROTTLE_SEC = 60 * 60; // 1h — enough that hot-path entries skip cheaply
+
+export function createCloudIDERoutes(
+  ideOrchestrator: IDEOrchestratorPort,
+  workspaceResolver: any,
+  stateStore?: StateStorePort,
+): Router {
   const router = Router();
+
+  /**
+   * Throttled worktree-meta sweep — first cloud-ide.start per (org,user,
+   * project) within 1h triggers `pruneCorruptWorktreeMeta` on the main
+   * codebase; subsequent entries skip via SETNX-EX. Failure to acquire
+   * the throttle key (e.g. Redis transient error) downgrades to skip,
+   * since `removeWorktree` already does an unconditional sweep.
+   */
+  async function maybePruneWorktreeMeta(userContext: UserContext, projectId: string): Promise<void> {
+    if (!stateStore) return;
+    let acquired = false;
+    try {
+      const throttleKey = REDIS_KEYS.THROTTLE.WORKTREE_PRUNE(
+        userContext.organizationId,
+        userContext.userId,
+        projectId,
+      );
+      acquired = await tryAcquireThrottle(stateStore, throttleKey, WORKTREE_PRUNE_THROTTLE_SEC);
+    } catch (err: any) {
+      logger.warn(`[CloudIDE] worktree-prune throttle check failed (skipping)`, { component: 'CloudIDERoutes' }, err);
+      return;
+    }
+    if (!acquired) return;
+    try {
+      const mainCodebasePath = workspaceResolver.getCodebasePath(userContext, projectId);
+      await WorktreeService.pruneCorruptWorktreeMeta(mainCodebasePath);
+    } catch (err: any) {
+      logger.warn(`[CloudIDE] pruneCorruptWorktreeMeta failed (continuing with start)`, { component: 'CloudIDERoutes' }, err);
+    }
+  }
 
   function getDirectUrl(req: Request, host: string, port: number): string {
     const forwardedProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
@@ -46,7 +86,11 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
       }
-      
+
+      // Throttled corrupt-meta sweep on the main codebase before mounting.
+      // No-op when the throttle key still has TTL (1h window).
+      await maybePruneWorktreeMeta(userContext, projectId);
+
       // Get workspace path (feature-aware: worktree for features)
       const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName || RESERVED_FEATURE_NAME);
       

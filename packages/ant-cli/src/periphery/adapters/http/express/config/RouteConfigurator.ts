@@ -172,8 +172,9 @@ export class RouteConfigurator {
     ideOrchestrator.startIdleCheck();
     
     const cloudIDERoutes = createCloudIDERoutes(
-      ideOrchestrator, 
-      this.deps.workspaceResolver
+      ideOrchestrator,
+      this.deps.workspaceResolver,
+      factory.getStateStore(),
     );
     app.use('/api/cloud-ide', cloudIDERoutes);
   }

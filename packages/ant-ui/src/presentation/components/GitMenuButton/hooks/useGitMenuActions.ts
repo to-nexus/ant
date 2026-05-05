@@ -4,10 +4,10 @@ import { useStore } from '@/domain/store';
 import {
   useGitDispatch,
   type GitUserOperation,
-  type GitOperationError,
 } from '@/domain/git-world';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
+import { useGitErrorRouting } from '@/application/hooks/git/useGitErrorRouting';
 
 /**
  * Action handlers for the secondary Git control button — the dropdown
@@ -32,19 +32,12 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
   const { t } = useTranslation('explorer');
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
-  const openMainPanelTab = useStore((s) => s.openMainPanelTab);
   const { runGitOperation } = useGitDispatch();
   const { showError, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
+  const handleGitError = useGitErrorRouting();
 
   const { onClose } = options;
-
-  const showPATError = useCallback(() => {
-    showError(t('git.patNotConfigured'), {
-      confirmText: t('git.configurePat'),
-      onConfirm: () => openMainPanelTab('accountConfig'),
-    });
-  }, [showError, openMainPanelTab, t]);
 
   const runMenuOp = useCallback(
     async (
@@ -63,14 +56,11 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
         if (opts.reloadIde) useStore.getState().reloadIdeFrame();
         return;
       }
-      const err: GitOperationError | undefined = result.error;
-      if (err?.kind === 'auth' || err?.suggestedAction === 'configurePat') {
-        showPATError();
-        return;
-      }
-      showError(err?.message || opts.failureFallback);
+      const { handled } = handleGitError(result.error);
+      if (handled) return;
+      showError(result.error?.message || opts.failureFallback);
     },
-    [selectedProject, runGitOperation, showError, showPATError, toast, onClose],
+    [selectedProject, runGitOperation, showError, handleGitError, toast, onClose],
   );
 
   const handleClone = useCallback(() => {

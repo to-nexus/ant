@@ -8,6 +8,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
 import { GitStateBroadcaster } from '../../../../../core/realtime/GitStateBroadcaster';
+import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { StatusService } from './status';
 import { RemoteService } from './remote';
 import { IndexService } from './indexing';
@@ -45,7 +46,8 @@ export class GitService {
   constructor(
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
-    chatService?: ChatService
+    chatService?: ChatService,
+    stateStore?: StateStorePort,
   ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
@@ -60,7 +62,8 @@ export class GitService {
           .catch((err: any) => {
             console.error('⚠️  [GitService] Background indexing failed:', err);
           });
-      }
+      },
+      stateStore,
     );
   }
 

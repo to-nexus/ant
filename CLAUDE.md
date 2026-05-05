@@ -1249,10 +1249,18 @@ rg "figmaAvailable\?\s*:\s*boolean" packages/ant-cli/src/agents/architect/graph/
 - `ProjectService.deleteProject` 5 단계 cascade: (1) `cancelAllProjectJobs` (USER_STOPPED + KILL_REASON + jobQueue.cancel + sealJobRedisState + child exit polling) → (2) `ideOrchestrator.cleanupProject` (pod 종료 대기 포함) → (3) `requestPreviewCleanup` (Redis pub/sub ack) → (4) `stateStore.cleanupProject` (project-scoped Redis 키 일괄 삭제) → (5) `projectCrud.deleteProject` (fs.rm + verification loop + 진단 leftovers).
 - 409 응답에는 `canForceCleanup: true` + `hint` 추가. FE wizard 가 confirm 다이얼로그로 `?force=true` 재시도를 옵트인한다.
 - `cancelAllProjectJobs` 는 BullMQ + Redis seal + Redis `JOB.STATUS` polling (terminal: failed/completed/cancelled/null) 으로 child exit 까지 대기.
+- **`stopProjectRuntime` SSOT 추출 (Phase 5)**: deleteProject 와 renameProject 가 step 1-4 (cancelJobs → cleanupIDE → previewCleanup → redisCleanup) 를 공유. `ProjectService.stopProjectRuntime(projectId, userContext)` 한 helper 를 호출 — 두 메소드는 마지막 step (`projectCrud.deleteProject` vs `projectCrud.renameProject`) 만 다르다. 같은 4 step 을 각자 인라인하면 drift 가 보장된다.
+- **renameProject 도 동일 cascade**: rename 후 옛 ID 의 IDE pod / preview server / Redis 키는 stale (subPath 가 immutable) — `stopProjectRuntime(oldId)` 로 정리 후 `projectCrud.renameProject` 가 fs.rename + verification loop (10s @ 200ms) + leftovers 진단까지 수행. IDE/preview 재시작은 lazy (사용자가 newId 로 다시 진입 시 mount).
+- **debug retention SSOT (Phase 5)**: `sessions/{agent}/debug/{prompts,plans,logs,tokens,figma}` 누적 방지 — `core/utils/debugRetention.ts::pruneDebugArtifacts` 가 14d / 50개 cutoff. **활성 보호 = 3-source union**: (a) `getAllSessionPaths` 5 session.json 의 `state.jobId` ∪ (b) `stateStore.listJobsByFeature` status∈{pending,queued,running} ∪ (c) mtime <1h 보수 가드. 호출 site 는 `core/maintenance/debugRetentionTimer.ts` 단일 (60s tick, 워크스페이스 트리 walk) — `finalizeTerminalJob` 에서 호출하지 않는다 (중복 회피).
+- **RemoteService distributed lock (Phase 5)**: clone / init / fetch 3 op 모두 `RemoteService.withLock` SSOT wrapper 통과. lock key = `REDIS_KEYS.LOCK.{CLONE,INIT,FETCH}(org,user,projectId[,feature])`, TTL 600/300/180s. acquire 실패 시 `GitConflictError` (HTTP 409). **stateStore 미주입 시 throw** — in-process Map fallback 도입 금지 (Unified Distributed System Principle 준수). 기존 `inFlightClone` / `inFlightInit` / `inFlightFetch` Map 모두 제거됨.
+- **worktree corrupt-meta sweep (Phase 5)**: `WorktreeService.pruneCorruptWorktreeMeta(mainCodebasePath)` 정적 헬퍼가 `.git/worktrees/` 를 walk 해 worktree 디렉토리가 사라진 메타 entry 를 fs.rm + `git worktree prune --expire=now` (bare prune 의 1h safe.expire window 우회). 호출 site 는 (a) `removeWorktree` 직후 unconditional, (b) `cloud-ide.routes.ts` start 진입 전 — per-project Redis SETNX EX 3600 throttle (`REDIS_KEYS.THROTTLE.WORKTREE_PRUNE`). 명칭은 기존 `ProjectCrudService.repairGitWorktrees` (rename 후 valid worktree 의 절대경로 갱신) 와 책임 분리 — `prune*` vs `repair*`.
+- **PAT auth UX SSOT (Phase 5, FE)**: `useGitErrorRouting` hook (`packages/ant-ui/src/application/hooks/git/useGitErrorRouting.ts`) 이 `kind === 'auth' || suggestedAction === 'configurePat'` 라우팅을 단일 책임으로 가짐. `ProjectWizardModal` clone/init 분기 + `useGitMenuActions` 모두 이 hook 만 호출 — `ant-ui/src` 안의 inline `kind === 'auth'` 분기 잔존 0 (정적 가드: `tests/git-world/pat-auth-routing.test.ts`).
 
 ### Why This Matters
 
 `feature-ide-k8s-mount-fix` plan (May 5 2026) 의 RCA: K8s feature pod 가 worktree marker 의 절대경로 gitdir 를 단일 `/workspace` mount 로 해소 못 해 git 인식 실패 + 프로젝트 삭제 후 같은 이름 재생성 시 (a) IDE pod 가 EFS open file handle 을 들고 있고 (b) ant-preview 프로세스가 in-process 호출 받지 못해 preview server 잔존 (c) job-runner child 가 EFS 에 쓰는 동안 fs.rm 실행 — 셋이 합쳐 silly-rename `.nfsXXXX` partial directory 를 만들고 다음 createProject 의 fs.access 가 success → 409.
+
+후속 `feature-followup-cleanup-lifecycle` plan (May 6 2026) 이 cleanup hygiene (debug retention) / lifecycle completeness (rename cascade + worktree corrupt-meta sweep) / robustness (clone/init/fetch lock + wizard PAT UX) 6 항목을 같은 frame 위에 매듭.
 
 ### Enforcement
 
@@ -1267,10 +1275,20 @@ pnpm vitest run tests/ide/ --reporter=dot
 
 # 3. cleanup cascade 회귀 가드
 pnpm vitest run tests/cleanup/ --reporter=dot
-# Expected: 12 passed (deleteProject + preview pubsub + job child wait + silent .catch lint)
+# Expected: 18+ passed (deleteProject + preview pubsub + job child wait + silent .catch lint + debug retention 6 + index stub 2)
+
+# 4. Phase 5 lifecycle / lock 회귀 가드
+pnpm vitest run tests/lifecycle/ tests/git/remote-distributed-lock.test.ts --reporter=dot
+# Expected: rename-ide-restart (3) + worktree-orphan-repair (3) + remote-distributed-lock (8)
+
+# 5. FE PAT routing SSOT 가드 (ant-ui)
+cd packages/ant-ui && pnpm vitest run tests/git-world/pat-auth-routing.test.ts --reporter=dot
+# Expected: 2 passed (hook exists + no inline branches outside the hook)
 ```
 
-전체 plan: [`feature-ide-k8s-mount-fix_2402a191.plan.md`](.cursor/plans/feature-ide-k8s-mount-fix_2402a191.plan.md).
+전체 plan:
+- [`feature-ide-k8s-mount-fix_2402a191.plan.md`](.cursor/plans/feature-ide-k8s-mount-fix_2402a191.plan.md) — Phase 1-4
+- [`feature-followup-cleanup-lifecycle_a8181eca.plan.md`](.cursor/plans/feature-followup-cleanup-lifecycle_a8181eca.plan.md) — Phase 5 (this section's additions)
 
 ---
 
