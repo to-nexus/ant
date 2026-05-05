@@ -48,6 +48,10 @@
       "createEmptyHint": "빈 워크스페이스만 만듭니다"
     },
     "projectWizard": {
+      "forceCleanupTitle": "기존 프로젝트 데이터가 발견되었습니다",
+      "forceCleanupMessage": "\"{{projectName}}\" 이름의 프로젝트가 이미 존재합니다. 이전 삭제가 완료되지 않았을 수 있습니다. 계속하면 기존 프로젝트(IDE, 프리뷰, 작업, 파일)를 모두 삭제하고 새로 만듭니다. 되돌릴 수 없습니다.",
+      "forceCleanupConfirm": "삭제 후 새로 만들기",
+      "forceCleanupCancel": "취소",
       "title": "시작 도우미",
       "step1Title": "프로젝트 설정",
       "step2Title": "Git 연동",

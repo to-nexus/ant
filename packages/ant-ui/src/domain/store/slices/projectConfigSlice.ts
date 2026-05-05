@@ -23,10 +23,7 @@ export interface ProjectConfigState {
 
 export interface ProjectConfigActions {
   fetchProjectConfig: (projectId: string) => Promise<void>;
-  createProjectConfig: (
-    projectId: string,
-    backendMode: 'local' | 'cloud',
-  ) => Promise<void>;
+  createProjectConfig: (projectId: string) => Promise<void>;
   /**
    * Save an edited ProjectConfig. Returns `{ success, error? }` so editors
    * can surface persistence failures without subscribing to the slice.
@@ -135,9 +132,9 @@ export const createProjectConfigSlice: StateCreator<
     return task;
   },
 
-  createProjectConfig: async (projectId, backendMode) => {
+  createProjectConfig: async (projectId) => {
     if (!projectId) return;
-    const created = await apiCreateProjectConfig(projectId, backendMode);
+    const created = await apiCreateProjectConfig(projectId);
     if (get().selectedProject !== projectId) return;
     set({
       projectConfig: {

@@ -100,22 +100,36 @@ export function createProjectsRoutes(deps: {
   router.post('/projects', validateBody(createProjectSchema), async (req: Request, res: Response) => {
     try {
       const { id } = req.body;
-      
+
       if (!id || typeof id !== 'string') {
         return res.status(400).json({ error: 'Project ID is required and must be a string' });
       }
-      
+
+      // Force-recreate: accepted via either ?force=true or body.force === true.
+      // When set, ProjectService deletes the existing project (with full
+      // cascade) before creating, allowing recovery from stale state.
+      const force = req.query.force === 'true' || req.body?.force === true;
+
       const userContext = extractUserContext(req);
-      
+
       if (req.user) {
-        logger.info(`Creating project '${id}'`, { component: 'Projects', organizationId: req.organization?.id, userId: req.user.id, projectId: id });
+        logger.info(`Creating project '${id}'${force ? ' (force=true)' : ''}`, {
+          component: 'Projects',
+          organizationId: req.organization?.id,
+          userId: req.user.id,
+          projectId: id,
+        });
       }
-      
-      await deps.projectService.createProject(id, userContext);
+
+      await deps.projectService.createProject(id, userContext, { force });
       res.json({ success: true, id });
     } catch (error: any) {
       if (error.message === 'Project already exists') {
-        res.status(409).json({ error: error.message });
+        res.status(409).json({
+          error: error.message,
+          canForceCleanup: true,
+          hint: 'POST /projects with ?force=true (or body.force=true) to overwrite (deletes existing data).',
+        });
       } else if (error instanceof GitOperationError) {
         res.status(error.statusCode).json({ error: error.message });
       } else {

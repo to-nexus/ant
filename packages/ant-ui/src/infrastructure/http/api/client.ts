@@ -140,6 +140,11 @@ export class ApiError extends Error {
   status: number;
   code?: string;
   allowed?: string[];
+  /** True when the server signaled that retrying with `?force=true` will succeed
+   *  (e.g. 409 Project already exists with stale leftover state). */
+  canForceCleanup?: boolean;
+  /** Optional human-readable hint from the server (paired with canForceCleanup). */
+  hint?: string;
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -149,6 +154,8 @@ export class ApiError extends Error {
     this.status = status;
     this.code = data?.code as string | undefined;
     this.allowed = data?.allowed as string[] | undefined;
+    this.canForceCleanup = data?.canForceCleanup as boolean | undefined;
+    this.hint = data?.hint as string | undefined;
   }
 }
 

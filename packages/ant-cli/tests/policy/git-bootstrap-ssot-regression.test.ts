@@ -50,4 +50,33 @@ describe('git bootstrap SSOT regression guard', () => {
       expect(content).toContain('GitBootstrapSSOT');
     }
   });
+
+  // -------- Phase 3.4 (repoType auto-mapping ban) --------
+
+  it('ProjectCrudService.createProject 에 isCloudMode auto-local 분기가 부활하지 않는다', () => {
+    const content = read(
+      'src/periphery/adapters/http/services/ProjectService/ProjectCrudService.ts',
+    );
+    // The legacy branch derived `repoType` from userContext (`local:local` →
+    // `repoType:'local'+localPath`), causing worktree path-collision. The
+    // bare identifier MUST be absent in this file (only sanitized via comment
+    // mention is allowed below).
+    expect(content).not.toMatch(/\bisCloudMode\s*=/);
+    expect(content).not.toMatch(/repoType:\s*isCloudMode\s*\?/);
+    // Defaults must always be `repoType:'cloud'`.
+    expect(content).toContain("repoType: 'cloud'");
+  });
+
+  it("FE config.ts 의 mode 자동 매핑 (mode='local' → repoType:'local') 이 제거되어 있다", () => {
+    const content = read('../ant-ui/src/infrastructure/http/api/config.ts');
+    // The auto-mapping pattern: ternary that picks 'local' from `mode`.
+    expect(content).not.toMatch(/repoType:\s*mode\s*===\s*['"]cloud['"]\s*\?\s*['"]cloud['"]\s*:\s*['"]local['"]/);
+    // Inverse form: assigning localPath conditionally on mode !== 'cloud'.
+    expect(content).not.toMatch(/mode\s*!==\s*['"]cloud['"]\s*\?\s*\{\s*localPath:/);
+  });
+
+  it('WorktreeService 가 mainCodebasePath === worktreePath path-collision 가드를 가진다', () => {
+    const content = read('src/periphery/adapters/http/services/GitService/worktree/index.ts');
+    expect(content).toMatch(/mainCodebasePath\s*===\s*worktreePath/);
+  });
 });
