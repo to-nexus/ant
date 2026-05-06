@@ -41,8 +41,6 @@ WORKDIR /app
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
-COPY .cursorrules ./
-COPY CLAUDE.md ./
 
 # Copy package files (ant-shared must be present for workspace resolution)
 COPY packages/ant-shared/package.json ./packages/ant-shared/
