@@ -28,7 +28,7 @@
 |---|---|
 | **Unit count** | Does the Development Source enumerate 2+ output units in the chosen category? |
 | **File independence** | Does each unit produce its own source file with no cross-unit source-file overlap? |
-| **Shared integration point** | Do the units share at most ONE integration point (mount page, root command, barrel export, pipeline driver)? |
+| **Shared integration point** | For each split cluster, do the units share one integration point (mount page, root command, barrel export, pipeline driver)? If multiple independent integration points are observed, partition by integration point and evaluate each cluster separately. |
 
 **Constraint**: When ALL three checkpoints above are yes, emit ONE `feature` task per output unit. Each per-unit task uses a DISTINCT `parallelGroup` (per-unit output files do not overlap, so distinct groups enable parallel execution); none is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
 
@@ -38,7 +38,9 @@
 
 **Observation target**: Does the split above produce 2+ per-unit feature tasks AND do those units share an integration point?
 
-**Constraint**: When both are yes, emit exactly ONE wiring task: `type: "feature"`, priority 600, owning the integration point file. Per-unit feature tasks MUST NOT create or modify the integration point file.
+**Constraint**: When both are yes, emit exactly ONE wiring task per shared integration point: `type: "feature"`, priority 600, owning that integration point file. Per-unit feature tasks MUST NOT create or modify the integration point file.
+
+**Constraint**: If split units map to multiple independent integration points (for example, different app/package entry roots or route registries), emit one wiring task per integration point. Do NOT collapse unrelated integration points into a single wiring task.
 
 **Constraint**: When only one unit exists, OR units do not share an integration point, DO NOT emit a wiring task.
 
@@ -75,6 +77,8 @@
 ⚠️ **Blind spot**: The merge exception in Task Scope Constraint ("same output files → merge") is persistence-boundary-scoped. Per-unit output files from this rubric do NOT overlap — only the integration point overlaps, and the wiring task owns it. Do NOT invoke that merge exception against per-unit output files.
 
 ⚠️ **Blind spot**: Absence of a persistence boundary is NOT a signal that "this is a single task". Count output units first, then decide.
+
+⚠️ **Blind spot**: Multi-app or multi-package projects often have multiple entry roots. "Exactly one wiring task" applies per integration point, NOT globally across the whole project.
 
 ⚠️ **Blind spot**: The category is chosen by observation of the Development Source, not by the tech stack label. A backend CLI with subcommands and a frontend SPA with sections both instantiate this rubric — one via `command`, the other via `visual unit`. The rubric is stack-agnostic.
 
