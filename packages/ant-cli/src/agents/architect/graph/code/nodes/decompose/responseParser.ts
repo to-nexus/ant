@@ -14,6 +14,7 @@ import { isDesignSystemTask } from '../../tasks/design-system/model/is';
 import {
   prepareTagJson,
   extractFirstJsonObject,
+  asJsonSyntaxViolation,
 } from '../../../../../../core/utils/llmResponseParser';
 
 import type { PackageTierEntry, TaskType, GameEngine } from '@ant/shared';
@@ -215,7 +216,16 @@ export interface ParsedDecomposeResponse {
 function parseTasksBody(inner: string): unknown {
   const taskMatches = [...inner.matchAll(/<task>\s*([\s\S]*?)\s*<\/task>/g)];
   if (taskMatches.length > 0) {
-    return taskMatches.map(m => JSON.parse(prepareTagJson(extractFirstJsonObject(m[1]))));
+    return taskMatches.map((m, i) => {
+      const body = prepareTagJson(extractFirstJsonObject(m[1]));
+      try {
+        return JSON.parse(body);
+      } catch (err) {
+        // Escalate to JsonSyntaxViolation so decompose/index.ts retry loop
+        // can re-issue the call with framing (mirrors ExecutionTierViolation).
+        throw asJsonSyntaxViolation(err, body, `<task>[${i}] body`);
+      }
+    });
   }
 
   const trimmed = inner.trim();
@@ -224,7 +234,12 @@ function parseTasksBody(inner: string): unknown {
   }
 
   // Legacy JSON-array contract.
-  return JSON.parse(prepareTagJson(inner));
+  const legacyBody = prepareTagJson(inner);
+  try {
+    return JSON.parse(legacyBody);
+  } catch (err) {
+    throw asJsonSyntaxViolation(err, legacyBody, '<tasks> legacy array body');
+  }
 }
 
 /**
