@@ -211,6 +211,54 @@ Before completing any task that creates or modifies `.env.example`, verify:
 
 ---
 
+## 4.5) Virtualization Modifier (Service Virtualization)
+
+### Principle
+**Each `@connection` MAY declare an additional `mock:` modifier indicating that the project provides a virtualized adapter alongside the production adapter.** This is the platform-level grammar for Service Virtualization (Mountebank / WireMock-class pattern) — the runtime selects the active adapter via env var, and both adapters satisfy the same interface contract.
+
+### Contract
+
+| Modifier | Meaning | Toggle |
+|---|---|---|
+| `mock:available` | Code provides BOTH production and virtualized adapters; selection happens at runtime via `USE_MOCK_<NAME>` env var (or master `USE_MOCK` fallback). | per-port env var derived from name |
+| `mock:inline` | Production adapter contains an internal fallback / fake when the real endpoint is unavailable. No external toggle. | none |
+
+Per-port resolution priority: `USE_MOCK_<NAME>` > master `USE_MOCK` > `false` (production active).
+
+The `USE_MOCK_<NAME>` variable name is derived deterministically from the connection `name` — uppercase, hyphens become underscores. `stripe-api` → `USE_MOCK_STRIPE_API`.
+
+Modifier tokens are order-free and combine with resolution tokens (`self`, `ant-project:...`):
+
+```env
+# Third-party API with both adapters
+# @connection business stripe-api mock:available
+STRIPE_API_KEY=
+USE_MOCK_STRIPE_API=true
+
+# Cross-project backend with both adapters (resolution + virtualization combined)
+# @connection business backend-api self mock:available
+VITE_API_BASE_URL=
+USE_MOCK_BACKEND_API=true
+
+# Notification service with internal fallback (no toggle)
+# @connection business notification mock:inline
+NOTIFICATION_WEBHOOK=
+
+# Master broadcast (optional) — applies to every mock:available connection
+# whose own USE_MOCK_<NAME> is unset
+USE_MOCK=true
+```
+
+### Constraint
+- Local infrastructure (DB / cache / queue via docker-compose) MUST NOT declare `mock:*` modifiers — local infra is real, not virtualized. (Mirrors the Infrastructure Independence guardrail in design.) Mock tokens attached to `infrastructure` connections are dropped with a warning.
+- `USE_MOCK_<NAME>` MUST appear in `.env.example` for every `mock:available` connection — without it, the toggle is invisible to the runtime.
+- The virtualized adapter MUST satisfy the SAME interface contract as the production adapter — divergence is a defect, not a benign warning.
+
+### Blind Spot
+**The adapter pair is EASILY FORGOTTEN when the focus is the production path.** Every external-dependency port = pair of adapters + toggle var documented in `.env.example`. If the design document declares an external dependency without a virtualized adapter story, the resulting code cannot run end-to-end before the real backend is available.
+
+---
+
 ## 5) TOML Configuration File Support
 
 ### Principle

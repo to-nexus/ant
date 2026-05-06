@@ -74,6 +74,40 @@ export type ConnectionResolution =
   | { type: 'url'; url: string };
 
 /**
+ * Service Virtualization strategy attached to a connection when its
+ * `@connection` annotation declares a `mock:available` or `mock:inline`
+ * modifier. Records how the project intends to swap a virtualized adapter
+ * in for the production adapter at runtime.
+ *
+ * SSOT for the umbrella concept ("Service Virtualization") and the leaf
+ * vocabulary ("mock") split — see `mock_real_symmetry_ssot` plan §0.
+ */
+export interface VirtualizationStrategy {
+  /**
+   * `'available'` — code provides BOTH production and mock adapters; selection
+   *   happens at runtime via `USE_MOCK_<NAME>` env var (or master `USE_MOCK`
+   *   fallback).
+   * `'inline'`    — production adapter contains an internal fallback / fake
+   *   when the real endpoint is unavailable. No external toggle.
+   */
+  mockKind: 'available' | 'inline';
+  /**
+   * Per-connection toggle env var name, derived from the connection name
+   * (uppercase snake of `name`, e.g. `stripe-api` → `USE_MOCK_STRIPE_API`).
+   * Set only when `mockKind === 'available'`.
+   */
+  toggleEnvVar?: string;
+  /**
+   * Effective toggle state at detection time.
+   *   - `mockKind === 'inline'` ⇒ always `true` (the mock is part of the
+   *     production adapter; nothing to toggle).
+   *   - `mockKind === 'available'` ⇒ resolved against the project `.env`
+   *     using priority `USE_MOCK_<NAME>` > master `USE_MOCK` > `false`.
+   */
+  active: boolean;
+}
+
+/**
  * A single service connection entry.
  * Replaces the old LinkedBackendConfig with a generic model
  * that covers FE->BE, BE->BE, service->infra connections.
@@ -89,6 +123,13 @@ export interface ServiceConnection {
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
   configSource?: 'env' | 'toml';     // Which config file format this was detected from
+  /**
+   * Service Virtualization strategy. Set only when the `@connection`
+   * annotation declares a `mock:available` or `mock:inline` modifier.
+   * `undefined` means the connection has no virtualization story
+   * (production-only — caller must supply a real endpoint).
+   */
+  virtualization?: VirtualizationStrategy;
 }
 
 export interface PreviewState {
