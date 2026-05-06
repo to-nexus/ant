@@ -74,7 +74,7 @@ Architecture is not a single label — it is the combination of independent desi
 
 ---
 
-### 4. Infrastructure Independence
+### 4. Infrastructure Independence (Service Virtualization)
 
 **Observation target**: Does the project consume backend APIs or external services whose implementing service is unavailable during development (unconstructed backend, third-party API, cross-project dependency)?
 
@@ -83,9 +83,9 @@ Architecture is not a single label — it is the combination of independent desi
 | **Backend API consumption** | Does the PRD describe backend API consumption where the backend may not yet exist? |
 | **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
 
-**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies in the catalog section where that adapter is introduced.
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies (Service Virtualization) in the catalog section where that adapter is introduced.
 
-**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + mock). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
+**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name; master fallback `USE_MOCK` MAY also be named). Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
 
 **Constraint**: Mock implementations MUST follow the same DTO contracts as production (as derived from PRD requirements).
 

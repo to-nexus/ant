@@ -91,6 +91,13 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     : (getTechTier(state) ? [getTechTier(state)!] : []);
   const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
+  // Service Virtualization parity guidance fires only inside verify-mode
+  // when business external dependencies exist. The parity hook
+  // (`tasks/_shared/verify/parity/`) emits retryable violations on adapter
+  // shape divergence — surfacing the partial here teaches the LLM how to
+  // root-cause them on the next plan cycle.
+  const parityActive = state.virtualizationSnapshot?.hasBusinessConnection === true;
+
   const _verifySlot = state.resolvedAction?.intent
     ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
     : undefined;
@@ -133,6 +140,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // user-reported runtime error (initial directive OR prior error
     // sub-tasks present).
     allowPersistentProcesses: hasUserRuntimeErrorContext,
+    parityActive,
     ...depSnapshot,
   });
 
@@ -152,6 +160,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       priorErrorTasksCount: priorErrorTasks?.length ?? 0,
       hasUserRuntimeErrorContext,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
+      parityActive,
     },
   };
 }

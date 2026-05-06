@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   detectConnections,
   updatePreviewConfig,
+  toggleConnectionVirtualization,
   type ServiceConnection,
   type PreviewConfig,
 } from '@/infrastructure/http/api';
@@ -23,6 +24,7 @@ export interface UseConnectionEditorResult {
   handleUpdateConn: (id: string, updates: Partial<ServiceConnection>) => void;
   handleDeleteConn: (id: string) => void;
   handleAddConn: (conn: ServiceConnection) => void;
+  handleToggleVirtualization: (id: string, active: boolean) => Promise<void>;
 }
 
 export function useConnectionEditor(
@@ -129,6 +131,41 @@ export function useConnectionEditor(
     setAddingNew(false);
   }, []);
 
+  /**
+   * Auto-save Service Virtualization toggle: optimistically flips the
+   * connection's `virtualization.active`, then writes
+   * `USE_MOCK_<NAME>=true|false` to the project `.env` via a dedicated BE
+   * endpoint so the runtime observes the new state on next preview start.
+   * Reverts the optimistic update on transport failure.
+   */
+  const handleToggleVirtualization = useCallback(async (id: string, active: boolean) => {
+    if (!selectedProject) return;
+    const featureName = selectedFeature || 'main';
+
+    setLocalConns(prev => prev.map(c =>
+      c.id === id && c.virtualization
+        ? { ...c, virtualization: { ...c.virtualization, active } }
+        : c,
+    ));
+
+    try {
+      const result = await toggleConnectionVirtualization(selectedProject, featureName, id, active);
+      if (result.success && result.connections) {
+        setLocalConns(result.connections);
+        setConfig(prev => prev
+          ? { ...prev, connections: result.connections }
+          : { connections: result.connections } as PreviewConfig);
+      }
+    } catch (err) {
+      console.error('[PreviewConfig] Virtualization toggle failed:', err);
+      setLocalConns(prev => prev.map(c =>
+        c.id === id && c.virtualization
+          ? { ...c, virtualization: { ...c.virtualization, active: !active } }
+          : c,
+      ));
+    }
+  }, [selectedProject, selectedFeature, setConfig]);
+
   return {
     localConns, hasUnsavedChanges,
     editingConnId, setEditingConnId,
@@ -136,5 +173,6 @@ export function useConnectionEditor(
     isDetecting, packageGroups, isSinglePackage,
     handleAutoDetect, handleSaveConnections,
     handleUpdateConn, handleDeleteConn, handleAddConn,
+    handleToggleVirtualization,
   };
 }

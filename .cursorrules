@@ -146,15 +146,16 @@ All prompt templates are auto-registered as Handlebars partials at server startu
 
 **SBS principle** (complement to FPOP): specificity is bounded by activation scope. Gated templates (techTier / intent / taskType / mode / role / artifact-presence) MUST be specific along the gate's axis; always-on templates MUST stay universal. Citing FPOP's "Universal over Specific" against a gated file to demand its discriminator name be removed is itself an SBS violation.
 
-**Mock-use prompt SSOTs (MECE)** — three orthogonal partials cover the mock surface, do NOT merge them:
+**Service Virtualization prompt SSOTs (MECE)** — three orthogonal partials cover the SV surface, do NOT merge them. Abstract concept = "Service Virtualization" (umbrella); leaf vocabulary = "mock" (env var / adapter / fake body):
 
 | Partial | Scope | Activation |
 |---------|-------|------------|
-| [`mock-adapter-contract`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/mock-adapter-contract.md) | Mock data body (text, count, timestamp, IDs) via port/adapter | unconditional in plan/execute |
-| [`mock-content-imagery`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/mock-content-imagery.md) | Content imagery (user-uploaded / DB-fetched images: avatar, thumbnail, cover) | gate = `service ∧ hasFrontend ∧ taskType==='feature'`, Handlebars-gated `{{> }}` in plan + execute rules.md |
-| `ui-source-*` (`ui-assets.json`) | Design-system assets (logo, icon, decorative illustration) | per-source via `ui-source-dispatch` (ui/design-system tasks) |
+| [`service-virtualization-contract`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/service-virtualization-contract.md) | Port shape & toggle grammar (Service Virtualization core) | code job × `state.virtualizationSnapshot.hasBusinessConnection===true`, Handlebars-gated `{{> }}` in plan + execute rules.md |
+| [`service-virtualization-data`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/service-virtualization-data.md) | Fake body realism (text/number/date/id/relation) | feature/ui/design-system task × hasBusinessConnection, gated |
+| [`service-virtualization-imagery`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/service-virtualization-imagery.md) | Image subtype dispatch (3 pathways) | service ∧ hasFrontend ∧ taskType==='feature', gated |
+| `ui-source-*` (`ui-assets.json`) | Design-system assets (logo, icon, decorative illustration) — orthogonal, NOT virtualization | per-source via `ui-source-dispatch` (ui/design-system tasks) |
 
-Regression guards: [tests/mock-content-imagery.test.ts](packages/ant-cli/tests/mock-content-imagery.test.ts) locks the gate matrix end-to-end (10-row truth table × 2 nodes = 20 render cases + body discipline + wiring checks).
+Gate predicates live under [`core/prompt/builder/serviceVirtualization/`](packages/ant-cli/src/core/prompt/builder/serviceVirtualization) — three pure functions plus the `buildVirtualizationSnapshot` resolve-time helper that fills `state.virtualizationSnapshot.hasBusinessConnection`. Regression guards: [tests/prompt/service-virtualization.test.ts](packages/ant-cli/tests/prompt/service-virtualization.test.ts) locks body discipline, wire sites, gate truth tables, and Handlebars render gates; [tests/policy/service-virtualization-vocabulary.test.ts](packages/ant-cli/tests/policy/service-virtualization-vocabulary.test.ts) locks the SSOT-table title across `.cursorrules`, `CLAUDE.md`, and the rubric.
 
 ### Frontend Architecture (ant-ui)
 

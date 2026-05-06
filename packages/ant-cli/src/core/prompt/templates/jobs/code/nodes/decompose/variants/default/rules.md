@@ -700,6 +700,14 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Blind spot**: `docker-compose.yml` is EASILY FORGOTTEN when specification mentions only service names (e.g., "PostgreSQL", "Redis") without an explicit infrastructure section. `@connection` annotations are EASILY FORGOTTEN. The `ant-project:{projectId}:{feature}[:{serviceName}]` modifier for cross-project dependencies is EASILY FORGOTTEN when the specification mentions another project by name. `.env` is EASILY FORGOTTEN when `.env.example` is mentioned — both MUST appear together. Application configuration variables (secrets, API keys) are EASILY LEFT TO FEATURE TASKS — listing them in setup prevents variable name inconsistency across tasks. Verify all are included.
 
+**Constraint — Service Virtualization wiring**: Every `business` external dependency declared in the design document is virtualizable by definition (`# @connection business {name}` is the only signal needed — no extra modifier token). The setup task MUST author `.env.example` entries that:
+
+1. Use `# @connection business {name}` annotation (no extra modifier token for virtualization)
+2. Declare `USE_MOCK_<NAME>=true` directly below the variable, where `<NAME>` is the uppercase snake of the connection name
+3. Optionally declare master `USE_MOCK=true` for default-broadcast across every business connection that lacks a per-connection toggle
+
+The feature task that owns each business-connection port MUST author both production and virtualized adapters in the same task (single unit of work — port + 2 adapters + toggle wiring). `infrastructure` connections (DB / cache / queue via docker-compose) are NOT virtualization targets — they run as real local instances.
+
 ---
 
 ## Parallel Execution
