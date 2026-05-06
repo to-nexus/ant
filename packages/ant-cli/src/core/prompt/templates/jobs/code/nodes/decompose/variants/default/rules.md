@@ -38,6 +38,7 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 **Constraint — deep-think principle (Tier 2 / Tier 3 directive cases, no design refs)**: You do NOT yet know the solution. The solution is the responsibility of the `plan` node, which has 15 rounds of tool-loop reasoning to settle approach, naming, signatures, and physical layout. Your job at decompose is to set the SCOPE for that thinking, NOT to invent a solution and freeze it into task descriptions.
 - A Tier 3 directive case where deep-think will likely converge on a single coherent unit is a **legitimate `[feature × 1 + verification × 1]` shape** (2 tasks total, satisfies the `>= 2` rule). The plan node may later decide to fan out into N siblings via `batches[]`; it MUST NOT be pre-decided here.
 - A Tier 3 directive case is `[feature × N + verification × 1]` ONLY when the directive itself names a clear, unambiguous physical isolation (different package, different runtime layer such as FE/BE, different artefact file). Otherwise default to the deep-think single-feature shape and let plan decide.
+- When the directive names multiple independent app/package entry points, keep wiring decomposition aligned to each entry-point boundary (one wiring owner per integration point), rather than forcing a project-global singleton wiring task.
 - task `name` and `description` describe the SCOPE OF THINKING, not the solution. Forbidden: choosing concrete file paths, choosing API names / signatures, choosing data structures, prescribing implementation steps. Required: stating the user-visible outcome and the surface to investigate.
 
 **Constraint — Tier 4 task enumeration**: When the active reference document enumerates work units (numbered tasks, sections, requirements, acceptance criteria), every enumerated unit MUST appear as a distinct task in `<tasks>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units the document lists. The breakdown is faithful to the document — not optimized for brevity.
@@ -776,24 +777,27 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ## Shared Integration Points
 
-**Principle**: When multiple parallel tasks produce components that must be registered in a shared integration point (application entry point, route registry, dependency wiring), a dedicated integration task must consolidate them. This is divide-and-conquer: integration itself is a task.
+**Principle**: When multiple parallel tasks produce components that must be registered in shared integration point(s) (application entry point, route registry, dependency wiring), dedicated integration task(s) must consolidate them. This is divide-and-conquer: integration itself is a task.
 
-**Observation target**: Does the project have a single entry point that must import and wire components from multiple feature tasks?
+**Observation target**: Which shared integration points exist, and does each integration point need imports/wiring from multiple feature tasks?
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Entry point** | Will multiple feature tasks produce handlers, routes, or modules that must be registered in one place? |
+| **Integration point inventory** | Which app/package entry roots or registries receive outputs from this split? |
+| **Per-point fan-in** | For each integration point, will multiple feature tasks produce handlers, routes, or modules that must be registered there? |
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
-**Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
+**Constraint**: For each shared integration point where multiple parallel feature tasks fan in, create exactly ONE dedicated integration task:
 - `type: "feature"`, priority 600 (after all feature tasks, before test-code/doc/verification)
 - Assign `parallelGroup` following the same scoping rules as other feature tasks
-- Description: wire all feature outputs into the application entry point
-- Feature tasks MUST NOT create or modify the entry point file themselves
+- Description: wire all feature outputs into that integration point
+- Feature tasks MUST NOT create or modify integration point files themselves
+
+**Constraint**: If the project has multiple independent integration points (for example, separate app/package entry roots), emit one integration task per point. Do NOT collapse unrelated integration points into one global wiring task.
 
 **Constraint**: Do NOT assign entry point responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
 
-**Blind spot**: Entry point conflicts are EASILY CAUSED when parallel feature tasks independently create their own entry point files. If the project has 2+ parallel groups contributing to the same application, an integration task is almost certainly needed.
+**Blind spot**: Integration conflicts are EASILY CAUSED when parallel feature tasks independently create their own entry point files. If 2+ parallel groups contribute to the same integration point, an integration task is almost certainly needed.
 
 ---
 
