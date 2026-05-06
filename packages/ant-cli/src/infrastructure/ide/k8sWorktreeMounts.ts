@@ -44,7 +44,7 @@ export interface K8sWorktreeMount {
 /**
  * Strip the configured base path prefix off an absolute path to produce a
  * PVC-relative subPath. Throws if the path does not live under the base —
- * silent broken pod prevention (see Risk in `feature-ide-k8s-mount-fix` plan).
+ * silent broken pod prevention (see Risk in `K8s worktree mount fix` plan).
  */
 function stripBase(absPath: string, workspaceBasePath: string): string {
   if (!absPath.startsWith(workspaceBasePath)) {

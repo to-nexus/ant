@@ -81,7 +81,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     // Pre-RAC SSOT — `state.workspaceState.systemDesignFileNames` is filled by triage's
     // `analyzeWorkspace`. Reading `state.existingDesignDocs` here would couple
     // detect to design resolve's body cache (post-RAC pool); we only need
-    // filenames at this stage. See `.cursorrules` "state.artifacts Post-RAC SSOT".
+    // filenames at this stage. See `AGENTS.md` "state.artifacts Post-RAC SSOT".
     const existingDocNames = state.workspaceState?.systemDesignFileNames ?? [];
     const hasSystemDocs = existingDocNames.length > 0;
 

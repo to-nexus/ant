@@ -1,0 +1,69 @@
+name: Feature request
+description: Suggest a new capability or improvement
+title: "feat: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. The best feature requests start from a
+        concrete user problem rather than a proposed solution. Please describe
+        the problem first; we'll iterate on the design together.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Describe the user-visible pain. Who runs into it, how often, and what
+        workaround do they use today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution (optional)
+      description: |
+        If you already have a design idea, sketch it here. Don't worry about
+        implementation details unless they affect the user-facing contract.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What did you try first? What other tools solve this problem in a
+        related space?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - ant-cli (backend / agents / LangGraph)
+        - ant-ui (frontend)
+        - Prompts / templates
+        - Cloud IDE / Preview
+        - Documentation
+        - Build / CI / DevOps
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links to related issues, anything else.
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched for existing issues and discussions.
+          required: true
+        - label: This is a feature for the OSS project, not a private fork.
+          required: true

@@ -13,7 +13,7 @@
  * back without throwing.
  *
  * chat.jsonl is intentionally NOT consulted here — session state SSOT lives
- * on `code.json` (see .cursorrules § Codebase Meta Document Policy).
+ * on `code.json` (see AGENTS.md § Codebase Meta Document Policy).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

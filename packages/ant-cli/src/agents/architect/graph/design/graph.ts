@@ -679,7 +679,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   // post-RAC SSOT (RAC-resolved artifacts + this job's own outputs).
   // The legacy whole-tree scan helper is intentionally NOT used — it
   // would pull in arbitrary `architecture/**` / `visual/**` files that the user did
-  // not put in the RAC. See `.cursorrules` "state.artifacts Post-RAC
+  // not put in the RAC. See `AGENTS.md` "state.artifacts Post-RAC
   // SSOT".
   const parallelFeaturePath = state.context.featurePath || '';
   const completedFileOutputs = result.completedTasks.flatMap(t =>

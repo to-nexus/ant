@@ -409,7 +409,7 @@ export class XMLStreamParser implements IStreamParser {
       
       // NOTE: `<techTier>` suppression lives in SpecialTagTransformer
       // (consumed entry). Canonical tag rendering is centralized there — the
-      // parser stays payload-agnostic. See .cursorrules "Canonical Tag
+      // parser stays payload-agnostic. See AGENTS.md "Canonical Tag
       // Rendering SSOT".
 
       // 16b. Check for <clarify ...> opening (suppress from chat — post-hoc parsed by generate.ts)

@@ -50,7 +50,7 @@ COPY packages/ant-cli/package.json ./packages/ant-cli/
 # We rely on root package.json `pnpm.onlyBuiltDependencies` to whitelist exactly
 # which postinstall scripts may run (currently only `@vscode/ripgrep`). Do NOT
 # pass `--ignore-scripts` here: it would silently skip the ripgrep binary
-# download and produce a runtime ENOENT for `search_code` (see CLAUDE.md →
+# download and produce a runtime ENOENT for `search_code` (see AGENTS.md →
 # Native-Binary Dependencies).
 RUN pnpm install --frozen-lockfile
 

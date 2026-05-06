@@ -2,7 +2,7 @@
  * Priority isolation sweep — phase-layer code MUST NEVER perform a
  * semantic comparison against `task.priority`.
  *
- * Three-Axis SSOT (`.cursorrules` "Three-Axis Task Modeling"):
+ * Three-Axis SSOT (`AGENTS.md` "Three-Axis Task Modeling"):
  *
  *   - `task.type` and `task.band` are the only legal scheduling
  *     discriminators read by phase-layer code (orchestrator / router /

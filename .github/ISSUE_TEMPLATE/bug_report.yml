@@ -1,0 +1,108 @@
+name: Bug report
+description: Report a problem with Ant
+title: "bug: <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        Before submitting:
+        - Search [existing issues](../search?q=is%3Aissue) to avoid duplicates.
+        - Security vulnerabilities should be reported privately — see
+          [SECURITY.md](../../blob/main/SECURITY.md).
+
+  - type: input
+    id: ant-version
+    attributes:
+      label: Ant version / commit
+      description: Output of `git rev-parse HEAD` or the npm package version.
+      placeholder: "e.g. 0.1.0 or commit a1b2c3d"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      multiple: false
+      options:
+        - Local (default)
+        - Cloud (Kubernetes)
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Node version, pnpm version, browser if relevant.
+      placeholder: "macOS 14.5, Node 20.11, pnpm 10.4, Chrome 130"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: llm-provider
+    attributes:
+      label: LLM provider
+      description: Which provider were you using when the bug occurred?
+      multiple: false
+      options:
+        - Anthropic (Claude)
+        - OpenAI (GPT)
+        - Other
+        - Not relevant
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the bug. Include the user-visible symptom and any error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Minimal reproduction. If possible, include the directive you typed,
+        the workspace state, and the environment variables you set.
+      value: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Output from `ant-api`, `ant-job`, or browser console. Redact API keys
+        and any sensitive data.
+      render: shell
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched for existing issues and didn't find a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go to SECURITY.md).
+          required: true
+        - label: I redacted any API keys or other secrets from logs.
+          required: true

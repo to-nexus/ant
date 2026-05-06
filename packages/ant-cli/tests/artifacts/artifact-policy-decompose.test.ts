@@ -67,7 +67,7 @@ describe('deriveArtifactPolicy', () => {
 
   // ─────────────────────────────────────────────────────────────────
   // Channel B closure — explicit pipeline suppresses package→ref
-  // synthesis (`mossy-nearing-gleam` regression).
+  // synthesis (`discovery-tool RAC bypass (2026-04)` regression).
   // ─────────────────────────────────────────────────────────────────
 
   it('explicit mode + fe-main packages -> no refs synthesis', () => {

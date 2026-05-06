@@ -45,7 +45,7 @@ export class JobExecutionManager {
     // SessionableJobType plus the lightweight `inline-ask` runner. Silent
     // downcast to 'code' is forbidden — it produced the zonal-dreaming-novel
     // regression where a paused plan job had its clarify-answer enqueue
-    // converted into a brand-new code job. See `.cursorrules`
+    // converted into a brand-new code job. See `AGENTS.md`
     // "Non-task Clarify Continuation Invariants" (I1). inline-ask has to
     // pass the gate because its HTTP route uses the same executeJob path
     // — its child process dispatches to `runInlineAsk` (no session/kanban)

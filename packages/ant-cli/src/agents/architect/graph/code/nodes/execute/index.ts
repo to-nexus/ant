@@ -76,7 +76,7 @@ export async function execute(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // UI self-heal — gated by RAC UI slot.
   //
-  // Pool SSOT (`.cursorrules` "state.artifacts Post-RAC SSOT"): the pool is
+  // Pool SSOT (`AGENTS.md` "state.artifacts Post-RAC SSOT"): the pool is
   // the RAC subset. If `resolvedAction.refs ∪ context` does NOT carry a
   // `visual/ui/...` slot, the user did not opt into UI doc
   // injection — silently augmenting the pool here would re-introduce

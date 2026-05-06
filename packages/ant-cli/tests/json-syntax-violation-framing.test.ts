@@ -38,7 +38,7 @@ beforeAll(() => {
 
 describe('asJsonSyntaxViolation — native SyntaxError wrap', () => {
   it('extracts `position N` from the SyntaxError message and slices a ±100 char window', () => {
-    // Production regression `smooth-mooring-metal` failed with the V8
+    // Production regression `JSON-syntax stack overflow` failed with the V8
     // message "Expected ',' or '}' after property value in JSON at
     // position 789" — i.e. the position-bearing syntax-error variant.
     // Reproduce that variant here (missing colon between properties)
@@ -196,7 +196,7 @@ describe('parseLLMResponse — JsonSyntaxViolation escalation', () => {
   // The decompose retry loop in `decompose/index.ts` branches on
   // `instanceof JsonSyntaxViolation` to retry the LLM call. Native
   // `SyntaxError` slipping through would skip the retry branch and
-  // crash the job (the `smooth-mooring-metal` regression). These
+  // crash the job (the `JSON-syntax stack overflow` regression). These
   // assertions lock the contract at the parser boundary.
   const MINIMAL_TECH_TIER =
     `<techTier>{"stack":"backend","stackReasoning":"","language":"typescript","framework":null}</techTier>`;

@@ -83,5 +83,11 @@ workspaces/**/sessions/
 docs/untracked/
 docs/tmp/
 
+# Personal AI agent rules (kept locally, not exposed publicly).
+# Public-facing version is AGENTS.md. See docs/internals/ssot-policies.md
+# for the contributor-friendly summary.
+CLAUDE.md
+.cursorrules
+
 # Verification scenario harness runtime (fixture source is in packages/ant-cli/tests/verification-scenarios)
 /.ant-test/

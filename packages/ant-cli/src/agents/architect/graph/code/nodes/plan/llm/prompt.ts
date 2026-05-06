@@ -137,7 +137,7 @@ export async function buildPlanPrompt(
     _slot,
   );
 
-  // Post-RAC template flags — see `.cursorrules`
+  // Post-RAC template flags — see `AGENTS.md`
   // "Post-RAC Template Condition SSOT" for the 3-category semantics.
   //
   // Under the 3-axis role model (Authority / Edit-scope / Task-scope),

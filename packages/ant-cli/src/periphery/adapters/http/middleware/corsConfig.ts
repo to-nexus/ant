@@ -6,22 +6,22 @@
  * - ant-realtime
  * - ant-preview
  * 
- * Production: only *.crosstoken.io origins allowed.
+ * Production: only *.example.com origins allowed.
  * Development: localhost origins also allowed.
  */
 
 import cors from 'cors';
 
 const PRODUCTION_ORIGINS = [
-  'https://ant.crosstoken.io',
-  'https://ant-server.crosstoken.io',
-  'https://ant-preview.crosstoken.io',
+  'https://ant.example.com',
+  'https://ant-server.example.com',
+  'https://ant-preview.example.com',
 ];
 
 /**
  * Create CORS middleware with environment-aware origin checking.
  * 
- * - Production (NODE_ENV=production): only *.crosstoken.io
+ * - Production (NODE_ENV=production): only *.example.com
  * - Development: also allows localhost/127.0.0.1
  * - ANT_CORS_ORIGINS env var can add additional origins (comma-separated)
  */
@@ -45,8 +45,8 @@ export function createCorsMiddleware() {
         return callback(null, true);
       }
 
-      // Check wildcard *.crosstoken.io
-      if (/^https:\/\/[a-zA-Z0-9-]+\.crosstoken\.io$/.test(origin)) {
+      // Check wildcard *.example.com
+      if (/^https:\/\/[a-zA-Z0-9-]+\.example\.com$/.test(origin)) {
         return callback(null, true);
       }
 

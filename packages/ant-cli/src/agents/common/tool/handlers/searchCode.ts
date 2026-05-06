@@ -33,7 +33,7 @@ const PER_FILE_MAX_COUNT = 200;
  * Hint appended when ripgrep is genuinely missing on disk (postinstall
  * was blocked or never ran). `@vscode/ripgrep` downloads its binary via
  * a postinstall script; pnpm 10+ blocks those by default unless the
- * package is listed under `pnpm.onlyBuiltDependencies`. See `CLAUDE.md` →
+ * package is listed under `pnpm.onlyBuiltDependencies`. See `AGENTS.md` →
  * "Native-Binary Dependencies" for the full recovery procedure.
  */
 const RIPGREP_BINARY_MISSING_HINT =

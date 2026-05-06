@@ -226,7 +226,7 @@ export function createDetectNode<T extends DetectableState>(
       // truthy-check on `state.artifacts` distinguishes jobs that own a
       // pool channel (code/design seed it to `[]` in resolve) from those
       // that do not (planner), so the partial state emit stays schema-safe
-      // per job. See `.cursorrules` "state.artifacts Post-RAC SSOT".
+      // per job. See `AGENTS.md` "state.artifacts Post-RAC SSOT".
       const updatedArtifacts = (state as any).artifacts
         ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts || [])
         : undefined;
@@ -318,7 +318,7 @@ function applyDomainDefaultsToBasis(
 /**
  * Fire-and-forget chat emission for the detect phase. Never awaited so graph
  * execution stays non-blocking; rendering failures surface via emitDetectOutcome's
- * own warn logging (no silent swallow — see .cursorrules Canonical Tag Rendering SSOT).
+ * own warn logging (no silent swallow — see AGENTS.md Canonical Tag Rendering SSOT).
  */
 function emitRACSummary(
   rac: ResolvedActionContext,

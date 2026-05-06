@@ -677,7 +677,7 @@ Build the OpenGame Foundation (OGF) landing page (single page) based on referenc
 | Card | Learn more link |
 |------|----------------|
 | CROSS Mainnet | **https://crossscan.io** |
-| CROSS Protocol | **https://docs.crosstoken.io/** |
+| CROSS Protocol | **https://docs.example.com/** |
 
 ⚠️ "Learn more" buttons must navigate to the exact URLs above.
 
