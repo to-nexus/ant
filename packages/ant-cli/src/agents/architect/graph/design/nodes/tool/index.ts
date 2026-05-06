@@ -142,6 +142,11 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       // belongs to the downstream code job, so close the gate
       // throughout design (plan + docGen).
       allowMutateInCodebase: false,
+      // Shell execution gate — design job is document-producing; no
+      // legitimate `run_command` use exists. The design tool registry
+      // also omits `RUN_COMMAND` (`0b9b9227`); this flag is the
+      // defence-in-depth handler-side enforcement for the same policy.
+      allowShellExecution: false,
     };
   },
 

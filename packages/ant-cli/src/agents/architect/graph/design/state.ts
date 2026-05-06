@@ -93,9 +93,10 @@ export interface DesignGraphState extends TriageableState {
    * - `'docGen'` while the docGen↔tool loop is in flight (set by
    *   docGen node on each turn; preserved through the tool node).
    *   Drives debug/log/breadcrumb visibility into which phase
-   *   produced a tool call. Mutate-gate enforcement itself is
-   *   handled by `ToolExecutionContext.allowMutateInCodebase` in the
-   *   tool handlers — the phase signal is informational here.
+   *   produced a tool call. Gate enforcement itself is handled by
+   *   `ToolExecutionContext.allowMutateInCodebase` (codebase writes)
+   *   and `ToolExecutionContext.allowShellExecution` (run_command) in
+   *   the tool handlers — the phase signal is informational here.
    * - `undefined` after `<plan>`/`<done>` is emitted, after a clarify
    *   pause, or when plan-LLM is not used (e.g. ui-design /
    *   game-art-design intents that fall through to the dispatcher-only

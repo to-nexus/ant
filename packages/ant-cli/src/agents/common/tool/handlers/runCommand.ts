@@ -429,7 +429,7 @@ export async function handleRunCommand(
   ctx: ToolExecutionContext,
   args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
-  if (ctx.allowMutateInCodebase !== true) {
+  if (ctx.allowShellExecution !== true) {
     const { rejectRunCommand } = await import('./codebaseGate');
     return rejectRunCommand();
   }

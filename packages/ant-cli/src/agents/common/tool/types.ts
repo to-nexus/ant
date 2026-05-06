@@ -151,20 +151,50 @@ export interface ToolExecutionContext {
   // === Command policy / verification handlers ===
   activePhase?: 'plan' | 'execute';
   /**
-   * Codebase mutation gate — when `false` (the safe default), mutate
-   * handlers (`edit_file` / `delete_file` / `mkdir` / `create_file`)
-   * reject paths under `codebase/`, and `run_command` is rejected
-   * outright. Set to `true` ONLY for the architect/code job's
-   * `execute` phase, where mutating source code is the artifact.
+   * Codebase mutation gate (path-aware). When `false` (the safe default),
+   * mutate handlers (`edit_file` / `delete_file` / `mkdir` / `create_file`)
+   * reject paths under `codebase/`. Set to `true` ONLY for the
+   * architect/code job's `execute` phase, where mutating source code is
+   * the artifact.
    *
    * All document- or plan-producing phases (architect/design plan +
    * docGen, architect/code plan, planner/plan) leave this `false` so
    * `<file>`/`<append>`/`<edit>`/`<delete>` writes still flow through
    * the FileRenderer guard but the tool handlers cannot touch
-   * source code under `codebase/`. See `docs/architecture/15-design-job.md`
-   * "Codebase mutation gate" for the policy SSOT.
+   * source code under `codebase/`. See
+   * `docs/internals/15-design-job.md` "Codebase mutation gate" for the
+   * policy SSOT.
+   *
+   * Orthogonal to {@link allowShellExecution}: `run_command` is gated
+   * by the latter because its target paths cannot be inferred from
+   * args.
    */
   allowMutateInCodebase?: boolean;
+  /**
+   * Shell execution gate (binary). When `false` (the safe default),
+   * `run_command` is rejected outright. Set to `true` for jobs whose
+   * normal workflow includes running shell commands — currently only
+   * the architect/code job (every phase: plan tool-loop runs build /
+   * typecheck / test gates and dependency probes; execute applies
+   * fixes).
+   *
+   * Document- or plan-producing jobs (architect/design plan + docGen,
+   * planner/plan) leave this `false`. The design/planner tool
+   * registries also omit `RUN_COMMAND` so the LLM never sees the tool;
+   * this flag is the defence-in-depth handler-side enforcement for
+   * the same policy.
+   *
+   * Split from {@link allowMutateInCodebase} because the two
+   * responsibilities are orthogonal: the code job's plan phase has
+   * legitimate `run_command` use (verification gates, test-code
+   * runner install, error diagnostics, dep discovery) but must NOT
+   * mutate `codebase/` until execute. Coupling them under one flag
+   * was the root cause of the `agile-nodding-pouch` silent
+   * false-pass regression — see
+   * [docs/internals/15-design-job.md](../../../../../docs/internals/15-design-job.md)
+   * "Codebase mutation gate" for the matrix.
+   */
+  allowShellExecution?: boolean;
   currentTaskType?: string;
   /**
    * True when the active task was spawned from a parent's batch-split

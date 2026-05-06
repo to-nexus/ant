@@ -45,11 +45,18 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       fileTreeUpdate: state.deps?.fileTreeUpdate as any,
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
-      // Codebase mutation gate — `execute` phase produces source code as
-      // its artifact, so it's the only phase that may mutate `codebase/`
-      // paths or run shell commands. `plan` phase produces the sealed
-      // plan JSON; codebase changes are deferred to execute.
+      // Codebase mutation gate — `execute` is the only phase that may
+      // mutate `codebase/` paths. `plan` produces the sealed plan JSON;
+      // source-code changes are deferred to execute.
       allowMutateInCodebase: state._activePhase === 'execute',
+      // Shell execution gate — code job's normal workflow runs shell
+      // commands in BOTH phases: plan tool-loop runs verification gates
+      // (build / typecheck / test for the verification task), test
+      // runner installs (test-code task), error diagnostics (error
+      // task), and dependency probes (default plan); execute applies
+      // fixes. Always-true here is the SSOT — the orthogonal mutate
+      // gate above is what keeps plan from writing source code.
+      allowShellExecution: true,
       currentTaskType: (state.currentTask as any)?.type,
       // Verify-mode dispatch is signalled by `verifyModeActive` below
       // (`requiresVerification(task) && _verifyEntered`). Apply-phase

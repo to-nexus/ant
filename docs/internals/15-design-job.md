@@ -208,21 +208,26 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 
 ## Codebase mutation gate
 
-Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta/`, `sessions/` 등 **아티팩트 경로**의 문서다. `codebase/` 산하 소스 코드 mutation 은 **architect/code 잡 `execute` phase 만**의 책임이다.
+Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta/`, `sessions/` 등 **아티팩트 경로**의 문서다. `codebase/` 산하 소스 코드 mutation 은 **architect/code 잡 `execute` phase 만**의 책임이다. Shell 명령 실행 (`run_command`) 은 별도 직교 책임으로, **architect/code 잡 (모든 phase)** 만이 정상 사용처를 가진다.
 
-| 잡 / phase | `codebase/` mutate | 아티팩트 mutate | 강제 위치 |
-|---|---|---|---|
-| architect/design — plan / docGen | 차단 | 허용 | `ToolExecutionContext.allowMutateInCodebase = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + FileRenderer XML 가드 (`jobType: 'design'`) |
-| architect/code — plan | 차단 | 허용 | `allowMutateInCodebase = false` (`_activePhase === 'plan'` 분기) + FileRenderer (`codePhase: 'plan'`) |
-| architect/code — execute | 허용 | 허용 | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + FileRenderer 기존 가드 |
-| planner — plan (PRD/계획) | 차단 | 허용 | planner 도구 ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` 가드) + FileRenderer (`jobType: 'planner'`) |
+| 잡 / phase | `codebase/` mutate | `run_command` | 아티팩트 mutate | 강제 위치 |
+|---|---|---|---|---|
+| architect/design — plan / docGen | 차단 | 차단 | 허용 | `allowMutateInCodebase = false` + `allowShellExecution = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + design tool registry 에서 `RUN_COMMAND` 미등록 + FileRenderer XML 가드 (`jobType: 'design'`) |
+| architect/code — plan | 차단 | **허용** | 허용 | `allowMutateInCodebase = false` (`_activePhase === 'plan'` 분기) + `allowShellExecution = true` (always) + FileRenderer (`codePhase: 'plan'`) |
+| architect/code — execute | 허용 | 허용 | 허용 | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + `allowShellExecution = true` + FileRenderer 기존 가드 |
+| planner — plan (PRD/계획) | 차단 | n/a (도구 미등록) | 허용 | planner 도구 ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` 가드) + FileRenderer (`jobType: 'planner'`) |
 
-차단 매커니즘은 두 축으로 동시 작동한다:
+**`codebase/` mutate 와 `run_command` 는 두 직교 책임이다.** 한 플래그로 묶지 않는다 (이 분리는 `agile-nodding-pouch` silent false-pass 회귀 — 코드잡 verification plan 이 typecheck 게이트조차 못 돌리고 빈 plan 으로 자동 done — 이후 도입). 코드잡의 plan 은 `<plan>` JSON 산출이 책임이지만 그 산출 *과정* 에서 build / typecheck / test 게이트 (verification task), 테스트 러너 설치 (test-code task), 에러 진단 (error task), design-prescribed dep 설치 후 API discovery (default plan) 같은 정상 사용처가 있다 — 이것이 `allowShellExecution = true` (always) 의 근거다.
 
-1. **도구 핸들러** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts)) — `edit_file` / `delete_file` / `mkdir` / `create_file` 가 resolve 된 path 가 `codebase/` 산하면 거부. `run_command` 는 path 추론이 어려워 도구 자체를 거부.
-2. **FileRenderer XML 태그** ([FileRenderer.ts](../../packages/ant-cli/src/core/streaming/strategies/common/FileRenderer.ts) processFile) — `<file>` / `<append>` / `<edit>` / `<delete>` artifact 태그가 `codebase/` 를 가리키면 거부. design / planner / code-plan 모두 동일 정책.
+차단 매커니즘은 세 축으로 작동한다:
+
+1. **도구 핸들러 (codebase 쓰기)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectCodebaseMutate`) — `edit_file` / `delete_file` / `mkdir` / `create_file` 가 resolve 된 path 가 `codebase/` 산하면 거부.
+2. **도구 핸들러 (shell 실행)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectRunCommand`) — `run_command` 는 effective target path 가 args 에서 추론 불가하므로 binary 게이트로 outright 거부. design / planner ctx 에서만 fire.
+3. **FileRenderer XML 태그** ([FileRenderer.ts](../../packages/ant-cli/src/core/streaming/strategies/common/FileRenderer.ts) processFile) — `<file>` / `<append>` / `<edit>` / `<delete>` artifact 태그가 `codebase/` 를 가리키면 거부. design / planner / code-plan 모두 동일 정책. (이 가드는 `codebase/` 쓰기 책임이지 shell 과 무관.)
 
 거부 메시지는 LLM 에게 회복 경로를 안내한다 — 아티팩트 경로 사용 또는 spec/plan 문서에 변경 내용을 기술하라는 형태로, "You MUST" 훈계 없는 FPOP 친화적 톤. 차단된 시도는 다음 turn 에서 R5 self-check 와 결합되어 자연스럽게 task 완료(`<done>true</done>`)로 수렴한다.
+
+회귀 가드: [tests/architect/mutate-gate.test.ts](../../packages/ant-cli/tests/architect/mutate-gate.test.ts) (두 플래그 매트릭스), [tests/architect/regression-design-spec-mutate-leak.test.ts](../../packages/ant-cli/tests/architect/regression-design-spec-mutate-leak.test.ts) (design docGen → codebase mutate 차단 — 옛 이름 `total-drying-apron`), [tests/architect/regression-agile-nodding-pouch.test.ts](../../packages/ant-cli/tests/architect/regression-agile-nodding-pouch.test.ts) (코드잡 verification plan 의 `run_command` 통과).
 
 ## R5 — artifact-mutation-then-no-done self-check
 
