@@ -202,3 +202,100 @@ function tryParseJson<T>(candidate: string, sanitize: boolean): T | null {
     return null;
   }
 }
+
+/**
+ * Violation channel for callers that DO want to escalate a JSON
+ * syntax error (instead of the silent-`null` `extractJsonFromLlmResponse`
+ * fallback) — typically because they own a retry loop and need a
+ * framing payload to drive the next LLM attempt.
+ *
+ * Mirrors the prior-art `ExecutionTierViolation` (with detail +
+ * framing builder pair) so retry-aware nodes share one shape:
+ *   1. native parse → `asJsonSyntaxViolation(err, body, source)` wrap
+ *   2. caller `instanceof JsonSyntaxViolation` branch
+ *   3. `buildJsonSyntaxViolationFraming(violation)` appended to prompt
+ */
+export interface JsonSyntaxViolationDetail {
+  /** Position N from the native SyntaxError message; -1 when not parsable. */
+  position: number;
+  /** ±100 char window around `position` taken from the original raw body. */
+  context: string;
+  /**
+   * Optional human label for the parse site (e.g. `<task>[3] body`,
+   * `<tasks> legacy array body`). Surfaced in framing so the LLM knows
+   * which payload to fix.
+   */
+  source?: string;
+  /** Original `SyntaxError.message`, preserved for diagnostics. */
+  message: string;
+}
+
+export class JsonSyntaxViolation extends Error {
+  readonly detail: JsonSyntaxViolationDetail;
+  constructor(detail: JsonSyntaxViolationDetail) {
+    super(
+      `JsonSyntaxViolation: ${detail.message}${detail.source ? ` (in ${detail.source})` : ''}`,
+    );
+    this.detail = detail;
+    this.name = 'JsonSyntaxViolation';
+  }
+}
+
+/**
+ * Wrap a native `SyntaxError` thrown by `JSON.parse` into a typed
+ * `JsonSyntaxViolation`, extracting the `position N` window from the
+ * original body so the retry framing can include surrounding bytes.
+ * Non-`SyntaxError` inputs are wrapped too (with `position = -1`) for
+ * uniform caller handling.
+ */
+export function asJsonSyntaxViolation(
+  error: unknown,
+  rawBody: string,
+  source?: string,
+): JsonSyntaxViolation {
+  if (!(error instanceof SyntaxError)) {
+    return new JsonSyntaxViolation({
+      position: -1,
+      context: rawBody.slice(0, 200),
+      source,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const positionMatch = error.message.match(/position (\d+)/);
+  const position = positionMatch ? parseInt(positionMatch[1], 10) : -1;
+  const context =
+    position >= 0
+      ? rawBody.substring(
+          Math.max(0, position - 100),
+          Math.min(rawBody.length, position + 100),
+        )
+      : rawBody.slice(0, 200);
+  return new JsonSyntaxViolation({ position, context, source, message: error.message });
+}
+
+/**
+ * Build a short framing block to append to the LLM user prompt for the
+ * next retry attempt. Mirrors `buildExecutionTierViolationFraming` /
+ * `buildBatchSplitSchemaViolationFraming` — concrete enough to tell
+ * the LLM where the parse failed without re-asking the entire breakdown.
+ */
+export function buildJsonSyntaxViolationFraming(v: JsonSyntaxViolation): string {
+  const { position, context, source, message } = v.detail;
+  const head = '\n\n---\n\n## Retry: previous response failed JSON parsing\n';
+  const where = source ? ` inside ${source}` : '';
+  const ctxBlock =
+    position >= 0
+      ? `\nContext around position ${position}:\n\`\`\`\n${context}\n\`\`\`\n`
+      : '';
+  return (
+    head +
+    `Your previous response contained a JSON syntax error${where}: ${message}.` +
+    ctxBlock +
+    '\nRe-emit the SAME breakdown — same `<executionTier>`, same `<techTier>`, same task IDs / names / priorities — with VALID JSON in every `<task>` body. Do NOT change semantic content; only fix the syntax.\n\n' +
+    'Common causes to avoid:\n' +
+    '- Unescaped double quote inside a string field (use `\\"` or single quotes).\n' +
+    '- Trailing comma before `}` or `]`.\n' +
+    '- Raw newline inside a string literal (escape as `\\n`).\n' +
+    '- Missing comma between key-value pairs.\n'
+  );
+}

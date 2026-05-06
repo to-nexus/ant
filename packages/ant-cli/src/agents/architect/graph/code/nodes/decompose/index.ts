@@ -38,6 +38,10 @@ import {
 } from "../../../../../../core/executionTier";
 import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
+import {
+  JsonSyntaxViolation,
+  buildJsonSyntaxViolationFraming,
+} from "../../../../../../core/utils/llmResponseParser";
 
 
 /**
@@ -753,6 +757,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     try {
       parsed = parseLLMResponse(rawResponse);
     } catch (error) {
+      // JsonSyntaxViolation — wrap in retry loop. Mirrors the
+      // ExecutionTierViolation / DecisionTagViolation branches below
+      // (`originalUserPrompt + framing` reset, `continue`, MAX_ATTEMPTS gate).
+      // `parseTasksBody` escalates SyntaxError from individual <task> body
+      // JSON.parse calls; LLM stochastic JSON drift can be absorbed in 1–2
+      // retries instead of crashing the job.
+      if (error instanceof JsonSyntaxViolation && attempt < MAX_ATTEMPTS) {
+        console.warn(
+          `⚠️  [Decompose] JSON syntax violation attempt ${attempt}/${MAX_ATTEMPTS}: ` +
+            `${error.detail.message} — retrying with framing`,
+        );
+        prompts.user = originalUserPrompt + buildJsonSyntaxViolationFraming(error);
+        continue;
+      }
       logErrorHeader('Decompose');
       console.error(error);
       throw error;
