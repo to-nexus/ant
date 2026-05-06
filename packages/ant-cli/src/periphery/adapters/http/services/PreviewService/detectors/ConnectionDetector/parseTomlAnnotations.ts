@@ -3,17 +3,20 @@ import * as path from 'path';
 import { ServiceCategory, ServiceConnection } from '../../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../../utils/logger';
 import { formatDisplayName, overrideWithEnvFile } from './utils';
-import { dispatchModifierTokens } from './parseEnvAnnotations';
+import { autoAttachVirtualization, dispatchResolutionTokens } from './parseEnvAnnotations';
 
 const ANNOTATION_REGEX = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?:\s+(.+))?/;
 
 /**
  * Parse `@connection` annotations from `<projectPath>[/<subdir>]/config.example.toml`.
  *
- * Same multi-token dispatch as `.env.example` (`dispatchModifierTokens`)
+ * Same resolution-token dispatch as `.env.example` (`dispatchResolutionTokens`)
  * with the additional REQUIRED `env:VAR_NAME` token — TOML keys are
  * dotted (e.g. `database.url`) and don't map to a flat env var name, so
  * the annotation must declare which env var the platform should inject.
+ *
+ * Same Service Virtualization auto-attach: every `business` connection
+ * receives `virtualization`, `infrastructure` connections do not.
  */
 export function detectFromTomlAnnotations(projectPath: string, subdir?: string): ServiceConnection[] {
   const connections: ServiceConnection[] = [];
@@ -48,17 +51,8 @@ export function detectFromTomlAnnotations(projectPath: string, subdir?: string):
     const nextLine = findNextMeaningfulLine(lines, i + 1);
     const defaultValue = nextLine ? parseTomlValue(nextLine) : '';
 
-    const { resolution, virtualization } = dispatchModifierTokens(modifier, name, defaultValue);
-
-    let effectiveVirtualization = virtualization;
-    if (effectiveVirtualization && category === 'infrastructure') {
-      logger.warn(
-        `[ConnectionDetector] Ignoring mock modifier on infrastructure connection "${name}" ` +
-        `(${envVar}). Local infrastructure is provisioned via docker-compose, not virtualized.`,
-        { component: 'ConnectionDetector' },
-      );
-      effectiveVirtualization = undefined;
-    }
+    const resolution = dispatchResolutionTokens(modifier, defaultValue);
+    const virtualization = autoAttachVirtualization(category, name);
 
     connections.push({
       id: name,
@@ -69,7 +63,7 @@ export function detectFromTomlAnnotations(projectPath: string, subdir?: string):
       resolution,
       source: subdir || '*',
       configSource: 'toml',
-      ...(effectiveVirtualization ? { virtualization: effectiveVirtualization } : {}),
+      ...(virtualization ? { virtualization } : {}),
     });
   }
 
@@ -81,13 +75,12 @@ export function detectFromTomlAnnotations(projectPath: string, subdir?: string):
 /**
  * Extract the required `env:VAR_NAME` token from the rest-of-line and
  * collect every other token into a single `modifier` string for the
- * shared multi-token dispatch.
+ * shared resolution-token dispatch.
  *
  * Examples:
  *   "env:DATABASE_URL"                 → { envVar: "DATABASE_URL" }
  *   "self env:API_BASE_URL"            → { envVar: "API_BASE_URL", modifier: "self" }
  *   "ant-project:be:main env:API_URL"  → { envVar: "API_URL", modifier: "ant-project:be:main" }
- *   "self mock:available env:API_URL"  → { envVar: "API_URL", modifier: "self mock:available" }
  */
 export function parseTomlAnnotationRest(rest: string | undefined): { envVar?: string; modifier?: string } {
   if (!rest) return {};

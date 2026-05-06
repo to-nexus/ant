@@ -6,9 +6,8 @@ import {
   ServiceConnection,
   VirtualizationStrategy,
 } from '../../../../../../../core/ports/portRegistry';
-import { logger } from '../../../../../../../utils/logger';
 import { formatDisplayName, overrideWithEnvFile, parseEnvLine } from './utils';
-import { parseMockModifier, parseResolutionModifier } from './parseModifiers';
+import { deriveToggleVar, parseResolutionModifier } from './parseModifiers';
 
 const ANNOTATION_REGEX = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?:\s+(.+))?/;
 
@@ -16,15 +15,18 @@ const ANNOTATION_REGEX = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?
  * Parse `@connection` annotations from `<projectPath>[/<subdir>]/.env.example`.
  *
  * Annotation grammar (after the `# @connection {category} {name}` header):
- *   - any number of optional whitespace-separated tokens, dispatched per-token
- *     to (a) `parseResolutionModifier` (claims at most one) and
- *        (b) `parseMockModifier`        (claims at most one).
- *   - tokens neither layer claims are silently ignored at the dispatch level
- *     (`parseMockModifier` already warn-logs unknown `mock:*` tokens).
+ *   - any number of optional whitespace-separated resolution tokens
+ *     (`self`, `ant-project:p:f[:svc]`); first claim wins, fallback = `url`.
  *
- * Each annotation MUST be immediately followed by a `KEY=VALUE` line — that
- * line names the env var the platform injects. Annotations whose next env
- * line is missing are skipped (matches legacy behavior).
+ * Service Virtualization is NOT a token — every `business` connection
+ * receives a `VirtualizationStrategy` automatically (single SSOT for the
+ * "every external dep is virtualizable" philosophy). `infrastructure`
+ * connections never receive one (docker-compose owns the real backing
+ * service).
+ *
+ * Each annotation MUST be immediately followed by a `KEY=VALUE` line —
+ * that line names the env var the platform injects. Annotations whose
+ * next env line is missing are skipped (matches legacy behavior).
  */
 export function detectFromAnnotations(projectPath: string, subdir?: string): ServiceConnection[] {
   const connections: ServiceConnection[] = [];
@@ -53,21 +55,8 @@ export function detectFromAnnotations(projectPath: string, subdir?: string): Ser
     const [envVar, value] = parseEnvLine(nextLine);
     if (!envVar) continue;
 
-    const { resolution, virtualization } = dispatchModifierTokens(modifier, name, value || '');
-
-    // Local infrastructure (DB / cache / queue via docker-compose) is real
-    // and is NOT a virtualization target. Mirror the boundary documented in
-    // design's Infrastructure Independence Guardrail by warn-dropping any
-    // mock token attached to an `infrastructure` connection.
-    let effectiveVirtualization = virtualization;
-    if (effectiveVirtualization && category === 'infrastructure') {
-      logger.warn(
-        `[ConnectionDetector] Ignoring mock modifier on infrastructure connection "${name}" ` +
-        `(${envVar}). Local infrastructure is provisioned via docker-compose, not virtualized.`,
-        { component: 'ConnectionDetector' },
-      );
-      effectiveVirtualization = undefined;
-    }
+    const resolution = dispatchResolutionTokens(modifier, value || '');
+    const virtualization = autoAttachVirtualization(category, name);
 
     connections.push({
       id: name,
@@ -78,7 +67,7 @@ export function detectFromAnnotations(projectPath: string, subdir?: string): Ser
       resolution,
       source: subdir || '*',
       configSource: 'env',
-      ...(effectiveVirtualization ? { virtualization: effectiveVirtualization } : {}),
+      ...(virtualization ? { virtualization } : {}),
     });
   }
 
@@ -88,32 +77,45 @@ export function detectFromAnnotations(projectPath: string, subdir?: string): Ser
 }
 
 /**
- * Multi-token modifier dispatch shared by .env and TOML annotation parsers.
- * Each token is offered to the resolution layer and the virtualization
- * layer; first claim wins. Resolution falls back to `url` when no token
- * claims it (matches legacy `parseResolutionModifier` undefined behavior).
+ * Multi-token resolution dispatch shared by .env and TOML annotation
+ * parsers. Each token is offered to the resolution layer; first claim
+ * wins. Falls back to `url` when no token claims the slot.
  *
- * Exported so `parseTomlAnnotations.ts` reuses the same dispatch loop —
- * keeping the multi-token contract symmetric across both annotation
- * formats and avoiding drift if the grammar gains a new layer later.
+ * Exported so `parseTomlAnnotations.ts` reuses the same dispatch loop.
  */
-export function dispatchModifierTokens(
+export function dispatchResolutionTokens(
   modifier: string | undefined,
-  name: string,
   defaultValue: string,
-): { resolution: ConnectionResolution; virtualization: VirtualizationStrategy | undefined } {
+): ConnectionResolution {
   const tokens = (modifier ?? '').split(/\s+/).filter(Boolean);
   let resolution: ConnectionResolution | null = null;
-  let virtualization: VirtualizationStrategy | undefined;
 
   for (const tok of tokens) {
     resolution ??= parseResolutionModifier(tok, defaultValue);
-    virtualization ??= parseMockModifier(tok, name) ?? undefined;
   }
 
   resolution ??= { type: 'url', url: defaultValue };
 
-  return { resolution, virtualization };
+  return resolution;
+}
+
+/**
+ * Auto-attach a `VirtualizationStrategy` for every business connection.
+ * Single source of truth: connection category. No annotation token, no
+ * per-connection opt-in — the category IS the contract.
+ *
+ * Returns `undefined` for `infrastructure` connections (docker-compose
+ * owns the real backing service; virtualization is not a concern).
+ */
+export function autoAttachVirtualization(
+  category: ServiceCategory,
+  name: string,
+): VirtualizationStrategy | undefined {
+  if (category !== 'business') return undefined;
+  return {
+    toggleEnvVar: deriveToggleVar(name),
+    active: false, // resolved by overrideWithEnvFile against `.env`
+  };
 }
 
 /**
