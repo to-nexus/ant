@@ -12,8 +12,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
-import { resolveToRAC } from '@ant/shared';
-import type { IntentId } from '@ant/shared';
+import { resolveResumedActionContext } from '../../../../common/graph/resumeActionMetadata.js';
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types.js';
 
 export const visualResolveStrategy: ResolveStrategy<VisualGraphState> = {
@@ -49,6 +48,7 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
   let availableSketchPaths: string[] | undefined;
   let lastBasePrompt: string | undefined;
   let lastSketchVariations: SketchVariation[] | undefined;
+  let sessionResolvedAction = state.resolvedAction;
   let clarifyCount = state.clarifyCount || 0;
 
   try {
@@ -96,6 +96,10 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
       if (sessionData.state?.interruption) {
         isResume = true;
         console.log('🔄 [Visual:Resolve] Found interrupted session — resuming');
+      }
+      if (sessionData.state?.resolvedAction) {
+        sessionResolvedAction = sessionData.state.resolvedAction;
+        console.log('📂 [Visual:Resolve] Restored resolvedAction from session');
       }
     }
   } catch (err) {
@@ -160,16 +164,12 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
     console.log('📝 [Visual:Resolve] Appended user directive to conversation');
   }
 
-  // RAC creation: explicit path only (infer path creates RAC in detect node)
-  const actionMetadata = state.actionMetadata;
-  let resolvedAction = state.resolvedAction;
-  if (!resolvedAction && actionMetadata?.intent) {
-    resolvedAction = resolveToRAC(
-      actionMetadata.intent as IntentId,
-      { target: actionMetadata.target, refs: actionMetadata.refs, context: actionMetadata.context },
-      'explicit',
-    );
-    console.log(`📋 [Visual:Resolve] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
+  const resolvedAction = resolveResumedActionContext({
+    actionMetadata: state.actionMetadata,
+    resolvedAction: sessionResolvedAction,
+  });
+  if (resolvedAction && state.actionMetadata?.intent) {
+    console.log(`📋 [Visual:Resolve] RAC created (explicit): intent=${state.actionMetadata.intent}, mode=${resolvedAction.mode}`);
   }
 
   const result: Partial<VisualGraphState> = {

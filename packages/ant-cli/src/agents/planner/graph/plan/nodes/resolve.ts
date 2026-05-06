@@ -25,6 +25,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
+import { resolveResumeActionSlots } from '../../../../common/graph/resumeActionMetadata';
 import {
   getCanonicalPlanPath,
   pickExistingPlanFilename,
@@ -97,9 +98,23 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     console.log(`   Target (infer default): ${fallbackTarget}`);
   }
 
+  const slots = resolveResumeActionSlots({
+    actionMetadata: {
+      target: actionMetadata?.target,
+      refs: actionMetadata?.refs,
+      context: actionMetadata?.context,
+    },
+    resolvedAction: state.resolvedAction,
+    inferTarget: targets,
+  });
+  targets = slots.target;
+  console.log(
+    `   Resume slots: target=${slots.sources.target}, refs=${slots.sources.refs}, context=${slots.sources.context}`,
+  );
+
   // 4. Load refs/context content
   const documents: ResolvedArtifact[] = [];
-  const refPaths = actionMetadata?.refs || (targets.length ? targets : []);
+  const refPaths = slots.refs.length > 0 ? slots.refs : (targets.length ? targets : []);
   for (const refPath of refPaths) {
     try {
       const raw = fs.readFileSync(path.join(featurePath, refPath), 'utf-8');
@@ -107,7 +122,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
       if (content) documents.push({ path: refPath, content, role: 'ref' });
     } catch { /* file not found */ }
   }
-  for (const ctxPath of actionMetadata?.context || []) {
+  for (const ctxPath of slots.context) {
     try {
       const content = fs.readFileSync(path.join(featurePath, ctxPath), 'utf-8');
       if (content.trim()) documents.push({ path: ctxPath, content, role: 'context' });
