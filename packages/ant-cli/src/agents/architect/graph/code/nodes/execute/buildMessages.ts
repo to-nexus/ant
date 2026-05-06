@@ -352,7 +352,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // already baked into the selection (`selectArtifactsWithPolicy`
       // reassigns `role='context'` for ui/design-system tasks; explicit
       // user selections keep their authored role); the template only
-      // needs presence. See `.cursorrules`
+      // needs presence. See `AGENTS.md`
       // "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),

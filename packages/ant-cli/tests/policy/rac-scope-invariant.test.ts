@@ -1,16 +1,16 @@
 /**
  * RAC scope invariant — `state.artifacts ⊆ resolvedAction.refs ∪ context`.
  *
- * Locks the post-RAC SSOT introduced after the `prime-jetting-grate`
+ * Locks the post-RAC SSOT introduced after the `post-RAC pool-leak (2026-04)`
  * regression: a wholesale `architecture/system/**` load on the resolve
  * node injected `fe-system-main.md` into a `gen-code-directive` job whose
  * RAC explicitly excluded system-design slots. The leak surfaced through
  * three independent channels — decompose `tierRefs`, decompose `documents`,
  * and `deriveArtifactPolicy` package mapping — yet none was strictly
  * RAC-bounded. Pinning the pool itself to the RAC subset closes all three
- * at once. See `.cursorrules` "state.artifacts Post-RAC SSOT".
+ * at once. See `AGENTS.md` "state.artifacts Post-RAC SSOT".
  *
- * The `mossy-nearing-gleam` follow-up regression (Apr 26 2026) showed the
+ * The `discovery-tool RAC bypass (2026-04)` follow-up regression (Apr 26 2026) showed the
  * pool fix alone was insufficient: two compensating channels remained —
  *
  *   Channel A: decompose `discoveryTools` (`read_file` / `list_files`,
@@ -75,7 +75,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
     fs.mkdirSync(sysDir, { recursive: true });
     fs.writeFileSync(
       path.join(sysDir, 'fe-system-main.md'),
-      '# fe-system-main\n\nFrontend system design referencing Cross SDK.',
+      '# fe-system-main\n\nFrontend system design referencing Auth SDK.',
     );
     fs.writeFileSync(
       path.join(sysDir, 'api-contract-public.md'),
@@ -92,7 +92,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
   });
 
   it('gen-code-directive (PRD-only context) does NOT pull in fe-system-main.md from disk', () => {
-    // Reproduces the `prime-jetting-grate` scenario: user picks a directive
+    // Reproduces the `post-RAC pool-leak (2026-04)` scenario: user picks a directive
     // intent with the PRD as sole context, while disk also holds an
     // unrelated `architecture/system/fe-system-main.md`. The pool must
     // remain bounded by the RAC.
@@ -128,7 +128,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
 
     const fe = artifacts.find(a => a.path.endsWith('fe-system-main.md'));
     expect(fe?.role).toBe('ref');
-    expect(fe?.content).toContain('Cross SDK');
+    expect(fe?.content).toContain('Auth SDK');
   });
 
   it('directory slot — `architecture/spec/` walks into spec-*.md only when listed', () => {
@@ -158,7 +158,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
 // Channel A — decompose discovery tools must respect explicit RAC scope
 // ───────────────────────────────────────────────────────────────────────
 
-describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => {
+describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (2026-04)`)', () => {
   let workspacePath: string;
 
   beforeAll(() => {
@@ -168,7 +168,7 @@ describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => 
     fs.mkdirSync(path.join(workspacePath, 'architecture/system'), { recursive: true });
     fs.writeFileSync(
       path.join(workspacePath, 'architecture/system/fe-system-main.md'),
-      '# fe-system-main — Cross SDK adapter contract',
+      '# fe-system-main — Auth SDK adapter contract',
     );
     fs.mkdirSync(path.join(workspacePath, 'architecture/spec'), { recursive: true });
     fs.writeFileSync(path.join(workspacePath, 'architecture/spec/spec-foo.md'), '# spec-foo');
@@ -224,7 +224,7 @@ describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => 
       { refs: [], context: ['plan/prd.md'] },
     );
     expect(result).toMatch(/outside the RAC selection/);
-    expect(result).not.toContain('Cross SDK');
+    expect(result).not.toContain('Auth SDK');
   });
 
   it('explicit RAC blocks list_files on a non-RAC directory', async () => {
@@ -274,7 +274,7 @@ describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => 
       { path: 'architecture/system/fe-system-main.md' },
       undefined,
     );
-    expect(result).toContain('Cross SDK');
+    expect(result).toContain('Auth SDK');
   });
 
   // ── New invariants made possible by the SSOT unification ──────────────
@@ -312,7 +312,7 @@ describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => 
   });
 
   it('bare path with no prefix gets normalized to codebase/ → orthogonal to RAC', () => {
-    // `apps/console/foo.ts` — exactly the marble-jumping-grove shape —
+    // `apps/console/foo.ts` — exactly the rac-pool-normalize shape —
     // is normalized to `codebase/apps/console/foo.ts` by the SSOT, so
     // the RAC gate must let it through even with empty whitelist.
     const verdict = decideRacGate(
@@ -327,7 +327,7 @@ describe('decompose RAC whitelist (Channel A — `mossy-nearing-gleam`)', () => 
 // Channel B — deriveArtifactPolicy / createTaskQueue must respect mode
 // ───────────────────────────────────────────────────────────────────────
 
-describe('deriveArtifactPolicy mode gate (Channel B — `mossy-nearing-gleam`)', () => {
+describe('deriveArtifactPolicy mode gate (Channel B — `discovery-tool RAC bypass (2026-04)`)', () => {
   it('explicit mode + fe-main packages → no auto refs synthesis', () => {
     const result = deriveArtifactPolicy(
       'feature',
@@ -371,7 +371,7 @@ describe('deriveArtifactPolicy mode gate (Channel B — `mossy-nearing-gleam`)',
 
 describe('createTaskQueue mode gate — explicit pipeline produces RAC-only task.include', () => {
   it('Tier 3 explicit pipeline: no fe-system-main.md leaks into task.include', () => {
-    // Reproduces `mossy-nearing-gleam` task shape: gen-code-directive
+    // Reproduces `discovery-tool RAC bypass (2026-04)` task shape: gen-code-directive
     // with PRD-only RAC, decompose LLM emits `packages: ["fe-main"]`.
     // Explicit mode must NOT bake `architecture/system/fe-system-main.md`
     // into the task.

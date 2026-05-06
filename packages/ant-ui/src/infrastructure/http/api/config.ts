@@ -68,7 +68,7 @@ function sanitizeRepositoryName(workspaceId: string): string {
  * between base and every feature) without explicit user opt-in. Users who want
  * the external `localPath` mode must set `repoType` and `localPath` explicitly
  * via `updateProjectConfig` (advanced wizard step) — see Three-Axis Task Modeling
- * principle in CLAUDE.md.
+ * principle in AGENTS.md.
  */
 export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
   const sanitizedName = sanitizeRepositoryName(projectId);

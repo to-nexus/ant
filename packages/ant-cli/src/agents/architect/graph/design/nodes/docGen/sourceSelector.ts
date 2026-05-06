@@ -257,7 +257,7 @@ export async function decomposeWithToolLoop(
     // resolves, NOT the raw `tc.input.path` the LLM wrote. Without
     // this, an LLM-side `apps/console/postcss.config.mjs` rendered
     // verbatim while the handler resolved `codebase/apps/console/...` —
-    // the marble-jumping-grove RCA's user-visible "Read Failed:
+    // the RAC-pool path-normalize RCA's user-visible "Read Failed:
     // apps/console/..." card. Same SSOT every other tool callsite uses.
     const { normalizeToCodebasePath } = await import('../../../../../../core/utils/pathNormalizer');
     const normalizeWorkspacePath = (raw: string): string =>

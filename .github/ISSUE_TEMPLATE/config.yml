@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussion
+    url: ../../discussions
+    about: Ask questions, share ideas, or get help with setup. Not for bug reports.
+  - name: Security advisory
+    url: ../../security/advisories/new
+    about: Report a security vulnerability privately. See SECURITY.md.
+  - name: Documentation
+    url: ../../tree/main/docs
+    about: Read the docs before opening an issue — many "bugs" are configuration questions.

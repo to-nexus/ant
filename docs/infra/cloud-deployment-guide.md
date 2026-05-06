@@ -94,9 +94,9 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 
 | Environment | ant-api | ant-realtime | ant-ui |
 |-----|---------|--------------|--------|
-| Dev | `dev-ant.crosstoken.io/api` | `dev-ant.crosstoken.io/realtime` | `dev-ant.crosstoken.io` |
-| Stg | `stg-ant.crosstoken.io/api` | `stg-ant.crosstoken.io/realtime` | `stg-ant.crosstoken.io` |
-| Prod | `ant.crosstoken.io/api` | `ant.crosstoken.io/realtime` | `ant.crosstoken.io` |
+| Dev | `dev-ant.example.com/api` | `dev-ant.example.com/realtime` | `dev-ant.example.com` |
+| Stg | `stg-ant.example.com/api` | `stg-ant.example.com/realtime` | `stg-ant.example.com` |
+| Prod | `ant.example.com/api` | `ant.example.com/realtime` | `ant.example.com` |
 
 > **Note**: All services use **Round-robin**. No Sticky Session needed (Redis Pub/Sub for SSE, Redis State for Preview/IDE).
 
@@ -430,7 +430,7 @@ Full list: `GET /models` endpoint.
 | S3 Bucket | Static file hosting (dist/) |
 | CloudFront Distribution | CDN, SSL termination |
 | ACM Certificate | HTTPS for CloudFront |
-| Route53 Record | DNS (ant.crosstoken.io → CloudFront) |
+| Route53 Record | DNS (ant.example.com → CloudFront) |
 
 ### 3.2 Container Run Commands
 
@@ -712,7 +712,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
 spec:
   rules:
-  - host: ant.crosstoken.io
+  - host: ant.example.com
     http:
       paths:
       - path: /api
@@ -743,7 +743,7 @@ metadata:
     # No Sticky Session needed - Redis Pub/Sub handles broadcast
 spec:
   rules:
-  - host: ant.crosstoken.io
+  - host: ant.example.com
     http:
       paths:
       - path: /realtime
@@ -793,7 +793,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
 spec:
   rules:
-  - host: ant-server.crosstoken.io
+  - host: ant-server.example.com
     http:
       paths:
       - path: /realtime

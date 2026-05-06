@@ -66,7 +66,7 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
  *                   hint consumed by `resolveTaskTechTiersFromMap`.
  *
  * Channel B closure for the `state.artifacts Post-RAC SSOT` (see
- * `.cursorrules` and the `mossy-nearing-gleam` regression). Without
+ * `AGENTS.md` and the `discovery-tool RAC bypass (2026-04)` regression). Without
  * suppression, a directive job whose RAC excluded `fe-system-main.md`
  * still ended up with that path baked into every `task.artifactPolicy.refs`
  * and `task.include`, which downstream phases then re-fetched from disk.
@@ -147,7 +147,7 @@ export function deriveArtifactPolicy(
   // mechanism for surfacing design docs to plan/execute. When the user
   // explicitly pinned the RAC, those paths must come from the user's
   // refs/context only — synthesizing them from `packages` reintroduces
-  // the `prime-jetting-grate` / `mossy-nearing-gleam` leak even though
+  // the `post-RAC pool-leak (2026-04)` / `discovery-tool RAC bypass (2026-04)` leak even though
   // `state.artifacts` itself is RAC-bounded. `packages` is preserved on
   // the task for tech-tier resolution only.
   if (mode === 'infer' && packages?.length) {
@@ -588,7 +588,7 @@ export function createTaskQueue(
     // `mode` threads the RAC-source gate (Channel B closure). When
     // `mode === 'explicit'` the user pinned refs/context — `packages` is
     // a tech-tier hint only and MUST NOT auto-synthesize `fe-system-X.md`
-    // refs (`mossy-nearing-gleam` regression). The LLM may still emit a
+    // refs (`discovery-tool RAC bypass (2026-04)` regression). The LLM may still emit a
     // bare `include` array; we keep that pass-through but it is ignored
     // by the explicit pipeline because explicit mode in
     // `execute/buildMessages` selects from the RAC pool directly via

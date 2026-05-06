@@ -284,7 +284,7 @@ describe('Template Smoke Tests', () => {
     // Decision protocol prevents independent feature tasks from each
     // constructing their own copy of the adapter
     expect(output).toMatch(/Decision protocol .* same external integration/);
-    // Concrete blind-spot warning citing the prime-jetting-grate failure
+    // Concrete blind-spot warning citing the post-RAC pool-leak failure
     // mode (two adapters in different directories for the same SDK)
     expect(output).toMatch(/duplicate SDK \/ wallet \/ payment adapters/);
     // Foundation-side observation row mirrors the parallelism row
@@ -569,7 +569,7 @@ describe('Template Smoke Tests', () => {
       // UiSource dispatcher and its per-(uiSource, taskType) inventory are
       // wrapped entirely in {{#if uiSource}} so they render empty when no
       // UI source is active — this is by design (Contract exception per
-      // .cursorrules "Post-RAC Template Condition SSOT").
+      // AGENTS.md "Post-RAC Template Condition SSOT").
       'jobs/code/base/injections/ui-source-dispatch',
       'jobs/code/nodes/plan/injections/ui-source-inventory',
       // workspace-dep-snapshot wraps its entire body in

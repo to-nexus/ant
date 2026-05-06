@@ -10,7 +10,7 @@
  * - Redis-based state management (shared across pods)
  * - Dev Server lifecycle management
  * 
- * 별도 호스트: ant-preview.crosstoken.io → ant-preview service
+ * 별도 호스트: ant-preview.example.com → ant-preview service
  * 
  * @see docs/architecture/10-cloud-architecture.md Section 3.2
  */

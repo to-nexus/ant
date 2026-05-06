@@ -1,7 +1,7 @@
 /**
  * RAC (Resolved Action Context) whitelist gate for decompose tool calls.
  *
- * Closure for the `mossy-nearing-gleam` regression: when the resolved
+ * Closure for the `discovery-tool RAC bypass (2026-04)` regression: when the resolved
  * action is `explicit` and carries a non-empty RAC, decompose's
  * `read_file` / `list_files` tool calls MUST be limited to the union of
  * `refs ∪ context`. Without this gate, the prompt's

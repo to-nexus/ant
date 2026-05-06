@@ -1,7 +1,7 @@
 /**
  * PreviewProxyMiddleware
  * 
- * Express middleware to proxy preview requests on a dedicated host (ant-preview.crosstoken.io).
+ * Express middleware to proxy preview requests on a dedicated host (ant-preview.example.com).
  * Dynamically routes /:urlKey/* to the appropriate dev server port.
  * 
  * All frameworks (Vite, Next.js, etc.) use native base path configuration,

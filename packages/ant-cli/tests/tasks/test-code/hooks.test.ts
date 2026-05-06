@@ -321,7 +321,7 @@ describe('tasks/test-code/hooks/plan.finalizeNudge', () => {
     const body = planHook.finalizeNudge();
     // Project-specific examples from the regression must not leak in.
     expect(body).not.toMatch(/\b(domain|infrastructure|application|features?)\/\w/);
-    // Framework / language names from .cursorrules §3 forbidden list.
+    // Framework / language names from AGENTS.md §3 forbidden list.
     expect(body).not.toMatch(/\b(React|Next\.?js|Tailwind|TypeScript|JavaScript|Python|Go|Java)\b/);
     // No hard file-count thresholds either — the prompt template owns
     // those, the nudge only restates the decision principle.

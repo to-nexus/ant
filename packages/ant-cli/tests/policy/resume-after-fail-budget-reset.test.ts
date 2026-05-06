@@ -19,7 +19,7 @@
  *   1. Unit-tests the helper directly (input stale → output reset).
  *   2. Locks the wiring — every `failedAsQueue.map(...)` in graph.ts
  *      must call the helper, never reconstruct the shape inline.
- *   3. Locks the `still-lacing-north` boundary — Path A re-queue inside
+ *   3. Locks the `re-queue retry-budget reset` boundary — Path A re-queue inside
  *      `batchSplit/process.ts` MUST NOT use the helper / a bare `: 0`
  *      reset (in-session re-queue intentionally preserves the counter).
  */
@@ -298,7 +298,7 @@ describe('TaskOrchestrator.broadcastKanban — 6th writer routes through helper 
   });
 });
 
-describe('Path A still-lacing-north invariant — in-session re-queue MUST NOT reset (preserved)', () => {
+describe('Path A re-queue retry-budget reset invariant — in-session re-queue MUST NOT reset (preserved)', () => {
   it('Path A re-queue preserves batchSplitCount via newBatchSplitCount', () => {
     // The Path A branch is identifiable by the `requeue-parent` literal.
     const requeueIdx = batchSplitSource.indexOf("'requeue-parent'");
@@ -311,7 +311,7 @@ describe('Path A still-lacing-north invariant — in-session re-queue MUST NOT r
     const slice = batchSplitSource.slice(requeueIdx, requeueIdx + 3500);
     expect(slice).toMatch(/batchSplitCount:\s*newBatchSplitCount\b/);
     // Defence: the cross-resume `: 0` reset literal must not have leaked
-    // into the in-session re-queue site (still-lacing-north regression
+    // into the in-session re-queue site (re-queue retry-budget reset regression
     // signature — full retry budget re-issued every cycle → infinite
     // re-try loop).
     expect(slice).not.toMatch(/batchSplitCount:\s*0\b/);
@@ -319,7 +319,7 @@ describe('Path A still-lacing-north invariant — in-session re-queue MUST NOT r
 
   it('batchSplit/process.ts does not import the resume helper (boundary stays distinct)', () => {
     // Routing the in-session re-queue through the cross-resume helper
-    // would re-introduce still-lacing-north. Lock the import boundary.
+    // would re-introduce re-queue retry-budget reset. Lock the import boundary.
     expect(batchSplitSource).not.toMatch(/buildResumableFailedTask/);
     expect(batchSplitSource).not.toMatch(/resumeBudgetReset/);
   });

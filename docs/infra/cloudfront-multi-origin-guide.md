@@ -2,7 +2,7 @@
 
 ## 개요
 
-`ant.crosstoken.io` 도메인에서 3개의 서로 다른 오리진을 하나의 CloudFront Distribution으로 서빙한다.
+`ant.example.com` 도메인에서 3개의 서로 다른 오리진을 하나의 CloudFront Distribution으로 서빙한다.
 
 | 경로 패턴 | 오리진 | 서비스 | 콘텐츠 |
 |-----------|--------|--------|--------|
@@ -10,7 +10,7 @@
 | `/downloads/*` | S3: `ant-releases-{env}` | 릴리즈 바이너리 | Desktop 앱 설치파일 |
 | `/*` (default) | S3: `ant-site-{env}` | ant-site (Next.js SSG) | 마케팅 페이지 |
 
-백엔드 서비스(`/api/*`, `/realtime/*`, `/ide/*`)는 별도 도메인(`ant-server.crosstoken.io`)의 ALB로 라우팅되며 이 가이드의 범위가 아니다.
+백엔드 서비스(`/api/*`, `/realtime/*`, `/ide/*`)는 별도 도메인(`ant-server.example.com`)의 ALB로 라우팅되며 이 가이드의 범위가 아니다.
 
 ---
 
@@ -165,9 +165,9 @@ Custom Error Response는 Distribution 전체에 적용되므로 Site 경로(`/pr
 
 ### Phase 2: ant-cli 환경변수 확인
 
-5. `FRONTEND_URL`이 **도메인 루트**(`https://ant.crosstoken.io`)인지 확인한다. `/app`을 포함하면 안 된다.
+5. `FRONTEND_URL`이 **도메인 루트**(`https://ant.example.com`)인지 확인한다. `/app`을 포함하면 안 된다.
    - OAuth 콜백에서 `returnTo` 파라미터 기반으로 Site(`/`) 또는 App(`/app/`)으로 리다이렉트하므로, `FRONTEND_URL`은 경로 없는 도메인이어야 한다.
-   - `GOOGLE_REDIRECT_URI`는 `https://ant.crosstoken.io/api/auth/google/callback` (기존과 동일).
+   - `GOOGLE_REDIRECT_URI`는 `https://ant.example.com/api/auth/google/callback` (기존과 동일).
 6. ant-cli 서비스 재배포 (ant-api, ant-job 모두)
 
 ### Phase 3: 프론트엔드 배포
@@ -179,16 +179,16 @@ Custom Error Response는 Distribution 전체에 적용되므로 Site 경로(`/pr
 ### Phase 4: 검증
 
 **정적 페이지 검증**:
-10. `https://ant.crosstoken.io/` → Site 홈 확인
-11. `https://ant.crosstoken.io/app/` → App SPA 로드 확인 (GNB에 Sign In 버튼)
-12. `https://ant.crosstoken.io/pricing/` → Site 서브페이지 확인
-13. `https://ant.crosstoken.io/legal/terms-of-use/` → Legal 페이지 확인
+10. `https://ant.example.com/` → Site 홈 확인
+11. `https://ant.example.com/app/` → App SPA 로드 확인 (GNB에 Sign In 버튼)
+12. `https://ant.example.com/pricing/` → Site 서브페이지 확인
+13. `https://ant.example.com/legal/terms-of-use/` → Legal 페이지 확인
 
 **OAuth 인증 흐름 검증**:
 14. Site "Sign In" 클릭 → Google OAuth → Site 원래 페이지로 복귀 (로그인 유지)
 15. Site "Get Started" 클릭 → Google OAuth → `/app/?auth=success`로 리다이렉트 → App 정상 로드
 16. App "Sign In" 클릭 → Google OAuth → `/app/?auth=success`로 리다이렉트 → App 정상 로드
-17. 로그인 상태에서 `https://ant.crosstoken.io/` 접속 → Site GNB에 사용자 아바타 + 드롭다운 표시
+17. 로그인 상태에서 `https://ant.example.com/` 접속 → Site GNB에 사용자 아바타 + 드롭다운 표시
 18. 로그인 상태에서 `/app/` 새 탭 접속 → 쿠키 기반 세션 자동 복원 (auth=success 없이도 로그인 유지)
 
 ---
@@ -247,7 +247,7 @@ Site와 App이 같은 `localhost:4200` 호스트에서 서빙되므로, JWT 쿠�
 
 ## 7. 인증 흐름 (OAuth returnTo)
 
-Site와 App은 같은 도메인(`ant.crosstoken.io`)에서 서빙되므로 JWT `httpOnly` 쿠키가 자동으로 공유된다.
+Site와 App은 같은 도메인(`ant.example.com`)에서 서빙되므로 JWT `httpOnly` 쿠키가 자동으로 공유된다.
 
 ### 7.1 returnTo 매개변수
 

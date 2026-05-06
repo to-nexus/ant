@@ -1,5 +1,5 @@
 /**
- * Orchestrator deadlock regression — `log-satin-feeling-orbit` guard.
+ * Orchestrator deadlock regression — `orchestrator foundation-gate deadlock (2026-05)` guard.
  *
  * Reproduces the exact queue shape that triggered the May 4 deadlock:
  *
@@ -31,7 +31,7 @@ import { TaskQueue } from '../../src/agents/architect/types/task';
 import { hooksForTaskType } from '../../src/agents/architect/graph/code/tasks/_shared/registry';
 import type { CodeTask } from '../../src/agents/architect/types/task';
 
-describe('Orchestrator deadlock regression — log-satin-feeling-orbit', () => {
+describe('Orchestrator deadlock regression — orchestrator foundation-gate deadlock', () => {
   it('foundation feature parent batch-split → sub-tasks satisfy foundation gate', () => {
     // Reproduces the queue head: foundation feature parent at priority
     // 200 with `band: 'foundation'`. Decompose's priority→band mapping

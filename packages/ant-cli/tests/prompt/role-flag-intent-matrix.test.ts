@@ -10,7 +10,7 @@
  *   rev-ui         → UI=ref,  SYS=--,   SPEC=--, SOURCES=ctx
  *
  * Post-RAC templates must branch by what the block enforces (Gate /
- * Contract / Background — see `.cursorrules` "Post-RAC Template
+ * Contract / Background — see `AGENTS.md` "Post-RAC Template
  * Condition SSOT"), NOT by role. This test pins the Gate guarantee:
  * for every code intent that surfaces UI / system-design as ref OR
  * context, the corresponding `hasUi` / `hasSystemDesign` Gate flag

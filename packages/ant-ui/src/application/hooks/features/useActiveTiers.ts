@@ -6,7 +6,7 @@
  *
  * Why this hook exists:
  *
- *   `.cursorrules` D27 mandates `isTierActive(tier, slot, domain, runtime)`
+ *   `AGENTS.md` D27 mandates `isTierActive(tier, slot, domain, runtime)`
  *   as the single SSOT, with FE wizard / FE summary / BE decompose / BE
  *   prompt-build as the only call surfaces. Before this hook, FE had its
  *   own per-tier inline calls in `useBasisWizard`, `BasisSummaryBar`, and

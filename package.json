@@ -8,14 +8,12 @@
     "dev:site": "pnpm --filter @ant/site dev",
     "dev:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:server",
     "dev:local:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm dev:local\" \"pnpm dev:ui\" \"pnpm dev:site\"",
-    
     "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:cloud",
     "dev:cloud:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm dev:cloud\" \"pnpm dev:ui\" \"pnpm dev:site\"",
     "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:server",
     "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:realtime-server",
     "dev:job-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
     "dev:preview-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-server",
-    
     "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml up -d\"",
     "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml down",
     "dev:infra:visual": "docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml up -d",
@@ -24,10 +22,8 @@
     "dev:infra:redis:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down",
     "dev:infra:vector": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d",
     "dev:infra:vector:down": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
-    
     "dev:local:mock": "ANT_LLM_MOCK=true ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:cloud",
     "dev:local:mock:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:local:mock\" \"pnpm dev:ui\"",
-
     "test:cli": "pnpm --filter @ant/cli test",
     "test:e2e": "pnpm --filter @ant/cli exec vitest run tests/e2e-mock/",
     "test:e2e:real": "ANT_E2E_TIMEOUT=300000 pnpm --filter @ant/cli exec vitest run tests/e2e-mock/",
@@ -36,12 +32,10 @@
     "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
     "build:site": "pnpm --filter @ant/site build",
-
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
     "start:site": "pnpm --filter @ant/site start",
     "start:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli start:server",
     "start:local:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm start:local\" \"pnpm start:ui\" \"pnpm start:site\"",
-
     "start:cloud": "pnpm --filter @ant/cli start:cloud",
     "start:cloud:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm start:cloud\" \"pnpm start:ui\" \"pnpm start:site\"",
     "start:local:mock": "ANT_LLM_MOCK=true ANT_SERVER_MODE=local pnpm --filter @ant/cli start:cloud",
@@ -50,10 +44,8 @@
     "start:realtime-server": "pnpm --filter @ant/cli start:realtime-server",
     "start:job-worker": "pnpm --filter @ant/cli start:job-worker",
     "start:preview-server": "pnpm --filter @ant/cli start:preview-server",
-    
     "init:workspace": "pnpm --filter @ant/cli init:workspace",
     "init:feature": "pnpm --filter @ant/cli init:feature",
-
     "git:sweep": "node scripts/git-sweep.mjs",
     "chat:sweep": "node scripts/check-no-legacy-chat.mjs",
     "typecheck:cli": "pnpm --filter @ant/cli exec tsc --noEmit",
@@ -61,9 +53,20 @@
     "typecheck": "pnpm typecheck:cli && pnpm typecheck:ui",
     "test:git": "pnpm --filter @ant/ui test:git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "ai",
+    "ai-agent",
+    "coding-agent",
+    "spec-driven",
+    "claude",
+    "figma",
+    "langgraph",
+    "self-hosted",
+    "design-to-code",
+    "prd"
+  ],
+  "author": "The Ant Authors",
+  "license": "Apache-2.0",
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -83,5 +86,13 @@
       "code-server",
       "esbuild"
     ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<org>/ant"
+  },
+  "homepage": "https://github.com/<org>/ant#readme",
+  "bugs": {
+    "url": "https://github.com/<org>/ant/issues"
   }
 }

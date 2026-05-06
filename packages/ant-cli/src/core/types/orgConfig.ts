@@ -13,7 +13,7 @@ export interface OrgGitHubConfig {
    * Default GitHub owner (user or organization) for new projects.
    * When set, new projects automatically get githubRepo = https://github.com/{owner}/{projectName}
    * 
-   * Examples: "to-nexus", "my-company", "harvey-probe"
+   * Examples: "to-nexus", "my-company", "acme-corp"
    */
   owner?: string;
 }

@@ -106,7 +106,7 @@ export class JwtService {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      ...(isProduction ? { domain: '.crosstoken.io' } : {}),
+      ...(isProduction ? { domain: '.example.com' } : {}),
       path: '/',
       maxAge: this.expiresInSeconds * 1000, // ms for Express
     };
@@ -124,7 +124,7 @@ export class JwtService {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      ...(isProduction ? { domain: '.crosstoken.io' } : {}),
+      ...(isProduction ? { domain: '.example.com' } : {}),
       path: '/',
     };
   }

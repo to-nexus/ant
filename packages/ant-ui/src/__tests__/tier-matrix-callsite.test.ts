@@ -1,7 +1,7 @@
 /**
  * SSOT D27 enforcement — the only public predicate that knows the tier ×
  * domain × runtime matrix is `isTierActive` in `@ant/shared`. Per
- * `.cursorrules` Tier Matrix SSOT section, FE callers are expected to
+ * `AGENTS.md` Tier Matrix SSOT section, FE callers are expected to
  * funnel through:
  *
  *   - `useActiveTiers(slot)` (React hook surface — wizard, summary,

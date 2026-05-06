@@ -223,7 +223,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ✅ Extract metadata from artifact pool via ArtifactPoolView.
   //
   // Post-RAC SSOT: templates read role-scoped flags ONLY (see
-  // `.cursorrules` "Post-RAC Template Condition SSOT"). Role-agnostic
+  // `AGENTS.md` "Post-RAC Template Condition SSOT"). Role-agnostic
   // "availability meta" blocks (uiSectionsSummary / designDocsMeta /
   // uiHint) were removed — the pool already injects those documents
   // via role-annotated sections in the prompt, so re-listing paths
@@ -269,7 +269,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // every artifact this turn — discovery tools must not side-load files
   // outside refs/context, and decompose's `packages → fe-system-X.md`
   // auto-mapping is suppressed (see `state.artifacts Post-RAC SSOT` in
-  // `.cursorrules` and the `mossy-nearing-gleam` regression). Empty RAC
+  // `AGENTS.md` and the `discovery-tool RAC bypass (2026-04)` regression). Empty RAC
   // (`hasExplicitFields=false` OR refs+context both empty) falls through
   // to the legacy infer behaviour because the LLM legitimately needs to
   // discover anchors when the user hasn't pre-selected any.
@@ -318,7 +318,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // `@ant/shared/action-config-matrix.ts`); both must trigger the same
   // decomposition rules (design-system ladder, uiSections schema),
   // otherwise the latter two intents regress into missing guidance.
-  // See `.cursorrules` "Post-RAC Template Condition SSOT".
+  // See `AGENTS.md` "Post-RAC Template Condition SSOT".
   const hasUi = pool.hasUi();
 
   // Functional meta — UI section IDs inform the LLM's `uiSections`
@@ -365,7 +365,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     workspaceState: state.workspaceState,
     // RAC-source gate — templates suppress `packages → fe-system-X.md`
     // mapping and design-doc cross-cutting guidance when the user has
-    // explicitly pinned the RAC. See `.cursorrules` "state.artifacts
+    // explicitly pinned the RAC. See `AGENTS.md` "state.artifacts
     // Post-RAC SSOT" (Channel B suppression).
     isExplicitPipeline,
     hasUi,
@@ -664,7 +664,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       //      out of the common handler. Sibling-tree paths (plan/,
       //      architecture/, ...) are gated; codebase/ paths are
       //      orthogonal, matching the original `scope === 'artifact'`
-      //      contract (`mossy-nearing-gleam` regression invariant).
+      //      contract (`discovery-tool RAC bypass (2026-04)` regression invariant).
       const { ARCHITECT_TOOLS } = await import('../../../../../common/tool/toolSchemas');
       const { handleReadFile, handleListFiles } = await import('../../../../../common/tool/handlers');
       const { CLARIFY_TOOL, handleClarify } = await import('../../../../../common/clarify');

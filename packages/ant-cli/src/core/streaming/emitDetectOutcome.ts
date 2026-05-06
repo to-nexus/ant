@@ -2,7 +2,7 @@
  * emitDetectOutcome — Single entry point for broadcasting detect/decompose-final
  * RAC summaries to the chat UI.
  *
- * Canonical Tag Rendering SSOT (see .cursorrules):
+ * Canonical Tag Rendering SSOT (see AGENTS.md):
  *   Every `<tag>` rendered to chat is owned by `SpecialTagTransformer`. Callers
  *   NEVER duplicate formatting logic. This helper packs the RAC into a canonical
  *   `<detect>{...}</detect>` payload, runs it through the transformer, and
