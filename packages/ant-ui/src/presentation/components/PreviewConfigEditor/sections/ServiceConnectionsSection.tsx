@@ -30,6 +30,7 @@ export function ServiceConnectionsSection({
   onDeleteConn,
   onAddConn,
   onApplyToChat,
+  onToggleVirtualization,
 }: {
   localConns: ServiceConnection[];
   packageGroups: Map<string, ServiceConnection[]>;
@@ -48,6 +49,7 @@ export function ServiceConnectionsSection({
   onDeleteConn: (id: string) => void;
   onAddConn: (conn: ServiceConnection) => void;
   onApplyToChat: (msg: string) => void;
+  onToggleVirtualization?: (id: string, active: boolean) => void;
 }) {
   const { t } = useTranslation('explorer');
 
@@ -121,6 +123,11 @@ export function ServiceConnectionsSection({
                         onUpdate={(updates) => onUpdateConn(conn.id, updates)}
                         onDelete={() => onDeleteConn(conn.id)}
                         onFix={onApplyToChat}
+                        onToggleVirtualization={
+                          onToggleVirtualization
+                            ? (active) => onToggleVirtualization(conn.id, active)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>

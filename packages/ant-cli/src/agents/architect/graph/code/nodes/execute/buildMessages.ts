@@ -32,7 +32,11 @@ import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactP
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
-import { isMockContentImageryActive } from "../../../../../../core/prompt/builder/mockContentImageryGate";
+import {
+  isServiceVirtualizationContractActive,
+  isServiceVirtualizationDataActive,
+  isServiceVirtualizationImageryActive,
+} from "../../../../../../core/prompt/builder/serviceVirtualization";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
@@ -355,12 +359,22 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
       // Stack flags — mirror plan/planGeneration.ts (single SSOT via
       // AutoInjectionResolver.computeStackFlags). Required by Handlebars
-      // gates such as `mock-content-imagery` partial inclusion.
+      // gates including the Service Virtualization imagery partial.
       hasFrontend,
       hasBackend,
-      // Derived gate (SBS) — service domain × FE stack × feature task.
-      // Domain comparison happens in code (Domain-Branching Locality I1).
-      mockContentImageryActive: isMockContentImageryActive({
+      // Service Virtualization gates (SBS) — three orthogonal partials
+      // (contract / data / imagery). The `hasBusinessConnection` flag is
+      // derived once at resolve time and parked on
+      // `state.virtualizationSnapshot` so every phase shares one snapshot.
+      // See `core/prompt/builder/serviceVirtualization/`.
+      serviceVirtualizationContractActive: isServiceVirtualizationContractActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      }),
+      serviceVirtualizationDataActive: isServiceVirtualizationDataActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+        taskType,
+      }),
+      serviceVirtualizationImageryActive: isServiceVirtualizationImageryActive({
         hasFrontend,
         domain: state.resolvedAction?.domain,
         taskType,

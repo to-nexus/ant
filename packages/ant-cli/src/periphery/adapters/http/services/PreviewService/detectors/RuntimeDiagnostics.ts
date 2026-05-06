@@ -8,6 +8,34 @@ export interface DiagnosisResult {
 }
 
 /**
+ * Service-Virtualization-aware severity downgrade.
+ *
+ * When a connection that COULD run on a virtualized adapter fails to
+ * reach its real endpoint, we downgrade `fatal` to `warning` and append
+ * a suggestion prefix that names the toggle env var. This preserves the
+ * Walking-Skeleton contract: the user can keep developing while real
+ * backends are unavailable. `infrastructure` connections (no
+ * `virtualization` field) keep the original severity — docker-compose
+ * is the only legitimate provider for them.
+ */
+function downgradeIfVirtualizable(
+  conn: ServiceConnection | undefined,
+  baseSeverity: 'fatal' | 'warning',
+): { severity: 'fatal' | 'warning'; suggestionPrefix: string } {
+  if (!conn?.virtualization) return { severity: baseSeverity, suggestionPrefix: '' };
+  if (conn.virtualization.active) {
+    return {
+      severity: 'warning',
+      suggestionPrefix: `Service Virtualization (${conn.virtualization.toggleEnvVar}=true) 가 활성 상태인데도 real endpoint 시도가 감지되었습니다. 코드가 토글을 무시하고 있을 수 있습니다. `,
+    };
+  }
+  return {
+    severity: 'warning',
+    suggestionPrefix: `${conn.virtualization.toggleEnvVar}=true 로 설정하면 real endpoint 없이 virtualized adapter 로 동작합니다 (Service Virtualization). `,
+  };
+}
+
+/**
  * RuntimeDiagnostics
  * 
  * Analyzes process exit logs to diagnose startup failures.
@@ -24,8 +52,14 @@ export class RuntimeDiagnostics {
     const issues: PreviewIssue[] = [];
     const affectedConnections: string[] = [];
 
-    // 1. Connection refused / unreachable service
-    const connRefusedMatches = logs.match(/(?:ECONNREFUSED|connection refused|connect ECONNREFUSED)[^\n]*?(?::(\d+))?/gi);
+    // 1. Connection refused / unreachable service.
+    //    The trailing `[^\n]*` is greedy on purpose: a lazy quantifier
+    //    here would stop at `ECONNREFUSED` and the optional port group
+    //    would never consume `:port`, leaving every `affected` lookup
+    //    null. With a greedy run we capture the rest of the line so the
+    //    inner `match(/:(\d+)/)` can find the port — required for the
+    //    Service Virtualization downgrade to fire.
+    const connRefusedMatches = logs.match(/(?:ECONNREFUSED|connection refused|connect ECONNREFUSED)[^\n]*(?::(\d+))?/gi);
     if (connRefusedMatches) {
       for (const match of connRefusedMatches) {
         const portMatch = match.match(/:(\d+)/);
@@ -38,13 +72,15 @@ export class RuntimeDiagnostics {
 
         if (affected) {
           affectedConnections.push(affected.id);
+          const { severity, suggestionPrefix } = downgradeIfVirtualizable(affected, 'fatal');
+          const baseFix = affected.resolution.type === 'docker'
+            ? `docker compose 서비스 "${affected.resolution.service}"가 실행 중인지 확인하고, 필요하면 docker compose up -d를 실행해주세요.`
+            : `"${affected.name}" 서비스(${affected.envVar}=${affected.value})에 연결할 수 없습니다. 서비스가 실행 중인지 확인해주세요.`;
           issues.push({
             reasoning: 'infra-missing' as PreviewIssueReasoning,
-            severity: 'fatal',
+            severity,
             reason: `Service "${affected.name}" is unreachable on port ${port}. Is the infrastructure running?`,
-            suggestedFix: affected.resolution.type === 'docker'
-              ? `docker compose 서비스 "${affected.resolution.service}"가 실행 중인지 확인하고, 필요하면 docker compose up -d를 실행해주세요.`
-              : `"${affected.name}" 서비스(${affected.envVar}=${affected.value})에 연결할 수 없습니다. 서비스가 실행 중인지 확인해주세요.`,
+            suggestedFix: `${suggestionPrefix}${baseFix}`,
           });
         } else {
           issues.push({
@@ -77,13 +113,15 @@ export class RuntimeDiagnostics {
         const configRef = affected?.configSource === 'toml'
           ? 'config.example.toml'
           : '.env.example';
+        const { severity, suggestionPrefix } = downgradeIfVirtualizable(affected, 'fatal');
+        const baseFix = affected
+          ? `.env 파일에 ${envVar}을 설정해주세요. 예: ${envVar}=${affected.value || 'YOUR_VALUE'}`
+          : `.env 파일에 ${envVar}을 설정해주세요. ${configRef}을 참고하여 적절한 값을 입력해주세요.`;
         issues.push({
           reasoning: 'env-missing' as PreviewIssueReasoning,
-          severity: 'fatal',
+          severity,
           reason: `Environment variable "${envVar}" is not set.`,
-          suggestedFix: affected
-            ? `.env 파일에 ${envVar}을 설정해주세요. 예: ${envVar}=${affected.value || 'YOUR_VALUE'}`
-            : `.env 파일에 ${envVar}을 설정해주세요. ${configRef}을 참고하여 적절한 값을 입력해주세요.`,
+          suggestedFix: `${suggestionPrefix}${baseFix}`,
         });
       }
     }

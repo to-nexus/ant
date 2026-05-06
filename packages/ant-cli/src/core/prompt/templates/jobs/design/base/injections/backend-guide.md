@@ -62,7 +62,7 @@ Architecture is not a single label — it is the combination of independent desi
 
 ---
 
-### 3. Infrastructure Independence
+### 3. Infrastructure Independence (Service Virtualization)
 
 **Observation target**: Does the project depend on external services (third-party APIs, cross-project dependencies) that may be unavailable during development?
 
@@ -71,11 +71,11 @@ Architecture is not a single label — it is the combination of independent desi
 | **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
 | **Local infrastructure** | Does the project use databases, caches, or queues provisioned locally (e.g., via docker-compose)? |
 
-**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies in the catalog section where that adapter is introduced.
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies (Service Virtualization) in the catalog section where that adapter is introduced.
 
-**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + mock). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
+**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name; master fallback `USE_MOCK` MAY also be named). Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
 
-**Constraint**: Local infrastructure (databases, caches, queues managed by docker-compose) is NOT a mock target — they run as real local instances.
+**Constraint**: Local infrastructure (databases, caches, queues managed by docker-compose) is NOT a Service Virtualization target — they run as real local instances.
 
 ---
 
@@ -103,7 +103,7 @@ Architecture is not a single label — it is the combination of independent desi
 
 **§ Real-time & Connection State**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 
-**§ External Integrations**: When external service adapters exist, each port's mock implementation strategy MUST be documented per Infrastructure Independence Guardrail. Do NOT specify implementation details. Local infrastructure is NOT a mock target.
+**§ External Integrations**: When external service adapters exist, each port's Service Virtualization strategy (production + mock + toggle env var name) MUST be documented per Infrastructure Independence Guardrail. Do NOT specify implementation details. Local infrastructure is NOT a Service Virtualization target.
 
 **§ Architecture Style**: Do NOT default to MSA. Complexity must match requirements.
 

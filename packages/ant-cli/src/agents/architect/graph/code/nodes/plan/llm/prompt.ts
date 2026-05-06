@@ -25,7 +25,11 @@ import { ArchitectGraphState } from "../../../state";
 import { CodeTask } from "../../../../../types/task";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
-import { isMockContentImageryActive } from "../../../../../../../core/prompt/builder/mockContentImageryGate";
+import {
+  isServiceVirtualizationContractActive,
+  isServiceVirtualizationDataActive,
+  isServiceVirtualizationImageryActive,
+} from "../../../../../../../core/prompt/builder/serviceVirtualization";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
@@ -175,9 +179,18 @@ export async function buildPlanPrompt(
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,
-    // Derived gate (SBS) — service domain × FE stack × feature task.
-    // Domain comparison happens in code (Domain-Branching Locality I1).
-    mockContentImageryActive: isMockContentImageryActive({
+    // Service Virtualization gates (SBS) — three orthogonal partials
+    // (contract / data / imagery). `hasBusinessConnection` is derived
+    // once at resolve and parked on `state.virtualizationSnapshot`.
+    // See `core/prompt/builder/serviceVirtualization/`.
+    serviceVirtualizationContractActive: isServiceVirtualizationContractActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+    }),
+    serviceVirtualizationDataActive: isServiceVirtualizationDataActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      taskType: task.type,
+    }),
+    serviceVirtualizationImageryActive: isServiceVirtualizationImageryActive({
       hasFrontend,
       domain: state.resolvedAction?.domain,
       taskType: task.type,

@@ -155,18 +155,25 @@ Your modularization:
 
 {{> jobs/code/base/injections/secure-coding}}
 
-{{> jobs/code/base/injections/mock-adapter-contract}}
-
 {{!--
-  mock-content-imagery — companion to mock-adapter-contract for image
-  slots fed by user-uploaded / DB-fetched content. Gate axis (SBS):
-  service domain × frontend stack × feature task — derived in code by
-  `isMockContentImageryActive` (core/prompt/builder/mockContentImageryGate)
-  to satisfy Domain-Branching Locality I1. execute node injects the
-  boolean via `mockContentImageryActive`.
+  Service Virtualization SSOT — three orthogonal partials gated by
+  helpers under `core/prompt/builder/serviceVirtualization/`:
+    - contract: hasBusinessConnection
+    - data:     hasBusinessConnection × (taskType ∈ feature|ui|design-system)
+    - imagery:  hasFrontend × domain==='service' × taskType==='feature'
+  Domain-Branching Locality (I1): the gates are derived in code; the
+  templates only see the resulting booleans.
 --}}
-{{#if mockContentImageryActive}}
-{{> jobs/code/base/injections/mock-content-imagery}}
+{{#if serviceVirtualizationContractActive}}
+{{> jobs/code/base/injections/service-virtualization-contract}}
+{{/if}}
+
+{{#if serviceVirtualizationDataActive}}
+{{> jobs/code/base/injections/service-virtualization-data}}
+{{/if}}
+
+{{#if serviceVirtualizationImageryActive}}
+{{> jobs/code/base/injections/service-virtualization-imagery}}
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

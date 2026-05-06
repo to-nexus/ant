@@ -283,7 +283,7 @@ This category evaluates the practical implementability of the design — the pri
 **Strong indicators (3–4):**
 - A developer reading only the design documents (with PRD as supplementary) can implement the system without making architectural assumptions.
 - API Contract fully covers all integration points between frontend and backend.
-- Mock adapter strategies are defined for all external service dependencies.
+- Service Virtualization strategies (production + mock + toggle env var) are defined for all external service dependencies.
 - Directory structure principles are stated when framework augmentation is present.
 - No circular references or contradictions between API Contract and System Design documents.
 
@@ -342,7 +342,7 @@ This category evaluates the practical implementability of the design — the pri
 - [ ] **API integration**: Infrastructure adapter role defined? Error propagation policy stated?
 - [ ] **Auth lifecycle**: Which boundary owns each auth phase (not step-by-step procedure)?
 - [ ] **Domain rules** (if applicable): Calculation ownership stated with PRD references (not reproduced formulas)?
-- [ ] **External integrations**: Adapter isolation principle stated? Mock implementation strategies defined for external dependencies?
+- [ ] **External integrations**: Adapter isolation principle stated? Service Virtualization strategies (production + mock + toggle env var name) defined for external dependencies?
 - [ ] **Directory structure** (if framework augmentation present): Boundary-to-directory mapping and import direction rules stated?
 - [ ] **Abstraction level**: No component names, prop definitions, hook usage, CSS properties?
 - [ ] **PRD coverage**: Every user-facing feature has an owning boundary?
@@ -449,10 +449,10 @@ This category evaluates the practical implementability of the design — the pri
 
 | Score | Criteria |
 |-------|----------|
-| **15** | Zero guessing required. API Contract complete. Mock strategies defined. Cross-document consistent. Technology choices actionable. |
-| **12** | Minor gaps. 1–2 integration points underspecified. Mock strategies mostly present. |
+| **15** | Zero guessing required. API Contract complete. Service Virtualization strategies defined. Cross-document consistent. Technology choices actionable. |
+| **12** | Minor gaps. 1–2 integration points underspecified. Virtualization strategies mostly present. |
 | **9** | Several gaps. Code Job must make 3–5 architectural assumptions. Some cross-document inconsistencies. |
-| **6** | Significant gaps. Code Job must make many assumptions. Missing mock strategies. |
+| **6** | Significant gaps. Code Job must make many assumptions. Missing Service Virtualization strategies. |
 | **0–5** | Design insufficient for implementation. Code Job would produce incorrect or incomplete code. |
 
 #### Extensibility & Change Resilience (10 points)
@@ -578,10 +578,10 @@ This category evaluates the practical implementability of the design — the pri
 |------------|-------------|-----------|-----------|-----|
 | [integration] | ✅/❌ | ✅/❌ | ✅/❌ | [description] |
 
-### 6.2 Infrastructure Independence
-| External Service | Mock Strategy Defined | Impact if Missing |
-|-----------------|----------------------|-------------------|
-| [service] | Yes/No | [impact] |
+### 6.2 Infrastructure Independence (Service Virtualization)
+| External Service | Virtualized? | Toggle Env Var | Impact if Missing |
+|-----------------|---|---|-------------------|
+| [service] | yes (every business connection) / n/a (infrastructure) | `USE_MOCK_<NAME>` / — | [impact] |
 
 ### 6.3 Implementability Assessment
 - Can Code Job determine project structure? Yes/No

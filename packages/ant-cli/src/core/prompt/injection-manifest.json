@@ -38,8 +38,9 @@
     "preview-env-contract": [],
     "behavioral-debugging": [],
     "secure-coding": [],
-    "mock-adapter-contract": [],
-    "mock-content-imagery": []
+    "service-virtualization-contract": [],
+    "service-virtualization-data": [],
+    "service-virtualization-imagery": []
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],
@@ -52,6 +53,9 @@
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"]
+  },
+  "jobs/code/nodes/plan/variants/verification/injections": {
+    "contract-parity": []
   },
   "jobs/design/base/injections": {
     "document-language": ["userLanguage"],

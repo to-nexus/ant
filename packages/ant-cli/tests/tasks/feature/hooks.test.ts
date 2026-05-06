@@ -74,12 +74,16 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes only the verify-mode router dispatch (post plan §5.4 / §5.6)', () => {
-    // composeBundle now wires only `router.routeAfterDone`. Other slots
-    // were retired with the verification Session.
+  it('bundle publishes only the verify-mode router + parity-wrapped check (post Phase 4 SV parity)', () => {
+    // composeBundle wires `router.routeAfterDone` (verify-mode routing
+    // for tasks that own a verification cycle) AND `check.evaluate` (the
+    // Service Virtualization parity wrapper that fires only when verify-
+    // mode is entered AND business connections exist; pure no-op
+    // otherwise). Apply-phase check is undefined for feature so the
+    // wrapper composes only the parity tail.
     expect(featureBundle.plan?.initSession).toBeUndefined();
     expect(featureBundle.plan?.checkRetryTermination).toBeUndefined();
-    expect(featureBundle.check?.evaluate).toBeUndefined();
+    expect(typeof featureBundle.check?.evaluate).toBe('function');
     expect(featureBundle.tool?.onEvent).toBeUndefined();
     expect(featureBundle.command?.guard).toBeUndefined();
     expect(typeof featureBundle.router?.routeAfterDone).toBe('function');
