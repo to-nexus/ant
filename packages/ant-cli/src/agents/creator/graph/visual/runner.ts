@@ -161,6 +161,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           tokenUsage: finalState.tokenUsage,
           jobTiming: jobTimingRef,
           jobId: _httpJobId,
+          resolvedAction: finalState.resolvedAction,
           lastEngineeredPrompt: finalState.lastEngineeredPrompt,
           lastOutputPath: finalState.lastOutputPath,
           assetType: finalState.assetType,
