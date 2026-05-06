@@ -130,14 +130,23 @@ export class WorktreeService {
         });
         return { path: worktreePath, branch: branchName, isMain: false };
       }
-      // Surface diagnostic so we can correlate user-reported breakages with
-      // partial-write scenarios (S2/S3) without manual EFS inspection.
-      emitWorktreeValidityFailure({
-        callSite: 'createWorktree.preExisting',
-        projectId, featureName,
-        workspacePath: worktreePath,
-        validity,
-      });
+      // FeatureCrudService.createFeature mkdir's an empty `codebase/` immediately
+      // before WorktreeService.createWorktree — every fresh feature fires
+      // `no-git-file` here. That is normal, not a partial-write scenario; warn-level
+      // `worktreeValidityFailure` would be a false alarm. Other reasons mean prior
+      // attempts left real git artifacts (invalid marker / ghost gitdir / incomplete meta).
+      if (!validity.valid && validity.reason === 'no-git-file') {
+        logger.info(`Pre-existing empty dir at worktree path; cleaning up before fresh create`, {
+          component: 'WorktreeService', projectId, featureName,
+        }, { workspacePath: worktreePath, reason: validity.reason });
+      } else {
+        emitWorktreeValidityFailure({
+          callSite: 'createWorktree.preExisting',
+          projectId, featureName,
+          workspacePath: worktreePath,
+          validity,
+        });
+      }
       // Directory exists without valid worktree structure — clean up properly.
       try { await git.raw(['worktree', 'remove', worktreePath, '--force']); } catch { /* may not be registered */ }
       try { await git.raw(['worktree', 'prune']); } catch { /* non-critical */ }
