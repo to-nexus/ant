@@ -18,7 +18,7 @@ export async function store(state: LearnGraphState): Promise<Partial<LearnGraphS
   // by orchestrator.ts. Pass it through to storeLessons so text-learn lessons
   // actually land in the vector store (prior to this change, the deps
   // argument was omitted and storeLessons silently no-op'ed regardless of
-  // capability state — see vectorDbCapability invariant in CLAUDE.md).
+  // capability state — see vectorDbCapability invariant in AGENTS.md).
   const memory = state.deps?.memory;
   if (!memory) {
     throw new Error(

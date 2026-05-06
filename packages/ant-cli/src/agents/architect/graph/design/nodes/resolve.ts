@@ -92,7 +92,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // RAC.refs ∪ RAC.context. The `existingDesignDocs` body cache above
     // stays — it is a design-job internal channel consumed by
     // `docGen/intent/system.ts` for refactor mode and is orthogonal to
-    // the post-RAC pool SSOT. See `.cursorrules` "state.artifacts
+    // the post-RAC pool SSOT. See `AGENTS.md` "state.artifacts
     // Post-RAC SSOT".
     let resumeArtifacts: import('@ant/shared').ResolvedArtifact[] | undefined = state.resolvedArtifacts;
     if ((!resumeArtifacts || resumeArtifacts.length === 0) && state.resolvedAction && featurePath) {

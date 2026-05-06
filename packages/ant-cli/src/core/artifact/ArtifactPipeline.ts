@@ -15,7 +15,7 @@
  *   extractFirstDesign — first system-design artifact content
  *   hasSourceArtifact / getSourceContent — source/prd artifact access
  *
- * ── Post-RAC template flag categories (SSOT for .cursorrules) ──
+ * ── Post-RAC template flag categories (SSOT for AGENTS.md) ──
  *
  * `ArtifactPoolView` exposes THREE flavours of presence check; template
  * authors pick by WHAT the gated block enforces, not by the role the
@@ -294,7 +294,7 @@ export class ArtifactPoolView {
   // Post-RAC templates choose these for any block that fires identically
   // regardless of role (task decomposition, inventory guides, visual
   // source hints). See the file-level "Post-RAC template flag
-  // categories" docblock and `.cursorrules`
+  // categories" docblock and `AGENTS.md`
   // "Post-RAC Template Condition SSOT".
 
   hasSystemDesign(): boolean { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN)); }
@@ -365,7 +365,7 @@ export class ArtifactPoolView {
    *
    * `uiSource` is a Contract-flavoured flag (per-source branching in prompts)
    * and MUST be consumed by `ui-source-dispatch.md` to select the correct
-   * interpretation partial. See .cursorrules "Post-RAC Template Condition
+   * interpretation partial. See AGENTS.md "Post-RAC Template Condition
    * SSOT" — this flag is one of the documented exceptions to Gate-first.
    */
   uiSource(): UiSource | null {
@@ -564,5 +564,5 @@ export function appendOrUpdatePool(
 // state.artifacts post-RAC SSOT refactor. The pool is now exclusively
 // populated by `loadResolvedArtifacts(resolvedAction, featurePath)`
 // (single writer, RAC-bounded) plus `appendOrUpdatePool(pool, task.files)`
-// for design's intra-job self-output. See `.cursorrules`
+// for design's intra-job self-output. See `AGENTS.md`
 // "state.artifacts Post-RAC SSOT".

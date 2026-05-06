@@ -46,7 +46,7 @@ import type { TaskType } from '@ant/shared';
  * that pattern-matched TaskWorker's string throw. The plan node later threw
  * a DIFFERENT message ("failed after N attempts") which fell through every
  * regex → orchestrator classified it as transient → infinite re-queue
- * (the `still-lacing-north` incident). Both throw sites now emit typed
+ * (the `re-queue retry-budget reset` incident). Both throw sites now emit typed
  * `VerificationTerminalError` which is classified via `classifyTerminalError`
  * BEFORE this regex runs. Kept as a safety net for upstream Anthropic errors.
  */
@@ -650,7 +650,7 @@ export class TaskOrchestrator<T extends BaseTask> {
         // invocation rehydrates verification attempt counter / tracker /
         // applied plan history. Fresh-start wipe was the source of "LLM
         // solution quality collapses on inline retries" — see the
-        // `still-lacing-north` post-mortem: the historical claim of
+        // `re-queue retry-budget reset` post-mortem: the historical claim of
         // "resumeState preserved" was aspirational; no site actually set it.
         const worker = this.workers.get(workerId);
         if (worker) {
@@ -914,7 +914,7 @@ export class TaskOrchestrator<T extends BaseTask> {
         // the queue is non-empty and the orchestrator is not draining,
         // a barrier-blocked head task left the worker pool empty with
         // no respawn trigger (the deadlock signature traced in
-        // log-satin-feeling-orbit). The primary deadlock root cause is
+        // orchestrator foundation-gate deadlock). The primary deadlock root cause is
         // fixed by the band-based classify, but this guard recovers
         // any future regression by re-spawning workers — the next
         // `requestTask` will return null cleanly and the `requestTask`

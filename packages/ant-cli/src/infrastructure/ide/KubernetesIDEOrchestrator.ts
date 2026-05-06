@@ -360,8 +360,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           'user': userContext.userId
         },
         annotations: {
-          'ant.crosstoken.io/instance-key': instanceKey,
-          'ant.crosstoken.io/workspace-path': workspacePath
+          'ant.example.com/instance-key': instanceKey,
+          'ant.example.com/workspace-path': workspacePath
         }
       },
       spec: {
@@ -966,7 +966,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.map(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.crosstoken.io/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
         
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -978,7 +978,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             host: pod.status?.podIP || pod.metadata.name,
             port: IDE_PORT,
             url: `/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
+            workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
             status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
             tenantId: '',
             userId: '',
@@ -992,7 +992,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           host: pod.status?.podIP || pod.metadata.name,
           port: IDE_PORT,
           url: `/ide/${instanceKey}`,
-          workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
+          workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
           tenantId: parsed.tenantId,
           userId: parsed.userId,
@@ -1013,7 +1013,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.map(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.crosstoken.io/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
         
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -1025,7 +1025,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             host: pod.status?.podIP || pod.metadata.name,
             port: IDE_PORT,
             url: `/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
+            workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
             status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
             tenantId: userContext.organizationId,
             userId: userContext.userId,
@@ -1039,7 +1039,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           host: pod.status?.podIP || pod.metadata.name,
           port: IDE_PORT,
           url: `/ide/${instanceKey}`,
-          workspacePath: pod.metadata.annotations?.['ant.crosstoken.io/workspace-path'] || '/workspace',
+          workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
           status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
           tenantId: parsed.tenantId,
           userId: parsed.userId,

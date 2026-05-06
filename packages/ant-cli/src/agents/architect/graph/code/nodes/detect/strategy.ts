@@ -100,7 +100,7 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
  * `rev-code` / `explain-code`. Content of those files is NOT injected here.
  *
  * Triage's `analyzeWorkspace` is the single disk-scan SSOT; `state.artifacts`
- * is intentionally NOT consulted (post-RAC pool — see `.cursorrules`
+ * is intentionally NOT consulted (post-RAC pool — see `AGENTS.md`
  * "state.artifacts Post-RAC SSOT").
  */
 function formatArtifactAvailability(ws?: WorkspaceState): string {

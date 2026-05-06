@@ -26,7 +26,7 @@ import type { CodeTask } from '../../../types/task';
  *
  * Why NOT reset budgets at the in-session Path A re-queue inside
  * `batchSplit/process.ts`? That re-queue intentionally preserves the
- * counters — resetting there causes infinite retry (`still-lacing-north`
+ * counters — resetting there causes infinite retry (`re-queue retry-budget reset`
  * incident). This helper guards the OTHER boundary (cross-process
  * resume after permanent failure).
  */

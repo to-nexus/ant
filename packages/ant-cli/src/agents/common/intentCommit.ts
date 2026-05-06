@@ -22,7 +22,7 @@
  * `CLARIFY_TOOL`) are NOT gated by this predicate — they ask about
  * content within the committed intent, not about the intent itself.
  *
- * See also: `.cursorrules` "Retry Authority SSOT" — the class of bug
+ * See also: `AGENTS.md` "Retry Authority SSOT" — the class of bug
  * this predicate prevents is phase nodes overturning upstream decisions
  * with heuristics of their own.
  */

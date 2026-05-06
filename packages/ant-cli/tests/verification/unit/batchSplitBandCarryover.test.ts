@@ -2,7 +2,7 @@
  * Three-Axis SSOT regression guards for `batchSplit/process.ts`.
  *
  * Locks the priority + band semantics that close the
- * `log-satin-feeling-orbit` deadlock:
+ * `orchestrator foundation-gate deadlock (2026-05)` deadlock:
  *
  *   - Path A (verification parent / requeue-parent)
  *       sub-task priority = parent priority − 1 (sub lands ahead of the

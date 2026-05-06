@@ -83,7 +83,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // from the same single SSOT helper (`loadResolvedArtifacts`) that
     // detect uses on the non-resume path. Wholesale disk scans are still
     // forbidden — the helper only reads RAC.refs ∪ RAC.context.
-    // See `.cursorrules` "state.artifacts Post-RAC SSOT".
+    // See `AGENTS.md` "state.artifacts Post-RAC SSOT".
     let resumeArtifacts = state.resolvedArtifacts;
     if ((!resumeArtifacts || resumeArtifacts.length === 0) && state.resolvedAction && state.context.featurePath) {
       const { loadResolvedArtifacts } = await import('../../../../../common/graph/loadDocumentsForRAC');
@@ -183,7 +183,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // and a lightweight design-presence boolean used by the
     // "no design + no directive" guard below. Wholesale loading of
     // `architecture/system|spec`, `visual/ui` or `plan` here is
-    // forbidden — see `.cursorrules` "state.artifacts Post-RAC SSOT".
+    // forbidden — see `AGENTS.md` "state.artifacts Post-RAC SSOT".
     const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
     const design = designResult?.content || undefined;
 

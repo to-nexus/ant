@@ -94,7 +94,7 @@ export interface PhaseTokenUsage {
 // Three-Axis Task Modeling — type / band / priority
 // ============================================
 //
-// Three orthogonal observers (see `.cursorrules` "Three-Axis Task Modeling
+// Three orthogonal observers (see `AGENTS.md` "Three-Axis Task Modeling
 // SSOT"):
 //   - `task.type`     — LLM observer: "what to do" (action mode)
 //   - `task.band`     — Orchestrator observer: scheduling sub-classification,

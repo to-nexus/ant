@@ -7,9 +7,9 @@
  *
  * 큐 변이의 종류 (모두 `processDiagnosticBatchSplit` 안에서 발생):
  *   - Path A (verification parent): 원본 verification 재큐 + N 개 error 서브태스크 push,
- *     `_failedAttempts` 보존 (`still-lacing-north` 회귀 가드).
+ *     `_failedAttempts` 보존 (`re-queue retry-budget reset` 회귀 가드).
  *   - Path B (error parent / Tier 2 escalate): 원본 drop + N 개 서브태스크 push +
- *     (없으면) 새 Final Verification (priority 1000) 추가, `firm-jolting-horse` 회귀 가드.
+ *     (없으면) 새 Final Verification (priority 1000) 추가, `remediation prePlanText loss` 회귀 가드.
  *   - 공통: `state._batchSplitRequeued = true` set, `Session.onBatchSplit` (배치-스플릿
  *     카운터 + attempt 카운터) 호출.
  *   - 임계: `Session._batchSplitCount > MAX_BATCH_SPLIT_CYCLES (10)` →

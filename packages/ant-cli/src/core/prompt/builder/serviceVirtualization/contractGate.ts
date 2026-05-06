@@ -16,7 +16,7 @@
  *   - `service-virtualization-data`    (FAKE body realism — non-image data)
  *   - `service-virtualization-imagery` (image subtype dispatch)
  *
- * See `.cursorrules` "Service Virtualization prompt SSOTs (MECE)" and
+ * See `AGENTS.md` "Service Virtualization prompt SSOTs (MECE)" and
  * the `mock_real_symmetry_ssot` plan §0 for the umbrella naming policy.
  */
 

@@ -29,7 +29,7 @@ import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
  * 
  * NOTE: This system is ALWAYS distributed (Redis + BullMQ + Pub/Sub),
  * regardless of whether it runs on a single machine or cloud.
- * See .cursorrules "Unified Distributed System Principle".
+ * See AGENTS.md "Unified Distributed System Principle".
  */
 export class RouteConfigurator {
   constructor(

@@ -1,7 +1,7 @@
 /**
  * feature/hooks/scheduling.ts — TaskSchedulingHook
  *
- * Three-Axis SSOT (`.cursorrules` "Three-Axis Task Modeling"):
+ * Three-Axis SSOT (`AGENTS.md` "Three-Axis Task Modeling"):
  * feature is the only bundle whose scheduling sub-classification is
  * carried on a separate `band` field — `'foundation'` / `'integration'`
  * / `undefined`. The decompose `priority → band` mapping site

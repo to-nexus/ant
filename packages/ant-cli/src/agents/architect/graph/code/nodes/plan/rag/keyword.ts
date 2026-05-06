@@ -25,7 +25,7 @@ import { normalizeToCodebasePath } from "../../../../../../../core/utils/pathNor
  * canonical workspace-rel paths regardless of which prefix shape the
  * LLM happened to write.
  *
- * Exported so the marble-jumping-grove regression suite can lock the
+ * Exported so the rac-pool-normalize regression suite can lock the
  * normalize-at-source contract without standing up a full LLM mock.
  */
 export function normalizePathArray(arr: unknown): string[] {

@@ -10,7 +10,7 @@
  * call sites (plan / execute / tests) share one source of truth.
  *
  * SSOT for the umbrella concept and the leaf vocabulary ("mock") split —
- * see `.cursorrules` "Service Virtualization prompt SSOTs (MECE)" + the
+ * see `AGENTS.md` "Service Virtualization prompt SSOTs (MECE)" + the
  * `mock_real_symmetry_ssot` plan §0.
  */
 

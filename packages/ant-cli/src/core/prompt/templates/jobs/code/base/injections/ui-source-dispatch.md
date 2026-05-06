@@ -1,7 +1,7 @@
 {{!--
   UI Source Dispatcher — selects ONE of three interpretation partials
   based on the `uiSource` template variable. This is the single SSOT
-  authored by `.cursorrules` "Post-RAC Template Condition SSOT" as a
+  authored by `AGENTS.md` "Post-RAC Template Condition SSOT" as a
   documented Contract-flavoured exception: each source has a distinct
   interpretation contract that Gate (`hasUi`) alone cannot express.
 

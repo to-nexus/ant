@@ -365,7 +365,7 @@ export interface TaskExecuteHook {
  * via the `schedClassify(t, flag)` helper in
  * `parallel/TaskOrchestrator.ts`.
  *
- * Three-Axis SSOT (`.cursorrules` "Three-Axis Task Modeling"):
+ * Three-Axis SSOT (`AGENTS.md` "Three-Axis Task Modeling"):
  *
  * | Bundle           | Input read by classify       | Decided observer |
  * |------------------|------------------------------|------------------|
