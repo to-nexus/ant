@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
 import { formatDisplayName, overrideWithEnvFile, parseEnvLine } from './utils';
+import { autoAttachVirtualization } from './parseEnvAnnotations';
 
 /**
  * Well-known env var patterns used as a fallback when `.env.example`
@@ -84,8 +85,14 @@ export function detectFromKnownPatterns(
 
     for (const { pattern, nameHint } of KNOWN_BUSINESS_PATTERNS) {
       if (pattern.test(envVar) && !alreadyDetected.has(envVar)) {
+        const id = `${nameHint}-${envVar.toLowerCase().replace(/_/g, '-')}`;
+        // Derive toggleEnvVar from the human-meaningful nameHint, not the
+        // synthetic dedup id — keeps `USE_MOCK_API` instead of
+        // `USE_MOCK_API_VITE_API_BASE_URL`. Self-heal will eventually
+        // promote this fallback to an annotated entry with a chosen name.
+        const virtualization = autoAttachVirtualization('business', nameHint);
         connections.push({
-          id: `${nameHint}-${envVar.toLowerCase().replace(/_/g, '-')}`,
+          id,
           name: formatDisplayName(nameHint),
           category: 'business',
           envVar,
@@ -93,6 +100,7 @@ export function detectFromKnownPatterns(
           resolution: { type: 'url', url: value || '' },
           source: subdir || '*',
           missingAnnotation: true,
+          ...(virtualization ? { virtualization } : {}),
         });
         alreadyDetected.add(envVar);
         break;

@@ -1,23 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as os from 'node:os';
 import { detectFromAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseEnvAnnotations';
 import { detectFromTomlAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseTomlAnnotations';
-import {
-  parseMockModifier,
-  deriveToggleVar,
-} from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseModifiers';
+import { detectFromKnownPatterns } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseKnownPatterns';
+import { deriveToggleVar } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseModifiers';
 
 /**
- * Phase 1 — Service Virtualization annotation grammar truth table.
+ * Phase 1 — Service Virtualization auto-attach truth table.
  *
- * Locks the 12-case matrix from plan §4.4: every legal `mock:*` token
- * combination across .env / TOML annotations and the per-port × master
- * USE_MOCK toggle resolution priority. Any drift here points at either
- * (a) parseMockModifier dispatch breaking, or (b) overrideWithEnvFile
- * losing the priority chain — both are the kinds of silent regressions
- * the user explicitly asked Phase 1 to prevent.
+ * The single source of truth: `category === 'business'` ⇒
+ * `virtualization` is attached. There is no annotation token for
+ * virtualization (single-valued discriminator carries no information).
+ *
+ * Locks the 12-case matrix from plan §4.4 (rev2). Any drift here points
+ * at either (a) `autoAttachVirtualization` regressing the category gate,
+ * (b) `overrideWithEnvFile` losing the per-port > master > false
+ * priority chain, or (c) someone re-introducing a `mock:*` token.
  */
 
 let workdir: string;
@@ -40,14 +40,14 @@ afterEach(() => {
   }
 });
 
-describe('connection annotation virtualization grammar', () => {
+describe('connection annotation Service Virtualization auto-attach', () => {
   // -----------------------------------------------------------------
-  // Case 1 — `mock:available` only → mockKind=available + derived toggle
+  // Case 1 — business `@connection` (.env) → virtualization auto-attach
   // -----------------------------------------------------------------
-  it('case 1: `mock:available` only sets mockKind and derives toggleEnvVar', () => {
+  it('case 1: business `@connection` auto-attaches virtualization with derived toggleEnvVar', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business stripe-api mock:available',
+        '# @connection business stripe-api',
         'STRIPE_API_KEY=',
       ].join('\n'),
     });
@@ -56,40 +56,17 @@ describe('connection annotation virtualization grammar', () => {
     expect(conns).toHaveLength(1);
     const c = conns[0];
     expect(c.virtualization).toBeDefined();
-    expect(c.virtualization?.mockKind).toBe('available');
     expect(c.virtualization?.toggleEnvVar).toBe('USE_MOCK_STRIPE_API');
-    // active starts false; overrideWithEnvFile flips it when .env exists
     expect(c.virtualization?.active).toBe(false);
-    expect(c.resolution).toEqual({ type: 'url', url: '' });
   });
 
   // -----------------------------------------------------------------
-  // Case 2 — `mock:inline` only → no toggle, always active
+  // Case 2 — business `@connection` (TOML) → same auto-attach
   // -----------------------------------------------------------------
-  it('case 2: `mock:inline` only marks always-active with no toggle var', () => {
-    const root = setupProject({
-      '.env.example': [
-        '# @connection business notification mock:inline',
-        'NOTIFICATION_WEBHOOK=',
-      ].join('\n'),
-    });
-
-    const conns = detectFromAnnotations(root);
-    expect(conns).toHaveLength(1);
-    const c = conns[0];
-    expect(c.virtualization?.mockKind).toBe('inline');
-    expect(c.virtualization?.toggleEnvVar).toBeUndefined();
-    expect(c.virtualization?.active).toBe(true);
-  });
-
-  // -----------------------------------------------------------------
-  // Case 3 — TOML: `self mock:available env:API_URL`
-  //   → resolution=ant-project + virtualization=available + envVar=API_URL
-  // -----------------------------------------------------------------
-  it('case 3: TOML `self mock:available env:API_URL` combines all three layers', () => {
+  it('case 2: business TOML `@connection` auto-attaches virtualization', () => {
     const root = setupProject({
       'config.example.toml': [
-        '# @connection business backend-api self mock:available env:API_BASE_URL',
+        '# @connection business backend-api env:API_BASE_URL',
         '[api]',
         'base_url = ""',
       ].join('\n'),
@@ -97,60 +74,69 @@ describe('connection annotation virtualization grammar', () => {
 
     const conns = detectFromTomlAnnotations(root);
     expect(conns).toHaveLength(1);
-    const c = conns[0];
-    expect(c.envVar).toBe('API_BASE_URL');
-    expect(c.resolution).toEqual({ type: 'ant-project', projectId: 'self', feature: 'self' });
-    expect(c.virtualization?.mockKind).toBe('available');
-    expect(c.virtualization?.toggleEnvVar).toBe('USE_MOCK_BACKEND_API');
+    expect(conns[0].virtualization?.toggleEnvVar).toBe('USE_MOCK_BACKEND_API');
   });
 
   // -----------------------------------------------------------------
-  // Case 4 — `ant-project:p:f mock:available` (.env)
-  //   → resolution=ant-project(p,f) + virtualization=available
+  // Case 3 — infrastructure `@connection` → virtualization undefined
   // -----------------------------------------------------------------
-  it('case 4: `ant-project:p:f mock:available` combines both layers in .env', () => {
+  it('case 3: infrastructure `@connection` does NOT receive virtualization', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business stats-api ant-project:sketch-be:skeleton mock:available',
+        '# @connection infrastructure postgres',
+        'DATABASE_URL=postgresql://localhost:5432/dev',
+      ].join('\n'),
+    });
+
+    const conns = detectFromAnnotations(root);
+    expect(conns).toHaveLength(1);
+    expect(conns[0].category).toBe('infrastructure');
+    expect(conns[0].virtualization).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------
+  // Case 4 — business + `self` resolution → both attached
+  // -----------------------------------------------------------------
+  it('case 4: business + `self` carries both ant-project resolution and auto virtualization', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business backend-api self',
+        'VITE_API_BASE_URL=',
+      ].join('\n'),
+    });
+
+    const conns = detectFromAnnotations(root);
+    expect(conns[0].resolution).toEqual({ type: 'ant-project', projectId: 'self', feature: 'self' });
+    expect(conns[0].virtualization?.toggleEnvVar).toBe('USE_MOCK_BACKEND_API');
+  });
+
+  // -----------------------------------------------------------------
+  // Case 5 — business + cross-project resolution → both attached
+  // -----------------------------------------------------------------
+  it('case 5: business + `ant-project:p:f` carries both layers', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business stats-api ant-project:sketch-be:skeleton',
         'VITE_STATS_BASE_URL=',
       ].join('\n'),
     });
 
     const conns = detectFromAnnotations(root);
-    expect(conns).toHaveLength(1);
-    const c = conns[0];
-    expect(c.resolution).toEqual({
+    expect(conns[0].resolution).toEqual({
       type: 'ant-project',
       projectId: 'sketch-be',
       feature: 'skeleton',
     });
-    expect(c.virtualization?.mockKind).toBe('available');
-    expect(c.virtualization?.toggleEnvVar).toBe('USE_MOCK_STATS_API');
+    expect(conns[0].virtualization?.toggleEnvVar).toBe('USE_MOCK_STATS_API');
   });
 
   // -----------------------------------------------------------------
-  // Case 5 — no mock token → virtualization undefined
+  // Case 6 — `.env` per-port USE_MOCK_X=true → active=true
   // -----------------------------------------------------------------
-  it('case 5: omitting the mock token leaves virtualization undefined', () => {
+  it('case 6: per-port USE_MOCK_X=true flips active to true', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business payment-api',
-        'PAYMENT_URL=',
-      ].join('\n'),
-    });
-
-    const conns = detectFromAnnotations(root);
-    expect(conns).toHaveLength(1);
-    expect(conns[0].virtualization).toBeUndefined();
-  });
-
-  // -----------------------------------------------------------------
-  // Case 6 — `.env` with USE_MOCK_X=true → active=true
-  // -----------------------------------------------------------------
-  it('case 6: `.env` per-port USE_MOCK_X=true flips active to true', () => {
-    const root = setupProject({
-      '.env.example': [
-        '# @connection business stripe-api mock:available',
+        '# @connection business stripe-api',
         'STRIPE_API_KEY=',
       ].join('\n'),
       '.env': 'USE_MOCK_STRIPE_API=true',
@@ -166,7 +152,7 @@ describe('connection annotation virtualization grammar', () => {
   it('case 7: per-port USE_MOCK_X=false wins over master USE_MOCK=true', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business stripe-api mock:available',
+        '# @connection business stripe-api',
         'STRIPE_API_KEY=',
       ].join('\n'),
       '.env': ['USE_MOCK_STRIPE_API=false', 'USE_MOCK=true'].join('\n'),
@@ -182,7 +168,7 @@ describe('connection annotation virtualization grammar', () => {
   it('case 8: master USE_MOCK=true broadcasts when per-port is unset', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business stripe-api mock:available',
+        '# @connection business stripe-api',
         'STRIPE_API_KEY=',
       ].join('\n'),
       '.env': 'USE_MOCK=true',
@@ -198,7 +184,7 @@ describe('connection annotation virtualization grammar', () => {
   it('case 9: no toggle vars in .env keeps active=false', () => {
     const root = setupProject({
       '.env.example': [
-        '# @connection business stripe-api mock:available',
+        '# @connection business stripe-api',
         'STRIPE_API_KEY=',
       ].join('\n'),
       '.env': 'STRIPE_API_KEY=', // .env exists but no toggle var
@@ -209,35 +195,31 @@ describe('connection annotation virtualization grammar', () => {
   });
 
   // -----------------------------------------------------------------
-  // Case 10 — infrastructure + mock:available → warn + virtualization dropped
+  // Case 10 — known-pattern infrastructure fallback → virtualization undefined
   // -----------------------------------------------------------------
-  it('case 10: infrastructure + mock:available drops virtualization with a warning', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
+  it('case 10: known-pattern infrastructure fallback has no virtualization', () => {
     const root = setupProject({
-      '.env.example': [
-        '# @connection infrastructure postgres mock:available',
-        'DATABASE_URL=',
-      ].join('\n'),
+      '.env.example': 'DATABASE_URL=postgresql://localhost:5432/dev',
     });
 
-    const conns = detectFromAnnotations(root);
+    const conns = detectFromKnownPatterns(root, new Set());
     expect(conns).toHaveLength(1);
     expect(conns[0].category).toBe('infrastructure');
     expect(conns[0].virtualization).toBeUndefined();
-
-    warnSpy.mockRestore();
   });
 
   // -----------------------------------------------------------------
-  // Case 11 — unknown `mock:*` token → no-op + warn
+  // Case 11 — known-pattern business fallback → virtualization auto-attach
   // -----------------------------------------------------------------
-  it('case 11: unknown mock:* token is a no-op (parseMockModifier returns null)', () => {
-    expect(parseMockModifier('mock:invalid', 'stripe-api')).toBeNull();
-    expect(parseMockModifier('mock:weird', 'svc')).toBeNull();
-    // Non-mock tokens are also null at the mock layer
-    expect(parseMockModifier('self', 'svc')).toBeNull();
-    expect(parseMockModifier('ant-project:p:f', 'svc')).toBeNull();
+  it('case 11: known-pattern business fallback also auto-attaches virtualization', () => {
+    const root = setupProject({
+      '.env.example': 'VITE_API_BASE_URL=https://api.example.com',
+    });
+
+    const conns = detectFromKnownPatterns(root, new Set());
+    expect(conns).toHaveLength(1);
+    expect(conns[0].category).toBe('business');
+    expect(conns[0].virtualization?.toggleEnvVar).toBe('USE_MOCK_API');
   });
 
   // -----------------------------------------------------------------
