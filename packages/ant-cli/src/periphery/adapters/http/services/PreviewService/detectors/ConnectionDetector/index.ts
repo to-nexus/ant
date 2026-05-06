@@ -25,8 +25,8 @@ import { formatDisplayName } from './utils';
  *   4.  enrichInternalConnections  — `self` + cross-project → proxy path
  *   5.  detect()                   — merge + dedup + id uniqueness pass
  *
- * Annotation grammar (resolution + virtualization layers, multi-token):
- *   `# @connection {category} {name} [resolution-token] [mock-token]`
+ * Annotation grammar (resolution layer only — multi-token):
+ *   `# @connection {category} {name} [resolution-token]`
  *
  * Resolution tokens (.env.example):
  *   (none)                                → url (default)
@@ -34,9 +34,12 @@ import { formatDisplayName } from './utils';
  *   ant-project:{projectId}:{feature}     → cross-project
  *   ant-project:{p}:{f}:{serviceName}     → cross-project + service segment
  *
- * Mock (Service Virtualization) tokens:
- *   mock:available  → per-port USE_MOCK_<NAME> toggle (master USE_MOCK fallback)
- *   mock:inline     → no toggle; production adapter contains internal fallback
+ * Service Virtualization is NOT a token. Every `business` connection is
+ * virtualizable by definition (single-valued discriminator carries no
+ * information) — `parseEnvAnnotations.ts::autoAttachVirtualization`
+ * attaches `virtualization: { toggleEnvVar, active }` to every business
+ * connection. Per-connection toggle (`USE_MOCK_<NAME>`) and master
+ * fallback (`USE_MOCK`) live in the project `.env`.
  *
  * TOML grammar adds a REQUIRED `env:VAR_NAME` token that maps the dotted
  * TOML key onto the flat env var the platform injects.

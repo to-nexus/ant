@@ -39,12 +39,9 @@ export function formatDisplayName(name: string): string {
  *   1. For `url`-resolution connections, replace `value` with whatever
  *      `.env` declares for the matching env var (so the diagnostics layer
  *      sees the live URL the runtime will consume).
- *   2. For connections with `virtualization.mockKind === 'available'`,
- *      compute `virtualization.active` using the priority chain
- *      `USE_MOCK_<NAME>` > master `USE_MOCK` > `false`.
- *
- * `mockKind === 'inline'` connections keep `active = true` (set at parse
- * time) — there is no external toggle for inline fakes.
+ *   2. For every connection with `virtualization` (= every business
+ *      connection), compute `virtualization.active` using the priority
+ *      chain `USE_MOCK_<NAME>` > master `USE_MOCK` > `false`.
  */
 export function overrideWithEnvFile(
   connections: ServiceConnection[],
@@ -78,9 +75,8 @@ export function overrideWithEnvFile(
       }
     }
 
-    if (conn.virtualization?.mockKind === 'available') {
-      const toggleVar = conn.virtualization.toggleEnvVar;
-      const perPort = toggleVar ? envMap.get(toggleVar) : undefined;
+    if (conn.virtualization) {
+      const perPort = envMap.get(conn.virtualization.toggleEnvVar);
       conn.virtualization.active = perPort !== undefined ? perPort === 'true' : masterUseMock;
     }
   }

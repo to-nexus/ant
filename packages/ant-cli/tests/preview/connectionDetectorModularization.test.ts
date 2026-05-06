@@ -81,6 +81,7 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
         },
         source: '*',
         configSource: 'env',
+        virtualization: { toggleEnvVar: 'USE_MOCK_BACKEND_API', active: false },
       },
       {
         id: 'stripe-api',
@@ -91,6 +92,7 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
         resolution: { type: 'url', url: '' },
         source: '*',
         configSource: 'env',
+        virtualization: { toggleEnvVar: 'USE_MOCK_STRIPE_API', active: false },
       },
       {
         id: 'postgres',
@@ -101,6 +103,7 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
         resolution: { type: 'url', url: 'postgresql://localhost:5432/dev' },
         source: '*',
         configSource: 'env',
+        // No virtualization — infrastructure is real (docker-compose).
       },
     ]);
   });
@@ -131,7 +134,7 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
     });
   });
 
-  it('detects unannotated DATABASE_URL via the known-pattern fallback (missingAnnotation: true)', () => {
+  it('detects unannotated DATABASE_URL via the known-pattern fallback (missingAnnotation: true, no virtualization)', () => {
     const root = setupProject({
       '.env.example': 'DATABASE_URL=postgresql://localhost:5432/dev',
     });
@@ -149,8 +152,27 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
         resolution: { type: 'url', url: 'postgresql://localhost:5432/dev' },
         source: '*',
         missingAnnotation: true,
+        // infrastructure → no virtualization, even via fallback.
       },
     ]);
+  });
+
+  it('detects unannotated VITE_API_BASE_URL via business fallback (auto virtualization)', () => {
+    const root = setupProject({
+      '.env.example': 'VITE_API_BASE_URL=https://api.example.com',
+    });
+
+    const structure: ProjectStructure = { type: 'frontend-only', packages: [] };
+    const result = new ConnectionDetector().detect(root, structure, SERVER_KEY);
+
+    expect(result).toHaveLength(1);
+    const c = result[0];
+    expect(c.category).toBe('business');
+    expect(c.missingAnnotation).toBe(true);
+    expect(c.virtualization).toEqual({
+      toggleEnvVar: 'USE_MOCK_API',
+      active: false,
+    });
   });
 
   it('annotated wins over fallback when both detect the same id (annotation priority)', () => {
@@ -213,7 +235,7 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
     expect(result[0].value).toBe('postgresql://localhost:5432/dev');
   });
 
-  it('preserves existing semantics: virtualization is undefined for connections without mock tokens', () => {
+  it('every business connection auto-attaches virtualization (no per-connection opt-in)', () => {
     const root = setupProject({
       '.env.example': [
         '# @connection business backend-api self',
@@ -224,6 +246,9 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
     const structure: ProjectStructure = { type: 'frontend-only', packages: [] };
     const result = new ConnectionDetector().detect(root, structure, SERVER_KEY);
 
-    expect(result[0].virtualization).toBeUndefined();
+    expect(result[0].virtualization).toEqual({
+      toggleEnvVar: 'USE_MOCK_BACKEND_API',
+      active: false,
+    });
   });
 });
