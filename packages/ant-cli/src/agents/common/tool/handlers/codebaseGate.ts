@@ -1,20 +1,35 @@
 /**
- * Codebase Mutation Gate — handler-level path guard.
+ * Codebase / shell guards — handler-level rejection helpers.
  *
- * Policy SSOT: see `docs/architecture/15-design-job.md` "Codebase
- * mutation gate" and `docs/architecture/14-code-job.md`.
+ * Policy SSOT: see `docs/internals/15-design-job.md` "Codebase
+ * mutation gate" and `docs/internals/14-code-job.md`.
  *
- * Mutate (`edit_file` / `delete_file` / `mkdir` / `create_file` /
- * `run_command`) under `codebase/` is permitted ONLY when the active
- * tool execution context sets `allowMutateInCodebase === true`. That
- * flag is set ONLY by the architect/code job's `execute` phase; every
- * other phase (architect/design plan + docGen, architect/code plan,
- * planner/plan) leaves the flag falsy so mutate handlers refuse
- * `codebase/` writes here. Artifact paths (architecture/, plan/,
- * assets/, visual/, meta/, sessions/) remain freely mutable in all
- * phases — refactor / document-update intents need them.
+ * Two orthogonal gates feed this module:
  *
- * This module returns a friendly soft-reject string the handler can
+ *  - `allowMutateInCodebase` (path-aware) — `edit_file` /
+ *    `delete_file` / `mkdir` / `create_file` reject paths under
+ *    `codebase/` unless the flag is `true`. Set ONLY by the
+ *    architect/code job's `execute` phase. Every other phase
+ *    (architect/design plan + docGen, architect/code plan,
+ *    planner/plan) leaves it falsy so mutate handlers refuse
+ *    `codebase/` writes via {@link rejectCodebaseMutate}. Artifact
+ *    paths (architecture/, plan/, assets/, visual/, meta/, sessions/)
+ *    remain freely mutable in all phases — refactor / document-update
+ *    intents need them.
+ *
+ *  - `allowShellExecution` (binary) — `run_command` is rejected
+ *    outright unless the flag is `true`. Set by the architect/code
+ *    job (every phase: plan tool-loop runs build/typecheck/test
+ *    gates and dependency probes; execute applies fixes). Document-
+ *    or plan-producing jobs (architect/design, planner) leave it
+ *    falsy and surface {@link rejectRunCommand}. The two gates were
+ *    coupled under a single flag historically; the split was made
+ *    after the `agile-nodding-pouch` silent false-pass regression
+ *    where the verification task could not run any gates because
+ *    its plan phase shared `allowMutateInCodebase=false` with
+ *    document-producing phases.
+ *
+ * Both helpers return a friendly soft-reject string the handler can
  * surface back to the LLM verbatim. The model uses the message to
  * recover on the next turn (write into an artifact, or describe the
  * change in the spec/plan document instead of performing it).
@@ -54,19 +69,26 @@ export function rejectCodebaseMutate(
 }
 
 /**
- * Reject `run_command` outright when the gate is closed.
+ * Reject `run_command` outright when the shell-execution gate is
+ * closed (`ctx.allowShellExecution !== true`).
  *
  * `run_command` runs an arbitrary shell line whose effective targets
- * cannot be inferred from `args`, so we cannot do a path check.
- * Document/plan-producing phases never have a legitimate need for
- * arbitrary shell commands, so closing the gate disables the tool
- * entirely in those phases.
+ * cannot be inferred from `args`, so a path-level check is impossible
+ * and the gate is binary. Document- or plan-producing jobs (design,
+ * planner) leave the flag falsy and the design/planner tool registries
+ * also omit `RUN_COMMAND` so the LLM normally never sees the tool —
+ * this rejection is the defence-in-depth handler-side enforcement for
+ * the same policy. The architect/code job leaves the flag `true` for
+ * every phase: plan tool-loop runs verification / test-runner install
+ * / error diagnostic / dep-discovery commands, and execute applies
+ * source mutations.
  */
 export function rejectRunCommand(): CodebaseGateRejection {
   const msg =
-    `run_command is unavailable in this phase. Arbitrary shell execution is reserved for the ` +
-    `code job's execute phase, where mutating source code is the artifact. ` +
-    `For information gathering use read_file / list_files / search_code.`;
+    `run_command is not available in this job. Shell execution is reserved for jobs whose normal ` +
+    `workflow runs build / test / install commands (architect/code). ` +
+    `For document- or plan-producing jobs gather information via read_file / list_files / search_code, ` +
+    `or describe the change in the spec / plan document instead of running it.`;
   return { content: msg, error: msg };
 }
 

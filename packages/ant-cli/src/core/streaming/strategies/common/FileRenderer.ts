@@ -55,8 +55,11 @@ export interface FileRendererConfig {
    * Mirrors `ToolExecutionContext.allowMutateInCodebase` for the
    * tool-handler path — the streaming `<file>`/`<append>`/`<edit>`/
    * `<delete>` path used to bypass that guard, so we close the gate
-   * here on the same policy SSOT (see `docs/architecture/15-design-job.md`
-   * "Codebase mutation gate").
+   * here on the same policy SSOT (see `docs/internals/15-design-job.md`
+   * "Codebase mutation gate"). This guard is only about codebase
+   * writes; `run_command` is gated separately via
+   * `ToolExecutionContext.allowShellExecution` and never goes through
+   * the FileRenderer path.
    */
   jobType?: 'code' | 'design' | 'planner';
   /**
