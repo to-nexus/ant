@@ -159,6 +159,7 @@ export function PreviewConfigEditor() {
           onDeleteConn={connEditor.handleDeleteConn}
           onAddConn={connEditor.handleAddConn}
           onApplyToChat={handleApplyToChat}
+          onToggleVirtualization={connEditor.handleToggleVirtualization}
         />
 
         <PreviewControlsSection

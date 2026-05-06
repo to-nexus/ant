@@ -1,22 +1,25 @@
 /**
- * mock-content-imagery activation gate (SBS SSOT).
+ * service-virtualization-imagery activation gate (SBS SSOT).
  *
- * The `mock-content-imagery` partial is gated on three axes:
+ * Image subtype of FAKE data — placeholder imagery for slots fed by user-
+ * uploaded / DB-fetched content (avatar, thumbnail, cover, gallery). Three
+ * gate axes:
  *
  *   service domain × frontend stack × feature task
  *
  * Domain-Branching Locality (I1) forbids `{{#if (eq domain 'service')}}`
  * inside `templates/jobs/<job>/nodes/<node>/...` rules.md, so the three
  * axes are derived in code and surfaced to Handlebars as a single boolean
- * variable (`mockContentImageryActive`). Both plan and execute call sites
- * import this helper to keep the gate predicate as a single source of
- * truth.
+ * variable (`serviceVirtualizationImageryActive`). Both plan and execute
+ * call sites import this helper to keep the gate predicate as a single
+ * source of truth.
  *
- * Companion to `mock-adapter-contract` (mock data body) and `ui-source-*`
- * (design-system assets); see `.cursorrules` Mock-use prompt SSOTs table.
+ * Companions:
+ *   - `service-virtualization-contract` (port shape + toggle grammar)
+ *   - `service-virtualization-data`     (non-image FAKE body realism)
  */
 
-export interface MockContentImageryGateInput {
+export interface ServiceVirtualizationImageryGateInput {
   /** Has at least one frontend stack tech tier (or empty stacks set). */
   hasFrontend: boolean;
   /** Workspace domain — only `'service'` activates content imagery; the
@@ -31,7 +34,9 @@ export interface MockContentImageryGateInput {
  * @returns `true` iff all three gate axes pass (service domain, frontend
  *          stack present, feature task).
  */
-export function isMockContentImageryActive(input: MockContentImageryGateInput): boolean {
+export function isServiceVirtualizationImageryActive(
+  input: ServiceVirtualizationImageryGateInput,
+): boolean {
   return (
     input.hasFrontend === true &&
     input.domain === 'service' &&

@@ -13,6 +13,18 @@ export type ConnectionResolution =
   | { type: 'ant-project'; projectId: string; feature: string; serviceName?: string; resolvedUrlKey?: string }
   | { type: 'url'; url: string };
 
+/**
+ * Service Virtualization strategy attached to every business connection
+ * (the `business` category itself is the virtualization signal). SSOT for
+ * the umbrella concept lives at @ant/cli `core/ports/portRegistry.ts`.
+ */
+export interface VirtualizationStrategy {
+  /** `USE_MOCK_<UPPER_SNAKE(name)>` — derived per-connection toggle env var. */
+  toggleEnvVar: string;
+  /** Effective state at detection time (per-port > master `USE_MOCK` > false). */
+  active: boolean;
+}
+
 export interface ServiceConnection {
   id: string;
   name: string;
@@ -24,6 +36,12 @@ export interface ServiceConnection {
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;
   userModified?: boolean;
+  /**
+   * Auto-attached for every `business` connection by the BE detector.
+   * `undefined` for `infrastructure` connections (docker-compose provides
+   * the real backing service — virtualization is not a concern).
+   */
+  virtualization?: VirtualizationStrategy;
 }
 
 /** One package in the running preview (slug-addressable). */
@@ -150,5 +168,24 @@ export function detectConnections(
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/detect-connections`,
     { feature: feature || 'main' },
+  );
+}
+
+/**
+ * Toggle Service Virtualization (`USE_MOCK_<NAME>`) for a single business
+ * connection. Writes the toggle to the project `.env` file (creating /
+ * appending / replacing as needed) and updates the Redis-backed registry
+ * so subsequent detect runs observe the same state. Real swap requires
+ * zero code changes — only the env var flips.
+ */
+export function toggleConnectionVirtualization(
+  projectId: string,
+  feature: string,
+  connectionId: string,
+  active: boolean,
+): Promise<{ success: boolean; connections: ServiceConnection[] }> {
+  return apiPut(
+    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/virtualization-toggle`,
+    { feature: feature || 'main', connectionId, active },
   );
 }

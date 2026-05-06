@@ -16,6 +16,7 @@ import { classify as schedulingClassify } from './hooks/scheduling';
 import { buildPrompt as planBuildPrompt } from '../_shared/verify/prompt/buildPlanPrompt';
 import { executeHook } from '../_shared/verify/hooks/executeHook';
 import { routeAfterDone } from '../_shared/verify/hooks/router';
+import { parityCheckEvaluate } from '../_shared/verify/parity';
 
 /**
  * Hint rendered on the `budget_exhausted` violation (execute call loop)
@@ -37,7 +38,12 @@ export const hooks: TaskHooks = {
     allowsEmptyImplShortcut: true,
   },
   execute: executeHook,
-  check: { budgetExhaustedHint },
+  // Verification task is verify-mode by definition (every run IS a
+  // verification cycle). `parityCheckEvaluate` self-gates on
+  // `state.virtualizationSnapshot?.hasBusinessConnection` — when no
+  // business connections exist, the check is a no-op. Tier 2 self-verify
+  // tasks pick up the same hook through `composeBundle`'s check wrapper.
+  check: { budgetExhaustedHint, evaluate: parityCheckEvaluate },
   router: { routeAfterDone },
   decompose: { isExclusive },
   conversations: { convKey },

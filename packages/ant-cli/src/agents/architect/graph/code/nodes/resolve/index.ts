@@ -6,6 +6,7 @@ import { getExecutionTier } from "../../../../../../core/executionTier";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
 import { ARTIFACT_PREFIX } from '@ant/shared';
+import { buildVirtualizationSnapshot } from '../../../../../../core/prompt/builder/serviceVirtualization';
 
 /**
  * Code Resolve Strategy
@@ -136,6 +137,11 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       resumeUpdatedArtifacts = appendOrUpdatePool(resumeUpdatedArtifacts, resumeArtifacts);
     }
 
+    // Service Virtualization snapshot — single SSOT derivation, read by
+    // every downstream phase that gates on "business external dependency
+    // present" (contract / data partials, Phase 4 parity check).
+    const virtualizationSnapshot = await buildVirtualizationSnapshot(state.context.featurePath);
+
     return {
       workspaceConfig: state.workspaceConfig,
       context: state.context,
@@ -147,6 +153,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       runtimeAssetsIndex: state.runtimeAssetsIndex,
       featureContext,
       turnId: state.turnId,
+      virtualizationSnapshot,
     } as Partial<ArchitectGraphState>;
   },
 
@@ -267,6 +274,12 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       };
     })();
 
+    // Service Virtualization snapshot — SSOT derivation site (resolve).
+    // Phase 2: gates `service-virtualization-{contract,data}` partials on
+    // a single boolean per job; Phase 4 will gate parity-check skip on
+    // the same channel.
+    const virtualizationSnapshot = await buildVirtualizationSnapshot(context.featurePath);
+
     return {
       context,
       featurePath: context.featurePath,
@@ -286,6 +299,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       turnId,
       runtimeAssetsIndex,
       conversations: {},
+      virtualizationSnapshot,
     } as Partial<ArchitectGraphState>;
   },
 };

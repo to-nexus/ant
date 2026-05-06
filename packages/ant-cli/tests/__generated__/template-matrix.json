@@ -510,18 +510,6 @@
       "manifest"
     ]
   },
-  "jobs/code/base/injections/mock-adapter-contract": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/code/base/injections/mock-content-imagery": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
   "jobs/code/base/injections/monorepo-install-locality": {
     "sources": [
       "partial-ref",
@@ -563,6 +551,24 @@
     ]
   },
   "jobs/code/base/injections/secure-coding": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/service-virtualization-contract": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/service-virtualization-data": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/service-virtualization-imagery": {
     "sources": [
       "partial-ref",
       "manifest"
@@ -990,6 +996,12 @@
   "jobs/code/nodes/plan/variants/verification/basis/techTier/typescript/hints": {
     "sources": [
       "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/verification/injections/contract-parity": {
+    "sources": [
+      "partial-ref",
+      "manifest"
     ]
   },
   "jobs/code/nodes/plan/variants/verification/rules": {

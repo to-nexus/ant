@@ -57,6 +57,9 @@ export type ViolationType =
   | 'cross_worker_conflict' // 병렬 작업 간 파일 충돌 (다른 워커가 이미 생성/수정)
   | 'budget_exhausted'      // execute call limit 도달 (LLM이 <done> 없이 budget 소진)
   | 'verification_incomplete' // verification 태스크가 done 신호를 보냈으나 성공한 빌드 커맨드가 없음
+  | 'parity_apply_failed'   // Service Virtualization parity check — virtualized variant (USE_MOCK=true) 빌드/테스트 실패
+  | 'parity_real_failed'    // Service Virtualization parity check — production variant (USE_MOCK=false) 빌드/테스트 실패
+  | 'parity_dto_mismatch'   // Service Virtualization parity check — DTO shape divergence between virtualized / production variants
   | 'other';                // 기타
 
 /**
@@ -634,6 +637,27 @@ export interface ArchitectGraphState extends TriageableState {
    * flag and returns; `routeAfterDirect` then promotes back to decompose.
    */
   needsEscalation?: boolean;
+
+  /**
+   * Service Virtualization snapshot — single boolean derived once at
+   * resolve time and read by every downstream phase that gates on
+   * "business external dependency present".
+   *
+   * SSOT writer: `resolve` node calls `buildVirtualizationSnapshot` from
+   * `core/prompt/builder/serviceVirtualization/snapshot.ts`.
+   *
+   * SSOT readers (Phase 2 + later phases):
+   *   - `nodes/plan/llm/prompt.ts`       — gates contract / data partials
+   *   - `nodes/execute/buildMessages.ts` — gates contract / data partials
+   *   - `tasks/_shared/verify/parity/`   — Phase 4 parity check skip when false
+   *
+   * Phase code never re-scans `.env.example` / docker-compose to derive
+   * this — call sites read `state.virtualizationSnapshot.hasBusinessConnection`
+   * only.
+   */
+  virtualizationSnapshot?: {
+    hasBusinessConnection: boolean;
+  };
 }
 
 /**
