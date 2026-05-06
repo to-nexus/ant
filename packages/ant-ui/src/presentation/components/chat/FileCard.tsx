@@ -10,7 +10,6 @@ import { ChevronDown, ChevronRight, Ban } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { FileIcon } from '@/shared/utils/file-icons';
-import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 import { lineToContent } from './cards/lineToContent';
 
 interface FileCardProps {
@@ -24,6 +23,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
   const content = lineToContent(line, pending);
   const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
+  const headerTextRef = useRef<HTMLSpanElement>(null);
   const filePath = (content.metadata?.filePath as string | undefined) || t('card.unknownFile');
   const fileContent = content.content || '';  // ✅ Ensure string, never undefined
   const diffBefore = content.metadata?.diffBefore as string | undefined;
@@ -42,6 +42,8 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
   
   // ✅ Cursor/Copilot style: Default to expanded (show content), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
+  const [isHeaderOverflowing, setIsHeaderOverflowing] = useState(false);
   
   // ✅ Track if user manually scrolled away from bottom
   const [isUserScrolling, setIsUserScrolling] = useState(false);
@@ -53,6 +55,22 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
       setIsUserScrolling(false);
     }
   }, [isCompleted]);
+
+  useEffect(() => {
+    if (isHeaderExpanded) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    const element = headerTextRef.current;
+    if (!element) return;
+
+    const measureOverflow = () => {
+      setIsHeaderOverflowing(element.scrollWidth > element.clientWidth + 1);
+    };
+
+    measureOverflow();
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [filePath, isHeaderExpanded]);
   
   // ✅ Show content when: has content OR is actively streaming (even with empty content)
   const hasFileContent = fileContent && fileContent.length > 0;
@@ -166,6 +184,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
       iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-green-500 dark:text-green-400',
       headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
+      headerFadeFrom: isFailed ? 'from-red-100/60 dark:from-red-900/30' : 'from-gray-50/90 dark:from-gray-800/80',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     edit: {
@@ -176,6 +195,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
       iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-blue-500 dark:text-blue-400',
       headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
+      headerFadeFrom: isFailed ? 'from-red-100/60 dark:from-red-900/30' : 'from-gray-50/90 dark:from-gray-800/80',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     delete: {
@@ -186,35 +206,56 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
       iconColor: isFailed ? 'text-red-600 dark:text-red-400' : 'text-red-500 dark:text-red-400',
       headerBg: isFailed ? 'bg-red-100/50 dark:bg-red-900/20' : 'bg-gray-50/50 dark:bg-gray-800/30',
+      headerFadeFrom: isFailed ? 'from-red-100/60 dark:from-red-900/30' : 'from-gray-50/90 dark:from-gray-800/80',
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     }
   };
   
   const config = operationConfig[operation];
-  
-  const lineStatsText = (() => {
-    if (!isCompleted || isFailed || isCancelled) return '';
+  const canToggleContent = isCompleted && (hasAnyContent || isFailed);
+  const canToggleHeader = isHeaderExpanded || isHeaderOverflowing;
+
+  const lineStatsItems = (() => {
+    if (!isCompleted || isFailed || isCancelled) return [] as Array<{ text: string; className: string }>;
 
     if ((operation === 'edit' || isOverwriteCreate) && (lineStats.added > 0 || lineStats.removed > 0)) {
-      const parts: string[] = [];
-      if (lineStats.added >= 0) parts.push(`+${lineStats.added}`);
-      if (lineStats.removed >= 0) parts.push(`-${lineStats.removed}`);
-      return parts.join(' ');
+      if (operation === 'edit') {
+        const modifiedTotal = lineStats.added + lineStats.removed;
+        return [
+          { text: `~${modifiedTotal}`, className: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' },
+          { text: `+${lineStats.added}`, className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' },
+          { text: `-${lineStats.removed}`, className: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },
+        ];
+      }
+
+      return [
+        { text: `+${lineStats.added}`, className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' },
+        { text: `-${lineStats.removed}`, className: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },
+      ];
     }
 
     if (operation === 'create' && !isOverwriteCreate && lineStats.total != null) {
-      return `+${lineStats.total}`;
+      return [{ text: `+${lineStats.total}`, className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' }];
     }
 
     if (operation === 'delete' && lineStats.total != null) {
-      return `-${lineStats.total}`;
+      return [{ text: `-${lineStats.total}`, className: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' }];
     }
 
-    return '';
+    return [] as Array<{ text: string; className: string }>;
   })();
 
-  const headerText = lineStatsText ? `${filePath} ${lineStatsText}` : filePath;
-  const canToggleContent = isCompleted && (hasAnyContent || isFailed);
+  const handleHeaderToggle = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    setIsHeaderExpanded(prev => !prev);
+  };
+
+  const handleHeaderToggleKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleHeaderToggle(e);
+    }
+  };
   
   return (
     <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
@@ -232,18 +273,36 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
             <FileIcon filePath={filePath} size={16} />
           )}
           
-          {/* File path (+line stats) text area with dedicated expand toggle */}
+          {/* File path area with independent header expand/collapse */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1 min-w-0">
-              <TruncatableText
-                text={headerText}
-                maxLength={60}
-                overflowAware
-                className={`text-[11px] font-mono ${config.textColor}`}
-                buttonClassName={`${config.textColor} opacity-60`}
-              />
+            <div className="relative min-w-0">
+              <span
+                ref={headerTextRef}
+                className={`block text-[11px] font-mono ${config.textColor} text-left min-w-0 ${
+                  isHeaderExpanded ? 'whitespace-pre-wrap break-all' : 'truncate whitespace-nowrap'
+                }`}
+                title={!isHeaderExpanded && isHeaderOverflowing ? filePath : undefined}
+              >
+                {filePath}
+              </span>
+              {!isHeaderExpanded && isHeaderOverflowing && (
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l ${config.headerFadeFrom} to-transparent`}
+                />
+              )}
             </div>
           </div>
+
+          {!isFailed && !isCancelled && lineStatsItems.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {lineStatsItems.map(item => (
+                <span key={item.text} className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${item.className}`}>
+                  {item.text}
+                </span>
+              ))}
+            </div>
+          )}
           
           {/* Header metadata slot (status badges) */}
           {isFailed ? (
@@ -261,6 +320,22 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
               </span>
             </div>
           ) : null}
+
+          {canToggleHeader && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleHeaderToggle}
+              onKeyDown={handleHeaderToggleKeyDown}
+              className="flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer inline-flex items-center justify-center"
+            >
+              {isHeaderExpanded ? (
+                <ChevronDown className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} />
+              ) : (
+                <ChevronRight className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} />
+              )}
+            </span>
+          )}
           
           {/* Content scaffold slot (right-most) */}
           {canToggleContent && (
