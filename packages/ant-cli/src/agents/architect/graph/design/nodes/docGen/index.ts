@@ -473,9 +473,10 @@ export async function docGen(
       _pendingDoneCheck: nextPendingDoneCheck,
       _doneCheckEscalation: nextDoneCheckEscalation,
       // Phase signal for the tool node + breadcrumbs. Tool routing /
-      // mutate-gate enforcement still keys off
-      // `ToolExecutionContext.allowMutateInCodebase` in the handlers,
-      // not this flag — the field is informational.
+      // gate enforcement keys off `ToolExecutionContext.allowMutateInCodebase`
+      // (codebase writes) and `ToolExecutionContext.allowShellExecution`
+      // (run_command) in the handlers, not this flag — the field is
+      // informational.
       _activePhase: 'docGen' as const,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,

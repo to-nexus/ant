@@ -364,7 +364,12 @@ Code job 의 verification 사이클(필드·리셋 규칙·gate·정책·snapsho
 
 ## Codebase mutation gate
 
-Code job 은 `codebase/` 산하 소스 코드 mutation 이 정당한 **유일한** phase 인 `execute` 를 보유한다. `plan` phase 는 sealed `<plan>` JSON 산출이 책임이며 `codebase/` 쓰기는 차단된다 (도구 핸들러 `allowMutateInCodebase = (state._activePhase === 'execute')`, FileRenderer `codePhase: 'plan' | 'execute'` 분기). 정책 SSOT 와 다른 잡과의 매트릭스는 [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate) 참고.
+Code job 은 두 직교 권한을 phase 별로 다르게 갖는다:
+
+- **`codebase/` 쓰기** (`allowMutateInCodebase`) — `execute` phase 만 정당. `plan` phase 는 sealed `<plan>` JSON 산출이 책임이며 source mutation 은 차단된다 (도구 핸들러 `allowMutateInCodebase = (state._activePhase === 'execute')`, FileRenderer `codePhase: 'plan' | 'execute'` 분기).
+- **`run_command` shell 실행** (`allowShellExecution`) — `plan` 과 `execute` **양쪽 모두 허용**. plan tool-loop 는 verification 게이트 (build/typecheck/test), 테스트 러너 설치 (test-code), 에러 진단 (error), design-prescribed dep 설치 후 API discovery (default plan) 등 정상 사용처가 있다. wiring 은 `allowShellExecution: true` (always) — 이 플래그는 `allowMutateInCodebase` 와 직교 책임이며, plan 의 sealed-plan-only 산출 책임은 `allowMutateInCodebase = false` 만으로 충분히 강제된다.
+
+정책 SSOT 와 다른 잡과의 매트릭스는 [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate) 참고. 두 권한을 단일 플래그로 묶었던 이전 설계는 코드잡 verification plan 이 typecheck 게이트조차 못 돌리고 silent false-pass 하는 회귀 (`agile-nodding-pouch`) 를 만들었으며, 그 분리가 현 SSOT 다.
 
 ## 경계
 
