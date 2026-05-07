@@ -517,8 +517,8 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `VITE_CLOUD_BACKEND_BASE` | Cloud backend URL (without /api suffix) | Yes |
-| `VITE_SKIP_AUTH_FOR_LOCALHOST` | Skip OAuth for local mode | Optional |
+| `VITE_CLOUD_BACKEND_BASE` | Cloud backend URL (without /api suffix). Empty = same-origin (single-host deployment). | Optional |
+| `VITE_PREVIEW_HOST` | Preview server URL. Empty = same-origin. | Optional |
 
 > ⚠️ 사용자는 UI에서 백엔드 모드(local/cloud)와 로컬 포트를 설정할 수 있습니다.
 > - **Cloud 모드**: `VITE_CLOUD_BACKEND_BASE`로 연결 (Ingress 라우팅)
