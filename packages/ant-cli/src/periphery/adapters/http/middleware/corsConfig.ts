@@ -22,8 +22,9 @@ import cors from 'cors';
  * Resolution order:
  * 1. Missing `Origin` header (same-origin / server-to-server / health) → allow.
  * 2. `ANT_CORS_ORIGINS` (csv) match → allow.
- * 3. Non-production + localhost / 127.0.0.1 → allow.
- * 4. Otherwise → reject.
+ * 3. `FRONTEND_URL` origin (split-host deployment) → allow.
+ * 4. Non-production + localhost / 127.0.0.1 → allow.
+ * 5. Otherwise → reject.
  */
 export function createCorsMiddleware() {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -32,7 +33,22 @@ export function createCorsMiddleware() {
     ? process.env.ANT_CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
     : [];
 
-  const allowAllOrigins = extraOrigins.includes('*');
+  // Extract origin from FRONTEND_URL if set (split-host deployment)
+  let frontendOrigin: string | null = null;
+  if (process.env.FRONTEND_URL) {
+    try {
+      frontendOrigin = new URL(process.env.FRONTEND_URL).origin;
+    } catch {
+      // Invalid URL, ignore
+    }
+  }
+
+  const allowedOrigins = new Set([
+    ...extraOrigins,
+    ...(frontendOrigin ? [frontendOrigin] : []),
+  ]);
+
+  const allowAllOrigins = allowedOrigins.has('*');
 
   return cors({
     origin: (origin, callback) => {
@@ -44,7 +60,7 @@ export function createCorsMiddleware() {
         return callback(null, true);
       }
 
-      if (extraOrigins.includes(origin)) {
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
 
