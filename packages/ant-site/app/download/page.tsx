@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Monitor, Box, Shield, Activity, Clock } from 'lucide-react';
+import { PageHero } from '@/components/PageHero';
 
 type DetectedPlatform = 'mac-arm' | 'mac-intel' | 'windows' | 'linux' | 'unknown';
 
@@ -28,12 +29,7 @@ const ALL_DOWNLOADS: DownloadItem[] = [
 function detectOS(): DetectedPlatform {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('mac')) {
-    if (navigator.platform === 'MacIntel' && 'maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) {
-      return 'mac-arm';
-    }
-    return 'mac-arm';
-  }
+  if (ua.includes('mac')) return 'mac-arm';
   if (ua.includes('win')) return 'windows';
   if (ua.includes('linux')) return 'linux';
   return 'unknown';
@@ -74,23 +70,12 @@ export default function DownloadPage() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative pt-32 pb-16 sm:pt-40 sm:pb-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-teal-950/20 via-transparent to-transparent" />
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="animate-fade-in-up">
-            <h1 className="text-4xl sm:text-5xl font-display font-bold text-white leading-tight mb-6">
-              {t('download.heroTitle1')}{' '}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-cyan-300">
-                {t('download.heroTitle2')}
-              </span>
-            </h1>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">
-              {t('download.heroDesc')}
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHero
+        title={t('download.heroTitle1')}
+        highlight={t('download.heroTitle2')}
+        description={t('download.heroDesc')}
+        accent="teal"
+      />
 
       {/* Primary Download */}
       <section className="py-16 sm:py-20">
@@ -191,24 +176,9 @@ export default function DownloadPage() {
           <p className="text-center text-gray-400 mb-10 max-w-2xl mx-auto">{t('download.whatDesc')}</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              {
-                id: 'bridge',
-                icon: <Box className="w-5 h-5" />,
-                title: t('download.bridgeTitle'),
-                desc: t('download.bridgeDesc'),
-              },
-              {
-                id: 'tray',
-                icon: <Monitor className="w-5 h-5" />,
-                title: t('download.trayTitle'),
-                desc: t('download.trayDesc'),
-              },
-              {
-                id: 'monitor',
-                icon: <Activity className="w-5 h-5" />,
-                title: t('download.monitorTitle'),
-                desc: t('download.monitorDesc'),
-              },
+              { id: 'bridge', icon: <Box className="w-5 h-5" />, title: t('download.bridgeTitle'), desc: t('download.bridgeDesc') },
+              { id: 'tray', icon: <Monitor className="w-5 h-5" />, title: t('download.trayTitle'), desc: t('download.trayDesc') },
+              { id: 'monitor', icon: <Activity className="w-5 h-5" />, title: t('download.monitorTitle'), desc: t('download.monitorDesc') },
             ].map((item) => (
               <div key={item.id} className="p-6 rounded-2xl bg-white/[0.03] border border-white/5">
                 <div className="w-10 h-10 rounded-lg bg-teal-950/50 border border-teal-800/30 flex items-center justify-center text-teal-400 mb-4">
@@ -239,9 +209,9 @@ export default function DownloadPage() {
               </thead>
               <tbody>
                 {[
-                  { os: 'macOS', version: '11 (Big Sur) 이상', arch: 'Apple Silicon (arm64), Intel (x64)' },
-                  { os: 'Windows', version: '10 이상', arch: 'x64' },
-                  { os: 'Linux', version: 'Ubuntu 20.04 이상', arch: 'x64' },
+                  { os: 'macOS', version: '11 (Big Sur)+', arch: 'Apple Silicon (arm64), Intel (x64)' },
+                  { os: 'Windows', version: '10+', arch: 'x64' },
+                  { os: 'Linux', version: 'Ubuntu 20.04+', arch: 'x64' },
                 ].map((row) => (
                   <tr key={row.os} className="border-b border-white/5">
                     <td className="py-3 pr-6 text-sm text-gray-300 font-medium">{row.os}</td>
