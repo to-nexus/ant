@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Monitor, Server, Layers, FolderGit2, BookOpen } from 'lucide-react';
+import { PageHero } from '@/components/PageHero';
 
 const LANGUAGES: { name: string; descKey: string; tier: 'supported' | 'planned' }[] = [
   { name: 'TypeScript / JavaScript', descKey: 'langTs', tier: 'supported' },
@@ -12,13 +13,13 @@ const LANGUAGES: { name: string; descKey: string; tier: 'supported' | 'planned' 
   { name: 'Rust', descKey: 'langRust', tier: 'planned' },
 ];
 
-const SUPPORTED_FRAMEWORKS = {
+const SUPPORTED_FRAMEWORKS: Record<string, string[]> = {
   Frontend: ['Next.js', 'Nuxt', 'SvelteKit', 'Angular', 'Vite + React/Vue'],
   Backend: ['Express', 'NestJS', 'Gin'],
   'CSS / UI': ['Tailwind CSS', 'CSS Modules', 'styled-components'],
 };
 
-const PLANNED_FRAMEWORKS = {
+const PLANNED_FRAMEWORKS: Record<string, string[]> = {
   Python: ['FastAPI', 'Django', 'Flask'],
   'Java / Kotlin': ['Spring Boot'],
   Rust: ['Axum', 'Actix'],
@@ -37,27 +38,17 @@ const PROJECT_TYPES: {
 
 export default function CapabilitiesContent() {
   const { t } = useTranslation('site');
-
   const supported = LANGUAGES.filter((l) => l.tier === 'supported');
   const planned = LANGUAGES.filter((l) => l.tier === 'planned');
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative pt-32 pb-16 sm:pt-40 sm:pb-24 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-950/20 via-transparent to-transparent" />
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="animate-fade-in-up">
-            <h1 className="text-4xl sm:text-5xl font-display font-bold text-white leading-tight mb-6">
-              {t('capabilities.heroTitle1')}{' '}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
-                {t('capabilities.heroTitle2')}
-              </span>
-            </h1>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">{t('capabilities.heroDesc')}</p>
-          </div>
-        </div>
-      </section>
+      <PageHero
+        title={t('capabilities.heroTitle1')}
+        highlight={t('capabilities.heroTitle2')}
+        description={t('capabilities.heroDesc')}
+        accent="blue"
+      />
 
       {/* Project Types */}
       <section className="py-16 sm:py-24">
@@ -104,17 +95,17 @@ export default function CapabilitiesContent() {
           </div>
 
           <div className="mt-8">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-300/70 mb-3">
               {t('capabilities.plannedLabel')}
             </h3>
             <div className="space-y-3">
               {planned.map((lang) => (
                 <div key={lang.name} className="flex items-start gap-4 p-5 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-gray-600" />
+                  <div className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-emerald-700" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold text-gray-400">{lang.name}</h4>
-                      <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500 border border-white/10 rounded-full">
+                      <h4 className="text-sm font-semibold text-gray-300">{lang.name}</h4>
+                      <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-300 bg-emerald-950/40 border border-emerald-800/30 rounded-full">
                         {t('capabilities.plannedLabel')}
                       </span>
                     </div>
@@ -152,13 +143,13 @@ export default function CapabilitiesContent() {
             ))}
           </div>
 
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-300/70 mb-4">
             {t('capabilities.frameworkPlanned')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {Object.entries(PLANNED_FRAMEWORKS).map(([category, items]) => (
               <div key={category} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5">
-                <h4 className="text-sm font-semibold text-gray-500 mb-4">{category}</h4>
+                <h4 className="text-sm font-semibold text-gray-400 mb-4">{category}</h4>
                 <div className="flex flex-wrap gap-2">
                   {items.map((item) => (
                     <span key={item} className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-white/[0.02] border border-white/5 rounded-full">
@@ -193,9 +184,9 @@ export default function CapabilitiesContent() {
       {/* Honest Note */}
       <section className="py-16 sm:py-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="p-6 rounded-2xl bg-amber-950/10 border border-amber-900/20">
-            <p className="text-sm text-amber-200/80 leading-relaxed">
-              <strong className="text-amber-200">{t('capabilities.noteLabel')}</strong> {t('capabilities.note')}
+          <div className="p-6 rounded-2xl bg-emerald-950/10 border border-emerald-900/20">
+            <p className="text-sm text-emerald-200/80 leading-relaxed">
+              <strong className="text-emerald-200">{t('capabilities.noteLabel')}</strong> {t('capabilities.note')}
             </p>
           </div>
         </div>

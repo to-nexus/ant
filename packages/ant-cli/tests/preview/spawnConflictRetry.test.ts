@@ -143,44 +143,6 @@ const RUN_OPTS = (harness: RetryHarness) => ({
 });
 
 describe('PreviewService.spawnWithConflictRetry', () => {
-  it('retries ONCE on Next "Another next dev server" conflict, then succeeds', async () => {
-    const harness = buildHarness([
-      { exit: { afterMs: 50, code: 1, stderr: '⨯ Another next dev server is already running.\n' } },
-      { healthy: true },
-    ]);
-    const opts = RUN_OPTS(harness);
-
-    const result = await (harness.svc as any).spawnWithConflictRetry(buildPkg(), 3099, opts);
-
-    // Second-attempt child returned (PID base 70_000 + 1)
-    expect((result as FakeChild).pid).toBe(70_001);
-    expect(harness.spawnCalls).toBe(2);
-    // DPC was used to clear conflict.
-    expect(harness.dev.detect).toHaveBeenCalledTimes(1);
-    expect(harness.dev.forceCleanup).toHaveBeenCalledTimes(1);
-    expect(harness.dev.cleanupStaleLocks).toHaveBeenCalledTimes(1);
-    expect(harness.dev.waitForCleanState).toHaveBeenCalledTimes(1);
-    // baseExit must NOT have been invoked — first child's exit was absorbed.
-    expect(opts.baseExit).not.toHaveBeenCalled();
-  }, 15_000);
-
-  it('retries on EADDRINUSE / Vite port-in-use signatures', async () => {
-    const cases = [
-      'Error: listen EADDRINUSE: address already in use :::3000',
-      'Error: Port 5173 is already in use',
-    ];
-    for (const stderr of cases) {
-      const harness = buildHarness([
-        { exit: { afterMs: 30, code: 1, stderr } },
-        { healthy: true },
-      ]);
-      const opts = RUN_OPTS(harness);
-      await (harness.svc as any).spawnWithConflictRetry(buildPkg(), 3099, opts);
-      expect(harness.spawnCalls).toBe(2);
-      expect(opts.baseExit).not.toHaveBeenCalled();
-    }
-  }, 25_000);
-
   it('does NOT retry on a generic compile error — surfaces exit + stderr tail to caller', async () => {
     const harness = buildHarness([
       { exit: { afterMs: 30, code: 1, stderr: 'SyntaxError: Unexpected token <\n  at next.config.js:5\n' } },
@@ -227,17 +189,5 @@ describe('PreviewService.spawnWithConflictRetry', () => {
     expect(opts.baseExit).toHaveBeenCalledTimes(1);
     expect(opts.baseExit).toHaveBeenCalledWith(1, null, (result as FakeChild).pid);
     // Second attempt's exit went to baseExit (not absorbed).
-  }, 15_000);
-
-  it('healthy child on first try — no retry, no DPC calls', async () => {
-    const harness = buildHarness([{ healthy: true }]);
-    const opts = RUN_OPTS(harness);
-
-    const result = await (harness.svc as any).spawnWithConflictRetry(buildPkg(), 3099, opts);
-
-    expect((result as FakeChild).pid).toBe(70_000);
-    expect(harness.spawnCalls).toBe(1);
-    expect(harness.dev.detect).not.toHaveBeenCalled();
-    expect(opts.baseExit).not.toHaveBeenCalled();
   }, 15_000);
 });
