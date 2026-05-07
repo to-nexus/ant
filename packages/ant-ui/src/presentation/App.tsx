@@ -27,6 +27,7 @@ import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
 import { fetchAuthMe, getBackendMode } from '@/infrastructure/http/api';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 
 function App() {
   const location = useLocation();
@@ -37,37 +38,50 @@ function App() {
     document.title = t('brand.tabTitle');
   }, [t]);
 
-  // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation on startup
+  // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation
+  // on startup. The store's `authStatus` channel mirrors this effect's
+  // progression: 'verifying' while `fetchAuthMe()` is in flight, then
+  // 'verified' / 'expired' / 'idle'. `selectIsAuthBlocked` reads it so
+  // lifecycle hooks stay quiet during the verification window.
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
-    const authStatus = urlParams.get('auth');
+    const oauthCallback = urlParams.get('auth');
     const errorParam = urlParams.get('error');
-    
-    if (authStatus === 'success') {
+
+    if (oauthCallback === 'success') {
+      useStore.getState().setAuthStatus('verifying');
       (async () => {
         try {
           const user = await fetchAuthMe();
           if (user) {
             const setUser = useStore.getState().setUser;
             setUser(user.email, user.organization);
-            
+
             const fetchProjects = useStore.getState().fetchProjects;
             fetchProjects();
-            
+
             console.log('[Auth] Successfully signed in with Google:', user.email);
           } else {
             console.error('[Auth] Failed to fetch user info after OAuth');
+            useStore.getState().setAuthStatus('idle');
           }
-          
+
           navigate('/', { replace: true });
         } catch (error) {
           console.error('[Auth] Failed to complete OAuth:', error);
+          useStore.getState().setAuthStatus('idle');
         }
       })();
     } else if (errorParam) {
       console.error('[Auth] OAuth error:', errorParam);
+      useStore.getState().setAuthStatus('idle');
       navigate('/', { replace: true });
     } else if (getBackendMode() === 'cloud') {
+      // Initial authStatus is already 'verifying' for hydrated stale-user
+      // entries (see authSlice initialAuthStatus); explicitly set it again
+      // for the fresh-mount case so we don't accidentally fan out before
+      // verification.
+      useStore.getState().setAuthStatus('verifying');
       (async () => {
         try {
           const user = await fetchAuthMe();
@@ -76,13 +90,21 @@ function App() {
               useStore.getState().setUser(user.email, user.organization);
               useStore.getState().fetchProjects();
               console.log('[Auth] Restored session from cookie:', user.email);
+            } else {
+              useStore.getState().setAuthStatus('verified');
             }
           } else if (useStore.getState().userEmail) {
             console.warn('[Auth] JWT session expired, clearing stored user');
             useStore.getState().clearUser();
+          } else {
+            useStore.getState().setAuthStatus('idle');
           }
         } catch {
-          // Network error — don't clear user (server may be temporarily down)
+          // Network error — don't clear user (server may be temporarily
+          // down). Drop authStatus to 'idle' so lifecycle hooks can resume
+          // whenever the server returns; if the cookie is invalid we'll
+          // catch it on the next protected request.
+          useStore.getState().setAuthStatus('idle');
         }
       })();
     }
@@ -128,6 +150,7 @@ function App() {
   // ✅ Onboarding state
   const userEmail = useStore((state) => state.userEmail);
   const backendMode = useStore((state) => state.backendMode);
+  const authStatusValue = useStore((state) => state.authStatus);
   const projects = useStore((state) => state.projects);
   const projectsLoaded = useStore(selectProjectsLoaded);
   
@@ -351,6 +374,11 @@ function App() {
         return;
       }
 
+      // Stale-session guard. Cloud + no userEmail = the JWT cookie is
+      // gone or expired; the session fetch would 401 and pollute the
+      // console while clearUser's cascade is still landing.
+      if (selectIsAuthBlocked(useStore.getState())) return;
+
       try {
         const session = await fetchFeatureSession(selectedProject, selectedFeature);
         setSession(session ?? undefined);
@@ -379,6 +407,10 @@ function App() {
   }
 
   if (shouldShowWelcome) {
+    // Cloud-mode + no signed-in user: the AppNavBar carries the Sign In
+    // button (Google OIDC), so we keep it mounted and leave the body
+    // empty. Marketing surface lives on ant-site (`/`); users that need
+    // it navigate there explicitly. See e27f0ff7.
     return (
       <ToastProvider>
         <AlertModalProvider>
@@ -390,10 +422,14 @@ function App() {
     );
   }
 
-  // ✅ Boot gate: authenticated but projects not yet loaded — prevent normal
-  // UI flash. Uses a delayed spinner (via Spinner primitive) so fast boots
-  // don't flicker; the AppNavBar stays mounted to avoid a header jump.
-  if (!!userEmail && !projectsLoaded) {
+  // ✅ Boot gate: hide the normal UI while either
+  //   (a) cloud-mode JWT verification is still in flight (`authStatus === 'verifying'`), or
+  //   (b) authenticated user is set but projects haven't loaded yet.
+  // (a) prevents the lifecycle race where stale `selectedProject` would
+  // fan out protected requests under a soon-to-be-cleared session; (b)
+  // is the legacy first-fetch flash guard. Uses a delayed spinner so fast
+  // boots don't flicker; the AppNavBar stays mounted to avoid a header jump.
+  if (authStatusValue === 'verifying' || (!!userEmail && !projectsLoaded)) {
     return (
       <ToastProvider>
         <AlertModalProvider>

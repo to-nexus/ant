@@ -119,6 +119,12 @@ Figma MCP (로컬 모드는 desktop, 클라우드 모드는 HTTP bridge) 가 탐
 
 ## 게임 도메인 미러
 
+> ⚠️ **개발 중.** 게임 도메인은 모드 골격이 준비되어 있지만 아직
+> 프로덕션 준비 상태가 아닙니다. 아래 설명한 컨트랙트들은 코드에
+> 와이어링되어 있고 개념을 읽기엔 충분히 안정적이지만, end-to-end
+> 게임 생성은 아직 검증 단계입니다. Stable 표시 전까지 breaking
+> change 를 예상하세요.
+
 게임 프로젝트는 `visual/ui/` 대신 `visual/game-art/` 사용. 서브소스
 구조는 UI를 미러: `ant/` 가 LLM 생성 정규 sub-source
 (`game-art-tokens.json`, `game-art-assets.json`, `game-art-spec.json`).

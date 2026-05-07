@@ -125,6 +125,11 @@ The `ui-source-dispatch` partial selects the right one at render time.
 
 ## The game domain mirror
 
+> ⚠️ **In development.** The game domain is scaffolded but not production
+> ready. The contracts described below are wired in code and stable
+> enough to read about, but end-to-end game generation is still being
+> validated. Expect breaking changes until the domain is marked Stable.
+
 Game projects use `visual/game-art/` instead of `visual/ui/`. The
 sub-source structure mirrors UI: `ant/` is the LLM-generated canonical
 sub-source (`game-art-tokens.json`, `game-art-assets.json`,

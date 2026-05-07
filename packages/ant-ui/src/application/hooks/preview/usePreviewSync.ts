@@ -23,6 +23,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
 import { getPreviewStatus } from '@/infrastructure/http/api';
@@ -69,6 +70,7 @@ export function usePreviewSync(): void {
   // ── Initial fetch on feature switch ─────────────────────────────────
   useEffect(() => {
     if (!featureKey || !selectedProject || !selectedFeature) return;
+    if (selectIsAuthBlocked(useStore.getState())) return;
     let cancelled = false;
     getPreviewStatus(selectedProject, selectedFeature)
       .then((status) => {
@@ -93,6 +95,7 @@ export function usePreviewSync(): void {
   useEffect(() => {
     if (!featureKey || !selectedProject || !selectedFeature) return;
     if (connectionStatus !== 'connected') return;
+    if (selectIsAuthBlocked(useStore.getState())) return;
     getPreviewStatus(selectedProject, selectedFeature)
       .then((status) => {
         const entry = useStore.getState().previewByFeature[featureKey];
@@ -107,6 +110,7 @@ export function usePreviewSync(): void {
     if (!featureKey || !selectedProject || !selectedFeature) return;
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
+      if (selectIsAuthBlocked(useStore.getState())) return;
       getPreviewStatus(selectedProject, selectedFeature)
         .then((status) => {
           const entry = useStore.getState().previewByFeature[featureKey];
@@ -173,6 +177,7 @@ export function usePreviewSync(): void {
     if (!isLoading) return;
     if (phase === 'running') return;
     const id = window.setTimeout(() => {
+      if (selectIsAuthBlocked(useStore.getState())) return;
       getPreviewStatus(selectedProject, selectedFeature)
         .then((status) => {
           // The stopGuard does NOT apply here — this path only fires

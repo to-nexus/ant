@@ -31,6 +31,11 @@ slot from the RAC).
 
 ## Game projects
 
+> ⚠️ **In development.** The game domain is scaffolded but not production
+> ready. The structure described below is wired in code; end-to-end
+> game-design generation is still being validated. Use the `service`
+> domain for production work.
+
 Game projects use `visual/game-art/` instead of `visual/ui/`. The
 sub-source structure mirrors UI:
 

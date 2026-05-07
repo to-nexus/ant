@@ -231,12 +231,12 @@ export function createAuthRoutes(deps: {
     if (!jwtService) {
       return res.status(503).json({ error: 'JWT not configured' });
     }
-    
+
     const token = (req as any).cookies?.[JwtService.cookieName];
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
-    
+
     try {
       const payload = jwtService.verify(token);
       res.json({

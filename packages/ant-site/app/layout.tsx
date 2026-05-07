@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { SiteNavBar } from '@/components/SiteNavBar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { I18nProvider } from '@/lib/I18nProvider';
+import { AuthSessionProvider } from '@/lib/AuthSessionProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -23,9 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko" suppressHydrationWarning>
       <body className="min-h-screen flex flex-col">
         <I18nProvider>
-          <SiteNavBar />
-          <main className="flex-1">{children}</main>
-          <SiteFooter />
+          <AuthSessionProvider>
+            <SiteNavBar />
+            <main className="flex-1">{children}</main>
+            <SiteFooter />
+          </AuthSessionProvider>
         </I18nProvider>
       </body>
     </html>

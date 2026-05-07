@@ -217,9 +217,27 @@ export interface DeploySliceState {
   deployByFeature: Record<string, PerFeatureDeployState>;
 }
 
+export type AuthStatus = 'idle' | 'verifying' | 'verified' | 'expired';
+
 export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
+  /**
+   * Cloud-mode JWT verification status. Mirrors the `systemConfigStatus`
+   * pattern (idle/loading/ready/error) but with semantics that match the
+   * lifecycle race fixed by plan `stale-session-lifecycle-cascade`:
+   *   - `'idle'`     — local mode, or no stale session to re-check.
+   *   - `'verifying'`— mount-time `fetchAuthMe()` is in flight (cloud only).
+   *                    Lifecycle hooks must NOT fire protected requests
+   *                    until this transitions to `'verified'`.
+   *   - `'verified'` — cookie verified, `userEmail` is fresh.
+   *   - `'expired'`  — cookie absent / 401, `clearUser` cascade has run.
+   *
+   * `selectIsAuthBlocked` treats `'verifying'` the same as
+   * "cloud + no userEmail", so a single selector keeps both the stale-
+   * session and verification-window cases out of lifecycle fan-out.
+   */
+  authStatus: AuthStatus;
   selectedAgent: string;
   selectedJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
 }

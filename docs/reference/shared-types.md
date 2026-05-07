@@ -59,6 +59,10 @@ key types and their meaning.
 
 ## Game-specific
 
+> ⚠️ The game vertical is **in development**. The types below are
+> wired and stable enough to compile against, but end-to-end game
+> generation paths are still being validated.
+
 | Type | Source | Purpose |
 |------|--------|---------|
 | `GameGenreVariant` | `game-content-tier-registry.ts` | Phase 4 genre set. |

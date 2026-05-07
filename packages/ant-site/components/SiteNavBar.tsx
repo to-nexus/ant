@@ -6,23 +6,18 @@ import { usePathname } from 'next/navigation';
 import { Menu, X, Globe, User, LogOut, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, type SupportedLanguage } from '@/lib/i18n';
-
-interface AuthUser {
-  email: string;
-  name?: string;
-  picture?: string;
-}
+import { useAuthSession, getAppEntryUrl, getSignInUrl } from '@/lib/AuthSessionProvider';
 
 export function SiteNavBar() {
   const { t, i18n } = useTranslation('site');
   const pathname = usePathname();
+  const { user, signOut } = useAuthSession();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
 
   const NAV_ITEMS = [
     { label: t('nav.product'), href: '/' },
@@ -56,16 +51,8 @@ export function SiteNavBar() {
     return () => document.removeEventListener('mousedown', onClick);
   }, [userMenuOpen]);
 
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (data?.email) setUser(data); })
-      .catch(() => {});
-  }, []);
-
   const handleSignOut = async () => {
-    await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
-    setUser(null);
+    await signOut();
     setUserMenuOpen(false);
   };
 
@@ -77,8 +64,8 @@ export function SiteNavBar() {
     setLangOpen(false);
   };
 
-  const signInUrl = `/api/auth/google?returnTo=${encodeURIComponent(pathname)}`;
-  const getStartedUrl = user ? '/app/' : `/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
+  const signInUrl = getSignInUrl(pathname);
+  const getStartedUrl = getAppEntryUrl(user);
 
   return (
     <header

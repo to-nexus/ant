@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { checkBridgeStatus, probeBridgeStatus, openDesktopDeepLink } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 
 export type DesktopStatus = 'offline' | 'detected' | 'connected';
 export type LaunchPhase = 'idle' | 'connecting' | 'success' | 'failed';
@@ -103,19 +104,25 @@ export function useDesktopBridge(
   }, [cleanupLaunchPolling, setBridgeStatus]);
 
   // --- Initial fetch on mount (regardless of enablePolling) ---
+  // Stale-session guard: in cloud mode, /api/bridge/status is JWT-protected
+  // and a missing userEmail means the cookie is absent/expired — fetching
+  // would 401 and pollute the console.
   useEffect(() => {
+    if (selectIsAuthBlocked(useStore.getState())) return;
     fetchStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Periodic polling ---
   useEffect(() => {
     if (!enablePolling) return;
+    if (selectIsAuthBlocked(useStore.getState())) return;
 
     const interval = bridgeConnected === true
       ? POLL_INTERVAL_CONNECTED
       : POLL_INTERVAL_DISCONNECTED;
 
     periodicPollRef.current = setInterval(() => {
+      if (selectIsAuthBlocked(useStore.getState())) return;
       fetchStatus();
     }, interval);
 

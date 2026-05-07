@@ -2,6 +2,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { Check, Minus, ArrowRight, Mail } from 'lucide-react';
+import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
 
 type PlanFeatureKey =
   | 'agents'
@@ -38,6 +39,8 @@ function resolveCell(t: (key: string) => string, cell: CellValue): boolean | str
 
 export default function PricingContent() {
   const { t } = useTranslation();
+  const { user } = useAuthSession();
+  const appEntryUrl = getAppEntryUrl(user);
   const betaFeatures = t('pricing.betaFeatures', { returnObjects: true }) as string[];
 
   const faqItems = [
@@ -79,7 +82,7 @@ export default function PricingContent() {
             </ul>
             <div className="mt-8">
               <a
-                href="/app/"
+                href={appEntryUrl}
                 className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl shadow-lg shadow-emerald-500/25 transition-all"
               >
                 {t('pricing.betaCta')}

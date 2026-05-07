@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import type { PreviewStatus, LogEntry } from '@/infrastructure/http/api';
 import { makeFeatureKey } from './deploySlice';
+import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface PerFeaturePreviewState {
   status: PreviewStatus | undefined;
@@ -144,8 +145,7 @@ export const createPreviewSlice: StateCreator<any, [], [], PreviewSlice> = (set,
     const key = makeFeatureKey(projectId, feature);
     if (!key) return;
     const state = get();
-    const { backendMode, userEmail } = state;
-    if (backendMode === 'cloud' && !userEmail) {
+    if (selectIsAuthBlocked(state as any)) {
       get().setPreviewStatus(key, undefined);
       return;
     }

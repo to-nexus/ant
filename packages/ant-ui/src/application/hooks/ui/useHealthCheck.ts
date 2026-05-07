@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { checkHealth } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 
 /**
  * Initialize connection and load projects on mount
@@ -11,6 +12,7 @@ import { useStore } from '@/domain/store';
 export function useHealthCheck() {
   const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
+  const authStatus = useStore((state) => state.authStatus);
   const { pathname } = useLocation();
   
   useEffect(() => {
@@ -35,15 +37,18 @@ export function useHealthCheck() {
         
         await store.loadSystemConfig();
         console.log(`[Timing] loadSystemConfig done +${Math.round(performance.now() - t0)}ms`);
-        
-        // Cloud Mode: Skip project loading if not signed in
-        if (store.backendMode === 'cloud' && !store.userEmail) {
+
+        // Cloud Mode: Skip project loading if not signed in or still verifying.
+        // `selectIsAuthBlocked` covers both branches (no userEmail or
+        // authStatus==='verifying'), so cloud-mode boot stays quiet until
+        // `fetchAuthMe` lands and decides verified/expired.
+        if (selectIsAuthBlocked(useStore.getState())) {
           store.setConnectionStatus('connected');
           store.setProjects([]);
-          console.log(`[Timing] setConnectionStatus('connected') (no auth) +${Math.round(performance.now() - t0)}ms`);
+          console.log(`[Timing] setConnectionStatus('connected') (auth blocked) +${Math.round(performance.now() - t0)}ms`);
           return;
         }
-        
+
         await store.fetchProjects();
         console.log(`[Timing] fetchProjects done +${Math.round(performance.now() - t0)}ms`);
         store.setConnectionStatus('connected');
@@ -56,7 +61,9 @@ export function useHealthCheck() {
     }
     
     initialize();
-  }, [backendMode, userEmail, pathname]);
+    // `authStatus` is in deps so cloud-mode 'verifying' → 'verified'
+    // re-runs `fetchProjects` after the JWT cookie is confirmed.
+  }, [backendMode, userEmail, authStatus, pathname]);
 }
 
 
