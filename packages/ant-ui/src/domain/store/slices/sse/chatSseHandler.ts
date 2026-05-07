@@ -109,6 +109,14 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         // file_create / file_edit / downloaded refresh the file tree.
         if (line.type === 'chat_status') {
           const statusLine = line as ChatStatusLine;
+          // Mirror BE `appendChatStatus → clearPendingCardSafe`: the
+          // durable line subsumes the pending card, so drop it from the
+          // buffer mirror. Without this, the next streaming_delta flush
+          // re-runs `syncVirtualEditorTabsFromBuffers` and resurrects
+          // `status: 'streaming'` on the freshly-promoted real tab.
+          if (statusLine.cardId) {
+            get().clearPendingCardFromBuffers?.(statusLine.cardId);
+          }
           const filePath = typeof statusLine.metadata?.filePath === 'string'
             ? (statusLine.metadata?.filePath as string)
             : undefined;

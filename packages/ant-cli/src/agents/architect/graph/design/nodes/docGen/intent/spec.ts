@@ -69,24 +69,42 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const sealedPlanLen = state.planText?.trim().length ?? 0;
   console.log(
     `📋 [DocGen/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections}) ` +
-    `· sealedPlan=${sealedPlanLen > 0 ? `${sealedPlanLen} chars` : 'none'}`,
+    `· sealedPlan=${sealedPlanLen > 0 ? `${sealedPlanLen} chars (top-injected, plan-gated rules)` : 'none (fallback rules)'}`,
   );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Build runtime context → vars.runtimeContext
+  // Build runtime context — split into two vars so the sealed plan
+  // (binding upstream decision) renders ABOVE rules in base.md while
+  // task / directive details render at the prompt tail. See
+  // `.claude/plans/plan-docgen-parallel-spring.md` for rationale.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const specDir = designDirOf(targetFile);
-  const runtimeLines: string[] = [];
-  // Sealed plan from plan node — sourced from `state.planText`. When
-  // populated, prepend it. The title closes the meaning axis: the
-  // decision recorded here is the content the spec markdown should
-  // record, not an action docGen performs on the codebase. See
-  // spec/base.md and spec/rules.md "Sealed Plan from Plan Node".
-  if (state.planText && state.planText.trim().length > 0) {
-    runtimeLines.push(`# Sealed Plan (the content the spec markdown should record)`);
-    runtimeLines.push(state.planText);
-    runtimeLines.push('');
+  const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
+
+  // Block A — sealed plan only. Rendered near the top of base.md as
+  // the binding upstream decision (mirrors code job's
+  // "📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)").
+  const sealedPlanLines: string[] = [];
+  if (hasSealedPlan) {
+    sealedPlanLines.push('════════════════════════════════════════════════════════════════════════════════');
+    sealedPlanLines.push('📋 SEALED DESIGN DECISION (Structured JSON — RECORD THIS, DO NOT RE-DERIVE)');
+    sealedPlanLines.push('════════════════════════════════════════════════════════════════════════════════');
+    sealedPlanLines.push('');
+    sealedPlanLines.push('The plan node has already decided the solution direction, candidate set,');
+    sealedPlanLines.push('and document outline below. Your job here is to **record this decision** as');
+    sealedPlanLines.push('a markdown spec — not to re-decide. Render `documentOutline` sections');
+    sealedPlanLines.push('faithfully, using tools only to confirm exact paths / signatures referenced');
+    sealedPlanLines.push('in the plan body.');
+    sealedPlanLines.push('');
+    sealedPlanLines.push('```json');
+    sealedPlanLines.push(state.planText!);
+    sealedPlanLines.push('```');
+    sealedPlanLines.push('');
   }
+
+  // Block B — task / directive details. Rendered at the bottom of
+  // base.md (after rules + section scope + previous sections).
+  const runtimeLines: string[] = [];
   runtimeLines.push(`# Target Document`);
   runtimeLines.push(`Write to: \`${specDir}/${targetFile}\``);
   runtimeLines.push(`Use: <file path="${specDir}/${targetFile}">...</file>`);

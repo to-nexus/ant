@@ -12,6 +12,7 @@ interface HarnessState {
   replaceStreamingBuffer: ReturnType<typeof vi.fn>;
   syncVirtualEditorTabsFromBuffers: ReturnType<typeof vi.fn>;
   promoteVirtualEditorTabToReal: ReturnType<typeof vi.fn>;
+  clearPendingCardFromBuffers: ReturnType<typeof vi.fn>;
   removeVirtualEditorTabsByJobId: ReturnType<typeof vi.fn>;
   refreshFileTree: ReturnType<typeof vi.fn>;
   clearChatEvents: ReturnType<typeof vi.fn>;
@@ -38,6 +39,7 @@ function createHarness(overrides: Partial<HarnessState> = {}) {
     replaceStreamingBuffer: vi.fn(() => {}),
     syncVirtualEditorTabsFromBuffers: vi.fn(),
     promoteVirtualEditorTabToReal: vi.fn(),
+    clearPendingCardFromBuffers: vi.fn(),
     removeVirtualEditorTabsByJobId: vi.fn(),
     refreshFileTree: vi.fn(),
     clearChatEvents: vi.fn(),
@@ -170,6 +172,82 @@ describe('chatSseHandler virtual editor tab bridge', () => {
       filePath: 'plan/prd.md',
       source: 'plan',
     });
+  });
+
+  // Regression — `appendChatStatus` on the BE clears the pending card
+  // from Redis but does NOT broadcast a `streaming_buffer_snapshot`. The
+  // handler must mirror that by dropping the card from the FE buffer
+  // mirror so a subsequent `flushStreamingDeltaBatch` does not flip the
+  // freshly-promoted real tab back to `'streaming'`.
+  it('chat_status with cardId clears the pending card from buffers', () => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        jobType: 'design',
+        cardId: 'card-1',
+        statusType: 'file_create',
+        metadata: { filePath: 'visual/ui/ant/ui-tokens.json' },
+      },
+    });
+
+    expect(h.state().clearPendingCardFromBuffers).toHaveBeenCalledWith('card-1');
+  });
+
+  it('non-file chat_status (e.g. tool_action) also clears its pending card', () => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        jobType: 'design',
+        cardId: 'tool-card-9',
+        statusType: 'tool_action',
+        metadata: { toolName: 'read_file' },
+      },
+    });
+
+    expect(h.state().clearPendingCardFromBuffers).toHaveBeenCalledWith('tool-card-9');
+    // Non-file status MUST NOT promote a virtual tab.
+    expect(h.state().promoteVirtualEditorTabToReal).not.toHaveBeenCalled();
+  });
+
+  it('chat_status with empty cardId does not invoke the buffer cleaner', () => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        jobType: 'design',
+        cardId: '',
+        statusType: 'tool_action',
+        metadata: {},
+      },
+    });
+
+    expect(h.state().clearPendingCardFromBuffers).not.toHaveBeenCalled();
   });
 
   it('job failed status closes virtual tabs tied to the job', () => {

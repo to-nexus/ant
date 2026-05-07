@@ -219,6 +219,122 @@ describe('sseSlice — replaceStreamingBuffer gating', () => {
   });
 });
 
+describe('sseSlice — clearPendingCardFromBuffers', () => {
+  let h: ReturnType<typeof createHarness>;
+  beforeEach(() => {
+    h = createHarness();
+  });
+
+  // Mirrors BE `appendChatStatus → clearPendingCardSafe`. Without this
+  // mirror, the FE buffer keeps the pending card after the durable line
+  // lands, and the next `flushStreamingDeltaBatch` re-runs
+  // `syncVirtualEditorTabsFromBuffers` which flips the freshly-promoted
+  // real tab back from `'ready'` to `'streaming'` (visible as a stuck
+  // spinner + streaming badge after design-job file finalize).
+  it('drops pendingCards[cardId] from a buffer that contains it', () => {
+    h.slice.replaceChatEvents([], {}, '2026-04-25T00:00:01.000Z');
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-1',
+      chunk: 'streaming…',
+      producedAt: '2026-04-25T00:00:02.000Z',
+    });
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'text',
+      chunk: 'narrative',
+      producedAt: '2026-04-25T00:00:03.000Z',
+    });
+
+    h.slice.clearPendingCardFromBuffers('card-1');
+
+    const buf = h.get().streamingBuffers['t-1:_main_'];
+    expect(buf?.pendingCards?.['card-1']).toBeUndefined();
+    // text chunk MUST survive — only the named pending card is dropped.
+    expect(buf?.text).toBe('narrative');
+  });
+
+  it('preserves sibling pending cards on the same buffer', () => {
+    h.slice.replaceChatEvents([], {}, '2026-04-25T00:00:01.000Z');
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-a',
+      chunk: 'a-content',
+      producedAt: '2026-04-25T00:00:02.000Z',
+    });
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-b',
+      chunk: 'b-content',
+      producedAt: '2026-04-25T00:00:03.000Z',
+    });
+
+    h.slice.clearPendingCardFromBuffers('card-a');
+
+    const buf = h.get().streamingBuffers['t-1:_main_'];
+    expect(buf?.pendingCards?.['card-a']).toBeUndefined();
+    expect(buf?.pendingCards?.['card-b']?.streamedOutput).toBe('b-content');
+  });
+
+  it('walks every buffer key and drops the cardId from each match', () => {
+    h.slice.replaceChatEvents([], {}, '2026-04-25T00:00:01.000Z');
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      workerScope: 'w-1',
+      kind: 'card_output',
+      cardId: 'shared-card',
+      chunk: 'one',
+      producedAt: '2026-04-25T00:00:02.000Z',
+    });
+    h.slice.applyStreamingDelta({
+      turnId: 't-2',
+      workerScope: 'w-2',
+      kind: 'card_output',
+      cardId: 'shared-card',
+      chunk: 'two',
+      producedAt: '2026-04-25T00:00:03.000Z',
+    });
+
+    h.slice.clearPendingCardFromBuffers('shared-card');
+
+    expect(h.get().streamingBuffers['t-1:w-1']?.pendingCards?.['shared-card']).toBeUndefined();
+    expect(h.get().streamingBuffers['t-2:w-2']?.pendingCards?.['shared-card']).toBeUndefined();
+  });
+
+  it('is a referential no-op when no buffer holds the cardId', () => {
+    h.slice.replaceChatEvents([], {}, '2026-04-25T00:00:01.000Z');
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-x',
+      chunk: 'x',
+      producedAt: '2026-04-25T00:00:02.000Z',
+    });
+
+    const before = h.get().streamingBuffers;
+    h.slice.clearPendingCardFromBuffers('not-in-buffer');
+    expect(h.get().streamingBuffers).toBe(before);
+  });
+
+  it('ignores empty cardId', () => {
+    h.slice.replaceChatEvents([], {}, '2026-04-25T00:00:01.000Z');
+    h.slice.applyStreamingDelta({
+      turnId: 't-1',
+      kind: 'card_output',
+      cardId: 'card-1',
+      chunk: 'k',
+      producedAt: '2026-04-25T00:00:02.000Z',
+    });
+
+    const before = h.get().streamingBuffers;
+    h.slice.clearPendingCardFromBuffers('');
+    expect(h.get().streamingBuffers).toBe(before);
+  });
+});
+
 describe('sseSlice — clearChatEvents', () => {
   let h: ReturnType<typeof createHarness>;
   beforeEach(() => {

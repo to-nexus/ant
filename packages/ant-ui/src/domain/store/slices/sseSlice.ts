@@ -69,6 +69,15 @@ export interface SSEActions {
     },
   ) => void;
   clearStreamingBuffer: (turnId: string, workerScope?: string) => void;
+  /**
+   * Drop `pendingCards[cardId]` from every streaming buffer. Called when a
+   * `chat_status` ChatLine lands so the FE mirror tracks the BE-side
+   * `clearPendingCardSafe` performed inside `appendChatStatus`. Without
+   * this the in-flight card outlives its durable line and the next
+   * `flushStreamingDeltaBatch` re-runs `syncVirtualEditorTabsFromBuffers`,
+   * resurrecting `status: 'streaming'` on the freshly-promoted real tab.
+   */
+  clearPendingCardFromBuffers: (cardId: string) => void;
   clearChatEvents: (scope?: 'chat' | 'full') => void;
   initializeSSE: () => void;
   reconnectSSE: (key: string) => void;
@@ -182,6 +191,26 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       if (!(key in state.streamingBuffers)) return state;
       const next = { ...state.streamingBuffers };
       delete next[key];
+      return { streamingBuffers: next };
+    });
+  },
+
+  clearPendingCardFromBuffers: (cardId) => {
+    if (!cardId) return;
+    set((state: any) => {
+      const buffers = state.streamingBuffers as Record<BufferKey, StreamingBuffer>;
+      let mutated = false;
+      const next: Record<BufferKey, StreamingBuffer> = {};
+      for (const [key, buf] of Object.entries(buffers)) {
+        if (buf.pendingCards && cardId in buf.pendingCards) {
+          const { [cardId]: _dropped, ...rest } = buf.pendingCards;
+          next[key] = { ...buf, pendingCards: rest };
+          mutated = true;
+        } else {
+          next[key] = buf;
+        }
+      }
+      if (!mutated) return state;
       return { streamingBuffers: next };
     });
   },
