@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { AuthState } from '../types';
+import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 
 export interface AuthActions {
@@ -8,16 +8,27 @@ export interface AuthActions {
   setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
   setUser: (email: string, organization: string) => void;
   clearUser: () => void;
+  setAuthStatus: (status: AuthStatus) => void;
 }
 
 export type AuthSlice = AuthState & AuthActions;
 
-export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) => ({
+export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) => {
+  // Initial authStatus: when hydrated cloud-mode userEmail exists we still
+  // need to verify the cookie (server is the SSOT for session validity).
+  // Local mode never verifies — `'idle'` is a no-op for `selectIsAuthBlocked`.
+  const hydratedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE) || 'cloud';
+  const hydratedUserEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
+  const initialAuthStatus: AuthStatus =
+    hydratedBackendMode === 'cloud' && hydratedUserEmail ? 'verifying' : 'idle';
+
+  return {
   // ==================
   // State
   // ==================
   userEmail: undefined,
   userOrganization: undefined,
+  authStatus: initialAuthStatus,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
   selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'plan',
 
@@ -91,15 +102,39 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   },
 
   setUser: (email, organization) => {
-    set({ userEmail: email, userOrganization: organization });
+    set({ userEmail: email, userOrganization: organization, authStatus: 'verified' });
     saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
     saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
   },
 
+  setAuthStatus: (status) => set({ authStatus: status }),
+
+  /**
+   * Single SSOT for user disappearance — used by both the explicit
+   * sign-out flow (AppNavBar.handleSignOut) and the implicit stale-session
+   * detection in App.tsx (cloud-mode `fetchAuthMe` 401). Both flows MUST
+   * cascade to lifecycle-dependent state, otherwise hooks like
+   * useProjectLifecycle / usePreviewSync / loadSession keep firing
+   * protected requests with stale `selectedProject` and produce 401 storms
+   * (regression introduced by 538d9e74 "JWT 보안 미들웨어 구축").
+   */
   clearUser: () => {
-    set({ userEmail: undefined, userOrganization: undefined });
+    set({
+      userEmail: undefined,
+      userOrganization: undefined,
+      authStatus: 'expired',
+    });
     removeFromStorage(STORAGE_KEYS.USER_EMAIL);
     removeFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
+
+    const state = get() as any;
+    if (typeof state.reset === 'function') {
+      state.reset();
+    }
+    set({ projects: [], projectsStatus: 'idle' } as any);
+    removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
+    removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
   },
-});
+  };
+};
 

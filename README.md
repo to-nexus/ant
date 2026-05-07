@@ -61,7 +61,7 @@ pnpm dev:local:all        # API + Realtime + Worker + Preview + UI
 ```
 
 Open [http://localhost:5173](http://localhost:5173) and write your first
-directive — for example, *"Build a Pong game in Phaser"*.
+directive — for example, *"Build a TODO app with React and Tailwind"*.
 
 You'll need an LLM provider key. Anthropic Claude is the primary supported
 model; OpenAI works for most jobs.
@@ -128,14 +128,20 @@ Read more: [docs/concepts/architecture.md](docs/concepts/architecture.md).
 
 ## What it can build
 
-| Domain                   | Examples                                     |
-|--------------------------|----------------------------------------------|
-| **Service** (web/backend)| Full-stack SaaS, dashboards, REST APIs       |
-| **Game**                 | Phaser/Web games with sprites + HUD + audio  |
+| Domain                   | Status         | Examples                                     |
+|--------------------------|----------------|----------------------------------------------|
+| **Service** (web/backend)| Stable         | Full-stack SaaS, dashboards, REST APIs       |
+| **Game**                 | In development | Phaser/Web games with sprites + HUD + audio  |
 
-Both domains share the same agents but ship different prompt overlays,
-different design templates, and different visual-tier catalogs. Add new
-verticals by extending the domain registry — no fork required.
+> The **game vertical** is scaffolded — domain registry, `gameArtTier`
+> visual surface, `gameContentTier` genre/coreLoop matrix, and the
+> `design-game-art` intent set are all wired — but is **not production
+> ready** yet. Expect rough edges and breaking changes until it's marked
+> Stable. Service-domain workflows are the supported path today.
+
+The two domains share the same agents but ship different prompt overlays,
+different design templates, and different visual-tier catalogs. Adding
+new verticals is a domain-registry change — no fork required.
 
 ---
 

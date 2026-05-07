@@ -20,7 +20,8 @@ visual/ui/ant/
 └── ui-assets.json          Asset catalog (logos, icons, illustrations)
 ```
 
-For game projects:
+For game projects (**in development** — see notice in
+[Game projects](#game-projects) below):
 
 ```
 visual/game-art/ant/
@@ -92,6 +93,10 @@ follows. To change a token, edit the design (run another design job)
 and re-run code.
 
 ## Game projects
+
+> ⚠️ **In development.** The game-domain canonical pipeline is scaffolded
+> — the schema, intents, and prompt overlays are wired — but not
+> production ready. End-to-end generation is still being validated.
 
 Game workspaces use `visual/game-art/ant/`. The `game-art-tokens.json`
 includes both in-canvas categories (sprites, particles, projectiles,

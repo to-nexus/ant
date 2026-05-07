@@ -47,7 +47,7 @@ pnpm dev:local:all        # API + Realtime + Worker + Preview + UI
 ```
 
 [http://localhost:5173](http://localhost:5173)을 열고 첫 디렉티브를
-입력합니다 — 예: *"Phaser로 Pong 게임 만들어줘"*.
+입력합니다 — 예: *"React + Tailwind로 TODO 앱 만들어줘"*.
 
 LLM 프로바이더 키가 필요합니다. Anthropic Claude가 1차 지원 모델이고,
 OpenAI도 대부분의 잡에서 동작합니다.
@@ -112,14 +112,21 @@ native는 schema-based.) 풀 가이드:
 
 ## 무엇을 만들 수 있나
 
-| 도메인                    | 예시                                            |
-|---------------------------|-------------------------------------------------|
-| **Service** (웹/백엔드)   | 풀스택 SaaS, 대시보드, REST API                |
-| **Game**                  | Phaser/Web 게임 (sprite + HUD + audio)          |
+| 도메인                    | 상태       | 예시                                            |
+|---------------------------|------------|-------------------------------------------------|
+| **Service** (웹/백엔드)   | Stable     | 풀스택 SaaS, 대시보드, REST API                |
+| **Game**                  | 개발 중     | Phaser/Web 게임 (sprite + HUD + audio)          |
+
+> **게임 vertical** 은 모드 골격이 준비되어 있습니다 — 도메인 레지스트리,
+> `gameArtTier` visual surface, `gameContentTier` genre/coreLoop 매트릭스,
+> `design-game-art` intent set 이 모두 와이어링되어 있습니다 — 그러나
+> **아직 프로덕션 준비 상태가 아닙니다**. Stable 표시될 때까지 거친
+> 부분과 breaking change 가 있을 수 있습니다. 현재 지원되는 경로는
+> service 도메인 워크플로입니다.
 
 두 도메인은 같은 에이전트를 공유하지만 다른 프롬프트 오버레이, 다른
 디자인 템플릿, 다른 visual-tier 카탈로그를 갖습니다. 새 도메인 추가는
-도메인 레지스트리 한 줄 — fork 불필요.
+도메인 레지스트리 변경 한 곳 — fork 불필요.
 
 ---
 
