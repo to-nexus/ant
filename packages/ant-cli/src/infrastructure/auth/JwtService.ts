@@ -93,7 +93,19 @@ export class JwtService {
     return COOKIE_NAME;
   }
 
-  /** Get cookie options for Set-Cookie */
+  /**
+   * Get cookie options for Set-Cookie.
+   *
+   * `COOKIE_DOMAIN` (optional) sets the cookie's `Domain` attribute. Leave
+   * unset for single-origin deployments — the cookie is then host-only and
+   * naturally scoped to the response origin. Set explicitly (e.g.
+   * `.crosstoken.io`) only when FE and API live on different sub-domains
+   * and a single cookie must span both.
+   *
+   * `getCookieOptions` and `getClearCookieOptions` MUST return identical
+   * `domain` / `path` / `sameSite` / `secure` values — RFC 6265bis requires
+   * the same attribute set for `clearCookie` to match the live cookie.
+   */
   getCookieOptions(isProduction: boolean): {
     httpOnly: boolean;
     secure: boolean;
@@ -102,17 +114,18 @@ export class JwtService {
     path: string;
     maxAge: number;
   } {
+    const cookieDomain = process.env.COOKIE_DOMAIN;
     return {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      ...(isProduction ? { domain: '.example.com' } : {}),
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
       path: '/',
       maxAge: this.expiresInSeconds * 1000, // ms for Express
     };
   }
 
-  /** Get cookie clear options */
+  /** Get cookie clear options. See `getCookieOptions` JSDoc for the SSOT contract. */
   getClearCookieOptions(isProduction: boolean): {
     httpOnly: boolean;
     secure: boolean;
@@ -120,11 +133,12 @@ export class JwtService {
     domain?: string;
     path: string;
   } {
+    const cookieDomain = process.env.COOKIE_DOMAIN;
     return {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      ...(isProduction ? { domain: '.example.com' } : {}),
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
       path: '/',
     };
   }

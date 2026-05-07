@@ -6,15 +6,10 @@
  * - ant-realtime (RealtimeServer)
  * - ant-preview (PreviewServer)
  *
- * Verifies JWT from httpOnly cookie (ant_session) and sets req.user / req.organization.
- * Returns 401 for missing/invalid tokens on non-public paths.
- *
- * Cloud mode is uniformly authenticated — there is no localhost escape
- * hatch. "cloud mode running on localhost" is *not* the same as
- * `ANT_SERVER_MODE=local`; it is the production auth contract being
- * exercised on a developer's machine, so OAuth must complete before any
- * protected request is attempted. The legacy `SKIP_AUTH_FOR_LOCALHOST`
- * env (still found in older `.env` files) is intentionally unused.
+ * Verifies JWT from httpOnly cookie (ant_session) and sets req.user /
+ * req.organization. Returns 401 for missing/invalid tokens on non-public
+ * paths. Cloud mode is uniformly authenticated — "cloud mode running on
+ * localhost" still requires OAuth completion before any protected request.
  *
  * @see docs/architecture/10-cloud-architecture.md
  */

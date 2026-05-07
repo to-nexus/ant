@@ -41,18 +41,14 @@ export const getLocalBackendPort = (): number => {
 /**
  * Get backend base URL based on current mode
  * - local mode: relative paths (Vite proxy routes to each service)
- * - cloud mode: VITE_CLOUD_BACKEND_BASE env var
+ * - cloud mode: VITE_CLOUD_BACKEND_BASE env var (empty → same-origin)
  */
 const getBackendBase = (): string => {
   const mode = getBackendMode();
 
   if (mode === 'cloud') {
-    const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE;
-    if (!cloudBase) {
-      console.warn('[API] VITE_CLOUD_BACKEND_BASE not set, using relative paths');
-      return '';
-    }
-    return cloudBase;
+    const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
+    return cloudBase ?? '';
   }
 
   return '';
@@ -64,17 +60,37 @@ export const API_BASE = () => `${getBackendBase()}/api`;
 /** Realtime (SSE) Server base URL (/realtime/*) */
 export const REALTIME_BASE = () => `${getBackendBase()}/realtime`;
 
-/** Preview Server base URL (separate host) */
+/**
+ * Preview Server base URL.
+ *
+ * Empty string is treated as "same-origin" (single-host deployment).
+ * Only fall back to `localhost:4102` when the env was never declared and
+ * we are in dev — otherwise return same-origin so production builds with
+ * `VITE_PREVIEW_HOST=` (empty) don't accidentally hit localhost.
+ */
 export const getPreviewBase = (): string => {
-  const previewHost = import.meta.env.VITE_PREVIEW_HOST;
-  if (previewHost) return previewHost;
-  return 'http://localhost:4102';
+  const previewHost = import.meta.env.VITE_PREVIEW_HOST as string | undefined;
+  if (previewHost !== undefined) return previewHost;
+  return import.meta.env.DEV ? 'http://localhost:4102' : '';
 };
 
 export const PREVIEW_BASE = () => getPreviewBase();
 
 /** Server base URL without path prefix (for /ide/* etc.) */
 export const SERVER_BASE = () => getBackendBase();
+
+/**
+ * OAuth base URL — must bypass the Vite dev proxy in local mode so the
+ * Google `redirect_uri` (registered as `http://localhost:{port}/api/auth/google/callback`)
+ * matches the origin that Google calls back. Cloud mode reuses the
+ * standard backend base (empty = same-origin).
+ */
+export const OAUTH_BASE = (): string => {
+  if (getBackendMode() === 'local') {
+    return `http://localhost:${getLocalBackendPort()}`;
+  }
+  return getBackendBase();
+};
 
 /**
  * Check if backend server is available
