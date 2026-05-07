@@ -26,8 +26,27 @@ import { selectProjectsLoaded } from '@/domain/store/selectors';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
-import { fetchAuthMe, getBackendMode } from '@/infrastructure/http/api';
+import { fetchAuthMeDetailed, getBackendMode, API_BASE } from '@/infrastructure/http/api';
+import type { AuthMeResult } from '@/infrastructure/http/api/auth';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
+
+/**
+ * Single sink for the diagnostic log emitted whenever `/auth/me` returns
+ * something other than a real user. The structured fields are the
+ * 4-quadrant truth table inputs (see plan: cloud-mode-stateless-crown):
+ *
+ *   apiBase=/api  → `VITE_CLOUD_BACKEND_BASE` not baked into the dist
+ *   kind=network  → CORS preflight blocked or backend host unreachable
+ *   kind=no-session → cookie not arriving on /auth/me (scope/secure)
+ *   kind=misconfigured → ANT_JWT_SECRET unset on backend
+ */
+function logAuthFailure(phase: 'post-oauth' | 'mount', result: AuthMeResult): void {
+  const status = result.kind === 'http-error' ? result.status : '';
+  const detail = result.kind === 'network' ? ` message="${result.message}"` : '';
+  console.error(
+    `[Auth] me-fetch failed phase=${phase} kind=${result.kind} status=${status} origin=${window.location.origin} apiBase=${API_BASE()}${detail}`
+  );
+}
 
 function App() {
   const location = useLocation();
@@ -51,26 +70,16 @@ function App() {
     if (oauthCallback === 'success') {
       useStore.getState().setAuthStatus('verifying');
       (async () => {
-        try {
-          const user = await fetchAuthMe();
-          if (user) {
-            const setUser = useStore.getState().setUser;
-            setUser(user.email, user.organization);
-
-            const fetchProjects = useStore.getState().fetchProjects;
-            fetchProjects();
-
-            console.log('[Auth] Successfully signed in with Google:', user.email);
-          } else {
-            console.error('[Auth] Failed to fetch user info after OAuth');
-            useStore.getState().setAuthStatus('idle');
-          }
-
-          navigate('/', { replace: true });
-        } catch (error) {
-          console.error('[Auth] Failed to complete OAuth:', error);
+        const result = await fetchAuthMeDetailed();
+        if (result.kind === 'user') {
+          useStore.getState().setUser(result.user.email, result.user.organization);
+          useStore.getState().fetchProjects();
+          console.log('[Auth] Successfully signed in with Google:', result.user.email);
+        } else {
+          logAuthFailure('post-oauth', result);
           useStore.getState().setAuthStatus('idle');
         }
+        navigate('/', { replace: true });
       })();
     } else if (errorParam) {
       console.error('[Auth] OAuth error:', errorParam);
@@ -83,27 +92,29 @@ function App() {
       // verification.
       useStore.getState().setAuthStatus('verifying');
       (async () => {
-        try {
-          const user = await fetchAuthMe();
-          if (user) {
-            if (!useStore.getState().userEmail) {
-              useStore.getState().setUser(user.email, user.organization);
-              useStore.getState().fetchProjects();
-              console.log('[Auth] Restored session from cookie:', user.email);
-            } else {
-              useStore.getState().setAuthStatus('verified');
-            }
-          } else if (useStore.getState().userEmail) {
+        const result = await fetchAuthMeDetailed();
+        if (result.kind === 'user') {
+          if (!useStore.getState().userEmail) {
+            useStore.getState().setUser(result.user.email, result.user.organization);
+            useStore.getState().fetchProjects();
+            console.log('[Auth] Restored session from cookie:', result.user.email);
+          } else {
+            useStore.getState().setAuthStatus('verified');
+          }
+        } else if (result.kind === 'no-session') {
+          if (useStore.getState().userEmail) {
             console.warn('[Auth] JWT session expired, clearing stored user');
             useStore.getState().clearUser();
           } else {
             useStore.getState().setAuthStatus('idle');
           }
-        } catch {
-          // Network error — don't clear user (server may be temporarily
-          // down). Drop authStatus to 'idle' so lifecycle hooks can resume
-          // whenever the server returns; if the cookie is invalid we'll
-          // catch it on the next protected request.
+        } else {
+          // Network / 503 / 4xx / shape — don't clear user (server may be
+          // temporarily down or misconfigured). Drop authStatus to 'idle'
+          // so lifecycle hooks can resume whenever the server returns; if
+          // the cookie is invalid we'll catch it on the next protected
+          // request.
+          logAuthFailure('mount', result);
           useStore.getState().setAuthStatus('idle');
         }
       })();

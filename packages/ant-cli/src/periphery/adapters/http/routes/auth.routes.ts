@@ -236,6 +236,18 @@ export function createAuthRoutes(deps: {
     }
 
     const token = (req as any).cookies?.[JwtService.cookieName];
+
+    // Gated diagnostic — flip ANT_AUTH_DEBUG=1 for one reproduce window.
+    // Pairs with the FE log `[Auth] me-fetch failed kind=...` to pinpoint
+    // whether the cookie is being sent on the credentialed cross-origin
+    // request (split-host deployments).
+    if (process.env.ANT_AUTH_DEBUG === '1') {
+      logger.info(
+        `[Auth][debug] /auth/me cookiePresent=${!!token} origin=${req.headers.origin ?? ''} host=${req.headers.host ?? ''} xfp=${req.headers['x-forwarded-proto'] ?? ''} xfh=${req.headers['x-forwarded-host'] ?? ''}`,
+        { component: 'Auth' },
+      );
+    }
+
     if (!token) {
       return res.json({ user: null });
     }
