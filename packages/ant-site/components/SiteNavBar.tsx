@@ -139,42 +139,43 @@ export function SiteNavBar() {
             </div>
 
             {user ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
+              <>
+                <a
+                  href={getAppEntryUrl(user)}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-lg shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all"
                 >
-                  {user.picture ? (
-                    <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
-                  ) : (
-                    <User className="w-5 h-5 text-gray-400" />
-                  )}
-                  <span className="text-xs text-gray-400 max-w-[120px] truncate">{user.name || user.email}</span>
-                </button>
-                {userMenuOpen && (
-                  <div className="absolute top-full right-0 mt-1 w-52 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
-                    <div className="px-3 py-2 border-b border-white/5">
-                      <p className="text-xs font-medium text-white truncate">{user.name || user.email}</p>
-                      {user.name && <p className="text-[10px] text-gray-500 truncate">{user.email}</p>}
+                  {t('nav.goToApp')}
+                </a>
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                  >
+                    {user.picture ? (
+                      <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
+                    ) : (
+                      <User className="w-5 h-5 text-gray-400" />
+                    )}
+                    <span className="text-xs text-gray-400 max-w-[120px] truncate">{user.name || user.email}</span>
+                  </button>
+                  {userMenuOpen && (
+                    <div className="absolute top-full right-0 mt-1 w-52 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
+                      <div className="px-3 py-2 border-b border-white/5">
+                        <p className="text-xs font-medium text-white truncate">{user.name || user.email}</p>
+                        {user.name && <p className="text-[10px] text-gray-500 truncate">{user.email}</p>}
+                      </div>
+                      <div className="border-t border-white/5 my-0.5" />
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-red-400 flex items-center gap-2 transition-colors"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        {t('nav.signOut')}
+                      </button>
                     </div>
-                    <a
-                      href="/app/"
-                      className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                    >
-                      <ArrowRight className="w-3.5 h-3.5" />
-                      {t('nav.goToApp')}
-                    </a>
-                    <div className="border-t border-white/5 my-0.5" />
-                    <button
-                      onClick={handleSignOut}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-red-400 flex items-center gap-2 transition-colors"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      {t('nav.signOut')}
-                    </button>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </>
             ) : (
               <>
                 <a
@@ -253,6 +254,9 @@ export function SiteNavBar() {
               </div>
               {user ? (
                 <div className="space-y-2">
+                  <a href={getAppEntryUrl(user)} className="block text-center py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg">
+                    {t('nav.goToApp')}
+                  </a>
                   <div className="flex items-center gap-2 px-2 py-1.5">
                     {user.picture ? (
                       <img src={user.picture} alt="" className="w-5 h-5 rounded-full" />
@@ -261,9 +265,6 @@ export function SiteNavBar() {
                     )}
                     <span className="text-xs text-gray-400 truncate">{user.name || user.email}</span>
                   </div>
-                  <a href="/app/" className="block text-center py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg">
-                    {t('nav.goToApp')}
-                  </a>
                   <button
                     onClick={handleSignOut}
                     className="w-full text-center py-2 text-sm text-gray-400 hover:text-red-400 border border-white/10 rounded-lg transition-colors"
