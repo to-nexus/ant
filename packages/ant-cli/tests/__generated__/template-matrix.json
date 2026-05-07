@@ -1231,6 +1231,18 @@
       "manifest"
     ]
   },
+  "jobs/design/nodes/execute/injections/sealed-plan-block": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/sealed-plan-rules": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/design/nodes/execute/injections/ui-assets-guide-by-desc": {
     "sources": [
       "render-call",

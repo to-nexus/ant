@@ -204,8 +204,12 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     const promptBuilder = state.deps?.promptBuilder;
     if (!promptBuilder) throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
 
-    // Build runtime context → vars.runtimeContext
-    const runtimeContext = buildRuntimeContext(state);
+    // Build runtime context. `planText` flows separately so base.md
+    // can render the sealed plan at the top via `{{#if planText}}`
+    // (mirrors code job's `state.planText` naming). The remaining
+    // runtimeContext carries Target / Task / Directive at the prompt
+    // tail. See `.claude/plans/plan-docgen-parallel-spring.md`.
+    const { planText, runtimeContext } = buildRuntimeContext(state);
 
     const designConfig: PromptBuildConfig = {
       templates: {
@@ -251,7 +255,17 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         resolvedAction: resolvedActionWithDocs || null,
         userLanguage: state.context?.userLanguage || 'en',
         designDomain: state.resolvedAction?.domain,
+        // Plan→docGen handoff vars (see plan-docgen-parallel-spring plan):
+        //   - `planText` is the sealed `<plan>` JSON body (or empty
+        //     string). Naming mirrors code job's `state.planText`. The
+        //     base.md and rules.md templates gate on `{{#if planText}}`.
+        //   - `runtimeContext` carries Target / Task / Directive only.
+        //   - `verificationAxis` is the system-design-flavoured
+        //     vocabulary used by the shared `sealed-plan-rules`
+        //     partial's Allowed column.
+        planText,
         runtimeContext,
+        verificationAxis: 'exact DTO field types, endpoint paths, contract values',
         // Codebase Channel SSOT — flow workspace state to the
         // codebase-channel partial / AutoInjectionResolver gate.
         workspaceState: state.workspaceState,
@@ -374,30 +388,31 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
 }
 
 /**
- * Build runtime context (task, directive, existing design)
- * 
- * This supplements PromptEngine's base prompt with execution-specific context:
- * - Current task and directive
- * - Existing design (for continuation)
- * 
- * Note: Output format instructions are in PromptEngine templates
+ * Build runtime context (task, directive, existing design). The sealed
+ * `<plan>` body is exposed separately as `planText` (mirrors code
+ * job's `state.planText` naming — see
+ * `code/nodes/execute/buildMessages.ts:177`) so the system-design
+ * base.md template can render it near the top via `{{#if planText}}`
+ * as the binding upstream decision. The runtime context returned here
+ * carries Target / Task / Directive / Existing Design only.
+ *
+ * Note: Output format instructions live in PromptEngine templates.
  */
-export function buildRuntimeContext(state: DesignGraphState): string {
+export interface RuntimeContextBlocks {
+  /** Sealed `<plan>` JSON body, or empty string when no plan was sealed. */
+  planText: string;
+  /** Target Document / Current Task / Directive / Existing Design. */
+  runtimeContext: string;
+}
+
+export function buildRuntimeContext(state: DesignGraphState): RuntimeContextBlocks {
   const task = state.currentTask;
+  const planText = state.planText && state.planText.trim().length > 0 ? state.planText : '';
+
+  // Task / directive / existing-design details.
   const lines: string[] = [];
 
-  // ✅ 0. Sealed Plan — content the system-design markdown should record.
-  // The title closes the meaning axis: the decision recorded here is
-  // what the document narrates, not an action this phase performs on
-  // the codebase. See system-design/rules.md "Sealed Plan from Plan
-  // Node". Skipped when planText is empty (legacy / dispatchOnly).
-  if (state.planText && state.planText.trim().length > 0) {
-    lines.push(`# Sealed Plan (the content the system-design markdown should record)`);
-    lines.push(state.planText);
-    lines.push('');
-  }
-
-  // ✅ 1. Target File
+  // 1. Target File
   if (task?.targetFile) {
     lines.push(`# Target Document`);
     const outputDir = designDirOf(task.targetFile);
@@ -407,26 +422,28 @@ export function buildRuntimeContext(state: DesignGraphState): string {
     lines.push(`Use: <file path="${outputDir}/${task.targetFile}">...</file>`);
     lines.push('');
   }
-  
-  // ✅ 2. Current Task
+
+  // 2. Current Task
   if (task) {
     lines.push(`# Current Task`);
     lines.push(`**${task.name}**`);
     lines.push(task.description);
     lines.push('');
   }
-  
-  // ✅ 3. Directive (user requirements)
+
+  // 3. Directive (user requirements)
   if (state.directive) {
     lines.push(`# Directive`);
     lines.push(state.directive || '');
     lines.push('');
   }
-  
-  // ✅ 4. Existing Design Document (ONLY for refactor mode)
-  // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
-  // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
-  //   Use content matching targetFile from existingDesignDocs (pool fallback for missing docs)
+
+  // 4. Existing Design Document (refactor mode only).
+  // generate: NO document needed (lastSectionNumber is sufficient for
+  // sequential chapter generation). refactor: FULL document needed (LLM
+  // must understand structure to modify specific sections). Uses content
+  // matching targetFile from existingDesignDocs (pool fallback for
+  // missing docs).
   if (state.resolvedAction?.mode === 'refactor') {
     const targetFileName = task?.targetFile || 'be-system-main.md';
     const existingContent = state.existingDesignDocs?.[targetFileName] || new ArtifactPoolView(state.artifacts || []).firstDesignContent();
@@ -436,11 +453,11 @@ export function buildRuntimeContext(state: DesignGraphState): string {
       lines.push('');
     }
   }
-  // ❌ For generate mode: DO NOT include previous design content
-  // Reason: Including old document content causes LLM confusion with outdated metadata
-  // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
-  
-  return lines.join('\n');
+
+  return {
+    planText,
+    runtimeContext: lines.join('\n'),
+  };
 }
 
 /**

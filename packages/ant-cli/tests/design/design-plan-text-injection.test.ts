@@ -2,14 +2,17 @@
  * Sealed-plan injection contract (design docGen).
  *
  * The plan node hands a sealed `<plan>` JSON to docGen via
- * `state.planText`. docGen's spec/system intent prompt builders must
- * prepend it as `# Sealed Plan (from plan node)` so the spec/system
- * rules.md "Sealed Plan" section finds the contract it describes.
+ * `state.planText`. After the plan→docGen role split was restored
+ * (see `.claude/plans/plan-docgen-parallel-spring.md`), the sealed
+ * plan no longer rides inside `runtimeContext`; it is exposed as a
+ * separate `planText` field on the runtime-context return shape so
+ * the docGen base.md template can render it near the prompt top via
+ * `{{#if planText}}` (mirrors code job's `state.planText` naming).
  *
- * These tests poke the `buildRuntimeContext` (system) and the inline
- * runtime-lines builder (spec) to lock the injection in place — a
- * regression here would silently strip the plan context that docGen's
- * "no redesign" rules depend on.
+ * These tests lock the new shape in place — `planText` carries the
+ * sealed body, `runtimeContext` carries Target / Task / Directive
+ * only, and the empty-plan path returns an empty `planText` string so
+ * the template's gate evaluates Handlebars-falsy.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -21,7 +24,7 @@ function freezeState(partial: Partial<DesignGraphState>): DesignGraphState {
 }
 
 describe('docGen runtimeContext — sealed plan injection (system intent)', () => {
-  it('prepends planText as "# Sealed Plan" when populated', () => {
+  it('exposes planText separately and keeps it out of runtimeContext when populated', () => {
     const planText = JSON.stringify({
       task: { id: 't', goal: 'something' },
       explorationSummary: 'looked at code',
@@ -36,30 +39,36 @@ describe('docGen runtimeContext — sealed plan injection (system intent)', () =
     });
 
     const out = buildRuntimeContext(state);
-    // Title closes the meaning axis: the decision is content the
-    // markdown should record, not an action this phase performs.
-    expect(out).toContain('# Sealed Plan (the content the system-design markdown should record)');
-    expect(out.indexOf('# Sealed Plan')).toBeLessThan(out.indexOf('# Target Document'));
-    expect(out).toContain(planText);
+    // Sealed plan is on its own var so the template can render it near
+    // the prompt top, above the rules block.
+    expect(out.planText).toBe(planText);
+    // runtimeContext carries Target / Task / Directive only — the
+    // sealed plan body must NOT be in here.
+    expect(out.runtimeContext).not.toContain(planText);
+    expect(out.runtimeContext).toContain('# Target Document');
+    // Legacy header from the pre-split rendering must be absent —
+    // would-be regressions that re-inline the sealed plan into
+    // runtimeContext would re-introduce this string.
+    expect(out.runtimeContext).not.toContain('# Sealed Plan');
   });
 
-  it('omits the Sealed Plan header when planText is empty', () => {
+  it('returns planText="" when state.planText is empty (Handlebars-falsy gate)', () => {
     const state = freezeState({
       planText: '',
       currentTask: { id: 't', name: 'task', description: 'desc', targetFile: 'be-system-main.md', priority: 1, type: 'doc' as any },
       directive: 'Build a CRUD API',
     });
     const out = buildRuntimeContext(state);
-    expect(out).not.toContain('# Sealed Plan');
-    expect(out).toContain('# Target Document');
+    expect(out.planText).toBe('');
+    expect(out.runtimeContext).toContain('# Target Document');
   });
 
-  it('omits the Sealed Plan header when planText is whitespace-only', () => {
+  it('returns planText="" when state.planText is whitespace-only', () => {
     const state = freezeState({
       planText: '   \n  \t  ',
       currentTask: { id: 't', name: 'task', description: 'desc', targetFile: 'be-system-main.md', priority: 1, type: 'doc' as any },
     });
     const out = buildRuntimeContext(state);
-    expect(out).not.toContain('# Sealed Plan');
+    expect(out.planText).toBe('');
   });
 });

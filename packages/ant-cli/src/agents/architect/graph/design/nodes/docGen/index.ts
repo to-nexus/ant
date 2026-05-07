@@ -135,15 +135,18 @@ export async function docGen(
   // Progressive call counter + budget warning injection
   // Figma tasks get higher thresholds to accommodate drill-down queries
   const hasFigmaTools = isFigmaUiDesign || (intentGroup === 'design-spec' && state.figmaAvailable === true);
-  // Plan node now seals exploration before docGen runs, so docGen's
-  // tool budget here is for *precision-checking* (exact paths /
-  // signatures / asset URLs), not architecture re-exploration. Bump
-  // the soft/hard warning thresholds to reflect that docGen has
-  // genuine precision work to do without unleashing a full second
-  // exploration pass — the call-budget safety net at L355 below still
-  // terminates non-productive loops.
-  const softWarnAt = hasFigmaTools ? 10 : 7;
-  const hardWarnAt = hasFigmaTools ? 14 : 10;
+  // When `state.planText` is sealed, plan owns architectural
+  // exploration; docGen's role is "render the decision + verify a few
+  // exact paths". Tighten the warning thresholds so the LLM commits to
+  // writing fast. When no plan is sealed (legacy / dispatcher
+  // fallback), keep the original budget so Codebase Exploration
+  // heuristics have room. See
+  // `.claude/plans/plan-docgen-parallel-spring.md`.
+  // The call-budget safety net at L355 below still terminates
+  // non-productive loops in all cases.
+  const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
+  const softWarnAt = hasFigmaTools ? 10 : (hasSealedPlan ? 4 : 7);
+  const hardWarnAt = hasFigmaTools ? 14 : (hasSealedPlan ? 7 : 10);
   const noOutputCount = state._noOutputCallCount || 0;
   if (noOutputCount >= 1) {
     const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;

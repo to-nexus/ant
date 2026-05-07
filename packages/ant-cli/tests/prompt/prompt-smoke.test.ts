@@ -583,6 +583,14 @@ describe('Template Smoke Tests', () => {
       // SAMPLE_VARS has no workspace analysis, so the partial is empty until
       // analyzeWorkspace marks an active monorepo.
       'jobs/code/base/injections/monorepo-install-locality',
+      // Design sealed-plan-block is wrapped entirely in {{#if planText}}
+      // (no {{else}} branch — the block adds context only when a sealed
+      // plan exists, otherwise the prompt continues without it). Smoke
+      // renders without vars, so the partial is empty by design. See
+      // `.claude/plans/plan-docgen-parallel-spring.md`. The companion
+      // `sealed-plan-rules` partial has a {{else}} fallback branch and
+      // is therefore NOT in this allow-list.
+      'jobs/design/nodes/execute/injections/sealed-plan-block',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);
