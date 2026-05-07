@@ -4,27 +4,9 @@ import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'luci
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { useStore } from '@/domain/store';
-import { signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { signOut, checkLocalBackend, OAUTH_BASE } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
-
-/**
- * Get OAuth backend base URL
- * OAuth redirect는 전체 URL이 필요하므로 상대경로 대신 절대 URL 반환
- * - local mode: http://localhost:{port} (사용자 설정 포트)
- * - cloud mode: VITE_CLOUD_BACKEND_BASE
- */
-function getOAuthBackendBase(): string {
-  const mode = getBackendMode();
-  
-  if (mode === 'cloud') {
-    return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
-  }
-  
-  // local mode: localhost:{port}
-  const port = getLocalBackendPort();
-  return `http://localhost:${port}`;
-}
 
 export interface AppNavBarProps {
   // No props needed - uses hooks directly
@@ -114,13 +96,11 @@ export function AppNavBar({}: AppNavBarProps) {
   
   // Handle Sign In / Sign Up — always redirect to Google OIDC with returnTo=/app/
   const handleSignInClick = () => {
-    const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
+    window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
-  
+
   const handleSignUpClick = () => {
-    const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
+    window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
   
   // Handle sign out — `clearUser` now cascades reset + projects clear +

@@ -1,61 +1,47 @@
 /**
  * Shared CORS Configuration
- * 
+ *
  * Unified CORS config used by all three publicly exposed servers:
  * - ant-api
  * - ant-realtime
  * - ant-preview
- * 
- * Production: only *.example.com origins allowed.
- * Development: localhost origins also allowed.
+ *
+ * Single-origin deployments (FE + API on the same host) do not exercise
+ * CORS — same-origin requests skip the origin header. The middleware
+ * still passes them through (no `origin` header → allow). Sub-domain
+ * split deployments add their FE / preview / staging origins via the
+ * `ANT_CORS_ORIGINS` env (comma-separated). Localhost is permitted in
+ * non-production for dev convenience.
  */
 
 import cors from 'cors';
 
-const PRODUCTION_ORIGINS = [
-  'https://ant.example.com',
-  'https://ant-server.example.com',
-  'https://ant-preview.example.com',
-];
-
 /**
  * Create CORS middleware with environment-aware origin checking.
- * 
- * - Production (NODE_ENV=production): only *.example.com
- * - Development: also allows localhost/127.0.0.1
- * - ANT_CORS_ORIGINS env var can add additional origins (comma-separated)
+ *
+ * Resolution order:
+ * 1. Missing `Origin` header (same-origin / server-to-server / health) → allow.
+ * 2. `ANT_CORS_ORIGINS` (csv) match → allow.
+ * 3. Non-production + localhost / 127.0.0.1 → allow.
+ * 4. Otherwise → reject.
  */
 export function createCorsMiddleware() {
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Build allowed origins from env
   const extraOrigins = process.env.ANT_CORS_ORIGINS
     ? process.env.ANT_CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
     : [];
 
   return cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (same-origin, server-to-server, health checks)
       if (!origin) {
         return callback(null, true);
       }
 
-      // Check production whitelist
-      if (PRODUCTION_ORIGINS.includes(origin)) {
-        return callback(null, true);
-      }
-
-      // Check wildcard *.example.com
-      if (/^https:\/\/[a-zA-Z0-9-]+\.example\.com$/.test(origin)) {
-        return callback(null, true);
-      }
-
-      // Check extra origins from env
       if (extraOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Allow localhost only in non-production
       if (!isProduction && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
         return callback(null, true);
       }
