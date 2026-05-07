@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, Globe, User, LogOut, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, type SupportedLanguage } from '@/lib/i18n';
+import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, setLanguage, type SupportedLanguage } from '@/lib/i18n';
 import { useAuthSession, getAppEntryUrl, getSignInUrl } from '@/lib/AuthSessionProvider';
+import { GitHubStarsBadge } from '@/components/GitHubStarsBadge';
+import { DOCS_URL } from '@/lib/links';
 
 export function SiteNavBar() {
   const { t, i18n } = useTranslation('site');
@@ -19,12 +21,11 @@ export function SiteNavBar() {
   const langRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  const NAV_ITEMS = [
-    { label: t('nav.product'), href: '/' },
-    { label: t('nav.figma'), href: '/figma' },
-    { label: t('nav.capabilities'), href: '/capabilities' },
-    { label: t('nav.pricing'), href: '/pricing' },
-    { label: t('nav.download'), href: '/download' },
+  const NAV_ITEMS: { label: string; href: string; external?: boolean }[] = [
+    { label: t('nav.docs'), href: DOCS_URL, external: true },
+    { label: t('nav.selfHost'), href: '/self-host' },
+    { label: t('nav.cloud'), href: '/cloud' },
+    { label: t('nav.community'), href: '/community' },
   ];
 
   useEffect(() => {
@@ -60,12 +61,9 @@ export function SiteNavBar() {
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   const changeLanguage = (lang: SupportedLanguage) => {
-    i18n.changeLanguage(lang);
+    setLanguage(lang);
     setLangOpen(false);
   };
-
-  const signInUrl = getSignInUrl(pathname);
-  const getStartedUrl = getAppEntryUrl(user);
 
   return (
     <header
@@ -79,28 +77,40 @@ export function SiteNavBar() {
         <div className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <img src="/logo.png" alt="ANT" className="w-8 h-8" />
-            <span className="text-lg font-display font-bold text-white tracking-tight">
-              Ant
-            </span>
+            <span className="text-lg font-display font-bold text-white tracking-tight">Ant</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive(item.href)
-                    ? 'text-white bg-white/10'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) =>
+              item.external ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(item.href)
+                      ? 'text-white bg-white/10'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            <GitHubStarsBadge />
+
             <div className="relative" ref={langRef}>
               <button
                 onClick={() => setLangOpen(!langOpen)}
@@ -129,60 +139,52 @@ export function SiteNavBar() {
             </div>
 
             {user ? (
-              <>
-                <a
-                  href="/app/"
-                  className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-lg shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all"
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
                 >
-                  {t('nav.getStarted')}
-                </a>
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
-                  >
-                    {user.picture ? (
-                      <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
-                    ) : (
-                      <User className="w-5 h-5 text-gray-400" />
-                    )}
-                    <span className="text-xs text-gray-400 max-w-[120px] truncate">{user.name || user.email}</span>
-                  </button>
-                  {userMenuOpen && (
-                    <div className="absolute top-full right-0 mt-1 w-52 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
-                      <div className="px-3 py-2 border-b border-white/5">
-                        <p className="text-xs font-medium text-white truncate">{user.name || user.email}</p>
-                        {user.name && <p className="text-[10px] text-gray-500 truncate">{user.email}</p>}
-                      </div>
-                      <a
-                        href="/app/"
-                        className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      >
-                        <ArrowRight className="w-3.5 h-3.5" />
-                        {t('nav.goToApp')}
-                      </a>
-                      <div className="border-t border-white/5 my-0.5" />
-                      <button
-                        onClick={handleSignOut}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-red-400 flex items-center gap-2 transition-colors"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        {t('nav.signOut')}
-                      </button>
-                    </div>
+                  {user.picture ? (
+                    <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
+                  ) : (
+                    <User className="w-5 h-5 text-gray-400" />
                   )}
-                </div>
-              </>
+                  <span className="text-xs text-gray-400 max-w-[120px] truncate">{user.name || user.email}</span>
+                </button>
+                {userMenuOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-52 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
+                    <div className="px-3 py-2 border-b border-white/5">
+                      <p className="text-xs font-medium text-white truncate">{user.name || user.email}</p>
+                      {user.name && <p className="text-[10px] text-gray-500 truncate">{user.email}</p>}
+                    </div>
+                    <a
+                      href="/app/"
+                      className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5 flex items-center gap-2 transition-colors"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      {t('nav.goToApp')}
+                    </a>
+                    <div className="border-t border-white/5 my-0.5" />
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-red-400 flex items-center gap-2 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      {t('nav.signOut')}
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <a
-                  href={signInUrl}
+                  href={getSignInUrl(pathname)}
                   className="text-sm font-medium text-gray-300 hover:text-white transition-colors"
                 >
                   {t('nav.signIn')}
                 </a>
                 <a
-                  href={getStartedUrl}
+                  href={getAppEntryUrl(user)}
                   className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-lg shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all"
                 >
                   {t('nav.getStarted')}
@@ -203,21 +205,37 @@ export function SiteNavBar() {
       {mobileOpen && (
         <div className="md:hidden bg-[#0a0e17]/95 backdrop-blur-xl border-t border-white/5">
           <div className="px-4 py-4 space-y-1">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive(item.href)
-                    ? 'text-white bg-white/10'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) =>
+              item.external ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(item.href)
+                      ? 'text-white bg-white/10'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
             <div className="pt-3 border-t border-white/10 space-y-2">
+              <div className="flex items-center justify-center">
+                <GitHubStarsBadge variant="full" />
+              </div>
               <div className="flex gap-2">
                 {SUPPORTED_LANGUAGES.map((lang) => (
                   <button
@@ -254,11 +272,17 @@ export function SiteNavBar() {
                   </button>
                 </div>
               ) : (
-                <div className="flex gap-3">
-                  <a href={signInUrl} className="flex-1 text-center py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-white/20 rounded-lg transition-colors">
+                <div className="space-y-2">
+                  <a
+                    href={getSignInUrl(pathname)}
+                    className="block text-center py-2 text-sm font-medium text-gray-300 hover:text-white border border-white/10 rounded-lg transition-colors"
+                  >
                     {t('nav.signIn')}
                   </a>
-                  <a href={getStartedUrl} className="flex-1 text-center py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg">
+                  <a
+                    href={getAppEntryUrl(user)}
+                    className="block text-center py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg"
+                  >
                     {t('nav.getStarted')}
                   </a>
                 </div>

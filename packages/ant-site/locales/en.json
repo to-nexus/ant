@@ -1,71 +1,321 @@
 {
   "tabTitle": "ANT",
   "nav": {
-    "product": "Product",
-    "figma": "Figma Integration",
+    "docs": "Docs",
+    "selfHost": "Self-host",
+    "cloud": "Cloud",
+    "community": "Community",
+    "openSource": "Open Source",
+    "figma": "Figma",
     "capabilities": "Tech Stack",
-    "pricing": "Pricing",
     "download": "Download",
+    "goToApp": "Go to App",
     "signIn": "Sign In",
     "getStarted": "Get Started",
-    "signOut": "Sign Out",
-    "goToApp": "Go to App"
+    "signOut": "Sign Out"
   },
   "footer": {
-    "tagline": "AI agent-powered software development platform.\nFrom ideas to specs, from specs to product.",
-    "pages": "Pages",
-    "links": "Links",
+    "tagline": "Open-source AI agent platform.\nFrom ideas to specs, from specs to product.",
+    "product": "Product",
+    "community": "Community",
+    "resources": "Resources",
+    "legal": "Legal",
     "terms": "Terms of Service",
-    "privacy": "Privacy Policy"
+    "privacy": "Privacy Policy",
+    "license": "License",
+    "discussions": "Discussions",
+    "issues": "Issues",
+    "roadmap": "Roadmap",
+    "contributing": "Contributing",
+    "codeOfConduct": "Code of Conduct",
+    "security": "Security",
+    "releases": "Releases",
+    "rights": "Released under {{license}}."
   },
   "home": {
-    "brandPrefix": "With ",
-    "brandHighlight": "ANT",
-    "brandSuffix": "",
+    "tagline": "Open source AI agents that build software",
     "title1": "Ideas to Specs.",
     "title2": "Specs to Product.",
-    "desc": "AI agents handle the entire development cycle — from PRD writing and design to code generation and live preview.",
-    "cta": "Get Started Free",
-    "downloadApp": "Download Desktop App",
+    "desc": "Multi-agent code generation, design, and planning. Self-host on your laptop or use the managed cloud — same architecture, same experience.",
+    "ctaQuickstart": "Quickstart",
+    "ctaDocs": "Read the docs",
+    "stats": {
+      "stars": "GitHub stars",
+      "contributors": "Contributors",
+      "languages": "Supported languages",
+      "llm": "LLM providers"
+    },
+    "quickstart": {
+      "title": "Get started in 60 seconds",
+      "desc": "Clone, install dependencies, spin up Redis + ChromaDB, and start the local server."
+    },
     "workflow": {
       "title": "How It Works",
       "desc": "From conversation to working code. A 4-step AI agent workflow.",
       "step1Title": "Plan",
       "step1Agent": "Planner",
-      "step1Desc": "Turn your ideas into a PRD (Product Requirements Document) through conversation. The agent asks clarifying questions and produces a refined spec.",
+      "step1Desc": "Turn ideas into a PRD through conversation. The agent asks clarifying questions and produces a refined spec.",
       "step2Title": "Design",
       "step2Agent": "Architect",
       "step2Desc": "Analyzes the PRD and Figma designs to generate UI tokens, asset inventories, and component spec documents. System design (API contracts, etc.) is also included.",
       "step3Title": "Code",
       "step3Agent": "Architect",
-      "step3Desc": "Generates real code based on design documents. Automatically diagnoses and fixes build failures, and runs tasks in parallel.",
+      "step3Desc": "Generates real code from design documents. Automatically diagnoses and fixes build failures, and runs tasks in parallel.",
       "step4Title": "Preview",
       "step4Agent": "Runtime",
-      "step4Desc": "Preview generated code in real time. See results instantly in the browser and iterate with feedback."
+      "step4Desc": "Preview generated code in real time. See results instantly and iterate with feedback."
     },
-    "diff": {
-      "figmaTitle": "Native Figma Integration",
-      "figmaDesc": "Reads Figma designs directly and converts them to code. Analyzes actual component structure, variables, and styles — not screenshots.",
-      "figmaLink": "Learn more →",
-      "stackTitle": "Broad Tech Stack Support",
-      "stackDesc": "Frontend, backend, fullstack. Supports TypeScript/JavaScript and Go, with Python, Java, and Rust coming soon.",
-      "stackLink": "See supported stacks →",
-      "localTitle": "Local or Cloud",
-      "localDesc": "Start instantly on your local machine, or use it in the cloud with your team. Same architecture, same experience."
+    "features": {
+      "title": "What you get",
+      "multiAgentTitle": "Multi-agent workflow",
+      "multiAgentDesc": "Planner, Architect, Runtime — separate agents for separate concerns. Each owns its phase.",
+      "parallelTitle": "Parallel execution",
+      "parallelDesc": "Tasks run in parallel by default. Foundation tasks block, integration tasks fan out.",
+      "figmaTitle": "Native Figma integration",
+      "figmaDesc": "Reads Figma designs directly via MCP — actual component structure, variables, and styles.",
+      "stackTitle": "Broad stack support",
+      "stackDesc": "TypeScript, JavaScript, and Go today. Python, Java, Rust planned (PRs welcome).",
+      "selfHostTitle": "Self-host or cloud",
+      "selfHostDesc": "Same architecture in both modes — Redis + BullMQ + Pub/Sub. No silent fallbacks.",
+      "localTitle": "Local-first dev loop",
+      "localDesc": "Vector DB optional. Live preview in the browser. Bring your own LLM key."
+    },
+    "demo": {
+      "title": "See it in action",
+      "desc": "A short walkthrough of the Plan → Design → Code → Preview loop."
+    },
+    "split": {
+      "title": "Self-host or use the cloud",
+      "desc": "Both paths use the same code. Pick the trade-off that fits.",
+      "selfHostTitle": "Run it yourself",
+      "selfHostTagline": "Your laptop, your data, your LLM key.",
+      "selfHostBullet1": "One command to clone, one command to start",
+      "selfHostBullet2": "Redis + ChromaDB via docker compose",
+      "selfHostBullet3": "BYO LLM API key (Anthropic / OpenAI / Bedrock)",
+      "selfHostBullet4": "No telemetry, no account",
+      "selfHostCta": "Self-host guide",
+      "cloudTitle": "Use the managed cloud",
+      "cloudTagline": "We run the infrastructure. You bring the ideas.",
+      "cloudBullet1": "Managed Redis, ChromaDB, and IDE pods",
+      "cloudBullet2": "Hosted preview servers + isolated workspaces",
+      "cloudBullet3": "Single sign-on with Google",
+      "cloudBullet4": "Same code as the OSS build — no proprietary fork",
+      "cloudCta": "Try the cloud"
+    },
+    "compare": {
+      "title": "vs other AI coding tools",
+      "desc": "Where ANT sits in the landscape.",
+      "axis": {
+        "multiAgent": "Multi-agent (Planner / Architect)",
+        "selfHost": "Self-host",
+        "ossLicense": "Open source license",
+        "figma": "Figma integration",
+        "parallelTasks": "Parallel task execution"
+      }
+    },
+    "community": {
+      "title": "Built in the open",
+      "desc": "Issues triaged, PRs merged, discussions answered — all in public.",
+      "contributors": "Contributors",
+      "contributorsEmpty": "Be the first contributor.",
+      "recentPRs": "Recently merged PRs",
+      "recentIssues": "Open issues",
+      "activityEmpty": "No activity yet."
     },
     "ctaBand": {
-      "title": "Get Started Now",
-      "desc": "All features are free during the beta period.",
-      "button": "Get Started",
-      "downloadNote": "Figma integration with the desktop app —",
-      "downloadLink": "Download"
+      "title": "Star · Install · Open a discussion",
+      "desc": "ANT is open source under Apache-2.0. Read the code, file an issue, send a PR.",
+      "starOnGitHub": "Star on GitHub",
+      "openDiscussion": "Open a discussion"
+    },
+    "faq": {
+      "title": "FAQ",
+      "items": [
+        {
+          "q": "What's the license?",
+          "a": "Apache-2.0. You can self-host, fork, modify, and use ANT in commercial products. The full text lives at /LICENSE in the repo."
+        },
+        {
+          "q": "Does ANT phone home?",
+          "a": "No telemetry. The self-host build does not call out except for LLM API requests you initiate. The cloud build only stores what you create in your workspace."
+        },
+        {
+          "q": "Which LLMs are supported?",
+          "a": "Anthropic Claude, OpenAI, and Bedrock are wired in today. The provider adapter is small — adding a new provider is a contribution-friendly task."
+        },
+        {
+          "q": "What infrastructure does self-host need?",
+          "a": "Redis and ChromaDB (both via docker compose). Node 20+, pnpm 10+. The dev script spins everything up locally."
+        },
+        {
+          "q": "Where's ANT Cloud?",
+          "a": "ANT Cloud is the managed deployment of the same OSS code. Same agents, same workflow — we just run the infra. See the Cloud page."
+        },
+        {
+          "q": "Can I migrate cloud → self-host?",
+          "a": "Yes. Workspaces are stored on disk in standard formats (Markdown, JSON). Export from cloud, point self-host at the directory, done."
+        }
+      ]
     }
   },
+  "openSource": {
+    "heroTitle": "Built in the open.",
+    "heroHighlight": "Apache-2.0.",
+    "heroDesc": "Read the code, file an issue, send a PR. Same code base in self-host and cloud.",
+    "license": {
+      "title": "Apache-2.0",
+      "desc": "ANT is licensed under Apache License 2.0. Use it commercially, fork it, modify it. Patent grants and contributor protections included.",
+      "viewLicense": "View LICENSE",
+      "compare": "Compare licenses"
+    },
+    "contribute": {
+      "title": "How to contribute",
+      "desc": "We welcome bug reports, feature requests, and PRs of any size.",
+      "step1Title": "1. Find an issue",
+      "step1Desc": "Browse issues labeled \"good first issue\" — small, well-scoped tasks that don't require deep context.",
+      "step1Cta": "Browse good first issues →",
+      "step2Title": "2. Read the contributing guide",
+      "step2Desc": "Setup, branch naming, PR process, and the architecture overview.",
+      "step2Cta": "CONTRIBUTING.md →",
+      "step3Title": "3. Open a PR",
+      "step3Desc": "Tests live next to the code. Build is the gate — passing build = passing tests.",
+      "step3Cta": "View pull requests →"
+    },
+    "policy": {
+      "title": "Project policies",
+      "codeOfConductTitle": "Code of Conduct",
+      "codeOfConductDesc": "We follow the Contributor Covenant. Be excellent to each other.",
+      "securityTitle": "Security policy",
+      "securityDesc": "Found a vulnerability? Don't open a public issue — see SECURITY.md for the disclosure process."
+    },
+    "contributorsTitle": "Thanks to our contributors",
+    "contributorsEmpty": "Be the first to contribute.",
+    "sponsorsTitle": "Sponsors",
+    "sponsorsDesc": "Sponsorship channel coming soon. For now, the best way to support ANT is to star the repo, file good issues, and send PRs."
+  },
+  "selfHost": {
+    "heroTitle": "Run ANT on your laptop.",
+    "heroHighlight": "No account.",
+    "heroDesc": "Clone the repo, start the infra, run the dev script. ~60 seconds end to end.",
+    "infraTitle": "What you'll run",
+    "infraDesc": "ANT is always a distributed system — same in local and cloud. Three processes plus shared infra.",
+    "process": {
+      "api": "API server (port 4100) — receives requests, enqueues jobs",
+      "worker": "Job worker — runs LangGraph agents in child processes",
+      "realtime": "Realtime SSE server (port 4101) — streams agent state to the UI",
+      "preview": "Preview server (port 4102) — hosts generated code"
+    },
+    "infraDeps": {
+      "title": "Infrastructure dependencies",
+      "redis": "Redis — pub/sub, BullMQ queue, state store",
+      "chroma": "ChromaDB (optional) — vector index for code understanding"
+    },
+    "envTitle": "Environment variables",
+    "envDesc": "Most defaults work out of the box. The keys below are the ones you'll touch.",
+    "env": [
+      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "local | cloud" },
+      { "name": "ANT_REDIS_URL", "default": "redis://localhost:6379", "desc": "Redis connection (auto-set when using docker compose)" },
+      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "Required. Generate with: openssl rand -hex 32" },
+      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "Where workspaces (your projects) live on disk" },
+      { "name": "ANT_VECTOR_DB_ENABLED", "default": "false", "desc": "Enable ChromaDB vector index (optional)" },
+      { "name": "ANT_TASK_CONCURRENCY", "default": "3", "desc": "Number of parallel tasks per job" }
+    ],
+    "llmTitle": "Bring your own LLM key",
+    "llmDesc": "Self-host doesn't proxy LLM calls. Set one of these and you're set.",
+    "llmKeys": [
+      "ANTHROPIC_API_KEY (Claude)",
+      "OPENAI_API_KEY (GPT-4)",
+      "AWS credentials (Bedrock)"
+    ],
+    "nextStepsTitle": "Next",
+    "nextStepsDesc": "Once it's running, the docs cover production self-host, custom LLM providers, and contributing back."
+  },
+  "community": {
+    "heroTitle": "Open source.",
+    "heroHighlight": "Open process.",
+    "heroDesc": "Discussions on GitHub. Roadmap on GitHub. PR queue on GitHub. Nothing hidden.",
+    "primaryCta": "Open a discussion",
+    "discussionsTitle": "Where conversation happens",
+    "discussionsDesc": "GitHub Discussions is the only chat surface — no Discord, no Slack, no fragmentation. Categories:",
+    "categories": [
+      { "name": "Q&A", "desc": "Stuck? Ask. Maintainers and contributors answer." },
+      { "name": "Ideas", "desc": "Propose a feature. Discuss before you code." },
+      { "name": "Show and tell", "desc": "Built something with ANT? Share it." },
+      { "name": "General", "desc": "Anything else." }
+    ],
+    "responseNote": "Responses come from maintainers and contributors. Expect a few days, sometimes faster.",
+    "activityTitle": "Recent activity",
+    "activityDesc": "Live from the repo.",
+    "goodFirstTitle": "Want to contribute?",
+    "goodFirstDesc": "These issues are well-scoped and don't need deep project context.",
+    "goodFirstCta": "Browse all good first issues →",
+    "goodFirstEmpty": "No good first issues right now. Check back soon, or open a discussion to suggest one.",
+    "roadmapTitle": "What's next",
+    "roadmapDesc": "The roadmap lives in the repo as a Markdown doc — comment, suggest, debate.",
+    "roadmapCta": "View roadmap →"
+  },
+  "cloud": {
+    "heroTitle1": "Run ANT without",
+    "heroTitle2": "the ops",
+    "heroDesc": "ANT Cloud is the managed deployment of the same OSS code. Same agents, same workflow — we run the infra so you don't have to.",
+    "ctaTry": "Try ANT Cloud",
+    "earlyAccessNote": "Currently in early access — pricing TBD.",
+    "tradeoffTitle": "Self-host or cloud?",
+    "tradeoffDesc": "Same code, different ops boundary.",
+    "tradeoffSelfHost": {
+      "title": "Self-host",
+      "bullets": [
+        "You own the data and the infrastructure",
+        "Your machine, your network, your LLM key",
+        "Free, forever"
+      ]
+    },
+    "tradeoffCloud": {
+      "title": "Cloud",
+      "bullets": [
+        "We run Redis, ChromaDB, IDE pods, and preview servers",
+        "Your data lives in our managed region",
+        "Sign in with Google — no infra to set up"
+      ]
+    },
+    "includesTitle": "What ANT Cloud includes",
+    "includes": [
+      "Managed Redis + BullMQ + Pub/Sub",
+      "ChromaDB vector index for code understanding",
+      "Isolated IDE pods (Kubernetes-backed)",
+      "Hosted preview servers per workspace",
+      "Same Plan → Design → Code → Preview workflow as self-host",
+      "Workspaces exportable as plain files — migrate to self-host any time"
+    ],
+    "faqTitle": "FAQ",
+    "faq": [
+      {
+        "q": "How is this different from self-host?",
+        "a": "Same exact code. The only differences are infrastructure (we run it) and authentication (Google sign-in instead of localhost). Workspaces are interchangeable."
+      },
+      {
+        "q": "What about LLM costs?",
+        "a": "During early access, ANT Cloud covers LLM costs. Long-term pricing is TBD — we'll announce before any change."
+      },
+      {
+        "q": "Can I migrate from cloud to self-host?",
+        "a": "Yes. Workspaces are stored as Markdown and JSON on disk. Export from cloud, point self-host at the directory, done."
+      },
+      {
+        "q": "Where's my data hosted?",
+        "a": "Region details are in the early-access onboarding. Self-host if you need specific data residency guarantees."
+      },
+      {
+        "q": "Where's the pricing table?",
+        "a": "There isn't one yet. The OSS build is free forever. Cloud pricing is TBD until we leave early access."
+      }
+    ]
+  },
   "figma": {
-    "heroTitle1": "Figma Designs,",
-    "heroTitle2": "Straight to Code",
+    "heroTitle1": "Figma designs,",
+    "heroTitle2": "straight to code",
     "heroDesc": "Not screenshot capture. AI directly reads and analyzes Figma's actual component structure, design tokens, and variables.",
-    "archTitle": "How It Works",
+    "archTitle": "How it works",
     "readsTitle": "What ANT reads from Figma",
     "reads": ["Layer structure and component hierarchy", "Design tokens (color, typography, spacing)", "Component variables and variants", "Auto layout properties", "Assets (icons, images)"],
     "generatesTitle": "What ANT generates",
@@ -74,30 +324,29 @@
     "gen2Label": "ui-assets",
     "gen2Desc": "Asset inventory and usage guide",
     "gen3Label": "ui-spec",
-    "gen3Desc": "Detailed per-component specs (layout, states, interactions)",
-    "setupTitle": "Setup Guide — 3 Steps",
+    "gen3Desc": "Per-component specs (layout, states, interactions)",
+    "setupTitle": "Setup — 3 steps",
     "step1Title": "Install Figma Desktop App",
-    "step1Desc": "Figma Desktop App is required. MCP access is not available through the web version.",
+    "step1Desc": "Figma Desktop is required. MCP access is not available through the web version.",
     "step1Link": "Download Figma Desktop →",
     "step2Title": "Install Ant Desktop",
-    "step2Desc": "Ant Desktop is a bridge connecting your local Figma to ANT Cloud. Install it, run it from the system tray, and sign in with your ANT account.",
+    "step2Desc": "Ant Desktop is a bridge connecting your local Figma to ANT (cloud or self-host). Install it, run it from the system tray, and it will auto-pair with your ANT instance.",
     "step2Link": "Go to download page →",
     "step3Title": "Connect Figma URL in your project",
-    "step3Desc": "Enter the Figma file URL when creating a Feature in Ant. Run Design Job → Auto-explore Figma data → Generate design documents.",
-    "step3Link": "Start Ant →",
+    "step3Desc": "Enter the Figma file URL when creating a feature. Run the Design job → ANT explores Figma data → design documents are generated.",
+    "step3Link": "Read the docs →",
     "faqTitle": "FAQ",
-    "faq1Q": "Does it work with Figma web?",
-    "faq1A": "No. Figma Desktop App is required for MCP access.",
-    "faq2Q": "Does Ant Desktop have write access to Figma?",
-    "faq2A": "No. Read-only access. It only analyzes design data and never modifies Figma files.",
-    "faq3Q": "Can I use ANT without Figma?",
-    "faq3A": "Yes. You can upload reference images (screenshots) or use text descriptions only for design and code generation. Figma integration is an option for more accurate results."
+    "faqItems": [
+      { "q": "Does it work with Figma web?", "a": "No. Figma Desktop App is required for MCP access." },
+      { "q": "Does Ant Desktop have write access to Figma?", "a": "No. Read-only. It only analyzes design data and never modifies Figma files." },
+      { "q": "Can I use ANT without Figma?", "a": "Yes. Upload reference images (screenshots) or use text descriptions only. Figma integration is an option for more accurate results." }
+    ]
   },
   "capabilities": {
-    "heroTitle1": "Any Stack,",
-    "heroTitle2": "One Workflow",
+    "heroTitle1": "Any stack,",
+    "heroTitle2": "one workflow",
     "heroDesc": "ANT is not tied to any specific language or framework. It analyzes your project's tech stack and generates tailored code.",
-    "projectTypesTitle": "Project Types",
+    "projectTypesTitle": "Project types",
     "frontendDesc": "SPA, SSR/SSG web applications",
     "backendDesc": "REST API, GraphQL servers, microservices",
     "fullstackDesc": "Frontend + backend integrated projects",
@@ -109,84 +358,43 @@
     "langJava": "Spring Boot and enterprise frameworks.",
     "langRust": "Axum, Actix, and other web frameworks.",
     "supportedLabel": "Supported",
-    "plannedLabel": "Coming Soon",
+    "plannedLabel": "PRs welcome",
     "frameworkTitle": "Frameworks",
-    "frameworkSupported": "Currently Supported",
-    "frameworkPlanned": "Coming Soon",
-    "howTitle": "How It Works",
+    "frameworkSupported": "Currently supported",
+    "frameworkPlanned": "PRs welcome",
+    "howTitle": "How it works",
     "howDesc": "ANT doesn't use fixed templates. It learns your project's existing code — coding conventions, directory structure, dependencies — then generates code in a consistent style.",
-    "note": "Currently supports TypeScript/JavaScript and Go. Python, Java/Kotlin, and Rust are in preparation. Coverage expands as AI models advance.",
+    "note": "Currently supports TypeScript/JavaScript and Go. Python, Java/Kotlin, and Rust are open for contributions — the language adapter is small and well-isolated.",
     "noteLabel": "Note:"
   },
   "legal": {
     "termsTitle": "Terms of Service",
-    "termsBody": "Our Terms of Service are currently being prepared. They will be published before official launch.",
+    "termsBody": "These Terms apply to users of the managed ANT Cloud service only. Self-host users are governed by the Apache-2.0 license in the repository — see /LICENSE.\n\nThe full Terms document is being prepared and will be published before ANT Cloud leaves early access.",
     "privacyTitle": "Privacy Policy",
-    "privacyBody": "Our Privacy Policy is currently being prepared. It will be published before official launch."
-  },
-  "pricing": {
-    "heroTitle1": "Currently in Beta,",
-    "heroTitle2": "Everything is Free",
-    "heroTitle3": "",
-    "heroDesc": "Ant is currently in closed beta. All features are free until official launch.",
-    "betaTitle": "Beta Includes",
-    "betaFeatures": [
-      "Unlimited AI agents (Planner, Architect)",
-      "Figma integration",
-      "Cloud IDE",
-      "Live preview",
-      "Unlimited project creation"
-    ],
-    "betaCta": "Start Beta",
-    "betaNote": "Sign up with Google → Start immediately",
-    "futurePlansTitle": "Future Pricing Plans",
-    "futurePlansNote": "Below is a pricing structure under review. Subject to change at launch.",
-    "planFeatures": {
-      "agents": "AI agent usage",
-      "projects": "Number of projects",
-      "figma": "Figma integration",
-      "ide": "Cloud IDE",
-      "support": "Priority support",
-      "onprem": "On-premise deployment",
-      "sso": "SSO / SAML",
-      "dedicated": "Dedicated support"
-    },
-    "monthlyLimit": "Monthly limit",
-    "unlimited": "Unlimited",
-    "limited": "Limited",
-    "enterpriseTitle": "Considering team adoption?",
-    "enterpriseDesc": "We're preparing an Enterprise plan for organizations that need on-premise deployment, SSO integration, and dedicated support.",
-    "enterpriseCta": "Contact Us",
-    "faqTitle": "FAQ",
-    "faq1Q": "How long is the beta period?",
-    "faq1A": "No exact date is set. We will notify at least 30 days before the beta ends.",
-    "faq2Q": "Will my beta projects be preserved?",
-    "faq2A": "Yes. Projects and code created during beta will be retained after official launch.",
-    "faq3Q": "Are LLM API costs separate?",
-    "faq3A": "During beta, ANT covers LLM costs. After launch, inclusion may vary by plan."
+    "privacyBody": "This Privacy Policy applies to users of the managed ANT Cloud service only. Self-host instances do not transmit data to ANT — your data stays on your infrastructure.\n\nThe full Privacy Policy is being prepared and will be published before ANT Cloud leaves early access."
   },
   "download": {
     "heroTitle1": "Ant Desktop",
-    "heroTitle2": "Download",
-    "heroDesc": "A desktop companion app for Figma design integration and local development environment connectivity.",
+    "heroTitle2": "download",
+    "heroDesc": "A companion app for Figma design integration. Bridges your local Figma Desktop to your ANT instance (cloud or self-host).",
     "downloadBtn": "Download",
     "comingSoon": "Coming Soon",
     "otherOS": "Other platforms",
-    "whatTitle": "What Ant Desktop Does",
-    "whatDesc": "Ant Desktop is a bridge connecting your local environment to ANT Cloud.",
-    "bridgeTitle": "Figma Bridge",
-    "bridgeDesc": "Securely relays design data from Figma Desktop App to ANT Cloud. Uses outbound connections only — no inbound ports opened.",
-    "trayTitle": "System Tray App",
+    "whatTitle": "What Ant Desktop does",
+    "whatDesc": "Ant Desktop is a bridge between your local environment and your ANT instance.",
+    "bridgeTitle": "Figma bridge",
+    "bridgeDesc": "Securely relays design data from Figma Desktop to ANT. Outbound connections only — no inbound ports opened.",
+    "trayTitle": "System tray app",
     "trayDesc": "Runs quietly in the system tray after installation. Only relays Figma data when needed, using minimal resources.",
-    "monitorTitle": "Connection Monitoring",
-    "monitorDesc": "Monitor ANT Cloud and Figma Desktop connection status in real time.",
-    "reqTitle": "System Requirements",
+    "monitorTitle": "Connection monitoring",
+    "monitorDesc": "Monitor ANT and Figma Desktop connection status in real time.",
+    "reqTitle": "System requirements",
     "reqOS": "OS",
-    "reqMinVersion": "Minimum Version",
+    "reqMinVersion": "Minimum version",
     "reqArch": "Architecture",
-    "installTitle": "Installation Guide",
-    "macSteps": ["Download the .dmg file", "Open disk image → Drag to Applications folder", "First launch: \"Unidentified Developer\" warning → Allow in System Settings > Security"],
-    "winSteps": ["Download the .exe installer", "Run to install", "SmartScreen warning: Click \"More info\" → \"Run anyway\""],
+    "installTitle": "Installation guide",
+    "macSteps": ["Download the .dmg file", "Open the disk image → drag to Applications", "First launch: \"Unidentified Developer\" warning → Allow in System Settings > Security"],
+    "winSteps": ["Download the .exe installer", "Run to install", "SmartScreen warning: click \"More info\" → \"Run anyway\""],
     "linuxSteps": ["Download .deb or .AppImage", "Debian/Ubuntu: sudo dpkg -i ant-desktop_*.deb", "AppImage: chmod +x then run"],
     "codeSignNotice": "Ant Desktop is currently a beta build without code signing. You may see OS security warnings during installation. Code signing will be applied before official release."
   }
