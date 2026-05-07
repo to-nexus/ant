@@ -5,6 +5,7 @@ import type { AsyncFields } from '@/domain/async';
 import { initialAsyncFields } from '@/domain/async';
 import type { ViewMode } from '@/domain/file/viewMode';
 import { isFigmaDataPopulated } from '@ant/shared';
+import { selectIsAuthBlocked } from '../selectors/auth';
 
 /**
  * Current file — single SSOT for the file the editor is displaying.
@@ -149,12 +150,12 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
 
     const forceRefresh = options?.force ?? true;
     const state = get();
-    const { selectedProject, selectedFeature, backendMode, userEmail, connectionStatus } = state;
+    const { selectedProject, selectedFeature, connectionStatus } = state;
 
     if (!selectedProject || !selectedFeature) return;
     if (connectionStatus !== 'connected') return;
 
-    if (backendMode === 'cloud' && !userEmail) {
+    if (selectIsAuthBlocked(state as any)) {
       console.log('[Store] Skipping refreshFileTree: Cloud mode requires authentication');
       set({ fileTree: [] });
       return;

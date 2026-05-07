@@ -35,8 +35,8 @@ pnpm dev:local:all
 다음을 묻습니다:
 
 1. **프로젝트 만들기** — 이름, 레포 타입 (default *cloud* 메타지만 로컬
-   모드에선 모두 머신 안에 머무름), 도메인 (`service` for 웹/백엔드,
-   `game` for Phaser/HTML5 게임).
+   모드에선 모두 머신 안에 머무름), 도메인 (웹/백엔드는 `service` 선택.
+   `game` 도메인은 **개발 중** 이라 첫 사용에는 권장하지 않음).
 2. **feature 만들기** — feature는 프로젝트 안의 작업 단위. 개념상은
    브랜치 + 워크스페이스.
 
@@ -45,7 +45,7 @@ pnpm dev:local:all
 채팅 패널에 디렉티브를 입력합니다. 좋은 첫 디렉티브 예:
 
 - `React + Tailwind 로 TODO 앱 만들어줘. 마감일 표시하고 우선순위로 그룹핑.`
-- `Phaser로 Pong 게임 만들어줘. 패들 두 개, 공, 점수, 승리 조건.`
+- `히어로 / 기능 그리드 / 가격 섹션이 있는 마케팅 랜딩 페이지 만들어줘.`
 - `Express로 REST API 만들어줘. /users, /posts 엔드포인트, SQLite 사용.`
 
 전송하면 Ant은:

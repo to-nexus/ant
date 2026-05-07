@@ -27,6 +27,7 @@
 
 import { useEffect } from 'react';
 import { useStore } from '../store';
+import { selectIsAuthBlocked } from '../store/selectors';
 
 /**
  * @param opts.enabled  — guard so tests / storybook can disable the effect.
@@ -36,6 +37,12 @@ export function useProjectLifecycle(opts: { enabled?: boolean } = {}): void {
 
   const selectedProject = useStore((s: any) => s.selectedProject as string | undefined);
   const selectedFeature = useStore((s: any) => s.selectedFeature as string | undefined);
+  // Subscribed so 'verifying' → 'verified' re-fires the orchestration once
+  // the cloud JWT cookie is confirmed. Without this, an authed boot that
+  // hydrates `selectedProject` from sessionStorage would never run the
+  // initial git-world / project-config prime — `selectIsAuthBlocked` would
+  // bounce the only effect run.
+  const authStatus = useStore((s: any) => s.authStatus as string | undefined);
 
   // Pull actions via getState() inside the effect so we don't re-run it on
   // every slice re-render. Only identity changes trigger orchestration.
@@ -44,6 +51,13 @@ export function useProjectLifecycle(opts: { enabled?: boolean } = {}): void {
     if (!selectedProject) return;
 
     const state = useStore.getState() as any;
+
+    // Stale-session guard. Without this, a cloud-mode page entry with
+    // expired JWT cookie still observes a stale `selectedProject` and
+    // fans out fetchProjectConfig + fetchGitWorldState before
+    // `clearUser` 's cascade can scrub the identity. See
+    // plan `stale-session-lifecycle-cascade`.
+    if (selectIsAuthBlocked(state)) return;
 
     // (1) Reset git-world for the new identity.
     try { state.clearGitWorld?.(); } catch { /* no-op */ }
@@ -71,5 +85,5 @@ export function useProjectLifecycle(opts: { enabled?: boolean } = {}): void {
     try {
       state.fetchGitWorldState?.(selectedProject, { feature: selectedFeature });
     } catch { /* no-op */ }
-  }, [enabled, selectedProject, selectedFeature]);
+  }, [enabled, selectedProject, selectedFeature, authStatus]);
 }

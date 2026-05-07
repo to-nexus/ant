@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
+import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface PerFeatureDeployState {
   status: DeployStatus | undefined;
@@ -128,8 +129,7 @@ export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, g
     const key = makeFeatureKey(projectId, featureName);
     if (!key) return;
     const state = get();
-    const { backendMode, userEmail } = state;
-    if (backendMode === 'cloud' && !userEmail) {
+    if (selectIsAuthBlocked(state as any)) {
       get().setDeployStatus(key, undefined);
       return;
     }

@@ -75,8 +75,10 @@ The agent will:
 5. Generate code that respects the layout, the variables, and any Code
    Connect mappings.
 
-For game projects, the same flow uses `visual/game-art/figma/`
-(reserved for Phase 5+ as of this release).
+For game projects, the same flow will use `visual/game-art/figma/`
+once the **game vertical exits development** (reserved for Phase 5+;
+the `visual/game-art/handoff/` and `figma/` sub-sources are not active
+yet).
 
 ## Code Connect
 

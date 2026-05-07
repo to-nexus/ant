@@ -4,9 +4,12 @@ import { ArrowRight, Download, FileText, Palette, Code2, Eye, Cpu, Layers, Globe
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { StarfieldCanvas, FloatingOrbs } from '@/components/HeroEffects';
+import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
 
 export default function HomePage() {
   const { t } = useTranslation('site');
+  const { user } = useAuthSession();
+  const appEntryUrl = getAppEntryUrl(user);
 
   return (
     <>
@@ -40,7 +43,7 @@ export default function HomePage() {
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="/app/"
+                href={appEntryUrl}
                 className="group inline-flex items-center gap-2 px-7 py-3.5 text-base font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all"
               >
                 {t('home.cta')}
@@ -175,7 +178,7 @@ export default function HomePage() {
             {t('home.ctaBand.desc')}
           </p>
           <a
-            href="/app/"
+            href={appEntryUrl}
             className="inline-flex items-center gap-2 px-8 py-4 text-base font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl shadow-lg shadow-emerald-500/25 transition-all"
           >
             {t('home.ctaBand.button')}

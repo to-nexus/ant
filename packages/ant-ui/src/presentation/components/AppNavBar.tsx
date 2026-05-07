@@ -48,7 +48,6 @@ export function AppNavBar({}: AppNavBarProps) {
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
   const clearUser = useStore((state) => state.clearUser);
-  const reset = useStore((state) => state.reset);
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
@@ -124,23 +123,12 @@ export function AppNavBar({}: AppNavBarProps) {
     window.location.href = `${backendBase}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
   
-  // Handle sign out
+  // Handle sign out — `clearUser` now cascades reset + projects clear +
+  // storage cleanup as a single SSOT (see authSlice.clearUser jsdoc).
   const handleSignOut = async () => {
     await signOut();
     clearUser();
     setShowUserMenu(false);
-    
-    // ✅ Reset all job/task/kanban state
-    reset();
-    
-    // Clear projects after sign out
-    const setProjects = useStore.getState().setProjects;
-    const setSelectedProject = useStore.getState().setSelectedProject;
-    const setSelectedFeature = useStore.getState().setSelectedFeature;
-    setProjects([]);
-    setSelectedProject(undefined);
-    setSelectedFeature(undefined);
-
     window.location.href = '/';
   };
   

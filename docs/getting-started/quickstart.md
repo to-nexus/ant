@@ -37,8 +37,9 @@ Visit [http://localhost:5173](http://localhost:5173). The setup wizard will
 ask you to:
 
 1. **Create a project** — name, repository type (default *cloud* metadata,
-   but everything stays on your machine in local mode), domain (`service`
-   for web/backend, `game` for Phaser/HTML5 games).
+   but everything stays on your machine in local mode), domain (pick
+   `service` for web/backend; the `game` domain is **in development** and
+   not recommended for first-time use).
 2. **Create a feature** — a feature is a unit of work inside a project.
    Conceptually it's a branch + workspace.
 
@@ -47,7 +48,7 @@ ask you to:
 In the chat panel, type a directive. Some good first directives:
 
 - `Build a TODO app with React and Tailwind. Show due dates and group by priority.`
-- `Build a Pong game in Phaser. Two paddles, ball, score, win condition.`
+- `Build a marketing landing page with hero, features grid, and pricing.`
 - `Build a REST API in Express that exposes /users and /posts with SQLite.`
 
 Send the directive. Ant will:

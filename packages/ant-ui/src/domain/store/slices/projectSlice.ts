@@ -3,6 +3,7 @@ import { ProjectState } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import type { Feature } from '@/infrastructure/http/api';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface ProjectActions {
   setProjects: (projects: string[]) => void;
@@ -48,7 +49,7 @@ export const createProjectSlice: StateCreator<
     const state = get() as any;
     // Cloud mode requires authentication — mark as empty (not error) so
     // QuickStart gate doesn't trigger a retry loop.
-    if (state.backendMode === 'cloud' && !state.userEmail) {
+    if (selectIsAuthBlocked(state)) {
       console.log('[Store] Skipping fetchProjects: Cloud mode requires authentication');
       set({ projects: [], projectsStatus: 'empty' });
       return;
@@ -265,15 +266,14 @@ export const createProjectSlice: StateCreator<
   fetchFeatures: async (projectId) => {
     const state = get() as any;
     const targetProject = projectId || state.selectedProject;
-    const { backendMode, userEmail } = state;
-    
+
     if (!targetProject) {
       set({ features: [] });
       return [];
     }
-    
+
     // Cloud mode requires authentication
-    if (backendMode === 'cloud' && !userEmail) {
+    if (selectIsAuthBlocked(state)) {
       console.log('[Store] Skipping fetchFeatures: Cloud mode requires authentication');
       set({ features: [] });
       return [];

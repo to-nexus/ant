@@ -15,6 +15,7 @@ import { createFileTreeSseHandler } from './sse/fileTreeSseHandler';
 import { createUnseenArtifactsHandler, createBridgeHandler, createTransferHandler } from './sse/auxiliarySseHandlers';
 import { setupConnectionPolicy } from './sse/sseConnectionPolicy';
 import { handleInitialActiveJobs } from './sse/activeJobsBootstrap';
+import { selectIsAuthBlocked } from '../selectors/auth';
 
 let sliceHandlerIds: HandlerId[] = [];
 
@@ -197,7 +198,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       return;
     }
 
-    if (state.backendMode === 'cloud' && !state.userEmail) {
+    if (selectIsAuthBlocked(state as any)) {
       console.log('[Store] Cannot initialize SSE: Cloud mode requires authentication');
       return;
     }
@@ -283,7 +284,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       return;
     }
 
-    if (state.backendMode === 'cloud' && !state.userEmail) {
+    if (selectIsAuthBlocked(state as any)) {
       console.log('[Store] ⚠️  Cannot reconnect SSE: Cloud mode requires authentication');
       return;
     }

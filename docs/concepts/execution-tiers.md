@@ -130,6 +130,11 @@ in:
 The full domain-tier matrix lives in
 [`packages/ant-shared/src/tier-matrix.ts`](../../packages/ant-shared/src/tier-matrix.ts).
 
+> The `game` domain is **in development**. The matrix entries and tier
+> behaviour described above are wired in code, but end-to-end game-domain
+> jobs are still being validated. Use the `service` domain for production
+> work today.
+
 ## Read next
 
 - [internals/18-session-redesign.md](../internals/18-session-redesign.md)

@@ -43,7 +43,8 @@ sweeps are documented in [AGENTS.md § Workspace Layout Enforcement](../../AGENT
 
 A project is a deployable unit. It has:
 
-- A name, an org, and a domain (`service` or `game`).
+- A name, an org, and a domain (`service` or `game` — the `game`
+  domain is **in development**; pick `service` for production use).
 - A `repoType` (`local` or `cloud`) that decides whether features share
   one git working tree or each get their own worktree.
 - A workspace base path on disk.
@@ -115,6 +116,7 @@ not auto-derivable, cross-task invariant) is documented in
 - `assets/game/` is referenced by
   `visual/game-art/ant/game-art-assets.json` (only for `kind: 'external'`
   entries; `kind: 'inline'` entries carry their payload in the JSON).
+  *(In development — see the game-domain notice in [design-input-channels](design-input-channels.md).)*
 
 Asset routing is decided by `state.workspaceConfig.domain`. A workspace
 either uses the service pool or the game pool — never both at once.

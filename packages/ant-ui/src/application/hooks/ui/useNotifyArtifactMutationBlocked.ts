@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 
@@ -19,8 +20,7 @@ export function useNotifyArtifactMutationBlocked(): () => boolean {
   const policy = useUIActionPolicy();
   const { showWarning } = useAlertModalContext();
   const { t } = useTranslation('artifacts');
-  const backendMode = useStore((s) => s.backendMode);
-  const userEmail = useStore((s) => s.userEmail);
+  const isAuthBlocked = useStore(selectIsAuthBlocked);
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
 
@@ -29,7 +29,7 @@ export function useNotifyArtifactMutationBlocked(): () => boolean {
 
     const title = t('error.artifactBlockedTitle');
     let message: string;
-    if (backendMode === 'cloud' && !userEmail) {
+    if (isAuthBlocked) {
       message = t('error.artifactBlockedSignIn');
     } else if (policy.isDisconnected) {
       message = t('error.artifactBlockedDisconnected');
@@ -54,8 +54,7 @@ export function useNotifyArtifactMutationBlocked(): () => boolean {
     policy.isRunning,
     showWarning,
     t,
-    backendMode,
-    userEmail,
+    isAuthBlocked,
     selectedProject,
     selectedFeature,
   ]);
