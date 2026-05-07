@@ -16,8 +16,12 @@ interface AuthSessionContextValue {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+// API base URL for split-host deployments (e.g. ant.crosstoken.io → ant-server.crosstoken.io)
+// Empty string allows same-site relative URLs for single-origin deployments
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
+
 async function fetchSessionUser(): Promise<AuthUser | null> {
-  const res = await fetch('/api/auth/me', { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' });
   if (!res.ok) {
     console.warn('[Auth] /api/auth/me responded non-OK', res.status);
     return null;
@@ -83,7 +87,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
 
   const signOut = useCallback(async () => {
     try {
-      await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
+      await fetch(`${API_BASE}/api/auth/signout`, { method: 'POST', credentials: 'include' });
     } finally {
       setUser(null);
     }
