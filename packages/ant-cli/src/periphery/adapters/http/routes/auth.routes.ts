@@ -224,8 +224,11 @@ export function createAuthRoutes(deps: {
   
   /**
    * GET /api/auth/me
-   * Returns current user info from JWT cookie.
-   * Frontend calls this after OIDC redirect to populate Zustand store.
+   * Returns current user info from JWT cookie, or `{ user: null }` when no
+   * session is present. Always 200 — "not signed in" is a valid state, not
+   * an error, so callers don't need to differentiate 401 from genuine
+   * failures (503 / network) and the browser doesn't log routine
+   * unauthenticated probes as console errors.
    */
   router.get('/auth/me', (req: Request, res: Response) => {
     if (!jwtService) {
@@ -234,20 +237,22 @@ export function createAuthRoutes(deps: {
 
     const token = (req as any).cookies?.[JwtService.cookieName];
     if (!token) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      return res.json({ user: null });
     }
 
     try {
       const payload = jwtService.verify(token);
       res.json({
-        email: payload.email,
-        organization: payload.org,
-        name: payload.name,
-        picture: payload.picture,
-        userId: payload.sub,
+        user: {
+          email: payload.email,
+          organization: payload.org,
+          name: payload.name,
+          picture: payload.picture,
+          userId: payload.sub,
+        },
       });
     } catch {
-      return res.status(401).json({ error: 'Invalid session' });
+      return res.json({ user: null });
     }
   });
   

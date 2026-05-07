@@ -1,65 +1,315 @@
 {
   "tabTitle": "ANT",
   "nav": {
-    "product": "제품소개",
-    "figma": "Figma 연동",
+    "docs": "문서",
+    "selfHost": "셀프호스트",
+    "cloud": "클라우드",
+    "community": "커뮤니티",
+    "openSource": "오픈소스",
+    "figma": "Figma",
     "capabilities": "기술스택",
-    "pricing": "요금제",
     "download": "다운로드",
-    "signIn": "Sign In",
-    "getStarted": "Get Started",
-    "signOut": "로그아웃",
-    "goToApp": "앱으로 이동"
+    "goToApp": "앱으로 이동",
+    "signIn": "로그인",
+    "getStarted": "시작하기",
+    "signOut": "로그아웃"
   },
   "footer": {
-    "tagline": "AI 에이전트 기반 소프트웨어 개발 플랫폼.\n아이디어를 스펙으로, 스펙을 제품으로.",
-    "pages": "페이지",
-    "links": "링크",
+    "tagline": "오픈소스 AI 에이전트 플랫폼.\n아이디어를 스펙으로, 스펙을 제품으로.",
+    "product": "제품",
+    "community": "커뮤니티",
+    "resources": "리소스",
+    "legal": "법적 고지",
     "terms": "이용약관",
-    "privacy": "개인정보 처리방침"
+    "privacy": "개인정보 처리방침",
+    "license": "라이선스",
+    "discussions": "Discussions",
+    "issues": "이슈",
+    "roadmap": "로드맵",
+    "contributing": "기여 가이드",
+    "codeOfConduct": "Code of Conduct",
+    "security": "보안 정책",
+    "releases": "릴리스",
+    "rights": "{{license}} 라이선스로 배포됩니다."
   },
   "home": {
-    "brandPrefix": "",
-    "brandHighlight": "ANT",
-    "brandSuffix": "와 함께",
+    "tagline": "소프트웨어를 짓는 오픈소스 AI 에이전트",
     "title1": "아이디어를 스펙으로.",
     "title2": "스펙을 제품으로.",
-    "desc": "AI 에이전트가 PRD 작성부터 설계, 코드 생성, 실시간 미리보기까지 전체 개발 사이클을 수행합니다.",
-    "cta": "무료로 시작하기",
-    "downloadApp": "데스크탑 앱 다운로드",
+    "desc": "다중 에이전트로 코드 생성·설계·기획. 노트북에서 셀프호스트하거나 매니지드 클라우드로 — 같은 아키텍처, 같은 경험.",
+    "ctaQuickstart": "빠른 시작",
+    "ctaDocs": "문서 보기",
+    "stats": {
+      "stars": "GitHub stars",
+      "contributors": "컨트리뷰터",
+      "languages": "지원 언어",
+      "llm": "LLM 프로바이더"
+    },
+    "quickstart": {
+      "title": "60초 안에 시작하기",
+      "desc": "clone → 의존성 설치 → Redis + ChromaDB 기동 → 로컬 서버 실행."
+    },
     "workflow": {
-      "title": "전문가의 워크플로우 그대로",
+      "title": "작동 방식",
       "desc": "대화에서 시작해 동작하는 코드까지. 4단계 AI 에이전트 워크플로우.",
       "step1Title": "Plan",
       "step1Agent": "Planner",
-      "step1Desc": "대화를 통해 아이디어를 PRD(제품 요구사항 문서)로 구체화합니다. 에이전트가 불명확한 부분을 질문하고, 정제된 스펙을 작성합니다.",
+      "step1Desc": "대화로 아이디어를 PRD로 구체화합니다. 에이전트가 모호한 부분을 묻고, 정제된 스펙을 작성합니다.",
       "step2Title": "Design",
       "step2Agent": "Architect",
-      "step2Desc": "PRD와 Figma 디자인을 분석해 UI 토큰, 에셋, 컴포넌트 스펙 문서를 생성합니다. 시스템 설계(API 계약 등)도 포함됩니다.",
+      "step2Desc": "PRD와 Figma 디자인을 분석해 UI 토큰, 에셋, 컴포넌트 스펙을 생성합니다. 시스템 설계(API 계약 등)도 포함됩니다.",
       "step3Title": "Code",
       "step3Agent": "Architect",
       "step3Desc": "설계 문서를 기반으로 실제 코드를 생성합니다. 빌드 실패 시 자동 진단 후 수정하며, 태스크를 병렬로 실행합니다.",
       "step4Title": "Preview",
       "step4Agent": "Runtime",
-      "step4Desc": "생성된 코드를 실시간으로 미리보기합니다. 브라우저에서 바로 결과를 확인하고, 피드백을 반영해 반복합니다."
+      "step4Desc": "생성된 코드를 실시간으로 미리보기. 브라우저에서 결과를 확인하고 피드백을 반영해 반복합니다."
     },
-    "diff": {
+    "features": {
+      "title": "포함된 기능",
+      "multiAgentTitle": "다중 에이전트 워크플로우",
+      "multiAgentDesc": "Planner, Architect, Runtime — 각 단계를 별도 에이전트가 책임집니다.",
+      "parallelTitle": "병렬 실행",
+      "parallelDesc": "태스크는 기본적으로 병렬로 실행됩니다. Foundation은 블로킹, Integration은 fan-out.",
       "figmaTitle": "Figma 네이티브 연동",
-      "figmaDesc": "Figma 디자인을 직접 읽어 코드로 변환합니다. 스크린샷이 아닌 실제 컴포넌트 구조, 변수, 스타일을 분석합니다.",
-      "figmaLink": "자세히 보기 →",
-      "stackTitle": "폭넓은 기술스택",
-      "stackDesc": "프론트엔드, 백엔드, 풀스택. TypeScript/JavaScript와 Go를 지원하며, Python, Java, Rust 등으로 확장 중입니다.",
-      "stackLink": "지원 스택 보기 →",
-      "localTitle": "로컬에서도, 클라우드에서도",
-      "localDesc": "로컬 머신에서 즉시 시작하거나, 클라우드에서 팀과 함께 사용하세요. 동일한 아키텍처, 동일한 경험."
+      "figmaDesc": "MCP를 통해 Figma 디자인을 직접 읽습니다 — 실제 컴포넌트, 변수, 스타일.",
+      "stackTitle": "폭넓은 스택 지원",
+      "stackDesc": "TypeScript, JavaScript, Go가 현재 지원. Python, Java, Rust는 PR을 환영합니다.",
+      "selfHostTitle": "셀프호스트 또는 클라우드",
+      "selfHostDesc": "양쪽 모드 모두 같은 아키텍처 — Redis + BullMQ + Pub/Sub. 무음 fallback 없음.",
+      "localTitle": "로컬 우선 개발 루프",
+      "localDesc": "Vector DB는 옵션. 브라우저 라이브 프리뷰. 본인 LLM 키 사용."
+    },
+    "demo": {
+      "title": "직접 보기",
+      "desc": "Plan → Design → Code → Preview 루프의 짧은 워크스루."
+    },
+    "split": {
+      "title": "셀프호스트 또는 클라우드",
+      "desc": "두 경로 모두 같은 코드. 트레이드오프만 다릅니다.",
+      "selfHostTitle": "직접 운영",
+      "selfHostTagline": "내 노트북, 내 데이터, 내 LLM 키.",
+      "selfHostBullet1": "한 명령으로 clone, 한 명령으로 시작",
+      "selfHostBullet2": "docker compose로 Redis + ChromaDB",
+      "selfHostBullet3": "본인 LLM API 키 사용 (Anthropic / OpenAI / Bedrock)",
+      "selfHostBullet4": "텔레메트리 없음, 계정 없음",
+      "selfHostCta": "셀프호스트 가이드",
+      "cloudTitle": "매니지드 클라우드",
+      "cloudTagline": "인프라는 저희가 운영, 아이디어만 가져오세요.",
+      "cloudBullet1": "Redis, ChromaDB, IDE pod 매니지드",
+      "cloudBullet2": "워크스페이스마다 격리된 프리뷰 서버",
+      "cloudBullet3": "Google 계정으로 SSO",
+      "cloudBullet4": "OSS와 같은 코드 — 별도 프로프라이어터리 fork 없음",
+      "cloudCta": "클라우드 사용해보기"
+    },
+    "compare": {
+      "title": "다른 AI 코딩 도구와 비교",
+      "desc": "ANT가 다른 점.",
+      "axis": {
+        "multiAgent": "다중 에이전트 (Planner / Architect)",
+        "selfHost": "셀프호스트 가능",
+        "ossLicense": "오픈소스 라이선스",
+        "figma": "Figma 연동",
+        "parallelTasks": "태스크 병렬 실행"
+      }
+    },
+    "community": {
+      "title": "공개적으로 만듭니다",
+      "desc": "이슈 트리아지, PR 머지, Discussions — 모두 공개로 진행합니다.",
+      "contributors": "컨트리뷰터",
+      "contributorsEmpty": "첫 컨트리뷰터가 되어 주세요.",
+      "recentPRs": "최근 머지된 PR",
+      "recentIssues": "오픈 이슈",
+      "activityEmpty": "아직 활동 없음."
     },
     "ctaBand": {
-      "title": "지금 시작하세요",
-      "desc": "베타 기간 동안 모든 기능을 무료로 사용할 수 있습니다.",
-      "button": "시작하기",
-      "downloadNote": "데스크탑 앱으로 Figma 연동까지 —",
-      "downloadLink": "다운로드"
+      "title": "Star · Install · Discussion",
+      "desc": "ANT는 Apache-2.0 오픈소스. 코드를 읽고, 이슈를 열고, PR을 보내세요.",
+      "starOnGitHub": "GitHub에서 Star",
+      "openDiscussion": "Discussion 열기"
+    },
+    "faq": {
+      "title": "자주 묻는 질문",
+      "items": [
+        {
+          "q": "라이선스가 무엇인가요?",
+          "a": "Apache-2.0입니다. 셀프호스트, fork, 수정, 상업적 이용 모두 가능합니다. 전문은 repo의 /LICENSE에 있습니다."
+        },
+        {
+          "q": "ANT가 텔레메트리를 보내나요?",
+          "a": "보내지 않습니다. 셀프호스트 빌드는 사용자가 시작한 LLM API 호출 외에는 외부와 통신하지 않습니다. 클라우드 빌드는 워크스페이스에 생성한 데이터만 저장합니다."
+        },
+        {
+          "q": "어떤 LLM을 지원하나요?",
+          "a": "Anthropic Claude, OpenAI, Bedrock이 현재 연결되어 있습니다. 프로바이더 어댑터는 작아서 새 프로바이더 추가는 컨트리뷰션 친화적인 작업입니다."
+        },
+        {
+          "q": "셀프호스트에 어떤 인프라가 필요한가요?",
+          "a": "Redis와 ChromaDB(둘 다 docker compose로). Node 20+, pnpm 10+. dev 스크립트가 모두 로컬에서 띄웁니다."
+        },
+        {
+          "q": "ANT Cloud는 뭔가요?",
+          "a": "ANT Cloud는 같은 OSS 코드의 매니지드 배포입니다. 같은 에이전트, 같은 워크플로우 — 인프라만 저희가 운영합니다. Cloud 페이지를 참고하세요."
+        },
+        {
+          "q": "클라우드 → 셀프호스트로 마이그레이션 가능한가요?",
+          "a": "네. 워크스페이스는 디스크에 Markdown과 JSON으로 저장됩니다. 클라우드에서 export → 셀프호스트가 그 디렉토리를 가리키도록 설정하면 끝."
+        }
+      ]
     }
+  },
+  "openSource": {
+    "heroTitle": "공개적으로 만듭니다.",
+    "heroHighlight": "Apache-2.0.",
+    "heroDesc": "코드를 읽고, 이슈를 열고, PR을 보내세요. 셀프호스트와 클라우드가 같은 코드 베이스입니다.",
+    "license": {
+      "title": "Apache-2.0",
+      "desc": "ANT는 Apache License 2.0 하에 배포됩니다. 상업적 이용, fork, 수정 모두 가능. 특허 부여와 컨트리뷰터 보호 조항 포함.",
+      "viewLicense": "LICENSE 보기",
+      "compare": "라이선스 비교"
+    },
+    "contribute": {
+      "title": "기여 방법",
+      "desc": "버그 리포트, 기능 요청, 모든 크기의 PR을 환영합니다.",
+      "step1Title": "1. 이슈 찾기",
+      "step1Desc": "\"good first issue\" 라벨이 붙은 이슈를 살펴보세요 — 작고, 잘 정의되어, 깊은 컨텍스트가 필요 없는 작업.",
+      "step1Cta": "good first issues 보기 →",
+      "step2Title": "2. 기여 가이드 읽기",
+      "step2Desc": "셋업, 브랜치 명명, PR 절차, 아키텍처 개요.",
+      "step2Cta": "CONTRIBUTING.md →",
+      "step3Title": "3. PR 열기",
+      "step3Desc": "테스트는 코드 옆에 있습니다. 빌드가 게이트 — 빌드 통과 = 테스트 통과.",
+      "step3Cta": "PR 보기 →"
+    },
+    "policy": {
+      "title": "프로젝트 정책",
+      "codeOfConductTitle": "Code of Conduct",
+      "codeOfConductDesc": "Contributor Covenant를 따릅니다. 서로 존중해주세요.",
+      "securityTitle": "보안 정책",
+      "securityDesc": "취약점을 발견했나요? public 이슈 대신 SECURITY.md의 비공개 절차를 따라주세요."
+    },
+    "contributorsTitle": "고마운 컨트리뷰터들",
+    "contributorsEmpty": "첫 컨트리뷰터가 되어 주세요.",
+    "sponsorsTitle": "스폰서",
+    "sponsorsDesc": "스폰서 채널은 곧 열립니다. 지금 ANT를 응원하는 가장 좋은 방법은 Star, 좋은 이슈, PR입니다."
+  },
+  "selfHost": {
+    "heroTitle": "노트북에서 ANT 실행.",
+    "heroHighlight": "계정 불필요.",
+    "heroDesc": "repo clone → 인프라 기동 → dev 스크립트 실행. ~60초.",
+    "infraTitle": "실행할 것",
+    "infraDesc": "ANT는 항상 분산 시스템입니다 — 로컬과 클라우드 동일. 3개의 프로세스 + 공유 인프라.",
+    "process": {
+      "api": "API 서버 (port 4100) — 요청 수신, 잡 큐잉",
+      "worker": "Job worker — 자식 프로세스에서 LangGraph 에이전트 실행",
+      "realtime": "Realtime SSE 서버 (port 4101) — 에이전트 상태를 UI에 스트림",
+      "preview": "Preview 서버 (port 4102) — 생성된 코드 호스팅"
+    },
+    "infraDeps": {
+      "title": "인프라 의존성",
+      "redis": "Redis — pub/sub, BullMQ 큐, 상태 저장소",
+      "chroma": "ChromaDB (옵션) — 코드 이해를 위한 벡터 인덱스"
+    },
+    "envTitle": "환경 변수",
+    "envDesc": "대부분의 기본값은 그대로 됩니다. 아래는 실제로 손볼 키들입니다.",
+    "env": [
+      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "local | cloud" },
+      { "name": "ANT_REDIS_URL", "default": "redis://localhost:6379", "desc": "Redis 연결 (docker compose 사용 시 자동 설정)" },
+      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "필수. 생성: openssl rand -hex 32" },
+      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "워크스페이스(프로젝트) 저장 위치" },
+      { "name": "ANT_VECTOR_DB_ENABLED", "default": "false", "desc": "ChromaDB 벡터 인덱스 활성화 (옵션)" },
+      { "name": "ANT_TASK_CONCURRENCY", "default": "3", "desc": "잡당 병렬 태스크 수" }
+    ],
+    "llmTitle": "본인 LLM 키 사용",
+    "llmDesc": "셀프호스트는 LLM 호출을 프록시하지 않습니다. 아래 중 하나만 설정하면 됩니다.",
+    "llmKeys": [
+      "ANTHROPIC_API_KEY (Claude)",
+      "OPENAI_API_KEY (GPT-4)",
+      "AWS credentials (Bedrock)"
+    ],
+    "nextStepsTitle": "다음 단계",
+    "nextStepsDesc": "동작이 확인되면, 문서에서 프로덕션 셀프호스트, 커스텀 LLM 프로바이더, 컨트리뷰션 가이드를 다룹니다."
+  },
+  "community": {
+    "heroTitle": "오픈소스.",
+    "heroHighlight": "오픈 프로세스.",
+    "heroDesc": "Discussions도 GitHub. 로드맵도 GitHub. PR 큐도 GitHub. 숨기는 것 없음.",
+    "primaryCta": "Discussion 열기",
+    "discussionsTitle": "대화는 여기서",
+    "discussionsDesc": "GitHub Discussions가 유일한 채팅 surface입니다 — Discord, Slack 없이 단일화. 카테고리:",
+    "categories": [
+      { "name": "Q&A", "desc": "막혔나요? 물어보세요. 메인테이너와 컨트리뷰터가 답변합니다." },
+      { "name": "Ideas", "desc": "기능 제안. 코딩 전에 토론." },
+      { "name": "Show and tell", "desc": "ANT로 만든 것 자랑." },
+      { "name": "General", "desc": "그 외 모든 것." }
+    ],
+    "responseNote": "응답은 메인테이너와 컨트리뷰터로부터 옵니다. 보통 며칠, 빠르면 더 빨리.",
+    "activityTitle": "최근 활동",
+    "activityDesc": "repo에서 라이브.",
+    "goodFirstTitle": "기여하고 싶다면",
+    "goodFirstDesc": "이 이슈들은 잘 정의되어 있고 깊은 프로젝트 컨텍스트가 필요 없습니다.",
+    "goodFirstCta": "good first issues 전체 →",
+    "goodFirstEmpty": "지금 good first issue가 없습니다. 잠시 후 다시 확인하거나, Discussion으로 제안해주세요.",
+    "roadmapTitle": "다음 계획",
+    "roadmapDesc": "로드맵은 repo에 Markdown으로 — 댓글, 제안, 토론 자유롭게.",
+    "roadmapCta": "로드맵 보기 →"
+  },
+  "cloud": {
+    "heroTitle1": "운영은 빼고",
+    "heroTitle2": "ANT만",
+    "heroDesc": "ANT Cloud는 같은 OSS 코드의 매니지드 배포. 같은 에이전트, 같은 워크플로우 — 인프라만 저희가 운영합니다.",
+    "ctaTry": "ANT Cloud 사용해보기",
+    "earlyAccessNote": "현재 얼리 액세스 — 가격 미정.",
+    "tradeoffTitle": "셀프호스트 vs 클라우드",
+    "tradeoffDesc": "같은 코드, 운영 책임의 경계만 다름.",
+    "tradeoffSelfHost": {
+      "title": "셀프호스트",
+      "bullets": [
+        "데이터와 인프라 모두 본인 소유",
+        "내 머신, 내 네트워크, 내 LLM 키",
+        "영구 무료"
+      ]
+    },
+    "tradeoffCloud": {
+      "title": "클라우드",
+      "bullets": [
+        "Redis, ChromaDB, IDE pod, preview 서버 매니지드",
+        "데이터는 매니지드 region에 저장",
+        "Google 계정으로 로그인 — 인프라 셋업 불필요"
+      ]
+    },
+    "includesTitle": "ANT Cloud에 포함된 것",
+    "includes": [
+      "매니지드 Redis + BullMQ + Pub/Sub",
+      "ChromaDB 벡터 인덱스",
+      "격리된 IDE pod (Kubernetes 기반)",
+      "워크스페이스별 호스팅된 preview 서버",
+      "셀프호스트와 동일한 Plan → Design → Code → Preview 워크플로우",
+      "워크스페이스는 평문 파일 — 셀프호스트로 언제든 마이그레이션 가능"
+    ],
+    "faqTitle": "자주 묻는 질문",
+    "faq": [
+      {
+        "q": "셀프호스트와 무엇이 다른가요?",
+        "a": "정확히 같은 코드입니다. 차이는 인프라(저희가 운영)와 인증(localhost 대신 Google 로그인)뿐. 워크스페이스는 호환됩니다."
+      },
+      {
+        "q": "LLM 비용은요?",
+        "a": "얼리 액세스 기간 동안 ANT Cloud가 LLM 비용을 부담합니다. 장기 가격은 미정 — 변경 전 사전 공지합니다."
+      },
+      {
+        "q": "클라우드 → 셀프호스트 마이그레이션 가능한가요?",
+        "a": "네. 워크스페이스는 디스크에 Markdown과 JSON으로 저장. 클라우드에서 export → 셀프호스트가 그 디렉토리를 가리키게 하면 끝."
+      },
+      {
+        "q": "데이터는 어디에 호스팅되나요?",
+        "a": "리전 정보는 얼리 액세스 온보딩에서 안내합니다. 특정 데이터 거주성이 필요하면 셀프호스트를 권합니다."
+      },
+      {
+        "q": "가격표는 어디 있나요?",
+        "a": "아직 없습니다. OSS 빌드는 영구 무료. 클라우드 가격은 얼리 액세스 종료 전까지 미정입니다."
+      }
+    ]
   },
   "figma": {
     "heroTitle1": "Figma 디자인,",
@@ -80,18 +330,17 @@
     "step1Desc": "Figma Desktop App이 필요합니다. 웹 버전만으로는 MCP 접근이 불가합니다.",
     "step1Link": "Figma Desktop 다운로드 →",
     "step2Title": "Ant Desktop 설치",
-    "step2Desc": "Ant Desktop은 로컬 Figma와 ANT 클라우드를 연결하는 브리지입니다. 설치 후 트레이에서 실행하고, ANT 계정으로 로그인하세요.",
+    "step2Desc": "Ant Desktop은 로컬 Figma와 ANT(클라우드 또는 셀프호스트)를 연결하는 브리지입니다. 설치 후 트레이에서 실행하면 ANT 인스턴스와 자동으로 페어링됩니다.",
     "step2Link": "다운로드 페이지로 이동 →",
     "step3Title": "프로젝트에서 Figma URL 연결",
-    "step3Desc": "Ant에서 피처(Feature) 생성 시 Figma 파일 URL을 입력합니다. Design Job 실행 → Figma 데이터 자동 탐색 → 설계 문서 생성.",
-    "step3Link": "Ant 시작하기 →",
+    "step3Desc": "Feature 생성 시 Figma 파일 URL을 입력합니다. Design 잡 실행 → ANT가 Figma 데이터 자동 탐색 → 설계 문서 생성.",
+    "step3Link": "문서 보기 →",
     "faqTitle": "자주 묻는 질문",
-    "faq1Q": "Figma 웹 버전도 되나요?",
-    "faq1A": "아니요. MCP 접근을 위해 Figma Desktop App이 필요합니다.",
-    "faq2Q": "Ant Desktop이 Figma에 쓰기 권한을 가지나요?",
-    "faq2A": "아니요. 읽기 전용입니다. 디자인 데이터를 분석만 하며, Figma 파일을 수정하지 않습니다.",
-    "faq3Q": "Figma 없이도 ANT를 쓸 수 있나요?",
-    "faq3A": "네. 레퍼런스 이미지(스크린샷)를 업로드하거나, 텍스트 설명만으로도 설계 및 코드 생성이 가능합니다. Figma 연동은 더 정확한 결과를 위한 옵션입니다."
+    "faqItems": [
+      { "q": "Figma 웹 버전도 되나요?", "a": "아니요. MCP 접근을 위해 Figma Desktop App이 필요합니다." },
+      { "q": "Ant Desktop이 Figma에 쓰기 권한을 가지나요?", "a": "아니요. 읽기 전용입니다. 디자인 데이터를 분석만 하며, Figma 파일을 수정하지 않습니다." },
+      { "q": "Figma 없이도 ANT를 쓸 수 있나요?", "a": "네. 레퍼런스 이미지(스크린샷)를 업로드하거나, 텍스트 설명만으로도 됩니다. Figma 연동은 더 정확한 결과를 위한 옵션입니다." }
+    ]
   },
   "capabilities": {
     "heroTitle1": "어떤 스택이든,",
@@ -109,78 +358,36 @@
     "langJava": "Spring Boot 등 엔터프라이즈 프레임워크.",
     "langRust": "Axum, Actix 등 웹 프레임워크.",
     "supportedLabel": "현재 지원",
-    "plannedLabel": "지원 예정",
+    "plannedLabel": "PR 환영",
     "frameworkTitle": "프레임워크",
     "frameworkSupported": "현재 지원",
-    "frameworkPlanned": "지원 예정",
+    "frameworkPlanned": "PR 환영",
     "howTitle": "동작 방식",
-    "howDesc": "ANT는 고정된 템플릿을 사용하지 않습니다. 프로젝트의 기존 코드를 학습(Learn)하여 코딩 컨벤션, 디렉토리 구조, 의존성을 파악한 뒤, 일관된 스타일의 코드를 생성합니다.",
-    "note": "현재 TypeScript/JavaScript와 Go를 지원합니다. Python, Java/Kotlin, Rust는 준비 중이며, AI 모델의 발전과 함께 지원 범위가 확장됩니다.",
+    "howDesc": "ANT는 고정된 템플릿을 사용하지 않습니다. 프로젝트의 기존 코드를 학습(Learn)하여 코딩 컨벤션, 디렉토리 구조, 의존성을 파악한 뒤, 일관된 스타일로 코드를 생성합니다.",
+    "note": "현재 TypeScript/JavaScript와 Go를 지원합니다. Python, Java/Kotlin, Rust는 컨트리뷰션 환영 — 언어 어댑터는 작고 잘 격리되어 있습니다.",
     "noteLabel": "참고:"
   },
   "legal": {
     "termsTitle": "이용약관",
-    "termsBody": "이용약관은 현재 준비 중입니다. 정식 출시 전에 게시될 예정입니다.",
+    "termsBody": "본 이용약관은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 사용자는 repo의 Apache-2.0 라이선스가 적용됩니다 — /LICENSE 참조.\n\n전체 이용약관은 준비 중이며, ANT Cloud 얼리 액세스 종료 전에 게시됩니다.",
     "privacyTitle": "개인정보 처리방침",
-    "privacyBody": "개인정보 처리방침은 현재 준비 중입니다. 정식 출시 전에 게시될 예정입니다."
-  },
-  "pricing": {
-    "heroTitle1": "지금은 베타,",
-    "heroTitle2": "모든 기능이 무료",
-    "heroTitle3": "입니다",
-    "heroDesc": "Ant는 현재 클로즈드 베타 운영 중입니다. 정식 출시 전까지 모든 기능을 무료로 제공합니다.",
-    "betaTitle": "베타 기간 포함 기능",
-    "betaFeatures": [
-      "AI 에이전트 (Planner, Architect) 무제한 사용",
-      "Figma 연동",
-      "클라우드 IDE",
-      "실시간 미리보기",
-      "프로젝트 무제한 생성"
-    ],
-    "betaCta": "베타 시작하기",
-    "betaNote": "Google 계정으로 가입 → 즉시 사용 가능",
-    "futurePlansTitle": "향후 요금 계획",
-    "futurePlansNote": "아래는 현재 검토 중인 요금 구조입니다. 정식 출시 시 변경될 수 있습니다.",
-    "featureLabel": "",
-    "planFeatures": {
-      "agents": "AI 에이전트 사용",
-      "projects": "프로젝트 수",
-      "figma": "Figma 연동",
-      "ide": "클라우드 IDE",
-      "support": "우선 지원",
-      "onprem": "온프레미스 배포",
-      "sso": "SSO / SAML",
-      "dedicated": "전담 지원"
-    },
-    "monthlyLimit": "월 제한",
-    "unlimited": "무제한",
-    "limited": "제한적",
-    "enterpriseTitle": "팀 도입을 검토하고 계신가요?",
-    "enterpriseDesc": "온프레미스 배포, SSO 연동, 전담 지원이 필요한 조직을 위한 Enterprise 플랜을 준비 중입니다.",
-    "enterpriseCta": "문의하기",
-    "faqTitle": "자주 묻는 질문",
-    "faq1Q": "베타 기간은 언제까지인가요?",
-    "faq1A": "정확한 일정은 미정입니다. 베타 종료 최소 30일 전에 사전 공지합니다.",
-    "faq2Q": "베타에서 만든 프로젝트는 유지되나요?",
-    "faq2A": "네. 베타 기간에 생성한 프로젝트와 코드는 정식 출시 후에도 그대로 유지됩니다.",
-    "faq3Q": "LLM API 비용은 별도인가요?",
-    "faq3A": "베타 기간에는 ANT가 LLM 비용을 부담합니다. 정식 출시 후에는 플랜별로 포함 여부가 달라질 수 있습니다."
+    "privacyBody": "본 개인정보 처리방침은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 인스턴스는 ANT로 데이터를 전송하지 않습니다 — 데이터는 사용자 인프라에 머뭅니다.\n\n전체 개인정보 처리방침은 준비 중이며, ANT Cloud 얼리 액세스 종료 전에 게시됩니다."
   },
   "download": {
     "heroTitle1": "Ant Desktop",
     "heroTitle2": "다운로드",
-    "heroDesc": "Figma 디자인 연동과 로컬 개발 환경 연결을 위한 데스크탑 컴패니언 앱입니다.",
+    "heroDesc": "Figma 디자인 연동을 위한 컴패니언 앱. 로컬 Figma Desktop을 ANT 인스턴스(클라우드 또는 셀프호스트)와 연결합니다.",
     "downloadBtn": "다운로드",
     "comingSoon": "지원 예정",
     "otherOS": "다른 OS 보기",
     "whatTitle": "Ant Desktop이 하는 일",
-    "whatDesc": "Ant Desktop은 여러분의 로컬 환경과 ANT 클라우드를 연결하는 브리지입니다.",
+    "whatDesc": "Ant Desktop은 로컬 환경과 ANT 인스턴스를 연결하는 브리지입니다.",
     "bridgeTitle": "Figma 브리지",
-    "bridgeDesc": "Figma Desktop App의 디자인 데이터를 ANT 클라우드로 안전하게 전달합니다. 아웃바운드 연결만 사용하며, 인바운드 포트를 열지 않습니다.",
+    "bridgeDesc": "Figma Desktop의 디자인 데이터를 ANT로 안전하게 전달합니다. 아웃바운드 연결만 사용하며, 인바운드 포트를 열지 않습니다.",
     "trayTitle": "시스템 트레이 실행",
     "trayDesc": "설치 후 시스템 트레이에서 조용히 실행됩니다. 필요할 때만 Figma 데이터를 전달하고, 리소스를 거의 사용하지 않습니다.",
     "monitorTitle": "연결 상태 모니터링",
-    "monitorDesc": "ANT 클라우드 및 Figma Desktop 연결 상태를 실시간으로 확인할 수 있습니다.",
+    "monitorDesc": "ANT 및 Figma Desktop 연결 상태를 실시간으로 확인할 수 있습니다.",
     "reqTitle": "시스템 요구사항",
     "reqOS": "OS",
     "reqMinVersion": "최소 버전",
