@@ -6,7 +6,8 @@
     "dev": "next dev --port 4300",
     "build": "next build",
     "start": "npx serve out -l 4300",
-    "lint": "next lint"
+    "lint": "next lint",
+    "refresh:stats": "node scripts/refresh-github-stats.mjs"
   },
   "dependencies": {
     "i18next": "^25.8.6",

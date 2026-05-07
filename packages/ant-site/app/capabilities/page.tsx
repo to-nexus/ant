@@ -2,11 +2,11 @@ import type { Metadata } from 'next';
 import CapabilitiesContent from './CapabilitiesContent';
 
 export const metadata: Metadata = {
-  title: '지원 기술스택',
-  description: '프론트엔드, 백엔드, 풀스택. TypeScript, Python, Go, Java, Rust와 Next.js, Django, Spring 등 주요 프레임워크를 지원합니다.',
+  title: 'Tech Stack',
+  description: 'Frontend, backend, fullstack. TypeScript, JavaScript, and Go today. Python, Java, Rust — PRs welcome.',
   openGraph: {
-    title: '지원 기술스택 — ANT',
-    description: '프론트엔드, 백엔드, 풀스택. TypeScript, Python, Go, Java, Rust와 주요 프레임워크를 지원합니다.',
+    title: 'Tech Stack — ANT',
+    description: 'Frontend, backend, fullstack. Multi-language and multi-framework support.',
   },
 };
 

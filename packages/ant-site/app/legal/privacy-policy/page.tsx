@@ -12,7 +12,7 @@ export default function PrivacyPolicyPage() {
           {t('legal.privacyTitle')}
         </h1>
         <div className="p-8 rounded-2xl bg-white/[0.03] border border-white/5">
-          <p className="text-gray-400 leading-relaxed">{t('legal.privacyBody')}</p>
+          <p className="text-gray-400 leading-relaxed whitespace-pre-line">{t('legal.privacyBody')}</p>
         </div>
       </div>
     </section>

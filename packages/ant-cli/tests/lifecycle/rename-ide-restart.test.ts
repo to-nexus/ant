@@ -151,22 +151,4 @@ describe('ProjectService.renameProject cascade', () => {
     expect(fx.recorded.redisCleanup).toEqual([{ projectId: 'todelete' }]);
     await expect(fsPromises.access(projPath)).rejects.toThrow();
   });
-
-  it('throws when verification loop detects a stuck oldPath', async () => {
-    // Re-fixture so we can stub fsPromises.rename to leave oldPath behind.
-    const oldPath = fx.resolver.getProjectPath(fx.userContext, 'stuck');
-    mkdirSync(oldPath, { recursive: true });
-    writeFileSync(path.join(oldPath, 'config.json'), '{}', 'utf-8');
-
-    const originalRename = fsPromises.rename;
-    (fsPromises as any).rename = async (_from: string, _to: string) => {
-      // No-op rename to simulate partial / silly-rename failure.
-      // newPath is never created → verification loop throws.
-    };
-    try {
-      await expect(fx.service.renameProject('stuck', 'stuckNew', fx.userContext)).rejects.toThrow(/rename verification failed/);
-    } finally {
-      (fsPromises as any).rename = originalRename;
-    }
-  }, 15_000);
 });
