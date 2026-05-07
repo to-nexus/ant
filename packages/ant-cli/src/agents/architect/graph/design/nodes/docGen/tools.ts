@@ -14,11 +14,28 @@
 import type { ToolDefinition } from '../../../../../../core/ports/llm';
 import type { DesignGraphState } from '../../state';
 import { getToolsByNames, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
+import { ToolName } from '../../../../../common/tool/toolCatalog';
 import { isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 
 export interface DocGenToolsOptions {
   useSourceFileTool?: boolean;
+}
+
+/**
+ * When a sealed `<plan>` is present in `state.planText`, plan node has
+ * already done external/architectural exploration. docGen's role is
+ * path/symbol/asset verification, not re-derivation, so SEARCH_WEB is
+ * dropped from the returned set. Mirrors code job's split where
+ * `TOOL_SETS.codeBasic` (execute) omits SEARCH_WEB while
+ * `TOOL_SETS.planExplore` (plan) carries it. See plan
+ * `docs/architecture/15-design-job.md` and the
+ * `plan-docgen-parallel-spring` plan file.
+ */
+function applyPlanGate(state: DesignGraphState, tools: ToolDefinition[]): ToolDefinition[] {
+  const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
+  if (!hasSealedPlan) return tools;
+  return tools.filter(t => t.name !== ToolName.SEARCH_WEB);
 }
 
 export async function getTools(
@@ -36,12 +53,13 @@ export async function getTools(
     );
   const isSpecFigma = intentGroup === 'design-spec' && state.figmaAvailable === true;
 
-  if (isExplainMode) return getToolsByNames(TOOL_SETS.designExplain);
-  if (isFigmaUiDesign) return getToolsByNames(TOOL_SETS.uiDesignFigma);
-  if (intentGroup === 'design-ui') return getToolsByNames(TOOL_SETS.uiDesign);
-  if (isSpecFigma) return getToolsByNames(TOOL_SETS.specFigma);
-  if (useSourceFileTool) {
-    return [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL];
-  }
-  return getToolsByNames(TOOL_SETS.design);
+  let tools: ToolDefinition[];
+  if (isExplainMode) tools = getToolsByNames(TOOL_SETS.designExplain);
+  else if (isFigmaUiDesign) tools = getToolsByNames(TOOL_SETS.uiDesignFigma);
+  else if (intentGroup === 'design-ui') tools = getToolsByNames(TOOL_SETS.uiDesign);
+  else if (isSpecFigma) tools = getToolsByNames(TOOL_SETS.specFigma);
+  else if (useSourceFileTool) tools = [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL];
+  else tools = getToolsByNames(TOOL_SETS.design);
+
+  return applyPlanGate(state, tools);
 }
