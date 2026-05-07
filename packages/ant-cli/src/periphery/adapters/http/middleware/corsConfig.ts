@@ -32,9 +32,15 @@ export function createCorsMiddleware() {
     ? process.env.ANT_CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
     : [];
 
+  const allowAllOrigins = extraOrigins.includes('*');
+
   return cors({
     origin: (origin, callback) => {
       if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowAllOrigins) {
         return callback(null, true);
       }
 
