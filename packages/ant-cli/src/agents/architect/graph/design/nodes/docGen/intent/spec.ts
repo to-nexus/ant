@@ -75,35 +75,21 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Build runtime context — split into two vars so the sealed plan
   // (binding upstream decision) renders ABOVE rules in base.md while
-  // task / directive details render at the prompt tail. See
-  // `.claude/plans/plan-docgen-parallel-spring.md` for rationale.
+  // task / directive details render at the prompt tail. The sealed
+  // plan body is exposed through the existing `planText` Handlebars
+  // var (mirrors code job's `state.planText` naming — see
+  // `.claude/plans/plan-docgen-parallel-spring.md` and
+  // `code/nodes/execute/buildMessages.ts` for the parallel pattern).
+  // The template's `{{#if planText}}` gate fires on Handlebars
+  // string-truthiness, so no separate "hasSealedPlan" flag is needed.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const specDir = designDirOf(targetFile);
-  const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
+  const planText = state.planText && state.planText.trim().length > 0 ? state.planText : '';
 
-  // Block A — sealed plan only. Rendered near the top of base.md as
-  // the binding upstream decision (mirrors code job's
-  // "📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)").
-  const sealedPlanLines: string[] = [];
-  if (hasSealedPlan) {
-    sealedPlanLines.push('════════════════════════════════════════════════════════════════════════════════');
-    sealedPlanLines.push('📋 SEALED DESIGN DECISION (Structured JSON — RECORD THIS, DO NOT RE-DERIVE)');
-    sealedPlanLines.push('════════════════════════════════════════════════════════════════════════════════');
-    sealedPlanLines.push('');
-    sealedPlanLines.push('The plan node has already decided the solution direction, candidate set,');
-    sealedPlanLines.push('and document outline below. Your job here is to **record this decision** as');
-    sealedPlanLines.push('a markdown spec — not to re-decide. Render `documentOutline` sections');
-    sealedPlanLines.push('faithfully, using tools only to confirm exact paths / signatures referenced');
-    sealedPlanLines.push('in the plan body.');
-    sealedPlanLines.push('');
-    sealedPlanLines.push('```json');
-    sealedPlanLines.push(state.planText!);
-    sealedPlanLines.push('```');
-    sealedPlanLines.push('');
-  }
-
-  // Block B — task / directive details. Rendered at the bottom of
-  // base.md (after rules + section scope + previous sections).
+  // runtimeContext carries Target Document / Current Task / User
+  // Directive only. The sealed plan was previously prepended here;
+  // it now renders separately near the top of base.md via {{#if
+  // planText}}.
   const runtimeLines: string[] = [];
   runtimeLines.push(`# Target Document`);
   runtimeLines.push(`Write to: \`${specDir}/${targetFile}\``);
@@ -162,7 +148,21 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
       resolvedAction: state.resolvedAction,
+      // Plan→docGen handoff vars (see plan-docgen-parallel-spring plan):
+      //   - `planText` is the sealed `<plan>` JSON body (or empty
+      //     string when no plan was sealed). The base.md and rules.md
+      //     templates gate on `{{#if planText}}` to distinguish
+      //     plan-anchored rendering from the dispatcher-only fallback.
+      //     Naming mirrors code job's `state.planText` (see
+      //     `code/nodes/execute/buildMessages.ts:177`).
+      //   - `runtimeContext` carries Target Document / Task / Directive
+      //     only (the sealed plan is no longer prepended here).
+      //   - `verificationAxis` is the spec-flavoured vocabulary used by
+      //     the shared `sealed-plan-rules` partial's Allowed column.
+      //     System-design uses contract-flavoured vocabulary instead.
+      planText,
       runtimeContext: runtimeLines.join('\n'),
+      verificationAxis: 'exact import paths, function signatures, file conventions',
       // Codebase Channel SSOT — flow workspace state to the
       // codebase-channel partial / AutoInjectionResolver gate.
       workspaceState: state.workspaceState,
@@ -211,13 +211,14 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // Deadline message for trailing user
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const callIndex = state._docGenCallIndex || 0;
-  // Plan node now seals the architectural decision before docGen runs,
-  // so docGen's tool budget is mostly precision-checking. Bump the
-  // deadlines to give that precision phase a couple of extra turns
-  // without unleashing exploration sprawl (the safety net at L355 of
-  // docGen/index.ts still terminates after MAX_NO_OUTPUT_CALLS).
-  const SOFT_DEADLINE = 30;
-  const HARD_DEADLINE = 40;
+  // When `planText` is sealed, docGen's role is "render the decision +
+  // verify a few exact paths" — exploration was already done by plan.
+  // Tighten the deadlines so the LLM commits to writing within ~8
+  // turns. When no plan is sealed (legacy / dispatcher fallback), keep
+  // the lax 30/40 budget so the original Codebase Exploration heuristic
+  // has room to run. See `.claude/plans/plan-docgen-parallel-spring.md`.
+  const SOFT_DEADLINE = planText ? 8 : 30;
+  const HARD_DEADLINE = planText ? 12 : 40;
 
   // R5 self-check trailing message: takes precedence over deadline
   // reminders because resolving a pending-done-check is the higher-

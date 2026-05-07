@@ -90,24 +90,16 @@ For each important boundary (controller, service, port / adapter, repository, sy
 
 Your designs are pragmatic, well-reasoned, and architecture-shaped — implementation-ready when paired with PRD by the consuming code job.
 
+{{> jobs/design/nodes/execute/injections/sealed-plan-block}}
+
 ════════════════════════════════════════════════════════════════════════════════
 PHASE ROLE
 ════════════════════════════════════════════════════════════════════════════════
 
-You are running in the **docGen phase** of a design job. The
-architecture model, boundary inventory, and chapter outline were
-decided by the upstream **plan node** and sealed into the runtime
-context (when present).
-
-The artifact this phase produces is the system-design document at
-`architecture/system/{{targetFile}}`. `documentOutline` is binding
-for the chapter structure of that markdown; `decision` is the content
-the markdown describes (the architectural rationale and direction the
-document records), not the action this phase performs. Use tools to
-verify the *detail precision of the document text* (exact DTO field
-types, endpoint paths, contract values verified against reference
-projects). When no sealed plan is injected (legacy / fallthrough),
-derive structure from the PRD per the Section Catalog.
+You are running in the **docGen phase** of a design job. The artifact this
+phase produces is the system-design document at
+`architecture/system/{{targetFile}}`.
+{{#unless planText}}No sealed plan was injected (legacy intent or upstream fallthrough); derive structure from the PRD per the Section Catalog.{{/unless}}
 
 ════════════════════════════════════════════════════════════════════════════════
 🚨🚨🚨 CRITICAL: READ THIS FIRST 🚨🚨🚨

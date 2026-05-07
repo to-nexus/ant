@@ -1,39 +1,4 @@
-## Sealed Plan from Plan Node
-
-**Principle**: The plan node has already decided the architecture model
-and selected sections through candidate comparison. Your job here is to
-**write the document** following that plan, not to redesign.
-
-The sealed `<plan>` JSON has been injected at the top of your runtime
-context block as `# Sealed Plan (from plan node)` (when populated by
-the plan phase).
-
-| Concern | Owned by |
-|---------|----------|
-| Architectural model & boundary inventory | plan node (sealed in `<plan>`) |
-| Document outline / chapters | plan node (`documentOutline`) |
-| Field-level DTO shapes / signatures | docGen (verify with tools) |
-| Final wording / abstraction-level enforcement | docGen |
-
-**Constraints**:
-
-- Do NOT change the architecture model recorded in
-  `decision.selected` / `documentOutline`. It is sealed.
-- Use tools to verify the *detail precision of the document text*
-  (DTO field types, exact endpoint paths, contract values verified
-  against reference projects, all referenced inside the document).
-  Do NOT re-explore architecture — that is decided.
-- If you find new evidence via tools that contradicts the sealed plan,
-  DO NOT silently override. Raise it via `<clarify>` so the next plan
-  cycle can re-decide.
-
-### Source Document Reading (legacy fallback)
-
-When no sealed plan is injected (legacy intent group / fallthrough),
-the original heuristic applies: read in broad ranges (300-500+ lines
-per `read_source_doc` call), batch tool calls, and prefer breadth over
-precision. Do NOT re-read documents already in your conversation
-history — previous tool results remain available.
+{{> jobs/design/nodes/execute/injections/sealed-plan-rules}}
 
 ### Constraint
 

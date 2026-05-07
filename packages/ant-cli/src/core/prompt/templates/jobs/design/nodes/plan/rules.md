@@ -98,10 +98,42 @@ the plan and handing it to docGen.
 `search_code` results are cached across plan↔tool rounds. Do NOT re-read
 files already retrieved in this conversation.
 
-**Constraint**: Bound your exploration. If you cannot decide after a
-small number of rounds, that itself is a signal — seal the plan with
-the best-supported candidate and document the residual uncertainty in
-`decision.rationale` so docGen can probe it.
+(See "Commit Pressure" below for round-count discipline.)
+
+════════════════════════════════════════════════════════════════════════════════
+
+## Commit Pressure — when to seal `<plan>`
+
+The plan↔tool loop has a hard ceiling (`PLAN_TOOL_LOOP_MAX = 15`
+rounds). Reaching that ceiling triggers `finalizeFromExploration` which
+forces `<plan>` synthesis under an `origin: 'over-limit'` tag — a
+**failure signal**, not a normal path. Seal early to stay out of it.
+
+**Constraint**: As soon as you can name **two distinct candidate
+solutions** with observable pros / cons, emit `<plan>`. You do NOT
+need exhaustive API verification before sealing — `documentOutline`
+can instruct docGen to verify exact signatures from the installed
+package's `.d.ts`, source, or local imports.
+
+**Constraint**: If a public API is unverifiable from web search after
+**two queries**, that is itself the decision input. Record "API
+surface unverified upstream" in the chosen candidate's `cons` and
+seal. Do NOT issue further `search_web` queries trying to find what
+the first two already showed isn't publicly documented (rephrasing
+the same query against different domains — npm vs github vs jspm vs
+site:foo — counts as the same query).
+
+**Constraint**: Bound exploration to ≤ **6 tool rounds** for routine
+spec / system-design tasks. Round 6 without `<plan>` is the signal to
+seal immediately with what you have, even if details feel rough — the
+plan body's `decision.rationale` is the right place to record residual
+uncertainty, not another tool round.
+
+⚠️ **Blind spot**: Models repeat near-identical web queries hoping the
+next phrasing will surface a definitive answer. If the first 2 - 3
+queries on a topic returned overlapping or empty results, additional
+queries will not help. Seal with the partial picture and let docGen
+resolve precision via codebase reads of the installed package.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -110,10 +142,8 @@ the best-supported candidate and document the residual uncertainty in
 The schema for the `<plan>` JSON body is in the base prompt. The
 constraints on **when** and **how** to emit it live here.
 
-**Constraint**: Emit the `<plan>` block ONLY when exploration is
-complete and the candidate decision is final. While still exploring you
-may stream text (thinking / analysis) and tool calls; do NOT emit a
-partial or speculative `<plan>` block.
+"When to seal" lives in **Commit Pressure** above. The mechanics below
+govern **how** the sealed `<plan>` is shaped and when output stops.
 
 **Constraint**: `candidateSolutions` MUST contain at least **two**
 entries. Single-candidate plans are rejected because the tradeoff is
@@ -123,18 +153,9 @@ not auditable.
 Restrict sections to the assigned task scope; do NOT include sections
 that belong to other tasks.
 
-**Constraint**: Do NOT call file-write tools (`<file>`, `<append>`,
-`edit_file`, `create_file`). Plan is read-only by contract — writing
-happens in docGen.
-
 **Constraint**: Once `<plan>` is emitted, additional tool calls in the
 same response are ignored. The next phase (docGen) runs its own tool
 round when it needs to verify low-level details.
-
-⚠️ **Blind spot**: Models often emit a "rough" `<plan>` mid-exploration
-hoping to "save the work so far". The system treats the first
-sufficiently-long `<plan>` block as final and discards subsequent
-exploration. Wait until you are ready to seal.
 
 **Constraint**: User-facing narrative for the directive (approach
 summary, key trade-off, follow-up question) goes in a `<reply>...</reply>`
