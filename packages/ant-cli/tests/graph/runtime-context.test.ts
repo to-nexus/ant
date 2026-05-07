@@ -126,24 +126,29 @@ describe('buildTurnVariableContext (code)', () => {
 });
 
 describe('buildRuntimeContext (design)', () => {
+  // Return shape changed in plan-docgen-parallel-spring: now
+  // { planText, runtimeContext } so the sealed plan can render
+  // separately (top of base.md) from task / directive / existing
+  // design (bottom of base.md). These tests poke `runtimeContext`
+  // since the assertions are about the tail block contents.
   it('includes Target Document when currentTask has targetFile', () => {
-    const result = buildDesignRuntimeContext(makeDesignState());
-    expect(result).toContain('Target Document');
-    expect(result).toContain('be-system-main.md');
+    const { runtimeContext } = buildDesignRuntimeContext(makeDesignState());
+    expect(runtimeContext).toContain('Target Document');
+    expect(runtimeContext).toContain('be-system-main.md');
   });
 
   it('includes Directive when present', () => {
-    const result = buildDesignRuntimeContext(makeDesignState());
-    expect(result).toContain('Design a REST API');
+    const { runtimeContext } = buildDesignRuntimeContext(makeDesignState());
+    expect(runtimeContext).toContain('Design a REST API');
   });
 
   it('includes existing document in refactor mode', () => {
-    const result = buildDesignRuntimeContext(makeDesignState({
+    const { runtimeContext } = buildDesignRuntimeContext(makeDesignState({
       resolvedAction: { mode: 'refactor', source: 'infer', hasExplicitFields: false },
       existingDesignDocs: {
         'be-system-main.md': '# Existing Design\nPrevious content here',
       },
     }));
-    expect(result).toContain('Existing Design');
+    expect(runtimeContext).toContain('Existing Design');
   });
 });

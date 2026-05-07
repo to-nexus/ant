@@ -1,41 +1,4 @@
-## Sealed Plan from Plan Node
-
-**Principle**: The plan node has already decided the solution direction
-through deep exploration and candidate comparison. Your job here is to
-**write the document** following that plan, not to redesign.
-
-The sealed `<plan>` JSON has been injected at the top of your runtime
-context block as `# Sealed Plan (from plan node)` (when populated by
-the plan phase).
-
-| Concern | Owned by |
-|---------|----------|
-| Solution direction / approach | plan node (sealed in `<plan>`) |
-| Document outline / sections | plan node (`documentOutline`) |
-| Detail precision (exact paths, signatures, conventions) | docGen (verify with tools) |
-| Final wording / formatting | docGen |
-
-**Constraints**:
-
-- Do NOT change the solution direction recorded in `documentOutline`.
-  It is sealed.
-- Use tools to verify the *detail precision of the spec text* (exact
-  import paths, function signatures, file conventions, asset values
-  referenced in the document). Do NOT re-explore architecture — that
-  is decided.
-- If you find new evidence via tools that contradicts the sealed plan,
-  DO NOT silently override. Raise it via `<clarify>` so the next plan
-  cycle can re-decide.
-
-⚠️ **Blind spot**: When the sealed plan looks "incomplete" the instinct
-is to do plan's job again under the docGen prompt. Resist that — plan
-ran with its own budget; if its output looks thin, docGen's correct
-move is to surface the gap (clarify) rather than re-solve from scratch.
-
-⚠️ **Empty plan fallback**: When no sealed plan is injected (legacy
-intent groups, fallthrough cases), the original Codebase Exploration
-heuristics apply — read in broad ranges (300-500+ lines), batch tool
-calls, and start writing as soon as the structural picture is clear.
+{{> jobs/design/nodes/execute/injections/sealed-plan-rules}}
 
 ════════════════════════════════════════════════════════════════════════════════
 
