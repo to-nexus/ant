@@ -35,9 +35,19 @@ export function TruncatableText({
     };
 
     measureOverflow();
-    const observer = new ResizeObserver(measureOverflow);
+    let rafId: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        measureOverflow();
+      });
+    });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [overflowAware, text, isExpanded]);
 
   const isLong = overflowAware ? (isExpanded || isOverflowing) : text.length > maxLength;
