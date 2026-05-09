@@ -14,6 +14,7 @@ import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfo } from '@/shared/utils/actor-utils';
 import { getDisplayPath } from '@/shared/utils/workspace-path';
+import { fetchProjectConfig, type ProjectConfig } from '@/infrastructure/http/api/config';
 
 interface ActorNodeData {
   label: string;
@@ -55,16 +56,17 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const { splitLayout, selectedProject, selectedFeature } = useStore();
   const { t } = useTranslation('kanban');
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
-  const [config, setConfig] = React.useState<any>(null);
-  
-  // Fetch config for localPath (code-repo)
+  const [config, setConfig] = React.useState<ProjectConfig | null>(null);
+
+  // Fetch config for localPath (code-repo). Uses fetchProjectConfig SSOT so
+  // split-host deployments resolve through API_BASE() with credentials —
+  // a hardcoded relative `/api/...` would hit the SPA origin (e.g. ant.crosstoken.io)
+  // and 401 against the marketing site instead of the API server.
   React.useEffect(() => {
-    if (selectedProject) {
-      fetch(`/api/projects/${selectedProject}/config`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => data && setConfig(data))
-        .catch(() => setConfig(null));
-    }
+    if (!selectedProject) return;
+    fetchProjectConfig(selectedProject)
+      .then(setConfig)
+      .catch(() => setConfig(null));
   }, [selectedProject]);
   
   // ✅ Actor 정보 조회 (LLM인 경우 data.llmInfo 사용)
