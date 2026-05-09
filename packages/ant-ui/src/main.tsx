@@ -5,22 +5,58 @@ import App from './presentation/App';
 import './index.css';
 import './i18n';
 
+// Defer every ResizeObserver callback to the next animation frame. Without this,
+// dragging the chat panel after a feature is selected mounts ~17 ResizeObservers
+// (app + react-virtuoso + @reactflow/core + framer-motion LayoutGroup), and
+// Chrome's "ResizeObserver loop completed with undelivered notifications." fires
+// as an ErrorEvent with `error === null`. MetaMask's SES content script catches
+// it as `SES_UNCAUGHT_EXCEPTION: null`. We can't suppress downstream — MetaMask
+// registers its handler at document_start, before our bundle loads, so a
+// later-registered listener cannot stopImmediatePropagation it. Eliminating the
+// loop at the source is the only systemic fix.
+if (typeof globalThis !== 'undefined' && typeof globalThis.ResizeObserver === 'function') {
+  const Native = globalThis.ResizeObserver;
+  class DeferredResizeObserver {
+    private inner: ResizeObserver;
+    private rafId: number | null = null;
+    // Spec: each observed target reported once per cycle. When two RO
+    // notifications fire before our rAF runs, latest-wins per target.
+    private latestByTarget = new Map<Element, ResizeObserverEntry>();
+    constructor(cb: ResizeObserverCallback) {
+      this.inner = new Native((entries) => {
+        for (const e of entries) this.latestByTarget.set(e.target, e);
+        if (this.rafId !== null) return;
+        this.rafId = requestAnimationFrame(() => {
+          this.rafId = null;
+          const flushed = Array.from(this.latestByTarget.values());
+          this.latestByTarget.clear();
+          cb(flushed, this as unknown as ResizeObserver);
+        });
+      });
+    }
+    observe(target: Element, options?: ResizeObserverOptions) {
+      this.inner.observe(target, options);
+    }
+    unobserve(target: Element) {
+      this.inner.unobserve(target);
+      this.latestByTarget.delete(target);
+    }
+    disconnect() {
+      if (this.rafId !== null) {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+      this.latestByTarget.clear();
+      this.inner.disconnect();
+    }
+  }
+  (globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
+    DeferredResizeObserver as unknown as typeof ResizeObserver;
+}
+
 if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
-
-// Chrome dispatches "ResizeObserver loop completed with undelivered notifications"
-// as an ErrorEvent with `error === null`. The browser handles the loop gracefully,
-// but the null error is picked up by extensions that hook window.onerror
-// (e.g. MetaMask SES → "SES_UNCAUGHT_EXCEPTION: null"). Swallow only this exact
-// message — every other error must still propagate to RootErrorBoundary / DevTools.
-const RESIZE_OBSERVER_LOOP_RE = /^ResizeObserver loop /;
-window.addEventListener('error', (e) => {
-  if (typeof e.message === 'string' && RESIZE_OBSERVER_LOOP_RE.test(e.message)) {
-    e.stopImmediatePropagation();
-    e.preventDefault();
-  }
-});
 
 interface ErrorBoundaryState {
   hasError: boolean;
