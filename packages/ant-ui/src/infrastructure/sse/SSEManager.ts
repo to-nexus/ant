@@ -27,7 +27,13 @@
  * @see packages/ant-ui/ARCHITECTURE.md
  */
 
-import { REALTIME_BASE } from '../http/api';
+import { REALTIME_BASE, API_BASE } from '../http/api';
+import { fetchAuthMeDetailed } from '@ant/auth-client';
+import {
+  getAuthBroadcaster,
+  isSessionExpired,
+  markSessionExpired,
+} from '../auth/authBridge';
 import type { SSEMessageType } from '@ant/shared';
 
 // Canonical union is defined in @ant/shared/sse-events and re-exported here
@@ -68,18 +74,18 @@ export type ConnectionStatusCallback = (status: ConnectionStatus) => void;
 class SSEManager {
   // Single unified SSE connection per project/feature
   private unifiedConnection: SSEConnection | null = null;
-  
+
   // Workflow SSE connections (per job)
   private workflowConnections: Map<string, WorkflowConnection> = new Map();
-  
+
   // Message handlers by type
   private handlers: Map<SSEMessageType, SSEMessageHandler[]> = new Map();
-  
+
   // ✅ 핸들러 ID 기반 관리 (중복 방지 및 정확한 해제)
   private handlerRegistry: Map<HandlerId, { type: SSEMessageType; handler: SSEMessageHandler }> = new Map();
-  
+
   private maxReconnectAttempts = 5;
-  
+
   // Connection status callback - notifies Store when SSE connection status changes
   private statusCallback: ConnectionStatusCallback | null = null;
 
@@ -95,6 +101,12 @@ class SSEManager {
   // Visibility change handler for multi-tab sync
   private visibilityHandler: (() => void) | null = null;
   private lastForceReconnectTime = 0;
+
+  // Cross-tab session-expired bridge — when another tab signals expiry,
+  // disconnect and suppress reconnects until the next successful login
+  // (which clears the flag via `clearSessionExpired`). Subscribed once at
+  // first connect.
+  private broadcastUnsubscribe: (() => void) | null = null;
   
   /**
    * Register a callback to be notified when unified SSE connection status changes.
@@ -157,6 +169,16 @@ class SSEManager {
    * Connect to unified SSE endpoint
    */
   connect(projectId: string, featureName: string, job: string = 'code'): void {
+    // Hard suppress: a session-expired event was observed (locally or from
+    // another tab). Don't open new connections — the next successful login
+    // clears the flag and `setUser`'s lifecycle will trigger reconnects.
+    if (isSessionExpired()) {
+      console.log('[SSE] unified: connect suppressed (session-expired flag set)');
+      return;
+    }
+
+    this.ensureBroadcastSubscribed();
+
     // Close existing connection if different project/feature/job
     if (this.unifiedConnection) {
       const currentJob = new URL(this.unifiedConnection.url).searchParams.get('job');
@@ -231,19 +253,19 @@ class SSEManager {
             const savedFeatureName = this.unifiedConnection.featureName;
             const savedUrl = new URL(this.unifiedConnection.url);
             const savedJob = savedUrl.searchParams.get('job') || 'code';
-            
+
             // Report error only when giving up on auto-reconnect
             this.statusCallback?.('error');
             this.disconnect();
-            
-            console.log(`[SSE] unified: reconnecting in ${retryDelay}ms`);
+
+            // Probe /auth/me before scheduling another reconnect cycle.
+            // EventSource onerror gives no status code, so a 401 is invisible
+            // to us — without this probe we'd reconnect-storm forever after
+            // JWT expiry mid-session. If the session is gone, fire the same
+            // session-expired cascade as the HTTP 401 interceptor and STOP.
+            console.log(`[SSE] unified: reconnecting in ${retryDelay}ms (probing auth first)`);
             setTimeout(() => {
-              // Enable grace period before reconnecting so that stale initial
-              // data (estimating/session) doesn't overwrite the kanban state.
-              // Without this, forceReconnect() returns early (unifiedConnection
-              // is null after disconnect) and no grace is set.
-              this.onReconnectCallback?.();
-              this.connect(savedProjectId, savedFeatureName, savedJob);
+              this.runAuthProbeAndMaybeReconnect(savedProjectId, savedFeatureName, savedJob);
             }, retryDelay);
           }
         }
@@ -303,6 +325,69 @@ class SSEManager {
 
     // New connect() will proceed since unifiedConnection is now null
     this.connect(projectId, featureName, job);
+  }
+
+  /**
+   * Probe /auth/me after exhausted reconnect attempts. EventSource onerror
+   * gives no HTTP status, so a 401 (cookie expired mid-session) is
+   * indistinguishable from a transient network blip. Without this probe the
+   * exponential-backoff loop would retry forever after JWT expiry.
+   *
+   *   /auth/me kind='no-session' → fire session-expired cascade, STOP
+   *   anything else              → schedule normal reconnect
+   */
+  private async runAuthProbeAndMaybeReconnect(
+    projectId: string,
+    featureName: string,
+    job: string,
+  ): Promise<void> {
+    if (isSessionExpired()) {
+      console.log('[SSE] unified: skipping reconnect (session-expired)');
+      return;
+    }
+    try {
+      const result = await fetchAuthMeDetailed({ apiBase: API_BASE() });
+      if (result.kind === 'no-session') {
+        console.warn('[SSE] unified: auth probe says no-session — entering session-expired state');
+        markSessionExpired();
+        try {
+          getAuthBroadcaster().post({ type: 'session-expired', at: Date.now() });
+        } catch (err) {
+          console.error('[SSE] broadcast session-expired failed', err);
+        }
+        const { useStore } = await import('@/domain/store');
+        const state = useStore.getState() as any;
+        if (typeof state.clearUser === 'function') state.clearUser();
+        return;
+      }
+    } catch (err) {
+      // Probe itself failed (network down) — treat as transient and reconnect.
+      console.warn('[SSE] unified: auth probe failed; assuming transient', err);
+    }
+
+    // Enable grace period before reconnecting so that stale initial
+    // data (estimating/session) doesn't overwrite the kanban state.
+    this.onReconnectCallback?.();
+    this.connect(projectId, featureName, job);
+  }
+
+  /**
+   * Subscribe (once) to the cross-tab auth broadcaster so a `session-expired`
+   * from another tab tears down our connection here too. Idempotent.
+   */
+  private ensureBroadcastSubscribed(): void {
+    if (this.broadcastUnsubscribe) return;
+    const broadcaster = getAuthBroadcaster();
+    this.broadcastUnsubscribe = broadcaster.subscribe((message) => {
+      if (message.type === 'session-expired' || message.type === 'logout') {
+        if (message.type === 'session-expired') markSessionExpired();
+        if (this.unifiedConnection) {
+          console.log(`[SSE] unified: closing on cross-tab ${message.type}`);
+          this.disconnect();
+        }
+        this.workflowConnections.forEach((_, jobId) => this.disconnectWorkflow(jobId));
+      }
+    });
   }
 
   /**

@@ -33,6 +33,15 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/ant-auth-client:
+    devDependencies:
+      esbuild:
+        specifier: ^0.27.2
+        version: 0.27.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/ant-cli:
     dependencies:
       '@ant/shared':
@@ -222,6 +231,9 @@ importers:
 
   packages/ant-site:
     dependencies:
+      '@ant/auth-client':
+        specifier: workspace:^
+        version: link:../ant-auth-client
       i18next:
         specifier: ^25.8.6
         version: 25.8.6(typescript@5.9.3)
@@ -268,6 +280,9 @@ importers:
 
   packages/ant-ui:
     dependencies:
+      '@ant/auth-client':
+        specifier: workspace:^
+        version: link:../ant-auth-client
       '@ant/shared':
         specifier: workspace:^
         version: link:../ant-shared

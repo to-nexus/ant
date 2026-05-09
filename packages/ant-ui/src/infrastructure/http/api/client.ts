@@ -118,7 +118,7 @@ if (import.meta.env.DEV) {
 
 /**
  * Authenticated fetch wrapper.
- * 
+ *
  * Authentication is handled via httpOnly JWT cookies (credentials: 'include').
  * No custom auth headers are needed — the browser automatically sends the
  * ant_session cookie with every cross-origin request.
@@ -142,6 +142,55 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
     headers,
     credentials: 'include',
   });
+}
+
+/**
+ * 401 interceptor — single sink for stale-session detection on protected
+ * requests. Called by all `apiGet/Post/Put/Patch/Delete` helpers; **skipped
+ * for `/auth/me`** (which returns 200+null by contract — a 401 there would
+ * be a backend bug, not a stale session).
+ *
+ * On 401:
+ *   1. mark session-expired (suppresses SSE auto-reconnect)
+ *   2. broadcast `session-expired` (other tabs react)
+ *   3. cascade `clearUser()` on the auth slice
+ *
+ * Re-throws ApiError as usual so the calling code can decide whether to
+ * surface its own message — auto-redirect to OAuth is intentionally NOT
+ * performed (avoids loops on misconfig; the user clicks Sign In manually).
+ */
+function isAuthMeUrl(url: string): boolean {
+  return url.endsWith('/auth/me') || url.includes('/auth/me?');
+}
+
+let session401Cascading = false;
+
+async function handle401Cascade(url: string): Promise<void> {
+  if (isAuthMeUrl(url)) return;
+  if (session401Cascading) return;
+  session401Cascading = true;
+  try {
+    const [{ getAuthBroadcaster, markSessionExpired }, { useStore }] = await Promise.all([
+      import('@/infrastructure/auth/authBridge'),
+      import('@/domain/store'),
+    ]);
+    markSessionExpired();
+    try {
+      getAuthBroadcaster().post({ type: 'session-expired', at: Date.now() });
+    } catch (err) {
+      console.error('[Auth] 401 broadcast failed', err);
+    }
+    const state = useStore.getState() as any;
+    if (typeof state.clearUser === 'function') {
+      state.clearUser();
+    }
+  } finally {
+    // Reset on the next tick so a burst of in-flight 401s doesn't trigger
+    // multiple cascades but a later genuine 401 (after re-login) still does.
+    setTimeout(() => {
+      session401Cascading = false;
+    }, 1000);
+  }
 }
 
 // ── Generic API helpers ─────────────────────────────────────────────
@@ -183,6 +232,7 @@ function throwApiError(status: number, body: Record<string, unknown>): never {
 export async function apiGet<T>(url: string): Promise<T> {
   const response = await authFetch(url);
   if (!response.ok) {
+    if (response.status === 401) await handle401Cascade(url);
     const body = await response.json().catch(() => ({}));
     throwApiError(response.status, body);
   }
@@ -195,6 +245,7 @@ export async function apiPost<T = void>(url: string, body?: unknown): Promise<T>
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) {
+    if (response.status === 401) await handle401Cascade(url);
     const err = await response.json().catch(() => ({}));
     throwApiError(response.status, err);
   }
@@ -207,6 +258,7 @@ export async function apiPut<T = void>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) await handle401Cascade(url);
     const err = await response.json().catch(() => ({}));
     throwApiError(response.status, err);
   }
@@ -219,6 +271,7 @@ export async function apiPatch<T = void>(url: string, body: unknown): Promise<T>
     body: JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) await handle401Cascade(url);
     const err = await response.json().catch(() => ({}));
     throwApiError(response.status, err);
   }
@@ -231,6 +284,7 @@ export async function apiDelete<T = void>(url: string, body?: unknown): Promise<
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) {
+    if (response.status === 401) await handle401Cascade(url);
     const err = await response.json().catch(() => ({}));
     throwApiError(response.status, err);
   }
