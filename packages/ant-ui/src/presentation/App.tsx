@@ -29,6 +29,11 @@ import { ToastProvider } from '@/presentation/providers/ToastProvider';
 import { fetchAuthMeDetailed, getBackendMode, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
+import {
+  getAuthBroadcaster,
+  markSessionExpired,
+  clearSessionExpired,
+} from '@/infrastructure/auth/authBridge';
 
 /**
  * Single sink for the diagnostic log emitted whenever `/auth/me` returns
@@ -57,6 +62,25 @@ function App() {
     document.title = t('brand.tabTitle');
   }, [t]);
 
+  // ✅ Cross-tab auth bridge — react to `logout` / `session-expired` posted
+  // from another tab. The dispatching tab runs cleanup directly via
+  // `runUnifiedLogout` / 401 interceptor; this subscriber is for the
+  // OBSERVING tabs. We do NOT re-broadcast and do NOT navigate (let the
+  // user keep their page state but see the logged-out shell).
+  useEffect(() => {
+    const broadcaster = getAuthBroadcaster();
+    const unsub = broadcaster.subscribe((message) => {
+      if (message.type === 'logout' || message.type === 'session-expired') {
+        if (message.type === 'session-expired') markSessionExpired();
+        const state = useStore.getState() as any;
+        if (typeof state.clearUser === 'function') state.clearUser();
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
   // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation
   // on startup. The store's `authStatus` channel mirrors this effect's
   // progression: 'verifying' while `fetchAuthMe()` is in flight, then
@@ -72,6 +96,10 @@ function App() {
       (async () => {
         const result = await fetchAuthMeDetailed();
         if (result.kind === 'user') {
+          // Successful OAuth callback ⇒ a fresh cookie just landed; wipe any
+          // suppress-reconnect flag set by an earlier 401 cascade so SSE
+          // can come back online cleanly.
+          clearSessionExpired();
           useStore.getState().setUser(result.user.email, result.user.organization);
           useStore.getState().fetchProjects();
           console.log('[Auth] Successfully signed in with Google:', result.user.email);
