@@ -28,11 +28,21 @@ export function TurnTokenGauge() {
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const update = () => setSlotWidth(host.clientWidth);
-    update();
-    const ro = new ResizeObserver(update);
+    const apply = () => setSlotWidth(host.clientWidth);
+    apply();
+    let rafId: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        apply();
+      });
+    });
     ro.observe(host);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   if (!visiblePhases.length) return null;
