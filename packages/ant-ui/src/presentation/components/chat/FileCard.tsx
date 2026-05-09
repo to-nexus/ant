@@ -67,19 +67,9 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
     };
 
     measureOverflow();
-    let rafId: number | null = null;
-    const observer = new ResizeObserver(() => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        measureOverflow();
-      });
-    });
+    const observer = new ResizeObserver(measureOverflow);
     observer.observe(element);
-    return () => {
-      observer.disconnect();
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
+    return () => observer.disconnect();
   }, [filePath, isHeaderExpanded]);
   
   // ✅ Show content when: has content OR is actively streaming (even with empty content)
