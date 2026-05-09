@@ -4,7 +4,9 @@ import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'luci
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { useStore } from '@/domain/store';
-import { signOut, checkLocalBackend, OAUTH_BASE } from '@/infrastructure/http/api';
+import { checkLocalBackend, OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
+import { runUnifiedLogout } from '@ant/auth-client';
+import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
 
@@ -103,13 +105,28 @@ export function AppNavBar({}: AppNavBarProps) {
     window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
   
-  // Handle sign out — `clearUser` now cascades reset + projects clear +
-  // storage cleanup as a single SSOT (see authSlice.clearUser jsdoc).
+  // Handle sign out — runs the unified 5-step logout procedure (signoutAPI
+  // → clearUser cascade → broadcast → hard nav). `clearUser` cascades
+  // reset + projects clear + storage cleanup as a single SSOT
+  // (see authSlice.clearUser jsdoc). Hard-nav target: `VITE_ANT_SITE_URL`
+  // when configured, else `/` (logged-out welcome screen).
   const handleSignOut = async () => {
-    await signOut();
-    clearUser();
     setShowUserMenu(false);
-    window.location.href = '/';
+    const siteUrl = (import.meta.env.VITE_ANT_SITE_URL as string | undefined) ?? '/';
+    await runUnifiedLogout({
+      apiBase: API_BASE(),
+      destination: siteUrl,
+      broadcaster: getAuthBroadcaster(),
+      clearLocalState: () => clearUser(),
+      showSignoutFailureToast: () => {
+        // Non-blocking surface — toast component is in ToastProvider but we
+        // don't want to introduce a runtime dep here. Console for now;
+        // toast wiring lands when the unified procedure is documented.
+        console.warn(
+          '[Auth] Signed out locally; the server session may persist until the cookie expires.',
+        );
+      },
+    });
   };
   
   // Handle Editor mode switch

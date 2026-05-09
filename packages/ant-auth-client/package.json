@@ -1,0 +1,32 @@
+{
+  "name": "@ant/auth-client",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Unified browser auth client for ant-site and ant-ui (fetch /auth/me, signout, broadcaster, OAuth URLs, logout/mount procedures).",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts src/types.ts --bundle --format=esm --platform=browser --target=es2020 --outdir=dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -12,6 +12,7 @@
     "test:git": "vitest run tests/git-world tests/project-world tests/common"
   },
   "dependencies": {
+    "@ant/auth-client": "workspace:^",
     "@ant/shared": "workspace:^",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/typography": "^0.5.19",

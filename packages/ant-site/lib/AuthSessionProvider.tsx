@@ -1,7 +1,22 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  fetchAuthMeDetailed,
+  runUnifiedLogout,
+  runMountSessionCheck,
+  createAuthBroadcaster,
+  getAppEntryUrl as buildAppEntryUrl,
+  getSignInUrl as buildSignInUrl,
+  type AuthBroadcaster,
+  type AuthUser as SharedAuthUser,
+} from '@ant/auth-client';
 
+/**
+ * ant-site keeps a slimmer AuthUser than ant-ui — picture / name come from
+ * Google's payload but `userId` / `organization` (required by the shared
+ * type) are surplus on the marketing surface. We narrow at the boundary.
+ */
 export interface AuthUser {
   email: string;
   name?: string;
@@ -17,17 +32,12 @@ interface AuthSessionContextValue {
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
 // API base URL for split-host deployments (e.g. ant.crosstoken.io → ant-server.crosstoken.io)
-// Empty string allows same-site relative URLs for single-origin deployments
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
+// Empty string allows same-site relative URLs for single-origin deployments.
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
+const API_BASE = `${RAW_API_BASE}/api`;
 
-async function fetchSessionUser(): Promise<AuthUser | null> {
-  const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' });
-  if (!res.ok) {
-    console.warn('[Auth] /api/auth/me responded non-OK', res.status);
-    return null;
-  }
-  const data = await res.json();
-  return data?.user?.email ? (data.user as AuthUser) : null;
+function narrow(user: SharedAuthUser): AuthUser {
+  return { email: user.email, name: user.name, picture: user.picture };
 }
 
 // Strip OAuth callback markers from the URL once consumed, so reloads
@@ -50,7 +60,11 @@ function stripAuthQueryParams(): void {
 export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const broadcasterRef = useRef<AuthBroadcaster | null>(null);
 
+  // Mount-time session check — uses the same discriminated handling as
+  // ant-ui's App.tsx so server hiccups (network/503/4xx/shape) don't get
+  // collapsed to "logged out".
   useEffect(() => {
     let cancelled = false;
 
@@ -64,14 +78,25 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
 
     (async () => {
       try {
-        const fresh = await fetchSessionUser();
+        const result = await runMountSessionCheck({
+          apiBase: API_BASE,
+          hadHydratedUser: false, // ant-site has no localStorage hydration
+          setUser: (u) => {
+            if (!cancelled) setUser(narrow(u));
+          },
+          clearUser: () => {
+            if (!cancelled) setUser(null);
+          },
+          onNonFatal: (r) => {
+            console.warn(`[Auth] /auth/me non-fatal kind=${r.kind}`);
+          },
+        });
         if (cancelled) return;
-        setUser(fresh);
-        if (oauthCallback === 'success' && !fresh) {
-          console.warn('[Auth] OAuth success returned but session is empty — verify cookie domain / FRONTEND_URL config');
+        if (oauthCallback === 'success' && result.kind !== 'user') {
+          console.warn(
+            '[Auth] OAuth success returned but session is empty — verify cookie domain / FRONTEND_URL config',
+          );
         }
-      } catch (err) {
-        if (!cancelled) console.warn('[Auth] /api/auth/me failed', err);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -85,12 +110,49 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
     };
   }, []);
 
+  // Cross-tab broadcaster — lifecycle-bound to the provider. Other tabs that
+  // log out (or hit a 401 → session-expired) tell us; we drop local state
+  // without re-broadcasting and without navigating (the user keeps the
+  // marketing page they're on, just sees the logged-out shell).
+  useEffect(() => {
+    const broadcaster = createAuthBroadcaster();
+    broadcasterRef.current = broadcaster;
+    const unsub = broadcaster.subscribe((message) => {
+      if (message.type === 'logout' || message.type === 'session-expired') {
+        setUser(null);
+      }
+    });
+    return () => {
+      unsub();
+      broadcaster.close();
+      broadcasterRef.current = null;
+    };
+  }, []);
+
+  // Unified 5-step logout: API → local cleanup → broadcast → hard nav.
+  // The hard nav (step 4) is the missing piece in the previous implementation
+  // that allowed the cookie to remain set when the API call silently failed.
   const signOut = useCallback(async () => {
-    try {
-      await fetch(`${API_BASE}/api/auth/signout`, { method: 'POST', credentials: 'include' });
-    } finally {
-      setUser(null);
+    const broadcaster = broadcasterRef.current;
+    if (!broadcaster) {
+      console.warn('[Auth] signOut called before broadcaster mounted');
+      window.location.assign('/');
+      return;
     }
+    await runUnifiedLogout({
+      apiBase: API_BASE,
+      destination: '/',
+      broadcaster,
+      clearLocalState: () => setUser(null),
+      showSignoutFailureToast: () => {
+        // ant-site has no toast surface yet; surface in console so users
+        // who watch devtools see it. UI affordance can be added when the
+        // marketing site adopts a toast component.
+        console.warn(
+          '[Auth] Signed out locally; the server session may persist until the cookie expires.',
+        );
+      },
+    });
   }, []);
 
   return (
@@ -114,8 +176,11 @@ export function useAuthSession(): AuthSessionContextValue {
  * unauthenticated; bypasses straight to `/app/` once a session cookie is set.
  */
 export function getAppEntryUrl(user: AuthUser | null): string {
-  if (user) return '/app/';
-  return `/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
+  return buildAppEntryUrl({
+    isSignedIn: !!user,
+    oauthBase: RAW_API_BASE,
+    appPath: '/app/',
+  });
 }
 
 /**
@@ -123,5 +188,12 @@ export function getAppEntryUrl(user: AuthUser | null): string {
  * back to the page they signed in from after OAuth.
  */
 export function getSignInUrl(pathname: string): string {
-  return `/api/auth/google?returnTo=${encodeURIComponent(pathname || '/')}`;
+  return buildSignInUrl({
+    oauthBase: RAW_API_BASE,
+    returnTo: pathname || '/',
+  });
 }
+
+// Re-exported for consumers that need direct access to the discriminated
+// `/auth/me` result (e.g. test harnesses).
+export { fetchAuthMeDetailed };
