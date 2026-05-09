@@ -29,6 +29,40 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const COOKIE_NAME = 'ant_session';
 
 /**
+ * Production split-host deployment 에서 cross-subdomain 으로 쿠키를 공유해야
+ * 하는 known base domains. 한 쿠키가 ant-server / ant-preview / ant 모든
+ * 서브도메인으로 자동 전송되도록 한다. 새 도메인 운영을 시작하면 여기에
+ * 한 줄 추가하거나 `COOKIE_DOMAIN` env 를 명시한다.
+ */
+const KNOWN_BASE_DOMAINS = ['crosstoken.io'] as const;
+
+/**
+ * 쿠키 `Domain` 속성을 추론한다.
+ * - explicit `COOKIE_DOMAIN` env 가 있으면 그것이 우선 (escape hatch).
+ * - localhost / IP / dev 는 host-only (Domain 미설정 → single-origin OK).
+ * - `*.crosstoken.io` 같은 known base 는 `.crosstoken.io` 로 묶어 전 서브도메인 전송.
+ * - 그 외 알 수 없는 production host 는 host-only fallback (안전).
+ */
+function deriveCookieDomain(
+  hostname: string | undefined,
+  isProduction: boolean,
+): string | undefined {
+  if (process.env.COOKIE_DOMAIN) return process.env.COOKIE_DOMAIN;
+  if (!isProduction || !hostname) return undefined;
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return undefined;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return undefined;
+
+  for (const base of KNOWN_BASE_DOMAINS) {
+    if (hostname === base || hostname.endsWith('.' + base)) {
+      return '.' + base;
+    }
+  }
+  return undefined;
+}
+
+export const __testing = { deriveCookieDomain, KNOWN_BASE_DOMAINS };
+
+/**
  * Lightweight JWT implementation using Node.js crypto (HS256).
  * No external dependency required (jsonwebtoken package not needed).
  */
@@ -96,17 +130,18 @@ export class JwtService {
   /**
    * Get cookie options for Set-Cookie.
    *
-   * `COOKIE_DOMAIN` (optional) sets the cookie's `Domain` attribute. Leave
-   * unset for single-origin deployments — the cookie is then host-only and
-   * naturally scoped to the response origin. Set explicitly (e.g.
-   * `.crosstoken.io`) only when FE and API live on different sub-domains
-   * and a single cookie must span both.
+   * The `Domain` attribute is resolved by `deriveCookieDomain` from (1) the
+   * `COOKIE_DOMAIN` env var (escape hatch — wins when set) and (2) the
+   * request `hostname` matched against `KNOWN_BASE_DOMAINS`. Leaving both
+   * paths unsatisfied yields a host-only cookie (Domain attribute omitted),
+   * which is correct for localhost / single-origin dev.
    *
    * `getCookieOptions` and `getClearCookieOptions` MUST return identical
    * `domain` / `path` / `sameSite` / `secure` values — RFC 6265bis requires
    * the same attribute set for `clearCookie` to match the live cookie.
+   * Pass the same `hostname` to both calls.
    */
-  getCookieOptions(isProduction: boolean): {
+  getCookieOptions(isProduction: boolean, hostname?: string): {
     httpOnly: boolean;
     secure: boolean;
     sameSite: 'lax' | 'strict' | 'none';
@@ -114,7 +149,7 @@ export class JwtService {
     path: string;
     maxAge: number;
   } {
-    const cookieDomain = process.env.COOKIE_DOMAIN;
+    const cookieDomain = deriveCookieDomain(hostname, isProduction);
     return {
       httpOnly: true,
       secure: isProduction,
@@ -126,14 +161,14 @@ export class JwtService {
   }
 
   /** Get cookie clear options. See `getCookieOptions` JSDoc for the SSOT contract. */
-  getClearCookieOptions(isProduction: boolean): {
+  getClearCookieOptions(isProduction: boolean, hostname?: string): {
     httpOnly: boolean;
     secure: boolean;
     sameSite: 'lax' | 'strict' | 'none';
     domain?: string;
     path: string;
   } {
-    const cookieDomain = process.env.COOKIE_DOMAIN;
+    const cookieDomain = deriveCookieDomain(hostname, isProduction);
     return {
       httpOnly: true,
       secure: isProduction,

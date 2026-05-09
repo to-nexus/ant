@@ -204,7 +204,7 @@ export function createAuthRoutes(deps: {
       res.cookie(
         JwtService.cookieName,
         token,
-        jwtService.getCookieOptions(isProduction),
+        jwtService.getCookieOptions(isProduction, req.hostname),
       );
       
       // Redirect to returnTo path; append ?auth=success for SPA paths so App.tsx can detect login
@@ -272,9 +272,12 @@ export function createAuthRoutes(deps: {
    * POST /api/auth/signout
    * Clears the JWT cookie.
    */
-  router.post('/auth/signout', (_req: Request, res: Response) => {
+  router.post('/auth/signout', (req: Request, res: Response) => {
     if (jwtService) {
-      res.clearCookie(JwtService.cookieName, jwtService.getClearCookieOptions(isProduction));
+      res.clearCookie(
+        JwtService.cookieName,
+        jwtService.getClearCookieOptions(isProduction, req.hostname),
+      );
     }
     res.json({
       success: true,
