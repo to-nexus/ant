@@ -9,6 +9,19 @@ if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
 
+// Chrome dispatches "ResizeObserver loop completed with undelivered notifications"
+// as an ErrorEvent with `error === null`. The browser handles the loop gracefully,
+// but the null error is picked up by extensions that hook window.onerror
+// (e.g. MetaMask SES → "SES_UNCAUGHT_EXCEPTION: null"). Swallow only this exact
+// message — every other error must still propagate to RootErrorBoundary / DevTools.
+const RESIZE_OBSERVER_LOOP_RE = /^ResizeObserver loop /;
+window.addEventListener('error', (e) => {
+  if (typeof e.message === 'string' && RESIZE_OBSERVER_LOOP_RE.test(e.message)) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+});
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;

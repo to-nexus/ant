@@ -111,11 +111,21 @@ export function AgentJobToolbar({
   useLayoutEffect(() => {
     const host = toolbarRef.current;
     if (!host) return;
-    const update = () => setCompact(host.clientWidth < COMPACT_BREAKPOINT_PX);
-    update();
-    const ro = new ResizeObserver(update);
+    const apply = () => setCompact(host.clientWidth < COMPACT_BREAKPOINT_PX);
+    apply();
+    let rafId: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        apply();
+      });
+    });
     ro.observe(host);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   useEffect(() => {
