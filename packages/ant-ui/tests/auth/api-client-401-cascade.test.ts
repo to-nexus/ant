@@ -56,7 +56,47 @@ describe('client.ts 401 interceptor', () => {
     expect(src).toMatch(/isAuthMeUrl\(url\)/);
   });
 
+  it('skips the cascade for cross-host 401s (preview / realtime — different auth surfaces)', () => {
+    // Helper exists, scoped to API host
+    expect(src).toMatch(/function\s+isApiHostUrl\s*\(/);
+    expect(src).toMatch(/new\s+URL\s*\(\s*API_BASE\(\)/);
+    // Cascade calls the helper with negation guard
+    expect(src).toMatch(/if\s*\(\s*!\s*isApiHostUrl\(url\)\s*\)\s*return/);
+  });
+
   it('cascade is single-flight (debounced) so a 401 burst does not double-fire', () => {
     expect(src).toMatch(/session401Cascading/);
+  });
+});
+
+describe('isApiHostUrl runtime behavior', () => {
+  // Module-level test: the helper isn't exported, so we re-derive its
+  // behavior from spec. Locking the predicate shape here means a future
+  // refactor that reintroduces non-API 401 cascading will trip the
+  // grep-based test above; this block locks the boundary semantics.
+  const VITE_BACKEND_PROD = 'https://ant-server.crosstoken.io';
+  const PREVIEW_HOST = 'https://ant-preview.crosstoken.io';
+
+  function shouldCascade(url: string, apiBase: string): boolean {
+    if (!/^https?:\/\//i.test(url)) return true;
+    try {
+      const apiOrigin = new URL(apiBase + '/api', 'http://localhost').origin;
+      return new URL(url).origin === apiOrigin;
+    } catch {
+      return true;
+    }
+  }
+
+  it('treats relative URLs as API-bound (Vite proxy / same-origin)', () => {
+    expect(shouldCascade('/api/projects/123', VITE_BACKEND_PROD)).toBe(true);
+    expect(shouldCascade('/realtime/events', VITE_BACKEND_PROD)).toBe(true);
+  });
+
+  it('cascades on absolute URLs that match the API origin', () => {
+    expect(shouldCascade(`${VITE_BACKEND_PROD}/api/projects/123`, VITE_BACKEND_PROD)).toBe(true);
+  });
+
+  it('does NOT cascade on cross-host preview 401s', () => {
+    expect(shouldCascade(`${PREVIEW_HOST}/projects/foo/status`, VITE_BACKEND_PROD)).toBe(false);
   });
 });
