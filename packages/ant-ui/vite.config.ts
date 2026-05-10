@@ -1,4 +1,4 @@
-import { defineConfig, type PluginOption } from 'vite';
+import { defineConfig, type PluginOption, type Connect } from 'vite';
 import react from '@vitejs/plugin-react';
 import http from 'node:http';
 import path from 'path';
@@ -6,45 +6,73 @@ import path from 'path';
 const SITE_PROXY_TARGET = 'http://localhost:4300';
 
 /**
+ * Backend service proxy table — single source of truth for both `vite dev`
+ * (server.proxy) and `vite preview` (preview.proxy). Production build +
+ * `pnpm start:ui` (vite preview) used to lose these proxies, breaking the
+ * `pnpm build:ui:local` workflow where the dist must hit the local BE
+ * through relative URLs.
+ */
+const PROXY_TABLE = {
+  '/api': {
+    target: 'http://localhost:4100',
+    changeOrigin: true,
+  },
+  '/ide': {
+    target: 'http://localhost:4100',
+    changeOrigin: true,
+    ws: true,
+  },
+  '/realtime': {
+    target: 'http://localhost:4101',
+    changeOrigin: true,
+  },
+} as const;
+
+/**
  * Proxies non-SPA routes to the ant-site Next.js dev server (port 4300).
- * Uses configureServer so it runs BEFORE Vite's base middleware
- * (which strips the /app/ prefix and would break regex-based proxy matching).
+ * Hooks into both dev (`configureServer`) and preview (`configurePreviewServer`)
+ * so the integrated origin works whether the user runs `pnpm dev:ui` or
+ * `pnpm start:ui` (vite preview against a built dist).
  */
 function antSiteProxy(): PluginOption {
+  const middleware: Connect.NextHandleFunction = (req, res, next) => {
+    const url = req.url || '';
+    if (url === '/app') {
+      res.writeHead(301, { Location: '/app/' });
+      return res.end();
+    }
+    if (
+      url.startsWith('/app') ||
+      url.startsWith('/api') ||
+      url.startsWith('/ide') ||
+      url.startsWith('/realtime') ||
+      url.startsWith('/@') ||
+      url.startsWith('/__') ||
+      url.startsWith('/node_modules') ||
+      url.startsWith('/src')
+    ) {
+      return next();
+    }
+    const target = new URL(SITE_PROXY_TARGET);
+    const proxyReq = http.request(
+      { hostname: target.hostname, port: target.port, path: url, method: req.method, headers: { ...req.headers, host: target.host } },
+      (proxyRes) => {
+        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+        proxyRes.pipe(res);
+      },
+    );
+    proxyReq.on('error', () => {
+      if (!res.headersSent) next();
+    });
+    req.pipe(proxyReq);
+  };
   return {
     name: 'ant-site-proxy',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const url = req.url || '';
-        if (url === '/app') {
-          res.writeHead(301, { Location: '/app/' });
-          return res.end();
-        }
-        if (
-          url.startsWith('/app') ||
-          url.startsWith('/api') ||
-          url.startsWith('/ide') ||
-          url.startsWith('/realtime') ||
-          url.startsWith('/@') ||
-          url.startsWith('/__') ||
-          url.startsWith('/node_modules') ||
-          url.startsWith('/src')
-        ) {
-          return next();
-        }
-        const target = new URL(SITE_PROXY_TARGET);
-        const proxyReq = http.request(
-          { hostname: target.hostname, port: target.port, path: url, method: req.method, headers: { ...req.headers, host: target.host } },
-          (proxyRes) => {
-            res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-            proxyRes.pipe(res);
-          },
-        );
-        proxyReq.on('error', () => {
-          if (!res.headersSent) next();
-        });
-        req.pipe(proxyReq);
-      });
+      server.middlewares.use(middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(middleware);
     },
   };
 }
@@ -71,28 +99,12 @@ export default defineConfig({
   },
   server: {
     port: 4200,
-    open: false,  // 브라우저 자동 열기 방지
-    proxy: {
-      // Local dev: route /api/* to ant-api service
-      '/api': {
-        target: 'http://localhost:4100',
-        changeOrigin: true,
-      },
-      // Local dev: route /ide/* to ant-api service (IDE proxy)
-      '/ide': {
-        target: 'http://localhost:4100',
-        changeOrigin: true,
-        ws: true,  // WebSocket support for IDE terminal
-      },
-      // Note: preview는 별도 호스트 (VITE_PREVIEW_HOST)로 직접 호출
-      // Local dev: route /realtime/* to ant-realtime service
-      '/realtime': {
-        target: 'http://localhost:4101',
-        changeOrigin: true,
-      },
-    },
+    open: false,
+    proxy: PROXY_TABLE,
   },
   preview: {
-    open: false,  // 브라우저 자동 열기 방지
+    port: 4200,
+    open: false,
+    proxy: PROXY_TABLE,
   },
 })
