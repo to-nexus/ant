@@ -7,11 +7,21 @@ import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import { authRateLimiter } from '../middleware/rateLimiter';
+import { resolveFrontendOrigin } from '../middleware/corsConfig';
+import { extractStartOrigin } from '../middleware/originHelper';
 import { logger } from '../../../../utils/logger';
 import type { AuthContext } from '../../../../core/ports/auth';
 
 const OIDC_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
 const OIDC_STATE_KEY_PREFIX = 'ant:oidc:state:';
+
+/**
+ * OIDC state payload stored in Redis between `/auth/google` start and
+ * `/auth/google/callback`. Both fields are optional — neither is
+ * security-critical on the start side, and the callback uses defaults
+ * (FRONTEND_URL fallback, fallbackPath) when fields are missing.
+ */
+type OidcStatePayload = { returnTo?: string; startOrigin?: string };
 
 /**
  * Authentication routes for Cloud Mode
@@ -63,31 +73,47 @@ export function createAuthRoutes(deps: {
   
   /**
    * Store OIDC state in Redis with TTL (multi-pod safe).
-   * Optionally stores a returnTo path for post-auth redirect.
+   *
+   * Payload carries `returnTo` (post-auth redirect path — open-redirect-
+   * safe because `sanitizeReturnTo` rejects non-relative paths) and
+   * `startOrigin` (the FE origin that initiated the flow — used by the
+   * callback to pick the redirect base via `resolveFrontendOrigin`,
+   * gated by the `isAllowedFrontendOrigin` allowlist).
    */
-  async function storeOidcState(state: string, returnTo?: string): Promise<void> {
+  async function storeOidcState(state: string, payload: OidcStatePayload): Promise<void> {
     if (!stateStore) {
       throw new Error('StateStore required for OIDC state management');
     }
-    const value = returnTo ? JSON.stringify({ returnTo }) : '1';
-    await stateStore.setKeyWithTTL(`${OIDC_STATE_KEY_PREFIX}${state}`, value, OIDC_STATE_TTL_SECONDS);
+    await stateStore.setKeyWithTTL(
+      `${OIDC_STATE_KEY_PREFIX}${state}`,
+      JSON.stringify(payload),
+      OIDC_STATE_TTL_SECONDS,
+    );
   }
-  
+
   /**
    * Verify and consume OIDC state from Redis (atomic: get + delete).
-   * Returns the stored returnTo path if present.
+   * Returns the stored payload fields if present.
+   *
+   * Read-side BC: in-flight states from a pre-deploy window (5 min TTL)
+   * may carry the legacy shapes — `'1'` (no returnTo) or
+   * `JSON.stringify({ returnTo })` (no startOrigin). Both still parse
+   * correctly into the new `{ returnTo?, startOrigin? }` superset, with
+   * missing fields surfacing as `undefined`.
    */
-  async function verifyAndConsumeOidcState(state: string): Promise<{ valid: boolean; returnTo?: string }> {
+  async function verifyAndConsumeOidcState(state: string): Promise<{ valid: boolean } & Partial<OidcStatePayload>> {
     if (!stateStore) return { valid: false };
     const key = `${OIDC_STATE_KEY_PREFIX}${state}`;
     const value = await stateStore.getKey(key);
     if (!value) return { valid: false };
     await stateStore.deleteKey(key);
-    let returnTo: string | undefined;
-    if (value !== '1') {
-      try { returnTo = JSON.parse(value).returnTo; } catch { /* ignore */ }
+    if (value === '1') return { valid: true };
+    try {
+      const parsed = JSON.parse(value) as OidcStatePayload;
+      return { valid: true, returnTo: parsed.returnTo, startOrigin: parsed.startOrigin };
+    } catch {
+      return { valid: true };
     }
-    return { valid: true, returnTo };
   }
   
   /**
@@ -118,9 +144,14 @@ export function createAuthRoutes(deps: {
     
     try {
       const returnTo = sanitizeReturnTo(req.query.returnTo);
+      // Capture the FE origin that initiated the flow. The callback uses
+      // it (gated by `isAllowedFrontendOrigin`) to send the user back to
+      // the same origin they signed in from — even when the OAuth flow
+      // ran through a different BE host (e.g. localhost FE → cloud BE).
+      const startOrigin = extractStartOrigin(req.headers.origin, req.headers.referer);
       const state = crypto.randomBytes(32).toString('hex');
-      await storeOidcState(state, returnTo);
-      
+      await storeOidcState(state, { returnTo, startOrigin });
+
       const authUrl = oidcService.getAuthorizationUrl(state);
       res.redirect(authUrl);
     } catch (error: any) {
@@ -145,30 +176,40 @@ export function createAuthRoutes(deps: {
     }
     
     const { code, error, state } = req.query;
-    const frontendUrl = process.env.FRONTEND_URL || '';
+    // Pre-state error branches use FRONTEND_URL fallback only — the
+    // start-origin from Redis isn't available yet. Once state consumes,
+    // we tighten this to `resolveFrontendOrigin(startOrigin, FRONTEND_URL)`
+    // so the post-auth redirect lands on whichever FE host actually
+    // initiated the flow (loopback / FRONTEND_URL / ANT_CORS_ORIGINS member).
+    let frontendUrl = process.env.FRONTEND_URL || '';
     const fallbackPath = '/app/';
-    
+
     // Handle OAuth errors (redirect to App with error param)
     if (error) {
       logger.warn(`[Auth] Google OAuth error: ${error}`, { component: 'Auth' });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=oauth_failed`);
     }
-    
+
     if (!code || typeof code !== 'string') {
       return res.redirect(`${frontendUrl}${fallbackPath}?error=no_code`);
     }
-    
+
     // Verify CSRF state parameter (Redis-backed, multi-pod safe)
     if (!state || typeof state !== 'string') {
       logger.warn('[Auth] Missing OIDC state parameter', { component: 'Auth' });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=invalid_state`);
     }
-    
+
     const stateResult = await verifyAndConsumeOidcState(state);
     if (!stateResult.valid) {
       logger.warn('[Auth] Invalid or expired OIDC state parameter', { component: 'Auth' });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=invalid_state`);
     }
+
+    // From here on the captured start origin is authoritative for the
+    // redirect base — the allowlist (`isAllowedFrontendOrigin`) already
+    // enforces the open-redirect invariant inside `resolveFrontendOrigin`.
+    frontendUrl = resolveFrontendOrigin(stateResult.startOrigin, process.env.FRONTEND_URL);
     
     const returnTo = stateResult.returnTo || fallbackPath;
     
