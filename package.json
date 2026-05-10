@@ -31,7 +31,7 @@
     "build:shared": "pnpm --filter @ant/shared build",
     "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
-    "build:ui:local": "VITE_CLOUD_BACKEND_BASE= VITE_PREVIEW_HOST=http://localhost:4102 pnpm --filter @ant/ui build",
+    "build:ui:local": "VITE_CLOUD_BACKEND_BASE= VITE_ANT_SITE_URL=/ VITE_PREVIEW_HOST=http://localhost:4102 pnpm --filter @ant/ui build",
     "build:site": "pnpm --filter @ant/site build",
     "build:site:local": "NEXT_PUBLIC_API_BASE= pnpm --filter @ant/site build",
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
