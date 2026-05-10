@@ -159,6 +159,12 @@ export interface UIActions {
   setIdeConnecting: (connecting: boolean, error?: string) => void;
   setIdeFrameLoaded: (loaded: boolean) => void;
   reloadIdeFrame: () => void;
+  /**
+   * Start an IDE session: call BE, pre-flight the proxy URL until it serves
+   * HTTP, then publish the URL. Single SSOT — both NavBar click and App.tsx
+   * reconnect effect call this so the pre-flight gate cannot be bypassed.
+   */
+  startIdeSession: (projectId: string, featureName?: string) => Promise<void>;
   selectMainPanelTab: (tab: MainPanelTabId) => void;
   openMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
   closeMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
@@ -413,6 +419,44 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   reloadIdeFrame: () => {
     set({ ideReloadTimestamp: Date.now(), ideFrameLoaded: false } as any);
+  },
+
+  startIdeSession: async (projectId, featureName) => {
+    set({
+      ideBaseUrl: undefined,
+      ideConnecting: true,
+      ideConnectError: undefined,
+      ideFrameLoaded: false,
+      ideWorkspacePath: `/${projectId}`,
+      mainView: 'codeIde',
+    } as any);
+    saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
+
+    try {
+      const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+      const { waitForIdeReady } = await import('@/infrastructure/http/poll');
+      const { instance } = await startCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+      const proxyUrl = `${SERVER_BASE()}${instance.url}`;
+
+      // Pre-flight: BE says ready but verify the proxy actually serves HTTP
+      // before embedding the iframe. Closes the race where the iframe `src`
+      // would otherwise GET a 500 from a still-booting code-server.
+      await waitForIdeReady(proxyUrl, 15_000);
+
+      set({
+        ideBaseUrl: proxyUrl,
+        ideWorkspacePath: instance.workspacePath || `/${projectId}`,
+        ideReloadTimestamp: Date.now(),
+        ideFrameLoaded: false,
+        ideConnecting: false,
+        ideConnectError: undefined,
+      } as any);
+    } catch (error: any) {
+      set({
+        ideConnecting: false,
+        ideConnectError: error?.message || 'Failed to start IDE',
+      } as any);
+    }
   },
 
   selectMainPanelTab: (tab) => {

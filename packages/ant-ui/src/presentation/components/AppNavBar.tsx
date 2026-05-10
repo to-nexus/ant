@@ -137,32 +137,15 @@ export function AppNavBar({}: AppNavBarProps) {
       setTimeout(() => setEditorTooltip(null), 3000);
       return;
     }
-    
-    // ✅ Open IDE via ant-cli (project/feature docker) and embed via proxy URL
-    try {
-      // Show skeleton immediately (avoid "blank iframe" race)
-      useStore.getState().setIdeBaseUrl(undefined);
-      useStore.getState().setIdeConnecting(true);
-      useStore.getState().setIdeFrameLoaded(false);
-      useStore.getState().switchToCodeIdeView(`/${selectedProject}`);
 
-      const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
-      const featureName = selectedFeature || RESERVED_FEATURE_NAME;
-      const { instance } = await startCloudIDE(selectedProject, featureName);
+    // Single SSOT: startIdeSession handles connecting state, BE start,
+    // pre-flight probe, base-url publish, and error surfacing.
+    await useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
 
-      // ✅ Use proxy URL (instance.url) instead of directUrl for production
-      // Proxy handles SSL and routing through main server
-      const proxyUrl = `${SERVER_BASE()}${instance.url}`;
-      useStore.getState().setIdeBaseUrl(proxyUrl);
-      useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
-      useStore.getState().reloadIdeFrame();
-      useStore.getState().setIdeConnecting(false);
-      useStore.getState().setIdeFrameLoaded(false);
-      useStore.getState().switchToCodeIdeView(instance.workspacePath || `/${selectedProject}`);
-    } catch (error: any) {
-      console.error('[GlobalNavBar] Failed to open IDE:', error);
+    const err = useStore.getState().ideConnectError;
+    if (err) {
+      console.error('[GlobalNavBar] Failed to open IDE:', err);
       setEditorTooltip(t('viewMode.failedToOpenIde'));
-      useStore.getState().setIdeConnecting(false, error?.message || t('viewMode.failedToOpenIde'));
       setTimeout(() => setEditorTooltip(null), 3000);
     }
   };
