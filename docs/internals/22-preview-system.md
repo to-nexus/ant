@@ -144,10 +144,17 @@ idle -> installing -> starting -> running -> stopped
 7. npm install
 8. Docker infrastructure 시작 (docker compose up)
 9. Connection 상태 enrichment (docker running → status: active)
-10. Dev Server 기동 (`npm run dev --host 0.0.0.0`)
+10. Dev Server 기동 (`npm run dev --host 0.0.0.0`) — `spawnWithConflictRetry` 가 각 패키지마다 6s settling window 동안 조기 종료 여부를 감시
 11. Redis에 최종 상태 등록 (running, connections, packages)
 12. Validator 검증
-13. Health Check (최대 60초)
+13. **Status summary 라인 emit** — `summarizePreviewSpawnOutcome(orderedPackages)` 가 settling window 동안 비-zero exit 한 패키지를 검사:
+    - 전부 살아있으면 `'✅ All preview servers started successfully!'` (stdout)
+    - 일부 죽었으면 `'❌ Preview started with N failed package(s): <list>'` (stderr)
+14. Health Check (최대 60초)
+
+### Status summary 라인 contract (FE 상태 머신과의 계약)
+
+FE 의 preview 상태 머신 ([packages/ant-ui/.../FeatureSection/utils/preview.ts](../../packages/ant-ui/src/presentation/components/FeatureSection/utils/preview.ts)) 은 로그 스트림에서 `'All preview servers started'` 부분 문자열을 매치해 패키지 상태를 `'running'` 으로 전이한다. 이 라인이 모든 패키지가 healthy 한 경우에만 emit 되도록 게이트되어 있어, 일부 패키지가 settling window 안에 죽은 부분-실패 상태에서는 FE 가 잘못된 `'running'` 으로 가지 않는다 (per-package `'❌ <pkg> crashed within ${SETTLING_MS}ms (code N)'` 라인은 FE 가 별도로 추적). emit 결정의 SSOT 는 [`summarizePreviewSpawnOutcome`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/PreviewService.ts).
 
 ### 중지 흐름
 

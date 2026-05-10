@@ -58,7 +58,7 @@ export function requiresVerification(task): boolean {
 
 | # | 책임 | SSOT | 위반 시 |
 |---|---|---|---|
-| 1 | **검증 행위 수행** — dependency 설치 (필요 시), typecheck (지원 언어), build, test 를 LLM 이 `run_command` tool 로 실제 실행 | LLM (verify-mode plan tool-loop) — runtime gate guard 없음 | 실행 안 한 채 done emit 시 false-pass 가능 (LLM 자율 신뢰) |
+| 1 | **검증 행위 수행** — dependency 설치 (필요 시), typecheck (지원 언어), build, test 를 LLM 이 `run_command` tool 로 실제 실행. 장시간 실행 명령 (dev server / 워치) 의 도구 결과는 verdict 없는 사실 보고서로 돌아오므로 ([19-tool-system.md §RUN_COMMAND](19-tool-system.md)) LLM 이 `exit:` / `http_probe:` / 프레임워크 에러 글리프를 직접 읽고 판단한다 | LLM (verify-mode plan tool-loop) — runtime gate guard 없음 | 실행 안 한 채 done emit 시 false-pass 가능 (LLM 자율 신뢰) |
 | 2 | **root cause 진단 + solution 생성** — 실패 시 plan tool-loop 가 build/test 출력 + 에러 파일 내용을 읽어 root cause 분리, planText (구조화 JSON) 로 emit | LLM via verify-mode plan prompt ([`buildPlanPrompt`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/prompt/buildPlanPrompt.ts)) | LLM 결정 |
 | 3 | **batch-split (always-fan-out)** — solution 의 각 target 을 per-target error sub-task 로 fan-out, 부모 verification 은 재큐 (Path A) 또는 final-verification 신규 (Path B) | [`tasks/_shared/batchSplit/process.ts::processDiagnosticBatchSplit`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) | n=0 implementation 시 plan 은 빈 plan + done → finalize 가 결정 |
 | 4 | **재진입 + 재검증** — error sub-task 들이 완료된 뒤 priority queue 가 verification 을 다시 pop, fresh entry 로 재실행 | [`TaskOrchestrator`](../../packages/ant-cli/src/agents/architect/graph/code/parallel/TaskOrchestrator.ts) priority queue + handleFreshTaskEntry | 큐 priority 위반 시 verification 이 먼저 실행되어 false-fail |
