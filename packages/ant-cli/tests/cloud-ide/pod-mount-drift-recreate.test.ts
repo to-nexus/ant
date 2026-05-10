@@ -43,6 +43,12 @@ function makeOrch(): KubernetesIDEOrchestrator {
   return new KubernetesIDEOrchestrator({}, stubStateStore);
 }
 
+// `readinessProbe.httpGet` is the second drift gate added in 145d8458
+// (close 3-layer readiness race). Pods predating that rollout are
+// recreated to apply the HTTP-readiness check; current pods carry the
+// probe so reuse is safe. Tests that exercise the no-drift path MUST
+// include the probe — otherwise hasMountDrift returns true at the
+// readinessProbe gate and reuse never happens.
 const fakePod = (mountCount: number) => ({
   metadata: { name: 'fake', namespace: 'ax-ant-dev' },
   status: { phase: 'Running' },
@@ -53,6 +59,7 @@ const fakePod = (mountCount: number) => ({
       volumeMounts: Array.from({ length: mountCount }, (_, i) => ({
         name: 'workspace', mountPath: `/m${i}`, subPath: `s${i}`,
       })),
+      readinessProbe: { httpGet: { path: '/', port: 3000 } },
     }],
     volumes: [],
   },
