@@ -35,13 +35,7 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 
 **Constraint**: Tier 2 emits EXACTLY ONE task. If the directive truly needs more than one independent unit of work, classify as Tier 3 (or 4 when refs-grounded) instead. Tier 3/4 emit `>= 2` tasks AND MUST include a dedicated verification task (`type: "verification"`, `priority: 1000`).
 
-**Constraint — deep-think principle (Tier 2 / Tier 3 directive cases, no design refs)**: You do NOT yet know the solution. The solution is the responsibility of the `plan` node, which has 15 rounds of tool-loop reasoning to settle approach, naming, signatures, and physical layout. Your job at decompose is to set the SCOPE for that thinking, NOT to invent a solution and freeze it into task descriptions.
-- A Tier 3 directive case where deep-think will likely converge on a single coherent unit is a **legitimate `[feature × 1 + verification × 1]` shape** (2 tasks total, satisfies the `>= 2` rule). The plan node may later decide to fan out into N siblings via `batches[]`; it MUST NOT be pre-decided here.
-- A Tier 3 directive case is `[feature × N + verification × 1]` ONLY when the directive itself names a clear, unambiguous physical isolation (different package, different runtime layer such as FE/BE, different artefact file). Otherwise default to the deep-think single-feature shape and let plan decide.
-- When the directive names multiple independent app/package entry points, keep wiring decomposition aligned to each entry-point boundary (one wiring owner per integration point), rather than forcing a project-global singleton wiring task.
-- task `name` and `description` describe the SCOPE OF THINKING, not the solution. Forbidden: choosing concrete file paths, choosing API names / signatures, choosing data structures, prescribing implementation steps. Required: stating the user-visible outcome and the surface to investigate.
-
-**Constraint — Tier 4 task enumeration**: When the active reference document enumerates work units (numbered tasks, sections, requirements, acceptance criteria), every enumerated unit MUST appear as a distinct task in `<tasks>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units the document lists. The breakdown is faithful to the document — not optimized for brevity.
+{{> jobs/code/nodes/decompose/variants/default/tier-deep-think}}
 
 ### Output shape by mode × tier
 
