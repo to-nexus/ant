@@ -39,9 +39,47 @@ export async function waitForTcpReady(
 }
 
 /**
+ * Poll an HTTP endpoint and return the structured result of the first
+ * status < 500 response (or the last observed status / error on timeout).
+ * Does not throw. Used by callers that need to embed the probe outcome
+ * in their own report (e.g. dev-server fact reports) rather than just
+ * "ready vs not".
+ */
+export async function probeHttp(
+  host: string,
+  port: number,
+  path: string = '/',
+  timeoutMs: number = 15_000,
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const start = Date.now();
+  const url = `http://${host}:${port}${path}`;
+  let lastStatus: number | undefined;
+  let lastError: string | undefined;
+  while (Date.now() - start < timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), HTTP_REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      lastStatus = res.status;
+      if (res.status > 0 && res.status < 500) return { ok: true, status: res.status };
+    } catch (err) {
+      lastError = (err as Error).message;
+    } finally {
+      clearTimeout(t);
+    }
+    await new Promise(r => setTimeout(r, HTTP_POLL_INTERVAL_MS));
+  }
+  return {
+    ok: false,
+    status: lastStatus,
+    error: lastError ?? `HTTP endpoint not ready in ${timeoutMs}ms (url=${url})`,
+  };
+}
+
+/**
  * Poll an HTTP endpoint until it returns any status < 500 (200/302/401 etc).
- * Used to confirm the server process is alive and routing — not just that
- * the TCP socket accepted a connection.
+ * Throws on timeout. Used by IDE/K8s readiness gates that want a single
+ * point of failure rather than a structured outcome.
  */
 export async function waitForHttpReady(
   host: string,
@@ -49,20 +87,12 @@ export async function waitForHttpReady(
   path: string = '/',
   timeoutMs: number = 15_000,
 ): Promise<void> {
-  const start = Date.now();
-  const url = `http://${host}:${port}${path}`;
-  while (Date.now() - start < timeoutMs) {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), HTTP_REQUEST_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, { method: 'GET', signal: controller.signal });
-      if (res.status > 0 && res.status < 500) return;
-    } catch {
-      // ignore until ready
-    } finally {
-      clearTimeout(t);
-    }
-    await new Promise(r => setTimeout(r, HTTP_POLL_INTERVAL_MS));
+  const result = await probeHttp(host, port, path, timeoutMs);
+  if (!result.ok) {
+    // Wait-gate semantics: the caller only cares that readiness was not
+    // achieved within the budget. Always surface the timeout framing here
+    // (probeHttp's `error` field carries the fetch-level cause for
+    // structured consumers like the dev-server fact report).
+    throw new Error(`HTTP endpoint not ready in ${timeoutMs}ms (url=http://${host}:${port}${path})`);
   }
-  throw new Error(`HTTP endpoint not ready in ${timeoutMs}ms (url=${url})`);
 }

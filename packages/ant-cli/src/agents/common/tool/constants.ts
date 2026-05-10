@@ -53,13 +53,9 @@ export const LONG_RUNNING_PATTERNS = [
   /make\s+(run|serve|dev)\b/,   // make run, make serve, make dev
 ];
 
-/** Used ONLY by `handleLongRunningCommand.earlyErrorTimeout` (3s window). Do not reuse elsewhere — `/error/i` false-positives on benign substrings. */
-export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i;
-
 // Many real-world commands (npm install, pnpm install, building large bundles)
 // frequently exceed 3 minutes. Keep a more forgiving default to avoid partial installs.
 export const COMMAND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-export const EARLY_ERROR_TIMEOUT = 3000; // 3 seconds
 export const STARTUP_VERIFICATION_TIMEOUT = 5000; // 5 seconds
 
 // Compile-and-run languages (Go, Rust) need longer startup verification

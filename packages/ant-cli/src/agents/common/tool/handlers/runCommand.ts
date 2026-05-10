@@ -45,9 +45,7 @@ import { detectCacheReplay } from '../../../architect/graph/code/tasks/_shared/v
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import {
   LONG_RUNNING_PATTERNS,
-  ERROR_PATTERNS,
   COMMAND_TIMEOUT,
-  EARLY_ERROR_TIMEOUT,
   STARTUP_VERIFICATION_TIMEOUT,
   COMPILE_RUN_STARTUP_TIMEOUT,
   COMPILE_RUN_PATTERNS,
@@ -55,6 +53,7 @@ import {
   SERVER_OUTPUT_PATTERNS,
   ORCHESTRATOR_PORT,
 } from '../constants';
+import { probeHttp } from '../../../../infrastructure/ide/readiness';
 
 const INTERACTIVE_COMMAND_PATTERNS = [
   /\bnpm\s+init\b(?!\s+(-y|--yes))/i,
@@ -576,20 +575,20 @@ async function executeCommandLogic(
           verifies,
         );
       }
-      try {
-        const longRunResult = await handleLongRunningCommand(
-          ctx, command, workingDir, cardId, Boolean(keep_running),
-        );
-        const longRunSuccess = longRunResult.displayText.startsWith('✅');
-        sideEffects.push(makeCommandExecuted({ exitCode: longRunSuccess ? 0 : 1, command, success: longRunSuccess, hasWarnings: false, verifies }));
-        if (longRunResult.serverPid) {
-          sideEffects.push({ type: 'serverStarted', pid: longRunResult.serverPid, command, workingDir });
-        }
-        return { content: longRunResult.displayText, sideEffects };
-      } catch (err) {
-        sideEffects.push(makeCommandExecuted({ exitCode: 1, command, success: false, hasWarnings: false, verifies }));
-        return { content: (err as Error).message, error: (err as Error).message, sideEffects };
+      const r = await handleLongRunningCommand(
+        ctx, command, workingDir, cardId, Boolean(keep_running),
+      );
+      sideEffects.push(makeCommandExecuted({
+        exitCode: r.exitCode ?? (r.success ? 0 : 1),
+        command,
+        success: r.success,
+        hasWarnings: false,
+        verifies,
+      }));
+      if (r.serverPid) {
+        sideEffects.push({ type: 'serverStarted', pid: r.serverPid, command, workingDir });
       }
+      return { content: r.output, sideEffects };
     }
 
     // Normal command path
@@ -814,16 +813,33 @@ async function executeCommandLogic(
 
 type OutputStreamer = ReturnType<typeof createOutputStreamer>;
 
-async function handleLongRunningCommand(
+/**
+ * Long-running command wrapper. Returns an objective fact report — the LLM
+ * judges success vs failure from the embedded `exit:` / `http_probe:` /
+ * `stdout:` / `stderr:` fields. No regex pattern-matching, no editorial
+ * `✅` / `❌` prefix.
+ *
+ * `success` is a deterministic predicate: the child exited cleanly (or is
+ * still running and we killed it) AND the HTTP probe (when run) returned a
+ * status < 500.
+ */
+export async function handleLongRunningCommand(
   ctx: ToolExecutionContext,
   command: string,
   workingDir: string,
   _cardId: string | undefined,
   keepRunning: boolean,
-): Promise<{ displayText: string; serverPid?: number }> {
+): Promise<{
+  success: boolean;
+  output: string;
+  exitCode: number | null;
+  httpProbe?: { ok: boolean; status?: number; error?: string };
+  serverPid?: number;
+}> {
   const { spawn } = await import('child_process');
+  const startedAt = Date.now();
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     const streamer = createOutputStreamer(ctx.chatStatus, command, () => stdout + stderr);
@@ -842,31 +858,51 @@ async function handleLongRunningCommand(
 
     console.log(`   📋 Process spawned with PID: ${child.pid}`);
 
-    let hasError = false;
     let resolved = false;
+    let httpProbe: { ok: boolean; status?: number; error?: string } | undefined;
+    let exitSignal: NodeJS.Signals | null = null;
 
-    const safeResolve = async (message: string, shouldKill = false, pid?: number) => {
+    const buildOutput = (exit: number | null) => [
+      `command: ${command}`,
+      `duration_ms: ${Date.now() - startedAt}`,
+      `exit: ${exit !== null ? String(exit) : (exitSignal ? `signal:${exitSignal}` : 'killed-after-verification')}`,
+      `http_probe: ${
+        httpProbe
+          ? (httpProbe.ok
+              ? `${httpProbe.status}`
+              : `failed: ${httpProbe.error ?? `HTTP ${httpProbe.status ?? '?'}`}`)
+          : 'skipped'
+      }`,
+      `stdout:`,
+      stdout.slice(0, 8000),
+      `stderr:`,
+      stderr.slice(0, 4000),
+    ].join('\n');
+
+    const finalize = async (exit: number | null, opts: { kill: boolean }) => {
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
-      clearTimeout(earlyErrorTimeout);
       streamer.flush();
-      if (shouldKill) {
+      if (opts.kill && child.exitCode === null) {
         if (child.pid) await terminateProcessTree(child.pid);
         else child.kill('SIGTERM');
       }
-      resolve({ displayText: message, serverPid: pid });
-    };
-
-    const safeReject = async (error: Error) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(startupTimeout);
-      clearTimeout(earlyErrorTimeout);
-      streamer.flush();
-      if (child.pid) await terminateProcessTree(child.pid);
-      else child.kill('SIGTERM');
-      reject(error);
+      // exit === null means the child is still alive (we intentionally kill
+      // it, or keepRunning=true and we leave it running); treat as exit-OK.
+      // The httpProbe (if performed) is the second axis: status < 500 is OK.
+      const exitOk = exit === null || exit === 0;
+      const probeOk = httpProbe?.ok ?? true;
+      const success = exitOk && probeOk;
+      const output = buildOutput(exit);
+      await ctx.chatStatus.commandComplete(command, success, exit ?? -1, output);
+      resolve({
+        success,
+        output,
+        exitCode: exit,
+        httpProbe,
+        serverPid: keepRunning && success ? child.pid : undefined,
+      });
     };
 
     child.stdout?.on('data', (data) => {
@@ -874,7 +910,6 @@ async function handleLongRunningCommand(
       stdout += chunk;
       console.log(chunk);
       streamer.schedule();
-      if (ERROR_PATTERNS.test(chunk)) hasError = true;
     });
 
     child.stderr?.on('data', (data) => {
@@ -882,120 +917,42 @@ async function handleLongRunningCommand(
       stderr += chunk;
       console.error(chunk);
       streamer.schedule();
-      if (ERROR_PATTERNS.test(chunk)) hasError = true;
     });
 
     child.on('error', async (err) => {
-      // Skip the entire finalizer if another path already resolved. Node
-      // occasionally fires both 'error' and 'exit' for the same child; the
-      // first one to reach this point owns the outcome. Without this guard
-      // two `commandComplete` calls would emit two `chat_status('command')`
-      // cards for the same invocation.
+      // Node occasionally fires both 'error' and 'exit'; first one to
+      // finalize wins. Spawn failure is encoded as exit:-1 in the fact
+      // report (the fact-report builder shows `signal:` if no exit code
+      // is available, otherwise the numeric exit).
       if (resolved) return;
-      hasError = true;
-      stderr += err.message;
-      // Keep chat.jsonl symmetric: every long-running invocation must
-      // finalize via `commandComplete` so the `chat_status('command')`
-      // card is emitted exactly once per execution. Spawn failure is the
-      // one internal path that previously skipped this.
-      await ctx.chatStatus.commandComplete(command, false, -1, `Spawn error:\n${err.message}`);
-      safeReject(new Error(`❌ FAILED TO SPAWN PROCESS: ${command}\n\nSpawn error: ${err.message}`));
+      stderr += `\n[spawn error] ${err.message}`;
+      await finalize(-1, { kill: false });
     });
-
-    const earlyErrorTimeout = setTimeout(() => {
-      if (hasError) {
-        ctx.chatStatus.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`);
-        safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nEarly startup failure detected.\n\nError output:\n${stderr.slice(0, 2000)}`));
-      }
-    }, EARLY_ERROR_TIMEOUT);
 
     const isCompileRun = COMPILE_RUN_PATTERNS.some(p => p.test(command));
     const effectiveStartupTimeout = isCompileRun ? COMPILE_RUN_STARTUP_TIMEOUT : STARTUP_VERIFICATION_TIMEOUT;
 
     const startupTimeout = setTimeout(async () => {
-      if (!hasError && child.exitCode === null) {
-        console.log(`\n   ✅ Server process started, verifying page render...`);
+      if (resolved || child.exitCode !== null) return;
 
-        const portMatch = stdout.match(/localhost:(\d+)|port\s+(\d+)|:(\d{4,5})\b/i);
-        const port = portMatch ? (portMatch[1] || portMatch[2] || portMatch[3]) : '3000';
-
-        let httpTestResult: { ok: boolean; error?: string } = { ok: true };
-        try {
-          const http = await import('http');
-          const attemptHttpTest = (): Promise<{ ok: boolean; error?: string }> =>
-            new Promise((resolveHttp) => {
-              const req = http.request({
-                hostname: 'localhost', port: parseInt(port), path: '/', method: 'GET', timeout: 30000,
-              }, (res) => {
-                let body = '';
-                res.on('data', (chunk: Buffer) => body += chunk);
-                res.on('end', () => {
-                  const status = res.statusCode ?? 0;
-                  if (status >= 200 && status < 400) resolveHttp({ ok: true });
-                  else {
-                    const errorMatch = body.match(/Error:([^<]+)/i) || body.match(/<pre>([^<]+)<\/pre>/i);
-                    resolveHttp({ ok: false, error: errorMatch ? errorMatch[1].trim().slice(0, 500) : `HTTP ${status}` });
-                  }
-                });
-              });
-              req.on('error', (err: any) => resolveHttp({ ok: false, error: err.message }));
-              req.on('timeout', () => { req.destroy(); resolveHttp({ ok: false, error: 'Request timed out' }); });
-              req.end();
-            });
-
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            const result = await attemptHttpTest();
-            if (result.ok) { httpTestResult = result; break; }
-            if (attempt < 3) {
-              console.log(`   ⏳ HTTP test attempt ${attempt}/3 failed: ${result.error} — retrying...`);
-              await new Promise(r => setTimeout(r, 5000));
-            } else httpTestResult = result;
-          }
-        } catch { /* skip */ }
-
-        if (!httpTestResult.ok && httpTestResult.error) {
-          await ctx.chatStatus.commandComplete(command, false, 1,
-            `Server started but page render failed!\n\n❌ HTTP Test Failed: ${httpTestResult.error}`);
-          safeReject(new Error(`❌ SERVER STARTED BUT PAGE RENDER FAILED: ${command}\n\nHTTP Test Error: ${httpTestResult.error}\n\nStartup output:\n${stdout.slice(0, 1500)}`));
-          return;
-        }
-
-        console.log(`   ✅ Page rendered successfully`);
-
-        const outputMsg = keepRunning
-          ? `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).`
-          : `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server was terminated after verification.`;
-
-        await ctx.chatStatus.commandComplete(command, true, 0, outputMsg);
-
-        const displayText = `✅ SERVER STARTED SUCCESSFULLY: ${command}\n\n✅ HTTP verification passed\n\nStartup output:\n${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}`;
-
-        if (keepRunning) {
-          safeResolve(displayText, false, child.pid);
-        } else {
-          safeResolve(displayText, true);
-        }
-      } else if (hasError) {
-        await ctx.chatStatus.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`);
-        safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nError:\n${stderr.slice(0, 2000)}`));
+      console.log(`\n   🔎 Verifying server response...`);
+      const portMatch = stdout.match(/localhost:(\d+)|port\s+(\d+)|:(\d{4,5})\b/i);
+      const port = portMatch ? parseInt(portMatch[1] || portMatch[2] || portMatch[3], 10) : 3000;
+      try {
+        httpProbe = await probeHttp('localhost', port, '/', 15_000);
+      } catch (err) {
+        httpProbe = { ok: false, error: (err as Error).message };
       }
+
+      // Verification window over: kill if user didn't request keep-running,
+      // otherwise leave the child alive but still report.
+      await finalize(child.exitCode, { kill: !keepRunning });
     }, effectiveStartupTimeout);
 
     child.on('exit', async (code, signal) => {
-      // Mirror of the `child.on('error')` guard — any earlier finalizer
-      // (earlyErrorTimeout, startupTimeout, 'error') already called
-      // `commandComplete` (which emits the `chat_status('command')`
-      // line) and resolved the outer promise. A late exit fire would
-      // otherwise emit a second `chat_status` card for the same command.
       if (resolved) return;
-      const output = stdout + stderr;
-      if (code === 0 && !hasError) {
-        await ctx.chatStatus.commandComplete(command, true, 0, output);
-        safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`, true);
-      } else {
-        await ctx.chatStatus.commandComplete(command, false, code || 1, output);
-        safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nExit code: ${code || 'killed'}\nSignal: ${signal || 'none'}\n\nError output:\n${stderr.slice(0, 2000)}`));
-      }
+      exitSignal = signal;
+      await finalize(code, { kill: false });
     });
   });
 }
