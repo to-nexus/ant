@@ -219,6 +219,58 @@ tool 노드는 user 메시지(tool_result 블록)만 추가한다. assistant 메
 | `buildAssistantMessage(options)` | LLM 노드 → history | thinking + text + tool_use 블록을 Anthropic assistant 메시지로 조립. 단일 text만 있으면 string shorthand 반환 |
 | `buildToolResultMessage(events)` | tool 노드 → history | `ToolExecutionEvent[]` → tool_use + tool_result 블록 쌍 반환 |
 
+## RUN_COMMAND — long-running detection + fact report
+
+`runCommand.ts`는 명령어가 dev server / 워치 모드처럼 장시간 실행되는지 판정한 뒤, 그런 경우 `handleLongRunningCommand`로 분기한다. 이 함수의 반환은 LLM 이 직접 판단할 수 있는 **객관적 사실 보고서**다 — 래퍼는 어떤 verdict 도 합성하지 않는다.
+
+### 반환 형태
+
+```ts
+{
+  success: boolean;     // exitCode∈{0,null} && (httpProbe?.ok ?? true)
+  output: string;       // 사실 보고서 (verdict prefix 없음)
+  exitCode: number | null;  // null = verification 창 동안 살아있어 강제 종료됨
+  httpProbe?: { ok: boolean; status?: number; error?: string };
+  serverPid?: number;   // keepRunning + success 인 경우만
+}
+```
+
+`output` 의 본문 구조 (모든 결과 분기에서 동일):
+
+```
+command: <command>
+duration_ms: <int>
+exit: <code | "signal:..." | "killed-after-verification">
+http_probe: <status | "failed: ..." | "skipped">
+stdout:
+<stdout, ≤8000 chars>
+stderr:
+<stderr, ≤4000 chars>
+```
+
+### 동작
+
+- 자식 프로세스의 stdout/stderr 는 **regex 판단 없이** 누적만 한다. 옛 `ERROR_PATTERNS` regex / `hasError` 플래그 / 3s `EARLY_ERROR_TIMEOUT` 분기는 모두 폐기.
+- `STARTUP_VERIFICATION_TIMEOUT` (compile-and-run 명령은 `COMPILE_RUN_STARTUP_TIMEOUT`) 만료 시점에 `infrastructure/ide/readiness::probeHttp` 로 한 번 폴링. 결과 (`status` 또는 `error`) 를 `httpProbe` 에 그대로 저장.
+- `keepRunning=false` 면 verification 창 종료 후 자식을 강제 종료. 자식이 자체적으로 종료되면 `child.on('exit')` 가 같은 finalizer 로 합류.
+- `success` 는 단일 deterministic predicate (`exitCode∈{0,null} && (httpProbe?.ok ?? true)`). 호출자 (`runCommand.ts:578`) 는 `r.success` 를 직접 읽어 `commandExecuted` side-effect 의 `success` 필드를 채운다 — 문자열 prefix 를 sniff 하지 않는다.
+
+### LLM 측 contract
+
+LLM 은 `output` 의 `exit:` / `http_probe:` 행과 stdout/stderr 안의 프레임워크 에러 글리프 (`⨯`, `❌`, `Failed to compile`, etc.) 를 **직접 읽어** 후속 행동을 결정한다. 래퍼가 verdict 를 굳히지 않으므로 verification task 의 `<done>` 결정은 LLM judgment from conversation history 라는 SSOT (17-code-verification-task.md §1.2) 와 어긋나지 않는다.
+
+### HTTP probe SSOT
+
+`infrastructure/ide/readiness.ts` 가 단일 폴링 루프 SSOT 다:
+
+| API | 반환 | 용도 |
+|---|---|---|
+| `probeHttp(host, port, path?, timeoutMs?)` | `{ ok, status?, error? }` | 사실 보고서용 (래퍼에서 호출) |
+| `waitForHttpReady(host, port, path?, timeoutMs?)` | `void` (timeout 시 throw) | wait-gate (IDEService / KubernetesIDEOrchestrator 가 호출) |
+| `waitForTcpReady(host, port, timeoutMs?)` | `void` (timeout 시 throw) | TCP 단계 readiness |
+
+`waitForHttpReady` 는 `probeHttp` 위에 얇은 wrapper — 단일 내부 루프, 두 공개 contract.
+
 ## CodeCommandPolicy
 
 `codeCommandPolicy.ts` — Code job의 `RUN_COMMAND`에만 적용되는 실행 전 가드.
