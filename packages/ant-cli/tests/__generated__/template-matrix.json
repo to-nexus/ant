@@ -773,6 +773,11 @@
       "partial-ref"
     ]
   },
+  "jobs/code/nodes/decompose/variants/default/tier-deep-think": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/code/nodes/detect/variants/default/base": {
     "sources": [
       "render-call"
