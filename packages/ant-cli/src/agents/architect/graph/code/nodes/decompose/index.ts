@@ -810,14 +810,44 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         pool,
         hasErrorInDirective,
       });
+      // Tier 3 cross-task analysis brief — required by the deep-think
+      // contract. Tier 4 has the external ref doc as the cross-task SSOT
+      // and Tier 0/1/2 do not need a cross-task channel; only Tier 3
+      // emits. Missing at Tier 3 retries with framing; spurious emission
+      // at Tier 4 is dropped with a warning.
+      let analysisRequiredFraming = '';
+      if (executionTier === 3 && !parsed.analysis) {
+        analysisRequiredFraming =
+          '\n\n[ANALYSIS REQUIRED] Your previous response classified ' +
+          '`<executionTier>3</executionTier>` but did NOT emit ' +
+          '`<analysis>...</analysis>`. Tier 3 has no external reference document, ' +
+          'so the per-task `plan` nodes need a job-level brief that captures the ' +
+          'macro goal, decomposition rationale, cross-cutting concerns, and (for ' +
+          'error cases) the diagnosis + solution direction. Re-emit the response ' +
+          'with an `<analysis>...</analysis>` block placed BEFORE `<tasks>` ' +
+          '(free-form markdown, ~0.5–3 KB). Forbidden at Tier 4; required at Tier 3.\n';
+      }
+      if (executionTier === 4 && parsed.analysis) {
+        console.warn(
+          '⚠️  [Decompose] <analysis> emitted at Tier 4 — dropping. The ' +
+            'reference document is the cross-task SSOT at Tier 4; <analysis> ' +
+            'is duplicate.',
+        );
+        parsed.analysis = undefined;
+      }
+
       // Even if executionTier passed, retry when decision tags are missing
       // for matrix-active tiers (game projects need gameArtTier/gameContentTier
-      // emission for the LLM SSOT to be honoured).
-      if (decisionTagViolationFraming && attempt < MAX_ATTEMPTS) {
+      // emission for the LLM SSOT to be honoured) OR when Tier 3 analysis
+      // is missing.
+      if ((decisionTagViolationFraming || analysisRequiredFraming) && attempt < MAX_ATTEMPTS) {
         console.warn(
-          `⚠️  [Decompose] Decision tag violation attempt ${attempt}/${MAX_ATTEMPTS} — retrying with framing.`,
+          `⚠️  [Decompose] Contract violation attempt ${attempt}/${MAX_ATTEMPTS} — retrying with framing` +
+            (analysisRequiredFraming ? ' (analysis required)' : '') +
+            (decisionTagViolationFraming ? ' (decision tags)' : '') +
+            '.',
         );
-        prompts.user = originalUserPrompt + decisionTagViolationFraming;
+        prompts.user = originalUserPrompt + decisionTagViolationFraming + analysisRequiredFraming;
         continue;
       }
       break; // contract satisfied
@@ -1410,6 +1440,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     _phaseTimings: finalPhaseTimings,
     boundary: finalBoundary,
     executionTier,
+    analysis: parsed.analysis,
     directHints,
     specClarify: undefined,
     awaitingDecomposeClarify: false,

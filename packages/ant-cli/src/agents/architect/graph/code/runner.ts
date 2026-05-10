@@ -101,6 +101,13 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         if (session.state.planText) {
           initial.planText = session.state.planText;
         }
+
+        // ✅ Restore Tier 3 cross-task analysis brief — every per-task
+        // plan reads `state.analysis`, so a resume that skips decompose
+        // must rehydrate it from the prior job's checkpoint.
+        if (session.state.analysis) {
+          initial.analysis = session.state.analysis;
+        }
         
         // ✅ Restore conversations for mid-task resume (execute continues from interruption point)
         if (session.state.conversations) {

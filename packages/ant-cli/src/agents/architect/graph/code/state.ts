@@ -579,6 +579,26 @@ export interface ArchitectGraphState extends TriageableState {
   executionTier?: ExecutionTierId;
 
   /**
+   * Code-job Tier 3 cross-task analysis brief — sealed by Decompose.
+   *
+   * Tier 3 has no external reference document, so the only cross-task
+   * carrier of "macro goal / cross-cutting concerns / decomposition
+   * rationale / (error case) diagnosis + solution direction" is this
+   * channel. Every per-task `plan` node reads it via prompt vars
+   * (`analysis` / `hasAnalysis`) and uses it to keep each task's
+   * solution aligned with the job-level intent.
+   *
+   * - Writer: `decompose` parses `<analysis>...</analysis>` from the LLM
+   *   response and assigns when `executionTier === 3`. Missing at Tier 3
+   *   triggers an inline retry framing. Forbidden at Tier 4 (the ref
+   *   document is the SSOT). Skipped at Tier 0 / 1 / 2.
+   * - Readers: every per-task `plan` invocation, via `buildPlanPrompt`
+   *   threading `state.analysis` into Handlebars vars.
+   * - Reset rule: never reset within a job; re-decompose overwrites.
+   */
+  analysis?: string;
+
+  /**
    * Hints produced by Decompose for the `direct` node (Tier 0 / Tier 1 paths).
    * `targetFiles` applies when concrete targets are identifiable from
    * directive+context (generate/refactor at Tier 1). `explorationScope`

@@ -179,6 +179,14 @@ export async function buildPlanPrompt(
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,
+    // Tier 3 cross-task analysis brief — sealed by Decompose; renders
+    // job-level macro goal / cross-cutting concerns / decomposition
+    // rationale / (error case) diagnosis + solution direction. Consumed
+    // by `templates/jobs/code/nodes/plan/injections/analysis-block.md`
+    // (gated `{{#if hasAnalysis}}`). Forbidden at Tier 4; absent at
+    // Tier 0/1/2 — those rows leave the block silently empty.
+    analysis: state.analysis ?? '',
+    hasAnalysis: !!state.analysis,
     // Service Virtualization gates (SBS) — three orthogonal partials
     // (contract / data / imagery). `hasBusinessConnection` is derived
     // once at resolve and parked on `state.virtualizationSnapshot`.

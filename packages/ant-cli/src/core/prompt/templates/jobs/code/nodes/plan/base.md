@@ -56,6 +56,8 @@ from the summary.
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/code/nodes/plan/injections/analysis-block}}
+
 {{#if hasSystemDesign}}
 🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
 

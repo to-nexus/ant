@@ -591,6 +591,13 @@ describe('Template Smoke Tests', () => {
       // `sealed-plan-rules` partial has a {{else}} fallback branch and
       // is therefore NOT in this allow-list.
       'jobs/design/nodes/execute/injections/sealed-plan-block',
+      // Code Tier 3 cross-task analysis brief is wrapped in
+      // {{#if hasAnalysis}} (no {{else}}) — same Contract pattern as
+      // sealed-plan-block. Tier 4 forbids emission, Tier 0/1/2 skip,
+      // and only Tier 3 with a non-empty `<analysis>` body activates
+      // the block. Smoke renders without vars, so the partial is empty
+      // by design.
+      'jobs/code/nodes/plan/injections/analysis-block',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

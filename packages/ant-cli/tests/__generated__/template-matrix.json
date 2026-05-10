@@ -960,6 +960,12 @@
       "render-call"
     ]
   },
+  "jobs/code/nodes/plan/injections/analysis-block": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/plan/injections/ui-source-inventory": {
     "sources": [
       "partial-ref",

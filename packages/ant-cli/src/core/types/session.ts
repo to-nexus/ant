@@ -281,6 +281,17 @@ export interface SessionState {
   executionTier?: ExecutionTierId;
 
   /**
+   * Code-job Tier 3 cross-task analysis brief (`<analysis>` tag from
+   * Decompose). Sealed at decompose time; injected into every per-task
+   * `plan` node so that each task knows the job-level macro goal,
+   * decomposition rationale, cross-cutting concerns, and (for error
+   * cases) the diagnosis / solution direction. Tier 4 has the external
+   * reference document as its cross-task SSOT; Tier 0/1/2 do not need
+   * a cross-task channel — emit forbidden / skipped at those tiers.
+   */
+  analysis?: string;
+
+  /**
    * Hints produced by the Tier Entry Node for the `direct` node
    * (Tier 0 / Tier 1 paths). Persisted so resume paths can rebuild
    * direct-node context without re-running decompose. Tier 2+ routes to
