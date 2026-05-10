@@ -765,6 +765,19 @@ register({
 });
 
 register({
+  name: 'analysis',
+  pattern: /<analysis>\s*[\s\S]*?\s*<\/analysis>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-suppressed'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  promptContract:
+    'Emit `<analysis>...</analysis>` ONLY at executionTier=3 in the code job. Body is free-form markdown (≈0.5–3 KB) capturing macro goal, decomposition rationale, cross-cutting concerns, and (for error cases) diagnosis + solution direction. Forbidden at Tier 4 (the reference document is the cross-task SSOT). Skipped at Tier 0 / 1 / 2.',
+});
+
+register({
   name: 'specClarify',
   pattern: /<specClarify>\s*[\s\S]*?\s*<\/specClarify>/i,
   axis: {

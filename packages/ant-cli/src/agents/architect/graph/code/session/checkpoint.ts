@@ -85,6 +85,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       // persist directHints — the direct node needs these on resume
       // to rebuild its framing without re-running decompose.
       ...(state.executionTier !== undefined && { executionTier: state.executionTier }),
+      ...(state.analysis && { analysis: state.analysis }),
       ...(state.directHints && { directHints: state.directHints }),
     };
     

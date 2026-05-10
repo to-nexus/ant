@@ -191,6 +191,15 @@ export interface ParsedDecomposeResponse {
   directHints?: { targetFiles?: string[]; explorationScope?: string };
   /** Design-redirect choice when task requires spec that is missing (see SpecClarify). */
   specClarify?: SpecClarify;
+  /**
+   * Tier 3 cross-task analysis brief — free-form markdown body of
+   * `<analysis>...</analysis>`. Sealed by Decompose, injected into every
+   * per-task `plan` so each task knows the job-level macro goal /
+   * cross-cutting concerns / decomposition rationale / (error case)
+   * diagnosis + solution direction. Forbidden at Tier 4; skipped at
+   * Tier 0/1/2.
+   */
+  analysis?: string;
 }
 
 /**
@@ -403,6 +412,15 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
+    let analysis: string | undefined;
+    const analysisMatch = rawResponse.match(/<analysis>\s*([\s\S]*?)\s*<\/analysis>/i);
+    if (analysisMatch) {
+      const body = analysisMatch[1].trim();
+      if (body.length > 0) {
+        analysis = body;
+      }
+    }
+
     return {
       tasks,
       referenceRequests,
@@ -411,6 +429,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       executionTier,
       directHints,
       specClarify,
+      analysis,
     };
     
   } catch (error) {

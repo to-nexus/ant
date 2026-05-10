@@ -12,14 +12,17 @@
 - Every enumerated unit MUST appear as a distinct `<task>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units. Do NOT invent units the document does not list.
 - The breakdown is faithful to the document — not optimized for brevity.
 - Tool calls (`read_file` / `list_files`) are available but should be used sparingly — the document is the authority. Codebase ground-truth verification belongs to the per-task `plan` node, not here.
+- Do NOT emit `<analysis>...</analysis>`. The reference document is the cross-task SSOT at Tier 4 — emitting `<analysis>` here is duplicate and forbidden.
 
 ### Tier 3 — Problem Discovery, Not Solution Discovery
 
 **Context**: No reference document grounds the breakdown. The directive states an outcome; identify the **unit-level problems** that, when each solved, produce that outcome.
 
 **Two distinct mental moves**:
-1. **Problem identification** (decompose's job) — "What unit problems exist? What surfaces / boundaries / cross-cutting concerns will need attention?"
-2. **Solution design** (NOT decompose's job — per-task `plan`) — "How exactly do we fix this? Which file? Which signature?"
+1. **Problem identification + Solution direction** (decompose's job):
+   - **Feature case** (feature / setup / ui task dominant) — Identify what problems exist, then decide the system-integration direction (which modules / layers must be touched together for coherence) and the side-effect avoidance plan.
+   - **Error case** (error task dominant) — Identify the root cause (silver bullet, or high-confidence diagnosis) and decide the solution direction.
+2. **Solution implementation detail** (NOT decompose's job — per-task `plan`) — "Which file? Which signature? Which exact step?"
 
 **Constraints — what decompose decides**:
 - Stop at unit-of-work granularity. A task scopes a problem, not a solution.
@@ -41,6 +44,18 @@
 - Have I identified what is genuinely problematic about this directive, not just rephrased its words?
 - Are there implicit surfaces (auth, error handling, persistence, observability) the directive does not name but the outcome requires?
 - Would a thoughtful engineer reading this list say "yes, that's the actual scope" — or "you're missing X" / "X and Y are the same task"?
+
+**Required emission — `<analysis>...</analysis>` (Tier 3 only)**:
+
+Tier 3 has no external reference document, so the only carrier of job-level intent reaching every per-task `plan` is the `<analysis>` block you emit here. Emit it BEFORE `<tasks>` so the brief is sealed before the task list is finalized.
+
+- Format: free-form markdown, ~0.5 – 3 KB.
+- Position: between the response prelude and `<tasks>`. One block per response.
+- Content axes (case-split):
+  - **Feature case** — System-integration direction; side-effect avoidance plan; macro goal (what user-visible outcome the directive targets); decomposition rationale (why these tasks).
+  - **Error case** — Silver bullet / diagnosis; solution direction (without prescribing concrete file / signature — that stays plan's job); affected surfaces; step rationale (which task is which step of the solution).
+  - **Common (both cases)** — Cross-cutting concerns (auth / error handling / persistence / observability surfaces every task must respect); implicit surfaces (what the directive does not name but the outcome requires).
+- Forbidden inside `<analysis>`: concrete file paths, API signatures, full implementation steps. Those decisions stay with per-task `plan`.
 
 ### Tier 2 — Single-Unit Problem Identification
 
