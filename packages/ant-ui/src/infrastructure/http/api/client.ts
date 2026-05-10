@@ -148,7 +148,10 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
  * 401 interceptor — single sink for stale-session detection on protected
  * requests. Called by all `apiGet/Post/Put/Patch/Delete` helpers; **skipped
  * for `/auth/me`** (which returns 200+null by contract — a 401 there would
- * be a backend bug, not a stale session).
+ * be a backend bug, not a stale session) and **for cross-host URLs** (a
+ * 401 from `ant-preview` / `ant-realtime` means that host can't see the
+ * cookie or rejected the JWT, not that the API session is dead — see
+ * `isApiHostUrl`).
  *
  * On 401:
  *   1. mark session-expired (suppresses SSE auto-reconnect)
@@ -163,10 +166,29 @@ function isAuthMeUrl(url: string): boolean {
   return url.endsWith('/auth/me') || url.includes('/auth/me?');
 }
 
+/**
+ * Scopes the 401 cascade to API-host URLs. A 401 from `ant-preview` or
+ * `ant-realtime` means that host can't authenticate the request (cookie
+ * scope, pod restart race, etc.) — it doesn't imply the API session is
+ * dead, so we don't tear down the user.
+ *
+ * Relative URLs are always API-bound (Vite proxy / same-origin deploy).
+ */
+function isApiHostUrl(url: string): boolean {
+  if (!/^https?:\/\//i.test(url)) return true;
+  try {
+    const apiOrigin = new URL(API_BASE(), window.location.origin).origin;
+    return new URL(url).origin === apiOrigin;
+  } catch {
+    return true; // fail-safe: behave like before
+  }
+}
+
 let session401Cascading = false;
 
 async function handle401Cascade(url: string): Promise<void> {
   if (isAuthMeUrl(url)) return;
+  if (!isApiHostUrl(url)) return;
   if (session401Cascading) return;
   session401Cascading = true;
   try {

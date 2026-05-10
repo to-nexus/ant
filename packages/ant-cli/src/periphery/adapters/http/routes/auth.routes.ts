@@ -231,6 +231,11 @@ export function createAuthRoutes(deps: {
    * unauthenticated probes as console errors.
    */
   router.get('/auth/me', (req: Request, res: Response) => {
+    // Authoritative session state — must never be cached by intermediaries
+    // (CloudFront, browser, proxy). A stale cached `{user: ...}` after the
+    // user has signed out would re-authenticate the post-logout reload.
+    res.set('Cache-Control', 'private, no-store');
+
     if (!jwtService) {
       return res.status(503).json({ error: 'JWT not configured' });
     }
@@ -270,14 +275,46 @@ export function createAuthRoutes(deps: {
   
   /**
    * POST /api/auth/signout
-   * Clears the JWT cookie.
+   *
+   * Clears the JWT cookie. Emits TWO clearCookie calls — one with the
+   * inferred `Domain` (post-81637eaf SSOT), and one host-only legacy
+   * drain. RFC 6265bis requires attribute-set match for clearCookie, so a
+   * Domain=.crosstoken.io clear can't touch a host-only cookie left over
+   * from a pre-81637eaf deploy. The second call drains those legacy
+   * cookies; idempotent when none exist.
+   *
+   * Sunset: remove the legacy drain after a 14-day window during which
+   * `ANT_AUTH_DEBUG=1` shows no host-only cookies in the wild.
    */
   router.post('/auth/signout', (req: Request, res: Response) => {
+    res.set('Cache-Control', 'private, no-store');
+
     if (jwtService) {
+      // Primary: clears post-81637eaf cookies via the SSOT options resolver.
       res.clearCookie(
         JwtService.cookieName,
         jwtService.getClearCookieOptions(isProduction, req.hostname),
       );
+      // Legacy drain: host-only cookies from pre-81637eaf deploys. Same
+      // attribute set as the primary call EXCEPT no `domain`, so the
+      // browser matches it against the host-only cookie and clears it.
+      res.clearCookie(JwtService.cookieName, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        path: '/',
+      });
+
+      // Gated diagnostic — flip ANT_AUTH_DEBUG=1 for one reproduce window.
+      // Logs every cookie sent in the request (so we see *all* `ant_session`
+      // instances and their order) plus the resolved clearCookie options.
+      if (process.env.ANT_AUTH_DEBUG === '1') {
+        const setCookieHeader = res.getHeader('Set-Cookie');
+        logger.info(
+          `[Auth][debug] /auth/signout hostname=${req.hostname} rawCookieHeader="${req.headers.cookie ?? ''}" clearOptions=${JSON.stringify(jwtService.getClearCookieOptions(isProduction, req.hostname))} setCookieResp=${JSON.stringify(setCookieHeader ?? '')}`,
+          { component: 'Auth' },
+        );
+      }
     }
     res.json({
       success: true,

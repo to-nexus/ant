@@ -13,10 +13,13 @@ import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { selectActiveEditorTab } from '@/domain/store/selectors/editorTabs';
+import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
+import { OAUTH_BASE } from '@/infrastructure/http/api';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useTranslation } from 'react-i18next';
+import { getSignInUrl } from '@ant/auth-client';
 import {
   AsyncBoundary,
   EmptyFallback,
@@ -44,6 +47,7 @@ export function MainContentArea({
 }: MainContentAreaProps) {
   const { t } = useTranslation('explorer');
   const { t: tAsync } = useTranslation('async');
+  const { t: tAuth } = useTranslation('auth');
   const activeTab = useStore((s) => s.mainPanelActiveTab);
   const openTabs = useStore((s) => s.mainPanelOpenTabs);
   const selectedFile = useStore((s) => s.selectedFile);
@@ -54,6 +58,7 @@ export function MainContentArea({
   const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
   const updateProjectConfig = useStore((s) => s.updateProjectConfig);
   const projectConfigResource = useAsyncResource<ProjectConfig>((s) => s.projectConfig);
+  const isAuthBlocked = useStore(selectIsAuthBlocked);
 
   const handleSaveProjectConfig = async (config: ProjectConfig) => {
     if (!selectedProject) return { success: false, error: 'No project selected' };
@@ -70,7 +75,25 @@ export function MainContentArea({
 
   return (
     <MainPanel headerBar={<MainPanelTabsBar />}>
-      {connectionStatus !== 'connected' ? (
+      {isAuthBlocked ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="text-6xl mb-4">🔐</div>
+            <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              {t('panel.signInRequired')}
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              {t('panel.signInHint')}
+            </p>
+            <a
+              href={getSignInUrl({ oauthBase: OAUTH_BASE(), returnTo: '/app/' })}
+              className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 transition-colors"
+            >
+              {tAuth('signIn.button')}
+            </a>
+          </div>
+        </div>
+      ) : connectionStatus !== 'connected' ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <div className="text-6xl mb-4">🔌</div>
