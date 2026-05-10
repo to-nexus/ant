@@ -86,6 +86,11 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // Error tasks always operate on a user-reported failure scenario;
     // the persistent-process partial unlocks reproducer commands here.
     allowPersistentProcesses: true,
+    // Tier 3 cross-task analysis brief (sealed by Decompose). Wired
+    // identically to the generic `buildPlanPrompt` (`plan/llm/prompt.ts`)
+    // so error tasks see the same job-level intent as feature/setup/ui.
+    analysis: state.analysis ?? '',
+    hasAnalysis: !!state.analysis,
     ...depSnapshot,
   });
 
