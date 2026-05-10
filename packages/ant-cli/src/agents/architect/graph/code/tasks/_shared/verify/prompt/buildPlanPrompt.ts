@@ -141,6 +141,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // sub-tasks present).
     allowPersistentProcesses: hasUserRuntimeErrorContext,
     parityActive,
+    // Tier 3 cross-task analysis brief (sealed by Decompose).
+    analysis: state.analysis ?? '',
+    hasAnalysis: !!state.analysis,
     ...depSnapshot,
   });
 
