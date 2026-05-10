@@ -28,6 +28,29 @@ import { DevProcessControl, isPortConflictOutput } from '../../../../../core/pro
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
+/**
+ * Choose the appropriate post-validation status line for the preview spawn loop.
+ *
+ * The FE preview state machine ([packages/ant-ui/.../FeatureSection/utils/preview.ts])
+ * matches `'All preview servers started'` to transition packages to `'running'`.
+ * Emit it only when no package crashed during the settling window so the UI
+ * doesn't show a false `'running'` state for a partially-broken preview.
+ */
+export function summarizePreviewSpawnOutcome(
+  orderedPackages: ReadonlyArray<{ name: string; process?: ChildProcess | null }>,
+): { type: 'stdout' | 'stderr'; message: string } {
+  const crashedDuringSettling = orderedPackages
+    .filter(p => p.process != null && p.process.exitCode !== null && p.process.exitCode !== 0)
+    .map(p => p.name);
+  if (crashedDuringSettling.length === 0) {
+    return { type: 'stdout', message: '✅ All preview servers started successfully!' };
+  }
+  return {
+    type: 'stderr',
+    message: `❌ Preview started with ${crashedDuringSettling.length} failed package(s): ${crashedDuringSettling.join(', ')}`,
+  };
+}
+
 // Distributed lock for preview operations (prevents multi-pod race)
 const PREVIEW_LOCK_TTL_SECONDS = 120; // 2 minutes — covers npm install + startup
 const PREVIEW_LOCK_PREFIX = 'ant:lock:preview:';
@@ -867,8 +890,6 @@ export class PreviewService {
         return { success: false, error: 'Preview start was cancelled', serverKey };
       }
       
-      this.appendLog(serverKey, 'stdout', '✅ All preview servers started successfully!');
-      
       // 6. Validate frontend setup.
       //    Single-frontend: entry validation is fatal (existing behavior).
       //    Multi-frontend:  entry validation remains fatal (the project has
@@ -917,6 +938,11 @@ export class PreviewService {
           }
         }
       }
+
+      // Status summary line — gated on factual outcome (no editorial verdict).
+      // See `summarizePreviewSpawnOutcome` for the SSOT decision logic.
+      const summary = summarizePreviewSpawnOutcome(orderedPackages);
+      this.appendLog(serverKey, summary.type, summary.message);
 
       // 7. Non-fatal issues detection
       const entryFrontendPath = structure.entry?.type === 'frontend' ? structure.entry.path : undefined;
