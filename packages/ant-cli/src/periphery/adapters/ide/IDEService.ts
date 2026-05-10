@@ -11,8 +11,8 @@ import { PortManager } from '../../../infrastructure/networking/PortManager';
 import { PortRegistryPort } from '../../../core/ports/portRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as net from 'net';
 import { logger } from '../../../utils/logger';
+import { waitForTcpReady, waitForHttpReady } from '../../../infrastructure/ide/readiness';
 import { WorkspacePathResolver } from '../../../core/config/WorkspacePathResolver';
 import { GitHelper } from '../http/services/GitService/helper/GitHelper';
 import { RESERVED_FEATURE_NAME } from '../../../core/utils/branchUtils';
@@ -210,45 +210,11 @@ export class IDEService {
   }
 
   private async waitForIdePortReady(port: number, timeoutMs: number = 30_000): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const ok = await new Promise<boolean>((resolve) => {
-        const socket = net.createConnection({ host: '127.0.0.1', port });
-        const done = (result: boolean) => {
-          socket.removeAllListeners();
-          socket.destroy();
-          resolve(result);
-        };
-        socket.setTimeout(800);
-        socket.once('connect', () => done(true));
-        socket.once('timeout', () => done(false));
-        socket.once('error', () => done(false));
-      });
-      if (ok) return;
-      await new Promise(r => setTimeout(r, 300));
-    }
-    throw new Error(`IDE port not ready in ${timeoutMs}ms (port=${port})`);
+    return waitForTcpReady('127.0.0.1', port, timeoutMs);
   }
 
-  // ✅ More strict readiness: confirm the HTTP server responds (prevents "connection reset" first load)
   private async waitForIdeHttpReady(port: number, timeoutMs: number = 15_000): Promise<void> {
-    const start = Date.now();
-    const url = `http://127.0.0.1:${port}/`;
-    while (Date.now() - start < timeoutMs) {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 1000);
-      try {
-        const res = await fetch(url, { method: 'GET', signal: controller.signal });
-        // 200/302/401 etc are fine; we just want the server to be alive and speaking HTTP.
-        if (res.status > 0 && res.status < 500) return;
-      } catch {
-        // ignore until ready
-      } finally {
-        clearTimeout(t);
-      }
-      await new Promise(r => setTimeout(r, 300));
-    }
-    throw new Error(`IDE HTTP not ready in ${timeoutMs}ms (port=${port})`);
+    return waitForHttpReady('127.0.0.1', port, '/', timeoutMs);
   }
   
   /**

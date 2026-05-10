@@ -32,6 +32,7 @@ import { createIDEKey, parseIDEKey } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import { resolveK8sWorktreeMounts } from './k8sWorktreeMounts';
+import { waitForHttpReady } from './readiness';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -61,6 +62,14 @@ interface K8sPod {
         requests?: { cpu?: string; memory?: string };
       };
       volumeMounts?: Array<{ name: string; mountPath: string; subPath?: string }>;
+      readinessProbe?: {
+        httpGet?: { path: string; port: number };
+        initialDelaySeconds?: number;
+        periodSeconds?: number;
+        timeoutSeconds?: number;
+        failureThreshold?: number;
+        successThreshold?: number;
+      };
     }>;
     volumes?: Array<{
       name: string;
@@ -398,7 +407,19 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             { name: 'workspace', mountPath: '/workspace', subPath: primarySubPath },
             // Absolute-path worktree mounts (empty for base / non-worktree).
             ...worktreeMounts,
-          ]
+          ],
+          // K8s gates Service Endpoints on this probe — not-ready pods are
+          // automatically excluded, so the proxy never forwards static-asset
+          // requests to a still-booting openvscode-server. failureThreshold
+          // gives ~60s grace for cold pulls / first-boot init.
+          readinessProbe: {
+            httpGet: { path: `/ide/${instanceKey}/`, port: 3000 },
+            initialDelaySeconds: 1,
+            periodSeconds: 1,
+            timeoutSeconds: 2,
+            failureThreshold: 60,
+            successThreshold: 1,
+          },
         }],
         volumes: [{
           name: 'workspace',
@@ -458,17 +479,32 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     try {
       const expectedExtraMounts = resolveK8sWorktreeMounts(workspacePath, getWorkspaceBasePath());
       const expectedCount = 1 + expectedExtraMounts.length; // alias mount + worktree mounts
-      const actualCount = existingPod.spec?.containers?.[0]?.volumeMounts?.length ?? 0;
-      if (expectedCount === actualCount) return false;
-      logger.warn(`Mount count mismatch on existing pod`, {
-        component: 'KubernetesIDEOrchestrator',
-      }, {
-        feature,
-        actualCount,
-        expectedCount,
-        workspacePath,
-      });
-      return true;
+      const container = existingPod.spec?.containers?.[0];
+      const actualCount = container?.volumeMounts?.length ?? 0;
+      if (expectedCount !== actualCount) {
+        logger.warn(`Mount count mismatch on existing pod`, {
+          component: 'KubernetesIDEOrchestrator',
+        }, {
+          feature,
+          actualCount,
+          expectedCount,
+          workspacePath,
+        });
+        return true;
+      }
+
+      // Drift also covers spec features added in newer code that the existing
+      // pod predates (pod spec is immutable). Without this, pods created
+      // before the readinessProbe rollout would be reused indefinitely and
+      // the IDE-readiness race would never be closed for those sessions.
+      if (!container?.readinessProbe?.httpGet) {
+        logger.warn(`Existing pod has no readinessProbe — recreating to apply HTTP-readiness gate`, {
+          component: 'KubernetesIDEOrchestrator',
+        }, { feature, workspacePath });
+        return true;
+      }
+
+      return false;
     } catch (err: any) {
       // Inspection error (e.g. malformed pod spec) — keep existing pod, don't churn.
       logger.warn(`hasMountDrift inspection failed (treating as no drift)`, {
@@ -599,6 +635,20 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
       );
 
+      // Safety net: even though K8s reports Ready (readinessProbe passed),
+      // confirm via direct podIP HTTP probe before publishing the pod IP
+      // to Redis. Same helper as Docker (waitForHttpReady) — single SSOT.
+      const podIp = pod.status?.podIP;
+      if (podIp) {
+        try {
+          await waitForHttpReady(podIp, IDE_PORT, `/ide/${instanceKey}/`, 30_000);
+        } catch (probeErr: any) {
+          logger.warn(`Pod readiness probe passed but direct HTTP probe failed: ${resourceName} — proceeding with registration`, {
+            component: 'KubernetesIDEOrchestrator'
+          }, probeErr);
+        }
+      }
+
       // Register in state store (IDE is feature-level)
       await this.stateStore.registerIDE(
         userContext.organizationId,
@@ -691,9 +741,14 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           lastWaitReason = waitReason;
         }
 
-        if (phase === 'Running') {
-          logger.warn(`✅ Pod is ready: ${resourceName} (took ${Math.round(elapsed / 1000)}s)`, { 
-            component: 'KubernetesIDEOrchestrator' 
+        // Gate on `phase === 'Running' AND conditions[type=Ready].status === 'True'`.
+        // The Ready condition flips to True only after the readinessProbe (HTTP GET
+        // on /ide/<key>/ port 3000) succeeds — guaranteeing openvscode-server is
+        // actually serving HTTP, not just that the container PID is alive.
+        const readyCond = conditions.find(c => c.type === 'Ready');
+        if (phase === 'Running' && readyCond?.status === 'True') {
+          logger.warn(`✅ Pod is ready (HTTP responding): ${resourceName} (took ${Math.round(elapsed / 1000)}s)`, {
+            component: 'KubernetesIDEOrchestrator'
           });
           return;
         }
@@ -717,10 +772,35 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    logger.error(`❌ Pod startup timeout: ${resourceName} after ${timeoutMs}ms`, { 
-      component: 'KubernetesIDEOrchestrator' 
+    // Tail container logs so the operator can diagnose boot failures
+    // (image pull, OOM, permission errors) instead of just seeing a timeout.
+    let tailedLogs = '';
+    try {
+      tailedLogs = await this.tailContainerLogs(resourceName, 'openvscode-server', 100);
+    } catch (logErr: any) {
+      tailedLogs = `(failed to fetch container logs: ${logErr?.message || logErr})`;
+    }
+    logger.error(`❌ Pod startup timeout: ${resourceName} after ${timeoutMs}ms\n--- container logs (tail 100) ---\n${tailedLogs}\n--- end logs ---`, {
+      component: 'KubernetesIDEOrchestrator'
     });
     throw new Error(`Pod ${resourceName} startup timeout after ${timeoutMs}ms`);
+  }
+
+  /**
+   * Fetch the last N lines of a container's logs via the K8s API.
+   * Used for diagnostic dumps on readiness timeout. The K8s log endpoint
+   * returns plain text; `k8sRequest` falls back to raw text on JSON-parse
+   * failure (see line 261-262), so we can request <T = string> directly.
+   */
+  private async tailContainerLogs(
+    resourceName: string,
+    container: string,
+    lines: number = 100,
+  ): Promise<string> {
+    return this.k8sRequest<string>(
+      `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}/log?container=${container}&tailLines=${lines}`,
+      'GET'
+    );
   }
 
   /**
