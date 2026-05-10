@@ -73,6 +73,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasPackageManager: !!packageManager,
     antrulesContent,
     resolvedAction: state.resolvedAction,
+    // Tier 3 cross-task analysis brief (sealed by Decompose).
+    analysis: state.analysis ?? '',
+    hasAnalysis: !!state.analysis,
     ...depSnapshot,
   });
 

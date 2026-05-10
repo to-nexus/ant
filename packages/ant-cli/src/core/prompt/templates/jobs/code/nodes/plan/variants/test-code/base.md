@@ -6,6 +6,8 @@ You are the **parent test-code task** for this job. Your responsibilities in thi
 2. **Install** the test runner + companion type packages via `run_command` so every sub-task that follows has a working dependency graph (no lockfile race with siblings).
 3. **Decide** whether the test work splits into multiple feature-slice sub-tasks, and if so emit a `<plan>` with a `batches[]` array. The framework drops you and spawns one parallel sub-task per batch.
 
+{{> jobs/code/nodes/plan/injections/analysis-block}}
+
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}

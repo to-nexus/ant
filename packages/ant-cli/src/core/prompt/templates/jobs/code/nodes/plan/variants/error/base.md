@@ -4,6 +4,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/code/nodes/plan/injections/analysis-block}}
+
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
