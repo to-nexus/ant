@@ -155,4 +155,59 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
       ),
     ).not.toThrow();
   });
+
+  it('hasMountDrift returns true when existing pod has no readinessProbe (post-rollout migration)', () => {
+    const orch = makeOrch();
+    // Existing pod with the correct mount count but pre-rollout — no readinessProbe.
+    const podWithoutProbe = {
+      metadata: { name: 'p', namespace: 'ns', labels: {} },
+      spec: {
+        containers: [{
+          name: 'c',
+          image: 'i',
+          ports: [{ containerPort: 3000 }],
+          volumeMounts: [{ name: 'workspace', mountPath: '/workspace', subPath: 'x' }],
+        }],
+      },
+    } as any;
+    const drift = (orch as any).hasMountDrift(podWithoutProbe, fx.mainCodebase, '_base');
+    expect(drift).toBe(true);
+  });
+
+  it('hasMountDrift returns false when readinessProbe is present and mounts match', () => {
+    const orch = makeOrch();
+    const podWithProbe = {
+      metadata: { name: 'p', namespace: 'ns', labels: {} },
+      spec: {
+        containers: [{
+          name: 'c',
+          image: 'i',
+          ports: [{ containerPort: 3000 }],
+          volumeMounts: [{ name: 'workspace', mountPath: '/workspace', subPath: 'x' }],
+          readinessProbe: { httpGet: { path: '/ide/x/', port: 3000 } },
+        }],
+      },
+    } as any;
+    const drift = (orch as any).hasMountDrift(podWithProbe, fx.mainCodebase, '_base');
+    expect(drift).toBe(false);
+  });
+
+  it('readinessProbe gates Service Endpoints on openvscode-server HTTP, not just phase=Running', () => {
+    const orch = makeOrch();
+    const spec = (orch as any).createPodSpec(
+      'org:user:proj:_base',
+      'ide-org-user-proj-base',
+      fx.mainCodebase,
+      userContext,
+      '_base',
+    );
+
+    const container = spec.spec.containers[0];
+    expect(container.readinessProbe).toBeDefined();
+    expect(container.readinessProbe.httpGet).toBeDefined();
+    expect(container.readinessProbe.httpGet.path).toBe('/ide/org:user:proj:_base/');
+    expect(container.readinessProbe.httpGet.port).toBe(3000);
+    // failureThreshold * periodSeconds = ~60s grace for cold pulls
+    expect(container.readinessProbe.failureThreshold).toBeGreaterThanOrEqual(30);
+  });
 });

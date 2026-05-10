@@ -261,8 +261,14 @@ function App() {
     // Stop retries once iframe successfully loaded
     if (ideFrameLoaded) return;
 
-    // Do at most 2 automatic reloads while still not loaded
-    if (ideRetryCountRef.current >= 2) return;
+    // After 2 automatic reloads still no success — surface explicit failure
+    // so IdeLoadingOverlay flips to the `failed` state instead of spinning forever.
+    if (ideRetryCountRef.current >= 2) {
+      if (!useStore.getState().ideConnectError) {
+        useStore.getState().setIdeConnecting(false, 'IDE failed to load. Please refresh and try again.');
+      }
+      return;
+    }
 
     const t = setTimeout(() => {
       // Only retry if still not loaded at the time the timer fires
@@ -276,33 +282,15 @@ function App() {
   }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded]);
 
   // ✅ Refresh-safe: if we reload while in codeIde view, re-connect to IDE automatically.
+  // Delegates to the `startIdeSession` SSOT so this path also gets the
+  // pre-flight probe; no duplicate startCloudIDE / setIdeBaseUrl logic here.
   useEffect(() => {
     if (mainView !== 'codeIde') return;
     if (!selectedProject) return;
     if (ideBaseUrl) return;
     if (ideConnecting) return;
 
-    (async () => {
-      try {
-        useStore.getState().setIdeConnecting(true);
-        useStore.getState().setIdeFrameLoaded(false);
-        useStore.getState().setIdeWorkspacePath(`/${selectedProject}`);
-
-        const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
-        const featureName = selectedFeature || RESERVED_FEATURE_NAME;
-        const { instance } = await startCloudIDE(selectedProject, featureName);
-
-        // ✅ Use proxy URL instead of directUrl for production
-        const proxyUrl = `${SERVER_BASE()}${instance.url}`;
-        useStore.getState().setIdeBaseUrl(proxyUrl);
-        useStore.getState().setIdeWorkspacePath(instance.workspacePath || `/${selectedProject}`);
-        useStore.getState().reloadIdeFrame();
-      } catch (e: any) {
-        useStore.getState().setIdeConnecting(false, e?.message || 'Failed to reconnect IDE');
-        return;
-      }
-      useStore.getState().setIdeConnecting(false);
-    })();
+    void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
   }, [mainView, selectedProject, selectedFeature, ideBaseUrl, ideConnecting]);
   
   // ✅ Domain data (via Application Hooks)
@@ -536,7 +524,10 @@ function App() {
               <div className="relative w-full h-full">
                 {!ideFrameLoaded && (
                   <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
-                    <IdeLoadingOverlay message="loading" />
+                    <IdeLoadingOverlay
+                      message={ideConnectError ? 'failed' : 'loading'}
+                      errorMessage={ideConnectError}
+                    />
                   </div>
                 )}
                 <iframe
@@ -544,8 +535,22 @@ function App() {
                   src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
                   className="w-full h-full border-0"
                   title="ANT Code Editor"
-                  onLoad={() => {
-                    useStore.getState().setIdeFrameLoaded(true);
+                  onLoad={async () => {
+                    // onLoad fires on both real content and 5xx error pages
+                    // (cross-origin onError is unreliable). Re-probe the proxy
+                    // so a 5xx leaves ideFrameLoaded=false → retry effect kicks in.
+                    try {
+                      const res = await fetch(`${ideBaseUrl}/`, {
+                        method: 'GET',
+                        credentials: 'include',
+                        cache: 'no-store',
+                      });
+                      if (res.status >= 200 && res.status < 500) {
+                        useStore.getState().setIdeFrameLoaded(true);
+                      }
+                    } catch {
+                      // network error — leave ideFrameLoaded=false; retry effect handles it
+                    }
                   }}
                 />
               </div>

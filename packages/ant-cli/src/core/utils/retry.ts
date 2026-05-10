@@ -17,6 +17,13 @@ interface RetryOptions {
   onBeforeRetry?: () => void;
   /** Marker value yielded before retry so consumers can reset accumulated state (streaming only) */
   retryMarker?: any;
+  /**
+   * Optional predicate that overrides the default LLM-shaped retry classifier.
+   * When provided, `retryableErrors` and the built-in error-shape detection
+   * are ignored — this predicate alone decides whether to retry. Use for
+   * non-LLM consumers (e.g. HTTP proxies) that need their own classifier.
+   */
+  shouldRetry?: (error: unknown) => boolean;
 }
 
 interface RetryableError {
@@ -28,7 +35,7 @@ interface RetryableError {
   status?: number;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker'>> = {
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker' | 'shouldRetry'>> = {
   maxAttempts: 4,
   initialDelayMs: 2000,
   maxDelayMs: 30000,
@@ -138,39 +145,43 @@ export async function withRetry<T>(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: unknown;
   
+  const classify = options.shouldRetry
+    ? options.shouldRetry
+    : (e: unknown) => isRetryableError(e, opts.retryableErrors);
+
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
-      
+
       // Check if error is retryable
-      if (!isRetryableError(error, opts.retryableErrors)) {
+      if (!classify(error)) {
         console.log(`[Retry] Error is not retryable, throwing immediately`);
         throw error;
       }
-      
+
       // Last attempt, don't wait
       if (attempt === opts.maxAttempts) {
         console.error(`[Retry] ❌ All ${opts.maxAttempts} attempts failed`);
         throw error;
       }
-      
+
       // Calculate delay (ignore retry-after header, use exponential backoff)
       const delay = calculateBackoffDelay(attempt, opts.initialDelayMs, opts.maxDelayMs, opts.backoffMultiplier);
-      
+
       const apiError = error as any;
       // Handle nested error structure
       const errorType = apiError.error?.error?.type || apiError.error?.type || 'unknown';
       const errorMessage = apiError.error?.error?.message || apiError.error?.message || 'Unknown error';
-      
+
       console.log(`[Retry] ⚠️  Attempt ${attempt}/${opts.maxAttempts} failed: ${errorType}`);
       console.log(`[Retry] 📝 ${errorMessage}`);
       console.log(`[Retry] ⏳ Waiting ${(delay / 1000).toFixed(1)}s before retry...`);
-      
+
       // Wait before retry
       await new Promise(resolve => setTimeout(resolve, delay));
-      
+
       console.log(`[Retry] 🔄 Retrying (attempt ${attempt + 1}/${opts.maxAttempts})...`);
     }
   }

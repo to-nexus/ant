@@ -8,6 +8,7 @@
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
+import { withRetry } from '../../../../core/utils/retry';
 
 export interface BaseProxyConfig {
   portRegistry: PortRegistryPort;
@@ -201,40 +202,43 @@ export abstract class BaseProxyMiddleware {
     logger.debug(`Proxy to ${targetUrl}`, { component: this.componentName });
 
     try {
-      // Retry logic for server startup race condition
-      let response: globalThis.Response | null = null;
-      let lastError: Error | null = null;
-      const maxRetries = 3;
-      const retryDelay = 500;
       const method = (req.method || 'GET').toUpperCase();
       const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          response = await fetch(targetUrl, {
-            method: req.method,
-            headers: {
-              ...req.headers,
-              host: `${targetHost}:${targetPort}`,
-              'accept-encoding': 'identity',
-              'if-none-match': undefined,
-              'if-modified-since': undefined
-            } as any,
-            ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
-          });
-          break;
-        } catch (error: any) {
-          lastError = error;
-          if (attempt < maxRetries) {
-            logger.debug(`Retry ${attempt}/${maxRetries} in ${retryDelay}ms`, { component: this.componentName });
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-          }
+      // Retry only on transport-level errors (connect refused / reset / DNS / fetch
+      // failed). Upstream 5xx responses are passed through verbatim — masking them
+      // with retries would hide genuine code-server failures that the readinessProbe
+      // is supposed to surface.
+      const response = await withRetry<globalThis.Response>(
+        () => fetch(targetUrl, {
+          method: req.method,
+          headers: {
+            ...req.headers,
+            host: `${targetHost}:${targetPort}`,
+            'accept-encoding': 'identity',
+            'if-none-match': undefined,
+            'if-modified-since': undefined
+          } as any,
+          ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
+        }),
+        {
+          maxAttempts: 6,
+          initialDelayMs: 250,
+          maxDelayMs: 2500,
+          backoffMultiplier: 2,
+          shouldRetry: (err) => {
+            const msg = ((err as Error)?.message || '').toLowerCase();
+            return (
+              msg.includes('econnrefused') ||
+              msg.includes('econnreset') ||
+              msg.includes('socket') ||
+              msg.includes('fetch failed') ||
+              msg.includes('network') ||
+              msg.includes('terminated')
+            );
+          },
         }
-      }
-
-      if (!response) {
-        throw lastError || new Error('Failed to connect after retries');
-      }
+      );
 
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: this.componentName });
