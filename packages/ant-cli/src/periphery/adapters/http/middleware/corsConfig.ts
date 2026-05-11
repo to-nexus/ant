@@ -113,4 +113,35 @@ export function createCorsMiddleware() {
   return cors(delegate);
 }
 
+/**
+ * One-shot startup diagnostic. Cloud-mode deployments where both
+ * `FRONTEND_URL` and `ANT_CORS_ORIGINS` are unset silently fail any FE
+ * request whose host differs from the BE (split-host setups, Local FE
+ * → Custom Cloud BE dev). Surface that here so operators see the cause
+ * at boot instead of debugging a "preflight blocked" toast.
+ *
+ * Same-origin Cloud deployments (Persona B / C single-host) and local
+ * mode rely on `isSelfOrigin` / loopback auto-allow respectively, so
+ * the silent branch is correct for them — no warning needed.
+ */
+export function logCorsConfigSummary(): void {
+  const mode = process.env.ANT_SERVER_MODE ?? 'local';
+  const feUrl = process.env.FRONTEND_URL;
+  const corsOrigins = process.env.ANT_CORS_ORIGINS;
+
+  if (mode !== 'cloud') return;
+
+  if (!feUrl && !corsOrigins) {
+    console.warn(
+      '[CORS] Cloud mode: FRONTEND_URL and ANT_CORS_ORIGINS both unset. ' +
+      'Only loopback / self-origin requests will be allowed. Split-host ' +
+      'deployments (FE origin != BE origin) WILL fail with CORS. ' +
+      'Set FRONTEND_URL (single primary origin) or ANT_CORS_ORIGINS (CSV).'
+    );
+    return;
+  }
+
+  console.log(`[CORS] FE allowlist: ${feUrl ?? '(none)'}, extras: ${corsOrigins || '(none)'}`);
+}
+
 export const __testing = { isLoopbackOrigin, isSelfOrigin };

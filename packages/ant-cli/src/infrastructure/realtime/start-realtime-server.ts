@@ -20,6 +20,7 @@
 import 'dotenv/config';
 import { createRealtimeServer } from './RealtimeServer';
 import { logger } from '../../utils/logger';
+import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const WORKSPACES_PATH = process.env.ANT_WORKSPACE_BASE_PATH;
@@ -42,6 +43,8 @@ async function main(): Promise<void> {
   
   logger.warn(`   Workspaces: ${WORKSPACES_PATH}`, { component: 'RealtimeServerProcess' });
   logger.warn(`   Port: ${PORT}`, { component: 'RealtimeServerProcess' });
+
+  logCorsConfigSummary();
   
   try {
     const server = await createRealtimeServer({

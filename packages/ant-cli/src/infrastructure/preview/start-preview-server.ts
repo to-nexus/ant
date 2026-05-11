@@ -22,6 +22,7 @@
 import 'dotenv/config';
 import { createPreviewServer } from './PreviewServer';
 import { logger } from '../../utils/logger';
+import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
 
 async function main(): Promise<void> {
   const startTime = new Date().toISOString();
@@ -37,6 +38,8 @@ async function main(): Promise<void> {
     });
     process.exit(1);
   }
+
+  logCorsConfigSummary();
 
   try {
     await createPreviewServer();

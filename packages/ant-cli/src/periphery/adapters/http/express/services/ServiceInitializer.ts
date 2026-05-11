@@ -68,21 +68,44 @@ export function initializeServices(
       });
     }
     
-    // Initialize Google OIDC service if credentials are provided
+    // Initialize Google OIDC service if credentials are provided.
+    //
+    // OAuth redirect_uri must land on the BE host. In same-origin cloud
+    // deployments (Persona B managed / Persona C single-host) FE and BE
+    // share an origin, so `FRONTEND_URL` is the right BE fallback too.
+    // Split-host operators set `GOOGLE_REDIRECT_URI` explicitly to the BE
+    // host. The legacy `CLOUD_URL` env (pointed at `https://ant.nexus.ai`
+    // by default) was removed — it was an unsupported third source of
+    // truth that silently misrouted callbacks when unset.
     const googleClientId = process.env.GOOGLE_CLIENT_ID;
     const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${config.cloudUrl}/api/auth/google/callback`;
+    // Strip trailing slash so `FRONTEND_URL=https://x.io/` doesn't compose
+    // a `https://x.io//api/auth/google/callback` that Google's exact-match
+    // redirect_uri check would reject.
+    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, '');
+    const googleRedirectUri =
+      process.env.GOOGLE_REDIRECT_URI ||
+      (frontendUrl ? `${frontendUrl}/api/auth/google/callback` : undefined);
     
-    if (googleClientId && googleClientSecret) {
+    if (googleClientId && googleClientSecret && googleRedirectUri) {
       oidcService = new GoogleOIDCService({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
         redirectUri: googleRedirectUri
       });
-      logger.info('Google OIDC authentication enabled', { component: 'ServiceInitializer' });
+      logger.info(`Google OIDC authentication enabled (redirect_uri=${googleRedirectUri})`, {
+        component: 'ServiceInitializer'
+      });
+    } else if (googleClientId && googleClientSecret && !googleRedirectUri) {
+      logger.warn(
+        'Google OIDC: GOOGLE_CLIENT_ID/SECRET set but redirect_uri unresolved. ' +
+        'Set GOOGLE_REDIRECT_URI explicitly, or set FRONTEND_URL (used as BE ' +
+        'host in same-origin cloud deployments).',
+        { component: 'ServiceInitializer' }
+      );
     } else {
-      logger.warn('Google OIDC not configured - set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET', { 
-        component: 'ServiceInitializer' 
+      logger.warn('Google OIDC not configured - set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET', {
+        component: 'ServiceInitializer'
       });
     }
   }
