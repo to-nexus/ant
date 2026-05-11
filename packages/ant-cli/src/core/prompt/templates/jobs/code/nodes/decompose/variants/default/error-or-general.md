@@ -43,6 +43,13 @@ Description: "config.ts validation receiving wrong connection string"
 ```
 **Why bad?** Based on user's guess, ignores actual error code and stack trace.
 
+**Error directive → Tier mapping (by surface count)**:
+- **Tier 1**: error names a single file + line, fix is mechanical (typo, missing import, wrong literal). Surface = 1, no cross-cutting effects.
+- **Tier 2**: error names a single component and the fix stays inside one module (null check, order swap, signature touch-up). Surface = 1.
+- **Tier 3**: stack trace crosses ≥ 2 layers, OR root cause is uncertain (≥ 2 plausible hypotheses). Surface ≥ 2.
+
+Count the distinct surfaces your investigation would touch. Do NOT default to Tier 3 because the input contains a stack trace — many stack traces collapse to a single-component fix. Do NOT default to Tier 2 because "it's one error" — a single error can require multi-component investigation.
+
 ════════════════════════════════════════════════════════════════════════════════
 
 {{else}}

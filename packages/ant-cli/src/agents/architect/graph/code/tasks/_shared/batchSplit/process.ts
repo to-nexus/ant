@@ -461,6 +461,7 @@ export function processDiagnosticBatchSplit(
       kind: effectiveKind,
       hasFileOverlap,
       splitCount,
+      wasTier2: state.executionTier === 2,
     });
     return '';
   } catch (err) {
