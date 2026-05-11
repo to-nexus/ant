@@ -8,13 +8,11 @@
 
 {{> jobs/code/base/injections/persistent-process-policy}}
 
-## Tool Call Batching
+{{> jobs/code/base/injections/batch-execution}}
 
-**Principle**: The system processes ALL tool calls from a single response as one batch.
+{{> jobs/code/base/injections/batch-gather}}
 
-**Constraint**: When you have identified multiple independent actions (reads, edits), issue ALL in ONE response.
-
-**Constraint**: NEVER issue a single tool call when you can already identify additional needed tool calls from prior results.
+**Error apply phase specific**: Emit every `edit_file` for the remediation plan as separate tool_use blocks within ONE response. Sequential per-file fixing across multiple turns is the failure mode — the orchestrator runs all edits as one batch in a single turn.
 
 ---
 
