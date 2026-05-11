@@ -146,63 +146,7 @@ export async function execute(
 
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
-  
-  // ✅ Progressive call budget warning injection (mirrors design job docGen pattern)
-  // LLM must know its remaining budget to prioritize file output over analysis.
-  {
-    const currentCall = (state._executeCallIndex || 0) + 1;
-    const isErrorType = isErrorTask(state.currentTask);
-    // Verification tasks are always the final-verification pass (system
-    // invariant — see `tasks/verification/model/is.ts`); there is no
-    // separate "final" vs "non-final" verification distinction.
-    const isVerificationType = isVerificationTask(state.currentTask);
-    const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
-    // Pre-planned batch-split sub-tasks (error + test-code) get a bounded
-    // budget (25): each sub-task's scope is limited to a single fix batch
-    // or test slice (typically 2-8 files), and 25 is the measured safe
-    // ceiling that accommodates read + edit + retry margin per file
-    // without leaving room for unbounded exploration.
-    // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
-    // Feature / test-code parent / other tasks use plan-computed budget when available
-    // (create×1 + modify×3), otherwise default 20.
-    const maxCalls = isPrePlanned ? 25 : (isVerificationType || isErrorType) ? 0 : (state._executeBudget ?? 20);
-    
-    if (maxCalls > 0 && currentCall >= 3) {
-      const remaining = maxCalls - currentCall;
-      let budgetWarning: string;
-      if (remaining <= 2) {
-        budgetWarning = `\n\n⚠️ SYSTEM WARNING [call budget: ${currentCall}/${maxCalls}, ${remaining} remaining]\n` +
-          `You MUST output all remaining files NOW using <file> tags and then <done>true</done>, or this task will be TERMINATED as FAILED. ` +
-          `Use the information already gathered. Do NOT read more files.`;
-      } else if (remaining <= 5) {
-        budgetWarning = `\n\n⚠️ WARNING [call budget: ${currentCall}/${maxCalls}]\n` +
-          `You MUST start writing files NOW. Output <file> tags for implementation, then <done>true</done>. You have ${remaining} calls remaining.`;
-      } else {
-        budgetWarning = `\n\n[call budget: ${currentCall}/${maxCalls}]\n` +
-          `You have ${remaining} calls remaining. Start producing file output soon.`;
-      }
-      
-      // Inject into last user message
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        if (msg.role === 'user') {
-          if (Array.isArray(msg.content)) {
-            (msg.content as any[]).push({ type: 'text', text: budgetWarning });
-          } else if (typeof msg.content === 'string') {
-            msg.content = [
-              { type: 'text', text: msg.content },
-              { type: 'text', text: budgetWarning },
-            ];
-          }
-          break;
-        }
-      }
-      
-      const level = remaining <= 2 ? 'URGENT' : remaining <= 5 ? 'WARNING' : 'INFO';
-      console.log(`⚠️  [CodeGen] Budget ${level}: call ${currentCall}/${maxCalls}, ${remaining} remaining`);
-    }
-  }
-  
+
   // Tool activation: mode-aware selection is encapsulated in `./tools.ts`
   // (NODE_GRAPH_LAYOUT.md §2.2 — caller is a single `await getTools(state)` line).
   const isExplainMode = state.resolvedAction?.mode === 'explain';
