@@ -17,6 +17,13 @@ export interface AuthPort {
 export interface AuthCredentials {
   email?: string;
   token?: string;
+  /**
+   * Stable user identifier (e.g. OAuth `sub`). When present, downstream
+   * `resolveOrganizationId` seeds the consumer-email `personal-${...}`
+   * fallback with this id instead of the email, which is durable across
+   * email rotations.
+   */
+  userId?: string;
 }
 
 export interface AuthContext {

@@ -51,6 +51,19 @@ export async function fetchAuthMeDetailed(
     return { kind: 'shape', raw: data };
   }
 
+  // Phase 3 envelope fields — tolerate missing/legacy responses by
+  // defaulting to "settled session, no suggestion" so older servers
+  // keep working.
+  const envelope = data as {
+    needsOnboarding?: unknown;
+    suggestedOrganizationName?: unknown;
+  };
+  const needsOnboarding = envelope.needsOnboarding === true;
+  const suggestedOrganizationName =
+    typeof envelope.suggestedOrganizationName === 'string'
+      ? envelope.suggestedOrganizationName
+      : null;
+
   return {
     kind: 'user',
     user: {
@@ -60,6 +73,8 @@ export async function fetchAuthMeDetailed(
       name: u.name,
       picture: u.picture,
     },
+    needsOnboarding,
+    suggestedOrganizationName,
   };
 }
 

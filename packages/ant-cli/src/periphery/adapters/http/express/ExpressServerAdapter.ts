@@ -86,15 +86,14 @@ export class ExpressServerAdapter implements
   private readonly routeConfigurator: RouteConfigurator;
 
   constructor(
-    mode: 'local' | 'cloud' = 'local', 
-    workspacesPath: string, 
-    cloudUrl: string = 'https://ant.nexus.ai',
+    mode: 'local' | 'cloud' = 'local',
+    workspacesPath: string,
     workspaceService: WorkspaceServicePort
   ) {
     this.app = express();
-    
+
     // Initialize configuration
-    this.config = { mode, workspacesPath, cloudUrl };
+    this.config = { mode, workspacesPath };
     
     // Initialize dependencies (services)
     this.deps = initializeServices(this.config, workspaceService);
