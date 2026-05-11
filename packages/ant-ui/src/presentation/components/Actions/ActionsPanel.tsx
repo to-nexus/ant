@@ -10,7 +10,7 @@ import {
   ACTION_DEFINITIONS,
   getIntentsForAction,
   getConfigSlots,
-  isActionVisibleForDomain,
+  isActionSurfaced,
   getActionLabel,
   getActionDescription,
   getIntentLabel,
@@ -107,7 +107,7 @@ export function ActionsPanel() {
 
   const actionTabItems: TabItem[] = useMemo(() =>
     ACTION_DEFINITIONS
-      .filter(def => isActionVisibleForDomain(def, currentDomain))
+      .filter(def => isActionSurfaced(def, currentDomain))
       .map(def => {
         const visual = ACTION_VISUALS[def.id];
         return {
