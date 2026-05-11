@@ -119,7 +119,10 @@ export abstract class BaseProxyMiddleware {
         return next();
       }
 
-      logger.debug(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: this.componentName });
+      // Temporarily promoted to warn so Datadog surfaces it during the
+      // ide-groovy-cloud RCA (Signal A — raw request URL). Demote back to
+      // debug once the integrated Case fix lands.
+      logger.warn(`PROXY_REQUEST: ${req.method} ${req.url}`, { component: this.componentName });
 
       // Extract serverKey from path
       const url = req.url.split('?')[0];
@@ -218,7 +221,9 @@ export abstract class BaseProxyMiddleware {
     const { req, res, targetPort, targetHost, targetPath } = context;
     const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
 
-    logger.debug(`Proxy to ${targetUrl}`, { component: this.componentName });
+    // Signal A (forwarded upstream URL) — temporarily promoted for the
+    // ide-groovy-cloud RCA.
+    logger.warn(`Proxy to ${targetUrl}`, { component: this.componentName });
 
     try {
       const method = (req.method || 'GET').toUpperCase();
@@ -260,7 +265,10 @@ export abstract class BaseProxyMiddleware {
       );
 
       const contentType = response.headers.get('content-type') || '';
-      logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: this.componentName });
+      // Signal B (upstream HTTP status) — temporarily promoted for the
+      // ide-groovy-cloud RCA so Datadog captures whether openvscode-server
+      // is responding 200 / 404 / 500 to each forwarded request.
+      logger.warn(`Upstream response: ${response.status} (${contentType})`, { component: this.componentName });
 
       // Copy status and headers
       res.status(response.status);
