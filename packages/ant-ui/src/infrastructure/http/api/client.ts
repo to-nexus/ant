@@ -1,24 +1,21 @@
 /// <reference types="vite/client" />
 
+import { determineInitialLaunchMode } from '@/domain/store/launchModeInit';
+
 const DEFAULT_LOCAL_BACKEND_PORT = 4100;
-const STORAGE_KEY_BACKEND_MODE = 'ant-ui:backend-mode';
 const STORAGE_KEY_LOCAL_BACKEND_PORT = 'ant-ui:local-backend-port';
 
 /**
- * Get current backend mode from localStorage
- * @returns 'local' or 'cloud' (default: 'cloud')
+ * Get current launch mode. Delegates to the SSOT helper so the storage key,
+ * legacy migration, origin detection, and default are resolved in one place.
  */
-export const getBackendMode = (): 'local' | 'cloud' => {
+export const getLaunchMode = (): 'local' | 'cloud' => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY_BACKEND_MODE);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return parsed === 'local' ? 'local' : 'cloud';
-    }
+    return determineInitialLaunchMode();
   } catch (error) {
-    console.warn('[API] Error reading backend mode:', error);
+    console.warn('[API] Error reading launch mode:', error);
+    return 'local';
   }
-  return 'cloud';
 };
 
 /**
@@ -39,12 +36,12 @@ export const getLocalBackendPort = (): number => {
 };
 
 /**
- * Get backend base URL based on current mode
+ * Get backend base URL based on current launch mode
  * - local mode: relative paths (Vite proxy routes to each service)
  * - cloud mode: VITE_CLOUD_BACKEND_BASE env var (empty → same-origin)
  */
 const getBackendBase = (): string => {
-  const mode = getBackendMode();
+  const mode = getLaunchMode();
 
   if (mode === 'cloud') {
     const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
@@ -86,7 +83,7 @@ export const SERVER_BASE = () => getBackendBase();
  * standard backend base (empty = same-origin).
  */
 export const OAUTH_BASE = (): string => {
-  if (getBackendMode() === 'local') {
+  if (getLaunchMode() === 'local') {
     return `http://localhost:${getLocalBackendPort()}`;
   }
   return getBackendBase();
@@ -110,7 +107,7 @@ export async function checkLocalBackend(): Promise<boolean> {
 }
 
 if (import.meta.env.DEV) {
-  console.log('[API] Backend mode:', getBackendMode());
+  console.log('[API] Launch mode:', getLaunchMode());
   console.log('[API] API_BASE:', API_BASE());
   console.log('[API] REALTIME_BASE:', REALTIME_BASE());
   console.log('[API] PREVIEW_BASE:', PREVIEW_BASE());

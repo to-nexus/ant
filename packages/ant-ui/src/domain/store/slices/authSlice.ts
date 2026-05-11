@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
+import { determineInitialLaunchMode } from '../launchModeInit';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
@@ -9,6 +10,11 @@ export interface AuthActions {
   setUser: (email: string, organization: string) => void;
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
+  /**
+   * Phase 3 — set onboarding flags from the `/auth/me` envelope.
+   * Cleared automatically by `clearUser`.
+   */
+  setOnboardingState: (needsOnboarding: boolean, suggestedOrganizationName: string | null) => void;
 }
 
 export type AuthSlice = AuthState & AuthActions;
@@ -17,10 +23,14 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   // Initial authStatus: when hydrated cloud-mode userEmail exists we still
   // need to verify the cookie (server is the SSOT for session validity).
   // Local mode never verifies — `'idle'` is a no-op for `selectIsAuthBlocked`.
-  const hydratedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE) || 'cloud';
+  // Go through the SSOT helper so authSlice and configSlice never disagree
+  // on the boot-time launch mode — the helper also runs the one-shot legacy
+  // key migration (see launchModeInit.ts), which must happen before any
+  // reader that gates on cloud-mode authStatus.
+  const hydratedLaunchMode = determineInitialLaunchMode();
   const hydratedUserEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
   const initialAuthStatus: AuthStatus =
-    hydratedBackendMode === 'cloud' && hydratedUserEmail ? 'verifying' : 'idle';
+    hydratedLaunchMode === 'cloud' && hydratedUserEmail ? 'verifying' : 'idle';
 
   return {
   // ==================
@@ -29,6 +39,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   userEmail: undefined,
   userOrganization: undefined,
   authStatus: initialAuthStatus,
+  needsOnboarding: false,
+  suggestedOrganizationName: null,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
   selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'plan',
 
@@ -109,6 +121,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
 
   setAuthStatus: (status) => set({ authStatus: status }),
 
+  setOnboardingState: (needsOnboarding, suggestedOrganizationName) =>
+    set({ needsOnboarding, suggestedOrganizationName }),
+
   /**
    * Single SSOT for user disappearance — used by both the explicit
    * sign-out flow (AppNavBar.handleSignOut) and the implicit stale-session
@@ -123,6 +138,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       userEmail: undefined,
       userOrganization: undefined,
       authStatus: 'expired',
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
     });
     removeFromStorage(STORAGE_KEYS.USER_EMAIL);
     removeFromStorage(STORAGE_KEYS.USER_ORGANIZATION);

@@ -11,7 +11,7 @@ export const STORAGE_KEYS = {
   MAIN_VIEW: 'ant-ui:main-view',
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
-  BACKEND_MODE: 'ant-ui:backend-mode',
+  LAUNCH_MODE: 'ant-ui:launch-mode',
   LOCAL_BACKEND_PORT: 'ant-ui:local-backend-port',  // 로컬 백엔드 포트 (default: 4100)
   DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
   LANGUAGE: 'ant-ui:language',

@@ -243,6 +243,19 @@ export interface AuthState {
    * session and verification-window cases out of lifecycle fan-out.
    */
   authStatus: AuthStatus;
+  /**
+   * Phase 3 onboarding state — mirror of the BE `_pending` JWT
+   * sentinel. `true` means the user is signed in but has not yet
+   * completed `POST /auth/onboarding/organization`, so the App should
+   * render `OrganizationOnboardingScreen` instead of the normal UI.
+   */
+  needsOnboarding: boolean;
+  /**
+   * Server-supplied default for the onboarding input. `null` for
+   * consumer emails (no sensible default — user must type a name) and
+   * for the post-onboarding state.
+   */
+  suggestedOrganizationName: string | null;
   selectedAgent: string;
   selectedJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
 }
@@ -251,7 +264,7 @@ export interface ConfigState {
   recursionLimit: number;
   /** AsyncStatus of `loadSystemConfig`. Unused by UI today but kept as SSOT. */
   systemConfigStatus: import('@/domain/async').AsyncStatus;
-  backendMode: 'local' | 'cloud';
+  launchMode: 'local' | 'cloud';
   localBackendPort: number;
 }
 

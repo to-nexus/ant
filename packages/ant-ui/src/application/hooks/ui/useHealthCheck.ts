@@ -10,7 +10,7 @@ import { selectIsAuthBlocked } from '@/domain/store/selectors';
  * Server connection status is managed by SSE connections
  */
 export function useHealthCheck() {
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const userEmail = useStore((state) => state.userEmail);
   const authStatus = useStore((state) => state.authStatus);
   const { pathname } = useLocation();
@@ -63,7 +63,7 @@ export function useHealthCheck() {
     initialize();
     // `authStatus` is in deps so cloud-mode 'verifying' → 'verified'
     // re-runs `fetchProjects` after the JWT cookie is confirmed.
-  }, [backendMode, userEmail, authStatus, pathname]);
+  }, [launchMode, userEmail, authStatus, pathname]);
 }
 
 

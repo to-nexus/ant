@@ -23,14 +23,14 @@ export function ExplorerPanel({
   onResizeStart,
 }: ExplorerPanelProps) {
   const { t } = useTranslation(['explorer', 'onboarding']);
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const userEmail = useStore((state) => state.userEmail);
   const projects = useStore((state) => state.projects);
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
-  
+
   // Check authentication status
-  const isAuthenticated = backendMode === 'local' || !!userEmail;
+  const isAuthenticated = launchMode === 'local' || !!userEmail;
   
   if (isCollapsed) return null;
 
