@@ -31,7 +31,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { showError } = useAlertModalContext();
   const { t } = useTranslation('chat');
   const isRunning = useStore((state) => state.isRunning);
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const hasPendingClarify = useStore((state) => Object.keys(state.pendingClarifyAnswers).length > 0);
   const userEmail = useStore((state) => state.userEmail);
   const pendingChatInput = useStore((state) => state.pendingChatInput);
@@ -40,7 +40,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [cursorPos, setCursorPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isAuthenticated = backendMode === 'local' || !!userEmail;
+  const isAuthenticated = launchMode === 'local' || !!userEmail;
 
   const chatPolicy = useChatPolicy(messageCount);
   const { stopJob } = useJobExecution();

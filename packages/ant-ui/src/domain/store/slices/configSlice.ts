@@ -1,22 +1,23 @@
 import { StateCreator } from 'zustand';
 import { ConfigState } from '../types';
 import { STORAGE_KEYS, DEFAULT_LOCAL_BACKEND_PORT, saveToStorage, loadFromStorage } from '../storage';
+import { determineInitialLaunchMode } from '../launchModeInit';
 import { API_BASE, authFetch } from '@/infrastructure/http/api';
 
 export interface ConfigActions {
   setRecursionLimit: (limit: number) => void;
   loadSystemConfig: () => Promise<void>;
-  setBackendMode: (mode: 'local' | 'cloud') => void;
+  setLaunchMode: (mode: 'local' | 'cloud') => void;
   setLocalBackendPort: (port: number) => void;
 }
 
 export type ConfigSlice = ConfigState & ConfigActions;
 
 export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, get) => {
-  // Get backend mode from localStorage (default: cloud)
-  const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
-  const backendMode = (storedBackendMode || 'cloud') as 'local' | 'cloud';
-  
+  // Resolve launch mode via the SSOT helper (legacy key migration +
+  // origin-detection + 'local' default). See `domain/store/launchModeInit.ts`.
+  const launchMode = determineInitialLaunchMode();
+
   // Get local backend port from localStorage (default: 4100)
   const storedLocalBackendPort = loadFromStorage(STORAGE_KEYS.LOCAL_BACKEND_PORT);
   const localBackendPort = storedLocalBackendPort || DEFAULT_LOCAL_BACKEND_PORT;
@@ -27,7 +28,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     // ==================
     recursionLimit: 50,
     systemConfigStatus: 'idle',
-    backendMode,
+    launchMode,
     localBackendPort,
 
     // ==================
@@ -54,18 +55,18 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
       }
     },
 
-    setBackendMode: (mode) => {
-      const currentMode = get().backendMode;
-      
+    setLaunchMode: (mode) => {
+      const currentMode = get().launchMode;
+
       if (currentMode === mode) {
-        console.log('[Store] Backend mode unchanged:', mode);
+        console.log('[Store] Launch mode unchanged:', mode);
         return;
       }
-      
-      set({ backendMode: mode });
-      saveToStorage(STORAGE_KEYS.BACKEND_MODE, mode);
-      console.log('[Store] Backend mode changed:', currentMode, '→', mode);
-      
+
+      set({ launchMode: mode });
+      saveToStorage(STORAGE_KEYS.LAUNCH_MODE, mode);
+      console.log('[Store] Launch mode changed:', currentMode, '→', mode);
+
       // Clear user info when switching from Cloud to Local
       if (currentMode === 'cloud' && mode === 'local') {
         const state = get();
@@ -74,19 +75,19 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
           state.clearUser();
         }
       }
-      
+
       // Clear projects when switching modes
       set({ projects: [], selectedProject: undefined, selectedFeature: undefined });
     },
 
     setLocalBackendPort: (port) => {
       const currentPort = get().localBackendPort;
-      
+
       if (currentPort === port) {
         console.log('[Store] Local backend port unchanged:', port);
         return;
       }
-      
+
       set({ localBackendPort: port });
       saveToStorage(STORAGE_KEYS.LOCAL_BACKEND_PORT, port);
       console.log('[Store] Local backend port changed:', currentPort, '→', port);

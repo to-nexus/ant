@@ -3,8 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
+import { LocalUserBadge } from './auth/LocalUserBadge';
 import { useStore } from '@/domain/store';
 import { checkLocalBackend, OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
+import { isManagedBuild } from '@/domain/store/launchModeInit';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
@@ -32,11 +34,26 @@ export function AppNavBar({}: AppNavBarProps) {
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
   const clearUser = useStore((state) => state.clearUser);
-  const backendMode = useStore((state) => state.backendMode);
-  const setBackendMode = useStore((state) => state.setBackendMode);
+  const launchMode = useStore((state) => state.launchMode);
+  const setLaunchMode = useStore((state) => state.setLaunchMode);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
+
+  // Build-time flags consumed by the Local/Cloud toggle.
+  // - cloudBase missing → Cloud button disabled (Persona A localhost dev).
+  // - cloudBase same-origin → managed / self-host build → hide Local toggle.
+  // - cloudBase external-origin → toggle navigates (Persona B → managed).
+  const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
+  const managedBuild = isManagedBuild();
+  const isCloudExternalOrigin = (() => {
+    if (!cloudBase) return false;
+    try {
+      return new URL(cloudBase).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  })();
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -58,26 +75,26 @@ export function AppNavBar({}: AppNavBarProps) {
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
   
-  const uiSelectedMode = location.pathname === '/local' ? 'local' : backendMode;
-  
+  const uiSelectedMode = location.pathname === '/local' ? 'local' : launchMode;
+
   const handleModeChange = async (mode: 'local' | 'cloud') => {
     if (location.pathname === '/local' && mode === 'cloud') {
-      setBackendMode('cloud');
+      setLaunchMode('cloud');
       navigate('/');
-      
+
       const fetchProjects = useStore.getState().fetchProjects;
       fetchProjects();
       return;
     }
-    
-    if (mode === backendMode && location.pathname !== '/local') return;
-    
+
+    if (mode === launchMode && location.pathname !== '/local') return;
+
     if (mode === 'local') {
       const isAvailable = await checkLocalBackend();
-      
+
       if (isAvailable) {
-        setBackendMode('local');
-        
+        setLaunchMode('local');
+
         const fetchProjects = useStore.getState().fetchProjects;
         fetchProjects();
       } else {
@@ -85,10 +102,18 @@ export function AppNavBar({}: AppNavBarProps) {
       }
       return;
     }
-    
+
     if (mode === 'cloud') {
-      setBackendMode('cloud');
-      
+      // 3-way dispatch on VITE_CLOUD_BACKEND_BASE:
+      //   - missing  → button is disabled, this branch unreachable.
+      //   - external → Persona B: navigate out to the managed origin.
+      //   - same-origin → Persona C single-host: in-app state toggle.
+      if (!cloudBase) return;
+      if (isCloudExternalOrigin) {
+        window.location.href = cloudBase;
+        return;
+      }
+      setLaunchMode('cloud');
       if (isSignedIn) {
         const fetchProjects = useStore.getState().fetchProjects;
         fetchProjects();
@@ -164,38 +189,41 @@ export function AppNavBar({}: AppNavBarProps) {
               <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">Ant</h1>
             </a>
             
-            {/* Deployment Mode Selector (hidden: only cloud mode active for now) */}
-            <div className="deployment-mode-selector hidden items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-              {/* Local Button */}
-              <button
-                onClick={() => handleModeChange('local')}
-                className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
-                  ${uiSelectedMode === 'local'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
-                  }
-                `}
-                title={uiSelectedMode !== 'local' ? t('deploymentMode.switchToLocal') : t('deploymentMode.currentlyLocal')}
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                {t('deploymentMode.local')}
-              </button>
-              
-              {/* Cloud Button */}
+            {/* Launch Mode Selector. Managed builds hide the Local button
+                (cannot run a local backend from the user's machine). */}
+            <div className="launch-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              {!managedBuild && (
+                <button
+                  onClick={() => handleModeChange('local')}
+                  className={`
+                    px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
+                    ${uiSelectedMode === 'local'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
+                    }
+                  `}
+                  title={uiSelectedMode !== 'local' ? t('launchMode.switchToLocal') : t('launchMode.currentlyLocal')}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  {t('launchMode.local')}
+                </button>
+              )}
+
               <button
                 onClick={() => handleModeChange('cloud')}
+                disabled={!cloudBase}
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
                   ${uiSelectedMode === 'cloud'
                     ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-white shadow-md border-purple-200 dark:border-transparent'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
+                  ${!cloudBase ? 'cursor-not-allowed opacity-40' : ''}
                 `}
-                title={t('deploymentMode.switchToCloud')}
+                title={!cloudBase ? t('launchMode.cloudBaseNotConfigured') : t('launchMode.switchToCloud')}
               >
                 <Cloud className="w-3.5 h-3.5" />
-                {t('deploymentMode.cloud')}
+                {t('launchMode.cloud')}
               </button>
             </div>
             
@@ -319,11 +347,19 @@ export function AppNavBar({}: AppNavBarProps) {
             
             <DesktopStatusIndicator />
             
-            {/* User Section (Cloud Mode only) */}
+            {/* User Section. Local launch has no remote identity — the
+                LocalUserBadge surfaces Account Configuration only. */}
+            {uiSelectedMode === 'local' && (
+              <>
+                <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
+                <LocalUserBadge />
+              </>
+            )}
+
             {uiSelectedMode === 'cloud' && (
               <>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
-                
+
                 {!isSignedIn ? (
                   // Not signed in - Show Sign Up / Sign In buttons
                   <div className="flex items-center gap-1 sm:gap-2">

@@ -96,7 +96,7 @@ export function useUIActionPolicy(): UIActionPolicy {
   const isDisconnected = useStore(state => state.connectionStatus === 'disconnected');
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
-  const backendMode = useStore(state => state.backendMode);
+  const launchMode = useStore(state => state.launchMode);
   const userEmail = useStore(state => state.userEmail);
   // Preview state is per-feature; compute VM for the active selection.
   const featureKey = makeFeatureKey(selectedProject, selectedFeature);
@@ -109,9 +109,9 @@ export function useUIActionPolicy(): UIActionPolicy {
   
   /**
    * Rule 0: Cloud 모드에서 비로그인 시 모든 액션 불가
-   * - backendMode === 'cloud' && !userEmail → 모든 액션 비활성화
+   * - launchMode === 'cloud' && !userEmail → 모든 액션 비활성화
    */
-  const isAuthenticated = backendMode === 'local' || !!userEmail;
+  const isAuthenticated = launchMode === 'local' || !!userEmail;
   
   /**
    * Rule 1: 작업 진행 중에는 파일/설정 변경 불가

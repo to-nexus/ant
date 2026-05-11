@@ -101,7 +101,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const setCurrentJob = useStore((s) => s.setCurrentJob);
   const fetchProjects = useStore((s) => s.fetchProjects);
   const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
-  const backendMode = useStore((s) => s.backendMode);
+  const launchMode = useStore((s) => s.launchMode);
   const language = useStore((s) => s.language);
 
   const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
@@ -523,7 +523,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
     featureName, directive, showDirective, sourcesFiles, assetsFiles,
-    designDocsFiles, mode, backendMode, language, gitEnabled, gitReadOnly, t,
+    designDocsFiles, mode, launchMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
     setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig, runGitOperation,
   ]);
