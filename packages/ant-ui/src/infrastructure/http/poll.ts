@@ -25,6 +25,42 @@
  * separate (not unified with `useHealthCheck`) because the semantic is
  * different: this is poll-until-ready, not one-shot.
  */
+/**
+ * Single-shot liveness probe used by `startIdeSession`'s fast-path to
+ * distinguish (a) a still-mounted iframe pointing at a live pod from
+ * (b) a stale `ideBaseUrl` whose backing pod was idle-reaped.
+ *
+ *   `2xx | 3xx` → `'alive'`  (cold-load avoidance branch — no remount)
+ *   `4xx | 5xx` → `'dead'`   (BE proxy returns 404 once `unregisterIDE`
+ *                             has run; falls through to slow path → restart)
+ *   network err / 1.5s timeout → `'unknown'` (conservative: no-op rather
+ *                             than aggressive restart on a transient hiccup)
+ *
+ * HEAD is preferred because the openvscode-server root returns a large
+ * HTML payload on GET; we only need the status line.
+ */
+export async function probeIdeAlive(
+  proxyUrl: string,
+  timeoutMs: number = 1500,
+): Promise<'alive' | 'dead' | 'unknown'> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${proxyUrl}/`, {
+      method: 'HEAD',
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (res.status >= 200 && res.status < 400) return 'alive';
+    return 'dead';
+  } catch {
+    return 'unknown';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function waitForIdeReady(proxyUrl: string, timeoutMs: number = 15_000): Promise<void> {
   const start = Date.now();
   const delays = [200, 400, 800, 1200, 2000];

@@ -16,6 +16,7 @@
   "ide": {
     "connecting": "Starting the IDE container…",
     "loading": "Loading the IDE…",
-    "failed": "IDE failed to load: {{message}}"
+    "failed": "IDE failed to load: {{message}}",
+    "retry": "Retry"
   }
 }
