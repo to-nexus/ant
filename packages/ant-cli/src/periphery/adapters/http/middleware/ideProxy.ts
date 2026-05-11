@@ -116,6 +116,23 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
   protected shouldRewriteContent(): boolean {
     return false;
   }
+
+  /**
+   * openvscode-server runs with `--server-base-path /ide/<key>` (see
+   * KubernetesIDEOrchestrator.ts / IDEService.ts). That option mounts every
+   * Express route UNDER the prefix — a stripped request lands on an
+   * unmatched route and returns 500 / 404 for every static asset
+   * (nls.messages.js, workbench.js, …). Forward `req.url` verbatim so the
+   * base-path on the wire matches the server's contract.
+   *
+   * Contract validation: K8s readinessProbe + waitForHttpReady both probe
+   * the pod directly at `/ide/<key>/` (KubernetesIDEOrchestrator.ts:416,
+   * 644) and both succeed — proof that openvscode-server answers under
+   * the prefix, not at root.
+   */
+  protected stripPrefix(): boolean {
+    return false;
+  }
 }
 
 /**
@@ -203,11 +220,10 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     // Update last access (IDE is feature-level)
     await portRegistry.touchIDE(tenantId, userId, projectId, featureName);
 
-    // Rewrite the URL to strip the prefix and serverKey
-    const targetPath = url.slice(`${pathPrefix}/${serverKey}`.length) || '/';
-    req.url = targetPath;
-    
-    logger.debug(`WS proxy to ${host}:${port}${targetPath}`, { component: 'IDEProxy' });
+    // Forward `req.url` verbatim — openvscode-server is mounted under
+    // `--server-base-path /ide/<key>` and requires the prefix on incoming
+    // WS upgrades just like HTTP. See IDEProxyMiddlewareImpl.stripPrefix().
+    logger.debug(`WS proxy to ${host}:${port}${req.url}`, { component: 'IDEProxy' });
 
     // Proxy the WebSocket connection
     proxy.ws(req, socket, head, {
