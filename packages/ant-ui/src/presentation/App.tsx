@@ -26,7 +26,12 @@ import { selectProjectsLoaded } from '@/domain/store/selectors';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
-import { fetchAuthMeDetailed, getBackendMode, API_BASE } from '@/infrastructure/http/api';
+import { OrganizationOnboardingScreen } from '@/presentation/components/auth/OrganizationOnboardingScreen';
+import {
+  clearOnboardingQueryFlag,
+  shouldShowOnboarding,
+} from '@/application/auth/onboardingRouter';
+import { fetchAuthMeDetailed, getLaunchMode, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import {
@@ -101,19 +106,29 @@ function App() {
           // can come back online cleanly.
           clearSessionExpired();
           useStore.getState().setUser(result.user.email, result.user.organization);
-          useStore.getState().fetchProjects();
+          useStore.getState().setOnboardingState(
+            result.needsOnboarding,
+            result.suggestedOrganizationName,
+          );
+          // Skip the project fetch when onboarding is still pending —
+          // the requireOnboardedJwt guard would 401 every protected
+          // request and trigger the stale-session cascade.
+          if (!result.needsOnboarding) {
+            useStore.getState().fetchProjects();
+          }
           console.log('[Auth] Successfully signed in with Google:', result.user.email);
         } else {
           logAuthFailure('post-oauth', result);
           useStore.getState().setAuthStatus('idle');
         }
+        clearOnboardingQueryFlag();
         navigate('/', { replace: true });
       })();
     } else if (errorParam) {
       console.error('[Auth] OAuth error:', errorParam);
       useStore.getState().setAuthStatus('idle');
       navigate('/', { replace: true });
-    } else if (getBackendMode() === 'cloud') {
+    } else if (getLaunchMode() === 'cloud') {
       // Initial authStatus is already 'verifying' for hydrated stale-user
       // entries (see authSlice initialAuthStatus); explicitly set it again
       // for the fresh-mount case so we don't accidentally fan out before
@@ -122,9 +137,15 @@ function App() {
       (async () => {
         const result = await fetchAuthMeDetailed();
         if (result.kind === 'user') {
+          useStore.getState().setOnboardingState(
+            result.needsOnboarding,
+            result.suggestedOrganizationName,
+          );
           if (!useStore.getState().userEmail) {
             useStore.getState().setUser(result.user.email, result.user.organization);
-            useStore.getState().fetchProjects();
+            if (!result.needsOnboarding) {
+              useStore.getState().fetchProjects();
+            }
             console.log('[Auth] Restored session from cookie:', result.user.email);
           } else {
             useStore.getState().setAuthStatus('verified');
@@ -145,6 +166,12 @@ function App() {
           logAuthFailure('mount', result);
           useStore.getState().setAuthStatus('idle');
         }
+        // Strip `?onboarding=true` from the URL — the BE OAuth callback's
+        // _pending-redirect carries that flag but it's no longer the
+        // SSOT (the /auth/me response is). Leaving it would have the URL
+        // continue advertising "needs onboarding" after the user has
+        // completed it.
+        clearOnboardingQueryFlag();
       })();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,8 +215,9 @@ function App() {
   
   // ✅ Onboarding state
   const userEmail = useStore((state) => state.userEmail);
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const authStatusValue = useStore((state) => state.authStatus);
+  const needsOnboarding = useStore((state) => state.needsOnboarding);
   const projects = useStore((state) => state.projects);
   const projectsLoaded = useStore(selectProjectsLoaded);
   
@@ -200,7 +228,7 @@ function App() {
   const projectSetupConfig = useStore((state) => state.projectSetupConfig);
   const setProjectSetupConfig = useStore((state) => state.setProjectSetupConfig);
 
-  const shouldShowWelcome = backendMode === 'cloud' && !userEmail;
+  const shouldShowWelcome = launchMode === 'cloud' && !userEmail;
   // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
   const shouldShowQuickStart = !!userEmail && projectsLoaded && !onboardingSkipped
     && (projects.length === 0 || !!quickStartProjectId);
@@ -246,12 +274,16 @@ function App() {
   const ideConnectError = useStore((state) => state.ideConnectError);
   const ideFrameLoaded = useStore((state) => state.ideFrameLoaded);
 
-  // ✅ Auto-retry IDE iframe load ONLY if iframe didn't finish loading
+  // ✅ Auto-recover when iframe fails to load. Single dispatcher: every
+  // recovery attempt calls `startIdeSession`, whose fast-path probes the
+  // pod once and either no-ops (alive) or transitions to slow path (dead).
+  // No soft/hard branching here — that decision lives in the SSOT.
   const ideRetryCountRef = useRef(0);
   const lastIdeBaseUrlRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (mainView !== 'codeIde') return;
     if (!ideBaseUrl || ideConnecting) return;
+    if (!selectedProject) return;
 
     if (lastIdeBaseUrlRef.current !== ideBaseUrl) {
       lastIdeBaseUrlRef.current = ideBaseUrl;
@@ -261,25 +293,49 @@ function App() {
     // Stop retries once iframe successfully loaded
     if (ideFrameLoaded) return;
 
-    // After 2 automatic reloads still no success — surface explicit failure
-    // so IdeLoadingOverlay flips to the `failed` state instead of spinning forever.
+    // After 2 automatic recoveries still no success — surface explicit failure
+    // so IdeLoadingOverlay flips to the `failed` state and exposes a manual
+    // retry button instead of spinning forever.
     if (ideRetryCountRef.current >= 2) {
       if (!useStore.getState().ideConnectError) {
-        useStore.getState().setIdeConnecting(false, 'IDE failed to load. Please refresh and try again.');
+        useStore.getState().setIdeConnecting(false, 'IDE failed to load after recovery attempts.');
       }
       return;
     }
 
     const t = setTimeout(() => {
-      // Only retry if still not loaded at the time the timer fires
       if (!useStore.getState().ideFrameLoaded) {
         ideRetryCountRef.current += 1;
-        useStore.getState().reloadIdeFrame();
+        void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
       }
     }, ideRetryCountRef.current === 0 ? 1200 : 3500);
 
     return () => clearTimeout(t);
-  }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded]);
+  }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded, selectedProject, selectedFeature]);
+
+  // ✅ Visibility preempt — when the user returns to the tab after >10 min
+  // (the idle-reap window), check the iframe's pod is still alive BEFORE
+  // the stale iframe rasterizes a 404 page. `startIdeSession`'s fast-path
+  // does the actual probe; this effect is just the trigger. 30s throttle
+  // keeps tab-switch storms cheap.
+  const lastVisibilityCheckRef = useRef<number>(0);
+  useEffect(() => {
+    if (mainView !== 'codeIde') return;
+
+    const handler = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!selectedProject) return;
+      const state = useStore.getState();
+      if (!state.ideBaseUrl || state.ideConnecting) return;
+      const now = Date.now();
+      if (now - lastVisibilityCheckRef.current < 30_000) return;
+      lastVisibilityCheckRef.current = now;
+      void state.startIdeSession(selectedProject, selectedFeature || undefined);
+    };
+
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [mainView, selectedProject, selectedFeature]);
 
   // ✅ Refresh-safe: if we reload while in codeIde view, re-connect to IDE automatically.
   // Delegates to the `startIdeSession` SSOT so this path also gets the
@@ -449,6 +505,20 @@ function App() {
     );
   }
 
+  // Phase 3 — cloud-mode signed-in user with a `_pending` JWT must
+  // complete organization onboarding before the normal UI mounts. This
+  // also covers the `?onboarding=true` post-OAuth redirect because the
+  // mount-time `/auth/me` fetch has set `needsOnboarding` already.
+  if (shouldShowOnboarding({ launchMode, userEmail, needsOnboarding })) {
+    return (
+      <ToastProvider>
+        <AlertModalProvider>
+          <OrganizationOnboardingScreen />
+        </AlertModalProvider>
+      </ToastProvider>
+    );
+  }
+
   // ✅ Boot gate: hide the normal UI while either
   //   (a) cloud-mode JWT verification is still in flight (`authStatus === 'verifying'`), or
   //   (b) authenticated user is set but projects haven't loaded yet.
@@ -524,7 +594,11 @@ function App() {
           style={{ display: mainView === 'codeIde' ? 'block' : 'none' }}
         >
           {ideConnecting || !ideBaseUrl ? (
-            <IdeLoadingOverlay message={ideConnectError ? 'failed' : 'connecting'} errorMessage={ideConnectError} />
+            <IdeLoadingOverlay
+              message={ideConnectError ? 'failed' : 'connecting'}
+              errorMessage={ideConnectError}
+              onRetry={selectedProject ? () => void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined) : undefined}
+            />
           ) : (
             <div className="relative w-full h-full">
               {!ideFrameLoaded && (
@@ -532,6 +606,7 @@ function App() {
                   <IdeLoadingOverlay
                     message={ideConnectError ? 'failed' : 'loading'}
                     errorMessage={ideConnectError}
+                    onRetry={selectedProject ? () => void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined) : undefined}
                   />
                 </div>
               )}
@@ -541,17 +616,23 @@ function App() {
                 className="w-full h-full border-0"
                 title="ANT Code Editor"
                 onLoad={async () => {
-                  // onLoad fires on both real content and 5xx error pages
+                  // onLoad fires on both real content and proxy error pages
                   // (cross-origin onError is unreliable). Re-probe the proxy
-                  // so a 5xx leaves ideFrameLoaded=false → retry effect kicks in.
+                  // to distinguish them. `< 400` is the success window —
+                  // a 404 here means `baseProxy` returned "ide not found"
+                  // because the pod was idle-reaped, NOT a legitimate
+                  // workbench response. Treat 4xx/5xx as dead and delegate
+                  // recovery to `startIdeSession` (single SSOT).
                   try {
                     const res = await fetch(`${ideBaseUrl}/`, {
                       method: 'GET',
                       credentials: 'include',
                       cache: 'no-store',
                     });
-                    if (res.status >= 200 && res.status < 500) {
+                    if (res.status >= 200 && res.status < 400) {
                       useStore.getState().setIdeFrameLoaded(true);
+                    } else if (selectedProject) {
+                      void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
                     }
                   } catch {
                     // network error — leave ideFrameLoaded=false; retry effect handles it
@@ -636,9 +717,11 @@ function App() {
 function IdeLoadingOverlay({
   message,
   errorMessage,
+  onRetry,
 }: {
   message: 'connecting' | 'loading' | 'failed';
   errorMessage?: string;
+  onRetry?: () => void;
 }) {
   const { t } = useTranslation('async');
   const text =
@@ -655,6 +738,15 @@ function IdeLoadingOverlay({
           <Skeleton variant="text" className="w-full mb-2" delayMs={80} />
           <Skeleton variant="text" className="w-5/6 mb-6" delayMs={160} />
           <div className="text-sm text-gray-600 dark:text-gray-300">{text}</div>
+          {message === 'failed' && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-4 inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#161b22] transition-colors"
+            >
+              {t('ide.retry')}
+            </button>
+          )}
         </div>
       </div>
     </div>
