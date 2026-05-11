@@ -51,9 +51,9 @@ describe('I1 — selectIsAuthBlocked SSOT', () => {
     expect(src).toMatch(/export\s+function\s+selectIsAuthBlocked/);
   });
 
-  it('selector blocks when backendMode is cloud and userEmail is missing', () => {
+  it('selector blocks when launchMode is cloud and userEmail is missing', () => {
     const src = readFileSync(SELECTOR_PATH, 'utf-8');
-    expect(src).toMatch(/state\.backendMode\s*!==\s*['"]cloud['"]/);
+    expect(src).toMatch(/state\.launchMode\s*!==\s*['"]cloud['"]/);
     expect(src).toMatch(/!state\.userEmail/);
   });
 

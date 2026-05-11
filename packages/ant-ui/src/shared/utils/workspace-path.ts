@@ -53,11 +53,11 @@
  */
 
 // Import from api.ts to avoid duplication
-import { getBackendMode } from '@/infrastructure/http/api';
+import { getLaunchMode } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
 // Re-export for consumers of this module
-export { getBackendMode };
+export { getLaunchMode };
 
 /**
  * User Context 정보
@@ -93,7 +93,7 @@ function getUserContext(): UserContext {
  * Cloud: `workspaces/{org}/{user}`
  */
 export function getWorkspaceRootPath(): string {
-  const mode = getBackendMode();
+  const mode = getLaunchMode();
   
   if (mode === 'cloud') {
     const { organization, userId } = getUserContext();
@@ -169,7 +169,7 @@ export function getCodebasePath(
   projectId: string, 
   config?: { localPath?: string }
 ): string {
-  const mode = getBackendMode();
+  const mode = getLaunchMode();
   
   if (mode === 'local') {
     // Local 백엔드: 항상 config.localPath 사용
@@ -200,7 +200,7 @@ export function getDisplayPath(
   featureId: string, 
   subPath: string = 'sessions/architect/code.json'
 ): string {
-  const mode = getBackendMode();
+  const mode = getLaunchMode();
   
   if (mode === 'cloud') {
     const { organization, userId } = getUserContext();

@@ -6,14 +6,14 @@ export function useConfigEditor(
   config: ProjectConfig,
   defaultModelId: string
 ) {
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const [editedConfig, setEditedConfig] = useState<ProjectConfig>(config);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
   // Cloud 모드일 때 repoType을 'cloud'로 강제 설정
   useEffect(() => {
-    if (backendMode === 'cloud' && config.repoType !== 'cloud') {
+    if (launchMode === 'cloud' && config.repoType !== 'cloud') {
       const cloudConfig = {
         ...config,
         repoType: 'cloud' as const,
@@ -24,7 +24,7 @@ export function useConfigEditor(
       setEditedConfig(config);
     }
     setHasChanges(false);
-  }, [config, backendMode]);
+  }, [config, launchMode]);
 
   // Set default model from backend if config has empty llmModels
   useEffect(() => {
@@ -32,7 +32,7 @@ export function useConfigEditor(
       const hasEmptyModels = Object.keys(editedConfig.llmModels)
         .filter(k => editedConfig.llmModels![k as keyof typeof editedConfig.llmModels])
         .length === 0;
-      
+
       if (hasEmptyModels) {
         setEditedConfig(prev => ({
           ...prev,
@@ -66,6 +66,6 @@ export function useConfigEditor(
     errors,
     setErrors,
     hasChanges,
-    backendMode
+    launchMode
   };
 }

@@ -31,7 +31,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     errors,
     setErrors,
     hasChanges,
-    backendMode
+    launchMode
   } = useConfigEditor(config, defaultModelId);
   
   const [isSaving, setIsSaving] = useState(false);
@@ -192,7 +192,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   // Cloud 모드에서 repoType 비활성화 여부
   const isRepoTypeDisabled = (fieldKey: string) => {
-    return backendMode === 'cloud' && fieldKey === 'repoType';
+    return launchMode === 'cloud' && fieldKey === 'repoType';
   };
 
   const handleRename = async () => {
@@ -357,7 +357,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               hasError={!!errors[field.key]}
               errorMessage={errors[field.key]}
               isRepoTypeDisabled={isRepoTypeDisabled(field.key)}
-              showLocalPath={backendMode !== 'cloud'}
+              showLocalPath={launchMode !== 'cloud'}
               onChange={handleChange}
               githubOwnerInfo={githubOwnerInfo}
               projectName={editedConfig.repositoryName}

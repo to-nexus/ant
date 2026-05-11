@@ -4,12 +4,17 @@
     "logoAlt": "Ant 로고",
     "tabTitle": "Ant"
   },
-  "deploymentMode": {
+  "launchMode": {
     "local": "로컬",
     "cloud": "클라우드",
-    "switchToLocal": "로컬 백엔드로 전환 (또는 설정 가이드 보기)",
-    "currentlyLocal": "현재 로컬 백엔드 사용 중",
-    "switchToCloud": "클라우드 백엔드로 전환"
+    "switchToLocal": "로컬 기동으로 전환 (또는 설정 가이드 보기)",
+    "currentlyLocal": "현재 로컬 기동 모드 사용 중",
+    "switchToCloud": "클라우드 기동으로 전환",
+    "cloudBaseNotConfigured": "클라우드 백엔드 주소가 설정되지 않았습니다 (VITE_CLOUD_BACKEND_BASE)",
+    "localNotAvailableHere": "매니지드 빌드에서는 로컬 기동을 사용할 수 없습니다",
+    "localUser": "로컬 사용자",
+    "localOrg": "로컬 조직",
+    "localUserTooltip": "셀프 호스팅 기동 — 외부 인증 없이 동작합니다"
   },
   "viewMode": {
     "agents": "에이전트",
@@ -32,6 +37,18 @@
     "signIn": "로그인",
     "signOut": "로그아웃",
     "accountConfig": "계정 설정"
+  },
+  "onboarding": {
+    "title": "조직을 선택하세요",
+    "description": "{{email}} 로 로그인했습니다. 기존 조직에 합류하거나 새 조직 이름을 입력하거나, 건너뛰면 개인 워크스페이스로 시작합니다.",
+    "organizationLabel": "조직 이름",
+    "organizationPlaceholder": "예: acme 또는 Acme Team",
+    "willJoin": "기존 조직에 합류: {{name}}",
+    "willCreate": "새 조직 생성: {{name}}",
+    "continue": "계속",
+    "skip": "건너뛰기",
+    "footerHint": "이후 계정 설정에서 변경할 수 있습니다.",
+    "errorGeneric": "조직 설정에 실패했습니다. 다시 시도해 주세요."
   },
   "tabs": {
     "copiedJobId": "Job ID가 클립보드에 복사되었습니다",

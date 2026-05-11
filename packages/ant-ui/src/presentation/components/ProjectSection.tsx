@@ -23,7 +23,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     setSelectedProject,
     fetchProjects,
     openMainPanelTab,
-    backendMode,
+    launchMode,
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
@@ -137,7 +137,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             </div>
           )}
 
-          {backendMode !== 'cloud' &&
+          {launchMode !== 'cloud' &&
             projectConfigReady &&
             !projectConfigData?.localPath &&
             projectConfigData?.repoType !== 'cloud' && (

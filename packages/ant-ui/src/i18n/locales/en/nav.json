@@ -4,12 +4,17 @@
     "logoAlt": "Ant Logo",
     "tabTitle": "Ant - Worker Ant"
   },
-  "deploymentMode": {
+  "launchMode": {
     "local": "Local",
     "cloud": "Cloud",
-    "switchToLocal": "Switch to local backend (or view setup guide)",
-    "currentlyLocal": "Currently using local backend",
-    "switchToCloud": "Switch to cloud backend"
+    "switchToLocal": "Switch to local launch (or view setup guide)",
+    "currentlyLocal": "Currently running in local launch mode",
+    "switchToCloud": "Switch to cloud launch",
+    "cloudBaseNotConfigured": "Cloud build base URL not configured (VITE_CLOUD_BACKEND_BASE)",
+    "localNotAvailableHere": "Local launch is not available on managed builds",
+    "localUser": "Local User",
+    "localOrg": "Local Org",
+    "localUserTooltip": "Self-hosted launch — no remote auth needed"
   },
   "viewMode": {
     "agents": "Agents",
@@ -32,6 +37,18 @@
     "signIn": "Sign In",
     "signOut": "Sign Out",
     "accountConfig": "Account Configuration"
+  },
+  "onboarding": {
+    "title": "Choose your organization",
+    "description": "Signed in as {{email}}. Pick an organization to join, type a new one, or skip to use a personal workspace.",
+    "organizationLabel": "Organization name",
+    "organizationPlaceholder": "e.g. acme or Acme Team",
+    "willJoin": "Will join existing organization: {{name}}",
+    "willCreate": "Will create new organization: {{name}}",
+    "continue": "Continue",
+    "skip": "Skip",
+    "footerHint": "You can change this later from Account Configuration.",
+    "errorGeneric": "Failed to save organization. Please try again."
   },
   "tabs": {
     "copiedJobId": "Job ID copied to clipboard",

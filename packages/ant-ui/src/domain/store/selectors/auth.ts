@@ -11,7 +11,7 @@ import type { StoreState } from '../types';
  *
  * Returns `false` (allow) otherwise. Local mode is never blocked here.
  *
- * Replaces the scattered `state.backendMode === 'cloud' && !state.userEmail`
+ * Replaces the scattered `state.launchMode === 'cloud' && !state.userEmail`
  * inline checks. Lifecycle hooks (`useProjectLifecycle`, `usePreviewSync`
  * initial fetch, `App.loadSession`, `useDesktopBridge` initial fetch) and
  * the slice actions that fan out from them MUST go through this selector,
@@ -21,7 +21,7 @@ import type { StoreState } from '../types';
  * See plan `stale-session-lifecycle-cascade`.
  */
 export function selectIsAuthBlocked(state: StoreState): boolean {
-  if (state.backendMode !== 'cloud') return false;
+  if (state.launchMode !== 'cloud') return false;
   if (!state.userEmail) return true;
   return state.authStatus === 'verifying';
 }

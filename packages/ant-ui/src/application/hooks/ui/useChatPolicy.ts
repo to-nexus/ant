@@ -42,11 +42,11 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const queuePosition = useStore((state) => state.queuePosition);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
-  const backendMode = useStore((state) => state.backendMode);
+  const launchMode = useStore((state) => state.launchMode);
   const userEmail = useStore((state) => state.userEmail);
-  
+
   // ✅ Check authentication status
-  const isAuthenticated = backendMode === 'local' || !!userEmail;
+  const isAuthenticated = launchMode === 'local' || !!userEmail;
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
   // Chat doesn't have a dismiss button - it only disappears after successful resume
