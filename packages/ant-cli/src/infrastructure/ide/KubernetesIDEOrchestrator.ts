@@ -125,7 +125,7 @@ const DEFAULT_OPTIONS: Required<Omit<KubernetesIDEOrchestratorOptions, 'kubeApiU
   image: process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest',
   cpuLimit: '2',
   memoryLimit: '4Gi',
-  idleTimeoutMs: 30 * 60 * 1000  // 30 minutes
+  idleTimeoutMs: 10 * 60 * 1000  // 10 minutes — counted from the last HTTP/WS hit through the IDE proxy
 };
 
 // EFS PVC configuration (default matches DevOps naming convention).

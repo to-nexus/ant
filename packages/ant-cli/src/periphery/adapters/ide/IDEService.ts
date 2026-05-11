@@ -36,7 +36,7 @@ export class IDEService {
   private instances: Map<string, IDEInstance> = new Map();
   private idleCheckInterval?: NodeJS.Timeout;
   
-  private readonly IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  private readonly IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes — counted from the last HTTP/WS hit through the IDE proxy
   // ✅ Default to OpenVSCode Server (matches @ant/ide usage). Override via ANT_IDE_IMAGE.
   private readonly IMAGE = process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest';
   
