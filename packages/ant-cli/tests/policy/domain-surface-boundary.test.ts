@@ -37,6 +37,7 @@ import {
   ACTION_DEFINITIONS,
   INTENT_DEFINITIONS,
   isActionVisibleForDomain,
+  isActionSurfaced,
   getConfigSlots,
   getConfigSlotsForDomain,
   getPlanOutputs,
@@ -257,6 +258,31 @@ describe('Domain-Surface Boundary (D28) — undefined domain falls back to servi
     // System-design slot is domain-agnostic and must survive.
     const sysSlots = allSlots.filter(s => s.path === 'architecture/system');
     expect(sysSlots.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Action surfacing — status: "hidden" closes every UI surface', () => {
+  it('isActionSurfaced hides learn-codebase regardless of domain', () => {
+    const def = ACTION_DEFINITIONS.find(d => d.id === 'learn-codebase')!;
+    expect(isActionSurfaced(def, 'service')).toBe(false);
+    expect(isActionSurfaced(def, 'game')).toBe(false);
+    expect(isActionSurfaced(def, undefined)).toBe(false);
+  });
+
+  it('isActionSurfaced preserves the domain gate for non-hidden cards', () => {
+    const ui = ACTION_DEFINITIONS.find(d => d.id === 'design-ui')!;
+    expect(isActionSurfaced(ui, 'service')).toBe(true);
+    expect(isActionSurfaced(ui, 'game')).toBe(false);
+    const gameArt = ACTION_DEFINITIONS.find(d => d.id === 'design-game-art')!;
+    expect(isActionSurfaced(gameArt, 'service')).toBe(false);
+    expect(isActionSurfaced(gameArt, 'game')).toBe(true);
+  });
+
+  it('learn-codebase is the only currently-hidden action', () => {
+    // Sanity guard so a future "set status: hidden" elsewhere fails this
+    // test and forces the author to update the assertion intentionally.
+    const hidden = ACTION_DEFINITIONS.filter(d => d.status === 'hidden').map(d => d.id);
+    expect(hidden).toEqual(['learn-codebase']);
   });
 });
 

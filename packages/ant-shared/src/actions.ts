@@ -16,7 +16,7 @@ import type { Basis, TechTierConfig } from './rac';
 /** @deprecated Use IntentGroup instead */
 export type ActionId = IntentGroup;
 
-export type ActionStatus = 'active' | 'coming-soon';
+export type ActionStatus = 'active' | 'coming-soon' | 'hidden';
 
 /**
  * An Action is an intent group — the top-level card in ActionsPanel.
@@ -120,7 +120,10 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     id: 'learn-codebase',
     label: { en: 'Learn Codebase', ko: '코드베이스 학습' },
     description: { en: 'Analyze and index existing codebase', ko: '기존 코드를 분석하고 인덱싱합니다' },
-    status: 'coming-soon',
+    // Feature is incomplete — hidden from every UI surface (chat chips,
+    // action tab, @-mention, agent/job picker). The BE intent / job runner
+    // / config matrix entries remain so direct API invocation still works.
+    status: 'hidden',
   },
   {
     id: 'ask',
@@ -278,6 +281,23 @@ export function isActionVisibleForDomain(
 ): boolean {
   if (!def.domainGate || def.domainGate.length === 0) return true;
   return def.domainGate.includes(domain ?? 'service');
+}
+
+/**
+ * SSOT for "should this action card be surfaced in any UI?". Combines
+ * the domain gate (`isActionVisibleForDomain`) AND the visibility axis
+ * (`status !== 'hidden'`). Every UI surface that enumerates
+ * `ACTION_DEFINITIONS` — chat chips, action tab, `@intent:` mention
+ * autocomplete, and store recovery on domain change — MUST consult this
+ * helper. `status === 'hidden'` removes the card unconditionally
+ * (regardless of domain); `'coming-soon'` stays surfaced (intended for
+ * future "render disabled chip" styling, not for hiding).
+ */
+export function isActionSurfaced(
+  def: Pick<ActionDefinition, 'domainGate' | 'status'>,
+  domain: Domain | undefined,
+): boolean {
+  return def.status !== 'hidden' && isActionVisibleForDomain(def, domain);
 }
 
 // ============================================

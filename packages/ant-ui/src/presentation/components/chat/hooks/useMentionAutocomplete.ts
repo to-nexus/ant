@@ -5,7 +5,7 @@ import {
   INTENT_DEFINITIONS,
   ACTION_DEFINITIONS,
   getConfigSlotsForDomain,
-  isActionVisibleForDomain,
+  isActionSurfaced,
   getIntentLabel,
   type IntentDefinitionShape,
   type IntentId,
@@ -206,15 +206,15 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
     switch (prefix) {
       case '@intent:': {
-        // Phase 2 (D22): mirror the ActionsPanel domain gate so users
-        // cannot side-step it via mention. `gen-game-art-*` / `rev-game-art` /
-        // `explain-game-art` (intentGroup `design-game-art`) disappear when
-        // domain==='service'; `gen-ui-*` / `rev-ui` / `explain-ui`
-        // (intentGroup `design-ui`) disappear when domain==='game'. The
-        // current workspace domain is `service`.
+        // Mirror the ActionsPanel surfacing rule so users cannot side-step
+        // via mention. `isActionSurfaced` closes BOTH axes: the domain gate
+        // (Phase 2 / D22 — `design-game-art` hidden when domain==='service',
+        // `design-ui` hidden when domain==='game') AND the status axis
+        // (`status: 'hidden'` cards like `learn-codebase` are removed from
+        // every UI surface).
         const hiddenGroups = new Set<IntentGroup>(
           ACTION_DEFINITIONS
-            .filter(def => !isActionVisibleForDomain(def, actionMetadata.domain))
+            .filter(def => !isActionSurfaced(def, actionMetadata.domain))
             .map(def => def.id)
         );
         return INTENT_DEFINITIONS

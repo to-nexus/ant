@@ -33,17 +33,15 @@ export function createHealthRoutes(): Router {
   });
   
   // Get available agents (only enabled agents are listed).
-  // The architect/learn job depends on a Vector DB index — when
-  // ANT_VECTOR_DB_ENABLED is false, drop it from the response so the FE
-  // picker doesn't expose an unsupported workflow.
+  // The architect/learn job is intentionally omitted — the feature is
+  // incomplete and hidden from every UI surface (chat chips, action
+  // tab, @-mention, and this agent/job picker). The BE intent / job
+  // runner remain wired so direct API invocation still works.
   router.get('/agents', (_req: Request, res: Response) => {
     const architectJobs = [
       { value: 'design', label: 'Design' },
       { value: 'code', label: 'Code' },
     ];
-    if (isVectorDbEnabled()) {
-      architectJobs.push({ value: 'learn', label: 'Learn' });
-    }
 
     res.json([
       { 
