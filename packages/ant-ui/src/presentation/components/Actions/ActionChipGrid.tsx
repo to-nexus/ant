@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionVisibleForDomain, getActionLabel, getActionDescription, type IntentGroup, type ActionReadiness } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionSurfaced, getActionLabel, getActionDescription, type IntentGroup, type ActionReadiness } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { ActionChip } from './ActionChip';
 
@@ -32,7 +32,7 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
   const currentDomain = useStore(s => s.actionMetadata.domain);
 
   const defs = useMemo(() => {
-    const domainFiltered = ACTION_DEFINITIONS.filter(def => isActionVisibleForDomain(def, currentDomain));
+    const domainFiltered = ACTION_DEFINITIONS.filter(def => isActionSurfaced(def, currentDomain));
     if (!agentFilter) return domainFiltered;
     return domainFiltered.filter(def => {
       if (def.agentScoped === false) return false;

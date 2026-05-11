@@ -28,7 +28,7 @@ import {
   ACTION_DEFINITIONS,
   deriveFromIntent,
   getConfigSlots,
-  isActionVisibleForDomain,
+  isActionSurfaced,
   normalizeUiSourceRefs,
   type IntentGroup,
   type Basis,
@@ -1327,7 +1327,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         const selId = s.selectedActionId as IntentGroup | null;
         if (selId) {
           const def = ACTION_DEFINITIONS.find(d => d.id === selId);
-          if (def && !isActionVisibleForDomain(def, patch.domain)) {
+          if (def && !isActionSurfaced(def, patch.domain)) {
             updates.selectedActionId = null;
             updates.selectedIntentId = null;
             updates.actionsStep = 'pick-action';
