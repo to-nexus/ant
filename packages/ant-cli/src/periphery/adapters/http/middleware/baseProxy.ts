@@ -85,6 +85,20 @@ export abstract class BaseProxyMiddleware {
   }
 
   /**
+   * Whether to strip `${pathPrefix}/${serverKey}` from the URL before
+   * forwarding upstream.
+   *
+   * Default true — dev/preview servers serve at root and require the prefix
+   * stripped. IDE consumers that run openvscode-server with
+   * `--server-base-path /ide/<key>` MUST override to false: openvscode-server
+   * mounts every route under the base-path, so a stripped request lands on
+   * an unmatched route and returns 500 / 404 for every static asset.
+   */
+  protected stripPrefix(): boolean {
+    return true;
+  }
+
+  /**
    * Optional: Rewrite response content. Override if needed.
    */
   protected rewriteContent(
@@ -172,11 +186,16 @@ export abstract class BaseProxyMiddleware {
       // Get host (localhost for Docker, Pod IP for K8s)
       const host = await this.getHost(parts);
 
-      // Strip prefix from path
+      // Path forwarded upstream. `stripPrefix()` decides whether
+      // `${pathPrefix}/${serverKey}` is removed (dev / preview) or preserved
+      // (IDE — openvscode-server requires its `--server-base-path` prefix on
+      // every incoming request, see ideProxy.ts).
       const prefix = `${this.pathPrefix}/${serverKey}`;
       let targetPath = req.url;
-      while (targetPath.startsWith(prefix)) {
-        targetPath = targetPath.slice(prefix.length) || '/';
+      if (this.stripPrefix()) {
+        while (targetPath.startsWith(prefix)) {
+          targetPath = targetPath.slice(prefix.length) || '/';
+        }
       }
 
       const context: ProxyContext = {
