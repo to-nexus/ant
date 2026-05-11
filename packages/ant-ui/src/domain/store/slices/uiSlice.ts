@@ -299,6 +299,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   ideConnecting: false,
   ideConnectError: undefined,
   ideFrameLoaded: false,
+  ideLastStartedKey: undefined,
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
   mainPanelTabOrder: [],
@@ -365,10 +366,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set({ mainView: mode });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
 
-    // Agents -> Code IDE 전환 시 iframe 로딩 상태 리셋 (iframe이 리마운트되므로)
-    if (mode === 'codeIde' && prev !== 'codeIde') {
-      set({ ideFrameLoaded: false } as any);
-    }
+    // Tab switch is a pure visibility toggle now — the IDE iframe stays
+    // mounted across mainView changes (App.tsx renders both containers with
+    // a `display` toggle). Resetting `ideFrameLoaded` here would flash the
+    // skeleton over a live VSCode session, so the only legitimate writers
+    // are `reloadIdeFrame` and `startIdeSession` (slow path).
 
     // IDE -> Agents 전환 시 stale 데이터 refresh
     if (prev === 'codeIde' && mode === 'agents') {
@@ -422,12 +424,33 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   startIdeSession: async (projectId, featureName) => {
+    const state = get();
+    const sessionKey = `${projectId}:${featureName || ''}`;
+
+    // Idempotent fast path — same identity, session already live and healthy.
+    // Repeated NavBar clicks while in IDE, or the refresh-safe effect rerun,
+    // hit this branch and only flip mainView, preserving the running iframe.
+    if (
+      state.ideBaseUrl &&
+      !state.ideConnecting &&
+      !state.ideConnectError &&
+      state.ideLastStartedKey === sessionKey
+    ) {
+      if (state.mainView !== 'codeIde') {
+        set({ mainView: 'codeIde' } as any);
+        saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
+      }
+      return;
+    }
+
+    // Slow path — first start, identity change, or recovery after error.
     set({
       ideBaseUrl: undefined,
       ideConnecting: true,
       ideConnectError: undefined,
       ideFrameLoaded: false,
       ideWorkspacePath: `/${projectId}`,
+      ideLastStartedKey: undefined,
       mainView: 'codeIde',
     } as any);
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
@@ -450,6 +473,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         ideFrameLoaded: false,
         ideConnecting: false,
         ideConnectError: undefined,
+        ideLastStartedKey: sessionKey,
       } as any);
     } catch (error: any) {
       set({

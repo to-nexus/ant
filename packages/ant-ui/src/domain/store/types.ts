@@ -133,6 +133,11 @@ export interface UIState {
   ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
   ideConnectError: string | undefined;
   ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
+  // Identity (`${projectId}:${featureName ?? ''}`) of the last successful
+  // startIdeSession. Used by the idempotency fast-path so repeated entries
+  // (NavBar click while already in IDE, refresh effect re-trigger) skip the
+  // BE start + waitForIdeReady poll and just flip mainView.
+  ideLastStartedKey: string | undefined;
   mainPanelActiveTab: MainPanelTabId;
   mainPanelOpenTabs: {
     projectConfig: boolean;
