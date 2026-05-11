@@ -16,15 +16,24 @@ export interface AuthUser {
  * deployment misconfiguration so the caller can surface a precise hint.
  * `kind: 'user'` is the only success state.
  *
- *   kind=user           → signed-in user payload
+ *   kind=user           → signed-in user payload (carries onboarding flags too)
  *   kind=no-session     → cookie absent or invalid (200 + {user: null})
  *   kind=misconfigured  → backend returned 503 (ANT_JWT_SECRET unset)
  *   kind=http-error     → any other non-2xx
  *   kind=network        → fetch threw (CORS, offline, abort)
  *   kind=shape          → 200 but body shape unrecognised
+ *
+ * `needsOnboarding` / `suggestedOrganizationName` ride on the success
+ * branch — they describe the user (the `_pending` sentinel state) and
+ * are meaningless when there's no session.
  */
 export type AuthMeResult =
-  | { kind: 'user'; user: AuthUser }
+  | {
+      kind: 'user';
+      user: AuthUser;
+      needsOnboarding: boolean;
+      suggestedOrganizationName: string | null;
+    }
   | { kind: 'no-session' }
   | { kind: 'misconfigured' }
   | { kind: 'http-error'; status: number }

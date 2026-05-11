@@ -26,11 +26,13 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { JobQueuePort } from '../../core/ports/queue';
 import { IDEOrchestratorPort } from '../../core/ports/ideOrchestrator';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
+import { OrganizationRepositoryPort } from '../../core/ports/organizationRepository';
 
 import { RedisStateStore } from '../state/RedisStateStore';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
+import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -62,6 +64,7 @@ export class InfrastructureFactory {
   private stateStore: StateStorePort | null = null;
   private jobQueue: JobQueuePort | null = null;
   private ideOrchestrator: IDEOrchestratorPort | null = null;
+  private organizationRepository: OrganizationRepositoryPort | null = null;
   
   // Dependencies (must be set before getting orchestrators)
   private portManager: PortManager | null = null;
@@ -182,8 +185,33 @@ export class InfrastructureFactory {
         component: 'InfrastructureFactory'
       });
     }
-    
+
     return this.jobQueue;
+  }
+
+  // ============================================
+  // Organization Repository (cloud-mode auth)
+  // ============================================
+
+  /**
+   * Get the cloud-mode OrganizationRepository — Phase 3 auth records
+   * (organizations / memberships / users). Shares the StateStore's
+   * Redis connection so we don't open a new socket.
+   *
+   * Local mode does not use this — `local:local` is a fixed tenant
+   * with no per-user organization state.
+   */
+  getOrganizationRepository(): OrganizationRepositoryPort {
+    if (!this.organizationRepository) {
+      const stateStore = this.getStateStore() as RedisStateStore;
+      this.organizationRepository = new RedisOrganizationRepository(
+        stateStore.getRedisClient(),
+      );
+      logger.info('Using RedisOrganizationRepository', {
+        component: 'InfrastructureFactory',
+      });
+    }
+    return this.organizationRepository;
   }
 
   // ============================================

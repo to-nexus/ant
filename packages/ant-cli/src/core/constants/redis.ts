@@ -25,6 +25,8 @@ export const REDIS_DOMAINS = {
   /** Distributed locks + throttle markers (SETNX + value-aware DEL via stateStore.tryAcquireLock / releaseLockIfOwner). */
   LOCK: `${APP_PREFIX}:lock`,
   THROTTLE: `${APP_PREFIX}:throttle`,
+  /** Cloud-mode auth records (users / organizations / memberships) — Redis projection of the SQL schema in Phase 3. */
+  AUTH: `${APP_PREFIX}:auth`,
 } as const;
 
 // ============================================
@@ -216,6 +218,35 @@ export const REDIS_KEYS = {
     /** "worktree corruption sweep already ran for this project recently". */
     WORKTREE_PRUNE: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.THROTTLE}:worktree-prune:${org}:${user}:${projectId}`,
+  },
+
+  /**
+   * Cloud-mode auth — Redis projection of the SQL schema described in the
+   * Phase 3 plan. All values are JSON strings; sets are Redis SETs.
+   *
+   *   organizations table  → ORG record  (ant:auth:org:{orgId})
+   *                          + ORG_INDEX SET (full enumeration / search)
+   *   memberships table    → ORG_MEMBERS:{orgId} SET (userId list)
+   *                          + USER_ORGS:{userId} SET (org list per user)
+   *                          + MEMBERSHIP:{orgId}:{userId} JSON (role + createdAt)
+   *   users table          → USER record (ant:auth:user:{userId})
+   *                          + USER_BY_EMAIL:{emailLower} → userId
+   */
+  AUTH: {
+    /** Organization record - ant:auth:org:{orgId} (JSON) */
+    ORG: `${REDIS_DOMAINS.AUTH}:org:`,
+    /** All organization ids (SET) - ant:auth:org:index */
+    ORG_INDEX: `${REDIS_DOMAINS.AUTH}:org:index`,
+    /** User ids that belong to org (SET) - ant:auth:org:members:{orgId} */
+    ORG_MEMBERS: `${REDIS_DOMAINS.AUTH}:org:members:`,
+    /** Org ids that user belongs to (SET) - ant:auth:user:orgs:{userId} */
+    USER_ORGS: `${REDIS_DOMAINS.AUTH}:user:orgs:`,
+    /** Membership record (role + createdAt) - ant:auth:membership:{orgId}:{userId} (JSON) */
+    MEMBERSHIP: `${REDIS_DOMAINS.AUTH}:membership:`,
+    /** User record - ant:auth:user:{userId} (JSON) */
+    USER: `${REDIS_DOMAINS.AUTH}:user:`,
+    /** Email → userId lookup - ant:auth:user:byEmail:{emailLower} (string) */
+    USER_BY_EMAIL: `${REDIS_DOMAINS.AUTH}:user:byEmail:`,
   },
 } as const;
 

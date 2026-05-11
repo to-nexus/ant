@@ -88,3 +88,25 @@ export const previewRateLimiter = rateLimit({
   store: createStore('preview'),
   message: { error: 'Too many preview requests', message: 'Please try again later.' },
 });
+
+/**
+ * Organization search rate limit (30 req/min per user).
+ *
+ * Powers the OrganizationOnboardingScreen autocomplete — the FE
+ * debounces at 300ms but a misbehaving client could still flood the
+ * endpoint. The repo's search scans every org id in the index, so
+ * cheap rate-limiting at the edge is cheaper than letting the SCAN
+ * pile up.
+ *
+ * Note: `_pending` JWTs (onboarding-in-progress) DO carry a valid
+ * `req.user.id`, so `perUserKeyGenerator` works for them too.
+ */
+export const organizationsRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: perUserKeyGenerator,
+  store: createStore('organizations'),
+  message: { error: 'Too many organization search requests', message: 'Please slow down.' },
+});

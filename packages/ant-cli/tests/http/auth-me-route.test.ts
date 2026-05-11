@@ -1,12 +1,15 @@
 /**
- * `/api/auth/me` contract — Phase: 200+null normalization.
+ * `/api/auth/me` contract — phase 2 unified shape.
  *
- * "Not signed in" is a normal state, not an error. The endpoint must
- * always answer 200 with `{ user: null }` for missing/invalid sessions
- * and `{ user: {...} }` for valid sessions. 401 is reserved for protected
- * routes; using it on the session-probe endpoint forces every visitor
- * (including new users on the marketing site) to take a console error
- * on every page load.
+ * Always answers 200 with the same envelope:
+ *   { user: User | null, needsOnboarding: boolean, suggestedOrganizationName: string | null }
+ *
+ * - Local mode (`ANT_SERVER_MODE !== 'cloud'`): returns a fixed Local
+ *   identity so the FE LocalUserBadge has a consistent payload.
+ * - Cloud mode: reads the JWT cookie. `needsOnboarding=true` only when
+ *   the payload's org is the `_pending` sentinel (Phase 3 will write it).
+ * - 503 is reserved for cloud-mode-with-no-JWT-service (genuine config
+ *   fault) — never for "not signed in" (which is `{ user: null, ... }`).
  *
  * Same pattern as chatRoutes.test.ts — no supertest; bind a real Express
  * app to port 0 and call it with fetch.
@@ -65,32 +68,47 @@ async function startApp(jwtService: JwtService | undefined): Promise<{
   };
 }
 
-describe('GET /api/auth/me', () => {
+describe('GET /api/auth/me — cloud mode', () => {
   let app: { url: string; close: () => Promise<void> };
+  const originalMode = process.env.ANT_SERVER_MODE;
+
+  beforeEach(() => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+  });
 
   afterEach(async () => {
+    if (originalMode === undefined) delete process.env.ANT_SERVER_MODE;
+    else process.env.ANT_SERVER_MODE = originalMode;
     if (app) await app.close();
   });
 
-  it('returns 200 + { user: null } when no session cookie is present', async () => {
+  it('returns 200 + { user: null, needsOnboarding: false, suggestedOrganizationName: null } when no cookie', async () => {
     app = await startApp(makeJwtService());
     const res = await fetch(`${app.url}/api/auth/me`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ user: null });
+    expect(body).toEqual({
+      user: null,
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
+    });
   });
 
-  it('returns 200 + { user: null } when the cookie is malformed', async () => {
+  it('returns 200 + user:null envelope when the cookie is malformed', async () => {
     app = await startApp(makeJwtService());
     const res = await fetch(`${app.url}/api/auth/me`, {
       headers: { Cookie: `${JwtService.cookieName}=not-a-valid-jwt` },
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ user: null });
+    expect(body).toEqual({
+      user: null,
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
+    });
   });
 
-  it('returns 200 + { user: null } when the token signature is wrong', async () => {
+  it('returns 200 + user:null envelope when the token signature is wrong', async () => {
     const goodService = makeJwtService();
     const token = goodService.sign({
       sub: 'user-1',
@@ -98,7 +116,6 @@ describe('GET /api/auth/me', () => {
       org: 'to.nexus',
       name: 'Alice',
     });
-    // Verifying with a different secret → invalid signature.
     const tamperedService = new JwtService({
       secret: 'a-different-secret-also-at-least-32-chars',
     });
@@ -108,10 +125,14 @@ describe('GET /api/auth/me', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ user: null });
+    expect(body).toEqual({
+      user: null,
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
+    });
   });
 
-  it('returns 200 + { user: <payload> } when the cookie is a valid token', async () => {
+  it('returns 200 + user payload + needsOnboarding:false when the cookie is a valid token (settled org)', async () => {
     const jwtService = makeJwtService();
     const token = jwtService.sign({
       sub: 'user-42',
@@ -134,12 +155,107 @@ describe('GET /api/auth/me', () => {
         name: 'Alice',
         picture: 'https://example.com/avatar.png',
       },
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
     });
   });
 
-  it('returns 503 when JWT is not configured (genuine server fault)', async () => {
+  it('returns needsOnboarding:true + suggestedOrganizationName for business email on _pending JWT', async () => {
+    // Phase 3 contract — OAuth callback emits `org: '_pending'` for new
+    // users so the FE can route them to OrganizationOnboardingScreen.
+    // Business email → second-level domain becomes the prefill.
+    const jwtService = makeJwtService();
+    const token = jwtService.sign({
+      sub: 'user-new',
+      email: 'newbie@example.com',
+      org: '_pending',
+      name: 'Newbie',
+    });
+    app = await startApp(jwtService);
+    const res = await fetch(`${app.url}/api/auth/me`, {
+      headers: { Cookie: `${JwtService.cookieName}=${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.needsOnboarding).toBe(true);
+    expect(body.user).toMatchObject({ userId: 'user-new', organization: '_pending' });
+    expect(body.suggestedOrganizationName).toBe('example');
+  });
+
+  it('returns needsOnboarding:true + null suggestion for consumer email on _pending JWT', async () => {
+    const jwtService = makeJwtService();
+    const token = jwtService.sign({
+      sub: 'user-consumer',
+      email: 'foo@gmail.com',
+      org: '_pending',
+      name: 'Foo',
+    });
+    app = await startApp(jwtService);
+    const res = await fetch(`${app.url}/api/auth/me`, {
+      headers: { Cookie: `${JwtService.cookieName}=${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.needsOnboarding).toBe(true);
+    expect(body.suggestedOrganizationName).toBeNull();
+  });
+
+  it('returns 503 when JWT service is not configured (cloud config fault)', async () => {
     app = await startApp(undefined);
     const res = await fetch(`${app.url}/api/auth/me`);
     expect(res.status).toBe(503);
+  });
+});
+
+describe('GET /api/auth/me — local mode', () => {
+  let app: { url: string; close: () => Promise<void> };
+  const originalMode = process.env.ANT_SERVER_MODE;
+
+  beforeEach(() => {
+    delete process.env.ANT_SERVER_MODE;
+  });
+
+  afterEach(async () => {
+    if (originalMode === undefined) delete process.env.ANT_SERVER_MODE;
+    else process.env.ANT_SERVER_MODE = originalMode;
+    if (app) await app.close();
+  });
+
+  it('returns the fixed Local identity envelope when ANT_SERVER_MODE is unset', async () => {
+    // No JWT service is provided — local mode never inspects JWT.
+    app = await startApp(undefined);
+    const res = await fetch(`${app.url}/api/auth/me`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      user: {
+        email: 'local@local',
+        organization: 'local',
+        userId: 'local',
+        name: 'Local User',
+      },
+      needsOnboarding: false,
+      suggestedOrganizationName: null,
+    });
+  });
+
+  it('returns the same Local envelope when ANT_SERVER_MODE=local explicitly', async () => {
+    process.env.ANT_SERVER_MODE = 'local';
+    app = await startApp(undefined);
+    const res = await fetch(`${app.url}/api/auth/me`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.user).toMatchObject({ email: 'local@local', organization: 'local' });
+    expect(body.needsOnboarding).toBe(false);
+  });
+
+  it('ignores any cookie in local mode (no JWT verification path)', async () => {
+    app = await startApp(undefined);
+    const res = await fetch(`${app.url}/api/auth/me`, {
+      headers: { Cookie: `${JwtService.cookieName}=tampered-token-content` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.user).toMatchObject({ organization: 'local' });
   });
 });
