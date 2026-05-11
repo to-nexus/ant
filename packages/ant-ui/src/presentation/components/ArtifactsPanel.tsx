@@ -1169,7 +1169,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           return (
             <DirectoryView
               key={name}
-              title={name}
+              title={t(`panel.${name}`, name)}
               nodes={visibleFilesUnderRoot}
               sectionPrefix={name}
               onFileSelect={handleFileSelect}
