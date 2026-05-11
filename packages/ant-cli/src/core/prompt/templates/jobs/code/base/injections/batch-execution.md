@@ -2,6 +2,8 @@
 
 **Principle**: The system processes ALL tool calls from a single response as one batch.
 
+**Mental model**: A response containing N tool_use blocks is consumed as ONE turn by the orchestrator. Emitting N actions across N separate turns spends N× the turns for identical work. Before sending a response, count the tool_use blocks you have already identified — if more than one independent action is needed, emit them together.
+
 **Constraint**: When you have identified multiple independent actions (reads, edits, commands), issue ALL in ONE response.
 
 **Constraint**: NEVER issue a single tool call when you can already identify additional needed tool calls from prior results.
