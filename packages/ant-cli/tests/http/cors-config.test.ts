@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { __testing } from '../../src/periphery/adapters/http/middleware/corsConfig';
 
-const { isLoopbackOrigin } = __testing;
+const { isLoopbackOrigin, isSelfOrigin } = __testing;
 
 describe('isLoopbackOrigin', () => {
   it('matches http://localhost with any port', () => {
@@ -46,6 +46,46 @@ describe('isLoopbackOrigin', () => {
 });
 
 /**
+ * `isSelfOrigin` — same-host gate that auto-allows requests whose Origin
+ * header matches the request's Host header. Closes the iframe / module-script
+ * CORS regression where openvscode-server's `<script type="module">` loads
+ * always emit an Origin header (CORS spec) even on same-origin requests.
+ */
+describe('isSelfOrigin', () => {
+  // Express's `req.hostname` is trust-proxy aware (reflects X-Forwarded-Host
+  // chain). Mock the property the predicate reads directly.
+  function mockReq(hostname: string | undefined): any {
+    return { hostname };
+  }
+
+  it('allows when Origin hostname equals request hostname', () => {
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://ant-server.crosstoken.io')).toBe(true);
+    // Origin with explicit port — hostname comparison ignores port.
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://ant-server.crosstoken.io:443')).toBe(true);
+  });
+
+  it('rejects when Origin hostname differs from request hostname (spoof attempt)', () => {
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://evil.com')).toBe(false);
+    expect(isSelfOrigin(mockReq('other.host'), 'https://ant-server.crosstoken.io')).toBe(false);
+  });
+
+  it('rejects subdomain attacks that only LOOK like self', () => {
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://evil.ant-server.crosstoken.io')).toBe(false);
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io.attacker.com'), 'https://ant-server.crosstoken.io')).toBe(false);
+  });
+
+  it('rejects when request has no resolvable hostname', () => {
+    expect(isSelfOrigin(mockReq(undefined), 'https://ant-server.crosstoken.io')).toBe(false);
+    expect(isSelfOrigin(mockReq(''), 'https://ant-server.crosstoken.io')).toBe(false);
+  });
+
+  it('rejects malformed Origin gracefully', () => {
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'not a url')).toBe(false);
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), '')).toBe(false);
+  });
+});
+
+/**
  * End-to-end: spin a tiny Express app with the real middleware and assert
  * the CORS preflight / actual-request behavior.
  */
@@ -63,6 +103,9 @@ describe('createCorsMiddleware integration', () => {
       else process.env[k] = v;
     }
     const app = express();
+    // Mirror production: ServerConfigurator sets trust proxy=1 so
+    // `req.get('host')` reads X-Forwarded-Host as set by ALB / ingress.
+    app.set('trust proxy', 1);
     app.use(createCorsMiddleware());
     app.get('/probe', (_req, res) => res.json({ ok: true }));
     const server = http.createServer(app);
@@ -140,6 +183,56 @@ describe('createCorsMiddleware integration', () => {
     try {
       const res = await fetch(`${app.url}/probe`);
       expect(res.status).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  /**
+   * Production regression: openvscode-server's iframe emits module scripts
+   * whose loads ALWAYS carry an Origin header (CORS spec) even when
+   * same-origin. Before self-origin auto-allow, `https://ant-server.crosstoken.io`
+   * (the BE host) was rejected unless an operator registered it in
+   * ANT_CORS_ORIGINS — registering oneself in one's own allowlist is the
+   * kind of asymmetry the self-origin gate eliminates.
+   */
+  it('allows self-host origin via X-Forwarded-Host (ALB / ingress scenario)', async () => {
+    const app = await startApp({
+      NODE_ENV: 'production',
+      ANT_CORS_ORIGINS: 'https://ant.crosstoken.io', // self-host intentionally NOT here
+    });
+    try {
+      const res = await fetch(`${app.url}/probe`, {
+        headers: {
+          Origin: 'https://ant-server.crosstoken.io',
+          'X-Forwarded-Host': 'ant-server.crosstoken.io',
+          'X-Forwarded-Proto': 'https',
+        },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://ant-server.crosstoken.io');
+      expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects Origin spoof that does NOT match X-Forwarded-Host', async () => {
+    const app = await startApp({
+      NODE_ENV: 'production',
+      ANT_CORS_ORIGINS: 'https://ant.crosstoken.io',
+    });
+    try {
+      const res = await fetch(`${app.url}/probe`, {
+        headers: {
+          Origin: 'https://evil.example.com',
+          'X-Forwarded-Host': 'ant-server.crosstoken.io',
+          'X-Forwarded-Proto': 'https',
+        },
+      });
+      // CORS gate fails -> server still serves, but without
+      // Access-Control-Allow-Origin so the browser blocks.
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
     } finally {
       await app.close();
     }
