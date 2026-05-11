@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import semver from 'semver';
 import type { InvalidationScope } from '../types';
+import { enumeratePackageJsonManifests, resolveModulePath } from './workspaceDepPins';
 
 const TEST_PATH_PATTERNS: RegExp[] = [
   /(^|\/)__tests__\//i,
@@ -106,42 +107,66 @@ function extension(base: string): string {
  * Are all declared JS deps present in `codebase/node_modules/` AND (for
  * semver-range specs) does the installed version satisfy the spec?
  *
- * Returns `true` when every `dependencies ∪ devDependencies` entry resolves
- * and its version (when declared as a semver range) satisfies the spec.
- * Returns `false` when any dep is missing or its installed version fails
- * `semver.satisfies`. Returns `null` when package.json is absent/unreadable.
+ * Workspace-aware — scans every `package.json` under the codebase via the
+ * shared `enumeratePackageJsonManifests` walker (same SSOT as
+ * `workspaceDepPins`), takes the union of every member's
+ * `dependencies ∪ devDependencies` (first-seen spec wins), and resolves
+ * each via `resolveModulePath` (manifest-local-first → root-fallback) so
+ * pnpm symlinks, yarn-classic nested, and npm 7+ hoisted layouts all
+ * resolve.
+ *
+ * Returns `true` when every union entry resolves and its version (when
+ * declared as a semver range) satisfies the spec. Returns `false` when any
+ * dep is missing or its installed version fails `semver.satisfies`.
+ * Returns `null` when the codebase has no `package.json` at all (non-JS
+ * project) or the codebase directory is unreadable.
  *
  * Non-range specs (git, file:, workspace:*, link:, npm tags) fall back to
  * existence-only — resolving those accurately needs the lockfile, which is
  * outside this module's SSOT. `peerDependencies` / `optionalDependencies`
- * are excluded. Yarn PnP is not covered.
+ * are excluded (install-responsibility domain — see
+ * `dep-self-contained.md`). Yarn PnP is not covered.
  */
 export async function areDepsInstalled(featureRootPath: string): Promise<boolean | null> {
   const codebasePath = path.join(featureRootPath, 'codebase');
-  const pkgPath = path.join(codebasePath, 'package.json');
-  let pkg: any;
-  try {
-    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
-  } catch {
-    return null;
+
+  const manifests = await enumeratePackageJsonManifests(codebasePath);
+  if (manifests.length === 0) return null;
+
+  let hasParseError = false;
+  // Per (name × declaringDir) instead of first-seen-wins: when the same
+  // library is declared by two members, each member is a separate import
+  // surface and must resolve independently (one member having it installed
+  // does NOT prove the other does).
+  const declarations: Array<{ name: string; spec: string; declaringDir: string }> = [];
+  for (const absManifestPath of manifests) {
+    let pkg: any;
+    try {
+      pkg = JSON.parse(await fs.promises.readFile(absManifestPath, 'utf-8'));
+    } catch {
+      hasParseError = true;
+      continue;
+    }
+    const merged: Record<string, string> = {
+      ...(pkg.dependencies || {}),
+      ...(pkg.devDependencies || {}),
+    };
+    const declaringDir = path.dirname(absManifestPath);
+    for (const [name, spec] of Object.entries(merged)) {
+      declarations.push({ name, spec, declaringDir });
+    }
   }
 
-  const required: Record<string, string> = {
-    ...(pkg.dependencies || {}),
-    ...(pkg.devDependencies || {}),
-  };
-  const names = Object.keys(required);
-  if (names.length === 0) return true;
+  // No declared deps anywhere: when every manifest failed to parse, treat
+  // as unknown (preserves the legacy "malformed package.json → null"
+  // contract). When at least one parsed cleanly with zero deps, the
+  // codebase is genuinely zero-dep → true.
+  if (declarations.length === 0) return hasParseError ? null : true;
 
-  for (const name of names) {
-    const modPath = path.join(codebasePath, 'node_modules', ...name.split('/'));
-    try {
-      await fs.promises.stat(modPath);
-    } catch {
-      return false;
-    }
+  for (const { name, spec, declaringDir } of declarations) {
+    const modPath = await resolveModulePath(codebasePath, name, declaringDir);
+    if (!modPath) return false;
 
-    const spec = required[name];
     if (!spec || !isSemverRangeSpec(spec)) continue;
 
     let installedVersion: string | undefined;
@@ -151,7 +176,6 @@ export async function areDepsInstalled(featureRootPath: string): Promise<boolean
       );
       installedVersion = typeof depPkg.version === 'string' ? depPkg.version : undefined;
     } catch {
-      // Missing/unreadable dep package.json → treat as version-unknown.
       continue;
     }
     if (!installedVersion) continue;
