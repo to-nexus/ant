@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
+import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { logger } from '../../../../../utils/logger';
@@ -177,6 +178,11 @@ export class ServerConfigurator {
       ],
       publicPrefixes: [],
     }));
+
+    // Phase 3: refuse `_pending` JWT on every protected path except the
+    // onboarding-flow endpoints (auth/me, auth/signout, auth/onboarding,
+    // organizations). Local mode skips this entirely (early return above).
+    app.use('/api', createRequireOnboardedJwt());
   }
 
   /**

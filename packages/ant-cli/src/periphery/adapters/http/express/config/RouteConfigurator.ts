@@ -110,6 +110,7 @@ export class RouteConfigurator {
         oidcService: this.deps.oidcService,
         jwtService: this.deps.jwtService,
         stateStore: getInfrastructureFactory().getStateStore(),
+        organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
       });
       app.use('/api', authRoutes);
     }
@@ -138,6 +139,12 @@ export class RouteConfigurator {
       gitStateBroadcaster: this.deps.gitStateBroadcaster,
       cleanupJobState: this.cleanupJobState,
       stateTracker: this.stateTracker,
+      // Phase 3: cloud-mode only. Local mode skips authService, which
+      // gates auth route setup — but the organization repo is harmless
+      // to wire here regardless (no callers in local).
+      organizationRepository: this.config.mode === 'cloud'
+        ? getInfrastructureFactory().getOrganizationRepository()
+        : undefined,
     });
     app.use('/api', apiRoutes);
   }

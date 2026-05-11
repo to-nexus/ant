@@ -30,7 +30,6 @@ export interface JobExecutionState {
 export interface ServerConfig {
   mode: 'local' | 'cloud';
   workspacesPath: string;
-  cloudUrl: string;
 }
 
 /**

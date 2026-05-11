@@ -14,6 +14,8 @@ import { createBridgeRoutes } from './bridge.routes';
 import { createModelsRoutes } from './models.routes';
 import { createTransferRoutes } from './transfer.routes';
 import { createOrgRoutes } from './org.routes';
+import { createOrganizationsRoutes } from './organizations.routes';
+import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 
 // ✅ Re-export existing routes
 // Note: Preview routes moved to ant-preview service (see 10-cloud-architecture.md)
@@ -51,6 +53,7 @@ export interface RoutesDeps {
     userContext?: any,
   ) => Promise<void>;
   stateTracker?: any;  // JobStateTracker — finalizeTerminalJob requires this
+  organizationRepository?: OrganizationRepositoryPort;  // Phase 3 cloud-mode org / membership repo
 }
 
 /**
@@ -156,6 +159,14 @@ export function createApiRoutes(deps: RoutesDeps): Router {
       workspaceResolver: deps.workspaceResolver,
     }));
   }
-  
+
+  // Phase 3: organization search (powers onboarding-screen autocomplete).
+  // Available only when the OrganizationRepository is wired (cloud mode).
+  if (deps.organizationRepository) {
+    router.use(createOrganizationsRoutes({
+      organizationRepository: deps.organizationRepository,
+    }));
+  }
+
   return router;
 }

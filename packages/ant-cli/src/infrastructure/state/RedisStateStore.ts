@@ -1756,6 +1756,16 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     }
   }
 
+  /**
+   * Expose the underlying ioredis client for adapters that need direct
+   * Redis access (e.g. `RedisOrganizationRepository`). Keeps the
+   * connection count to one — separate adapters share the same client
+   * rather than each opening a new socket.
+   */
+  getRedisClient(): Redis {
+    return this.redis;
+  }
+
   // ============================================
   // Stats (for debugging/monitoring)
   // ============================================
