@@ -195,10 +195,10 @@
   },
   "selfHost": {
     "heroTitle": "노트북에서 ANT 실행.",
-    "heroHighlight": "계정 불필요.",
-    "heroDesc": "repo clone → 인프라 기동 → dev 스크립트 실행. ~60초.",
-    "infraTitle": "실행할 것",
-    "infraDesc": "ANT는 항상 분산 시스템입니다 — 로컬과 클라우드 동일. 3개의 프로세스 + 공유 인프라.",
+    "heroHighlight": "Local mode.",
+    "heroDesc": "본인 머신에서 셀프호스트 — Docker Redis + Ant 4 프로세스 + 본인 LLM 키. OAuth 없음, Kubernetes 없음, 매니지드 계정 없음.",
+    "infraTitle": "4 프로세스, 1 Redis",
+    "infraDesc": "Local mode 는 단일 머신 위의 분산 시스템입니다. 클라우드와 동일 아키텍처 — 토폴로지만 다릅니다.",
     "process": {
       "api": "API 서버 (port 4100) — 요청 수신, 잡 큐잉",
       "worker": "Job worker — 자식 프로세스에서 LangGraph 에이전트 실행",
@@ -206,29 +206,30 @@
       "preview": "Preview 서버 (port 4102) — 생성된 코드 호스팅"
     },
     "infraDeps": {
-      "title": "인프라 의존성",
-      "redis": "Redis — pub/sub, BullMQ 큐, 상태 저장소",
-      "chroma": "ChromaDB (옵션) — 코드 이해를 위한 벡터 인덱스"
+      "title": "인프라",
+      "redis": "필수 — pnpm dev:infra:redis (Docker, port 16379)",
+      "chroma": "옵션 — ChromaDB 벡터 인덱스. 기본 비활성. RAG 체인은 git-changes + 키워드 검색으로 자동 폴백."
     },
-    "envTitle": "환경 변수",
-    "envDesc": "대부분의 기본값은 그대로 됩니다. 아래는 실제로 손볼 키들입니다.",
+    "envTitle": "최소 env",
+    "envDesc": "Local mode 는 OAuth, JWT, CORS allowlist 를 모두 스킵합니다. 네 값이면 충분.",
     "env": [
-      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "local | cloud" },
-      { "name": "ANT_REDIS_URL", "default": "redis://localhost:6379", "desc": "Redis 연결 (docker compose 사용 시 자동 설정)" },
-      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "필수. 생성: openssl rand -hex 32" },
-      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "워크스페이스(프로젝트) 저장 위치" },
-      { "name": "ANT_VECTOR_DB_ENABLED", "default": "false", "desc": "ChromaDB 벡터 인덱스 활성화 (옵션)" },
-      { "name": "ANT_TASK_CONCURRENCY", "default": "3", "desc": "잡당 병렬 태스크 수" }
+      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "이 페이지에서는 항상 local" },
+      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "필수. openssl rand -hex 32 (64자 hex)" },
+      { "name": "ANTHROPIC_API_KEY", "default": "—", "desc": "또는 다른 LLM 키 (OPENAI_API_KEY, AWS Bedrock)" },
+      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "워크스페이스 저장 경로" }
     ],
     "llmTitle": "본인 LLM 키 사용",
-    "llmDesc": "셀프호스트는 LLM 호출을 프록시하지 않습니다. 아래 중 하나만 설정하면 됩니다.",
+    "llmDesc": "Local mode 는 LLM 호출을 프록시하지 않습니다. 아래 중 하나만.",
     "llmKeys": [
-      "ANTHROPIC_API_KEY (Claude)",
+      "ANTHROPIC_API_KEY (Claude — 기본)",
       "OPENAI_API_KEY (GPT-4)",
       "AWS credentials (Bedrock)"
     ],
-    "nextStepsTitle": "다음 단계",
-    "nextStepsDesc": "동작이 확인되면, 문서에서 프로덕션 셀프호스트, 커스텀 LLM 프로바이더, 컨트리뷰션 가이드를 다룹니다."
+    "uiTitle": "Local mode 의 UI",
+    "uiDesc": "GNB 에 Local / Cloud 선택기와 Cloud 모드의 Sign In 자리에 표시되는 Local Org / Local User 배지가 보입니다. 가입 화면 없음 — 모두 단일 고정 local:local 테넌트에 속합니다.",
+    "nextStepsTitle": "전체 설치 가이드",
+    "nextStepsDesc": "사전 요구사항, env 레퍼런스, 선택적 vector DB, 트러블슈팅까지 단계별 가이드가 repo 에 있습니다.",
+    "nextStepsCta": "docs/local-mode/install.md 열기"
   },
   "community": {
     "heroTitle": "오픈소스.",
@@ -260,32 +261,35 @@
     "heroDesc": "ANT Cloud는 같은 OSS 코드의 매니지드 배포. 같은 에이전트, 같은 워크플로우 — 인프라만 저희가 운영합니다.",
     "ctaTry": "ANT Cloud 사용해보기",
     "earlyAccessNote": "현재 얼리 액세스 — 가격 미정.",
-    "tradeoffTitle": "셀프호스트 vs 클라우드",
-    "tradeoffDesc": "같은 코드, 운영 책임의 경계만 다름.",
+    "tradeoffTitle": "Ant 를 실행하는 세 가지 방법",
+    "tradeoffDesc": "같은 코드, 운영 경계만 다름.",
     "tradeoffSelfHost": {
-      "title": "셀프호스트",
+      "title": "Local mode (Persona A)",
       "bullets": [
-        "데이터와 인프라 모두 본인 소유",
-        "내 머신, 내 네트워크, 내 LLM 키",
-        "영구 무료"
+        "노트북에서 셀프호스트 — Docker Redis + Ant 4 프로세스",
+        "OAuth 없음, Kubernetes 없음, 매니지드 계정 없음",
+        "본인 LLM 키 사용. 영구 무료."
       ]
     },
     "tradeoffCloud": {
-      "title": "클라우드",
+      "title": "Managed cloud (Persona B)",
       "bullets": [
-        "Redis, ChromaDB, IDE pod, preview 서버 매니지드",
-        "데이터는 매니지드 region에 저장",
-        "Google 계정으로 로그인 — 인프라 셋업 불필요"
+        "ant.crosstoken.io — Redis, IDE pod, preview 서버 매니지드",
+        "Google 로그인, 조직 온보딩 포함",
+        "Anthropic Claude 가 매니지드 쿼터로 제공"
       ]
     },
-    "includesTitle": "ANT Cloud에 포함된 것",
+    "selfHostCloudTitle": "Cloud build 를 셀프호스트 (Persona C)",
+    "selfHostCloudDesc": "동일한 ANT_SERVER_MODE=cloud 빌드를 본인 인프라에서 — 단일 VM 부터 멀티테넌트 Kubernetes 까지. OAuth, JWT, CORS, IDE orchestration 이 모두 env 로 연결됩니다. 운영자 친화적 가이드는 cloud-mode/install.md.",
+    "selfHostCloudCta": "docs/cloud-mode/install.md 열기",
+    "includesTitle": "ANT Cloud 가 포함하는 것",
     "includes": [
-      "매니지드 Redis + BullMQ + Pub/Sub",
-      "ChromaDB 벡터 인덱스",
-      "격리된 IDE pod (Kubernetes 기반)",
-      "워크스페이스별 호스팅된 preview 서버",
-      "셀프호스트와 동일한 Plan → Design → Code → Preview 워크플로우",
-      "워크스페이스는 평문 파일 — 셀프호스트로 언제든 마이그레이션 가능"
+      "Anthropic Claude 기본 LLM (매니지드 쿼터)",
+      "사용자별 Cloud IDE pod (Kubernetes 기반 브라우저 VSCode)",
+      "매니지드 EFS 워크스페이스 저장소",
+      "Cloud HTTP bridge 를 통한 Figma MCP (Desktop MCP 불필요)",
+      "Local mode 와 동일한 Plan → Design → Code → Preview 워크플로우",
+      "워크스페이스는 평문 파일 — Local mode 로 언제든 마이그레이션 가능"
     ],
     "faqTitle": "자주 묻는 질문",
     "faq": [
@@ -374,28 +378,32 @@
     "privacyBody": "본 개인정보 처리방침은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 인스턴스는 ANT로 데이터를 전송하지 않습니다 — 데이터는 사용자 인프라에 머뭅니다.\n\n전체 개인정보 처리방침은 준비 중이며, ANT Cloud 얼리 액세스 종료 전에 게시됩니다."
   },
   "download": {
-    "heroTitle1": "Ant Desktop",
-    "heroTitle2": "다운로드",
-    "heroDesc": "Figma 디자인 연동을 위한 컴패니언 앱. 로컬 Figma Desktop을 ANT 인스턴스(클라우드 또는 셀프호스트)와 연결합니다.",
-    "downloadBtn": "다운로드",
+    "heroTitle1": "Ant 을 내 머신에",
+    "heroTitle2": "설치하기",
+    "heroDesc": "두 가지 방법 — 소스 빌드로 Local mode 전체 경험을 즐기거나, 데스크톱 브리지 앱을 기다리세요.",
+    "sourceLabel": "사용 가능",
+    "sourceTitle": "소스에서 빌드",
+    "sourceDesc": "Clone, install, run. 3 단계면 노트북에서 Local mode 가 동작합니다.",
+    "sourcePrereqTitle": "사전 요구사항",
+    "sourcePrereqMac": "macOS — Node 20+ (brew install node@20), pnpm 10+, Docker Desktop",
+    "sourcePrereqWin": "Windows — WSL2 권장; Node 20+, pnpm 10+, Docker Desktop",
+    "sourcePrereqLinux": "Linux — Node 20+ (distro 또는 NodeSource), pnpm 10+, Docker",
+    "sourceSnippetLabel": "원샷 설치",
+    "sourceCta": "Local mode 전체 가이드 → /self-host",
+    "desktopLabel": "지원 예정",
+    "desktopTitle": "데스크톱 앱",
+    "desktopDesc": "로컬 Figma Desktop 과 Ant 를 잇는 작은 트레이 브리지 앱. 서명된 바이너리는 준비 중 — 지금은 위의 소스 빌드로 설치하세요.",
+    "comingSoonToast": "서명된 바이너리는 준비 중입니다. 지금은 위의 소스 빌드로 설치해주세요.",
+    "downloadBtn": "출시 알림 받기",
     "comingSoon": "지원 예정",
-    "otherOS": "다른 OS 보기",
-    "whatTitle": "Ant Desktop이 하는 일",
-    "whatDesc": "Ant Desktop은 로컬 환경과 ANT 인스턴스를 연결하는 브리지입니다.",
+    "whatTitle": "데스크톱 앱이 할 일",
+    "whatDesc": "로컬 환경과 Ant 인스턴스를 잇는 브리지.",
     "bridgeTitle": "Figma 브리지",
-    "bridgeDesc": "Figma Desktop의 디자인 데이터를 ANT로 안전하게 전달합니다. 아웃바운드 연결만 사용하며, 인바운드 포트를 열지 않습니다.",
-    "trayTitle": "시스템 트레이 실행",
-    "trayDesc": "설치 후 시스템 트레이에서 조용히 실행됩니다. 필요할 때만 Figma 데이터를 전달하고, 리소스를 거의 사용하지 않습니다.",
-    "monitorTitle": "연결 상태 모니터링",
-    "monitorDesc": "ANT 및 Figma Desktop 연결 상태를 실시간으로 확인할 수 있습니다.",
-    "reqTitle": "시스템 요구사항",
-    "reqOS": "OS",
-    "reqMinVersion": "최소 버전",
-    "reqArch": "아키텍처",
-    "installTitle": "설치 안내",
-    "macSteps": [".dmg 파일 다운로드", "디스크 이미지 열기 → Applications 폴더로 드래그", "처음 실행 시 \"확인되지 않은 개발자\" 경고 → 시스템 설정 > 보안에서 허용"],
-    "winSteps": [".exe 설치 파일 다운로드", "실행하여 설치", "SmartScreen 경고 시 \"추가 정보\" → \"실행\" 클릭"],
-    "linuxSteps": [".deb 또는 .AppImage 다운로드", "Debian/Ubuntu: sudo dpkg -i ant-desktop_*.deb", "AppImage: chmod +x 후 실행"],
-    "codeSignNotice": "현재 Ant Desktop은 코드 서명이 적용되지 않은 베타 빌드입니다. 설치 시 OS 보안 경고가 표시될 수 있습니다. 정식 출시 전에 코드 서명을 적용할 예정입니다."
+    "bridgeDesc": "Figma Desktop 의 디자인 데이터를 Ant 로 안전하게 전달. 아웃바운드 연결만 — 인바운드 포트 없음.",
+    "trayTitle": "시스템 트레이 앱",
+    "trayDesc": "시스템 트레이에서 조용히 실행. 필요할 때만 Figma 데이터를 전달, 리소스 최소.",
+    "monitorTitle": "연결 모니터링",
+    "monitorDesc": "Ant 와 Figma Desktop 연결 상태를 실시간으로.",
+    "codeSignNotice": "Ant Desktop 바이너리는 정식 출시 전 서명 처리됩니다. 그 전까지는 위의 소스 빌드를 권장합니다."
   }
 }
