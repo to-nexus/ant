@@ -4,9 +4,10 @@ Welcome. The docs are organized into four tiers based on what you want to do.
 
 | You are…                                          | Read                                                |
 |---------------------------------------------------|-----------------------------------------------------|
-| New to Ant — want to try it                       | **[Getting Started](getting-started/)**             |
+| New to Ant — want to try it (local)               | **[Local Mode](local-mode/)**                       |
+| Deploying for a team (managed or self-host)       | **[Cloud Mode](cloud-mode/)**                       |
 | Trying to understand how it works                 | **[Concepts](concepts/)**                           |
-| Deploying / customizing / integrating             | **[Guides](guides/)**                               |
+| Customizing / integrating                         | **[Guides](guides/)**                               |
 | Looking up an API / env var / file format         | **[Reference](reference/)**                         |
 | Contributing to Ant itself                        | **[Internals](internals/)** + [AGENTS.md](../AGENTS.md) |
 | Reading in Korean                                 | **[한국어](ko/)**                                    |
@@ -15,12 +16,15 @@ Welcome. The docs are organized into four tiers based on what you want to do.
 
 ```
 docs/
-├── getting-started/    Install, quickstart, first feature, troubleshooting
+├── local-mode/         Install + develop on your own machine (Persona A)
+├── cloud-mode/         Install + develop for managed (Persona B) or self-host (Persona C)
+├── getting-started/    First-feature walkthrough, troubleshooting
 ├── concepts/           Architecture, spec-driven philosophy, agents, jobs, tiers
-├── guides/             Self-hosting, cloud deployment, design input, custom prompts
+├── guides/             Design input, custom prompts, observability
 │   └── design-input/   The killer feature: Claude / Figma / native design sources
 ├── reference/          CLI, env vars, API, shared types, Redis keys
 ├── internals/          Contributor deep-dives — incident-grade SSOT documents
+├── infra/              Long-form EKS / K8s runbook (DevOps audience)
 ├── observability/      Logging, metrics, debugging
 ├── rubric/             Evaluation rubrics for AI-generated code / PRD / design
 ├── testing/            Test strategy, e2e runbook, verification scenarios
@@ -29,15 +33,15 @@ docs/
 
 ## Where to start
 
-- If you have **30 minutes**: read [getting-started/quickstart.md](getting-started/quickstart.md)
-  and run the first feature tutorial.
+- If you have **30 minutes**: read [local-mode/install.md](local-mode/install.md)
+  and run [getting-started/first-feature.md](getting-started/first-feature.md).
 - If you have **an hour**: also read [concepts/architecture.md](concepts/architecture.md)
   and [concepts/spec-driven.md](concepts/spec-driven.md).
 - If you are **deploying to production**: start at
-  [guides/self-hosting.md](guides/self-hosting.md) and
-  [guides/cloud-deployment.md](guides/cloud-deployment.md).
+  [cloud-mode/install.md](cloud-mode/install.md); the long-form EKS runbook is
+  [infra/cloud-deployment-guide.md](infra/cloud-deployment-guide.md).
 - If you are **modifying Ant itself**: read [AGENTS.md](../AGENTS.md) first;
-  then dive into [internals/](internals/).
+  then [local-mode/develop.md](local-mode/develop.md) and [internals/](internals/).
 
 ## Conventions
 

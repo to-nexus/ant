@@ -7,20 +7,27 @@
 
 | 당신은…                                    | 보세요                                              |
 |--------------------------------------------|-----------------------------------------------------|
-| Ant이 처음이라 일단 돌려보고 싶음          | **[시작하기 / quickstart](getting-started/quickstart.md)** |
+| Ant을 자기 머신에서 일단 돌려보고 싶음     | **[로컬 모드 / 설치](local-mode/install.md)**       |
+| 매니지드 또는 self-host 클라우드로 가고 싶음 | **[클라우드 모드 / 설치](cloud-mode/install.md)**   |
 | 동작 원리를 이해하고 싶음                  | **[개념 / 아키텍처](concepts/architecture.md)**     |
 | 왜 spec-driven인지 알고 싶음               | **[개념 / spec-driven](concepts/spec-driven.md)**   |
 | Claude 디자인을 그대로 가져다 쓰고 싶음    | **[가이드 / Claude handoff](guides/design-input/claude-handoff.md)** |
 | 영어 원문을 보고 싶음                      | [`../README.md`](../README.md)                       |
-| Ant 자체를 수정하고 싶음 (기여자)         | [`../../AGENTS.md`](../../AGENTS.md)                 |
+| Ant 자체를 수정하고 싶음 (기여자)         | [`../../AGENTS.md`](../../AGENTS.md) + [로컬 모드 / 개발](local-mode/develop.md) |
 
 ## 한국어 미러 트리
 
 ```
 docs/ko/
 ├── README.md                                 (이 파일)
+├── local-mode/
+│   ├── install.md
+│   └── develop.md
+├── cloud-mode/
+│   ├── install.md
+│   └── develop.md
 ├── getting-started/
-│   └── quickstart.md
+│   └── quickstart.md                         (stub → local-mode/install.md)
 ├── concepts/
 │   ├── architecture.md
 │   ├── spec-driven.md
@@ -42,15 +49,12 @@ docs/ko/
 
 번역 누락이 있는 영문 페이지를 우선 추가해 주세요:
 
-- `getting-started/installation.md`
 - `getting-started/first-feature.md`
 - `getting-started/troubleshooting.md`
 - `concepts/agents.md`
 - `concepts/jobs.md`
 - `concepts/execution-tiers.md`
 - `concepts/workspace.md`
-- `guides/self-hosting.md`
-- `guides/cloud-deployment.md`
 - `guides/design-input/figma-mcp.md`
 - `guides/design-input/ant-canonical.md`
 - `guides/custom-prompts.md`
