@@ -27,3 +27,13 @@ When running `docker compose up`, the infrastructure services are running but th
 
 ⚠️ BLIND SPOT — file creation via shell:
 File creation/overwrite (`cat >`, `echo >`, heredoc) tends to happen when executing multiple `run_command` calls in sequence. Prefer `<file>` tag for file creation — it provides streaming, proper encoding, and buffer synchronization that shell redirection does not.
+
+⚠️ SILENT-SLOW COMMANDS — prefer dedicated tools:
+The watchdog terminates commands that produce no output for >60s. For codebase exploration, the following commands scale unpredictably and almost always hit the watchdog — use scoped tools instead:
+
+- file search        → `search_code` / `list_files`                       (NOT `find` / `grep -r`)
+- file content       → `read_file` (supports ranges)                       (NOT `cat <large>`)
+- dependency lookup  → query the package manager for a specific package    (NOT a recursive dump of the whole graph)
+- repo-wide history  → narrow with `-L <file>` or a path filter            (NOT a regex search over the entire repo)
+
+If you genuinely need a shell traversal (e.g., counting matches), scope it tightly: pass a starting directory deeper than the workspace root, add `-maxdepth N` to `find`, or pipe into `| head` to bound output volume.
