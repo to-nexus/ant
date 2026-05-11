@@ -1,10 +1,13 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Check, Server, Cloud } from 'lucide-react';
+import { ArrowRight, Check, Server, Cloud, Boxes } from 'lucide-react';
 import { PageHero } from '@/components/PageHero';
 import { FaqList } from '@/components/FaqList';
 import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
+import { GITHUB_URL } from '@/lib/links';
+
+const CLOUD_MODE_INSTALL_DOC = `${GITHUB_URL}/blob/main/docs/cloud-mode/install.md`;
 
 interface TradeoffColumn {
   title: string;
@@ -100,6 +103,28 @@ export default function CloudContent() {
               </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      {/* Persona C — self-host the cloud build */}
+      <section className="py-16 sm:py-20">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="p-7 rounded-2xl bg-white/[0.03] border border-white/5">
+            <div className="flex items-center gap-3 mb-4">
+              <Boxes className="w-5 h-5 text-purple-400" />
+              <h2 className="text-xl font-display font-bold text-white">{t('cloud.selfHostCloudTitle')}</h2>
+            </div>
+            <p className="text-sm text-gray-400 leading-relaxed mb-5">{t('cloud.selfHostCloudDesc')}</p>
+            <a
+              href={CLOUD_MODE_INSTALL_DOC}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/50 rounded-xl transition-colors"
+            >
+              {t('cloud.selfHostCloudCta')}
+              <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </section>
 

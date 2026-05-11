@@ -195,10 +195,10 @@
   },
   "selfHost": {
     "heroTitle": "Run ANT on your laptop.",
-    "heroHighlight": "No account.",
-    "heroDesc": "Clone the repo, start the infra, run the dev script. ~60 seconds end to end.",
-    "infraTitle": "What you'll run",
-    "infraDesc": "ANT is always a distributed system — same in local and cloud. Three processes plus shared infra.",
+    "heroHighlight": "Local mode.",
+    "heroDesc": "Self-host on your own machine — Redis in Docker, four Ant processes, your own LLM key. No OAuth, no Kubernetes, no managed account.",
+    "infraTitle": "Four processes, one Redis",
+    "infraDesc": "Local mode is a distributed system on a single machine. Same architecture as cloud — only the topology differs.",
     "process": {
       "api": "API server (port 4100) — receives requests, enqueues jobs",
       "worker": "Job worker — runs LangGraph agents in child processes",
@@ -206,29 +206,30 @@
       "preview": "Preview server (port 4102) — hosts generated code"
     },
     "infraDeps": {
-      "title": "Infrastructure dependencies",
-      "redis": "Redis — pub/sub, BullMQ queue, state store",
-      "chroma": "ChromaDB (optional) — vector index for code understanding"
+      "title": "Infrastructure",
+      "redis": "Required — pnpm dev:infra:redis (Docker, port 16379)",
+      "chroma": "Optional — ChromaDB vector index. Off by default; the RAG chain falls back to git-changes + keyword search."
     },
-    "envTitle": "Environment variables",
-    "envDesc": "Most defaults work out of the box. The keys below are the ones you'll touch.",
+    "envTitle": "Minimal env",
+    "envDesc": "Local mode skips OAuth, JWT, and CORS allowlists entirely. Four values do the job.",
     "env": [
-      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "local | cloud" },
-      { "name": "ANT_REDIS_URL", "default": "redis://localhost:6379", "desc": "Redis connection (auto-set when using docker compose)" },
-      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "Required. Generate with: openssl rand -hex 32" },
-      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "Where workspaces (your projects) live on disk" },
-      { "name": "ANT_VECTOR_DB_ENABLED", "default": "false", "desc": "Enable ChromaDB vector index (optional)" },
-      { "name": "ANT_TASK_CONCURRENCY", "default": "3", "desc": "Number of parallel tasks per job" }
+      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "Always local on this page" },
+      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "Required. openssl rand -hex 32 (64-char hex)" },
+      { "name": "ANTHROPIC_API_KEY", "default": "—", "desc": "Or another LLM key (OPENAI_API_KEY, AWS Bedrock)" },
+      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "Where workspaces live on disk" }
     ],
     "llmTitle": "Bring your own LLM key",
-    "llmDesc": "Self-host doesn't proxy LLM calls. Set one of these and you're set.",
+    "llmDesc": "Local mode doesn't proxy LLM calls. Set one of these.",
     "llmKeys": [
-      "ANTHROPIC_API_KEY (Claude)",
+      "ANTHROPIC_API_KEY (Claude — primary)",
       "OPENAI_API_KEY (GPT-4)",
       "AWS credentials (Bedrock)"
     ],
-    "nextStepsTitle": "Next",
-    "nextStepsDesc": "Once it's running, the docs cover production self-host, custom LLM providers, and contributing back."
+    "uiTitle": "What the UI looks like in local mode",
+    "uiDesc": "The GNB shows a Local / Cloud selector and a Local Org / Local User badge where Sign In normally sits in cloud mode. There is no sign-up screen — everything belongs to a single fixed local:local tenant.",
+    "nextStepsTitle": "Full install guide",
+    "nextStepsDesc": "Step-by-step prerequisites, env reference, the optional vector DB, and troubleshooting live in the repo.",
+    "nextStepsCta": "Open docs/local-mode/install.md"
   },
   "community": {
     "heroTitle": "Open source.",
@@ -260,32 +261,35 @@
     "heroDesc": "ANT Cloud is the managed deployment of the same OSS code. Same agents, same workflow — we run the infra so you don't have to.",
     "ctaTry": "Try ANT Cloud",
     "earlyAccessNote": "Currently in early access — pricing TBD.",
-    "tradeoffTitle": "Self-host or cloud?",
-    "tradeoffDesc": "Same code, different ops boundary.",
+    "tradeoffTitle": "Three ways to run Ant",
+    "tradeoffDesc": "Same code, different operational boundary.",
     "tradeoffSelfHost": {
-      "title": "Self-host",
+      "title": "Local mode (Persona A)",
       "bullets": [
-        "You own the data and the infrastructure",
-        "Your machine, your network, your LLM key",
-        "Free, forever"
+        "Self-host on your laptop — Redis in Docker, four Ant processes",
+        "No OAuth, no Kubernetes, no managed account",
+        "Bring your own LLM key. Free, forever."
       ]
     },
     "tradeoffCloud": {
-      "title": "Cloud",
+      "title": "Managed cloud (Persona B)",
       "bullets": [
-        "We run Redis, ChromaDB, IDE pods, and preview servers",
-        "Your data lives in our managed region",
-        "Sign in with Google — no infra to set up"
+        "ant.crosstoken.io — we run Redis, IDE pods, preview servers",
+        "Sign in with Google, organization onboarding included",
+        "Anthropic Claude drawn from the managed quota"
       ]
     },
+    "selfHostCloudTitle": "Self-host the cloud build (Persona C)",
+    "selfHostCloudDesc": "Run the same ANT_SERVER_MODE=cloud build on your own infrastructure — single VM or multi-tenant Kubernetes. OAuth, JWT, CORS, IDE orchestration all wired by env. See cloud-mode/install.md for the operator-friendly walkthrough.",
+    "selfHostCloudCta": "Open docs/cloud-mode/install.md",
     "includesTitle": "What ANT Cloud includes",
     "includes": [
-      "Managed Redis + BullMQ + Pub/Sub",
-      "ChromaDB vector index for code understanding",
-      "Isolated IDE pods (Kubernetes-backed)",
-      "Hosted preview servers per workspace",
-      "Same Plan → Design → Code → Preview workflow as self-host",
-      "Workspaces exportable as plain files — migrate to self-host any time"
+      "Anthropic Claude as primary LLM (managed quota)",
+      "Per-user Cloud IDE pods (Kubernetes-backed VSCode in the browser)",
+      "Workspace storage on managed EFS",
+      "Figma MCP via the cloud HTTP bridge (no desktop MCP)",
+      "Same Plan → Design → Code → Preview workflow as local mode",
+      "Workspaces exportable as plain files — migrate to local mode any time"
     ],
     "faqTitle": "FAQ",
     "faq": [
@@ -374,28 +378,32 @@
     "privacyBody": "This Privacy Policy applies to users of the managed ANT Cloud service only. Self-host instances do not transmit data to ANT — your data stays on your infrastructure.\n\nThe full Privacy Policy is being prepared and will be published before ANT Cloud leaves early access."
   },
   "download": {
-    "heroTitle1": "Ant Desktop",
-    "heroTitle2": "download",
-    "heroDesc": "A companion app for Figma design integration. Bridges your local Figma Desktop to your ANT instance (cloud or self-host).",
-    "downloadBtn": "Download",
+    "heroTitle1": "Get Ant",
+    "heroTitle2": "on your machine",
+    "heroDesc": "Two ways to install Ant today: build from source for the full local-mode experience, or wait for the desktop bridge app.",
+    "sourceLabel": "Available Now",
+    "sourceTitle": "Build from Source",
+    "sourceDesc": "Clone, install, run. Three steps and Ant is live on your laptop in local mode.",
+    "sourcePrereqTitle": "Prerequisites",
+    "sourcePrereqMac": "macOS — Node 20+ (brew install node@20), pnpm 10+, Docker Desktop",
+    "sourcePrereqWin": "Windows — WSL2 recommended; Node 20+, pnpm 10+, Docker Desktop",
+    "sourcePrereqLinux": "Linux — Node 20+ (distro or NodeSource), pnpm 10+, Docker",
+    "sourceSnippetLabel": "One-shot install",
+    "sourceCta": "Full local-mode guide → /self-host",
+    "desktopLabel": "Coming Soon",
+    "desktopTitle": "Desktop App",
+    "desktopDesc": "A small tray-app bridge between your local Figma Desktop and Ant. Signed binaries are in progress — for now, build from source above.",
+    "comingSoonToast": "We're working on signed binaries — build from source above for now.",
+    "downloadBtn": "Notify me",
     "comingSoon": "Coming Soon",
-    "otherOS": "Other platforms",
-    "whatTitle": "What Ant Desktop does",
-    "whatDesc": "Ant Desktop is a bridge between your local environment and your ANT instance.",
+    "whatTitle": "What the desktop app will do",
+    "whatDesc": "A bridge between your local environment and your Ant instance.",
     "bridgeTitle": "Figma bridge",
-    "bridgeDesc": "Securely relays design data from Figma Desktop to ANT. Outbound connections only — no inbound ports opened.",
+    "bridgeDesc": "Securely relays design data from Figma Desktop to Ant. Outbound connections only — no inbound ports opened.",
     "trayTitle": "System tray app",
-    "trayDesc": "Runs quietly in the system tray after installation. Only relays Figma data when needed, using minimal resources.",
+    "trayDesc": "Runs quietly in the system tray. Only relays Figma data on demand, using minimal resources.",
     "monitorTitle": "Connection monitoring",
-    "monitorDesc": "Monitor ANT and Figma Desktop connection status in real time.",
-    "reqTitle": "System requirements",
-    "reqOS": "OS",
-    "reqMinVersion": "Minimum version",
-    "reqArch": "Architecture",
-    "installTitle": "Installation guide",
-    "macSteps": ["Download the .dmg file", "Open the disk image → drag to Applications", "First launch: \"Unidentified Developer\" warning → Allow in System Settings > Security"],
-    "winSteps": ["Download the .exe installer", "Run to install", "SmartScreen warning: click \"More info\" → \"Run anyway\""],
-    "linuxSteps": ["Download .deb or .AppImage", "Debian/Ubuntu: sudo dpkg -i ant-desktop_*.deb", "AppImage: chmod +x then run"],
-    "codeSignNotice": "Ant Desktop is currently a beta build without code signing. You may see OS security warnings during installation. Code signing will be applied before official release."
+    "monitorDesc": "Live status of your Ant and Figma Desktop connection.",
+    "codeSignNotice": "Ant Desktop binaries will be signed before the public release. Until then, build from source above is the recommended path."
   }
 }
