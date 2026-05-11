@@ -28,6 +28,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary } from "./responseParser";
+import { saveAnalysisForDebug } from "./saveAnalysisText";
 import type { BaseTask, TaskType } from "@ant/shared";
 import {
   ExecutionTierId,
@@ -1449,6 +1450,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)
   if (state.deps?.kanbanUpdate?.setJobTiming) {
     state.deps.kanbanUpdate.setJobTiming(jobTiming);
+  }
+
+  // 📝 Debug-only — persist Tier 3 analysis brief for post-hoc verification.
+  // Captures the final state.analysis after all inline retries; one file per
+  // job at sessions/architect/debug/analysis/analysis-{jobId}.json.
+  if (executionTier === 3) {
+    await saveAnalysisForDebug(state, executionTier, parsed.analysis, attempt);
   }
 
   // ✅ Save checkpoint with tasks
