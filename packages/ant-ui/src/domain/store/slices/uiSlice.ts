@@ -427,30 +427,49 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     const state = get();
     const sessionKey = `${projectId}:${featureName || ''}`;
 
-    // Idempotent fast path — same identity, session already live and healthy.
-    // Repeated NavBar clicks while in IDE, or the refresh-safe effect rerun,
-    // hit this branch and only flip mainView, preserving the running iframe.
+    // Inflight collapse — a previous call for the same identity is already
+    // running its slow path. This is the SSOT for dedup; the slow path
+    // marks `ideLastStartedKey` at entry (not at success) so concurrent
+    // callers from onLoad probe / retry effect / visibility / NavBar all
+    // hit this branch and become no-ops. State-based, no closure lock.
+    if (state.ideConnecting && state.ideLastStartedKey === sessionKey) {
+      return;
+    }
+
+    // Idempotent fast path — same identity, session previously succeeded.
+    // Probe liveness to distinguish (a) live pod we should reuse from
+    // (b) stale `ideBaseUrl` whose pod was idle-reaped. `e7ddcc91`'s
+    // cold-load invariant lives here: alive/unknown returns without
+    // touching the iframe; only confirmed `dead` falls through to remount.
     if (
       state.ideBaseUrl &&
       !state.ideConnecting &&
       !state.ideConnectError &&
       state.ideLastStartedKey === sessionKey
     ) {
-      if (state.mainView !== 'codeIde') {
-        set({ mainView: 'codeIde' } as any);
-        saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
+      const { probeIdeAlive } = await import('@/infrastructure/http/poll');
+      const liveness = await probeIdeAlive(state.ideBaseUrl);
+      if (liveness !== 'dead') {
+        if (get().mainView !== 'codeIde') {
+          set({ mainView: 'codeIde' } as any);
+          saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
+        }
+        return;
       }
-      return;
+      // 'dead' → fall through to slow path (pod re-creation)
     }
 
-    // Slow path — first start, identity change, or recovery after error.
+    // Slow path — first start, identity change, recovery after error, or
+    // confirmed dead pod above. `ideLastStartedKey` is set up-front so
+    // concurrent callers hit the inflight branch instead of double-firing
+    // `POST /cloud-ide/start`.
     set({
       ideBaseUrl: undefined,
       ideConnecting: true,
       ideConnectError: undefined,
       ideFrameLoaded: false,
       ideWorkspacePath: `/${projectId}`,
-      ideLastStartedKey: undefined,
+      ideLastStartedKey: sessionKey,
       mainView: 'codeIde',
     } as any);
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
@@ -476,9 +495,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         ideLastStartedKey: sessionKey,
       } as any);
     } catch (error: any) {
+      // On failure, clear `ideLastStartedKey` so the next attempt is not
+      // collapsed by the inflight guard above.
       set({
         ideConnecting: false,
         ideConnectError: error?.message || 'Failed to start IDE',
+        ideLastStartedKey: undefined,
       } as any);
     }
   },
