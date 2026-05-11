@@ -71,6 +71,7 @@ Tier 3 has no external reference document, so the only carrier of job-level inte
 **Self-check**:
 - Is this genuinely one unit, or am I compressing two units into one task?
 - Does the description tell `plan` what problem to solve, without telling it how?
+- Can I name a single component whose code or config I would inspect to write this fix? If the answer requires ≥ 2 components (different packages, FE+BE, vendor library internals + app code), this is **not** Tier 2 — escalate to Tier 3 with `[error × 1 + verification × 1]` or `[feature × 1 + verification × 1]`.
 
 ### Tier 0 / 1 — Out of Scope for This Section
 
