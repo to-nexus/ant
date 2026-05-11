@@ -90,7 +90,7 @@ export interface ChatStatusReporter {
 export interface CommandPort {
   execute(command: string, opts: {
     cwd: string;
-    timeout: number;
+    signal: AbortSignal;
     env?: Record<string, string>;
     onStdout?: (chunk: string) => void;
     onStderr?: (chunk: string) => void;

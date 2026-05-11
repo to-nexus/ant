@@ -130,8 +130,6 @@ export class NodeCommandAdapter implements CommandPort {
     'unset',
   ];
 
-  private readonly DEFAULT_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
   /**
    * Check if a command is allowed
    */
@@ -180,22 +178,23 @@ export class NodeCommandAdapter implements CommandPort {
   }
 
   /**
-   * Execute a command with proper timeout and process group cleanup
-   * 
-   * Uses spawn instead of exec to ensure:
+   * Execute a command. The caller owns timeout/watchdog policy via
+   * `options.signal`; this adapter only spawns, streams, and runs the
+   * kill-cleanup chain when the signal is aborted.
+   *
+   * Uses spawn (not exec) to ensure:
    * 1. Child processes (e.g., npm run -> tsx watch) are killed together
-   * 2. Timeout is enforced by killing entire process group
-   * 3. SIGTERM -> SIGKILL escalation for stubborn processes
+   * 2. SIGTERM → SIGKILL escalation for stubborn processes
+   * 3. Force-resolve safety net if the process group refuses to die
    */
-  async execute(command: string, options: CommandOptions = {}): Promise<CommandResult> {
+  async execute(command: string, options: CommandOptions): Promise<CommandResult> {
     // Security check
     if (!this.isAllowed(command)) {
       throw new Error(`Command not allowed: ${command}`);
     }
 
-    const timeout = options.timeout || this.DEFAULT_TIMEOUT;
     let cwd = options.cwd || process.cwd();
-    
+
     // ✅ Expand ~ to home directory
     if (cwd.startsWith('~')) {
       const os = await import('os');
@@ -204,7 +203,6 @@ export class NodeCommandAdapter implements CommandPort {
 
     console.log(`🔧 Executing: ${command}`);
     console.log(`   Directory: ${cwd}`);
-    console.log(`   Timeout: ${timeout}ms`);
 
     return new Promise((resolve) => {
       const trimmed = command.trim();
@@ -261,11 +259,10 @@ export class NodeCommandAdapter implements CommandPort {
 
       let stdout = '';
       let stderr = '';
-      let timeoutOccurred = false;
-      let timeoutId: NodeJS.Timeout | null = null;
       let sigkillTimer: NodeJS.Timeout | null = null;
       let forceResolveTimer: NodeJS.Timeout | null = null;
       let settled = false;
+      let abortListener: (() => void) | null = null;
 
       // Collect stdout
       child.stdout?.on('data', (data: Buffer) => {
@@ -284,14 +281,16 @@ export class NodeCommandAdapter implements CommandPort {
       let exitGraceTimer: NodeJS.Timeout | null = null;
 
       const cleanupTimers = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        timeoutId = null;
         if (sigkillTimer) clearTimeout(sigkillTimer);
         sigkillTimer = null;
         if (forceResolveTimer) clearTimeout(forceResolveTimer);
         forceResolveTimer = null;
         if (exitGraceTimer) clearTimeout(exitGraceTimer);
         exitGraceTimer = null;
+        if (abortListener) {
+          options.signal.removeEventListener('abort', abortListener);
+          abortListener = null;
+        }
       };
 
       const finish = (result: CommandResult) => {
@@ -304,7 +303,7 @@ export class NodeCommandAdapter implements CommandPort {
       const signalProcessTree = (signal: NodeJS.Signals) => {
         if (!child.pid) return;
         try {
-          console.log(`⏰ Timeout (${timeout}ms) - sending ${signal} to PID ${child.pid}`);
+          console.log(`🔪 Sending ${signal} to PID ${child.pid}`);
           try {
             process.kill(-child.pid, signal); // process group (preferred)
           } catch {
@@ -315,14 +314,19 @@ export class NodeCommandAdapter implements CommandPort {
         }
       };
 
-      // Set timeout
-      timeoutId = setTimeout(() => {
-        timeoutOccurred = true;
+      // Kill chain (caller-driven via AbortSignal):
+      //   1. SIGTERM the process group (graceful)
+      //   2. After 2s, SIGKILL if still alive (stubborn processes)
+      //   3. After 8s, force-resolve if the group refuses to die (last-resort safety net)
+      //
+      // Note: this chain only runs after the caller aborts. Watchdog/timeout
+      // decisions are owned by the caller (ProgressSupervisor), not this adapter.
+      const initiateKill = () => {
+        if (settled) return;
+        if (sigkillTimer || forceResolveTimer) return; // already in progress
 
-        // 1) Try graceful termination
         signalProcessTree('SIGTERM');
 
-        // 2) Escalate to SIGKILL if still alive after a short grace period
         sigkillTimer = setTimeout(() => {
           if (child.pid && isProcessGroupAlive(child.pid)) {
             console.log(`⚠️  Process didn't respond to SIGTERM, escalating to SIGKILL`);
@@ -330,25 +334,32 @@ export class NodeCommandAdapter implements CommandPort {
           }
         }, 2000);
 
-        // 3) Absolute safety: never hang waiting for 'close' if kill didn't work
         forceResolveTimer = setTimeout(() => {
           if (child.pid && isProcessGroupAlive(child.pid)) {
-            console.log(`⚠️  Process still alive after SIGKILL attempt; returning timeout result to avoid hang`);
+            console.log(`⚠️  Process still alive after SIGKILL attempt; force-resolving to avoid hang`);
           }
           finish({
             stdout: stdout.trim(),
-            stderr: `Command timed out after ${timeout}ms\n${stderr}`.trim(),
+            stderr: stderr.trim(),
             exitCode: 124,
             success: false,
           });
         }, 8000);
-      }, timeout);
+      };
 
-      // Handle shell process exit
-      // 'exit' fires when the shell process terminates, but pipes may still be open
-      // if background processes (started with &) inherit them.
-      // Grace period: if 'close' doesn't fire within 5s after 'exit', force resolve
-      // to prevent hanging on background processes that keep pipes open.
+      // Subscribe to caller's abort signal
+      if (options.signal.aborted) {
+        initiateKill();
+      } else {
+        abortListener = () => initiateKill();
+        options.signal.addEventListener('abort', abortListener, { once: true });
+      }
+
+      // Handle shell process exit. Foreground process exited but stdio pipes
+      // may still be open if a background child inherited them. If 'close'
+      // doesn't follow within 5s, force-resolve and reap the process group —
+      // this is orthogonal to the abort-driven kill chain above (different
+      // scenario: clean foreground exit + lingering background pipe holder).
       child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
         if (settled) return;
         exitGraceTimer = setTimeout(() => {
@@ -375,30 +386,24 @@ export class NodeCommandAdapter implements CommandPort {
         }, 5000);
       });
 
-      // Handle process close (fires when all stdio pipes are closed)
-      // For normal commands, this fires shortly after 'exit'.
-      // For commands with background processes, this may be delayed — the exit grace timer above handles that.
+      // Handle process close (fires when all stdio pipes are closed).
+      // For normal commands this fires shortly after 'exit'. For commands
+      // with background processes it may be delayed — the exit grace timer
+      // above handles that. Caller-driven aborts surface here as a non-zero
+      // exit code (signal-killed); the caller (ProgressSupervisor) provides
+      // the LLM-facing termination message via renderTermination.
       child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         cleanupTimers();
 
         const exitCode = code ?? (signal ? 1 : 0);
         options.onExit?.(exitCode);
 
-        if (timeoutOccurred) {
-          finish({
-            stdout: stdout.trim(),
-            stderr: `Command timed out after ${timeout}ms\n${stderr}`.trim(),
-            exitCode: 124,
-            success: false,
-          });
-        } else {
-          finish({
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
-            exitCode,
-            success: exitCode === 0,
-          });
-        }
+        finish({
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          exitCode,
+          success: exitCode === 0,
+        });
       });
 
       // Handle errors
