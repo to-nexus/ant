@@ -45,15 +45,22 @@ import { detectCacheReplay } from '../../../architect/graph/code/tasks/_shared/v
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import {
   LONG_RUNNING_PATTERNS,
-  COMMAND_TIMEOUT,
   STARTUP_VERIFICATION_TIMEOUT,
   COMPILE_RUN_STARTUP_TIMEOUT,
   COMPILE_RUN_PATTERNS,
-  SERVER_DETECTION_TIMEOUT,
   SERVER_OUTPUT_PATTERNS,
   ORCHESTRATOR_PORT,
 } from '../constants';
 import { probeHttp } from '../../../../infrastructure/ide/readiness';
+import {
+  ProgressSupervisor,
+  type SupervisorThresholds,
+  readPositiveInt,
+  DEFAULT_REPEAT_GRACE_MS,
+  DEFAULT_REPEAT_THRESHOLD,
+  DEFAULT_NO_OUTPUT_MS,
+  DEFAULT_SERVER_DETECTION_MS,
+} from './progressSupervisor';
 
 const INTERACTIVE_COMMAND_PATTERNS = [
   /\bnpm\s+init\b(?!\s+(-y|--yes))/i,
@@ -343,53 +350,37 @@ function makeCommandExecuted(input: {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Stall watchdog
+// Watchdog thresholds — single resolver for ProgressSupervisor
 //
-// The signature-count Map MUST be a per-invocation local (verification
-// re-entry re-runs `pnpm build` — leaking counts across runs would
-// mis-fire on the first chunk of the second run).
+// Watchdog signal logic lives in ./progressSupervisor.ts. This handler only
+// resolves the per-invocation thresholds (install commands get a longer
+// noOutput / hardTimeout window because cold installs can legitimately
+// stall for minutes between banner lines).
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function readPositiveInt(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+const HARD_TIMEOUT_DEFAULT_MS = 10 * 60_000;
+const HARD_TIMEOUT_INSTALL_MS = 20 * 60_000;
+const NO_OUTPUT_INSTALL_MS = 5 * 60_000;
+const INSTALL_COMMAND_RE = /\b(npm|pnpm|yarn)\s+(ci|install)\b/;
+const GO_DEPENDENCY_COMMAND_RE = /\bgo\s+mod\s+(tidy|download)\b/;
+
+function isLikelyInstallCommand(command: string): boolean {
+  return INSTALL_COMMAND_RE.test(command) || GO_DEPENDENCY_COMMAND_RE.test(command);
 }
 
-export const STALL_GRACE_MS = readPositiveInt(process.env.ANT_STALL_GRACE_MS, 60_000);
-export const STALL_REPEAT_THRESHOLD = readPositiveInt(process.env.ANT_STALL_REPEAT_THRESHOLD, 3);
-
-/** Collapses progress counters like "(1/4)" → "(N/N)" so retries match. */
-export function normalizeStderrLineSig(line: string): string {
-  return line.replace(/\d+/g, 'N').trim().slice(0, 80);
-}
-
-const STALL_IGNORE_PREFIXES = ['> ', '$ '];
-
-export function pushLineSig(stallMap: Map<string, number>, line: string): void {
-  const sig = normalizeStderrLineSig(line);
-  if (!sig) return;
-  for (const prefix of STALL_IGNORE_PREFIXES) {
-    if (sig.startsWith(prefix)) return;
-  }
-  stallMap.set(sig, (stallMap.get(sig) ?? 0) + 1);
-}
-
-export function detectOutputStall(
-  stallMap: Map<string, number>,
-  startedAt: number,
-  opts: { graceMs?: number; repeatThreshold?: number; now?: number } = {},
-): { repeat: number; signature: string } | null {
-  const graceMs = opts.graceMs ?? STALL_GRACE_MS;
-  const repeatThreshold = opts.repeatThreshold ?? STALL_REPEAT_THRESHOLD;
-  const now = opts.now ?? Date.now();
-  if (now - startedAt < graceMs) return null;
-  let maxCount = 0;
-  let maxSig = '';
-  for (const [sig, c] of stallMap) {
-    if (c > maxCount) { maxCount = c; maxSig = sig; }
-  }
-  return maxCount >= repeatThreshold ? { repeat: maxCount, signature: maxSig } : null;
+function resolveThresholds(command: string): SupervisorThresholds {
+  const isInstall = isLikelyInstallCommand(command);
+  return {
+    serverDetectionMs: readPositiveInt(process.env.ANT_SERVER_DETECTION_MS, DEFAULT_SERVER_DETECTION_MS),
+    serverOutputPattern: SERVER_OUTPUT_PATTERNS,
+    repeatGraceMs: readPositiveInt(process.env.ANT_REPEAT_GRACE_MS, DEFAULT_REPEAT_GRACE_MS),
+    repeatThreshold: readPositiveInt(process.env.ANT_REPEAT_THRESHOLD, DEFAULT_REPEAT_THRESHOLD),
+    noOutputMs: readPositiveInt(
+      process.env.ANT_NO_OUTPUT_MS,
+      isInstall ? NO_OUTPUT_INSTALL_MS : DEFAULT_NO_OUTPUT_MS,
+    ),
+    hardTimeoutMs: isInstall ? HARD_TIMEOUT_INSTALL_MS : HARD_TIMEOUT_DEFAULT_MS,
+  };
 }
 
 export const STREAM_COALESCE_MS = 250;
@@ -508,8 +499,7 @@ async function executeCommandLogic(
   const cardId = await ctx.chatStatus.commandStart(command);
 
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
-  const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(command) || /\bgo\s+mod\s+(tidy|download)\b/.test(command);
-  const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
+  const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
   const installEnv = (isInstallCommand && !hasShellOperators) ? { CI: 'true' } : undefined;
 
@@ -592,7 +582,6 @@ async function executeCommandLogic(
     }
 
     // Normal command path
-    let serverDetectionTimer: NodeJS.Timeout | null = null;
 
     // Fault injection overlay (test harness only — no-op in production).
     // Must be checked BEFORE commandPort.execute so 'stub' mode can skip it
@@ -605,19 +594,15 @@ async function executeCommandLogic(
         if (injected.stdout) { streamedStdout += injected.stdout; console.log(injected.stdout); }
         if (injected.stderr) { streamedStderr += injected.stderr; console.error(injected.stderr); }
         console.log(`   Exit code: ${injected.exitCode}`);
-        // Construct a shape compatible with commandPort.execute's return.
-        const stubbedPromise = Promise.resolve(injected);
-        const raceResult = await stubbedPromise.then(r => ({ type: 'completed' as const, result: r }));
         invalidateBufferedFiles();
-        const r = raceResult.result;
-        const output = r.stdout + r.stderr;
-        sideEffects.push(makeCommandExecuted({ exitCode: r.exitCode, command, success: r.success, hasWarnings: false, verifies }));
-        await ctx.chatStatus.commandComplete(command, r.success, r.exitCode, output);
+        const output = injected.stdout + injected.stderr;
+        sideEffects.push(makeCommandExecuted({ exitCode: injected.exitCode, command, success: injected.success, hasWarnings: false, verifies }));
+        await ctx.chatStatus.commandComplete(command, injected.success, injected.exitCode, output);
         return {
-          content: r.success
-            ? `✅ COMMAND SUCCEEDED: ${command}\nExit Code: ${r.exitCode}\n\nOutput:\n${output}`
-            : `❌ COMMAND FAILED: ${command}\nExit Code: ${r.exitCode}\n\n📋 ERROR OUTPUT:\n${output}`,
-          error: r.success ? undefined : output,
+          content: injected.success
+            ? `✅ COMMAND SUCCEEDED: ${command}\nExit Code: ${injected.exitCode}\n\nOutput:\n${output}`
+            : `❌ COMMAND FAILED: ${command}\nExit Code: ${injected.exitCode}\n\n📋 ERROR OUTPUT:\n${output}`,
+          error: injected.success ? undefined : output,
           sideEffects,
         };
       }
@@ -625,90 +610,73 @@ async function executeCommandLogic(
     }
 
     streamer = createOutputStreamer(ctx.chatStatus, command, () => streamedStdout + streamedStderr);
-    const stallMap = new Map<string, number>();
-    const commandStartedAt = Date.now();
-    let stallCheckTimer: NodeJS.Timeout | null = null;
 
-    const onChunkCommon = (chunk: string) => {
-      for (const line of chunk.split('\n')) pushLineSig(stallMap, line);
-      streamer!.schedule();
-    };
+    const controller = new AbortController();
+    const supervisor = new ProgressSupervisor({
+      command,
+      thresholds: resolveThresholds(command),
+    });
 
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
-      timeout: effectiveTimeout,
+      signal: controller.signal,
       env: installEnv,
-      onStdout: (chunk: string) => { streamedStdout += chunk; console.log(chunk); onChunkCommon(chunk); },
-      onStderr: (chunk: string) => { streamedStderr += chunk; console.error(chunk); onChunkCommon(chunk); },
+      onStdout: (chunk: string) => {
+        streamedStdout += chunk;
+        console.log(chunk);
+        supervisor.ingestChunk(chunk);
+        streamer!.schedule();
+      },
+      onStderr: (chunk: string) => {
+        streamedStderr += chunk;
+        console.error(chunk);
+        supervisor.ingestChunk(chunk);
+        streamer!.schedule();
+      },
       onExit: (code: number) => {
         console.log(`   Exit code: ${code}`);
-        if (serverDetectionTimer) { clearTimeout(serverDetectionTimer); serverDetectionTimer = null; }
-        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
       },
     });
 
-    const serverDetectionPromise = new Promise<'server_detected'>((resolve) => {
-      serverDetectionTimer = setTimeout(() => {
-        const allOutput = streamedStdout + streamedStderr;
-        if (SERVER_OUTPUT_PATTERNS.test(allOutput)) {
-          console.warn(`\n   ⚠️  [Server Detection] Command running >${SERVER_DETECTION_TIMEOUT / 1000}s with server-like output\n`);
-          resolve('server_detected');
-        }
-      }, SERVER_DETECTION_TIMEOUT);
-    });
-
-    const stallPromise = new Promise<{ repeat: number; signature: string }>((resolve) => {
-      stallCheckTimer = setInterval(() => {
-        const stall = detectOutputStall(stallMap, commandStartedAt);
-        if (stall) {
-          if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
-          resolve(stall);
-        }
-      }, 15_000);
-    });
-
     const raceResult = await Promise.race([
-      commandPromise.then(r => ({ type: 'completed' as const, result: r })),
-      serverDetectionPromise.then(() => ({ type: 'server_detected' as const })),
-      stallPromise.then(stall => ({ type: 'stall_detected' as const, stall })),
+      commandPromise.then(r => ({ kind: 'completed' as const, result: r })),
+      supervisor.signal().then(signal => ({ kind: 'terminated' as const, signal })),
     ]);
 
-    if (serverDetectionTimer) { clearTimeout(serverDetectionTimer); serverDetectionTimer = null; }
-    if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
+    if (raceResult.kind === 'terminated') {
+      // Explicit kill — no orphan child process leak.
+      controller.abort();
+      await commandPromise.catch(() => {});
+      supervisor.dispose();
 
-    if (raceResult.type === 'stall_detected') {
       invalidateBufferedFiles();
       const allOutput = streamedStdout + streamedStderr;
-      const elapsedSec = Math.round((Date.now() - commandStartedAt) / 1000);
-      console.warn(`\n   ⚠️  [Watchdog] Stalled: "${raceResult.stall.signature}" repeated ${raceResult.stall.repeat}× over ${elapsedSec}s — terminating early\n`);
-      commandPromise.catch(() => {});
-      streamer!.flush();
-      await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`);
-      sideEffects.push(makeCommandExecuted({ exitCode: 124, command, success: false, hasWarnings: false, verifies }));
-      const tailChars = 5000;
-      const tail = allOutput.length > tailChars ? allOutput.slice(-tailChars) : allOutput;
+      streamer.flush();
+
+      const termination = ProgressSupervisor.renderTermination(raceResult.signal, {
+        command,
+        output: allOutput,
+        tailChars: 5000,
+      });
+
+      await ctx.chatStatus.commandComplete(command, termination.success, termination.exitCode, termination.content);
+      sideEffects.push(makeCommandExecuted({
+        exitCode: termination.exitCode,
+        command,
+        success: termination.success,
+        hasWarnings: termination.hasWarnings,
+        verifies,
+      }));
+
       return {
-        content: `⚠️ COMMAND STALLED: ${command}\n\n[Watchdog] Terminated early: the same error signature repeated ${raceResult.stall.repeat}× over ${elapsedSec}s with no observable progress.\nContinuing the same command will not help — analyze the repeated error below and apply a code fix.\n\nOutput captured (last ${tailChars} chars):\n${tail}`,
-        error: allOutput,
+        content: termination.content,
+        error: termination.success ? undefined : allOutput,
         sideEffects,
       };
     }
 
-    if (raceResult.type === 'server_detected') {
-      invalidateBufferedFiles();
-      const allOutput = streamedStdout + streamedStderr;
-      commandPromise.catch(() => {});
-      streamer!.flush();
-      await ctx.chatStatus.commandComplete(command, true, 0, `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`);
-      sideEffects.push(makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings: true, verifies }));
-
-      return {
-        content: `⚠️ LONG-RUNNING SERVER DETECTED: ${command}\n\nThe command appears to be a long-running server process.\nIt was auto-terminated to prevent blocking.\n\nOutput captured:\n${allOutput.slice(0, 3000)}${allOutput.length > 3000 ? '\n...(truncated)' : ''}\n\n✅ The server started successfully.`,
-        sideEffects,
-      };
-    }
-
-    // Normal completion
+    // Normal completion — race finished via commandPromise.
+    supervisor.dispose();
     const result = raceResult.result;
     let { stdout, stderr, exitCode, success } = result;
 
@@ -858,6 +826,15 @@ export async function handleLongRunningCommand(
 
     console.log(`   📋 Process spawned with PID: ${child.pid}`);
 
+    // Supervisor for in-flight watchdog (post-startup hang detection).
+    // serverStartedPattern is excluded — startup HTTP probe below is the
+    // canonical "is this a real server?" signal for long-running commands.
+    const supervisor = new ProgressSupervisor({
+      command,
+      thresholds: resolveThresholds(command),
+      enabledSignals: ['repeatedSignature', 'noOutput', 'hardTimeout'] as const,
+    });
+
     let resolved = false;
     let httpProbe: { ok: boolean; status?: number; error?: string } | undefined;
     let exitSignal: NodeJS.Signals | null = null;
@@ -883,6 +860,7 @@ export async function handleLongRunningCommand(
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
+      supervisor.dispose();
       streamer.flush();
       if (opts.kill && child.exitCode === null) {
         if (child.pid) await terminateProcessTree(child.pid);
@@ -909,6 +887,7 @@ export async function handleLongRunningCommand(
       const chunk = data.toString();
       stdout += chunk;
       console.log(chunk);
+      supervisor.ingestChunk(chunk);
       streamer.schedule();
     });
 
@@ -916,7 +895,39 @@ export async function handleLongRunningCommand(
       const chunk = data.toString();
       stderr += chunk;
       console.error(chunk);
+      supervisor.ingestChunk(chunk);
       streamer.schedule();
+    });
+
+    // Watchdog termination — if supervisor fires before startup probe / exit,
+    // kill the child and resolve with the watchdog's LLM-facing message
+    // instead of the fact-report format. dispose() inside finalize() prevents
+    // double-resolution if startup/exit fires first.
+    void supervisor.signal().then(async (signal) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(startupTimeout);
+      streamer.flush();
+      if (child.pid) await terminateProcessTree(child.pid);
+      const allOutput = stdout + stderr;
+      const termination = ProgressSupervisor.renderTermination(signal, {
+        command,
+        output: allOutput,
+        tailChars: 5000,
+      });
+      await ctx.chatStatus.commandComplete(
+        command,
+        termination.success,
+        termination.exitCode,
+        termination.content,
+      );
+      resolve({
+        success: termination.success,
+        output: termination.content,
+        exitCode: termination.exitCode,
+        httpProbe,
+        serverPid: undefined,
+      });
     });
 
     child.on('error', async (err) => {
