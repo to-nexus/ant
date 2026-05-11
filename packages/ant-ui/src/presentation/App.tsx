@@ -512,53 +512,61 @@ function App() {
         {/* ✅ GNB uses hooks directly - no props needed */}
         <AppNavBar />
         
-        {/* Main Layout */}
-        {mainView === 'codeIde' ? (
-          // ✅ Editor View: OpenVSCode Server iframe
-          // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
-          // Docker container is shared, timestamp forces VS Code to reload workspace
-          <div className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}>
-            {ideConnecting || !ideBaseUrl ? (
-              <IdeLoadingOverlay message={ideConnectError ? 'failed' : 'connecting'} errorMessage={ideConnectError} />
-            ) : (
-              <div className="relative w-full h-full">
-                {!ideFrameLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
-                    <IdeLoadingOverlay
-                      message={ideConnectError ? 'failed' : 'loading'}
-                      errorMessage={ideConnectError}
-                    />
-                  </div>
-                )}
-                <iframe
-                  key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
-                  src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
-                  className="w-full h-full border-0"
-                  title="ANT Code Editor"
-                  onLoad={async () => {
-                    // onLoad fires on both real content and 5xx error pages
-                    // (cross-origin onError is unreliable). Re-probe the proxy
-                    // so a 5xx leaves ideFrameLoaded=false → retry effect kicks in.
-                    try {
-                      const res = await fetch(`${ideBaseUrl}/`, {
-                        method: 'GET',
-                        credentials: 'include',
-                        cache: 'no-store',
-                      });
-                      if (res.status >= 200 && res.status < 500) {
-                        useStore.getState().setIdeFrameLoaded(true);
-                      }
-                    } catch {
-                      // network error — leave ideFrameLoaded=false; retry effect handles it
+        {/* Main Layout — both views are always mounted; `display` toggles
+            visibility so the IDE iframe (VSCode session + WebSocket) survives
+            tab switches. Re-mount is triggered only by feature change or an
+            explicit reload, both via `ideReloadTimestamp` bumps in the key.
+            See `.claude/plans/ant-ide-pwd-iterative-flute.md` for rationale. */}
+
+        {/* IDE View */}
+        <div
+          className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}
+          style={{ display: mainView === 'codeIde' ? 'block' : 'none' }}
+        >
+          {ideConnecting || !ideBaseUrl ? (
+            <IdeLoadingOverlay message={ideConnectError ? 'failed' : 'connecting'} errorMessage={ideConnectError} />
+          ) : (
+            <div className="relative w-full h-full">
+              {!ideFrameLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
+                  <IdeLoadingOverlay
+                    message={ideConnectError ? 'failed' : 'loading'}
+                    errorMessage={ideConnectError}
+                  />
+                </div>
+              )}
+              <iframe
+                key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
+                src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
+                className="w-full h-full border-0"
+                title="ANT Code Editor"
+                onLoad={async () => {
+                  // onLoad fires on both real content and 5xx error pages
+                  // (cross-origin onError is unreliable). Re-probe the proxy
+                  // so a 5xx leaves ideFrameLoaded=false → retry effect kicks in.
+                  try {
+                    const res = await fetch(`${ideBaseUrl}/`, {
+                      method: 'GET',
+                      credentials: 'include',
+                      cache: 'no-store',
+                    });
+                    if (res.status >= 200 && res.status < 500) {
+                      useStore.getState().setIdeFrameLoaded(true);
                     }
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        ) : (
-          // ✅ Agents View: Original UI
-        <div className={`flex-1 flex gap-0 overflow-hidden pt-16 transition-opacity duration-350 ${viewOpacity}`}>
+                  } catch {
+                    // network error — leave ideFrameLoaded=false; retry effect handles it
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Agents View */}
+        <div
+          className={`flex-1 gap-0 overflow-hidden pt-16 transition-opacity duration-350 ${viewOpacity}`}
+          style={{ display: mainView !== 'codeIde' ? 'flex' : 'none' }}
+        >
           {/* Explorer Panel */}
           <ExplorerPanel
             isCollapsed={isExplorerCollapsed}
@@ -567,7 +575,7 @@ function App() {
             onCollapse={() => setIsExplorerCollapsed(true)}
             onResizeStart={() => setIsResizingExplorer(true)}
           />
-          
+
           {/* Collapsed Explorer Button */}
           {isExplorerCollapsed && (
             <div className="w-10 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
@@ -605,7 +613,6 @@ function App() {
             onResizeStart={() => setIsResizingChat(true)}
           />
         </div>
-        )}
       </div>
       {/* ProjectWizardModal (design/code wizard) */}
       {projectSetupConfig && (
