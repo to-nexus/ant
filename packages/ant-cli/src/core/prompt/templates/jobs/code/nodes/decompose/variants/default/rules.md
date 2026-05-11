@@ -16,9 +16,9 @@ OUTPUT FORMAT:
 | Tier | Label | Principle |
 |---|---|---|
 | `0` | Reflex        | Read-only textual answer. The directive can be answered from its own wording plus what is already visible in this prompt. No file edits required. |
-| `1` | OneShot       | A single write where verification is genuinely unneeded: comment-only edits, typo/text fixes, string-literal swaps with no logic impact, deterministically-safe config tweaks. If you cannot confidently judge "no verification needed", do NOT pick Tier 1 — escalate to Tier 2. |
-| `2` | Exploratory   | A single unit of work that requires verification (install/typecheck/build/test) to confirm correctness. The task owns its own verification inline. Exactly one task is emitted. |
-| `3` | Task          | Multiple independent units of work that benefit from separate persistence boundaries, verification, or parallelism. A dedicated verification task governs build/test. No external reference document grounds the breakdown. |
+| `1` | OneShot       | A single write whose effect is **contained**: it does not alter any exported symbol's type / signature, does not affect module-load order, does not change the module dependency graph. Comment edits, typo / string-literal swaps inside a function body, and config additions read at runtime (not at module init) typically satisfy this. If any of those three cross-cutting effects is plausible — escalate to Tier 2. |
+| `2` | Exploratory   | A single unit of work whose **investigation surface** (the set of components — files, modules, runtime layers — whose code or config must be read to apply the change correctly) fits one component. Verification (install/typecheck/build/test) runs inline via two-cycle apply→verify. Exactly one task is emitted. |
+| `3` | Task          | The investigation surface spans **clearly distinct components** (FE vs BE, different packages, different runtime layers) — the directive's solution requires touching ≥ 2 surfaces. A dedicated verification task governs build/test. No external reference document grounds the breakdown. Minimum shape is `[feature × 1 + verification × 1]` (2 tasks); multi-feature shapes apply only when the directive itself names physical isolation (see tier-deep-think for shape rules). |
 | `4` | RefsGrounded  | Multiple independent units of work, AND the breakdown is anchored in an external reference document (plan, spec, PRD, design) supplied as a ref in this prompt. Same verification-task requirement as Tier 3. |
 
 **Constraint**: Classify using the directive, the mode, and the provided context/refs ONLY. Do NOT invent scope beyond what the directive states.
@@ -31,9 +31,11 @@ OUTPUT FORMAT:
 - Tier `3` — multi-unit, multi-boundary work whose breakdown the directive itself describes.
 Lower-tier preference applies ONLY between these three when genuine unit-count ambiguity remains under a fixed directive (NOT to escape Tier 4 when a design ref is present).
 
-**Constraint**: Tier 1 is reserved for writes where verification is genuinely unnecessary. If the change could plausibly break typecheck / build / test — choose Tier 2 so the task owns inline self-verify. "Unsure whether verification is needed" is itself a signal to pick Tier 2.
+**Constraint — Tier 1 vs Tier 2 boundary (SSOT)**: The boundary is **scope of effect**, not size of change. Observable test: does this change leave the module graph, type surface, and module-init order unchanged? If yes → Tier 1. If the change touches any of those three cross-cutting effects → Tier 2 with `selfVerifyOnDone: true`. "Unsure whether verification is needed" is itself a signal to pick Tier 2.
 
 **Constraint**: Tier 2 emits EXACTLY ONE task. If the directive truly needs more than one independent unit of work, classify as Tier 3 (or 4 when refs-grounded) instead. Tier 3/4 emit `>= 2` tasks AND MUST include a dedicated verification task (`type: "verification"`, `priority: 1000`).
+
+**Constraint — "single unit of work" is observable by surface count**: count the distinct components (different packages, FE vs BE, app code vs vendor library internals) whose code or config you would need to inspect to write the fix. 1 surface → Tier 2. ≥ 2 surfaces → Tier 3. The `[feature × 1 + verification × 1]` 2-task minimum for Tier 3 still applies — a single-component-but-multi-surface fix lives there with the verification task as the second member (see tier-deep-think for the deeper boundary heuristic).
 
 {{> jobs/code/nodes/decompose/variants/default/tier-deep-think}}
 
@@ -96,6 +98,13 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 
 ⚠️ **Blind spot**: NEVER pre-decide siblings just to satisfy "Tier 3 ≥ 2 tasks". The constraint is satisfied by `[feature × 1 + verification × 1]`. Inventing a fake second feature task to pad the count is exactly the parent-fragmentation anti-pattern this design prevents.
 
+⚠️ **Blind spot — symptom-only directives**. When the directive describes an **outcome** ("started up but it errors out", "build broke", "the tab crashes") without naming the component to change, the surface count is not directly visible. Resolve conservatively:
+- Stack trace spanning ≥ 2 layers (framework + app code, vendor + user code) → ≥ 2 surfaces → Tier 3.
+- Root cause concept (auth / config / network / DB / env var) whose origin could live in ≥ 2 places → ≥ 2 surfaces → Tier 3.
+- A symptom-only directive that names a single concrete change ("change `apiKey` on line 10 of `config.ts` to read `process.env.X`") collapses the surface for you — Tier 1/2 still applies.
+
+Tier 2's `selfVerifyOnDone:true` runtime escalate to N sub-tasks is a **cost** that signals decompose mis-classified — prefer correct Tier 3 classification up-front.
+
 ### Mode shapes the meaning of each tier
 
 **Principle**: The unit of "action" differs by mode. The same five tiers apply, but what counts as Reflex / OneShot / Exploratory / Task / RefsGrounded is mode-specific.
@@ -117,7 +126,7 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
   - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.
   - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
 
-**Constraint**: The Tier 1 vs Tier 2 boundary is "does verification add value?". A comment edit or typo fix does not — Tier 1. A bug fix, feature skeleton, or config change that could plausibly break typecheck/build/test does — Tier 2 with `selfVerifyOnDone: true`.
+**Constraint**: Across all three modes above, the Tier 1 vs Tier 2 boundary is **scope of effect** — see the SSOT statement near the classification table (does the change leave module graph / type surface / module-init order unchanged?). The Tier 2 vs Tier 3 boundary is **surface count** — single component (1 surface) vs distinct components (≥ 2 surfaces).
 
 ---
 
