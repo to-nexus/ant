@@ -73,11 +73,16 @@ interface ManifestDispatch {
    */
   readDeps(absPath: string): Promise<Array<{ name: string; spec: string }> | null>;
   /**
-   * Best-effort resolved-version lookup. The 1st-row package.json
-   * implementation reads `codebase/node_modules/<name>/package.json`.
-   * Returns undefined when not installed.
+   * Best-effort resolved-version lookup. Manifest-local-first (pnpm symlink
+   * / yarn-classic nested) then root-fallback (npm 7+ workspaces hoisted /
+   * pnpm top-level). When `declaringDir` is omitted or equals the codebase
+   * root, only the root is checked. Returns undefined when not installed.
    */
-  readResolvedVersion(codebasePath: string, name: string): Promise<string | undefined>;
+  readResolvedVersion(
+    codebasePath: string,
+    name: string,
+    declaringDir?: string,
+  ): Promise<string | undefined>;
   /**
    * Enumerate every manifest of this kind under the codebase root.
    * Returns absolute paths. Empty array when nothing matches.
@@ -103,10 +108,11 @@ const PACKAGE_JSON_DISPATCH: ManifestDispatch = {
       return null;
     }
   },
-  async readResolvedVersion(codebasePath, name) {
-    const modPath = path.join(codebasePath, 'node_modules', ...name.split('/'), 'package.json');
+  async readResolvedVersion(codebasePath, name, declaringDir) {
+    const modDir = await resolveModulePath(codebasePath, name, declaringDir);
+    if (!modDir) return undefined;
     try {
-      const raw = await fs.promises.readFile(modPath, 'utf-8');
+      const raw = await fs.promises.readFile(path.join(modDir, 'package.json'), 'utf-8');
       const depPkg = JSON.parse(raw) as { version?: unknown };
       return typeof depPkg.version === 'string' ? depPkg.version : undefined;
     } catch {
@@ -139,8 +145,12 @@ const SKIP_DIR_NAMES = new Set([
  * and a directory walk is both simpler and equally bounded by depth
  * because we prune the same skip-dir set the user-edited tree never
  * traverses.
+ *
+ * Exported so `invalidationScope.ts::areDepsInstalled` consumes the same
+ * disk-walk SSOT — install-status and pin-conflict snapshot agree on what
+ * manifests exist.
  */
-async function enumeratePackageJsonManifests(codebasePath: string): Promise<string[]> {
+export async function enumeratePackageJsonManifests(codebasePath: string): Promise<string[]> {
   const found: string[] = [];
 
   async function walk(dir: string, depth: number): Promise<void> {
@@ -169,6 +179,48 @@ async function enumeratePackageJsonManifests(codebasePath: string): Promise<stri
   }
   await walk(codebasePath, 0);
   return found;
+}
+
+/**
+ * Resolve where a dependency's `node_modules` directory actually lives.
+ *
+ * Manifest-local-first → root-fallback covers all three workspace
+ * topologies: pnpm symlinks each dep into the declaring member's own
+ * `node_modules/`, yarn-classic nests them likewise, and npm 7+ workspaces
+ * hoist to the root `codebase/node_modules/`. Without manifest-local-first
+ * a hoisted root-only check would miss pnpm members and silently report
+ * "not installed" for symlinked members.
+ *
+ * Returns the absolute path to the dep's `node_modules/<name>/` directory
+ * when present, or undefined when neither location resolves. Used by both
+ * `areDepsInstalled` (install-status SSOT) and `readResolvedVersion`
+ * (pin-snapshot SSOT) so the two surfaces never disagree on whether a dep
+ * is installed.
+ */
+export async function resolveModulePath(
+  codebasePath: string,
+  name: string,
+  declaringDir?: string,
+): Promise<string | undefined> {
+  const segments = name.split('/');
+
+  if (declaringDir && declaringDir !== codebasePath) {
+    const localPath = path.join(declaringDir, 'node_modules', ...segments);
+    try {
+      await fs.promises.stat(localPath);
+      return localPath;
+    } catch {
+      // fall through to root-fallback
+    }
+  }
+
+  const rootPath = path.join(codebasePath, 'node_modules', ...segments);
+  try {
+    await fs.promises.stat(rootPath);
+    return rootPath;
+  } catch {
+    return undefined;
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -217,10 +269,15 @@ export async function scanWorkspaceDepPins(featureRootPath: string): Promise<Wor
       manifestPaths.push(rel);
       const deps = await dispatch.readDeps(absPath);
       if (!deps) continue;
+      const declaringDir = path.dirname(absPath);
       for (const { name, spec } of deps) {
         const existing = pins.get(name);
         if (!existing) {
-          const resolvedVersion = await dispatch.readResolvedVersion(codebasePath, name);
+          const resolvedVersion = await dispatch.readResolvedVersion(
+            codebasePath,
+            name,
+            declaringDir,
+          );
           pins.set(name, {
             name,
             declaredSpec: spec,

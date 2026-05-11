@@ -445,7 +445,10 @@ module declarations for organization-internal or private packages?
 **Constraint**: When the design document contains explicit import paths for packages
 whose version is NOT known from public registries or training data, the Setup task
 description MUST include the VERBATIM fully-qualified module path as it appears in
-the design document. Do NOT abbreviate, paraphrase, or reconstruct the path.
+the design document. Do NOT abbreviate, paraphrase, or reconstruct the path. The
+same evidence rule applies to registry / auth configuration — write a registry
+override only when the design document literally names one; otherwise the default
+public registry applies.
 
 **Constraint**: If the design document references subpackages of a single module
 (e.g., `org/lib/sub-a`, `org/lib/sub-b`), the Setup description MUST include the

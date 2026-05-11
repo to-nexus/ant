@@ -61,7 +61,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
 4. **Styling framework source scan paths MUST match actual source directories**
-5. In monorepos, `"workspace:*"` MUST only reference packages whose source directory is physically present in `pnpm-workspace.yaml` globs. Do NOT use `"workspace:*"` for externally published packages — regardless of scope name (`@org/`) or design document terminology ("shared packages", "common libraries"). For external packages whose version is unknown, use `"latest"` — do NOT invent version numbers
+5. In monorepos, `"workspace:*"` MUST only reference packages whose source directory is physically present in `pnpm-workspace.yaml` globs. Do NOT use `"workspace:*"` for externally published packages — regardless of scope name (`@org/`) or design document terminology ("shared packages", "common libraries"). For external packages whose version is unknown, use `"latest"` in `dependencies` / `devDependencies` (a semver range in `peerDependencies`) — do NOT invent version numbers
 6. **SVG loader config MUST preserve intrinsic dimensions.** Do NOT set `dimensions: false` in SVGR plugin configuration (vite-plugin-svgr, @svgr/webpack). Stripping `width`/`height` attributes causes viewBox-only SVGs to expand to container size.
 
 ⚠️ **Blind spot — Styling framework source scan mismatch**:
