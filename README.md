@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
   <a href="https://github.com/<org>/ant/actions"><img alt="Build" src="https://img.shields.io/badge/build-pending-lightgrey"></a>
   <a href="README.ko.md"><img alt="Korean" src="https://img.shields.io/badge/lang-한국어-red"></a>
-  <a href="docs/getting-started/quickstart.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
+  <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
 <!--
@@ -73,7 +73,9 @@ cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 #   ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
-Full setup walkthrough: [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md).
+Full setup walkthrough: [docs/local-mode/install.md](docs/local-mode/install.md).
+Going to the cloud (managed or self-host)?
+See [docs/cloud-mode/install.md](docs/cloud-mode/install.md).
 
 ---
 
@@ -167,10 +169,13 @@ new verticals is a domain-registry change — no fork required.
 
 ## Documentation
 
-- **[Getting Started](docs/getting-started/)** — install, quickstart, first feature, troubleshooting
+- **[Local Mode](docs/local-mode/)** — install + develop on your own machine (Persona A)
+- **[Cloud Mode](docs/cloud-mode/)** — install + develop for managed (Persona B) or self-host cloud (Persona C)
 - **[Concepts](docs/concepts/)** — architecture, agents, jobs, execution tiers, spec-driven philosophy
-- **[Guides](docs/guides/)** — self-hosting, cloud deployment, design input, custom prompts
+- **[Guides](docs/guides/)** — design input, custom prompts, observability
 - **[Reference](docs/reference/)** — CLI, env vars, API, shared types
+- **[First feature](docs/getting-started/first-feature.md)** — PRD → Design → Code walkthrough
+- **[Troubleshooting](docs/getting-started/troubleshooting.md)** — install-time and runtime hiccups
 - **[한국어 문서](docs/ko/)** — Korean mirror
 
 For contributors:

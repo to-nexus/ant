@@ -6,8 +6,8 @@ design. Estimated time: 20 minutes.
 
 ## Setup
 
-Make sure you have completed the [quickstart](quickstart.md) and have
-`pnpm dev:local:all` running.
+Make sure you have completed the [local-mode install](../local-mode/install.md)
+and have `pnpm dev:local:all` running.
 
 Open the UI, create a new project (`domain: service`) and a new feature.
 

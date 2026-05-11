@@ -127,4 +127,4 @@ Source-level lints in [`packages/ant-ui/tests/auth/`](../../packages/ant-ui/test
 4. Same-subdomain cross-tab: logout in tab A → tab B sees "session expired" banner within ~1s.
 5. Long SSE session: delete `ant_session` cookie via devtools → next protected request 401s → banner appears, SSE stops retrying.
 6. Backend down during signout: stop backend → click logout → toast appears, app navigates anyway.
-7. Local mode (`backendMode=local`): no `/auth/me`, no broadcasts, no Sign In button. Unchanged.
+7. Local launch (`launchMode=local`): no `/auth/me`, no broadcasts, no Sign In button. Unchanged.

@@ -5,8 +5,8 @@ All runtime-tunable configuration. The canonical source is
 defaults.
 
 For deployment-specific recommendations, see
-[guides/self-hosting.md](../guides/self-hosting.md) and
-[guides/cloud-deployment.md](../guides/cloud-deployment.md).
+[local-mode/install.md](../local-mode/install.md) and
+[cloud-mode/install.md](../cloud-mode/install.md).
 
 ## Core
 
