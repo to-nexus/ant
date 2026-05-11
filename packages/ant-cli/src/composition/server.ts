@@ -35,6 +35,7 @@ import { ExpressServerAdapter } from "../periphery/adapters/http/express";
 import { WorkspacePathResolver } from "../core/config/WorkspacePathResolver";
 import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
 import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
+import { logCorsConfigSummary } from "../periphery/adapters/http/middleware/corsConfig";
 
 /**
  * Server Entry Point
@@ -55,7 +56,6 @@ import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
  */
 
 const DEFAULT_PORT = 8080;
-const DEFAULT_CLOUD_URL = 'https://ant.nexus.ai';
 
 async function main() {
   // ✅ Debug: Check if environment variables are loaded
@@ -79,8 +79,6 @@ async function main() {
   // ✅ Initialize WorkspaceService for multi-tenant workspace management
   const workspaceService = new WorkspaceService(workspacesPath);
   
-  const cloudUrl = process.env.CLOUD_URL || DEFAULT_CLOUD_URL;
-  
   const startTime = new Date().toISOString();
   console.log(`\n${mode === 'cloud' ? '🌐' : '💻'} Starting in ${mode.toUpperCase()} mode`);
   console.log(`   Started: ${startTime}`);
@@ -91,10 +89,11 @@ async function main() {
     console.log(`   ⚠️  Using default workspace path (inside ant source)`);
   }
   console.log(`   Port: ${port}`);
-  if (mode === 'local') {
-    console.log(`   Cloud URL: ${cloudUrl}`);
-  }
-  
+
+  // Surface CORS misconfig at boot (cloud mode w/ no FRONTEND_URL +
+  // no ANT_CORS_ORIGINS silently fails any cross-host FE request).
+  logCorsConfigSummary();
+
   // Register all Handlebars partials before accepting requests
   const partialResult = await initPartials();
   if (partialResult.failed.length > 0) {
@@ -102,7 +101,7 @@ async function main() {
   }
 
   // Create server with mode configuration and WorkspaceService
-  const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl, workspaceService);
+  const server = new ExpressServerAdapter(mode, workspacesPath, workspaceService);
   
   try {
     await server.start(port);
