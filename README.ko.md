@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/lang-English-blue"></a>
-  <a href="docs/ko/getting-started/quickstart.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
+  <a href="docs/ko/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
 > ⚠️ **상태: pre-alpha.** Ant는 end-to-end로 동작하지만, 첫 정식 릴리즈
@@ -59,7 +59,9 @@ cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 #   ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
-자세한 셋업: [docs/ko/getting-started/quickstart.md](docs/ko/getting-started/quickstart.md).
+자세한 셋업: [docs/ko/local-mode/install.md](docs/ko/local-mode/install.md).
+클라우드 (매니지드 또는 self-host)로 가시려면
+[docs/ko/cloud-mode/install.md](docs/ko/cloud-mode/install.md).
 
 ---
 
@@ -150,9 +152,10 @@ native는 schema-based.) 풀 가이드:
 
 ## 문서
 
-- **[시작하기](docs/ko/getting-started/)** — 설치, 빠른 시작, 첫 feature, 트러블슈팅
+- **[로컬 모드](docs/ko/local-mode/)** — 자기 머신에서 설치 + 개발 (페르소나 A)
+- **[클라우드 모드](docs/ko/cloud-mode/)** — 매니지드 (페르소나 B) 또는 self-host (페르소나 C) 설치 + 개발
 - **[개념](docs/ko/concepts/)** — 아키텍처, 에이전트, 잡, 실행 tier, spec-driven 철학
-- **[가이드](docs/ko/guides/)** — self-host, 클라우드 배포, 디자인 입력, 커스텀 프롬프트
+- **[가이드](docs/ko/guides/)** — 디자인 입력, 커스텀 프롬프트, 옵저버빌리티
 - **[English documentation](README.md)** — 영어 본문
 
 기여자용 (영문):

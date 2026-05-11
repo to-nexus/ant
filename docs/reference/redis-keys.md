@@ -128,5 +128,5 @@ In practice, Ant's per-feature key groups (`ant:job:*:<feature>`,
 
 - [internals/02-infrastructure.md](../internals/02-infrastructure.md) —
   full SSOT including pub/sub fan-out, BullMQ retry semantics, and TLS.
-- [guides/cloud-deployment.md](../guides/cloud-deployment.md) — production
+- [cloud-mode/install.md](../cloud-mode/install.md) — production
   Redis setup.

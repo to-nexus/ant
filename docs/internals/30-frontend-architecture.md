@@ -40,7 +40,7 @@ Presentation -> Application -> Domain <- Infrastructure
 | projectConfigSlice | `.ant/config.json` 내용 (`AsyncFields<ProjectConfig>`) |
 | previewSlice | Preview 상태 |
 | authSlice | 인증 상태 |
-| configSlice | 시스템 설정 (backendMode, localBackendPort, recursionLimit) |
+| configSlice | 시스템 설정 (launchMode, localBackendPort, recursionLimit) |
 | chatSlice | 채팅 메시지 |
 | transferSlice | 전송 상태 |
 | deploySlice | Deploy 상태 |

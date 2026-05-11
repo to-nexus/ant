@@ -22,9 +22,11 @@ packages/
 ├── ant-ui/         Frontend: React + Vite SPA
 └── ant-shared/     Shared TypeScript types (no runtime code)
 docs/
-├── getting-started/  installation, quickstart, troubleshooting
+├── local-mode/       install + develop on your own machine
+├── cloud-mode/       install + develop for managed or self-host cloud
+├── getting-started/  first-feature walkthrough, troubleshooting
 ├── concepts/         architecture, agents, jobs, execution tiers
-├── guides/           self-hosting, design input, custom prompts
+├── guides/           design input, custom prompts, observability
 ├── reference/        CLI, env vars, API, shared types
 └── internals/        contributor-only deep-dives (SSOT, debug logging)
 ```
@@ -44,29 +46,10 @@ resolution.
 
 ## Local Setup
 
-```bash
-# 1. Clone and install
-git clone https://github.com/<org>/ant
-cd ant
-pnpm install
+- **Install** — [docs/local-mode/install.md](docs/local-mode/install.md)
+- **Develop conventions** — [docs/local-mode/develop.md](docs/local-mode/develop.md)
 
-# 2. Boot infrastructure (Redis + ChromaDB)
-pnpm dev:infra
-
-# 3. Configure environment
-cp packages/ant-cli/.env.example.local packages/ant-cli/.env
-# edit .env: ANT_ANTHROPIC_API_KEY=...
-#           ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)
-
-# 4. Run all processes
-pnpm dev:local:all
-```
-
-Open http://localhost:5173.
-
-If you only need a single process, see the per-process scripts in
-`package.json` (`dev:local`, `dev:realtime-server`, `dev:job-worker`,
-`dev:preview-server`, `dev:ui`).
+Open http://localhost:5173 after `pnpm dev:local:all`.
 
 ## Daily Loop
 
@@ -219,7 +202,7 @@ refactor(preview): drop mock:* annotation tokens
 
 ## Getting Help
 
-- **Documentation**: start with `docs/getting-started/` and `docs/concepts/`.
+- **Documentation**: start with `docs/local-mode/install.md` and `docs/concepts/`.
 - **Discussions**: for open-ended questions, use GitHub Discussions.
 - **Real-time chat**: see the Discord invite in the README.
 
