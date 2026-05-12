@@ -552,15 +552,19 @@ export class TaskOrchestrator<T extends BaseTask> {
         this.consecutiveTimeouts = 0;
       }
 
-      // ✅ Recursion limit: immediate interrupt — do NOT re-queue.
-      // Re-queuing the same task with the same recursion budget causes an
-      // infinite loop (task runs → hits limit → re-queued → runs again → …).
-      // Instead, treat as a permanent failure and let the orchestrator finish.
-      // The task is added to failedTasks so it is tracked in the result and
-      // the upstream parallelOrchestrator can save it for resume.
+      // ✅ Recursion limit: immediate interrupt — do NOT re-queue + drain.
+      // Re-queuing causes infinite loop (15508af5 RCA: same task with same
+      // recursion budget re-hits). Instead:
+      //  - task → failedTasks (permanent-failure semantics)
+      //  - drain() → no new worker spawn, running workers finish normally
+      //  - checkpoint with canResume:true → graph.ts persists session.interruption
+      //    so FE shows the Resume prompt
+      // Single-task scope (other workers' tasks are unrelated to the loop); we do
+      // NOT signalWorkersToStop() — matches the permanent-failure handler below.
       if (isRecursionLimitError(error)) {
         task.interrupted = true;
         this.hasInterruptedTasks = true;
+        this.interruptReason = 'recursion_limit';
         this.failedTasks.push({
           task,
           error,
@@ -570,7 +574,9 @@ export class TaskOrchestrator<T extends BaseTask> {
           `[Orchestrator] Task "${task.name}" INTERRUPTED — recursion limit reached (worker ${workerId})`,
         );
 
-        // Notify only for this specific task (other workers may still be running)
+        // Per-task SSE identifier for the FE chat surface (not a policy statement:
+        // orchestrator is draining — other workers finish their current task and stop,
+        // no new dispatch).
         this.callbacks.onInterruption?.('recursion_limit', [task.id]);
 
         try {
@@ -579,6 +585,7 @@ export class TaskOrchestrator<T extends BaseTask> {
           console.warn(`[Orchestrator] Post-interrupt checkpoint failed:`, err);
         }
 
+        this.drain();
         this.broadcastKanban();
         this.checkAllDone();
         return;
