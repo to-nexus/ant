@@ -8,7 +8,7 @@
  */
 
 import cors from 'cors';
-import type { Request } from 'express';
+import type { Request, RequestHandler } from 'express';
 
 /** Exact-prefix match — `.includes('localhost')` would let `localhost.attacker.com` through. */
 function isLoopbackOrigin(origin: string): boolean {
@@ -92,7 +92,7 @@ export function resolveFrontendOrigin(
  *
  * Uses `cors(delegate)` so `req` reaches the predicate.
  */
-export function createCorsMiddleware() {
+export function createCorsMiddleware(): RequestHandler {
   const allowAllOrigins = parseExtraOrigins().includes('*');
 
   const base: Omit<cors.CorsOptions, 'origin'> = {

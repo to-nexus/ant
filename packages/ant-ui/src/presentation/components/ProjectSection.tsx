@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { selectServerMode } from '@/domain/store/selectors/auth';
 import { createProject } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -13,7 +12,6 @@ import { GitMenuButton } from './GitMenuButton';
 import { useGitSnapshot } from '@/domain/git-world';
 import {
   selectProjectConfigMissing,
-  selectProjectConfigExists,
 } from '@/domain/store/selectors';
 
 export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
@@ -27,10 +25,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
-  const serverMode = useStore((state) => selectServerMode(state));
-  const projectConfigData = useStore((s) => s.projectConfig.data);
   const projectConfigMissing = useStore(selectProjectConfigMissing);
-  const projectConfigReady = useStore(selectProjectConfigExists);
   const snapshot = useGitSnapshot();
 
   const [showWizard, setShowWizard] = useState(false);
@@ -138,21 +133,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             </div>
           )}
 
-          {serverMode !== 'cloud' &&
-            projectConfigReady &&
-            !projectConfigData?.localPath &&
-            projectConfigData?.repoType !== 'cloud' && (
-              <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
-                <div className="flex items-start gap-1.5">
-                  <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-orange-700 dark:text-orange-300">
-                      {t('config:git.localPathRequired')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+
         </div>
       )}
     </div>
