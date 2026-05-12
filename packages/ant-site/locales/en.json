@@ -27,7 +27,6 @@
     "issues": "Issues",
     "roadmap": "Roadmap",
     "contributing": "Contributing",
-    "codeOfConduct": "Code of Conduct",
     "security": "Security",
     "releases": "Releases",
     "rights": "Released under {{license}}."
@@ -166,8 +165,6 @@
     },
     "policy": {
       "title": "Project policies",
-      "codeOfConductTitle": "Code of Conduct",
-      "codeOfConductDesc": "We follow the Contributor Covenant. Be excellent to each other.",
       "securityTitle": "Security policy",
       "securityDesc": "Found a vulnerability? Don't open a public issue — see SECURITY.md for the disclosure process."
     },
@@ -270,7 +267,6 @@
       "Anthropic Claude as primary LLM (managed quota)",
       "Per-user Cloud IDE pods (Kubernetes-backed VSCode in the browser)",
       "Workspace storage on managed EFS",
-      "Figma MCP via the cloud HTTP bridge (no desktop MCP)",
       "Same Plan → Design → Code → Preview workflow as local mode",
       "Workspaces exportable as plain files — migrate to local mode any time"
     ],
