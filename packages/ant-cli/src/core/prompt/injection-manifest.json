@@ -81,7 +81,8 @@
     "game-art-spec-guide-by-figma": ["forceAppend"],
     "game-art-spec-guide-by-desc": ["forceAppend"],
     "sealed-plan-block": ["planText"],
-    "sealed-plan-rules": ["planText", "verificationAxis"]
+    "sealed-plan-rules": ["planText", "verificationAxis"],
+    "append-anchor": ["appendAnchor"]
   },
   "jobs/design/nodes/plan/injections": {
     "plan-tools-batch": []

@@ -129,6 +129,16 @@ interface BaseTaskCommon {
   priority: number;
   completed?: boolean;
   interrupted?: boolean;
+  /**
+   * Resumable-failure marker. Set by parallel orchestrator failure paths when
+   * pushing a task back into the queue after the worker exhausted its retry /
+   * call budget. Combined with `interrupted: true`, surfaces a "Retry" badge
+   * in Kanban so the user can resume. SSOT for "this task failed in the last
+   * run" — there is no separate `state.failedTasks` channel.
+   */
+  _failed?: boolean;
+  /** Human-readable error message captured at the moment of failure. */
+  _failureReason?: string;
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
   packages?: string[];

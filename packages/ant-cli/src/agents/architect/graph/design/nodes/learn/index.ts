@@ -187,15 +187,19 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const _workerId = state.workerId;
   const _isWorkerContext = _workerId !== undefined && _workerId !== null;
   
-  // Clear stale orchestrator interruption when all tasks completed on resume.
-  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  // Clear stale orchestrator interruption when all tasks resolved on resume.
+  // SSOT: `_failed:true` markers in the live taskQueue determine whether the
+  // persisted interruption still reflects unresolved work. There is no separate
+  // `state.failedTasks` channel — the marker on each task IS the signal.
+  const queueTasks = state.taskQueue?.getAll() ?? [];
+  const failedInQueue = queueTasks.filter(t => (t as { _failed?: boolean })._failed === true);
+  const isLastTask = queueTasks.length === 0;
   const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'call_limit', 'figma_rate_limited', 'figma_connection_lost'];
   const staleOrchReason = state.interruption?.reason;
-  if (isLastTask && staleOrchReason != null && orchestratorReasons.includes(staleOrchReason)) {
-    const failedTasks = state.failedTasks;
-    if (failedTasks && failedTasks.length > 0) {
-      console.log(`⚠️  [Design Learn] ${failedTasks.length} task(s) failed — preserving ${staleOrchReason} interruption`);
-    } else {
+  if (staleOrchReason != null && orchestratorReasons.includes(staleOrchReason)) {
+    if (failedInQueue.length > 0) {
+      console.log(`⚠️  [Design Learn] ${failedInQueue.length} task(s) failed — preserving ${staleOrchReason} interruption`);
+    } else if (isLastTask) {
       console.log(`✅ [Design Learn] All tasks completed — clearing stale ${staleOrchReason} interruption`);
       state.interruption = undefined;
     }

@@ -1220,6 +1220,12 @@
       "render-call"
     ]
   },
+  "jobs/design/nodes/execute/injections/append-anchor": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc": {
     "sources": [
       "partial-ref",

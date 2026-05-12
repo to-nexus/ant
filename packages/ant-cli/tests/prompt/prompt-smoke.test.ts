@@ -591,6 +591,12 @@ describe('Template Smoke Tests', () => {
       // `sealed-plan-rules` partial has a {{else}} fallback branch and
       // is therefore NOT in this allow-list.
       'jobs/design/nodes/execute/injections/sealed-plan-block',
+      // append-anchor is wrapped entirely in {{#if appendAnchor}} (no
+      // {{else}}) — same Contract pattern as sealed-plan-block. The
+      // anchor is only injected for append-mode chapters that have a
+      // pre-computed insertion target from decompose; otherwise the
+      // partial is empty by design.
+      'jobs/design/nodes/execute/injections/append-anchor',
       // Code Tier 3 cross-task analysis brief is wrapped in
       // {{#if hasAnalysis}} (no {{else}}) — same Contract pattern as
       // sealed-plan-block. Tier 4 forbids emission, Tier 0/1/2 skip,

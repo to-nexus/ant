@@ -560,6 +560,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     forceAppend,
     pathPattern,
     siblingTasks: siblingTasks || '',
+    // Pre-computed by decompose for ui-spec append-mode chapters; null when
+    // the target file is not ui-spec-like or its content is unparseable.
+    // The execute template's anchor partial self-gates on truthiness.
+    appendAnchor: (state.currentTask as DesignTask & { anchorAfterSection?: string })?.anchorAfterSection ?? null,
     detectedMode: state.resolvedAction?.mode,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,

@@ -66,6 +66,8 @@ The system merges all chapters via deep merge automatically.
 {{{siblingTasks}}}
 {{/if}}
 
+{{> jobs/design/nodes/execute/injections/append-anchor}}
+
 {{else}}
 🆕 NEW DOCUMENT - START FROM DOCUMENT TITLE
 ════════════════════════════════════════════════════════════════════════════════
@@ -221,7 +223,9 @@ Use semantic token names:
 
 {{{previousChaptersSummary}}}
 
+{{#unless appendAnchor}}
 Use `read_file` on `visual/ui/{{targetFile}}` to inspect existing structure before extending.
+{{/unless}}
 
 **⚠️ DUPLICATE PREVENTION:**
 1. Check if topic name appears above → **SKIP entirely**

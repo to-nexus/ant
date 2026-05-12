@@ -39,7 +39,8 @@
     "overhead": "Overhead"
   },
   "task": {
-    "paused": "Paused"
+    "paused": "Paused",
+    "failed": "Failed"
   },
   "activeNode": {
     "node": "Node:",

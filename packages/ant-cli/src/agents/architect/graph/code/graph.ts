@@ -239,12 +239,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // `completedTasksDetails`.
                   completedTasks: checkpoint.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
-                  failedTasks: checkpoint.failedTasks.map(f => ({
-                    taskId: f.task.id,
-                    taskName: f.task.name,
-                    error: f.error.message,
-                    timestamp: f.timestamp,
-                  })),
                   tokenUsage: checkpoint.tokenUsage,
                   // ✅ Preserve estimating phase token usage snapshot in checkpoint
                   estimatingTokenUsage: state._estimatingTokenUsage,
@@ -404,12 +398,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
             completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
-            failedTasks: result.failedTasks.map(f => ({
-              taskId: f.task.id,
-              taskName: f.task.name,
-              error: f.error.message,
-              timestamp: f.timestamp,
-            })),
             tokenUsage: result.tokenUsage,
             estimatingTokenUsage: state._estimatingTokenUsage,
             jobId: state.jobId,
@@ -476,12 +464,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
             completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
-            failedTasks: result.failedTasks.map(f => ({
-              taskId: f.task.id,
-              taskName: f.task.name,
-              error: f.error.message,
-              timestamp: f.timestamp,
-            })),
             tokenUsage: result.tokenUsage,
             estimatingTokenUsage: state._estimatingTokenUsage,
             jobId: state.jobId,
@@ -505,10 +487,21 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     }
   }
 
+  // Re-populate live state.taskQueue with the same merged queue we wrote to disk
+  // (failed-with-_failed-marker + remaining). Learn detects failures via _failed
+  // markers in the queue — there is no separate state.failedTasks channel.
+  if (state.taskQueue) {
+    for (const f of result.failedTasks) {
+      state.taskQueue.push(buildResumableFailedTask(f.task as CodeTask, f.error.message));
+    }
+    for (const t of result.remainingQueue) {
+      state.taskQueue.push(t);
+    }
+  }
+
   return {
     completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
     completedTasksDetails: result.completedTasks,
-    failedTasks: result.failedTasks.map(f => f.task) as any,
     currentTask: undefined,
     tokenUsage: result.tokenUsage || state.tokenUsage,
     interruption: result.hasInterruptedTasks ? {
@@ -586,7 +579,6 @@ export const CodeGraphChannels = {
       jobId: Annotation<any>,
       turnId: Annotation<any>,
       jobTiming: Annotation<any>,
-      failedTasks: Annotation<any>,
       unresolvedErrors: Annotation<any>,
       evaluationReport: Annotation<any>,
       lessons: Annotation<any>,

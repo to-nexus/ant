@@ -22,7 +22,16 @@ export interface UnifiedTask {
   status?: string;
   completed?: boolean;
   interrupted?: boolean;
-  
+  /**
+   * Resumable-failure marker. Set by parallel orchestrator when pushing a task
+   * back into the queue after a non-recoverable failure (call budget exhausted,
+   * etc.). Combined with `interrupted: true` to surface a "Failed (Retry)"
+   * indicator instead of the generic "Paused" badge.
+   */
+  _failed?: boolean;
+  /** Human-readable failure reason captured at the moment of failure. */
+  _failureReason?: string;
+
   // Timing & tokens
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
@@ -48,6 +57,8 @@ export function normalizeTask(task: Record<string, unknown>): UnifiedTask {
     status: (task.status as string) || (task.completed ? 'completed' : 'pending'),
     completed: task.completed as boolean | undefined,
     interrupted: task.interrupted as boolean | undefined,
+    _failed: task._failed as boolean | undefined,
+    _failureReason: task._failureReason as string | undefined,
     timing: task.timing as TaskTiming | undefined,
     tokenUsage: task.tokenUsage as TaskTokenUsage | undefined,
     packages: Array.isArray(task.packages) ? task.packages as string[] : undefined,
