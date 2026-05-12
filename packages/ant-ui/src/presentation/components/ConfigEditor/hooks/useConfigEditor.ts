@@ -15,7 +15,7 @@ export function useConfigEditor(
   // Cloud BE 에서는 repoType 을 'cloud' 로 강제. serverMode 미해석 동안은
   // 강제 변경하지 않아 한 차례 깜빡임을 방지.
   useEffect(() => {
-    if (serverMode === 'cloud' && config.repoType !== 'cloud') {
+    if ((serverMode === 'cloud' || serverMode === 'local') && config.repoType !== 'cloud') {
       const cloudConfig = {
         ...config,
         repoType: 'cloud' as const,

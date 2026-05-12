@@ -357,7 +357,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               hasError={!!errors[field.key]}
               errorMessage={errors[field.key]}
               isRepoTypeDisabled={isRepoTypeDisabled(field.key)}
-              showLocalPath={serverMode !== 'cloud'}
+              showLocalPath={false}
               onChange={handleChange}
               githubOwnerInfo={githubOwnerInfo}
               projectName={editedConfig.repositoryName}
