@@ -1,19 +1,19 @@
 /**
- * Snapshot guard for the plan rules.md changes that bind the
- * `BatchSplitSchemaViolation` retry contract on the LLM side:
+ * Snapshot guard for the plan/rules.md fan-out section, after the rubric
+ * was unified with decompose via the shared partial
+ * `templates/jobs/code/shared/task-split-rubric.md`. The system no longer
+ * auto-converts flat plans; fan-out is LLM-explicit (`batches[]`) only.
  *
- *   1. The JSON SCHEMA section marks the LLM-authored semantic fields as
- *      REQUIRED so the LLM knows the framework will not fabricate them
- *      (`create.name`, `create.purpose`, `modify.action`, `modify.changes`,
- *      `delete.reason`, `batches[].name`, `batches[].rationale`).
+ *   1. The JSON SCHEMA section keeps REQUIRED markers on the LLM-authored
+ *      semantic fields the framework will not fabricate.
  *
- *   2. A `delete[]` entry schema exists at the entry level (the legacy
- *      template only described `delete: []` inside `batches[]`).
+ *   2. The fan-out section renders the shared task-split-rubric partial
+ *      so decompose and plan share one principle SSOT.
  *
- *   3. The fan-out section is renamed PROACTIVE FAN-OUT and includes the
- *      6-entries / 3-directories observation trigger so plan-LLM emits
- *      `batches[]` proactively rather than waiting for system-side
- *      conversion.
+ *   3. Numeric thresholds (6 entries / 3 directories) and the legacy
+ *      "auto-convert"/"overlimit"/"forces system-side fan-out" framing are
+ *      gone — those were the witty-fox-era fingerprints that pushed LLMs
+ *      toward mechanical splitting.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -24,8 +24,13 @@ const RULES_PATH = path.resolve(
   __dirname,
   '../src/core/prompt/templates/jobs/code/nodes/plan/rules.md',
 );
+const RUBRIC_PATH = path.resolve(
+  __dirname,
+  '../src/core/prompt/templates/jobs/code/shared/task-split-rubric.md',
+);
 
 const RULES = readFileSync(RULES_PATH, 'utf8');
+const RUBRIC = readFileSync(RUBRIC_PATH, 'utf8');
 
 describe('plan/rules.md — REQUIRED markers on LLM-authored semantic fields', () => {
   it('create[].name is annotated REQUIRED with a noun-phrase exemplar', () => {
@@ -67,23 +72,72 @@ describe('plan/rules.md — REQUIRED markers on LLM-authored semantic fields', (
   });
 });
 
-describe('plan/rules.md — PROACTIVE FAN-OUT trigger contract', () => {
-  it('section heading is PROACTIVE FAN-OUT (renamed from OPTIONAL FAN-OUT)', () => {
-    expect(RULES).toMatch(/##\s+🌿\s+PROACTIVE FAN-OUT \(feature \/ ui\)/);
-    // Legacy header MUST NOT survive — there is one fan-out section, named PROACTIVE.
-    expect(RULES).not.toMatch(/##\s+🌿\s+OPTIONAL FAN-OUT/);
+describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
+  it('section heading is "FAN-OUT AT PLAN TIME (feature / ui)" — no legacy variants', () => {
+    expect(RULES).toMatch(/##\s+🌿\s+FAN-OUT AT PLAN TIME \(feature \/ ui\)/);
+    expect(RULES).not.toMatch(/##\s+🌿\s+(OPTIONAL|PROACTIVE) FAN-OUT/);
   });
 
-  it('declares the 6-entries / 3-directories observation trigger', () => {
-    expect(RULES).toMatch(/exceed 6 entries OR span 3\+ independent output directories/);
+  it('renders the shared task-split-rubric partial (SSOT with decompose)', () => {
+    expect(RULES).toMatch(/{{>\s+jobs\/code\/shared\/task-split-rubric\s+}}/);
+  });
+
+  it('states that the system does NOT auto-convert flat plans', () => {
+    expect(RULES).toMatch(/system does NOT auto-convert flat plans/i);
+  });
+
+  it('says fan-out fires if and only if the LLM emits batches[] explicitly', () => {
+    expect(RULES).toMatch(/if and only if you decide to split/i);
+  });
+
+  it('makes single-task execute the default regardless of file/package/domain count', () => {
+    expect(RULES).toMatch(/regardless of file count, package count, or domain count/i);
+  });
+
+  it('no legacy numeric thresholds (6 entries / 3 directories) remain', () => {
+    expect(RULES).not.toMatch(/exceed 6 entries/);
+    expect(RULES).not.toMatch(/span 3\+ independent output directories/);
+    expect(RULES).not.toMatch(/N>6/);
+  });
+
+  it('no legacy "overlimit at execute" / "forces system-side fan-out" framing remains', () => {
+    expect(RULES).not.toMatch(/produces overlimit at execute/i);
+    expect(RULES).not.toMatch(/forces system-side fan-out/i);
   });
 
   it('forbids verb-style names in batches[] (verb is owned by the runtime UI)', () => {
     expect(RULES).toMatch(/Do NOT include framework verbs/);
     expect(RULES).toMatch(/Fix.*Create.*Add/);
   });
+});
 
-  it('explains the cost of leaving N units in a flat plan (overlimit at execute)', () => {
-    expect(RULES).toMatch(/produces overlimit at execute/i);
+describe('shared/task-split-rubric.md — SSOT body', () => {
+  it('teaches the independent-unit definition with three observable conditions', () => {
+    expect(RUBRIC).toMatch(/Independent unit — definition/);
+    expect(RUBRIC).toMatch(/integration point/);
+    expect(RUBRIC).toMatch(/cognitive mode/);
+  });
+
+  it('names the concrete benefits that justify splitting', () => {
+    expect(RUBRIC).toMatch(/Failure isolation matters/);
+    expect(RUBRIC).toMatch(/Scope boundary matters/);
+    expect(RUBRIC).toMatch(/Cognitive mode separation matters/);
+  });
+
+  it('explicitly refuses file/package/domain count as a split reason', () => {
+    expect(RUBRIC).toMatch(/many files/);
+    expect(RUBRIC).toMatch(/files in different places\/packages\/domains/);
+  });
+
+  it('warns that splitting a coherent unit risks sibling pattern drift', () => {
+    expect(RUBRIC).toMatch(/pattern drift across siblings/i);
+  });
+
+  it('requires articulation of the concrete benefit', () => {
+    expect(RUBRIC).toMatch(/name the concrete benefit/i);
+  });
+
+  it('contains no numeric threshold of its own', () => {
+    expect(RUBRIC).not.toMatch(/\b[1-9]\+? (entries|files|directories|dirs|domains)\b/);
   });
 });

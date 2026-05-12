@@ -25,10 +25,14 @@ You are diagnosing build and test failures and creating a structured remediation
 ## Role
 
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.
-You do **NOT** apply fixes yourself — every `modify` / `create` / `delete` entry you list will be fanned out to a dedicated error sub-task that owns the file edit. Your job is **diagnose + root cause + fan-out**, nothing else.
+You do **NOT** apply fixes yourself — each `batches[]` entry you emit becomes a dedicated error sub-task that owns the file edits. Your job is **diagnose + root cause + decide split**, nothing else.
+
+{{> jobs/code/shared/task-split-rubric }}
+
+For verification, independent root causes are the natural units — they typically satisfy failure isolation (one cause's fix not blocking others). A single-root-cause investigation belongs in a flat plan and proceeds without sub-task fan-out.
 
 **Output discipline**:
-- Place every `modify` / `create` / `delete` entry inside a `batches[]` group keyed by root cause. Top-level entries are auto-converted to per-target batches by the system but lose root-cause grouping.
+- When you decide to split per the principle above, place every `modify` / `create` / `delete` entry inside a `batches[]` group keyed by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
 - A 0-error cycle MUST emit an empty plan (`{}` or no `<plan>` block) plus `<done>true</done>`. Do not fabricate a token plan to "stay safe".
 - Do not try to apply a fix yourself. There is no execute phase for this task — the system spawns one error sub-task per `batches[]` entry and re-queues this verification task to re-run gates after they finish.
 
@@ -151,7 +155,7 @@ Output the structured plan.
 
 Choose the format based on remediation scope:
 
-### Format A: Single Plan (fewer than 5 files to modify AND only 1 root cause)
+### Format A: Single Plan (single root cause)
 
 ```
 <plan>
@@ -193,9 +197,9 @@ Choose the format based on remediation scope:
 </plan>
 ```
 
-### Format B: Batched Plan (5 or more files to modify OR 2 or more root causes)
+### Format B: Batched Plan (multiple independent root causes)
 
-When multiple independent root causes exist or many files need changes, group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
+When multiple independent root causes exist that satisfy the splitting principle above (notably failure isolation — each cause's fix can succeed or fail independently), group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
 
 Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 
@@ -245,7 +249,7 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships �
 
 **Principle**: Batch grouping must reflect dependency relationships. If modifying file A requires understanding the change in file B, both MUST be in the same batch.
 
-**Constraint**: Each batch should target no more than ~10 files. Prefer fewer, focused batches over many single-file batches.
+**Constraint**: Prefer fewer, focused batches over many single-file batches. A coherent unit that touches many files belongs in one batch — splitting it risks pattern drift across siblings.
 
 **Constraint**: Order batches so that foundational changes (shared types, interfaces, configs) come first and consumers come later.
 

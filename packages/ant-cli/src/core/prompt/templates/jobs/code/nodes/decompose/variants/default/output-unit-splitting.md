@@ -1,10 +1,12 @@
 ## Independent Output Unit Splitting
 
-**WHY this matters**: The Task Scope Constraint above splits by persistence boundary. When the Development Source implies zero persistence boundaries, that axis is silent and task count collapses to one — wasting parallelism and forcing a single task to absorb N unrelated concerns.
+**WHY this matters**: The Task Scope Constraint above splits by persistence boundary. When the Development Source implies zero persistence boundaries, that axis is silent and task count collapses to one — wasting parallelism and forcing a single task to absorb N unrelated concerns. When persistence-boundary count is 0, the unit of decomposition is an INDEPENDENT OUTPUT UNIT.
 
-**Principle**: When persistence-boundary count is 0, the unit of decomposition is an INDEPENDENT OUTPUT UNIT — a self-contained deliverable that produces its own source file and shares, with its peers, at most one integration point.
+**Applicability**: This rubric governs splitting ONLY when persistence-boundary count is 0. When persistence-boundary count is ≥ 1, the Task Scope Constraint above governs and this section is silent.
 
-**Applicability**: This rubric governs splitting ONLY when the observation below holds. When persistence-boundary count is ≥ 1, the Task Scope Constraint above governs and this section is silent.
+You receive the Development Source (ref artifacts or directive). Apply the splitting principle below to identify task-level units.
+
+{{> jobs/code/shared/task-split-rubric }}
 
 ### Category identification
 
@@ -20,19 +22,11 @@
 
 **Constraint**: Pick exactly ONE category per Development Source. Do NOT mix categories within a single unit count — if two categories apply, choose the one the directive enumerates explicitly.
 
-### Split rule
+### Per-unit task emission
 
-**Observation target**: Count independent output units implied by the Development Source under the chosen category.
+When the splitting principle above indicates separation, emit ONE `feature` task per identified output unit. Each per-unit task uses a DISTINCT `parallelGroup` (per-unit output files do not overlap, so distinct groups enable parallel execution); none is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
 
-| Checkpoint | What to observe |
-|---|---|
-| **Unit count** | Does the Development Source enumerate 2+ output units in the chosen category? |
-| **File independence** | Does each unit produce its own source file with no cross-unit source-file overlap? |
-| **Shared integration point** | For each split cluster, do the units share one integration point (mount page, root command, barrel export, pipeline driver)? If multiple independent integration points are observed, partition by integration point and evaluate each cluster separately. |
-
-**Constraint**: When ALL three checkpoints above are yes, emit ONE `feature` task per output unit. Each per-unit task uses a DISTINCT `parallelGroup` (per-unit output files do not overlap, so distinct groups enable parallel execution); none is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
-
-**Constraint**: Do NOT split below the unit level. A fragment of a unit (a sub-section inside a section, a flag of a command, one method of an exported class) is NOT an independent output unit.
+**Constraint**: When the Development Source surfaces multiple independent integration points (different app/package entry roots, separate route registries), partition by integration point and evaluate each cluster separately.
 
 ### Wiring rule
 
@@ -70,7 +64,7 @@
 
 ### Description shape
 
-**Constraint**: Each per-unit feature description names ONE output unit and its delivered scope. Do NOT enumerate multiple units in a single description.
+**Constraint**: Each per-unit feature description MUST name a single output unit and its delivered scope. Do NOT enumerate multiple units in a single description.
 
 ### Blind spots
 

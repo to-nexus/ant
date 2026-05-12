@@ -108,9 +108,13 @@ The previous fix attempt did not resolve all issues. Your new plan MUST:
 
 ## Output Format
 
+{{> jobs/code/shared/task-split-rubric }}
+
+For error analysis, independent root causes are the natural units when failure isolation matters. A single-root-cause investigation belongs in a flat plan.
+
 Choose the format based on remediation scope:
 
-### Format A: Single Plan (fewer than 5 files to modify AND only 1 root cause)
+### Format A: Single Plan (single root cause)
 
 ```
 <plan>
@@ -146,9 +150,9 @@ Choose the format based on remediation scope:
 </plan>
 ```
 
-### Format B: Batched Plan (5 or more files to modify OR 2 or more root causes)
+### Format B: Batched Plan (multiple independent root causes)
 
-When multiple independent root causes exist or many files need changes, group fixes into batches by root cause.
+When multiple independent root causes exist that satisfy the splitting principle above (notably failure isolation), group fixes into batches by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
 
 Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 
@@ -192,7 +196,7 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships �
 
 **Principle**: Batch grouping must reflect dependency relationships. If modifying file A requires understanding the change in file B, both MUST be in the same batch.
 
-**Constraint**: Each batch should target no more than ~10 files. Prefer fewer, focused batches over many single-file batches.
+**Constraint**: Prefer fewer, focused batches over many single-file batches. A coherent unit that touches many files belongs in one batch — splitting it risks pattern drift across siblings.
 
 **Constraint**: Order batches so that foundational changes (shared types, interfaces, configs) come first and consumers come later.
 
