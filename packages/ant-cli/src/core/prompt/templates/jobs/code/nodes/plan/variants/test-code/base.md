@@ -117,7 +117,11 @@ Use `read_file` / `list_files` / `search_code` to understand:
 
 ### Step 3 — Decide: Single Task or Feature-Slice Split?
 
-**Constraint**: Two or more disjoint groupings observable → Format B is REQUIRED. Single cohesive scope → Format A.
+{{> jobs/code/shared/task-split-rubric }}
+
+For test-code, independent feature slices are the natural units when failure isolation matters (one slice's tests not blocking another's). The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
+
+**Constraint**: Two or more disjoint groupings observable AND the splitting principle above applies → Format B. Otherwise → Format A.
 
 | Observation | Decision |
 |------------|----------|

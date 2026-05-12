@@ -60,7 +60,7 @@ function makeTask(overrides: Partial<CodeTask> = {}): CodeTask {
   };
 }
 
-describe('processDiagnosticBatchSplit — always-fan-out', () => {
+describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
   describe('task type gating', () => {
     it('task type without a policy entry (e.g. setup) → noop (returns original)', () => {
       const state = makeState();
@@ -137,7 +137,7 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
     });
   });
 
-  describe('always-fan-out: existing batches', () => {
+  describe('LLM-explicit batches[] → fan-out', () => {
     it('verification parent + 2 batches: re-enqueues original (Path A) + spawns 2 error sub-tasks + bumps batchSplitCount', () => {
       const state = makeState();
       const task = makeTask();
@@ -368,27 +368,24 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
     });
   });
 
-  describe('always-fan-out: top-level → batches auto-conversion', () => {
-    it('verification parent + 1 top-level modify → auto-converted into 1 per-target batch + fan-out', () => {
-      
+  describe('flat plan (no batches[]) → noop, no auto-convert', () => {
+    // The system no longer fabricates `batches[]` from `implementation.modify/create/delete`.
+    // Fan-out is LLM-explicit only — a flat plan proceeds to execute as a single task,
+    // regardless of entry count, type, or domain. The shared task-split rubric
+    // (`templates/jobs/code/shared/task-split-rubric.md`) is the SSOT taught to LLMs.
+    it('verification + 1 flat modify → noop, planText preserved, no sub-tasks', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: [{ target: 'a.ts', action: 'fix import' }] },
       });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      expect(state._batchSplitRequeued).toBe(true);
-      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(errors.length).toBe(1);
-      const sub = errors[0] as any;
-      const parsed = JSON.parse(sub.prePlanText);
-      expect(parsed.implementation.modify).toHaveLength(1);
-      expect(parsed.implementation.modify[0].target).toBe('a.ts');
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBeFalsy();
+      expect(state.taskQueue.size()).toBe(0);
     });
 
-    it('verification parent + multiple top-level modify entries → one sub-task per target', () => {
-      
+    it('verification + many flat modify entries → noop, planText preserved', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 3 },
@@ -401,18 +398,29 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         },
       });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(errors.length).toBe(3);
-      const targets = errors.map((e: any) => {
-        const p = JSON.parse(e.prePlanText);
-        return p.implementation.modify[0].target;
-      });
-      expect(targets.sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
+      expect(out).toBe(plan);
+      expect(state.taskQueue.size()).toBe(0);
     });
 
-    it('verification parent + top-level mixed modify+create+delete → one sub-task per entry across all 3 buckets', () => {
-      
+    it('feature parent + 50 flat entries → noop (entry-count never triggers fan-out)', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'huge flat feature' });
+      const fifty = Array.from({ length: 50 }, (_, i) => ({
+        name: `mod-${i}`,
+        target: `src/mod-${i}.ts`,
+        purpose: `module ${i}`,
+      }));
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'add many modules' },
+        implementation: { create: fifty },
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBeFalsy();
+      expect(state.taskQueue.size()).toBe(0);
+    });
+
+    it('flat plan with mixed modify/create/delete → noop across all 3 buckets', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 3 },
@@ -423,12 +431,11 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         },
       });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(errors.length).toBe(3);
+      expect(out).toBe(plan);
+      expect(state.taskQueue.size()).toBe(0);
     });
 
-    it('plan with both batches[] and top-level entries: existing batches respected (no re-conversion)', () => {
+    it('plan with both batches[] and flat entries: explicit batches[] used, flat entries ignored', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 5 },
@@ -444,8 +451,6 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       expect(out).toBe('');
       const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
       expect(errors.length).toBe(2);
-      // batch a stays grouped (2 modify entries), batch b stays grouped (1 modify entry).
-      // top-level modify is ignored when batches are already provided.
     });
   });
 
@@ -600,68 +605,115 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
     });
   });
 
+  describe('flat plan handling per task type', () => {
+    // LLM judgement is SSOT for fan-out. A flat plan from any task type
+    // proceeds as a single task — file count, package count, and domain
+    // count never trigger system-side fan-out. The shared task-split
+    // rubric (`templates/jobs/code/shared/task-split-rubric.md`) is taught
+    // to both decompose and plan; see W1/W3 in the implementation plan.
+
+    it('feature parent + 1 flat create → noop, planText preserved', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'single-entry feature' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'add one module' },
+        implementation: {
+          create: [{ name: 'http-client-singleton', target: 'src/http.ts', purpose: 'axios instance' }],
+        },
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBeFalsy();
+      expect(state.taskQueue.size()).toBe(0);
+    });
+
+    it('feature parent + many flat entries → noop (previously the 7-threshold trigger; now silent)', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'large flat feature' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'add several modules' },
+        implementation: {
+          create: [
+            { name: 'a', target: 'src/a.ts', purpose: 'a' },
+            { name: 'b', target: 'src/b.ts', purpose: 'b' },
+            { name: 'c', target: 'src/c.ts', purpose: 'c' },
+            { name: 'd', target: 'src/d.ts', purpose: 'd' },
+            { name: 'e', target: 'src/e.ts', purpose: 'e' },
+            { name: 'f', target: 'src/f.ts', purpose: 'f' },
+            { name: 'g', target: 'src/g.ts', purpose: 'g' },
+          ],
+        },
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBeFalsy();
+      expect(state.taskQueue.size()).toBe(0);
+    });
+
+    it('feature batch-split sub-task with explicit batches[] → still fans out (Tier-4 grandchild fan-out preserved)', () => {
+      const state = makeState();
+      const task = makeTask({
+        type: 'feature',
+        priority: 300,
+        name: 'grandchild fan-out',
+        batchSplitCount: 2,
+      });
+      const plan = JSON.stringify({
+        task: { id: 'sub', goal: 'further split grandchild work' },
+        parentReasoning: 'sub-task discovered the slice spans more units after observing siblings.',
+        batches: [
+          { name: 'a', rationale: 'a slice', modify: [{ target: 'a.ts', action: 'edit' }], create: [], delete: [] },
+          { name: 'b', rationale: 'b slice', modify: [{ target: 'b.ts', action: 'edit' }], create: [], delete: [] },
+        ],
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+      expect(subs.length).toBe(2);
+      for (const s of subs) {
+        expect((s as any).batchSplitCount).toBe(3);
+      }
+    });
+
+    it('ui parent + 1 flat modify → noop, planText preserved', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'ui', priority: 660, name: 'single-entry ui' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'tweak one component' },
+        implementation: {
+          modify: [{ target: 'src/Btn.tsx', action: 'add disabled prop' }],
+        },
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBeFalsy();
+      expect(state.taskQueue.size()).toBe(0);
+    });
+
+    it('feature + explicit batches[2] with parentReasoning → 2 sub-tasks, parent superseded', () => {
+      const state = makeState();
+      const task = makeTask({ type: 'feature', priority: 300, name: 'feature with explicit batches' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'split when scope expanded' },
+        parentReasoning: 'investigation surfaced an auth module that lives outside this task\'s deliverable boundary — isolating it preserves scope.',
+        batches: [
+          { name: 'core-module', rationale: 'the in-scope deliverable', modify: [{ target: 'src/core.ts', action: 'add' }] },
+          { name: 'auth-isolation', rationale: 'out-of-scope work isolated to preserve boundary', create: [{ name: 'auth', target: 'src/auth.ts', purpose: 'discovered need' }] },
+        ],
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+      expect(subs.length).toBe(2);
+    });
+  });
+
   describe('Schema-violation throw → plan-node retry signal', () => {
-    it('top-level modify entry missing `action` throws BatchSplitSchemaViolation(modify, missingField=action)', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: {
-          modify: [{ target: 'a.ts' }], // ← `action` 누락
-        },
-      });
-      let thrown: unknown;
-      try {
-        processDiagnosticBatchSplit(state, plan, makeTask());
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
-      const v = thrown as BatchSplitSchemaViolation;
-      expect(v.detail.entryKind).toBe('modify');
-      expect(v.detail.ordinal).toBe(0);
-      expect(v.detail.missingField).toBe('action');
-    });
-
-    it('top-level create entry missing `name` throws BatchSplitSchemaViolation(create, missingField=name)', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: {
-          create: [{ target: 'b.ts', purpose: 'new module' }], // ← `name` 누락
-        },
-      });
-      let thrown: unknown;
-      try {
-        processDiagnosticBatchSplit(state, plan, makeTask());
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
-      const v = thrown as BatchSplitSchemaViolation;
-      expect(v.detail.entryKind).toBe('create');
-      expect(v.detail.missingField).toBe('name');
-    });
-
-    it('top-level delete entry missing `reason` throws BatchSplitSchemaViolation(delete, missingField=reason)', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: {
-          delete: [{ target: 'c.ts' }], // ← `reason` 누락
-        },
-      });
-      let thrown: unknown;
-      try {
-        processDiagnosticBatchSplit(state, plan, makeTask());
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
-      const v = thrown as BatchSplitSchemaViolation;
-      expect(v.detail.entryKind).toBe('delete');
-      expect(v.detail.missingField).toBe('reason');
-    });
-
+    // Top-level modify/create/delete missing-field throws are gone — those
+    // entries no longer get auto-converted into batches[]. Schema validation
+    // remains for explicit `batches[]` (the LLM-emitted fan-out path).
     it('explicit batches[] entry missing `name` throws BatchSplitSchemaViolation(batch, missingField=name)', () => {
       const state = makeState();
       const plan = JSON.stringify({
@@ -708,12 +760,12 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       expect(v.detail.missingField).toBe('rationale');
     });
 
-    it('empty-string `action` is treated as missing (whitespace-only too)', () => {
+    it('explicit batches[] entry with empty-string `name` throws (whitespace-only also missing)', () => {
       const state = makeState();
       const plan = JSON.stringify({
-        implementation: {
-          modify: [{ target: 'a.ts', action: '   ' }],
-        },
+        batches: [
+          { name: '   ', rationale: 'unit a', modify: ['a.ts'] },
+        ],
       });
       let thrown: unknown;
       try {
@@ -722,6 +774,9 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
         thrown = e;
       }
       expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
+      const v = thrown as BatchSplitSchemaViolation;
+      expect(v.detail.entryKind).toBe('batch');
+      expect(v.detail.missingField).toBe('name');
     });
   });
 
@@ -752,61 +807,9 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       expect(sub.name.startsWith('Tests: ')).toBe(false);
     });
 
-    it('auto-convert create → child name === entry.name (LLM module name verbatim)', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        implementation: {
-          create: [
-            { name: 'axios-http-client', target: 'http.ts', purpose: 'axios instance' },
-            { name: 'firebase-web-singleton', target: 'fb.ts', purpose: 'firebase singleton' },
-          ],
-        },
-      });
-      processDiagnosticBatchSplit(state, plan, makeTask());
-      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      const names = subs.map((s: any) => s.name).sort();
-      expect(names).toEqual(['axios-http-client', 'firebase-web-singleton']);
-      // No path-as-name leakage.
-      for (const n of names) {
-        expect(n).not.toMatch(/\.ts$/);
-        expect(n).not.toMatch(/^Fix /);
-      }
-    });
-
-    it('auto-convert modify → child name === entry.action (LLM verb phrase verbatim); description joins changes', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        implementation: {
-          modify: [
-            {
-              target: 'package.json',
-              action: 'Add runtime dependencies for shared layer',
-              changes: ['Add firebase ^10.12', 'Add axios ^1.0', 'Add next-intl ^3.0'],
-            },
-          ],
-        },
-      });
-      processDiagnosticBatchSplit(state, plan, makeTask());
-      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(subs).toHaveLength(1);
-      const sub = subs[0] as any;
-      expect(sub.name).toBe('Add runtime dependencies for shared layer');
-      expect(sub.description).toBe('Add firebase ^10.12; Add axios ^1.0; Add next-intl ^3.0');
-    });
-
-    it('auto-convert delete → child name === entry.reason (LLM verbatim)', () => {
-      const state = makeState();
-      const plan = JSON.stringify({
-        implementation: {
-          delete: [{ target: 'old.ts', reason: 'Replace with new implementation in shared/' }],
-        },
-      });
-      processDiagnosticBatchSplit(state, plan, makeTask());
-      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(subs).toHaveLength(1);
-      const sub = subs[0] as any;
-      expect(sub.name).toBe('Replace with new implementation in shared/');
-    });
+    // Auto-convert child-name tests removed — modify/create/delete entries
+    // are never auto-converted into sub-tasks. Verbatim contract is now
+    // enforced only on explicit `batches[]`.
 
     it('regression guard — no system-side prefix or placeholder shape leaks into any sub-task name', () => {
       const state = makeState();
@@ -827,9 +830,9 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
   });
 
   describe('Hard limit: MAX_BATCH_SPLIT_CYCLES', () => {
-    it(`task.batchSplitCount at ceiling throws VerificationTerminalError('batch_cycle_limit')`, () => {
+    it(`task.batchSplitCount at ceiling throws VerificationTerminalError('batch_cycle_limit') and marks task._failed with English reason`, () => {
       const state = makeState();
-      const task = makeTask({ batchSplitCount: MAX_BATCH_SPLIT_CYCLES });
+      const task = makeTask({ batchSplitCount: MAX_BATCH_SPLIT_CYCLES, name: 'looping verifier' });
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },
@@ -847,8 +850,30 @@ describe('processDiagnosticBatchSplit — always-fan-out', () => {
       expect(thrown).toBeInstanceOf(VerificationTerminalError);
       expect((thrown as VerificationTerminalError).kind).toBe('batch_cycle_limit');
       expect((thrown as VerificationTerminalError).message).toMatch(/cycle limit/i);
-      expect((task as any)._failed).toBeUndefined();
+      // Task is now marked so the existing UI tooltip channel surfaces the cause.
+      expect((task as any)._failed).toBe(true);
+      expect(typeof (task as any)._failureReason).toBe('string');
+      expect((task as any)._failureReason).toMatch(/Batch split aborted/);
+      expect((task as any)._failureReason).toContain('looping verifier');
       expect(state._batchSplitRequeued).toBe(false);
+    });
+
+    it('Korean user language → cycle-limit reason in Korean', () => {
+      const state = makeState();
+      (state as any).context = { ...(state as any).context, userLanguage: 'ko' };
+      const task = makeTask({ batchSplitCount: MAX_BATCH_SPLIT_CYCLES, name: '반복 검증' });
+      const plan = JSON.stringify({
+        batches: [
+          { name: 'a', rationale: 'r', modify: ['a.ts'] },
+          { name: 'b', rationale: 'r', modify: ['b.ts'] },
+        ],
+      });
+      try {
+        processDiagnosticBatchSplit(state, plan, task);
+      } catch { /* expected throw */ }
+      expect((task as any)._failed).toBe(true);
+      expect((task as any)._failureReason).toMatch(/배치 분할이/);
+      expect((task as any)._failureReason).toContain('반복 검증');
     });
   });
 
