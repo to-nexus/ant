@@ -9,14 +9,13 @@
  * working without LLM exploration.
  *
  * Loop mechanics use the shared helpers in
- * `agents/common/graph/nodes/plan/` so the plan↔tool round-trip and
- * over-limit synthesis behave identically to the code-job plan node.
+ * `agents/common/graph/nodes/plan/` so the plan↔tool round-trip behaves
+ * identically to the code-job plan node.
  */
 
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import {
-  PLAN_TOOL_LOOP_MAX,
   runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
   runPlanWithTools,
 } from '../../../../../common/graph/nodes/plan';
@@ -24,7 +23,6 @@ import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph
 import type { DesignGraphState } from '../../state';
 import type { DesignTask } from '../../../../types/task';
 import { dispatchOnly } from './dispatchOnly';
-import { finalizeFromExploration } from './finalizeFromExploration';
 import { finalizePlanOutcome } from './finalizeOutcome';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
@@ -149,10 +147,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
   const outcome = await sharedRunPlanToolLoopPhase({
     history: nodePlan as any,
     isActive: true,
-    toolLoopMax: PLAN_TOOL_LOOP_MAX,
     runRound: runRound as any,
-    onOverLimit: async (history) =>
-      (await finalizeFromExploration(state, history as any, currentTask as DesignTask)) ?? null,
   });
 
   if (outcome.kind === 'planText') {
@@ -161,7 +156,6 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     }
     const finalized = await finalizePlanOutcome(state, currentTask as DesignTask, {
       planText: outcome.planText,
-      origin: outcome.origin,
     });
     return finalized;
   }

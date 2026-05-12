@@ -31,10 +31,7 @@ import { collectResolvedPartials } from "../../../../../../../periphery/adapters
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/graph/llmConfig";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { selectLLMForTask } from "./selectModel";
-import { runPlanWithTools, PLAN_TOOL_LOOP_MAX as SHARED_PLAN_TOOL_LOOP_MAX } from "../../../../../../common/graph/nodes/plan";
-
-/** Re-exported from the shared helpers so existing imports keep working. */
-export const PLAN_TOOL_LOOP_MAX = SHARED_PLAN_TOOL_LOOP_MAX;
+import { runPlanWithTools } from "../../../../../../common/graph/nodes/plan";
 
 export type PlanWithToolsResult =
   | { planText: string }

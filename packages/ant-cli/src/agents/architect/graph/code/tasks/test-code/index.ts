@@ -32,14 +32,6 @@
  *                                    and export names against actual
  *                                    sibling outputs before emitting
  *                                    `planText`.
- *   - plan.finalizeNudge           — restates the Format-B decision rule
- *                                    when the plan↔tool loop exhausts
- *                                    `PLAN_TOOL_LOOP_MAX`. Without this
- *                                    override the LLM defaults to
- *                                    Format A under finalize pressure,
- *                                    collapsing parallel sub-task fan-out
- *                                    into a serial single-task execution
- *                                    (sage-blessing-pixel regression).
  *   - command.guard                — lockfile-race defence: reject install
  *                                    commands issued by batch-split sub-
  *                                    tasks. Parent test-code tasks (no
@@ -73,7 +65,7 @@ import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { evaluate } from './hooks/check';
 import { executeHook } from './hooks/execute';
-import { buildPrompt as planBuildPrompt, finalizeNudge as planFinalizeNudge } from './hooks/plan';
+import { buildPrompt as planBuildPrompt } from './hooks/plan';
 import { guard as commandGuard } from './hooks/command';
 
 export const hooks: TaskHooks = {
@@ -84,7 +76,6 @@ export const hooks: TaskHooks = {
   plan: {
     buildPrompt: planBuildPrompt,
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/test-code/base',
-    finalizeNudge: planFinalizeNudge,
     // Sub-tasks receive `prePlanText` from batch-split; it is surfaced as
     // input to the plan-tool-loop (see
     // `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the

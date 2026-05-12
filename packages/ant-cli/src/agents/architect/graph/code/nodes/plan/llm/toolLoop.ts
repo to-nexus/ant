@@ -17,18 +17,14 @@
 import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import { finalizePlanFromExploration } from './finalize';
 import { runPlanLLMWithTools } from './tools';
 import { finalizePlanOutcome } from '../outcome/finalize';
 import { BatchSplitSchemaViolation } from '../../../tasks/_shared/batchSplit';
-import {
-  runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
-  PLAN_TOOL_LOOP_MAX,
-} from '../../../../../../common/graph/nodes/plan';
+import { runPlanToolLoopPhase as sharedRunPlanToolLoopPhase } from '../../../../../../common/graph/nodes/plan';
 
 export type PlanToolLoopOutcome =
   | { kind: 'return'; state: ArchitectGraphState }
-  | { kind: 'fallthrough'; forceNoTools?: boolean };
+  | { kind: 'fallthrough' };
 
 export async function runPlanToolLoopPhase(
   state: ArchitectGraphState,
@@ -40,7 +36,6 @@ export async function runPlanToolLoopPhase(
   const outcome = await sharedRunPlanToolLoopPhase({
     history: nodePlan as any,
     isActive,
-    toolLoopMax: PLAN_TOOL_LOOP_MAX,
     runRound: async (history) => {
       const result = await runPlanLLMWithTools(state, history as any, nextTask);
       if (result === null) return null;
@@ -57,18 +52,16 @@ export async function runPlanToolLoopPhase(
         assistantMessage: last,
       };
     },
-    onOverLimit: async (history) =>
-      (await finalizePlanFromExploration(state, history as any, nextTask)) ?? null,
   });
 
   if (outcome.kind === 'fallthrough') {
-    return { kind: 'fallthrough', forceNoTools: outcome.reason === 'over-limit-failed' };
+    return { kind: 'fallthrough' };
   }
 
   if (outcome.kind === 'planText') {
     const toolLoopOrigin: 'tool-loop-empty' | undefined =
       outcome.planText === '' ? 'tool-loop-empty' : undefined;
-    const callSite = outcome.origin === 'over-limit' ? 'plan-llm-overlimit' : 'plan-llm-toolloop';
+    const callSite = 'plan-llm-toolloop' as const;
     let updatedState: ArchitectGraphState;
     try {
       updatedState = finalizePlanOutcome(state, nextTask, {

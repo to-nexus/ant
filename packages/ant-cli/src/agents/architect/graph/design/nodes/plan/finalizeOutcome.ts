@@ -24,7 +24,6 @@ import type { DesignTask } from '../../../../types/task';
 
 export interface FinalizeOutcomeInput {
   planText: string;
-  origin: 'tool-loop' | 'over-limit';
 }
 
 export async function finalizePlanOutcome(
@@ -32,10 +31,10 @@ export async function finalizePlanOutcome(
   task: DesignTask,
   input: FinalizeOutcomeInput,
 ): Promise<Partial<DesignGraphState>> {
-  const { planText, origin } = input;
+  const { planText } = input;
 
   const summary = summarizePlan(planText);
-  console.log(`✅ [DesignPlan] Plan sealed (${planText.length} chars, origin=${origin})`);
+  console.log(`✅ [DesignPlan] Plan sealed (${planText.length} chars)`);
   console.log(`   Task: ${task.name}`);
   if (summary.parsed) {
     console.log(
@@ -45,8 +44,8 @@ export async function finalizePlanOutcome(
     );
   }
 
-  await savePlanForDebug(state, task, planText, origin);
-  await logPlanSealedEvent(state, task, planText, origin, summary);
+  await savePlanForDebug(state, task, planText);
+  await logPlanSealedEvent(state, task, planText, summary);
 
   return {
     currentTask: task,
@@ -104,7 +103,6 @@ async function logPlanSealedEvent(
   state: DesignGraphState,
   task: DesignTask,
   planText: string,
-  origin: 'tool-loop' | 'over-limit',
   summary: PlanSummary,
 ): Promise<void> {
   const featurePath = state.context?.featurePath;
@@ -123,7 +121,6 @@ async function logPlanSealedEvent(
         taskName: task.name,
         taskType: task.type,
         intentGroup: state.resolvedAction?.intentGroup,
-        origin,
         planTextLen: planText.length,
         planParsed: summary.parsed,
         candidatesCount: summary.candidatesCount,
@@ -144,7 +141,6 @@ async function savePlanForDebug(
   state: DesignGraphState,
   task: DesignTask,
   planText: string,
-  origin: 'tool-loop' | 'over-limit',
 ): Promise<void> {
   try {
     const featurePath = state.context?.featurePath;
@@ -176,7 +172,6 @@ async function savePlanForDebug(
       taskName: task.name,
       taskType: task.type,
       priority: task.priority,
-      origin,
       generated: new Date().toISOString(),
       plan: planJson,
     });
