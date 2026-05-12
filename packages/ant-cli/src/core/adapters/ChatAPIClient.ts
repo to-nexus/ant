@@ -415,19 +415,34 @@ export class ChatAPIClient {
     await this.showChatStatus('explored', { filesCount, filesList });
   }
 
-  async addReadingFile(filePath: string): Promise<string | undefined> {
-    return this.showChatStatus('reading', { filePath });
+  async addReadingFile(
+    filePath: string,
+    startLine?: number,
+    endLine?: number,
+  ): Promise<string | undefined> {
+    return this.showChatStatus('reading', { filePath, startLine, endLine });
   }
 
   async addReadComplete(
     filePath: string,
     readingCardId?: string,
-    error?: string,
+    opts?: {
+      error?: string;
+      totalLines?: number;
+      startLine?: number;
+      endLine?: number;
+    },
   ): Promise<void> {
-    if (error) {
+    if (opts?.error) {
       await this.showChatStatus('read', { filePath, error: true, _mergeIndex: readingCardId });
     } else {
-      await this.showChatStatus('read', { filePath, _mergeIndex: readingCardId });
+      await this.showChatStatus('read', {
+        filePath,
+        startLine: opts?.startLine,
+        endLine: opts?.endLine,
+        totalLines: opts?.totalLines,
+        _mergeIndex: readingCardId,
+      });
     }
   }
 

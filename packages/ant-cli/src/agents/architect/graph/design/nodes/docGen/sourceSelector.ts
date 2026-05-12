@@ -305,7 +305,7 @@ export async function decomposeWithToolLoop(
       try {
         const isErr = result.startsWith('Error:');
         if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
-          await chatAPI.addReadComplete(displayPath ?? tc.input.path, cardId, isErr ? result : undefined);
+          await chatAPI.addReadComplete(displayPath ?? tc.input.path, cardId, isErr ? { error: result } : undefined);
         } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
           await chatAPI.addReadSourceComplete(
             tc.input.filename,

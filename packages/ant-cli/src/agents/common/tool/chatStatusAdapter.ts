@@ -28,13 +28,13 @@ export function createChatStatusReporter(): ChatStatusReporter {
       await client.removeChatStatus(cardId, key as any);
     },
 
-    async addReadingFile(path) {
+    async addReadingFile(path, startLine, endLine) {
       const client = await getClient();
-      return client.addReadingFile(path);
+      return client.addReadingFile(path, startLine, endLine);
     },
-    async addReadComplete(path, cardId, error) {
+    async addReadComplete(path, cardId, opts) {
       const client = await getClient();
-      await client.addReadComplete(path, cardId, error);
+      await client.addReadComplete(path, cardId, opts);
     },
 
     async addReadingSource(filename, startLine, endLine) {

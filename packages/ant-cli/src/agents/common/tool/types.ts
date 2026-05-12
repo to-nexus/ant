@@ -37,8 +37,13 @@ export interface ChatStatusReporter {
   showStatus(key: string, data?: Record<string, any>): Promise<string | undefined>;
   removeStatus(cardId: string, key: string): Promise<void>;
 
-  addReadingFile(path: string): Promise<string | undefined>;
-  addReadComplete(path: string, cardId: string | undefined, error?: string): Promise<void>;
+  addReadingFile(path: string, startLine?: number, endLine?: number): Promise<string | undefined>;
+  addReadComplete(path: string, cardId: string | undefined, opts?: {
+    error?: string;
+    startLine?: number;
+    endLine?: number;
+    totalLines?: number;
+  }): Promise<void>;
 
   addReadingSource(filename: string, startLine?: number, endLine?: number): Promise<string | undefined>;
   addReadSourceComplete(filename: string, cardId: string | undefined, opts?: {
