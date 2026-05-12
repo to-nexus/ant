@@ -209,9 +209,18 @@ export interface TaskPlanHook {
   ragQuota?: number;
   /**
    * Does this task type accept a pre-planned `prePlanText` body and
-   * bypass the diagnostic plan-tool-loop? Drop-and-replace batch sub-tasks
-   * (error / test-code) publish `true` because their slice boundary is
-   * non-recoverable from a re-planning pass.
+   * bypass the plan-tool-loop entirely (identity-shortcut: `state.planText
+   * := task.prePlanText`)? Only `error` publishes `true` — the parent's
+   * diagnostic IS the plan, and re-running a plan-tool-loop would cascade
+   * (re-derive what verification just observed).
+   *
+   * Other batch-split sub-types (`test-code` / `feature` / `ui`) carry a
+   * `prePlanText` body but MUST enter the plan-tool-loop so the LLM can
+   * verify the parent's predicted exports against actual sibling outputs
+   * before emitting `planText` (drift detection). The pre-plan is surfaced
+   * as plan-tool-loop INPUT via
+   * `nodes/plan/injections/parent-pre-plan.md`, not consumed as the plan
+   * itself.
    */
   acceptsPrePlanText?: boolean;
 }

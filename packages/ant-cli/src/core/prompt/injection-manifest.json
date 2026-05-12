@@ -53,7 +53,8 @@
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],
-    "analysis-block": ["analysis", "hasAnalysis"]
+    "analysis-block": ["analysis", "hasAnalysis"],
+    "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
   },
   "jobs/code/nodes/plan/variants/verification/injections": {
     "contract-parity": []

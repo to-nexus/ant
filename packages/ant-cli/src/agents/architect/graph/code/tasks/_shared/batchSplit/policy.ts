@@ -54,10 +54,12 @@ export function testCodeBatchShape(ctx: BatchPlanShapeCtx): string {
  * (prevents naming/signature drift across siblings — e.g. parent decides
  * `startPreview`; if one child renames it, sibling caller breaks).
  *
- * Children carry this JSON as `prePlanText`; combined with feature's
- * `acceptsPrePlanText:true` hook the child plan node short-circuits to
- * execute, which uses the implementation directives + parentReasoning to
- * apply changes (cursor/codex-style execution).
+ * Children carry this JSON as `prePlanText`. The child plan-tool-loop
+ * receives it as INPUT (rendered via
+ * `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the
+ * parent's predicted exports against actual sibling outputs before
+ * emitting `planText`. Identity-shortcut is reserved for `error` only
+ * (see `nodes/plan/shortcut/prePlanned.ts`).
  */
 export function featureBatchShape(ctx: BatchPlanShapeCtx): string {
   const parentReasoning =
@@ -110,9 +112,12 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
   },
   // Deep-think feature task fan-out (Tier 2/3 directive cases). Parent
   // owns the integrated reasoning, children carry fixed-scope prePlanText
-  // and bypass the plan-tool-loop via `acceptsPrePlanText:true`. FV is
-  // appended unless one is already in the queue (hasFinalVerification
-  // guard). For Tier 2 selfVerifyOnDone parents, the existing
+  // surfaced as plan-tool-loop INPUT (via
+  // `nodes/plan/injections/parent-pre-plan.md`). Drift between the parent's
+  // predicted sibling exports and actual sibling outputs is detected at
+  // the plan layer, not silently propagated to execute. FV is appended
+  // unless one is already in the queue (hasFinalVerification guard). For
+  // Tier 2 selfVerifyOnDone parents, the existing
   // `isTier2EscalateCandidate` branch routes through this same policy
   // (taskPolicy lookup wins over the escalate-only fallback).
   feature: {
@@ -123,10 +128,11 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     appendFinalVerification: true,
   },
   // UI tasks share feature's fan-out shape (parentReasoning replicated
-  // across batches). Unlike feature, ui hooks intentionally KEEP
-  // `acceptsPrePlanText:false` — ui children re-enter plan-tool-loop
-  // for skeleton/style refinement. Lineage cycle protection rides on
-  // batchSplitCount carry-over (process.ts) instead of plan-skip.
+  // across batches) and the same plan-tool-loop input contract:
+  // `prePlanText` is surfaced via `nodes/plan/injections/parent-pre-plan.md`
+  // so children verify the parent decision against actual sibling outputs
+  // before emitting `planText`. Lineage cycle protection rides on
+  // batchSplitCount carry-over (process.ts).
   ui: {
     kind: 'drop-and-replace',
     subType: 'ui',
