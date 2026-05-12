@@ -103,7 +103,7 @@ If you have user-facing narrative (rationale, summary, follow-up question), put 
 }
 ```
 
-⚠️ **Naming contract**: The framework uses your `create[].name` / `modify[].action` / `delete[].reason` (or `batches[].name` when fanning out — see PROACTIVE FAN-OUT below) **verbatim** as the child task name and `create[].purpose` / `modify[].changes` (joined) / `delete[].reason` / `batches[].rationale` **verbatim** as the child task description. The system MUST NOT fabricate names — when these REQUIRED fields are missing, fan-out is rejected and the plan call is re-issued with violation framing. Do NOT use paths-as-names, placeholders (`task-2`, `feature-batch`), or empty strings. Provide a 4-8 word noun/verb phrase that identifies the unit semantically.
+⚠️ **Naming contract**: The framework uses your `create[].name` / `modify[].action` / `delete[].reason` (or `batches[].name` when you choose to fan out — see FAN-OUT AT PLAN TIME below) **verbatim** as the child task name and `create[].purpose` / `modify[].changes` (joined) / `delete[].reason` / `batches[].rationale` **verbatim** as the child task description. The system MUST NOT fabricate names — when these REQUIRED fields are missing on an explicit `batches[]` entry, fan-out is rejected and the plan call is re-issued with violation framing. Do NOT use paths-as-names, placeholders (`task-2`, `feature-batch`), or empty strings. Provide a 4-8 word noun/verb phrase that identifies the unit semantically.
 
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 

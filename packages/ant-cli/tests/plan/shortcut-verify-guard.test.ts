@@ -9,7 +9,7 @@
  * scope) and have no business firing on a verification cycle — doing so
  * would let a stale `state.planText` from a previous cycle's snapshot or
  * an accidentally-published `acceptsPrePlanText:true` flag bypass the
- * always-fan-out contract.
+ * explicit-batches fan-out contract.
  *
  * Today the conditions don't accidentally fire (TaskWorker forces
  * `task.interrupted=false` before graph.invoke, snapshot.planText is `''`,

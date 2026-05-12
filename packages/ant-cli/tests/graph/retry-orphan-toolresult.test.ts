@@ -24,7 +24,7 @@
  * Post verification fix-책임 제거 리팩토링: the original incident reproduced
  * inside the verification task type, but the reducer / mergeDelta invariant
  * is task-type-blind. This suite exercises the contract via an error task
- * fixture (verification no longer enters retry under always-fan-out).
+ * fixture (verification no longer enters retry — every cycle ends in done:true).
  */
 
 import { describe, it, expect } from 'vitest';

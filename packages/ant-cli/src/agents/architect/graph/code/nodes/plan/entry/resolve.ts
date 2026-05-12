@@ -7,8 +7,8 @@
  *   - NODE_PLAN reset at fresh task entry and at the FIRST verify-mode
  *     entry of a self-verify Tier 2 task.
  *   - NODE_EXECUTE cleared at every plan entry.
- *   - Verification never enters retry under always-fan-out (every cycle
- *     ends in `done:true`).
+ *   - Verification never enters retry — every cycle ends in `done:true`
+ *     (via explicit `batches[]` fan-out or an empty plan).
  *
  * R1: task-type discrimination via `isVerificationTask` / `hooksForTaskType`.
  */
