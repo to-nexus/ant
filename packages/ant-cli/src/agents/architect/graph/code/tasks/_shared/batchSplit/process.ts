@@ -423,12 +423,31 @@ export function processDiagnosticBatchSplit(
           //
           // Path A above (`requeue-parent`) re-uses the SAME task id, so
           // carrying the snapshot is the intended behavior there.
+          // i18n the FV task label — these strings surface in the kanban as
+          // user-facing text. Match the response-language policy in
+          // `jobs/code/base/injections/response-language.md`: user-facing
+          // labels follow the user's detected language, code identifiers
+          // stay English. `userLanguage` may be `'en'`, `'ko'`, or any
+          // BCP-47 tag; only 'ko' has an explicit translation today, all
+          // other non-en values fall through to English (the LLM-generated
+          // siblings will still respect the user language because the
+          // partial fires for them via {{userLanguage}}).
+          const userLanguage = state.context?.userLanguage || 'en';
+          const fvLabels = userLanguage === 'ko'
+            ? {
+                name: `최종 검증 (배치 분할: "${nextTask.name}")`,
+                description: `"${nextTask.name}"의 배치 분할 하위 태스크들이 진단된 문제들을 해결했는지 검증합니다.`,
+              }
+            : {
+                name: `Final Verification (batch-split of "${nextTask.name}")`,
+                description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
+              };
           const verificationTask: CodeTask = {
             id: `final-verification-batch-split-${Date.now()}`,
-            name: `Final Verification (batch-split of "${nextTask.name}")`,
+            name: fvLabels.name,
             type: 'verification',
             priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-            description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
+            description: fvLabels.description,
             techTiers,
             resumeState: undefined,
             batchSplitCount: newBatchSplitCount,

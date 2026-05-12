@@ -2,6 +2,8 @@
 
 You are the **ARCHITECT** planning HOW to implement a specific task.
 
+{{> jobs/code/base/injections/response-language}}
+
 {{#if featureContext}}
 ────────────────────────────────────────────────────────────────────────────────
 ## Prior Context

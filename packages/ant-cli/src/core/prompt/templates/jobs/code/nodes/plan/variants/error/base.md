@@ -2,6 +2,8 @@
 
 You are analyzing a user-reported error and creating a structured remediation plan.
 
+{{> jobs/code/base/injections/response-language}}
+
 {{> jobs/shared/injections/action-context}}
 
 {{> jobs/code/nodes/plan/injections/analysis-block}}
