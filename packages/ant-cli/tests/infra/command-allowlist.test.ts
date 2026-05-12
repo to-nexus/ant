@@ -11,13 +11,17 @@
  * - Shell parser utilities (splitOnShellOperators, hasActualPipe)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { NodeCommandAdapter } from '../../src/periphery/adapters/command/NodeCommandAdapter.js';
 import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../src/core/utils/shellParser.js';
 
-const adapter = new NodeCommandAdapter();
+let adapter: NodeCommandAdapter;
 
 describe('NodeCommandAdapter.isAllowed', () => {
+  beforeEach(() => {
+    delete process.env.ANT_UNSAFE_ALLOW_ALL_COMMANDS;
+    adapter = new NodeCommandAdapter();
+  });
   describe('basic commands', () => {
     it('allows simple whitelisted commands', () => {
       expect(adapter.isAllowed('ls')).toBe(true);
