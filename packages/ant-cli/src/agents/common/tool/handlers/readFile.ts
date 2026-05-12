@@ -88,7 +88,7 @@ export async function handleReadFile(
     return { content: errorMsg, error: errorMsg };
   }
 
-  const mergeIndex = await ctx.chatStatus.addReadingFile(resolved.displayPath);
+  const mergeIndex = await ctx.chatStatus.addReadingFile(resolved.displayPath, startLine, endLine);
 
   try {
     console.log(`[readFile] Reading file: ${resolved.displayPath} (fsPath: ${resolved.fsPath})`);
@@ -97,12 +97,11 @@ export async function handleReadFile(
     if (!fileContent) {
       const errorMsg = `File not found: ${resolved.displayPath}`;
       console.error(`[readFile] ❌ ${errorMsg}`);
-      await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, errorMsg);
+      await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: errorMsg });
       return { content: errorMsg, error: errorMsg };
     }
 
     console.log(`[readFile] ✅ Read from disk: ${resolved.displayPath} (${fileContent.length} bytes)`);
-    await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex);
 
     let result: string;
     if (hasRange) {
@@ -111,8 +110,14 @@ export async function handleReadFile(
       const start = Math.max(1, startLine || 1);
       const end = Math.min(totalLines, endLine || totalLines);
       const slice = lines.slice(start - 1, end).join('\n');
+      await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, {
+        startLine: start,
+        endLine: end,
+        totalLines,
+      });
       result = prependFixMessage(resolved, `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`);
     } else {
+      await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex);
       result = prependFixMessage(resolved, fileContent);
     }
 
@@ -120,7 +125,7 @@ export async function handleReadFile(
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[readFile] ❌ Error:`, errorMsg);
-    await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, errorMsg);
+    await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: errorMsg });
     return { content: `Error: ${errorMsg}`, error: errorMsg };
   }
 }

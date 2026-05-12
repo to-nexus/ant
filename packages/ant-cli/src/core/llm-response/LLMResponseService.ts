@@ -979,18 +979,30 @@ export class LLMResponseService {
     await this.showChatStatus('explored', { filesCount, filesList });
   }
 
-  async addReadingFile(filePath: string): Promise<string | undefined> {
-    return this.showChatStatus('reading', { filePath });
+  async addReadingFile(
+    filePath: string,
+    startLine?: number,
+    endLine?: number,
+  ): Promise<string | undefined> {
+    return this.showChatStatus('reading', { filePath, startLine, endLine });
   }
 
   async addReadComplete(
     filePath: string,
     readingCardId?: string,
-    error?: string,
+    opts?: {
+      error?: string;
+      totalLines?: number;
+      startLine?: number;
+      endLine?: number;
+    },
   ): Promise<void> {
     await this.showChatStatus('read', {
       filePath,
-      ...(error ? { error } : {}),
+      ...(opts?.error ? { error: opts.error } : {}),
+      ...(opts?.startLine !== undefined ? { startLine: opts.startLine } : {}),
+      ...(opts?.endLine !== undefined ? { endLine: opts.endLine } : {}),
+      ...(opts?.totalLines !== undefined ? { totalLines: opts.totalLines } : {}),
       ...(readingCardId ? { _mergeIndex: readingCardId } : {}),
     });
   }
