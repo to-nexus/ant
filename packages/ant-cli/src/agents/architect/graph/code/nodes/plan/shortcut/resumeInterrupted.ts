@@ -18,7 +18,7 @@ import type { PlanEntryContext } from '../entry';
  * gates via the plan-tool-loop on fresh entry. Skipping the loop because
  * a stale `state.planText` survived from a snapshot would let a previous
  * cycle's diagnostic plan re-fire as if it were freshly emitted —
- * defeating the always-fan-out contract. Today the conditions don't fire
+ * defeating the explicit-batches fan-out contract. Today the conditions don't fire
  * for the Path A re-queue (TaskWorker forces `task.interrupted=false`
  * before graph.invoke and the snapshot's planText is `''`), but the gate
  * is hard-coded as a regression guard so a future change to either

@@ -7,8 +7,8 @@
  *   - Retry entry is uniform across all task types — bump `state.retries`,
  *     clear NODE_EXECUTE, preserve NODE_PLAN. Verification used to take a
  *     dedicated branch that reset NODE_PLAN and bumped `Session.attempts`;
- *     that branch was removed because verification never enters retry under
- *     always-fan-out (every cycle ends in done:true via batch-split, the
+ *     that branch was removed because verification never enters retry —
+ *     every cycle ends in done:true (via explicit `batches[]` fan-out, the
  *     empty-impl shortcut, or `MAX_BATCH_SPLIT_CYCLES`).
  *   - Reverify entry retains its `isFirstVerifyEntry` NODE_PLAN reset for
  *     self-verify Tier 2's apply→verify transition (apply-phase plan

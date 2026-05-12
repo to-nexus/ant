@@ -18,15 +18,19 @@ import {
 import { BatchSplitSchemaViolation } from './schemaViolation';
 
 /**
- * Detect a diagnostic / remediation plan and fan it out into sub-tasks.
+ * Detect an LLM-explicit fan-out plan and spawn the sub-tasks.
  *
- * Always-fan-out: any plan with 1+ implementation entries (modify/create/
- * delete) or 1+ batches[] is split. Top-level entries with no `batches[]`
- * are auto-converted to per-target batches so every entry becomes its own
- * fix-apply sub-task.
+ * LLM-explicit only: fan-out fires if and only if `parsed.batches[]` is
+ * present and non-empty. Flat `implementation` blocks (modify/create/delete
+ * at the top level) are NEVER auto-converted — the plan flows through to
+ * execute as a single task regardless of entry count, package count, or
+ * domain count. The splitting principle is taught to the LLM via the
+ * shared partial `templates/jobs/code/shared/task-split-rubric.md` (used
+ * by both decompose and plan).
  *
- * Hard cap: `MAX_BATCH_SPLIT_CYCLES`. After the cap, throws
- * `VerificationTerminalError('batch_cycle_limit')`.
+ * Hard cap: `MAX_BATCH_SPLIT_CYCLES`. After the cap, marks the task with
+ * `_failed`/`_failureReason` (surfaced via the kanban tooltip channel)
+ * and throws `VerificationTerminalError('batch_cycle_limit')`.
  *
  * @returns updated planText (`''` when fan-out fired, original otherwise).
  */
@@ -109,8 +113,8 @@ export function processDiagnosticBatchSplit(
       return planText;
     }
 
-    // Validate LLM-authored semantic fields on explicit batches[] too.
-    // Same throw pattern as auto-convert above; missing name/rationale =
+    // Validate LLM-authored semantic fields on explicit batches[].
+    // Missing name/rationale =
     // schema violation = plan-node retry.
     for (let i = 0; i < parsed.batches.length; i++) {
       const b = parsed.batches[i];

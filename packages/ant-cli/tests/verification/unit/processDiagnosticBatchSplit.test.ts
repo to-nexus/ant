@@ -1,16 +1,16 @@
 /**
  * L1 unit — verification batch-split + sibling diagnostic helpers SSOT.
  *
- *   1. processDiagnosticBatchSplit (plan node) — always-fan-out semantics:
- *        - top-level implementation entries → per-target batches
- *        - existing batches (any count) → fan-out as-is
- *        - 0 entries / non-verification task / short planText / bad JSON → noop
- *        - hard limit: MAX_BATCH_SPLIT_CYCLES → throw VerificationTerminalError
+ *   1. processDiagnosticBatchSplit (plan node) — LLM-explicit fan-out:
+ *        - explicit `batches[]` (any count) → spawn one sub-task per batch
+ *        - flat implementation (no batches[]) → noop, regardless of type/count
+ *        - 0 entries / non-policy task / short planText / bad JSON → noop
+ *        - hard limit: MAX_BATCH_SPLIT_CYCLES → mark task._failed/_failureReason
+ *          then throw VerificationTerminalError
  *
  *   2. Schema-violation channel — LLM-authored semantic fields are SSOT
  *      for child task name/description (the system MUST NOT fabricate).
- *      Missing `create.name` / `modify.action` / `delete.reason` /
- *      `batches[].name` / `batches[].rationale` throws
+ *      Missing `batches[].name` or `batches[].rationale` throws
  *      `BatchSplitSchemaViolation` for the plan-node retry loop to
  *      catch and re-issue with framing.
  *
@@ -293,7 +293,7 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
       expect((finalVerifications[0] as any).resumeState).toBeUndefined();
     });
 
-    it('test-code parent: single batch → also fans out under always-fan-out', () => {
+    it('test-code parent: single explicit batch → still fans out (length>=2 gate does not exist)', () => {
       const state = makeState();
       const task = makeTask({ type: 'test-code', priority: 700, name: 'tests' });
       const plan = JSON.stringify({
