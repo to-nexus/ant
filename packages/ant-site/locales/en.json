@@ -41,9 +41,7 @@
     "ctaDocs": "Read the docs",
     "stats": {
       "stars": "GitHub stars",
-      "contributors": "Contributors",
-      "languages": "Supported languages",
-      "llm": "LLM providers"
+      "contributors": "Contributors"
     },
     "quickstart": {
       "title": "Get started in 60 seconds",
@@ -101,17 +99,6 @@
       "cloudBullet3": "Single sign-on with Google",
       "cloudBullet4": "Same code as the OSS build — no proprietary fork",
       "cloudCta": "Try the cloud"
-    },
-    "compare": {
-      "title": "vs other AI coding tools",
-      "desc": "Where ANT sits in the landscape.",
-      "axis": {
-        "multiAgent": "Multi-agent (Planner / Architect)",
-        "selfHost": "Self-host",
-        "ossLicense": "Open source license",
-        "figma": "Figma integration",
-        "parallelTasks": "Parallel task execution"
-      }
     },
     "community": {
       "title": "Built in the open",
