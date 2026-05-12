@@ -39,10 +39,6 @@
     "desc": "다중 에이전트로 코드 생성·설계·기획. 노트북에서 셀프호스트하거나 매니지드 클라우드로 — 같은 아키텍처, 같은 경험.",
     "ctaQuickstart": "빠른 시작",
     "ctaDocs": "문서 보기",
-    "stats": {
-      "stars": "GitHub stars",
-      "contributors": "컨트리뷰터"
-    },
     "quickstart": {
       "title": "60초 안에 시작하기",
       "desc": "clone → 의존성 설치 → Redis + ChromaDB 기동 → 로컬 서버 실행."

@@ -19,7 +19,6 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { StarfieldCanvas, FloatingOrbs } from '@/components/HeroEffects';
 import { GitHubStarsBadge } from '@/components/GitHubStarsBadge';
-import { StatsStrip } from '@/components/StatsStrip';
 import { QuickstartTabs } from '@/components/QuickstartTabs';
 import { SelfHostCloudSplit } from '@/components/SelfHostCloudSplit';
 import { ContributorsWall } from '@/components/ContributorsWall';
@@ -108,16 +107,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §2 Stats strip */}
-      <StatsStrip
-        starsLabel={t('home.stats.stars')}
-        contributorsLabel={t('home.stats.contributors')}
-      />
-
-      {/* §3 Quickstart */}
+      {/* §2 Quickstart */}
       <QuickstartTabs title={t('home.quickstart.title')} description={t('home.quickstart.desc')} />
 
-      {/* §4 Workflow */}
+      {/* §3 Workflow */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
@@ -155,7 +148,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §5 Feature grid */}
+      {/* §4 Feature grid */}
       <section className="py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl sm:text-4xl font-display font-bold text-white text-center mb-12">
@@ -178,7 +171,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §6 Demo */}
+      {/* §5 Demo */}
       <section className="py-16 sm:py-20 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-display font-bold text-white mb-3">{t('home.demo.title')}</h2>
@@ -192,7 +185,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §7 Self-host vs Cloud */}
+      {/* §6 Self-host vs Cloud */}
       <SelfHostCloudSplit
         title={t('home.split.title')}
         description={t('home.split.desc')}
@@ -222,7 +215,7 @@ export default function HomePage() {
         }}
       />
 
-      {/* §8 Community velocity */}
+      {/* §7 Community velocity */}
       <section className="py-20 sm:py-24 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -251,10 +244,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §9 FAQ */}
+      {/* §8 FAQ */}
       <FaqList title={t('home.faq.title')} items={faqItems} />
 
-      {/* §10 Final CTA band */}
+      {/* §9 Final CTA band */}
       <section className="py-20 sm:py-28">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-display font-bold text-white mb-4">
