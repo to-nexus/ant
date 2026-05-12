@@ -673,6 +673,11 @@ export class TaskOrchestrator<T extends BaseTask> {
         console.warn(
           `[Orchestrator] Task "${task.name}" FAILED (attempt ${attempts}/${MAX_TASK_RETRIES}, worker ${workerId}): ${error.message} — re-queued for retry (resumeState preserved=${!!(task as any).resumeState})`,
         );
+        // Match every other reportFailure exit (permanent failure, figma
+        // rate-limit, recursion limit, consecutive timeouts): broadcast the
+        // post-mutation kanban so the UI moves the task out of inProgress
+        // immediately.
+        this.broadcastKanban();
       }
 
       // Save checkpoint after failure (ensure state persistence)
