@@ -27,7 +27,6 @@
     "issues": "이슈",
     "roadmap": "로드맵",
     "contributing": "기여 가이드",
-    "codeOfConduct": "Code of Conduct",
     "security": "보안 정책",
     "releases": "릴리스",
     "rights": "{{license}} 라이선스로 배포됩니다."
@@ -166,8 +165,6 @@
     },
     "policy": {
       "title": "프로젝트 정책",
-      "codeOfConductTitle": "Code of Conduct",
-      "codeOfConductDesc": "Contributor Covenant를 따릅니다. 서로 존중해주세요.",
       "securityTitle": "보안 정책",
       "securityDesc": "취약점을 발견했나요? public 이슈 대신 SECURITY.md의 비공개 절차를 따라주세요."
     },
@@ -270,7 +267,6 @@
       "Anthropic Claude 기본 LLM (매니지드 쿼터)",
       "사용자별 Cloud IDE pod (Kubernetes 기반 브라우저 VSCode)",
       "매니지드 EFS 워크스페이스 저장소",
-      "Cloud HTTP bridge 를 통한 Figma MCP (Desktop MCP 불필요)",
       "Local mode 와 동일한 Plan → Design → Code → Preview 워크플로우",
       "워크스페이스는 평문 파일 — Local mode 로 언제든 마이그레이션 가능"
     ],
