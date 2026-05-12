@@ -169,15 +169,6 @@ export interface SessionState {
   currentTask?: any;
   completedTasks?: string[];
   completedTasksDetails?: any[];
-  failedTasks?: Array<{
-    taskId: string;
-    taskName: string;
-    timestamp: string;
-    error?: string;
-    taskType?: 'ui' | 'setup' | 'feature' | 'design-system' | 'test-code' | 'verification' | 'doc';
-    priority?: number;
-    violations?: any[];
-  }>;
 
   // Parallel Execution
   parallelMode?: boolean;

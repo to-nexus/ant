@@ -299,19 +299,22 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     } catch { /* non-blocking */ }
   }
 
-  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  // SSOT: `_failed:true` markers in the live taskQueue determine whether the
+  // persisted interruption still reflects unresolved work. There is no separate
+  // `state.failedTasks` channel — the marker on each task IS the signal.
+  const queueTasks = state.taskQueue?.getAll() ?? [];
+  const failedInQueue = queueTasks.filter(t => (t as { _failed?: boolean })._failed === true);
+  const isLastTask = queueTasks.length === 0;
 
   const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts'];
   const orchestratorInterruptionReason = state.interruption?.reason;
   if (
-    isLastTask &&
     orchestratorInterruptionReason !== undefined &&
     orchestratorReasons.includes(orchestratorInterruptionReason)
   ) {
-    const failedTasks = state.failedTasks;
-    if (failedTasks && failedTasks.length > 0) {
-      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving ${orchestratorInterruptionReason} interruption`);
-    } else {
+    if (failedInQueue.length > 0) {
+      console.log(`⚠️  [Learn] ${failedInQueue.length} task(s) failed — preserving ${orchestratorInterruptionReason} interruption`);
+    } else if (isLastTask) {
       console.log(`✅ [Learn] All tasks completed — clearing stale ${orchestratorInterruptionReason} interruption`);
       state.interruption = undefined;
     }

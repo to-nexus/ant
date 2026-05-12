@@ -26,7 +26,7 @@ import type {
 } from "../../../../../core/types/session";
 import { CONV_KEYS, type ConversationMessage } from "../../../../common/graph/conversations";
 import type { JobTiming } from "../../../../common/graph/timing/JobTimingManager";
-import type { FailedTask, ParallelCheckpoint } from "../../../../common/graph/parallelTypes";
+import type { ParallelCheckpoint } from "../../../../common/graph/parallelTypes";
 
 type CheckpointArtifacts = Partial<SessionArtifacts> & { state?: Partial<SessionState> };
 
@@ -268,10 +268,12 @@ export async function saveReviseCheckpoint(
 }
 
 /**
- * Parallel orchestrator periodic / on-demand checkpoint. Merges failedTasks
- * into the task queue (marked `_failed` so they survive a process kill and
- * surface on resume) and serialises the failed payload into the narrow
- * `SessionState.failedTasks` shape.
+ * Parallel orchestrator periodic / on-demand checkpoint.
+ *
+ * Persists the merged task queue with `_failed` markers on failed entries so
+ * they survive a process kill and surface on resume as Retry cards. There is
+ * no separate `SessionState.failedTasks` channel — the `_failed:true` marker
+ * on each task is the SSOT for "this task failed in the last run".
  */
 export async function saveOrchestratorCheckpoint(
   state: DesignGraphState,
@@ -282,6 +284,7 @@ export async function saveOrchestratorCheckpoint(
   try {
     const failedAsQueue: DesignTask[] = checkpoint.failedTasks.map((f) => ({
       ...f.task,
+      interrupted: true,
       _failed: true,
       _failureReason: f.error.message,
     }) as DesignTask);
@@ -292,12 +295,6 @@ export async function saveOrchestratorCheckpoint(
       taskQueue: [...failedAsQueue, ...dedupedQueue],
       completedTasks: checkpoint.completedTasks.map((t) => t.id),
       completedTasksDetails: checkpoint.completedTasks,
-      failedTasks: checkpoint.failedTasks.map((f) => ({
-        taskId: f.task.id,
-        taskName: f.task.name,
-        error: f.error.message,
-        timestamp: f.timestamp,
-      })),
       tokenUsage: checkpoint.tokenUsage,
       estimatingTokenUsage: state._estimatingTokenUsage as SessionState["estimatingTokenUsage"],
       jobId: state.jobId,
@@ -311,9 +308,16 @@ export async function saveOrchestratorCheckpoint(
       userLanguage: state.context.userLanguage as SessionState["userLanguage"],
     };
     if (checkpoint.interruption) {
+      const reason = checkpoint.interruption.reason as InterruptionDetails["reason"];
+      const message = reason === "tasks_failed" && checkpoint.failedTasks.length > 0
+        ? [
+            `${checkpoint.failedTasks.length} task(s) failed during parallel execution`,
+            ...checkpoint.failedTasks.map((f) => `- "${f.task.name}": ${f.error.message}`),
+          ].join("\n")
+        : `Design paused: ${reason}`;
       patch.interruption = {
-        reason: checkpoint.interruption.reason as InterruptionDetails["reason"],
-        message: `Design paused: ${checkpoint.interruption.reason}`,
+        reason,
+        message,
         timestamp: new Date().toISOString(),
         canResume: checkpoint.interruption.canResume,
       };
@@ -332,73 +336,5 @@ export async function saveOrchestratorCheckpoint(
     );
   } catch (err) {
     console.warn(`⚠️  [Design:ParallelOrchestrator] Checkpoint save failed:`, err);
-  }
-}
-
-/**
- * Post-orchestrator write invoked when `result.hasFailures` is true.
- * Stamps a synthetic `tasks_failed` interruption so the UI and resume flow
- * can surface the failure set.
- */
-export async function saveOrchestratorFailures(
-  state: DesignGraphState,
-  opts: {
-    failedTasks: FailedTask<DesignTask>[];
-    remainingQueue: DesignTask[];
-    completedTasks: DesignTask[];
-    tokenUsage?: SessionState["tokenUsage"];
-  },
-): Promise<void> {
-  if (!state.deps?.session || !state.context.featureFolder) return;
-
-  try {
-    const failedAsQueue: DesignTask[] = opts.failedTasks.map((f) => ({
-      ...f.task,
-      _failed: true,
-      _failureReason: f.error.message,
-    }) as DesignTask);
-
-    const patch: Partial<SessionState> = {
-      taskQueue: [...failedAsQueue, ...opts.remainingQueue],
-      completedTasks: opts.completedTasks.map((t) => t.id),
-      completedTasksDetails: opts.completedTasks,
-      failedTasks: opts.failedTasks.map((f) => ({
-        taskId: f.task.id,
-        taskName: f.task.name,
-        error: f.error.message,
-        timestamp: f.timestamp,
-      })),
-      tokenUsage: opts.tokenUsage,
-      estimatingTokenUsage: state._estimatingTokenUsage as SessionState["estimatingTokenUsage"],
-      jobId: state.jobId,
-      jobTiming: state.jobTiming,
-      parallelMode: true,
-      figmaConfig: state.figmaConfig,
-      figmaAvailable: state.figmaAvailable,
-      figmaFileKey: state.figmaFileKey,
-      figmaStartNodeId: state.figmaStartNodeId,
-      resolvedAction: state.resolvedAction,
-      interruption: {
-        reason: "tasks_failed",
-        message: [
-          `${opts.failedTasks.length} task(s) failed during parallel execution`,
-          ...opts.failedTasks.map((f) => `- "${f.task.name}": ${f.error.message}`),
-        ].join("\n"),
-        timestamp: new Date().toISOString(),
-        canResume: true,
-      },
-    };
-
-    await state.deps.session.updateArtifacts(
-      state.context.project,
-      state.context.featureFolder,
-      "design",
-      { state: patch },
-    );
-    console.log(
-      `💾 [Design:ParallelOrchestrator] Saved interrupted state (${opts.failedTasks.length} failed tasks)`,
-    );
-  } catch (err) {
-    console.warn(`⚠️  [Design:ParallelOrchestrator] Failed to save interrupted state:`, err);
   }
 }

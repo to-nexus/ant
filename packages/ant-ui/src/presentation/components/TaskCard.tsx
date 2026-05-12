@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/presentation/components/common/badge';
 import { TaskTimer } from './TaskTimer';
-import { ChevronDown, ChevronRight, Timer, Coins, Package, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, Timer, Coins, Package, FileText, AlertCircle } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
 import { statusColors, badgeColors, cn } from '@/shared/utils/design-system';
@@ -152,8 +152,29 @@ export function TaskCard({
               </Badge>
             )}
             
-            {/* Interrupted Badge - Only for to-do tasks that were interrupted */}
-            {status === 'todo' && task.interrupted && (
+            {/* Failed Badge - Resumable failure (call-budget exhausted etc.).
+                Takes precedence over the generic "Paused" badge because failed
+                tasks ARE interrupted at the job level but carry an actionable
+                failure reason. Tooltip surfaces _failureReason verbatim. */}
+            {status === 'todo' && task._failed && (
+              <Badge
+                variant="outline"
+                title={task._failureReason}
+                className={cn(
+                  'flex items-center gap-1 flex-shrink-0',
+                  'bg-red-100 dark:bg-red-950',
+                  'border-red-400 dark:border-red-700',
+                  'text-red-800 dark:text-red-200'
+                )}
+              >
+                <AlertCircle className="w-3 h-3" />
+                <span className="font-semibold text-xs">{t('task.failed')}</span>
+              </Badge>
+            )}
+
+            {/* Interrupted Badge - Only for to-do tasks that were interrupted
+                but NOT failed (user-stopped / recursion-limit pauses). */}
+            {status === 'todo' && task.interrupted && !task._failed && (
               <Badge variant="outline" className={cn(
                 'flex items-center gap-1 flex-shrink-0',
                 'bg-orange-100 dark:bg-orange-950',

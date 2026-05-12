@@ -249,11 +249,37 @@ export async function decomposeUiDesign(
       if (!tasksByFile.has(file)) tasksByFile.set(file, []);
       tasksByFile.get(file)!.push(task);
     }
-    for (const tasks of tasksByFile.values()) {
+    for (const [targetFile, tasks] of tasksByFile.entries()) {
       tasks.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+      // Pre-resolve the trailing section identifier for ui-spec-like files so
+      // append-mode tasks can be told WHERE to insert without scanning the
+      // grown-large target file at LLM time (call-budget hot spot).
+      //
+      // SSOT for the anchor lives here — docGen passes it through, the prompt
+      // partial only references {{appendAnchor}} verbatim.
+      let appendAnchor: string | null = null;
+      if (targetFile.endsWith('ui-spec.json')) {
+        const artifact = pool.ui.find(a => a.path.endsWith(targetFile));
+        if (artifact?.content) {
+          try {
+            const parsed = JSON.parse(artifact.content);
+            const map = parsed?.sections ?? parsed?.pages;
+            if (map && typeof map === 'object') {
+              const ids = Object.keys(map);
+              appendAnchor = ids[ids.length - 1] ?? null;
+            }
+          } catch {
+            // Malformed JSON — leave anchor null; the docGen partial gates on
+            // appendAnchor presence and falls back to current LLM-driven scan.
+          }
+        }
+      }
+
       for (let i = 0; i < tasks.length; i++) {
         if (i > 0) tasks[i].forceAppend = true;
         if (i === tasks.length - 1) tasks[i].isLastTaskForDocument = true;
+        if (appendAnchor) (tasks[i] as DesignTask & { anchorAfterSection?: string }).anchorAfterSection = appendAnchor;
       }
     }
 

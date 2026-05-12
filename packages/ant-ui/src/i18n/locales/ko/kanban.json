@@ -39,7 +39,8 @@
     "overhead": "기타"
   },
   "task": {
-    "paused": "일시정지"
+    "paused": "일시정지",
+    "failed": "실패"
   },
   "activeNode": {
     "node": "노드:",
