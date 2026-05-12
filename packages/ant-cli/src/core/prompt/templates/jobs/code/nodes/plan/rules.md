@@ -109,26 +109,22 @@ Design-prescribed package APIs (import paths + observed signatures) are carried 
 
 {{#if (or (eq taskType "feature") (eq taskType "ui"))}}
 ────────────────────────────────────────────────────────────────────────────────
-## 🌿 PROACTIVE FAN-OUT (feature / ui)
+## 🌿 FAN-OUT AT PLAN TIME (feature / ui)
 ────────────────────────────────────────────────────────────────────────────────
 
-**Principle**: When your work splits cleanly across independent units, emit `batches[]` at plan emission time so each batch becomes its own sub-task. Siblings inherit your `parentReasoning` so naming/signatures stay coherent across the fan-out.
+The task arrived with its scope already chosen at decomposition. Fan-out here is meaningful only when plan-time investigation reveals sub-structure that decomposition could not foresee.
 
-**Observation target**: Will the planned implementation list (`create` + `modify` + `delete`) exceed 6 entries OR span 3+ independent output directories?
+{{> jobs/code/shared/task-split-rubric }}
 
-**Constraint**: When the observation above is **yes**, emit `batches[]` instead of a flat plan. A flat plan with N>6 entries forces system-side fan-out; the system uses your per-entry semantic fields verbatim, but expressing N units as N batches at plan emit time keeps boundaries explicit and lets each batch carry its own `rationale`.
+### How to emit `batches[]`
 
-**Constraint**: Multiple files inside ONE coherent unit are NOT a fan-out signal — keep them in a single plan.
+The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principle above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
 
-**Constraint**: `parentReasoning` MUST capture the cross-batch decisions (chosen API names, shared types, integration contract). Each batch sees this verbatim.
+**Constraint**: `parentReasoning` MUST name the concrete benefit (failure isolation / scope boundary / cognitive mode separation) for this specific task. Each batch sees this verbatim.
 
 **Constraint**: Each `batches[].name` is a **noun phrase** identifying the unit (e.g. `"firebase-web-singleton"`, `"axios-http-client-instance"`). Do NOT include framework verbs (`Fix`, `Create`, `Add`, `Update`, `Remove`) — verb-style framing is owned by the runtime UI. Do NOT include paths.
 
-**Constraint**: Each `batches[].rationale` MUST be a complete sentence explaining why this batch is one isolated unit. Becomes the child task description verbatim.
-
-⚠️ **Blind spot**: Trying to express N independent output units in a single flat plan body produces overlimit at execute and forces system-side conversion. Express N units as N batches at plan emit time — your `name` and `rationale` propagate verbatim and avoid the overlimit cost.
-
-⚠️ **Blind spot**: Tier 4 breakdowns enumerate work units at decompose time. Fan-out at plan time is then layered: each decompose-emitted task may itself fan out at plan time when its own implementation list crosses the 6-entries / 3-directories observation threshold.
+**Constraint**: Each `batches[].rationale` MUST be a complete sentence explaining why this batch is one isolated unit per the principle above. Becomes the child task description verbatim.
 
 **Schema (when emitted)**:
 
@@ -136,7 +132,7 @@ Design-prescribed package APIs (import paths + observed signatures) are carried 
 <plan>
 {
   "task": { "id": "{{taskId}}", "goal": "..." },
-  "parentReasoning": "<cross-batch decisions: names, contracts, shared types>",
+  "parentReasoning": "<concrete benefit + cross-batch decisions: names, contracts, shared types>",
   "batches": [
     {
       "name": "[REQUIRED — noun phrase identifying the unit, e.g. \"firebase-web-singleton\". Becomes the child task name verbatim. NOT a verb, NOT a path, NOT a placeholder.]",

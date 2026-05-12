@@ -1045,6 +1045,11 @@
       "partial-ref"
     ]
   },
+  "jobs/code/shared/task-split-rubric": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/design/base/catalogs/api-contract-catalog-names": {
     "sources": [
       "render-call",

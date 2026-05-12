@@ -86,98 +86,26 @@ export function processDiagnosticBatchSplit(
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
 
-    const totalErrors: number = parsed.diagnostics?.totalErrors ?? 0;
     const modifyArr: any[] = Array.isArray(parsed.implementation?.modify) ? parsed.implementation.modify : [];
     const createArr: any[] = Array.isArray(parsed.implementation?.create) ? parsed.implementation.create : [];
     const deleteArr: any[] = Array.isArray(parsed.implementation?.delete) ? parsed.implementation.delete : [];
     const hasExistingBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
     const topLevelImplCount = modifyArr.length + createArr.length + deleteArr.length;
 
-    if (!hasExistingBatches && topLevelImplCount > 0) {
-      // LLM-authored semantic fields are the SSOT for child task name +
-      // description. Missing fields throw `BatchSplitSchemaViolation` so
-      // the plan node's retry loop can re-issue the call with framing —
-      // the system MUST NOT fabricate names. See docstring of
-      // `schemaViolation.ts` for the contract.
-      const batchesAcc: any[] = [];
-
-      for (let i = 0; i < modifyArr.length; i++) {
-        const m = modifyArr[i];
-        if (!m || typeof m !== 'object' || typeof (m as any).action !== 'string' || (m as any).action.trim() === '') {
-          throw new BatchSplitSchemaViolation({
-            entryKind: 'modify',
-            ordinal: i,
-            missingField: 'action',
-            observed: m,
-          });
-        }
-        const action = (m as any).action as string;
-        const changes = (m as any).changes;
-        const rationale = Array.isArray(changes) && changes.length > 0
-          ? changes.map(String).join('; ')
-          : action;
-        batchesAcc.push({
-          name: action,
-          rationale,
-          modify: [m],
-          create: [],
-          delete: [],
-        });
-      }
-      for (let i = 0; i < createArr.length; i++) {
-        const c = createArr[i];
-        if (!c || typeof c !== 'object' || typeof (c as any).name !== 'string' || (c as any).name.trim() === '') {
-          throw new BatchSplitSchemaViolation({
-            entryKind: 'create',
-            ordinal: i,
-            missingField: 'name',
-            observed: c,
-          });
-        }
-        const cName = (c as any).name as string;
-        const purpose = (c as any).purpose;
-        const rationale = typeof purpose === 'string' && purpose.trim() !== '' ? purpose : cName;
-        batchesAcc.push({
-          name: cName,
-          rationale,
-          modify: [],
-          create: [c],
-          delete: [],
-        });
-      }
-      for (let i = 0; i < deleteArr.length; i++) {
-        const d = deleteArr[i];
-        if (!d || typeof d !== 'object' || typeof (d as any).reason !== 'string' || (d as any).reason.trim() === '') {
-          throw new BatchSplitSchemaViolation({
-            entryKind: 'delete',
-            ordinal: i,
-            missingField: 'reason',
-            observed: d,
-          });
-        }
-        const reason = (d as any).reason as string;
-        batchesAcc.push({
-          name: reason,
-          rationale: reason,
-          modify: [],
-          create: [],
-          delete: [d],
-        });
-      }
-
+    // SSOT for fan-out decision is the LLM's explicit `batches[]`. A flat
+    // `implementation` block — regardless of entry count, package count, or
+    // domain count — proceeds to execute as a single task. The system never
+    // fabricates batches from top-level entries; LLM judgement is the only
+    // signal. See `templates/jobs/code/shared/task-split-rubric.md` for the
+    // splitting principle taught to both decompose and plan.
+    if (!hasExistingBatches) {
       logBatchSplit({
-        action: 'auto_convert_top_level',
-        modifyCount: modifyArr.length,
-        createCount: createArr.length,
-        deleteCount: deleteArr.length,
-        totalErrors,
+        action: 'skipped',
+        reason: 'flat_plan_no_batches',
+        topLevelImplCount,
         taskName: nextTask.name,
+        parentType: nextTask.type,
       });
-      parsed.batches = batchesAcc;
-    }
-
-    if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length === 0) {
-      logBatchSplit({ action: 'skipped', reason: 'no_implementation_entries', batchCount: 0, taskName: nextTask.name });
       return planText;
     }
 
@@ -211,6 +139,18 @@ export function processDiagnosticBatchSplit(
     const splitCount = VerificationBudget.peekNextBatchSplit(state, nextTask);
 
     if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
+      // Surface the terminal cause via the existing `_failureReason` channel —
+      // UI already renders this field as a tooltip on the failed task card
+      // (see `packages/ant-shared/src/task.ts`). The orchestrator's catch
+      // path pushes the task to `failedTasks` with this marking intact.
+      // i18n: user-facing label tracks `state.context.userLanguage`, matching
+      // the pattern used for the FV task label below.
+      const userLanguage = state.context?.userLanguage || 'en';
+      const cycleReason = userLanguage === 'ko'
+        ? `배치 분할이 ${MAX_BATCH_SPLIT_CYCLES}회 반복되어 자동 중단되었습니다. 작업 "${nextTask.name}"이 같은 계획을 반복 생성하고 있습니다.`
+        : `Batch split aborted after ${MAX_BATCH_SPLIT_CYCLES} cycles. Task "${nextTask.name}" kept regenerating the same plan.`;
+      (nextTask as { _failed?: boolean })._failed = true;
+      (nextTask as { _failureReason?: string })._failureReason = cycleReason;
       logBatchSplit({ action: 'cycle_limit_failed', splitCount, taskName: nextTask.name });
       console.error(`❌ [BatchSplit] Cycle limit (${MAX_BATCH_SPLIT_CYCLES}) exceeded for "${nextTask.name}". Throwing terminal error.`);
       appendTrace({
