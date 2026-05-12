@@ -233,18 +233,10 @@ export interface DesignGraphState extends TriageableState {
   figmaFileKey?: string;                 // Parsed from figmaConfig.file URL
   figmaStartNodeId?: string;             // Parsed nodeId from URL (optional)
 
-  // ✅ Interruption & failure tracking (DEFECT-5: was only in channels, not interface)
+  // Interruption signal — SSOT for "this job has unresolved failures".
+  // Task-level failure markers live on `taskQueue[i]._failed` / `._failureReason`.
   interruption?: import('../../../../core/types').InterruptionDetails;
-  failedTasks?: Array<{
-    taskId: string;
-    taskName: string;
-    timestamp: string;
-    error?: string;
-    taskType?: string;
-    priority?: number;
-    violations?: any[];
-  }>;
-  
+
   // ✅ Worker runtime injection
   workerId?: number;
   _isStopRequested?: (() => boolean);

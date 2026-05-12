@@ -23,7 +23,6 @@ import {
   saveInterruptionCheckpoint,
   saveTaskCompleteCheckpoint,
   saveOrchestratorCheckpoint,
-  saveOrchestratorFailures,
 } from './session/checkpoint';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
@@ -662,14 +661,35 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     state.jobTiming = JobTimingManager.pauseJob(state.jobTiming);
   }
 
-  // ✅ If any tasks permanently failed, save interrupted state to session
+  // ✅ If any tasks permanently failed, persist the merged queue (_failed markers)
+  // + interruption via the unified checkpoint writer. Disk SSOT: taskQueue carries
+  // the _failed entries that surface as Retry cards on resume.
   if (result.hasFailures) {
-    await saveOrchestratorFailures(state, {
-      failedTasks: result.failedTasks,
-      remainingQueue: result.remainingQueue,
+    await saveOrchestratorCheckpoint(state, {
+      taskQueue: result.remainingQueue,
       completedTasks: result.completedTasks,
+      failedTasks: result.failedTasks,
       tokenUsage: result.tokenUsage,
+      parallelMode: true,
+      interruption: { reason: 'tasks_failed', canResume: true },
     });
+  }
+
+  // Re-populate live state.taskQueue with failed (with _failed markers) + remaining
+  // so learn detects failures via the queue (SSOT). No separate state.failedTasks
+  // channel — the marker on each task IS the signal.
+  if (state.taskQueue) {
+    for (const f of result.failedTasks) {
+      state.taskQueue.push({
+        ...f.task,
+        interrupted: true,
+        _failed: true,
+        _failureReason: f.error.message,
+      } as DesignTask);
+    }
+    for (const t of result.remainingQueue) {
+      state.taskQueue.push(t);
+    }
   }
 
   // Inter-task self-output — workers operate on separate state copies, so
@@ -762,7 +782,6 @@ export const DesignGraphChannels = {
   figmaFileKey: Annotation<any>,
   figmaStartNodeId: Annotation<any>,
   interruption: Annotation<any>,
-  failedTasks: Annotation<any>,
   _docGenCallIndex: Annotation<any>,
   _callLimitReached: Annotation<any>,
   _noOutputCallCount: Annotation<any>,

@@ -365,17 +365,9 @@ export interface ArchitectGraphState extends TriageableState {
   verifiedTasks?: Map<string, { passed: boolean; timestamp: string; errors?: string[] }>;  // ✅ Verification cache
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
-  // ✅ Failed Tasks (deferred to Final Verification)
-  failedTasks?: Array<{
-    taskId: string;
-    taskName: string;
-    timestamp: string;
-    error?: string;
-    taskType?: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'verification' | 'doc';
-    priority?: number;
-    violations?: Violation[];
-  }>;
-  
+  // Failed-task SSOT — markers live on `taskQueue[i]._failed` / `._failureReason`;
+  // see `@ant/shared` BaseTaskCommon. There is no separate `failedTasks` channel.
+
   // ✅ Unresolved Errors (Error Tasks that failed after max retries)
   unresolvedErrors?: Array<{
     taskId: string;
