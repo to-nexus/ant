@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Star, Users, Code2, Cpu } from 'lucide-react';
+import { Star, Users } from 'lucide-react';
 import { githubStats } from '@/lib/githubStats';
 import { GITHUB_URL } from '@/lib/links';
 
@@ -20,22 +20,18 @@ interface Stat {
 interface StatsStripProps {
   starsLabel: string;
   contributorsLabel: string;
-  languagesLabel: string;
-  llmLabel: string;
 }
 
-export function StatsStrip({ starsLabel, contributorsLabel, languagesLabel, llmLabel }: StatsStripProps) {
+export function StatsStrip({ starsLabel, contributorsLabel }: StatsStripProps) {
   const stats: Stat[] = [
     { icon: <Star className="w-4 h-4" />, value: format(githubStats.stars), label: starsLabel, href: GITHUB_URL },
     { icon: <Users className="w-4 h-4" />, value: String(githubStats.contributorsCount || 0), label: contributorsLabel, href: `${GITHUB_URL}/graphs/contributors` },
-    { icon: <Code2 className="w-4 h-4" />, value: '5+', label: languagesLabel, href: '/capabilities' },
-    { icon: <Cpu className="w-4 h-4" />, value: '4+', label: llmLabel },
   ];
 
   return (
     <section className="py-10">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-xl mx-auto">
           {stats.map((s, i) => {
             const inner = (
               <>

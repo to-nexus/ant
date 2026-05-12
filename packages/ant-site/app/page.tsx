@@ -22,7 +22,6 @@ import { GitHubStarsBadge } from '@/components/GitHubStarsBadge';
 import { StatsStrip } from '@/components/StatsStrip';
 import { QuickstartTabs } from '@/components/QuickstartTabs';
 import { SelfHostCloudSplit } from '@/components/SelfHostCloudSplit';
-import { ComparisonRow } from '@/components/ComparisonRow';
 import { ContributorsWall } from '@/components/ContributorsWall';
 import { RecentActivity } from '@/components/RecentActivity';
 import { FaqList } from '@/components/FaqList';
@@ -113,8 +112,6 @@ export default function HomePage() {
       <StatsStrip
         starsLabel={t('home.stats.stars')}
         contributorsLabel={t('home.stats.contributors')}
-        languagesLabel={t('home.stats.languages')}
-        llmLabel={t('home.stats.llm')}
       />
 
       {/* §3 Quickstart */}
@@ -225,14 +222,7 @@ export default function HomePage() {
         }}
       />
 
-      {/* §8 Comparison */}
-      <ComparisonRow
-        title={t('home.compare.title')}
-        description={t('home.compare.desc')}
-        axisLabels={t('home.compare.axis', { returnObjects: true }) as Record<string, string>}
-      />
-
-      {/* §9 Community velocity */}
+      {/* §8 Community velocity */}
       <section className="py-20 sm:py-24 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -261,10 +251,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* §10 FAQ */}
+      {/* §9 FAQ */}
       <FaqList title={t('home.faq.title')} items={faqItems} />
 
-      {/* §11 Final CTA band */}
+      {/* §10 Final CTA band */}
       <section className="py-20 sm:py-28">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-display font-bold text-white mb-4">
