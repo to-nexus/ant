@@ -41,9 +41,7 @@
     "ctaDocs": "문서 보기",
     "stats": {
       "stars": "GitHub stars",
-      "contributors": "컨트리뷰터",
-      "languages": "지원 언어",
-      "llm": "LLM 프로바이더"
+      "contributors": "컨트리뷰터"
     },
     "quickstart": {
       "title": "60초 안에 시작하기",
@@ -101,17 +99,6 @@
       "cloudBullet3": "Google 계정으로 SSO",
       "cloudBullet4": "OSS와 같은 코드 — 별도 프로프라이어터리 fork 없음",
       "cloudCta": "클라우드 사용해보기"
-    },
-    "compare": {
-      "title": "다른 AI 코딩 도구와 비교",
-      "desc": "ANT가 다른 점.",
-      "axis": {
-        "multiAgent": "다중 에이전트 (Planner / Architect)",
-        "selfHost": "셀프호스트 가능",
-        "ossLicense": "오픈소스 라이선스",
-        "figma": "Figma 연동",
-        "parallelTasks": "태스크 병렬 실행"
-      }
     },
     "community": {
       "title": "공개적으로 만듭니다",
