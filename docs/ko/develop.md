@@ -332,5 +332,4 @@ Prompt 파일은 **영어만**. 소스 코멘트는 한국어 OK 지만 `.md` �
 - [internals/37-auth-unified-procedure.md](../internals/37-auth-unified-procedure.md)
   — 인증 flow 내부.
 - [testing/](../testing/) — 테스트 전략 + runbook.
-- [../../CONTRIBUTING.md](../../CONTRIBUTING.md) — PR 워크플로 +
-  Code of Conduct.
+- [../../CONTRIBUTING.md](../../CONTRIBUTING.md) — PR 워크플로

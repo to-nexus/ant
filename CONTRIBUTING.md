@@ -8,12 +8,6 @@ If you only have a few minutes, please read **[Quick checklist](#quick-checklist
 
 ---
 
-## Code of Conduct
-
-By participating you agree to follow our Code of Conduct (Contributor Covenant
-2.1). Be kind, assume good faith, and call out violations privately to the
-maintainers.
-
 ## Project Layout
 
 ```
