@@ -75,16 +75,6 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@vscode/ripgrep"
-    ],
-    "ignoredBuiltDependencies": [
-      "argon2",
-      "code-server",
-      "esbuild"
-    ]
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/<org>/ant"

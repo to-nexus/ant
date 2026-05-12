@@ -4,3 +4,11 @@ packages:
   # ant-ui: Frontend UI (SPA at /app)
   # ant-site: Marketing site (SSG at /)
 
+allowBuilds:
+  '@vscode/ripgrep': true
+  sharp: true
+  cpu-features: false
+  esbuild: false
+  msgpackr-extract: false
+  protobufjs: false
+  ssh2: false

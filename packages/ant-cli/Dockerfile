@@ -32,8 +32,8 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm — version pinned via root package.json `packageManager` field
+RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 
 WORKDIR /app
 
@@ -138,7 +138,7 @@ ENV PATH="${PATH}:/root/.local/share/mise/shims"
 ENV MISE_AUTO_INSTALL=true
 
 # -------- Node.js tooling --------
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 RUN npm install -g tsx
 
 # Create non-root user
@@ -231,7 +231,7 @@ ENV GOPATH="/home/ant/go"
 ENV GOTOOLCHAIN=auto
 
 # Install pnpm and tsx for production
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 RUN npm install -g tsx
 
 # Create non-root user for security (Alpine uses addgroup/adduser)

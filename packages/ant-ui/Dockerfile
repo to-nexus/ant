@@ -8,7 +8,8 @@
 
 # BASE STAGE
 FROM node:20-alpine AS base
-RUN npm install -g pnpm
+# pnpm version pinned via root package.json `packageManager` field
+RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 
 
 # BUILD STAGE
