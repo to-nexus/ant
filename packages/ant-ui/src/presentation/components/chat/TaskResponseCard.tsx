@@ -26,7 +26,7 @@ interface TaskResponseCardProps {
 
 const MARKDOWN_COMPONENTS = createMarkdownComponents();
 
-export const TaskResponseCard = memo(function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCardProps) {
+export const TaskResponseCard = memo(function TaskResponseCard({ line, pending }: TaskResponseCardProps) {
   const content = lineToContent(line, pending);
   const contentRef = useRef<HTMLDivElement>(null);
   const textContent = content.content || '';
