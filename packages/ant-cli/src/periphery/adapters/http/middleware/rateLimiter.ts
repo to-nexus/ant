@@ -1,15 +1,22 @@
 /**
  * Rate Limiting Middleware
- * 
+ *
  * Provides per-category rate limiters for public-facing servers.
  * Uses Redis store via rate-limit-redis for distributed (multi-pod) consistency.
- * 
- * The sendCommand function lazily resolves the Redis client from
- * InfrastructureFactory, so the rate limiters can be imported before
- * the factory is initialized (actual Redis calls only happen on first request).
+ *
+ * Two layers of laziness:
+ *   1. `getLazySendCommand` defers the Redis client resolution until the
+ *      store actually issues a command.
+ *   2. `lazyRateLimiter` defers the `rateLimit({...})` call itself until
+ *      the first request reaches the middleware — express-rate-limit@8
+ *      calls `store.init()` synchronously inside its factory, which would
+ *      otherwise force every importer (e.g. vitest's static-import graph
+ *      during `prebuild`) to have ANT_REDIS_URL set even when no real
+ *      request is in flight.
  */
 
 import rateLimit from 'express-rate-limit';
+import type { RequestHandler } from 'express';
 import { RedisStore } from 'rate-limit-redis';
 import type { RedisReply } from 'rate-limit-redis';
 
@@ -38,56 +45,72 @@ function perUserKeyGenerator(req: any): string {
   return 'unknown';
 }
 
+function lazyRateLimiter(build: () => RequestHandler): RequestHandler {
+  let inner: RequestHandler | null = null;
+  return (req, res, next) => {
+    if (!inner) inner = build();
+    return inner(req, res, next);
+  };
+}
+
 /**
  * Auth rate limit (10 req/min per IP)
  */
-export const authRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: createStore('auth'),
-  message: { error: 'Too many authentication attempts', message: 'Please try again later.' },
-});
+export const authRateLimiter: RequestHandler = lazyRateLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: createStore('auth'),
+    message: { error: 'Too many authentication attempts', message: 'Please try again later.' },
+  }),
+);
 
 /**
  * Job execution rate limit (5 req/min per user)
  */
-export const jobExecuteRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: perUserKeyGenerator,
-  store: createStore('job'),
-  message: { error: 'Too many job requests', message: 'Please wait before starting another job.' },
-});
+export const jobExecuteRateLimiter: RequestHandler = lazyRateLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('job'),
+    message: { error: 'Too many job requests', message: 'Please wait before starting another job.' },
+  }),
+);
 
 /**
  * Chat/Ask rate limit (20 req/min per user)
  */
-export const chatRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: perUserKeyGenerator,
-  store: createStore('chat'),
-  message: { error: 'Too many chat requests', message: 'Please slow down.' },
-});
+export const chatRateLimiter: RequestHandler = lazyRateLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('chat'),
+    message: { error: 'Too many chat requests', message: 'Please slow down.' },
+  }),
+);
 
 /**
  * Preview management rate limit (30 req/min per user)
  */
-export const previewRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: perUserKeyGenerator,
-  store: createStore('preview'),
-  message: { error: 'Too many preview requests', message: 'Please try again later.' },
-});
+export const previewRateLimiter: RequestHandler = lazyRateLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('preview'),
+    message: { error: 'Too many preview requests', message: 'Please try again later.' },
+  }),
+);
 
 /**
  * Organization search rate limit (30 req/min per user).
@@ -101,12 +124,14 @@ export const previewRateLimiter = rateLimit({
  * Note: `_pending` JWTs (onboarding-in-progress) DO carry a valid
  * `req.user.id`, so `perUserKeyGenerator` works for them too.
  */
-export const organizationsRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: perUserKeyGenerator,
-  store: createStore('organizations'),
-  message: { error: 'Too many organization search requests', message: 'Please slow down.' },
-});
+export const organizationsRateLimiter: RequestHandler = lazyRateLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('organizations'),
+    message: { error: 'Too many organization search requests', message: 'Please slow down.' },
+  }),
+);
