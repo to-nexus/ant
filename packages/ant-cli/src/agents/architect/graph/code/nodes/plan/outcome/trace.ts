@@ -25,7 +25,7 @@ export interface VerifyAxisSnapshot {
 }
 
 export interface PlanFinalizeTraceInput {
-  callSite: 'plan-index' | 'plan-llm-overlimit' | 'plan-llm-toolloop';
+  callSite: 'plan-index' | 'plan-llm-toolloop';
   preSplitPlanText: string;
   planText: string;
   batchSplitOccurred: boolean;

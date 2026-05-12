@@ -8,11 +8,11 @@ the code job's plan node and the design job's plan node.
 - `runPlanWithTools` — single-round plan-LLM stream driver (XML parser
   + StreamOrchestrator) returning either a sealed `<plan>` text, an
   assistant message with tool calls, or null.
-- `runPlanToolLoopPhase` — re-entry orchestrator that decides whether to
-  invoke `runRound` or `onOverLimit` based on history length.
+- `runPlanToolLoopPhase` — re-entry orchestrator that drives one
+  `runRound` per call and propagates its outcome. No round cap; runaway
+  is bounded by LangGraph `recursionLimit` at the graph level.
 - `extractPlanText` — regex-only `<plan>...</plan>` body extractor with
   length gating.
-- `PLAN_TOOL_LOOP_MAX` — shared ceiling constant.
 - Types: `PlanRoundResult`, `PlanLoopOutcome`, `PlanLLMResponse`,
   `PlanToolCall`, `MinimalPlanState`, `RunPlanWithToolsArgs`,
   `RunPlanToolLoopPhaseArgs`.

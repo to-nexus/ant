@@ -315,7 +315,7 @@ export class ExecutionLogger {
   }
 
   async logPlanFinalize(taskId: string, data: {
-    callSite: 'plan-index' | 'plan-llm-overlimit' | 'plan-llm-toolloop';
+    callSite: 'plan-index' | 'plan-llm-toolloop';
     planTextLen: number;
     preSplitPlanTextLen: number;
     batchSplitOccurred: boolean;

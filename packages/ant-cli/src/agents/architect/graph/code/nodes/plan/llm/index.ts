@@ -5,10 +5,7 @@
  *   - `prompt`       — `buildPlanPrompt` / `buildPlanPromptBlocks`
  *                      (single-string + cache-split content blocks).
  *   - `single`       — `generatePlanText` (single-shot path).
- *   - `tools`        — `runPlanLLMWithTools` + `PLAN_TOOL_LOOP_MAX`
- *                      (one tool-loop round driver).
- *   - `finalize`     — `finalizePlanFromExploration` + `FINALIZE_NUDGE`
- *                      (overlimit synthesis from gathered tool context).
+ *   - `tools`        — `runPlanLLMWithTools` (one tool-loop round driver).
  *   - `toolLoop`     — `runPlanToolLoopPhase` (re-entry orchestrator
  *                      called from `nodes/plan/index.ts`).
  *   - `selectModel`  — `selectLLMForTask` (workspace-config-aware
@@ -32,16 +29,8 @@ export type {
 
 export { generatePlanText } from './single';
 
-export {
-  runPlanLLMWithTools,
-  PLAN_TOOL_LOOP_MAX,
-} from './tools';
+export { runPlanLLMWithTools } from './tools';
 export type { PlanWithToolsResult } from './tools';
-
-export {
-  finalizePlanFromExploration,
-  FINALIZE_NUDGE,
-} from './finalize';
 
 export {
   runPlanToolLoopPhase,

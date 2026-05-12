@@ -22,7 +22,6 @@ import {
   buildPlanPromptBlocks,
   generatePlanText,
   runPlanLLMWithTools,
-  PLAN_TOOL_LOOP_MAX,
   runPlanToolLoopPhase,
 } from './llm';
 import {
@@ -105,7 +104,6 @@ async function runMainPlanLLM(
   state: ArchitectGraphState,
   entry: PlanEntryContext,
   rag: Awaited<ReturnType<typeof runPlanRAG>>,
-  forceNoTools: boolean,
 ): Promise<ArchitectGraphState | { planText: string }> {
   const { nextTask } = entry;
   const llm = state.deps?.llm as LLMClient | undefined;
@@ -117,9 +115,10 @@ async function runMainPlanLLM(
     .filter(t => t.id !== nextTask.id)
     .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
 
-  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
-  const planToolRounds = nodePlan.length / 2;
-  const tryToolsFirst = llm && usesToolLoop && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  // Polite-cap removed (pure-rivest RCA). Whenever the task type wants the
+  // tool loop, take it — bounded only by LangGraph's `recursionLimit` and
+  // the executeRouter safety nets, never by an in-loop round count.
+  const tryToolsFirst = llm && usesToolLoop;
 
   // UI doc injection is now handled by ArtifactPipeline in planGeneration.ts.
   const uiDocForPlan: string | undefined = undefined;
@@ -205,7 +204,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // STEP 0.9 — plan↔tool loop re-entry.
   const toolLoop = await runPlanToolLoopPhase(state, nextTask);
   if (toolLoop.kind === 'return') return mergeDelta(toolLoop.state, entryDelta) as ArchitectGraphState;
-  const forceNoTools = !!toolLoop.forceNoTools;
 
   // Setup fast path — skip RAG entirely.
   const setupFast = await maybeSetupFastPath(state, entry, workflowExit);
@@ -232,7 +230,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   while (true) {
     attempt++;
     try {
-      const llmOutcome = await runMainPlanLLM(state, entry, rag, forceNoTools);
+      const llmOutcome = await runMainPlanLLM(state, entry, rag);
       if ('_activePhase' in llmOutcome) {
         // Tool-loop entry — clear framing so it doesn't leak into the
         // tool-loop's prompt. (toolLoop.ts has its own graceful skip on

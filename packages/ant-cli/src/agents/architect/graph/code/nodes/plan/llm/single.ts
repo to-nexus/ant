@@ -1,10 +1,8 @@
 /**
  * `generatePlanText` — single-shot plan-LLM call (no tool-use).
  *
- * Used as the fallback when:
- *   - the task type doesn't enter the plan-with-tools loop, or
- *   - tool-loop hit `PLAN_TOOL_LOOP_MAX` and `finalizePlanFromExploration`
- *     didn't yield a `<plan>`.
+ * Used as the fallback when the task type doesn't enter the plan-with-tools
+ * loop (i.e. `plan.usesToolLoop=false`).
  *
  * Streams an XML-tagged response and extracts the single `<plan>{...}</plan>`
  * block at the tail. Truncation diagnostics distinguish max-token cuts

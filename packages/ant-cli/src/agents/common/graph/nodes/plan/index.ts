@@ -13,7 +13,6 @@
 export { runPlanWithTools } from './runPlanWithTools';
 export { runPlanToolLoopPhase } from './runPlanToolLoopPhase';
 export { extractPlanText } from './extractPlanText';
-export { PLAN_TOOL_LOOP_MAX } from './constants';
 export type {
   MinimalPlanState,
   PlanLLMResponse,
