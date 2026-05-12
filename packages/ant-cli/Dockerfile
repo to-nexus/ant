@@ -2,9 +2,9 @@
 # ANT CLI - Dockerfile
 # ============================================
 # Multi-stage build:
-#   builder    — TypeScript compile (node:20)
-#   preview    — Multi-language runtime for preview worker (node:20-alpine)
-#   production — Lean runtime for api/job workers (node:20-alpine)  ← default
+#   builder    — TypeScript compile (node:22)
+#   preview    — Multi-language runtime for preview worker (node:22-alpine)
+#   production — Lean runtime for api/job workers (node:22-alpine)  ← default
 #
 # Build targets:
 #   docker build .                        → production (api/job)
@@ -22,7 +22,7 @@
 # ============================================
 # Stage 1: Builder
 # ============================================
-FROM node:20 AS builder
+FROM node:22 AS builder
 
 # Install build dependencies for native modules (sharp, argon2, etc.)
 RUN apt-get update && apt-get install -y \
@@ -70,9 +70,9 @@ RUN pnpm build:cli
 # ============================================
 # Stage 2: Preview (multi-language runtime for preview worker)
 # ============================================
-# Starts fresh from node:20-alpine (does NOT extend production) so that
+# Starts fresh from node:22-alpine (does NOT extend production) so that
 # language runtimes can be added incrementally without polluting api/job image.
-FROM node:20-alpine AS preview
+FROM node:22-alpine AS preview
 
 # --- Language version ARGs (empty string = skip install) ---
 ARG GO_VERSION="1.23.6"
@@ -206,7 +206,7 @@ CMD ["tsx", "src/composition/server.ts"]
 # ============================================
 # Stage 3: Production (api/job — lean, no language runtimes)
 # ============================================
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # Language version ARG (empty = skip install)
 ARG GO_VERSION="1.23.6"

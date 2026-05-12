@@ -4,6 +4,9 @@
   "private": true,
   "description": "ANT (AI-Native Transformation) - Monorepo",
   "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev:ui": "pnpm --filter @ant/ui dev",
     "dev:site": "pnpm --filter @ant/site dev",
