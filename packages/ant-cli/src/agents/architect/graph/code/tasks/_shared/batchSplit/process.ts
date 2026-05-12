@@ -257,9 +257,10 @@ export function processDiagnosticBatchSplit(
     // Bump the batch-split counter on the originating parent task, then
     // carry the cycle count down to children so lineage exhaustion is
     // bounded across recursive fan-outs (parent → child → grandchild).
-    // Without carry-over, a child's plan-tool-loop (e.g. ui kids that keep
-    // `acceptsPrePlanText:false`) could emit `batches[]` again with a
-    // fresh count of 0 and bypass `MAX_BATCH_SPLIT_CYCLES` indefinitely.
+    // Without carry-over, a non-shortcut child's plan-tool-loop (every
+    // `feature` / `ui` / `test-code` kid — only `error` takes the
+    // pre-planned shortcut) could emit `batches[]` again with a fresh
+    // count of 0 and bypass `MAX_BATCH_SPLIT_CYCLES` indefinitely.
     const newBatchSplitCount = (nextTask.batchSplitCount ?? 0) + 1;
 
     // Path A re-enqueues the original to preserve identity / `_failedAttempts`;

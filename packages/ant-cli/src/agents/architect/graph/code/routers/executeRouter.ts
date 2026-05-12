@@ -130,10 +130,19 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     }
   }
   
-  // Safety Net D: Pre-planned error task execute call budget
-  // Pre-planned tasks have a focused scope from batch splitting, so they get a bounded budget.
-  const isPrePlannedTask = !!(currentTask as CodeTask)?.prePlanText;
-  if (isPrePlannedTask) {
+  // Safety Net D: pre-planned identity-shortcut execute call budget.
+  // Only `error` sub-tasks ride the identity-shortcut (state.planText :=
+  // prePlanText) — feature / test-code / ui carry `prePlanText` but enter
+  // the plan-tool-loop and emit a fresh `planText`, so their budget is
+  // computed in Safety Net E. Gating on the shortcut publication flag
+  // (`acceptsPrePlanText:true`) keeps Safety Net D scoped to the actual
+  // shortcut consumers; gating on `prePlanText` presence alone would
+  // wrongly cap non-shortcut sub-tasks at 25 calls regardless of the
+  // plan's actual scope.
+  const isIdentityShortcutTask =
+    !!(currentTask as CodeTask)?.prePlanText &&
+    hooksIfActive(state)?.plan?.acceptsPrePlanText === true;
+  if (isIdentityShortcutTask) {
     const callIndex = state._executeCallIndex || 0;
     const maxPrePlannedCalls = 25;
     const warningThreshold = Math.floor(maxPrePlannedCalls * 0.8); // 20

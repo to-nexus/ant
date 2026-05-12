@@ -598,6 +598,13 @@ describe('Template Smoke Tests', () => {
       // the block. Smoke renders without vars, so the partial is empty
       // by design.
       'jobs/code/nodes/plan/injections/analysis-block',
+      // Parent sub-task pre-plan is wrapped in {{#if hasPrePlanText}}
+      // (no {{else}}) — same Contract pattern as analysis-block. It
+      // activates only for batch-split sub-tasks whose parent emitted
+      // a fixed-scope JSON pre-plan; non-sub-task entries leave the
+      // block empty by design. See Plan B
+      // (`.claude/plans/architect-6-noble-coating-lathe-cozy-matsumoto.md`).
+      'jobs/code/nodes/plan/injections/parent-pre-plan',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

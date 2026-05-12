@@ -966,6 +966,12 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/plan/injections/parent-pre-plan": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/plan/injections/ui-source-inventory": {
     "sources": [
       "partial-ref",

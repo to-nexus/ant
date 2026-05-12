@@ -57,6 +57,13 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     _testCodeSlot,
   );
 
+  // Surface `prePlanText` from batch-split sub-tasks so the
+  // `parent-pre-plan` partial gates its drift-detection guidance. Test-code
+  // sub-tasks share the same plan-tool-loop INPUT contract as feature / ui
+  // (the generic `plan/base` path passes the same vars).
+  const prePlanTextRaw = task.prePlanText;
+  const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
+
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/test-code/base', {
     taskId: task.id,
     taskName: task.name,
@@ -73,6 +80,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasPackageManager: !!packageManager,
     antrulesContent,
     resolvedAction: state.resolvedAction,
+    prePlanText: hasPrePlanText ? prePlanTextRaw : '',
+    hasPrePlanText,
     // Tier 3 cross-task analysis brief (sealed by Decompose).
     analysis: state.analysis ?? '',
     hasAnalysis: !!state.analysis,
