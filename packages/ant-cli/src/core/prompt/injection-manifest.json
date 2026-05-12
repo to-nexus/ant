@@ -40,7 +40,8 @@
     "secure-coding": [],
     "service-virtualization-contract": [],
     "service-virtualization-data": [],
-    "service-virtualization-imagery": []
+    "service-virtualization-imagery": [],
+    "response-language": ["userLanguage"]
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],

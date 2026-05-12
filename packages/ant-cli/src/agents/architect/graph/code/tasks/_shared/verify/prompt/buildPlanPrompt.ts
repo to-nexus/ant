@@ -116,6 +116,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     taskName: task.name,
     taskDescription: task.description,
     directive: state.directive || '',
+    // See `nodes/plan/llm/prompt.ts` — same response-language SSOT plumbing.
+    userLanguage: state.context?.userLanguage || 'en',
     hasUserRuntimeErrorContext,
     runTests: true,
     projectCodeContext: fmtCtx,

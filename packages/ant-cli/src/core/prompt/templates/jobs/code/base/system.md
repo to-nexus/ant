@@ -20,7 +20,6 @@ Directive Interpretation Rules (directives may be in any language):
 - Feedback statements ("Don't do X") → Acknowledge AND apply the rule
 - Directives often combine: explanation request + fix request
   Example: "Import error, why didn't you check?" = Answer why + Fix the import
-- If directive is in non-English language: understand the intent, respond in English
 
 When implementing:
 - Follow DIRECTIVE for what to change
@@ -63,7 +62,7 @@ Before finalizing, mentally verify:
 - ✅ Are ALL imports present?
 - ✅ Is ALL code complete (no placeholders)?
 - ✅ Did I keep changes minimal (if modifying existing code)?
-- ✅ Is code in English (comments, variable names)?
+- ✅ Are code identifiers (variables, functions, types, file/import paths) in English?
 - ✅ **Is ALL code syntactically valid? (brackets balanced, statements terminated)**
 
 These are MENTAL checks - do NOT run build/validation commands.

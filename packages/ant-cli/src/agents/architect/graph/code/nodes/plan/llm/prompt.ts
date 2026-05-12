@@ -178,6 +178,13 @@ export async function buildPlanPrompt(
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type,
+    // Response-language SSOT — gated `jobs/code/base/injections/response-language`
+    // partial is included at the top of `plan/base.md`; this var is what
+    // makes the gate evaluate against the user's detected language so
+    // batch-split sub-task `name` / `rationale` come out in the user's
+    // language instead of being silently overridden to English by the
+    // legacy directive in `jobs/code/base/system.md`.
+    userLanguage: state.context?.userLanguage || 'en',
     prePlanText: hasPrePlanText ? prePlanTextRaw : '',
     hasPrePlanText,
     documents: planDocs, hasDocuments: allDocs.length > 0,

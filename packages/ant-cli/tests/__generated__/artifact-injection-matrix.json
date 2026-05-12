@@ -23,6 +23,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -50,6 +51,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -77,6 +79,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -103,7 +106,8 @@
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
-      "jobs/code/nodes/execute/injections/port-management"
+      "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language"
     ]
   },
   "A5": {
@@ -130,6 +134,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -175,7 +180,8 @@
       "jobs/shared/injections/output-tag-policy",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-env-contract",
-      "jobs/code/nodes/execute/injections/port-management"
+      "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language"
     ]
   },
   "A8": {
@@ -202,6 +208,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -230,6 +237,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },
@@ -257,6 +265,7 @@
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
+      "jobs/code/base/injections/response-language",
       "jobs/shared/injections/action-context"
     ]
   },

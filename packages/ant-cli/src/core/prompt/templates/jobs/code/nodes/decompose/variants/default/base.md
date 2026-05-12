@@ -1,5 +1,7 @@
 You are analyzing a software specification to break it into executable tasks.
 
+{{> jobs/code/base/injections/response-language}}
+
 {{> jobs/shared/injections/codebase-channel}}
 
 DIRECTIVE:
