@@ -51,10 +51,16 @@ describe('I1 — selectIsAuthBlocked SSOT', () => {
     expect(src).toMatch(/export\s+function\s+selectIsAuthBlocked/);
   });
 
-  it('selector blocks when launchMode is cloud and userEmail is missing', () => {
+  it('selector blocks when serverMode is cloud (or unresolved) and userEmail is missing', () => {
     const src = readFileSync(SELECTOR_PATH, 'utf-8');
-    expect(src).toMatch(/state\.launchMode\s*!==\s*['"]cloud['"]/);
+    // Mode is derived from the BE-driven `serverMode` channel, not the
+    // legacy FE-controlled `launchMode`. Local short-circuits to `false`;
+    // anything else (cloud or unresolved) falls through to the !userEmail
+    // / authStatus checks.
+    expect(src).toMatch(/mode\s*===\s*['"]local['"]/);
     expect(src).toMatch(/!state\.userEmail/);
+    // Ensure no stray launchMode reference creeps back into the selector.
+    expect(src).not.toMatch(/state\.launchMode/);
   });
 
   it('selector blocks while authStatus === "verifying"', () => {
@@ -127,15 +133,15 @@ describe('I3 — authStatus state machine wiring', () => {
     );
   });
 
-  it('App.tsx sets authStatus to "verifying" before fetchAuthMe resolves', () => {
+  it('App.tsx sets authStatus to "verifying" before fetchAuthMeDetailed resolves', () => {
     const app = readFileSync(
       path.join(SRC_ROOT, 'presentation', 'App.tsx'),
       'utf-8',
     );
     // At least one `setAuthStatus('verifying')` must precede the
-    // `fetchAuthMe()` call inside the cloud-mode bootstrap branch.
+    // `fetchAuthMeDetailed()` call inside the cloud-mode bootstrap branch.
     expect(app).toMatch(/setAuthStatus\(['"]verifying['"]\)/);
-    expect(app).toMatch(/fetchAuthMe\(\)/);
+    expect(app).toMatch(/fetchAuthMeDetailed\(\)/);
   });
 
   it('App.tsx boot gate spinner covers the verifying window', () => {

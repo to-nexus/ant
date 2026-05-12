@@ -62,8 +62,10 @@ Each process owns a single responsibility:
   server with its own port and proxy entry. Lifecycle is reference-counted
   via Redis pub/sub.
 
-In local mode, all four run on your laptop with `pnpm dev:local:all`. In
-cloud mode, each ships as a separate Kubernetes Deployment.
+All four run on your laptop with `pnpm dev:all` (the `:cloud`
+prefix names the topology, not the deployment target — `.env`'s
+`ANT_SERVER_MODE=local` activates the local-tenant auth path). In
+cloud production, each ships as a separate Kubernetes Deployment.
 
 ## What flows where
 

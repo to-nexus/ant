@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 
 /**
- * GNB user surface for `launchMode === 'local'`.
+ * GNB user surface for `serverMode === 'local'`.
  *
  * Replaces the Sign In/Up + User dropdown that the cloud surface shows.
- * Local launches have no remote identity — we simply expose Account
+ * Local-mode backends have no remote identity — we simply expose Account
  * Configuration so the user can still reach LLM keys / model defaults.
  */
 export function LocalUserBadge() {
@@ -31,17 +31,17 @@ export function LocalUserBadge() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        title={t('launchMode.localUserTooltip')}
+        title={t('serverMode.localUserTooltip')}
         className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md
                    bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                    transition-colors"
       >
         <Monitor className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
         <span className="hidden md:inline text-xs font-medium text-gray-500 dark:text-gray-400">
-          {t('launchMode.localOrg')}
+          {t('serverMode.localOrg')}
         </span>
         <span className="hidden sm:inline text-xs font-semibold text-gray-900 dark:text-white">
-          {t('launchMode.localUser')}
+          {t('serverMode.localUser')}
         </span>
         <ChevronDown className="w-3 h-3 text-gray-500 dark:text-gray-400" />
       </button>

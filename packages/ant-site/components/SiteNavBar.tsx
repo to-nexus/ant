@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Globe, User, LogOut } from 'lucide-react';
+import { Menu, X, Globe, User, LogOut, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, setLanguage, type SupportedLanguage } from '@/lib/i18n';
 import { useAuthSession, getAppEntryUrl, getSignInUrl } from '@/lib/AuthSessionProvider';
@@ -13,7 +13,8 @@ import { DOCS_URL } from '@/lib/links';
 export function SiteNavBar() {
   const { t, i18n } = useTranslation('site');
   const pathname = usePathname();
-  const { user, signOut } = useAuthSession();
+  const { user, signOut, serverMode } = useAuthSession();
+  const isLocalMode = serverMode === 'local';
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -138,7 +139,16 @@ export function SiteNavBar() {
               )}
             </div>
 
-            {user ? (
+            {isLocalMode ? (
+              // Local-mode build mirrors ant-ui's LocalUserBadge — a static
+              // chip with no dropdown / sign-out. There is no remote session
+              // to manage, so the surface is informational only.
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                <Monitor className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-medium text-gray-400">Local</span>
+                <span className="text-xs font-semibold text-white">User</span>
+              </div>
+            ) : user ? (
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -243,7 +253,13 @@ export function SiteNavBar() {
                 ))}
               </div>
               <div className="space-y-2">
-                {user ? (
+                {isLocalMode ? (
+                  <div className="flex items-center justify-center gap-2 px-2 py-2 rounded-lg bg-white/5 border border-white/10">
+                    <Monitor className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-medium text-gray-400">Local</span>
+                    <span className="text-xs font-semibold text-white">User</span>
+                  </div>
+                ) : user ? (
                   <>
                     <div className="flex items-center gap-2 px-2 py-1.5">
                       {user.picture ? (

@@ -1,6 +1,6 @@
 # Self-hosting
 
-This page has been split by launch mode:
+This page has been split by server mode:
 
 - **Local self-host** (single laptop, no OAuth, Redis in Docker):
   [../local-mode/install.md](../local-mode/install.md)

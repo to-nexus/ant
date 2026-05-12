@@ -6,8 +6,7 @@ OAuth 없음, Kubernetes 없음, 매니지드 계정 없음. Docker로 Redis 하
 
 이 페이지는 **페르소나 A (OSS local-only)** — 매니지드 컨트롤 플레인
 없이 개인용/팀용으로 Ant을 self-host하는 분 대상입니다. 로컬 FE를 원격
-클라우드 BE에 붙이려면 [cloud-mode/develop.md](../cloud-mode/develop.md)
-를 참고하세요.
+클라우드 BE에 붙이려면 [develop.md](../develop.md) 를 참고하세요.
 
 ## 사전 준비
 
@@ -119,51 +118,43 @@ ANT_VISUAL_PROCESSOR_URL=http://localhost:4103
 
 ## 실행
 
-두 방법: 개발 모드 (hot reload) 또는 production-style (빌드된 산출물).
+Ant 은 모든 모드에서 **4-프로세스 토폴로지** (API + Realtime + Job +
+Preview) 로 돕니다 — 로컬과 클라우드가 동일 데이터 플레인을 공유합니다.
+스크립트 이름의 `:cloud` 는 그 토폴로지를 가리키지 배포 대상이 아닙니다.
+`.env` 의 `ANT_SERVER_MODE=local` 로 로컬 인증 우회 + Figma 데스크탑
+MCP 가 활성화됩니다.
 
-### 개발 모드 — 가장 빠른 경로
+### 개발 (hot reload)
 
 ```bash
-pnpm dev:local:all
+pnpm dev:all
 ```
 
-세 프로세스를 한 터미널에 띄웁니다: API 서버 (`cli`, `ant-api` on
-`:4100`), UI dev 서버 (`ui` on `:5173`), 마케팅 사이트 (`site`). API
-서버가 요청마다 `job-runner`를 child process로 spawn — 로컬 dev에
-별도 worker 불필요.
+`concurrently` 로 4 BE 프로세스 (`ant-api` :4100, `ant-realtime` :4101,
+`ant-job` worker, `ant-preview` :4102) + UI dev 서버 (`ui` :5173) +
+마케팅 사이트 (`site`) 를 한 터미널에 띄웁니다.
 
-SSE 스트리밍이나 preview 서버가 필요 없으면 이걸로 end-to-end OK.
-SSE (채팅 / 워크플로 / 칸반 업데이트)와 피처별 preview 서버는 별도
-프로세스 (`ant-realtime`, `ant-preview`)에 살아 있습니다. 그 기능을
-exercise 하려면 추가 터미널에서:
+개별 백엔드 프로세스를 격리해서 띄우려면 (디버깅용):
 
 ```bash
+pnpm dev:api-server         # API 만 (:4100)
 pnpm dev:realtime-server    # Realtime SSE (:4101)
-pnpm dev:preview-server     # Preview 서버 (:4102)
-pnpm dev:job-worker         # BullMQ worker — API가 Redis queue로 잡 위임 시에만 (cloud-style)
+pnpm dev:preview-server     # Preview (:4102)
+pnpm dev:job-worker         # BullMQ worker
 ```
 
-또는 4-process 전체를 한 명령으로 띄우려면 cloud 멀티플렉서를:
+실제 Anthropic 호출 없이 돌리려면 LLM mock 변종:
 
 ```bash
-ANT_SERVER_MODE=local pnpm dev:cloud:all
+pnpm dev:mock:all
 ```
 
-`dev:cloud:all`은 `dev:cloud` (= `concurrently`로 4 BE 프로세스) +
-`dev:ui` + `dev:site`. `ANT_SERVER_MODE=local`이 모드를 override해서
-local auth bypass + 4 BE 프로세스 조합. `dev:local:mock` /
-`dev:local:mock:all`도 같은 패턴 + `ANT_LLM_MOCK=true`.
-
-### Production-style
+### Production-style (빌드된 산출물)
 
 ```bash
 pnpm build               # 타입체크 + 테스트 + 빌드
-pnpm start:local:all     # API + UI + site (dev:local:all와 동일 구성)
-pnpm start:local:build:all # API + Realtime + Job + Preview + UI + site (4-process)
+pnpm start:all     # 4-프로세스 백엔드 + UI + site
 ```
-
-`start:local:all`은 API + UI + site만 (dev:local:all 매칭). 4-process
-production-style는 `start:local:build:all` (start:cloud의 local 변형).
 
 `pm2` / `systemd` 뒤에선 per-process 스크립트 (`start:api-server`,
 `start:realtime-server`, `start:job-worker`, `start:preview-server`)
@@ -183,14 +174,11 @@ depth로 확인.
 
 ## 로컬 모드 UI 모양
 
-Phase 1 (launch-mode 작업)이 머지된 뒤 GNB는:
-
-- **Local / Cloud selector**가 보임. Local이 기본 활성. Cloud 토글은
-  build-time `VITE_CLOUD_BACKEND_BASE`가 미설정이면 tooltip ("cloud
-  build origin not configured")과 함께 disabled.
-- 클라우드 모드에서 Sign In/Out이 있던 자리에 **Local Org / Local
-  User badge**. Account Configuration은 같은 dropdown에서 여전히 접근
-  가능.
+GNB에는 클라우드 모드에서 Sign In/Out이 있던 자리에 **Local Org /
+Local User 배지**가 보입니다 (Account Configuration은 같은 dropdown
+에서 접근). 이 배지 자체가 모드를 드러내는 신호 — 별도 mode 토글이나
+라벨은 없으며, BE 의 `ANT_SERVER_MODE` 가 SSOT 이고 FE 는 그대로
+미러링합니다.
 
 로컬 모드는 signup/OAuth 화면이 없습니다 — 모든 것이 고정된
 `local:local` 테넌트에 속합니다.
@@ -215,8 +203,8 @@ ANT_WORKSPACE_BASE_PATH=/Volumes/work/ant-workspaces
   env로 결정. npm 스크립트가 `PORT=4100`, `PORT=4101`, `PORT=4102`을
   하드코드 ([`packages/ant-cli/package.json`](../../../packages/ant-cli/package.json)).
   Override하려면 per-process 스크립트에 다른 `PORT` 부여:
-  `PORT=4200 pnpm dev:local`.
-- **Redis 미기동** — `dev:local:all` 전에 `pnpm dev:infra:redis`가
+  `PORT=4200 pnpm dev:api-server`.
+- **Redis 미기동** — `dev:all` 전에 `pnpm dev:infra:redis`가
   떠 있어야 합니다. **in-memory fallback 없음** — silent in-process
   queue 대신 fail-fast.
 - **클라우드 실험의 OAuth env 잔존** — 로컬 모드는 `FRONTEND_URL` /
@@ -230,7 +218,7 @@ ANT_WORKSPACE_BASE_PATH=/Volumes/work/ant-workspaces
 
 ## 다음
 
-- [Local 모드 — 개발](develop.md) — Ant 코어 기여 또는 fork 개발.
+- [개발](../develop.md) — Ant 코어 기여 또는 fork 개발.
 - [first-feature.md](../../getting-started/first-feature.md) (EN) — PRD
   → Design → Code end-to-end.
 - [Cloud 모드 — 설치](../cloud-mode/install.md) — 매니지드 (Persona B)

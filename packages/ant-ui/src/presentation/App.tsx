@@ -18,7 +18,6 @@ import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
-import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
 import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight } from 'lucide-react';
 import { Skeleton, Spinner } from '@/presentation/components/common/async';
@@ -31,9 +30,9 @@ import {
   clearOnboardingQueryFlag,
   shouldShowOnboarding,
 } from '@/application/auth/onboardingRouter';
-import { fetchAuthMeDetailed, getLaunchMode, API_BASE } from '@/infrastructure/http/api';
+import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
-import { selectIsAuthBlocked } from '@/domain/store/selectors';
+import { selectIsAuthBlocked, selectServerMode } from '@/domain/store/selectors';
 import {
   getAuthBroadcaster,
   markSessionExpired,
@@ -86,11 +85,9 @@ function App() {
     };
   }, []);
 
-  // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation
-  // on startup. The store's `authStatus` channel mirrors this effect's
-  // progression: 'verifying' while `fetchAuthMe()` is in flight, then
-  // 'verified' / 'expired' / 'idle'. `selectIsAuthBlocked` reads it so
-  // lifecycle hooks stay quiet during the verification window.
+  // ✅ Handle Google OAuth callback (always relevant regardless of BE mode —
+  // the URL param itself is the trigger; if a callback landed in a local-mode
+  // build, the BE will simply respond 'no-session' to fetchAuthMeDetailed).
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const oauthCallback = urlParams.get('auth');
@@ -101,18 +98,17 @@ function App() {
       (async () => {
         const result = await fetchAuthMeDetailed();
         if (result.kind === 'user') {
-          // Successful OAuth callback ⇒ a fresh cookie just landed; wipe any
-          // suppress-reconnect flag set by an earlier 401 cascade so SSE
-          // can come back online cleanly.
           clearSessionExpired();
-          useStore.getState().setUser(result.user.email, result.user.organization);
+          useStore.getState().setUser(
+            result.user.email,
+            result.user.organization,
+            result.user.name,
+            result.user.picture,
+          );
           useStore.getState().setOnboardingState(
             result.needsOnboarding,
             result.suggestedOrganizationName,
           );
-          // Skip the project fetch when onboarding is still pending —
-          // the requireOnboardedJwt guard would 401 every protected
-          // request and trigger the stale-session cascade.
           if (!result.needsOnboarding) {
             useStore.getState().fetchProjects();
           }
@@ -128,54 +124,67 @@ function App() {
       console.error('[Auth] OAuth error:', errorParam);
       useStore.getState().setAuthStatus('idle');
       navigate('/', { replace: true });
-    } else if (getLaunchMode() === 'cloud') {
-      // Initial authStatus is already 'verifying' for hydrated stale-user
-      // entries (see authSlice initialAuthStatus); explicitly set it again
-      // for the fresh-mount case so we don't accidentally fan out before
-      // verification.
-      useStore.getState().setAuthStatus('verifying');
-      (async () => {
-        const result = await fetchAuthMeDetailed();
-        if (result.kind === 'user') {
-          useStore.getState().setOnboardingState(
-            result.needsOnboarding,
-            result.suggestedOrganizationName,
-          );
-          if (!useStore.getState().userEmail) {
-            useStore.getState().setUser(result.user.email, result.user.organization);
-            if (!result.needsOnboarding) {
-              useStore.getState().fetchProjects();
-            }
-            console.log('[Auth] Restored session from cookie:', result.user.email);
-          } else {
-            useStore.getState().setAuthStatus('verified');
-          }
-        } else if (result.kind === 'no-session') {
-          if (useStore.getState().userEmail) {
-            console.warn('[Auth] JWT session expired, clearing stored user');
-            useStore.getState().clearUser();
-          } else {
-            useStore.getState().setAuthStatus('idle');
-          }
-        } else {
-          // Network / 503 / 4xx / shape — don't clear user (server may be
-          // temporarily down or misconfigured). Drop authStatus to 'idle'
-          // so lifecycle hooks can resume whenever the server returns; if
-          // the cookie is invalid we'll catch it on the next protected
-          // request.
-          logAuthFailure('mount', result);
-          useStore.getState().setAuthStatus('idle');
-        }
-        // Strip `?onboarding=true` from the URL — the BE OAuth callback's
-        // _pending-redirect carries that flag but it's no longer the
-        // SSOT (the /auth/me response is). Leaving it would have the URL
-        // continue advertising "needs onboarding" after the user has
-        // completed it.
-        clearOnboardingQueryFlag();
-      })();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ Cloud-mode session validation on startup. Waits for the BE-derived
+  // `serverMode` (loaded by useHealthCheck → loadSystemConfig) so we never
+  // fire `/auth/me` against a local-mode BE that doesn't issue cookies.
+  // Local mode goes straight to 'idle' — no cookie session to verify.
+  const verifyServerMode = useStore((state) => selectServerMode(state));
+  useEffect(() => {
+    if (verifyServerMode === null) return; // wait for BE config
+
+    const urlParams = new URLSearchParams(location.search);
+    if (urlParams.get('auth') === 'success' || urlParams.get('error')) return;
+
+    if (verifyServerMode === 'local') {
+      useStore.getState().setAuthStatus('idle');
+      return;
+    }
+
+    useStore.getState().setAuthStatus('verifying');
+    (async () => {
+      const result = await fetchAuthMeDetailed();
+      if (result.kind === 'user') {
+        const hadEmail = !!useStore.getState().userEmail;
+        useStore.getState().setOnboardingState(
+          result.needsOnboarding,
+          result.suggestedOrganizationName,
+        );
+        // Always re-`setUser` so `userName` / `userPicture` (not persisted in
+        // localStorage) are refreshed on every mount. The store seeds
+        // `userEmail` from localStorage but `name` / `picture` arrive only
+        // via BE round-trip, so a refresh would otherwise leave the avatar
+        // blank even with a valid session.
+        useStore.getState().setUser(
+          result.user.email,
+          result.user.organization,
+          result.user.name,
+          result.user.picture,
+        );
+        if (!hadEmail) {
+          if (!result.needsOnboarding) {
+            useStore.getState().fetchProjects();
+          }
+          console.log('[Auth] Restored session from cookie:', result.user.email);
+        }
+      } else if (result.kind === 'no-session') {
+        if (useStore.getState().userEmail) {
+          console.warn('[Auth] JWT session expired, clearing stored user');
+          useStore.getState().clearUser();
+        } else {
+          useStore.getState().setAuthStatus('idle');
+        }
+      } else {
+        logAuthFailure('mount', result);
+        useStore.getState().setAuthStatus('idle');
+      }
+      clearOnboardingQueryFlag();
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifyServerMode]);
   
   // ✅ Development: Render tracking for debugging
   const renderCountRef = useRef(0);
@@ -215,7 +224,7 @@ function App() {
   
   // ✅ Onboarding state
   const userEmail = useStore((state) => state.userEmail);
-  const launchMode = useStore((state) => state.launchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const authStatusValue = useStore((state) => state.authStatus);
   const needsOnboarding = useStore((state) => state.needsOnboarding);
   const projects = useStore((state) => state.projects);
@@ -228,7 +237,10 @@ function App() {
   const projectSetupConfig = useStore((state) => state.projectSetupConfig);
   const setProjectSetupConfig = useStore((state) => state.setProjectSetupConfig);
 
-  const shouldShowWelcome = launchMode === 'cloud' && !userEmail;
+  // Welcome screen surfaces ONLY for resolved cloud BEs with no signed-in
+  // user. While `serverMode` is null (config still loading), don't flash
+  // the welcome — keep the app in its neutral state.
+  const shouldShowWelcome = serverMode === 'cloud' && !userEmail;
   // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
   const shouldShowQuickStart = !!userEmail && projectsLoaded && !onboardingSkipped
     && (projects.length === 0 || !!quickStartProjectId);
@@ -368,14 +380,8 @@ function App() {
   // ✅ Chat SSE는 Store에서 자동 관리 (ChatPanel에서만 사용)
   // App.tsx에서는 불필요하므로 제거 → 불필요한 리렌더링 방지
 
-  // ✅ Health check (extracted to hook)
+  // ✅ Health check (extracted to hook) — also performs system config load.
   useHealthCheck();
-  
-  // ✅ Load system configuration on mount
-  const loadSystemConfig = useStore((state) => state.loadSystemConfig);
-  useEffect(() => {
-    loadSystemConfig();
-  }, [loadSystemConfig]);
 
   // ✅ Session restoration (extracted to hook)
   useSessionLoader(connectionStatus);
@@ -476,19 +482,6 @@ function App() {
 
   // ✅ File editor is now a MainPanel tab (FileEdit). No side panel toggling here.
 
-  if (location.pathname === '/local') {
-    return (
-      <ToastProvider>
-        <AlertModalProvider>
-          <>
-            <AppNavBar />
-            <LocalSetupGuide />
-          </>
-        </AlertModalProvider>
-      </ToastProvider>
-    );
-  }
-
   if (shouldShowWelcome) {
     // Cloud-mode + no signed-in user: the AppNavBar carries the Sign In
     // button (Google OIDC), so we keep it mounted and leave the body
@@ -509,7 +502,7 @@ function App() {
   // complete organization onboarding before the normal UI mounts. This
   // also covers the `?onboarding=true` post-OAuth redirect because the
   // mount-time `/auth/me` fetch has set `needsOnboarding` already.
-  if (shouldShowOnboarding({ launchMode, userEmail, needsOnboarding })) {
+  if (shouldShowOnboarding({ serverMode, userEmail, needsOnboarding })) {
     return (
       <ToastProvider>
         <AlertModalProvider>

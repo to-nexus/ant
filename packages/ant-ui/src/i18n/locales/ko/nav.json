@@ -4,14 +4,7 @@
     "logoAlt": "Ant 로고",
     "tabTitle": "Ant"
   },
-  "launchMode": {
-    "local": "로컬",
-    "cloud": "클라우드",
-    "switchToLocal": "로컬 기동으로 전환 (또는 설정 가이드 보기)",
-    "currentlyLocal": "현재 로컬 기동 모드 사용 중",
-    "switchToCloud": "클라우드 기동으로 전환",
-    "cloudBaseNotConfigured": "클라우드 백엔드 주소가 설정되지 않았습니다 (VITE_CLOUD_BACKEND_BASE)",
-    "localNotAvailableHere": "매니지드 빌드에서는 로컬 기동을 사용할 수 없습니다",
+  "serverMode": {
     "localUser": "로컬 사용자",
     "localOrg": "로컬 조직",
     "localUserTooltip": "셀프 호스팅 기동 — 외부 인증 없이 동작합니다"

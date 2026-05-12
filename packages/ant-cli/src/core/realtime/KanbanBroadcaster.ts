@@ -496,9 +496,6 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // Publish to user-specific channel
     const channel = getRealtimeBroadcastChannel(this.userContext.organizationId, this.userContext.userId);
     await this.pubRedis.publish(channel, JSON.stringify(message));
-    
-    const currentNames = currentTasks.map(t => t.name).join(', ') || 'none';
-    console.log(`[KanbanBroadcaster] ✅ Broadcast sent to ${channel} (task: ${taskId}, current: [${currentNames}], queue: ${queue.length}, completed: ${completedTasks.length})`);
   }
 
   /**

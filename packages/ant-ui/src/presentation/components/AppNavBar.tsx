@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
 import { useStore } from '@/domain/store';
-import { checkLocalBackend, OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
-import { isManagedBuild } from '@/domain/store/launchModeInit';
+import { OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
@@ -18,11 +17,14 @@ export interface AppNavBarProps {
 
 /**
  * AppNavBar - Top-level navigation bar for the authenticated App (/app/*)
+ *
+ * Server mode (local / cloud) is BE-driven (`ANT_SERVER_MODE` at startup,
+ * surfaced via `GET /system/config`). The user surface already conveys
+ * mode — `LocalUserBadge` in local, Sign In or user dropdown in cloud —
+ * so no separate mode badge is rendered.
  */
 export function AppNavBar({}: AppNavBarProps) {
   const { t } = useTranslation('nav');
-  const location = useLocation();
-  const navigate = useNavigate();
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
   const language = useStore((state) => state.language);
@@ -33,33 +35,18 @@ export function AppNavBar({}: AppNavBarProps) {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
+  const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
-  const launchMode = useStore((state) => state.launchMode);
-  const setLaunchMode = useStore((state) => state.setLaunchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
 
-  // Build-time flags consumed by the Local/Cloud toggle.
-  // - cloudBase missing → Cloud button disabled (Persona A localhost dev).
-  // - cloudBase same-origin → managed / self-host build → hide Local toggle.
-  // - cloudBase external-origin → toggle navigates (Persona B → managed).
-  const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
-  const managedBuild = isManagedBuild();
-  const isCloudExternalOrigin = (() => {
-    if (!cloudBase) return false;
-    try {
-      return new URL(cloudBase).origin !== window.location.origin;
-    } catch {
-      return false;
-    }
-  })();
-  
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
-  
+
   // Close language menu on outside click
   useEffect(() => {
     if (!showLangMenu) return;
@@ -71,56 +58,10 @@ export function AppNavBar({}: AppNavBarProps) {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showLangMenu]);
-  
+
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
-  
-  const uiSelectedMode = location.pathname === '/local' ? 'local' : launchMode;
 
-  const handleModeChange = async (mode: 'local' | 'cloud') => {
-    if (location.pathname === '/local' && mode === 'cloud') {
-      setLaunchMode('cloud');
-      navigate('/');
-
-      const fetchProjects = useStore.getState().fetchProjects;
-      fetchProjects();
-      return;
-    }
-
-    if (mode === launchMode && location.pathname !== '/local') return;
-
-    if (mode === 'local') {
-      const isAvailable = await checkLocalBackend();
-
-      if (isAvailable) {
-        setLaunchMode('local');
-
-        const fetchProjects = useStore.getState().fetchProjects;
-        fetchProjects();
-      } else {
-        navigate('/local');
-      }
-      return;
-    }
-
-    if (mode === 'cloud') {
-      // 3-way dispatch on VITE_CLOUD_BACKEND_BASE:
-      //   - missing  → button is disabled, this branch unreachable.
-      //   - external → Persona B: navigate out to the managed origin.
-      //   - same-origin → Persona C single-host: in-app state toggle.
-      if (!cloudBase) return;
-      if (isCloudExternalOrigin) {
-        window.location.href = cloudBase;
-        return;
-      }
-      setLaunchMode('cloud');
-      if (isSignedIn) {
-        const fetchProjects = useStore.getState().fetchProjects;
-        fetchProjects();
-      }
-    }
-  };
-  
   // Handle Sign In / Sign Up — always redirect to Google OIDC with returnTo=/app/
   const handleSignInClick = () => {
     window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
@@ -129,7 +70,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const handleSignUpClick = () => {
     window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
-  
+
   // Handle sign out — runs the unified 5-step logout procedure (signoutAPI
   // → clearUser cascade → broadcast → hard nav). `clearUser` cascades
   // reset + projects clear + storage cleanup as a single SSOT
@@ -144,16 +85,13 @@ export function AppNavBar({}: AppNavBarProps) {
       broadcaster: getAuthBroadcaster(),
       clearLocalState: () => clearUser(),
       showSignoutFailureToast: () => {
-        // Non-blocking surface — toast component is in ToastProvider but we
-        // don't want to introduce a runtime dep here. Console for now;
-        // toast wiring lands when the unified procedure is documented.
         console.warn(
           '[Auth] Signed out locally; the server session may persist until the cookie expires.',
         );
       },
     });
   };
-  
+
   // Handle Editor mode switch
   const handleCodeIdeViewSwitch = async () => {
     // ✅ Check if project is selected
@@ -181,52 +119,18 @@ export function AppNavBar({}: AppNavBarProps) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
             <a href="/" className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
-              <img 
+              <img
                 src={`${import.meta.env.BASE_URL}logo.png`}
-                alt={t('brand.logoAlt')} 
-                className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
+                alt={t('brand.logoAlt')}
+                className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0"
               />
               <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">Ant</h1>
             </a>
-            
-            {/* Launch Mode Selector. Managed builds hide the Local button
-                (cannot run a local backend from the user's machine). */}
-            <div className="launch-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-              {!managedBuild && (
-                <button
-                  onClick={() => handleModeChange('local')}
-                  className={`
-                    px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
-                    ${uiSelectedMode === 'local'
-                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
-                    }
-                  `}
-                  title={uiSelectedMode !== 'local' ? t('launchMode.switchToLocal') : t('launchMode.currentlyLocal')}
-                >
-                  <Monitor className="w-3.5 h-3.5" />
-                  {t('launchMode.local')}
-                </button>
-              )}
 
-              <button
-                onClick={() => handleModeChange('cloud')}
-                disabled={!cloudBase}
-                className={`
-                  px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 border
-                  ${uiSelectedMode === 'cloud'
-                    ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-white shadow-md border-purple-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
-                  }
-                  ${!cloudBase ? 'cursor-not-allowed opacity-40' : ''}
-                `}
-                title={!cloudBase ? t('launchMode.cloudBaseNotConfigured') : t('launchMode.switchToCloud')}
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                {t('launchMode.cloud')}
-              </button>
-            </div>
-            
+            {/* No separate mode badge — the user surface already conveys
+                mode: local shows LocalUserBadge ("Local User"), cloud
+                shows Sign In or the signed-in user dropdown. */}
+
             {/* View Mode Selector */}
             <div className="view-mode-selector flex items-center gap-1 ml-2 sm:ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
               {/* Agents Button */}
@@ -243,7 +147,7 @@ export function AppNavBar({}: AppNavBarProps) {
                 <Bot className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
               </button>
-              
+
               {/* Editor Button */}
               <button
                 onClick={handleCodeIdeViewSwitch}
@@ -259,7 +163,7 @@ export function AppNavBar({}: AppNavBarProps) {
                 <Code2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.code')}</span>
               </button>
-              
+
               {/* Tooltip for Editor button */}
               {editorTooltip && (
                 <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-gray-900 dark:bg-gray-700 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-50">
@@ -269,7 +173,7 @@ export function AppNavBar({}: AppNavBarProps) {
               )}
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-1.5 sm:space-x-3">
             {/* Language Selector */}
             <div className="relative" ref={langMenuRef}>
@@ -285,8 +189,8 @@ export function AppNavBar({}: AppNavBarProps) {
                 <span className="hidden sm:inline">{LANGUAGE_LABELS[language]}</span>
               </button>
               {showLangMenu && (
-                <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800 
-                              rounded-md shadow-lg border border-gray-200 dark:border-gray-700 
+                <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800
+                              rounded-md shadow-lg border border-gray-200 dark:border-gray-700
                               py-1 z-50">
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <button
@@ -296,8 +200,8 @@ export function AppNavBar({}: AppNavBarProps) {
                         setShowLangMenu(false);
                       }}
                       className={`w-full px-3 py-1.5 text-left text-sm transition-colors flex items-center justify-between
-                        ${language === lang 
-                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300' 
+                        ${language === lang
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }`}
                     >
@@ -342,21 +246,21 @@ export function AppNavBar({}: AppNavBarProps) {
                 )}
               </span>
             </button>
-            
+
             <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
-            
+
             <DesktopStatusIndicator />
-            
+
             {/* User Section. Local launch has no remote identity — the
                 LocalUserBadge surfaces Account Configuration only. */}
-            {uiSelectedMode === 'local' && (
+            {serverMode === 'local' && (
               <>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
                 <LocalUserBadge />
               </>
             )}
 
-            {uiSelectedMode === 'cloud' && (
+            {serverMode === 'cloud' && (
               <>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
 
@@ -365,19 +269,19 @@ export function AppNavBar({}: AppNavBarProps) {
                   <div className="flex items-center gap-1 sm:gap-2">
                     <button
                       onClick={handleSignUpClick}
-                      className="hidden sm:block px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 
+                      className="hidden sm:block px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300
                                hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
                     >
                       {t('auth.signUp')}
                     </button>
                     <button
                       onClick={handleSignInClick}
-                      className="px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white 
-                               bg-gradient-to-r from-emerald-500 to-teal-600 
-                               hover:from-emerald-600 hover:to-teal-700 
-                               dark:from-emerald-400 dark:to-teal-500 
-                               dark:hover:from-emerald-500 dark:hover:to-teal-600 
-                               rounded-md shadow-md hover:shadow-lg 
+                      className="px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white
+                               bg-gradient-to-r from-emerald-500 to-teal-600
+                               hover:from-emerald-600 hover:to-teal-700
+                               dark:from-emerald-400 dark:to-teal-500
+                               dark:hover:from-emerald-500 dark:hover:to-teal-600
+                               rounded-md shadow-md hover:shadow-lg
                                transition-all duration-200"
                     >
                       {t('auth.signIn')}
@@ -388,25 +292,37 @@ export function AppNavBar({}: AppNavBarProps) {
                   <div className="relative">
                     <button
                       onClick={() => setShowUserMenu(!showUserMenu)}
-                      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md 
-                               bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 
+                      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md
+                               bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                                transition-colors"
                     >
                       <div className="flex items-center gap-1.5">
                         <span className="hidden md:inline text-xs font-medium text-gray-500 dark:text-gray-400">
                           {userOrganization}
                         </span>
-                        <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                        {userPicture ? (
+                          <img
+                            src={userPicture}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            className="w-5 h-5 rounded-full object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                        )}
                         <span className="hidden sm:inline text-xs font-semibold text-gray-900 dark:text-white">
                           {userEmail?.split('@')[0]}
                         </span>
                       </div>
                     </button>
-                    
+
                     {/* User Menu Dropdown */}
                     {showUserMenu && (
-                      <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800 
-                                    rounded-md shadow-lg border border-gray-200 dark:border-gray-700 
+                      <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800
+                                    rounded-md shadow-lg border border-gray-200 dark:border-gray-700
                                     py-1 z-50">
                         <button
                           onClick={() => {
@@ -415,8 +331,8 @@ export function AppNavBar({}: AppNavBarProps) {
                             openMainPanelTab('accountConfig');
                             setShowUserMenu(false);
                           }}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 
-                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300
+                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2
                                    transition-colors"
                         >
                           <User className="w-4 h-4" />
@@ -425,8 +341,8 @@ export function AppNavBar({}: AppNavBarProps) {
                         <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
                         <button
                           onClick={handleSignOut}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 
-                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300
+                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2
                                    transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
@@ -447,4 +363,3 @@ export function AppNavBar({}: AppNavBarProps) {
     </header>
   );
 }
-

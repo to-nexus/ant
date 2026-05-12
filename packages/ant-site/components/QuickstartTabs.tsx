@@ -10,8 +10,8 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: 'pnpm', label: 'pnpm', command: 'git clone https://github.com/to-nexus/ant && cd ant && pnpm install && pnpm dev:infra && pnpm dev:local:all' },
-  { id: 'npm', label: 'npm', command: 'git clone https://github.com/to-nexus/ant && cd ant && npm install && npm run dev:infra && npm run dev:local:all' },
+  { id: 'pnpm', label: 'pnpm', command: 'git clone https://github.com/to-nexus/ant && cd ant && pnpm install && pnpm dev:infra && pnpm dev:all' },
+  { id: 'npm', label: 'npm', command: 'git clone https://github.com/to-nexus/ant && cd ant && npm install && npm run dev:infra && npm run dev:all' },
   { id: 'docker', label: 'docker', command: 'git clone https://github.com/to-nexus/ant && cd ant && docker compose up -d' },
 ];
 

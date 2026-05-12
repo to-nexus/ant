@@ -14,7 +14,7 @@
 
 ```bash
 pnpm dev:infra          # Redis + ChromaDB + Visual Processor (Docker)
-pnpm dev:local:all      # API (4100) + UI + Site
+pnpm dev:all      # 4-process backend + UI + Site
 ```
 
 ### 환경변수

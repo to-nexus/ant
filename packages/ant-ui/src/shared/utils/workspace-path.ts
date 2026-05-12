@@ -52,12 +52,24 @@
  * ```
  */
 
-// Import from api.ts to avoid duplication
-import { getLaunchMode } from '@/infrastructure/http/api';
+import type { ServerMode } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 
-// Re-export for consumers of this module
-export { getLaunchMode };
+/**
+ * BE-derived server mode read from the store. Returns `'local'` while
+ * `loadSystemConfig` has not yet resolved — workspace-path callers run in
+ * UI surfaces where the store is already populated by then, so the
+ * fallback only matters for very early dev hot-reload races.
+ */
+function getServerMode(): ServerMode {
+  try {
+    const resolved = selectServerMode(useStore.getState());
+    return resolved ?? 'local';
+  } catch {
+    return 'local';
+  }
+}
 
 /**
  * User Context 정보
@@ -93,7 +105,7 @@ function getUserContext(): UserContext {
  * Cloud: `workspaces/{org}/{user}`
  */
 export function getWorkspaceRootPath(): string {
-  const mode = getLaunchMode();
+  const mode = getServerMode();
   
   if (mode === 'cloud') {
     const { organization, userId } = getUserContext();
@@ -169,7 +181,7 @@ export function getCodebasePath(
   projectId: string, 
   config?: { localPath?: string }
 ): string {
-  const mode = getLaunchMode();
+  const mode = getServerMode();
   
   if (mode === 'local') {
     // Local 백엔드: 항상 config.localPath 사용
@@ -200,7 +212,7 @@ export function getDisplayPath(
   featureId: string, 
   subPath: string = 'sessions/architect/code.json'
 ): string {
-  const mode = getLaunchMode();
+  const mode = getServerMode();
   
   if (mode === 'cloud') {
     const { organization, userId } = getUserContext();

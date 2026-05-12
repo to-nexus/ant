@@ -30,7 +30,7 @@ Conventions:
 
 Recommended log shippers:
 
-- Local: `pnpm dev:local:all` already concurrent-prefixes the streams.
+- Local: `pnpm dev:all` already concurrent-prefixes the streams.
 - Cloud: ship to Loki / CloudWatch / Datadog. The structured fields
   (job id, project, feature, agent) are stable.
 

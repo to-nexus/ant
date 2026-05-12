@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 
 export function useConfigEditor(
   config: ProjectConfig,
   defaultModelId: string
 ) {
-  const launchMode = useStore((state) => state.launchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const [editedConfig, setEditedConfig] = useState<ProjectConfig>(config);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Cloud 모드일 때 repoType을 'cloud'로 강제 설정
+  // Cloud BE 에서는 repoType 을 'cloud' 로 강제. serverMode 미해석 동안은
+  // 강제 변경하지 않아 한 차례 깜빡임을 방지.
   useEffect(() => {
-    if (launchMode === 'cloud' && config.repoType !== 'cloud') {
+    if (serverMode === 'cloud' && config.repoType !== 'cloud') {
       const cloudConfig = {
         ...config,
         repoType: 'cloud' as const,
@@ -24,7 +26,7 @@ export function useConfigEditor(
       setEditedConfig(config);
     }
     setHasChanges(false);
-  }, [config, launchMode]);
+  }, [config, serverMode]);
 
   // Set default model from backend if config has empty llmModels
   useEffect(() => {
@@ -66,6 +68,6 @@ export function useConfigEditor(
     errors,
     setErrors,
     hasChanges,
-    launchMode
+    serverMode,
   };
 }

@@ -227,6 +227,8 @@ export type AuthStatus = 'idle' | 'verifying' | 'verified' | 'expired';
 export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
+  userName: string | undefined;
+  userPicture: string | undefined;
   /**
    * Cloud-mode JWT verification status. Mirrors the `systemConfigStatus`
    * pattern (idle/loading/ready/error) but with semantics that match the
@@ -264,7 +266,13 @@ export interface ConfigState {
   recursionLimit: number;
   /** AsyncStatus of `loadSystemConfig`. Unused by UI today but kept as SSOT. */
   systemConfigStatus: import('@/domain/async').AsyncStatus;
-  launchMode: 'local' | 'cloud';
+  /**
+   * BE-derived server mode (`ANT_SERVER_MODE`). SSOT lives on the BE —
+   * FE fetches it via `GET /system/config` and stores it read-only. There
+   * is no user toggle and no localStorage persistence; mode is fixed at
+   * BE startup time.
+   */
+  serverMode: import('@/domain/async').AsyncFields<import('@ant/shared').ServerMode>;
   localBackendPort: number;
 }
 
