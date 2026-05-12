@@ -130,6 +130,15 @@ export type GitWorldSlice = GitWorldState & GitWorldActions;
 const workingTreeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 const WORKING_TREE_DEBOUNCE_MS = 300;
 
+// ── Fetch sequence — module-scoped monotonic id. Each fetchGitWorldState
+//    invocation captures the value at start; a stale invocation whose
+//    `stillActive` check failed checks `fetchSeq === reqId` to detect
+//    whether a newer fetch has since started, before clearing its own
+//    `refreshing` flag. Mirrors the same module-scope pattern used by
+//    `workingTreeTimers` above (single SSOT for transient runtime state
+//    that doesn't belong in the persisted slice shape).
+let fetchSeq = 0;
+
 function keyOf(projectId: string, feature?: string): string {
   return `${projectId}:${feature ?? '_base'}`;
 }
@@ -141,6 +150,7 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
 
   fetchGitWorldState: async (projectId, opts) => {
     if (!projectId) return;
+    const reqId = ++fetchSeq;
     set((s: any) => ({ snapshot: { ...s.snapshot, refreshing: true, error: null } }));
     try {
       const { snapshot, pat } = await fetchGitState(projectId, opts);
@@ -148,7 +158,17 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
       const stillActive =
         self.selectedProject === projectId &&
         (self.selectedFeature ?? undefined) === (opts?.feature ?? undefined);
-      if (!stillActive) return;
+      if (!stillActive) {
+        // The user navigated mid-request. Clear our own refreshing flag
+        // — but only if no newer fetch has superseded us. Without this,
+        // base codebase entries (no SSE channel to recover from) get
+        // stranded with `refreshing=true` and the button sticks at
+        // "확인중" until the lifecycle effect re-fires.
+        if (fetchSeq === reqId) {
+          set((s: any) => ({ snapshot: { ...s.snapshot, refreshing: false } }));
+        }
+        return;
+      }
       set({
         snapshot: {
           data: snapshot,
@@ -196,7 +216,16 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
         set({
           operation: { status: 'succeeded', op, completedAt: Date.now() },
         });
-        // Snapshot refresh arrives via SSE gitState (cause='operationComplete').
+        // Snapshot refresh normally arrives via SSE gitState
+        // (cause='operationComplete'). The SSE channel is feature-scoped
+        // at the URL level (`/projects/:id/features/:feature/stream`),
+        // so base-codebase operations (no feature) have no delivery
+        // path — fall back to an explicit refresh for that surface only
+        // to keep the snapshot from going stale.
+        const opFeature = 'feature' in op ? op.feature : undefined;
+        if (opFeature === undefined) {
+          void get().fetchGitWorldState(projectId, { feature: undefined });
+        }
         return { success: true };
       }
       set({
