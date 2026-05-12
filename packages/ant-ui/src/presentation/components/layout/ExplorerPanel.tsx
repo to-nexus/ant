@@ -5,6 +5,7 @@ import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { useTranslation } from 'react-i18next';
 
 interface ExplorerPanelProps {
@@ -23,14 +24,14 @@ export function ExplorerPanel({
   onResizeStart,
 }: ExplorerPanelProps) {
   const { t } = useTranslation(['explorer', 'onboarding']);
-  const launchMode = useStore((state) => state.launchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const userEmail = useStore((state) => state.userEmail);
   const projects = useStore((state) => state.projects);
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
 
-  // Check authentication status
-  const isAuthenticated = launchMode === 'local' || !!userEmail;
+  // Check authentication status (serverMode unresolved → treat as cloud).
+  const isAuthenticated = serverMode === 'local' || !!userEmail;
   
   if (isCollapsed) return null;
 

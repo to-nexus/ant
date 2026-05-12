@@ -62,8 +62,10 @@ Ant은 **모듈형 모놀리스 (modular monolith)** 입니다. 단일 코드베
   (자체 포트, 자체 proxy 엔트리). 라이프사이클은 Redis pub/sub로
   reference-counted.
 
-로컬 모드에선 4개 모두 `pnpm dev:local:all` 로 노트북 위에 뜹니다.
-클라우드 모드에선 각각 별도 K8s Deployment.
+4개 모두 `pnpm dev:all` 로 노트북 위에 뜹니다 (`:cloud` 는
+토폴로지 이름이고 배포 대상이 아닙니다 — `.env` 의
+`ANT_SERVER_MODE=local` 이 로컬 테넌트 인증을 활성화). 클라우드
+프로덕션에선 각각 별도 K8s Deployment.
 
 ## 무엇이 어디로 흐르나
 

@@ -43,14 +43,17 @@ export function clearOnboardingQueryFlag(): void {
 
 /**
  * Final decision predicate. Renders OnboardingScreen iff:
- *   - launch mode is cloud (local mode has no remote identity)
+ *   - server mode is cloud (local mode has no remote identity)
  *   - the user is authenticated (`userEmail` is set), AND
  *   - the BE indicated onboarding is required.
+ *
+ * `serverMode === null` (BE config not yet loaded) returns `false` so we
+ * don't pop the onboarding modal before the BE has confirmed cloud.
  */
 export function shouldShowOnboarding(params: {
-  launchMode: 'local' | 'cloud';
+  serverMode: 'local' | 'cloud' | null;
   userEmail: string | undefined;
   needsOnboarding: boolean;
 }): boolean {
-  return params.launchMode === 'cloud' && !!params.userEmail && params.needsOnboarding;
+  return params.serverMode === 'cloud' && !!params.userEmail && params.needsOnboarding;
 }

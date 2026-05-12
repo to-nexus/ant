@@ -1,9 +1,0 @@
-# Terminal 1: Start ant-cli server
-cd packages/ant-cli
-pnpm dev:server
-# Server runs on http://localhost:3001
-
-# Terminal 2: Start ant-ui
-cd packages/ant-ui
-pnpm dev
-# App runs on http://localhost:5173

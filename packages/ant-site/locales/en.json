@@ -226,7 +226,7 @@
       "AWS credentials (Bedrock)"
     ],
     "uiTitle": "What the UI looks like in local mode",
-    "uiDesc": "The GNB shows a Local / Cloud selector and a Local Org / Local User badge where Sign In normally sits in cloud mode. There is no sign-up screen — everything belongs to a single fixed local:local tenant.",
+    "uiDesc": "The GNB shows a Local Org / Local User badge where Sign In normally sits in cloud mode. ANT_SERVER_MODE on the backend is the single source of truth — there is no mode toggle in the UI. No sign-up screen either; everything belongs to a single fixed local:local tenant.",
     "nextStepsTitle": "Full install guide",
     "nextStepsDesc": "Step-by-step prerequisites, env reference, the optional vector DB, and troubleshooting live in the repo.",
     "nextStepsCta": "Open docs/local-mode/install.md"

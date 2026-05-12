@@ -57,7 +57,7 @@ black box that occasionally writes code.
 git clone https://github.com/<org>/ant && cd ant
 pnpm install
 pnpm dev:infra            # Redis + ChromaDB via Docker
-pnpm dev:local:all        # API + Realtime + Worker + Preview + UI
+pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
 ```
 
 Open [http://localhost:5173](http://localhost:5173) and write your first

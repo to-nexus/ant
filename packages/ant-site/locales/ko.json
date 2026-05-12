@@ -226,7 +226,7 @@
       "AWS credentials (Bedrock)"
     ],
     "uiTitle": "Local mode 의 UI",
-    "uiDesc": "GNB 에 Local / Cloud 선택기와 Cloud 모드의 Sign In 자리에 표시되는 Local Org / Local User 배지가 보입니다. 가입 화면 없음 — 모두 단일 고정 local:local 테넌트에 속합니다.",
+    "uiDesc": "GNB 에 Cloud 모드의 Sign In 자리에 Local Org / Local User 배지가 보입니다. 백엔드의 ANT_SERVER_MODE 가 SSOT — UI 모드 토글은 없습니다. 가입 화면도 없음 — 모두 단일 고정 local:local 테넌트에 속합니다.",
     "nextStepsTitle": "전체 설치 가이드",
     "nextStepsDesc": "사전 요구사항, env 레퍼런스, 선택적 vector DB, 트러블슈팅까지 단계별 가이드가 repo 에 있습니다.",
     "nextStepsCta": "docs/local-mode/install.md 열기"

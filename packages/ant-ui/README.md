@@ -20,7 +20,7 @@ src/
             FeatureSection/ 피처 관리
             PreviewConfigEditor/ Preview 설정
             ConfigEditor/   프로젝트/계정 설정
-        pages/              WelcomePage, LocalSetupGuide, QuickStart
+        pages/              WelcomePage, QuickStart
         providers/          AlertModal, Toast
     application/            유스케이스 레이어
         hooks/

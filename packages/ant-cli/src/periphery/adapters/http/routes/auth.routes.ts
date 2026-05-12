@@ -11,6 +11,7 @@ import { authRateLimiter } from '../middleware/rateLimiter';
 import { resolveFrontendOrigin } from '../middleware/corsConfig';
 import { extractStartOrigin } from '../middleware/originHelper';
 import { logger } from '../../../../utils/logger';
+import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import {
   resolveOrganizationId,
   suggestOrganizationName,
@@ -463,7 +464,11 @@ export function createAuthRoutes(deps: {
    *     suggestedOrganizationName: string | null,
    *   }
    *
-   * - Local mode: fixed identity (`local@local` / org `local`).
+   * - Local mode: identity reflects `extractUserContext(req)` so the
+   *   `/auth/me` payload matches what every other route-handler sees.
+   *   When the workspace has exactly one org × one user directory the
+   *   organization/userId reflect that inference; otherwise the
+   *   response falls back to the legacy `local:local` defaults.
    * - Cloud mode: reads JWT. `needsOnboarding` is true when the JWT
    *   carries the `_pending` sentinel; `suggestedOrganizationName` is
    *   filled from `suggestOrganizationName(email)` in that case (Phase 3).
@@ -471,14 +476,13 @@ export function createAuthRoutes(deps: {
   router.get('/auth/me', (req: Request, res: Response) => {
     res.set('Cache-Control', 'private, no-store');
 
-    const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
-
-    if (!isCloudMode) {
+    if (isLocalServerMode()) {
+      const { userId, organizationId } = extractUserContext(req);
       return res.json({
         user: {
-          email: 'local@local',
-          organization: 'local',
-          userId: 'local',
+          email: `${userId}@${organizationId}`,
+          organization: organizationId,
+          userId,
           name: 'Local User',
         },
         needsOnboarding: false,

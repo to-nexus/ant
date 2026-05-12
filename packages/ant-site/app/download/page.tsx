@@ -26,7 +26,7 @@ const SOURCE_SNIPPET = `git clone https://github.com/to-nexus/ant
 cd ant
 pnpm install
 pnpm dev:infra:redis
-pnpm dev:local:all`;
+pnpm dev:all`;
 
 function detectOS(): DetectedOS {
   if (typeof navigator === 'undefined') return 'unknown';

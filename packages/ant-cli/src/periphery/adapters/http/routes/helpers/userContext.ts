@@ -4,11 +4,31 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver';
 
+/**
+ * Single sink for "is the BE running in local mode?". Reading
+ * `process.env.ANT_SERVER_MODE` directly is allowed at startup wiring,
+ * but routes / services that branch on mode should go through here so
+ * the gate semantics ("anything other than 'cloud' is local") stays in
+ * one place.
+ */
+export function isLocalServerMode(): boolean {
+  return (process.env.ANT_SERVER_MODE || 'local') !== 'cloud';
+}
+
 let inferredLocalDefault: { organizationId: string; userId: string } | null | undefined;
 
-function inferLocalDefaultTenant(): { organizationId: string; userId: string } | null {
+/**
+ * Test-only: clear the cached local-default-tenant inference so a test
+ * can rerun the filesystem probe after seeding the workspace tree. Not
+ * called by production code.
+ */
+export function __resetInferredLocalDefaultForTests(): void {
+  inferredLocalDefault = undefined;
+}
+
+export function inferLocalDefaultTenant(): { organizationId: string; userId: string } | null {
   // Only infer in local server mode; in cloud mode the client must be explicit.
-  if ((process.env.ANT_SERVER_MODE || 'local') === 'cloud') return null;
+  if (!isLocalServerMode()) return null;
 
   if (inferredLocalDefault !== undefined) return inferredLocalDefault;
 
@@ -45,7 +65,7 @@ function inferLocalDefaultTenant(): { organizationId: string; userId: string } |
 
 function inferTenantByProjectId(projectId: string): { organizationId: string; userId: string } | null {
   // Only infer in local server mode; cloud must be explicit.
-  if ((process.env.ANT_SERVER_MODE || 'local') === 'cloud') return null;
+  if (!isLocalServerMode()) return null;
   if (!projectId) return null;
 
   try {
@@ -116,8 +136,7 @@ export function extractUserContext(req: Request): UserContext {
   }
 
   // Cloud mode: JWT must be present — reject if not
-  const isCloudMode = (process.env.ANT_SERVER_MODE || 'local') === 'cloud';
-  if (isCloudMode) {
+  if (!isLocalServerMode()) {
     throw new Error('Authentication required: no valid JWT token');
   }
 

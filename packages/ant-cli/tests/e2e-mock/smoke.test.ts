@@ -1,7 +1,7 @@
 /**
  * E2E Mock Smoke Test — 서버 기본 동작 확인.
  *
- * pnpm dev:infra && pnpm dev:local:mock → pnpm test:e2e
+ * pnpm dev:infra && pnpm dev:mock → pnpm test:e2e
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -20,7 +20,7 @@ beforeAll(async () => {
   serverAvailable = await isServerRunning();
   if (!serverAvailable) {
     console.warn('⚠️  E2E mock server not running. Skipping smoke tests.');
-    console.warn('    Start with: pnpm dev:infra && pnpm dev:local:mock');
+    console.warn('    Start with: pnpm dev:infra && pnpm dev:mock');
   }
 });
 

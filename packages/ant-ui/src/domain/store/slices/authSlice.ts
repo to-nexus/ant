@@ -2,12 +2,11 @@ import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
-import { determineInitialLaunchMode } from '../launchModeInit';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
   setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
-  setUser: (email: string, organization: string) => void;
+  setUser: (email: string, organization: string, name?: string, picture?: string) => void;
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
   /**
@@ -20,17 +19,14 @@ export interface AuthActions {
 export type AuthSlice = AuthState & AuthActions;
 
 export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) => {
-  // Initial authStatus: when hydrated cloud-mode userEmail exists we still
-  // need to verify the cookie (server is the SSOT for session validity).
-  // Local mode never verifies — `'idle'` is a no-op for `selectIsAuthBlocked`.
-  // Go through the SSOT helper so authSlice and configSlice never disagree
-  // on the boot-time launch mode — the helper also runs the one-shot legacy
-  // key migration (see launchModeInit.ts), which must happen before any
-  // reader that gates on cloud-mode authStatus.
-  const hydratedLaunchMode = determineInitialLaunchMode();
+  // Initial authStatus: if a hydrated `userEmail` exists, we must verify
+  // the cookie before trusting it (server is the SSOT for session validity).
+  // BE mode is unknown at hydration time — `serverMode` is fetched after
+  // mount — but a stored `userEmail` only makes sense for cloud, so we
+  // always run the verification path when one is present. Local-mode BEs
+  // skip auth at the route level regardless of `authStatus`.
   const hydratedUserEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
-  const initialAuthStatus: AuthStatus =
-    hydratedLaunchMode === 'cloud' && hydratedUserEmail ? 'verifying' : 'idle';
+  const initialAuthStatus: AuthStatus = hydratedUserEmail ? 'verifying' : 'idle';
 
   return {
   // ==================
@@ -38,6 +34,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   // ==================
   userEmail: undefined,
   userOrganization: undefined,
+  userName: undefined,
+  userPicture: undefined,
   authStatus: initialAuthStatus,
   needsOnboarding: false,
   suggestedOrganizationName: null,
@@ -113,10 +111,18 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     }
   },
 
-  setUser: (email, organization) => {
-    set({ userEmail: email, userOrganization: organization, authStatus: 'verified' });
+  setUser: (email, organization, name, picture) => {
+    set({
+      userEmail: email,
+      userOrganization: organization,
+      userName: name,
+      userPicture: picture,
+      authStatus: 'verified',
+    });
     saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
     saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
+    // `userName` / `userPicture` are derived from the JWT and replayed on every
+    // `/auth/me`, so we intentionally skip localStorage persistence.
   },
 
   setAuthStatus: (status) => set({ authStatus: status }),
@@ -137,6 +143,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     set({
       userEmail: undefined,
       userOrganization: undefined,
+      userName: undefined,
+      userPicture: undefined,
       authStatus: 'expired',
       needsOnboarding: false,
       suggestedOrganizationName: null,

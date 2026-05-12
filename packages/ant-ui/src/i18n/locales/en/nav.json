@@ -4,14 +4,7 @@
     "logoAlt": "Ant Logo",
     "tabTitle": "Ant - Worker Ant"
   },
-  "launchMode": {
-    "local": "Local",
-    "cloud": "Cloud",
-    "switchToLocal": "Switch to local launch (or view setup guide)",
-    "currentlyLocal": "Currently running in local launch mode",
-    "switchToCloud": "Switch to cloud launch",
-    "cloudBaseNotConfigured": "Cloud build base URL not configured (VITE_CLOUD_BACKEND_BASE)",
-    "localNotAvailableHere": "Local launch is not available on managed builds",
+  "serverMode": {
     "localUser": "Local User",
     "localOrg": "Local Org",
     "localUserTooltip": "Self-hosted launch — no remote auth needed"

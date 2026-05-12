@@ -10,16 +10,11 @@ import { selectIsAuthBlocked } from '@/domain/store/selectors';
  * Server connection status is managed by SSE connections
  */
 export function useHealthCheck() {
-  const launchMode = useStore((state) => state.launchMode);
   const userEmail = useStore((state) => state.userEmail);
   const authStatus = useStore((state) => state.authStatus);
   const { pathname } = useLocation();
-  
+
   useEffect(() => {
-    if (pathname === '/local') {
-      return;
-    }
-    
     async function initialize() {
       try {
         const t0 = performance.now();
@@ -63,7 +58,7 @@ export function useHealthCheck() {
     initialize();
     // `authStatus` is in deps so cloud-mode 'verifying' → 'verified'
     // re-runs `fetchProjects` after the JWT cookie is confirmed.
-  }, [launchMode, userEmail, authStatus, pathname]);
+  }, [userEmail, authStatus, pathname]);
 }
 
 

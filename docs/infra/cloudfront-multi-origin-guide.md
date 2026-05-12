@@ -212,7 +212,7 @@ Custom Error Response는 Distribution 전체에 적용되므로 Site 경로(`/pr
 |--------|-----|--------|
 | ant-ui (Vite SPA) | `http://localhost:4200/app/` | `pnpm dev:ui` |
 | ant-site (Next.js) | `http://localhost:4300` | `pnpm dev:site` |
-| ant-cli (API) | `http://localhost:4100` | `pnpm dev:local` 또는 `pnpm dev:local:all` |
+| ant-cli (API) | `http://localhost:4100` | `pnpm dev:api-server` 또는 `pnpm dev:all` |
 
 ### 6.2 통합 프록시 (antSiteProxy)
 

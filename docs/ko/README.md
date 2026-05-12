@@ -13,19 +13,18 @@
 | 왜 spec-driven인지 알고 싶음               | **[개념 / spec-driven](concepts/spec-driven.md)**   |
 | Claude 디자인을 그대로 가져다 쓰고 싶음    | **[가이드 / Claude handoff](guides/design-input/claude-handoff.md)** |
 | 영어 원문을 보고 싶음                      | [`../README.md`](../README.md)                       |
-| Ant 자체를 수정하고 싶음 (기여자)         | [`../../AGENTS.md`](../../AGENTS.md) + [로컬 모드 / 개발](local-mode/develop.md) |
+| Ant 자체를 수정하고 싶음 (기여자)         | [`../../AGENTS.md`](../../AGENTS.md) + [개발](develop.md) |
 
 ## 한국어 미러 트리
 
 ```
 docs/ko/
 ├── README.md                                 (이 파일)
+├── develop.md                                (기여자 공통)
 ├── local-mode/
-│   ├── install.md
-│   └── develop.md
+│   └── install.md
 ├── cloud-mode/
-│   ├── install.md
-│   └── develop.md
+│   └── install.md
 ├── getting-started/
 │   └── quickstart.md                         (stub → local-mode/install.md)
 ├── concepts/

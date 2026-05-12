@@ -59,12 +59,13 @@ cloud mode.
 |-------------------------------------|--------------------------------------|
 | `pnpm dev:infra`                    | Start Redis + ChromaDB (Docker)       |
 | `pnpm dev:infra:down`               | Stop infra                           |
-| `pnpm dev:local`                    | Run ant-api only                     |
+| `pnpm dev:api-server`               | Run ant-api only                     |
 | `pnpm dev:realtime-server`          | Run ant-realtime only                |
 | `pnpm dev:job-worker`               | Run ant-job only                     |
 | `pnpm dev:preview-server`           | Run ant-preview only                 |
 | `pnpm dev:ui`                       | Run the frontend dev server          |
-| `pnpm dev:local:all`                | Run all 4 backend processes + UI     |
+| `pnpm dev:all`                | Run all 4 backend processes + UI + site |
+| `pnpm dev:mock:all`                 | Same as above with LLM mock          |
 | `pnpm build`                        | Build all packages (tests run first) |
 | `pnpm typecheck`                    | Typecheck all packages               |
 | `pnpm test:cli`                     | Run ant-cli vitest suite             |

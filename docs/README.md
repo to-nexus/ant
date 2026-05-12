@@ -41,7 +41,7 @@ docs/
   [cloud-mode/install.md](cloud-mode/install.md); the long-form EKS runbook is
   [infra/cloud-deployment-guide.md](infra/cloud-deployment-guide.md).
 - If you are **modifying Ant itself**: read [AGENTS.md](../AGENTS.md) first;
-  then [local-mode/develop.md](local-mode/develop.md) and [internals/](internals/).
+  then [develop.md](develop.md) and [internals/](internals/).
 
 ## Conventions
 
