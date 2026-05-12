@@ -9,7 +9,6 @@
   },
   "scripts": {
     "test": "vitest run",
-    "prebuild": "vitest run",
     "dev:api-server": "PORT=4100 NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
     "dev:realtime-server": "PORT=4101 NODE_ENV=development tsx src/infrastructure/realtime/start-realtime-server.ts",
     "dev:job-worker": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/infrastructure/worker/start-job-worker.ts",

@@ -142,6 +142,39 @@ jobs:
           fi
 
   # ===========================================
+  # Test gate - ant-cli vitest suite (runs before any ant-cli/ant-preview
+  # Docker build). Spawns Redis as a service container so tests that need
+  # a real client (rate limiter, state store) don't fall back to module-
+  # load throws when ANT_REDIS_URL is unset.
+  # ===========================================
+  test-ant-cli:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ant-cli-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true'
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ANT_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
+      - run: pnpm test:cli
+
+  # ===========================================
   # Dev environment - ant-ui deployment (S3 static upload)
   # ===========================================
   auto-ant-ui-dev-deploy:
@@ -179,7 +212,7 @@ jobs:
   # ant-cli 이미지: ant-api, ant-job 워커용 (언어 런타임 없는 경량 이미지)
   # ===========================================
   auto-ant-cli-dev-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -195,7 +228,7 @@ jobs:
   # ant-preview 이미지: preview 워커 전용 (멀티 언어 런타임 포함)
   # ===========================================
   auto-ant-preview-dev-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -294,7 +327,7 @@ jobs:
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-dev-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -306,7 +339,7 @@ jobs:
     secrets: inherit
 
   auto-all-ant-preview-dev-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -372,7 +405,7 @@ jobs:
   # Stage branch - ant-cli deployment
   # ===========================================
   auto-ant-cli-stage-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -419,7 +452,7 @@ jobs:
   # Stage branch - ant-preview deployment
   # ===========================================
   auto-ant-preview-stage-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -485,7 +518,7 @@ jobs:
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-stage-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -497,7 +530,7 @@ jobs:
     secrets: inherit
 
   auto-all-ant-preview-stage-deploy:
-    needs: detect-changes
+    needs: [detect-changes, test-ant-cli]
     if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
