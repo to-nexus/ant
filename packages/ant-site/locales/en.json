@@ -39,10 +39,6 @@
     "desc": "Multi-agent code generation, design, and planning. Self-host on your laptop or use the managed cloud — same architecture, same experience.",
     "ctaQuickstart": "Quickstart",
     "ctaDocs": "Read the docs",
-    "stats": {
-      "stars": "GitHub stars",
-      "contributors": "Contributors"
-    },
     "quickstart": {
       "title": "Get started in 60 seconds",
       "desc": "Clone, install dependencies, spin up Redis + ChromaDB, and start the local server."
