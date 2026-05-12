@@ -104,10 +104,10 @@ files already retrieved in this conversation.
 
 ## Commit Pressure — when to seal `<plan>`
 
-The plan↔tool loop has a hard ceiling (`PLAN_TOOL_LOOP_MAX = 15`
-rounds). Reaching that ceiling triggers `finalizeFromExploration` which
-forces `<plan>` synthesis under an `origin: 'over-limit'` tag — a
-**failure signal**, not a normal path. Seal early to stay out of it.
+The plan↔tool loop runs until you emit `<plan>` (bounded only by the
+graph-level `recursionLimit`, not by a per-loop round count). Long
+exploration burns tokens and runs you into that limit — seal as soon
+as the decision is well-supported.
 
 **Constraint**: As soon as you can name **two distinct candidate
 solutions** with observable pros / cons, emit `<plan>`. You do NOT

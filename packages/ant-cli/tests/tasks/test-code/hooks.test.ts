@@ -88,10 +88,6 @@ describe('tasks/_shared/registry — test-code entry', () => {
     // batch-split sub-tasks to prevent lockfile races.
     expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
     expect(hooks?.plan?.toolLoopLogTemplate).toBe('jobs/code/nodes/plan/variants/test-code/base');
-    // finalizeNudge restates the Format-B decision rule under finalize
-    // pressure (sage-blessing-pixel regression: LLM defaulted to Format A
-    // when the plan↔tool loop hit PLAN_TOOL_LOOP_MAX).
-    expect(hooks?.plan?.finalizeNudge).toBe(planHook.finalizeNudge);
     expect(hooks?.command?.guard).toBe(commandHook.guard);
   });
 
@@ -289,43 +285,6 @@ describe('tasks/test-code/hooks/command.guard', () => {
       const parent = commandHook.guard(parentCtx(), { command: 'whatever', verifies });
       expect(parent?.content).toMatch(/\[Policy\]/);
     }
-  });
-});
-
-describe('tasks/test-code/hooks/plan.finalizeNudge', () => {
-  // Restored per-type finalize nudge (a71234c2 had collapsed all task types
-  // onto the task-type-blind FINALIZE_NUDGE; sage-blessing-pixel showed
-  // that the test-code parent then defaults to Format A under finalize
-  // pressure even when multiple disjoint module groupings were observed,
-  // collapsing the parallel sub-task fan-out).
-  it('reinforces the Format-B decision rule', () => {
-    const body = planHook.finalizeNudge();
-    // MUST tell the LLM that disjoint groupings → Format B is required.
-    expect(body).toMatch(/Format B/);
-    expect(body).toMatch(/disjoint/i);
-    expect(body).toMatch(/MUST/);
-    // MUST also keep the stop-tools instruction so the LLM does not loop.
-    expect(body).toMatch(/Stop calling tools|Do NOT call|Stop reading/i);
-    // Must produce a `<plan>` block (single-output requirement).
-    expect(body).toMatch(/<plan>/);
-  });
-
-  it('names the failure mode as a blind-spot reminder (FPOP "Reminders for Blind Spots")', () => {
-    const body = planHook.finalizeNudge();
-    expect(body).toMatch(/Blind spot/i);
-    // Specifically calls out "defaulting to Format A under pressure".
-    expect(body).toMatch(/Format A/);
-  });
-
-  it('stays platform-/framework-/language-agnostic (FPOP + ant-prompt rule 3)', () => {
-    const body = planHook.finalizeNudge();
-    // Project-specific examples from the regression must not leak in.
-    expect(body).not.toMatch(/\b(domain|infrastructure|application|features?)\/\w/);
-    // Framework / language names from AGENTS.md §3 forbidden list.
-    expect(body).not.toMatch(/\b(React|Next\.?js|Tailwind|TypeScript|JavaScript|Python|Go|Java)\b/);
-    // No hard file-count thresholds either — the prompt template owns
-    // those, the nudge only restates the decision principle.
-    expect(body).not.toMatch(/\b(8|9|15)\s*(test\s*)?files?\b/);
   });
 });
 

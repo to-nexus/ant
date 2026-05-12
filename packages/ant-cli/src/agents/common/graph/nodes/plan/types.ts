@@ -67,8 +67,8 @@ export type PlanRoundResult =
  * Outcome of `runPlanToolLoopPhase` — caller decides how to update its
  * state shape based on the kind.
  *
- * - `planText` — finalize succeeded (either via the in-loop round or the
- *   over-limit synthesis). Caller persists planText and routes onward.
+ * - `planText` — the in-loop round produced a `<plan>` block. Caller
+ *   persists planText and routes onward.
  * - `toolCalls` — same as `PlanRoundResult.toolCalls`; caller short-circuits
  *   to tool node.
  * - `fallthrough` — neither plan text nor tool calls produced. Caller falls
@@ -76,9 +76,9 @@ export type PlanRoundResult =
  *   which has no single-shot path).
  */
 export type PlanLoopOutcome =
-  | { kind: 'planText'; planText: string; origin: 'tool-loop' | 'over-limit' }
+  | { kind: 'planText'; planText: string }
   | { kind: 'toolCalls'; llmResponse: PlanLLMResponse; assistantMessage: ConversationMessage }
-  | { kind: 'fallthrough'; reason: 'over-limit-failed' | 'no-output' };
+  | { kind: 'fallthrough'; reason: 'no-output' };
 
 /**
  * Arguments accepted by `runPlanWithTools`. The helper is intentionally

@@ -14,7 +14,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | 태스크 타입 | setup, feature, testgen, error, verification | doc |
 | 출력물 | 소스 코드 파일 | 설계 문서 (MD, JSON) |
 | 고유 속성 | - | workType, documentType |
-| 공유 헬퍼 | `agents/common/graph/nodes/plan/` 의 `runPlanWithTools` / `runPlanToolLoopPhase` / `extractPlanText` / `PLAN_TOOL_LOOP_MAX` 를 두 job 모두 사용. 노드 본체는 각자 별도 구현 (구조 차이가 큼 — adapter/strategy 인터페이스는 만들지 않음) | 동일 |
+| 공유 헬퍼 | `agents/common/graph/nodes/plan/` 의 `runPlanWithTools` / `runPlanToolLoopPhase` / `extractPlanText` 를 두 job 모두 사용. 노드 본체는 각자 별도 구현 (구조 차이가 큼 — adapter/strategy 인터페이스는 만들지 않음) | 동일 |
 
 ## workType
 
@@ -112,9 +112,9 @@ intentGroup 분기로 두 동작을 가진다:
 - **`design-spec` / `design-system-design`**: LLM+tools 의 lean plan↔tool 루프를 실행해 `<plan>{...}</plan>` JSON 을 생성한다. plan 결과는 `state.planText` 로 sealed 되어 docGen 의 `runtimeContext` 상단 (`# Sealed Plan (from plan node)`) 에 주입된다. 도구 셋은 read-only 의 `TOOL_SETS.designPlanExplore` (Figma 활성화 시 `designPlanFigma`) — file-write / download_asset 은 노출하지 않는다 (작성·다운로드는 docGen 의 책임).
 - **`design-ui` / `design-game-art`**: 기존 dispatcher-only 동작 유지. taskQueue 에서 pop, currentTask 설정, kanban / workflow / task_start 로그만 처리하고 즉시 docGen 으로 라우팅한다. 향후 `variants/{ui-design,game-art-design}/` 프롬프트가 추가되면 진입 가드만 풀고 LLM+tools 흐름에 합류 가능.
 
-re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 plan↔tool 루프 한 라운드를 실행한다. 라운드 ceiling 은 공유 상수 `PLAN_TOOL_LOOP_MAX = 15`; 초과 시 `finalizeFromExploration` 으로 가드 합성된 `<plan>` 을 강제로 받아낸다.
+re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 plan↔tool 루프 한 라운드를 실행한다. plan↔tool 루프 자체에는 라운드 상한이 없다 — 폭주는 LangGraph `recursionLimit` 가 잡는다.
 
-공유 헬퍼 (`agents/common/graph/nodes/plan/`) 를 사용한다. code 와 동일한 stream / `<plan>` 추출 / over-limit 합성 로직을 함수형 utilities 로만 공유 — adapter/strategy 인터페이스는 의도적으로 두지 않음 (구조 차이가 큼; 자세한 정책은 해당 디렉토리 README 와 [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
+공유 헬퍼 (`agents/common/graph/nodes/plan/`) 를 사용한다. code 와 동일한 stream / `<plan>` 추출 로직을 함수형 utilities 로만 공유 — adapter/strategy 인터페이스는 의도적으로 두지 않음 (구조 차이가 큼; 자세한 정책은 해당 디렉토리 README 와 [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
 
 ### docGen
 
@@ -191,8 +191,8 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 
 | `phase` | 발생 조건 | `details` 주요 필드 |
 |---|---|---|
-| `design-plan-sealed` | `intentGroup ∈ {design-spec, design-system-design}` 에서 `<plan>` 추출 성공 | `taskId`, `intentGroup`, `origin` (`tool-loop` / `over-limit`), `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
-| `design-plan-fallthrough` | plan 루프가 ceiling 도달 + `finalizeFromExploration` 도 빈 응답 → docGen 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
+| `design-plan-sealed` | `intentGroup ∈ {design-spec, design-system-design}` 에서 `<plan>` 추출 성공 | `taskId`, `intentGroup`, `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
+| `design-plan-fallthrough` | plan 루프 round 가 `<plan>` 도 tool call 도 emit 하지 않은 경우 → docGen 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
 | `design-plan-dispatch-only` | `intentGroup ∈ {design-ui, design-game-art}` 에서 plan-LLM 건너뜀 (`dispatchOnly` 경로) | `taskId`, `intentGroup`, `reason: 'intent-group-not-plan-llm-enabled'` |
 
 ### 진단 워크플로우

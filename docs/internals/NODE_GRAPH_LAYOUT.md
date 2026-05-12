@@ -31,7 +31,7 @@
 
 > **축 외 SSOT**: cross-agent Tier 전략 (`Breadcrumb / Boundary / Collapse / Compact` — operation-per-strategy + Tier facade) 은 `packages/ant-cli/src/core/executionTier/` 에 둔다. agent graph 의 8축은 아니지만 phase 노드는 `getExecutionTier(state)` 를 경유해 접근한다 (R1 + D11). 매트릭스는 [18-session-redesign.md §5.1.1](./18-session-redesign.md).
 >
-> **축 외 함수형 헬퍼 — `common/graph/nodes/plan/`**: code 와 design 두 job 의 plan 노드가 공유하는 LLM+tools 1라운드 stream 헬퍼 (`runPlanWithTools`), plan↔tool 루프 재진입 헬퍼 (`runPlanToolLoopPhase`), `<plan>` 추출 (`extractPlanText`), 상수 `PLAN_TOOL_LOOP_MAX` 가 둠. **함수형 utilities 만 export 한다 — `PlanStrategy` 인터페이스나 `createPlanNode(strategy)` factory 는 의도적으로 만들지 않음** (code: 5단계 entry/shortcut/RAG/llm/outcome, design: lean per-doc — 두 구조가 너무 달라 abstraction layer 가 양쪽에 어색해진다). 형제 디렉토리 `triage/`, `detect/`, `resolve/` 와 달리 reusable phase node factory 가 아님은 디렉토리 README 에 명시한다.
+> **축 외 함수형 헬퍼 — `common/graph/nodes/plan/`**: code 와 design 두 job 의 plan 노드가 공유하는 LLM+tools 1라운드 stream 헬퍼 (`runPlanWithTools`), plan↔tool 루프 재진입 헬퍼 (`runPlanToolLoopPhase`), `<plan>` 추출 (`extractPlanText`) 을 둠. **함수형 utilities 만 export 한다 — `PlanStrategy` 인터페이스나 `createPlanNode(strategy)` factory 는 의도적으로 만들지 않음** (code: 5단계 entry/shortcut/RAG/llm/outcome, design: lean per-doc — 두 구조가 너무 달라 abstraction layer 가 양쪽에 어색해진다). 형제 디렉토리 `triage/`, `detect/`, `resolve/` 와 달리 reusable phase node factory 가 아님은 디렉토리 README 에 명시한다. plan↔tool 루프에는 라운드 상한이 없다 — runaway 는 LangGraph `recursionLimit` 가 잡는다.
 
 ### 2.1 `tasks/{taskType}/` 내부 표준 구조
 

@@ -28,7 +28,7 @@ import { computeBudgetFromPlanText } from './budget';
 import { dispatchBatchSplit } from './queueDispatch';
 import { tracePlanFinalize, type PlanEmptyOrigin } from './trace';
 
-export type FinalizeCallSite = 'plan-index' | 'plan-llm-overlimit' | 'plan-llm-toolloop';
+export type FinalizeCallSite = 'plan-index' | 'plan-llm-toolloop';
 
 export interface FinalizePlanOutcomeInput {
   /** Plan text produced by the plan-LLM call (or finalize-from-exploration). */
