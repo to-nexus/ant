@@ -130,7 +130,8 @@ export function generateChatStatusContent(
       if (aggCount > 0) {
         return `Reading: ${aggCount} ${aggCount === 1 ? 'file' : 'files'}...`;
       }
-      return filePath ? `Reading: ${filePath}...` : 'Reading: file...';
+      const range = metadata?.startLine ? ` (L${metadata.startLine}-L${metadata.endLine || '?'})` : '';
+      return filePath ? `Reading: ${filePath}${range}...` : 'Reading: file...';
     }
 
     case 'read': {
@@ -147,7 +148,10 @@ export function generateChatStatusContent(
       if (aggCount > 0) {
         return `Read: ${aggCount} ${aggCount === 1 ? 'file' : 'files'}`;
       }
-      return filePath ? `Read: ${filePath}` : 'Read: file';
+      const range = metadata?.startLine
+        ? ` (L${metadata.startLine}-L${metadata.endLine || '?'} of ${metadata.totalLines || '?'})`
+        : '';
+      return filePath ? `Read: ${filePath}${range}` : 'Read: file';
     }
 
     case 'reading_source': {

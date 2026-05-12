@@ -295,13 +295,13 @@ async function executeFileLearn(
               await chatAPI.addReadComplete(relativePath, readingIdx);
             } else {
               // ✅ CRITICAL: Complete reading status even when file is empty!
-              await chatAPI.addReadComplete(relativePath, readingIdx, 'File is empty');
+              await chatAPI.addReadComplete(relativePath, readingIdx, { error: 'File is empty' });
               failedFiles.push(relativePath);
             }
           } catch (readError) {
             // Might be a directory - complete the initial reading status first
             if (readingIdx !== undefined) {
-              await chatAPI.addReadComplete(relativePath, readingIdx, 'Is a directory');
+              await chatAPI.addReadComplete(relativePath, readingIdx, { error: 'Is a directory' });
             }
             
             try {
@@ -321,13 +321,13 @@ async function executeFileLearn(
                       dirFilesRead++;
                     } else {
                       // ✅ CRITICAL: Complete reading status even when file is empty!
-                      await chatAPI.addReadComplete(filePath, fileReadingIdx, 'File is empty');
+                      await chatAPI.addReadComplete(filePath, fileReadingIdx, { error: 'File is empty' });
                     }
                   } catch (fileError) {
                     console.warn(`   ⚠️  Failed to read file in directory: ${filePath}`);
                     // ✅ CRITICAL: Complete reading status even on error!
                     if (fileReadingIdx !== undefined) {
-                      await chatAPI.addReadComplete(filePath, fileReadingIdx, 'Read failed');
+                      await chatAPI.addReadComplete(filePath, fileReadingIdx, { error: 'Read failed' });
                     }
                     failedFiles.push(filePath);
                   }
