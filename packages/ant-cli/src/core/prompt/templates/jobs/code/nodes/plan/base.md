@@ -58,6 +58,8 @@ from the summary.
 
 {{> jobs/code/nodes/plan/injections/analysis-block}}
 
+{{> jobs/code/nodes/plan/injections/parent-pre-plan}}
+
 {{#if hasSystemDesign}}
 🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
 

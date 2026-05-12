@@ -24,9 +24,14 @@
  *                                    test-code parents (install test
  *                                    runner deps, decide feature-slice
  *                                    batch-split). Sub-tasks (with
- *                                    `prePlanText` set) fast-path past
- *                                    the plan phase via
- *                                    `maybePrePlannedFastPath`.
+ *                                    `prePlanText` set) enter the same
+ *                                    plan-tool-loop with the parent's
+ *                                    slice surfaced as INPUT via
+ *                                    `nodes/plan/injections/parent-pre-plan`
+ *                                    so the LLM verifies file existence
+ *                                    and export names against actual
+ *                                    sibling outputs before emitting
+ *                                    `planText`.
  *   - plan.finalizeNudge           — restates the Format-B decision rule
  *                                    when the plan↔tool loop exhausts
  *                                    `PLAN_TOOL_LOOP_MAX`. Without this
@@ -80,9 +85,11 @@ export const hooks: TaskHooks = {
     buildPrompt: planBuildPrompt,
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/test-code/base',
     finalizeNudge: planFinalizeNudge,
-    // Sub-tasks carry a fixed-scope `prePlanText` (the slice boundary is
-    // non-recoverable from a re-planning pass); bypass the plan-tool-loop.
-    acceptsPrePlanText: true,
+    // Sub-tasks receive `prePlanText` from batch-split; it is surfaced as
+    // input to the plan-tool-loop (see
+    // `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the
+    // slice boundary + sibling exports before emitting `planText`. NO
+    // identity-shortcut — drift detection is mandatory.
   },
   command: { guard: commandGuard },
 };

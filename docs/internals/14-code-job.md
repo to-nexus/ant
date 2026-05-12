@@ -169,15 +169,15 @@ Decompose 가 솔루션을 모르는 directive (Tier 2 / 3 — 디자인 ref 부
 
 | Parent type | Policy `kind` | Sub `subType` | Children plan-loop | parentReasoning |
 |---|---|---|---|---|
-| `verification` | `requeue-parent` | `error` | n/a (`prePlanText` fast-path) | n/a (diagnostics) |
-| `error` | `drop-and-replace` | `error` | n/a (`prePlanText` fast-path) | n/a (diagnostics) |
-| `test-code` | `drop-and-replace` | `test-code` | n/a (`prePlanText` fast-path) | n/a |
-| `feature` | `drop-and-replace` | `feature` | **skip** (`acceptsPrePlanText:true`) | 부모의 cross-batch decisions (이름/시그니처/계약) — 모든 batch 에 동일 복제 |
-| `ui` | `drop-and-replace` | `ui` | **maintained** (`acceptsPrePlanText:false`) | 동일 — ui 자식은 plan-tool-loop 로 정밀화 후 execute |
+| `verification` | `requeue-parent` | `error` | **skip** (`acceptsPrePlanText:true` — identity-shortcut) | n/a (diagnostics) |
+| `error` | `drop-and-replace` | `error` | **skip** (`acceptsPrePlanText:true` — identity-shortcut) | n/a (diagnostics) |
+| `test-code` | `drop-and-replace` | `test-code` | **maintained** — `prePlanText` 가 plan-tool-loop INPUT 으로 surface (`nodes/plan/injections/parent-pre-plan.md`), LLM 이 sibling export 와 대조 후 `planText` emit | n/a |
+| `feature` | `drop-and-replace` | `feature` | **maintained** — 동일 INPUT 컨트랙트. parent 가 emit 한 `parentReasoning` 의 예측 export 가 실제 sibling 산출과 어긋났는지 plan layer 가 drift 검출 | 부모의 cross-batch decisions (이름/시그니처/계약) — 모든 batch 에 동일 복제 |
+| `ui` | `drop-and-replace` | `ui` | **maintained** — 동일 INPUT 컨트랙트 | 동일 — ui 자식은 plan-tool-loop 로 정밀화 후 execute |
 
 **Tier 2 escalate**: `selfVerifyOnDone:true` 가 박힌 Tier 2 단일 task 가 plan 에서 `batches[]` 를 내면 `process.ts` 의 `isTier2EscalateCandidate` 분기가 자동 활성화돼 동일 fan-out 경로 (`drop-and-replace` + Final Verification 보충) 를 탄다. 자식들에는 `selfVerifyOnDone` 을 박지 않는다 — 게이트 책임은 새로 추가된 FV 가 가져간다.
 
-**Lineage cycle 방어**: `process.ts` 가 자식 sub-task 에 `batchSplitCount = parent + 1` 을 carry 한다. 자식이 다시 fan-out 하면 누적 카운트가 부모 lineage 에 따라 증가하므로 `MAX_BATCH_SPLIT_CYCLES` 가 grand-child 차원까지 보장된다. 특히 `acceptsPrePlanText:false` 인 ui 가족 (plan-tool-loop 유지) 에서 무한 확장을 차단하는 핵심 안전망.
+**Lineage cycle 방어**: `process.ts` 가 자식 sub-task 에 `batchSplitCount = parent + 1` 을 carry 한다. 자식이 다시 fan-out 하면 누적 카운트가 부모 lineage 에 따라 증가하므로 `MAX_BATCH_SPLIT_CYCLES` 가 grand-child 차원까지 보장된다. 특히 `error` 외 모든 자식 (plan-tool-loop 유지: feature / ui / test-code) 에서 무한 확장을 차단하는 핵심 안전망 — identity-shortcut 을 타지 않으므로 자식이 다시 `batches[]` 를 emit 할 가능성이 열려 있다.
 
 **parallelGroup 정합성**: 자식 `parallelGroup` 은 부모 group 을 base 로 상속한다 (없으면 `{type}-batch-{ts}` 새로 생성). 부모와 같은 큐의 형제 task 들과 file overlap 이 있을 수 있는 시나리오를 보수적으로 직렬화한다. 자식 batches 간 file overlap 은 `computeBatchFileOverlap` 가 별도로 검사해 overlap 있으면 그룹을 비우고 `exclusive:true` 로 강등한다.
 

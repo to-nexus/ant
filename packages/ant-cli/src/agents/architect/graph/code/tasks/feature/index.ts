@@ -144,15 +144,19 @@ import { composeBundle } from '../_shared/verify';
 // the LLM read-only visibility ahead of time, turning rejection rate
 // to zero on well-behaved plans.
 //
-// `acceptsPrePlanText:true` — children of a deep-think feature parent
-// (fan-out via `BATCH_SPLIT_POLICY['feature']`) skip plan-tool-loop and
-// apply the parent's solution directly via execute. Prevents sibling
-// signature/naming drift that re-planning would risk.
+// Children of a deep-think feature parent (fan-out via
+// `BATCH_SPLIT_POLICY['feature']`) receive `prePlanText` as plan-tool-loop
+// INPUT (rendered via `nodes/plan/injections/parent-pre-plan.md`). The LLM
+// verifies the pre-plan against actual sibling outputs (read_file /
+// list_files / RAG) before emitting `planText`, then execute consumes
+// `planText`. This replaces the prior identity-shortcut which masked
+// sibling signature drift, causing children whose pre-plan referenced
+// stale sibling exports to spin the execute toolLoop until recursion
+// limit (noble-coating-lathe tweet-detail-orchestration RCA).
 export const hooks = composeBundle({
   apply: {
     plan: {
       extraTemplateVars: planExtraTemplateVars,
-      acceptsPrePlanText: true,
     },
   },
   taskTypeSpecific: {

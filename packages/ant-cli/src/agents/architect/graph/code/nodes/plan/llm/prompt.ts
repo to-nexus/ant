@@ -165,9 +165,21 @@ export async function buildPlanPrompt(
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
 
+  // prePlanText surfacing — for batch-split sub-tasks the parent's pre-plan
+  // is rendered as plan-tool-loop INPUT (NOT the planText itself; that's
+  // the LLM's output). See
+  // `nodes/plan/injections/parent-pre-plan.md` for the FPOP-compliant
+  // guidance the LLM receives. Identity-shortcut (state.planText :=
+  // prePlanText, no LLM) is reserved for `error` task type — see
+  // `nodes/plan/shortcut/prePlanned.ts`.
+  const prePlanTextRaw = (task as CodeTask).prePlanText;
+  const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
+
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type,
+    prePlanText: hasPrePlanText ? prePlanTextRaw : '',
+    hasPrePlanText,
     documents: planDocs, hasDocuments: allDocs.length > 0,
     isSpecDriven: isSpecDriven || false,
     projectCodeContext: fmtCtx, directoryTree: codeContext?.directoryTree || '',
