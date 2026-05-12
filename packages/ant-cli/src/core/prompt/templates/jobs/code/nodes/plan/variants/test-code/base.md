@@ -1,5 +1,7 @@
 # Test Generation Plan
 
+{{> jobs/code/base/injections/response-language}}
+
 {{#if hasPrePlanText}}
 You are a **test-code batch-split sub-task**. The parent test-code task has already installed the runner and decided the slice boundaries; your job is to plan the test files for THIS slice only. The parent's pre-plan is your input — see the "Parent Sub-Task Pre-Plan" block below.
 

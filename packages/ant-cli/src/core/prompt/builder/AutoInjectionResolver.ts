@@ -199,6 +199,16 @@ export class AutoInjectionResolver {
         injections.push('jobs/design/base/injections/document-language');
       }
 
+      // Code job response-language — mirrors design's document-language.
+      // Self-gated partial (`{{#unless (eq userLanguage "en")}}`) renders
+      // nothing when the user's language is English. Carries the policy
+      // for user-facing text (task names, descriptions, plan rationale,
+      // batch labels, chat replies, code comments) vs. code identifiers
+      // (which stay English by universal coding convention).
+      if (job === 'code') {
+        injections.push('jobs/code/base/injections/response-language');
+      }
+
       // Tier D: execute-node data-presence
       if (data.hasRetryContext) injections.push('jobs/code/nodes/execute/injections/retry-context');
       if (data.hasLessons) injections.push('jobs/code/nodes/execute/injections/lessons');

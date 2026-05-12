@@ -2,6 +2,8 @@
 
 You are diagnosing build and test failures and creating a structured remediation plan.
 
+{{> jobs/code/base/injections/response-language}}
+
 {{> jobs/shared/injections/action-context}}
 
 {{> jobs/code/nodes/plan/injections/analysis-block}}

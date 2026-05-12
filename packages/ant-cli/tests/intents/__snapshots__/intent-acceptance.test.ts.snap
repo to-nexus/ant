@@ -8,6 +8,7 @@ exports[`Intent Acceptance > gen-code-directive > prompt build: injection list s
   "jobs/code/base/injections/preview-setup",
   "jobs/code/base/injections/preview-env-contract",
   "jobs/code/nodes/execute/injections/port-management",
+  "jobs/code/base/injections/response-language",
   "jobs/shared/injections/action-context",
 ]
 `;
@@ -20,6 +21,7 @@ exports[`Intent Acceptance > gen-code-spec > prompt build: injection list snapsh
   "jobs/code/base/injections/preview-setup",
   "jobs/code/base/injections/preview-env-contract",
   "jobs/code/nodes/execute/injections/port-management",
+  "jobs/code/base/injections/response-language",
   "jobs/shared/injections/action-context",
 ]
 `;
@@ -32,6 +34,7 @@ exports[`Intent Acceptance > gen-code-sys > prompt build: injection list snapsho
   "jobs/code/base/injections/preview-setup",
   "jobs/code/base/injections/preview-env-contract",
   "jobs/code/nodes/execute/injections/port-management",
+  "jobs/code/base/injections/response-language",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/ui-design-policy",
 ]
@@ -113,6 +116,7 @@ exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`
   "jobs/code/base/injections/preview-setup",
   "jobs/code/base/injections/preview-env-contract",
   "jobs/code/nodes/execute/injections/port-management",
+  "jobs/code/base/injections/response-language",
   "jobs/shared/injections/codebase-channel",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/refactor-guidance",

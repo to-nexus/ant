@@ -550,6 +550,14 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/response-language": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/secure-coding": {
     "sources": [
       "partial-ref",
