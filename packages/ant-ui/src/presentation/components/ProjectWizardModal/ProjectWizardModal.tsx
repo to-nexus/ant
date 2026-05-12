@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { useGitSnapshot, useGitPat, useGitPatDispatch, useGitDispatch } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
@@ -101,7 +102,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const setCurrentJob = useStore((s) => s.setCurrentJob);
   const fetchProjects = useStore((s) => s.fetchProjects);
   const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
-  const launchMode = useStore((s) => s.launchMode);
+  const serverMode = useStore((s) => selectServerMode(s));
   const language = useStore((s) => s.language);
 
   const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
@@ -523,7 +524,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
     featureName, directive, showDirective, sourcesFiles, assetsFiles,
-    designDocsFiles, mode, launchMode, language, gitEnabled, gitReadOnly, t,
+    designDocsFiles, mode, serverMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
     setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig, runGitOperation,
   ]);

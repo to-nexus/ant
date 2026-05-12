@@ -5,7 +5,7 @@
  * MockLLMClient가 각 노드 파서 형식에 맞는 응답을 반환해야 파이프라인이 완주된다.
  *
  * 사용법:
- *   pnpm dev:infra && pnpm dev:local:mock
+ *   pnpm dev:infra && pnpm dev:mock
  *   pnpm test:e2e
  */
 

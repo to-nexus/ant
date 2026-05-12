@@ -28,7 +28,7 @@ pnpm --filter @ant/cli scenario --list   # 메타데이터만 JSON 출력
 
 # 2. E2E mock 테스트 (서버 띄운 후)
 pnpm dev:infra               # Redis + ChromaDB
-pnpm dev:local:mock          # CLI 4개 프로세스 (local + LLM mock)
+pnpm dev:mock                # CLI 4개 프로세스 + LLM mock
 pnpm test:e2e                # 별도 터미널에서 실행
 
 # 3. 빌드 (유닛 테스트 자동 포함)

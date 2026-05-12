@@ -12,7 +12,7 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { extractUserContext } from './helpers/userContext';
+import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
@@ -99,11 +99,26 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
   /**
    * GET /api/org/members
-   * List organization members (based on workspace directory structure).
+   * List organization members.
+   *
+   * Cloud mode: enumerates the workspace directory tree under the
+   *   authenticated user's organization, so any sibling user folder
+   *   becomes a transfer recipient candidate.
+   * Local mode: returns the caller alone (`{isSelf:true}`). Local mode
+   *   has no organization concept — even if the workspace happens to
+   *   contain extra user folders (e.g. someone copied another tenant
+   *   tree in), they are NOT members and MUST NOT be eligible recipients.
    */
   router.get('/org/members', async (req: Request, res: Response) => {
     try {
       const userContext = extractUserContext(req);
+
+      if (isLocalServerMode()) {
+        return res.json({
+          members: [{ userId: userContext.userId, isSelf: true }],
+        });
+      }
+
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const orgPath = path.join(workspacesPath, orgId);
@@ -128,12 +143,16 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
   /**
    * GET /api/org/members/:userId/projects
-   * List a member's projects.
+   * List a member's projects. In local mode only the caller can be
+   * queried — other user ids are rejected (no organization concept).
    */
   router.get('/org/members/:userId/projects', async (req: Request, res: Response) => {
     try {
       const userContext = extractUserContext(req);
       const targetUserId = req.params.userId;
+      if (isLocalServerMode() && targetUserId !== userContext.userId) {
+        return res.status(404).json({ error: 'Member not found in local mode.' });
+      }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const userPath = path.join(workspacesPath, orgId, targetUserId);
@@ -161,6 +180,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const { userId: targetUserId, projectId } = req.params;
+      if (isLocalServerMode() && targetUserId !== userContext.userId) {
+        return res.status(404).json({ error: 'Member not found in local mode.' });
+      }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const featuresPath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features');
@@ -190,6 +212,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const { userId: targetUserId, projectId, featureId } = req.params;
+      if (isLocalServerMode() && targetUserId !== userContext.userId) {
+        return res.status(404).json({ error: 'Member not found in local mode.' });
+      }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const featurePath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features', featureId);

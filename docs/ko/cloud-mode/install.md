@@ -153,7 +153,7 @@ cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 #   ANT_API_URL=http://localhost:4100
 
 pnpm dev:infra:redis        # Docker Redis 기동
-pnpm build && pnpm start:cloud:all
+pnpm build && pnpm start:all
 ```
 
 TLS termination 리버스 프록시 (nginx / Caddy / Traefik) 뒤에 둡니다:
@@ -250,7 +250,7 @@ overview.
 | 매니지드 same-origin (페르소나 B) | `https://ant.crosstoken.io` | (운영) | Self-origin 자동 허용. |
 | Cloud↔Cloud same-origin (페르소나 C 단일 호스트) | `https://ant.mycompany.com` | unset | Self-origin 자동 허용. `FRONTEND_URL` 외 env 0. |
 | Cloud↔Cloud split-host | `https://app.mycompany.com` | (선택) | `FRONTEND_URL` allowlist. |
-| ⚠️ Local FE → Custom Cloud BE (dev) | (클라우드 FE 값) | `'http://localhost:5173'` | [cloud-mode/develop.md](develop.md) 참조. |
+| ⚠️ Local FE → Custom Cloud BE (dev) | (클라우드 FE 값) | `'http://localhost:5173'` | [develop.md § Local FE → 원격 클라우드 BE](../develop.md) 참조. |
 
 클라우드 모드에서 **둘 다** 미설정이면 BE가 `[CORS]` 시작 warn —
 split-host 배포가 silent fail하지 않도록. Phase 2에서 추가.
@@ -336,7 +336,7 @@ protected route는 `401 ONBOARDING_REQUIRED`로 거절. SSOT는
 
 ## 다음
 
-- [Cloud 모드 — 개발](develop.md) — localhost에서 클라우드 빌드 돌리기.
+- [개발](../develop.md) — localhost 에서 클라우드 빌드 돌리기 (cloud-auth iterate).
 - [../internals/23-cloud-ide.md](../../internals/23-cloud-ide.md) —
   Cloud IDE 내부 (orchestrator, EFS mount topology, lifecycle).
 - [../internals/02-infrastructure.md](../../internals/02-infrastructure.md) —

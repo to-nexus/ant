@@ -23,9 +23,12 @@ export interface AuthUser {
   picture?: string;
 }
 
+export type ServerMode = 'local' | 'cloud';
+
 interface AuthSessionContextValue {
   user: AuthUser | null;
   loading: boolean;
+  serverMode: ServerMode;
   signOut: () => Promise<void>;
 }
 
@@ -35,6 +38,19 @@ const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 // Empty string allows same-site relative URLs for single-origin deployments.
 const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 const API_BASE = `${RAW_API_BASE}/api`;
+
+// Mirrors ant-ui's env discipline (`VITE_CLOUD_BACKEND_BASE` empty ⇒ local-mode
+// dev, set ⇒ cloud build). On the marketing surface there is no BE round-trip
+// available in dev (no Vite-style proxy), so we treat an empty backend base as
+// the local-mode build signal and short-circuit auth — the BE will already be
+// returning `local@local` if a curious caller reaches it, so this is purely
+// FE plumbing.
+const SERVER_MODE: ServerMode = RAW_API_BASE === '' ? 'local' : 'cloud';
+
+const LOCAL_USER: AuthUser = {
+  email: 'local@local',
+  name: 'Local User',
+};
 
 function narrow(user: SharedAuthUser): AuthUser {
   return { email: user.email, name: user.name, picture: user.picture };
@@ -58,14 +74,20 @@ function stripAuthQueryParams(): void {
 }
 
 export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Local-mode build seeds the local user synchronously — no BE call, no
+  // loading state, no broadcaster — so the GNB never flashes a Sign In
+  // button on this dist.
+  const [user, setUser] = useState<AuthUser | null>(
+    SERVER_MODE === 'local' ? LOCAL_USER : null,
+  );
+  const [loading, setLoading] = useState(SERVER_MODE !== 'local');
   const broadcasterRef = useRef<AuthBroadcaster | null>(null);
 
-  // Mount-time session check — uses the same discriminated handling as
-  // ant-ui's App.tsx so server hiccups (network/503/4xx/shape) don't get
-  // collapsed to "logged out".
+  // Mount-time session check — cloud builds only. uses the same discriminated
+  // handling as ant-ui's App.tsx so server hiccups (network/503/4xx/shape)
+  // don't get collapsed to "logged out".
   useEffect(() => {
+    if (SERVER_MODE === 'local') return;
     let cancelled = false;
 
     const params = new URLSearchParams(window.location.search);
@@ -110,11 +132,12 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
     };
   }, []);
 
-  // Cross-tab broadcaster — lifecycle-bound to the provider. Other tabs that
-  // log out (or hit a 401 → session-expired) tell us; we drop local state
-  // without re-broadcasting and without navigating (the user keeps the
-  // marketing page they're on, just sees the logged-out shell).
+  // Cross-tab broadcaster — cloud builds only. Other tabs that log out (or
+  // hit a 401 → session-expired) tell us; we drop local state without
+  // re-broadcasting and without navigating (the user keeps the marketing
+  // page they're on, just sees the logged-out shell).
   useEffect(() => {
+    if (SERVER_MODE === 'local') return;
     const broadcaster = createAuthBroadcaster();
     broadcasterRef.current = broadcaster;
     const unsub = broadcaster.subscribe((message) => {
@@ -132,7 +155,9 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
   // Unified 5-step logout: API → local cleanup → broadcast → hard nav.
   // The hard nav (step 4) is the missing piece in the previous implementation
   // that allowed the cookie to remain set when the API call silently failed.
+  // Local-mode no-ops — there is no cookie to clear and no remote session.
   const signOut = useCallback(async () => {
+    if (SERVER_MODE === 'local') return;
     const broadcaster = broadcasterRef.current;
     if (!broadcaster) {
       console.warn('[Auth] signOut called before broadcaster mounted');
@@ -156,7 +181,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <AuthSessionContext.Provider value={{ user, loading, signOut }}>
+    <AuthSessionContext.Provider value={{ user, loading, serverMode: SERVER_MODE, signOut }}>
       {children}
     </AuthSessionContext.Provider>
   );

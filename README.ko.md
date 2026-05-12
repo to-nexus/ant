@@ -43,7 +43,7 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
 git clone https://github.com/<org>/ant && cd ant
 pnpm install
 pnpm dev:infra            # Redis + ChromaDB (Docker)
-pnpm dev:local:all        # API + Realtime + Worker + Preview + UI
+pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
 ```
 
 [http://localhost:5173](http://localhost:5173)을 열고 첫 디렉티브를

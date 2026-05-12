@@ -47,9 +47,9 @@ resolution.
 ## Local Setup
 
 - **Install** — [docs/local-mode/install.md](docs/local-mode/install.md)
-- **Develop conventions** — [docs/local-mode/develop.md](docs/local-mode/develop.md)
+- **Develop conventions** — [docs/develop.md](docs/develop.md)
 
-Open http://localhost:5173 after `pnpm dev:local:all`.
+Open http://localhost:5173 after `pnpm dev:all`.
 
 ## Daily Loop
 

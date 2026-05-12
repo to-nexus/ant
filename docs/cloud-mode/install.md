@@ -163,7 +163,7 @@ cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 #   ANT_API_URL=http://localhost:4100
 
 pnpm dev:infra:redis        # boot Redis in Docker
-pnpm build && pnpm start:cloud:all
+pnpm build && pnpm start:all
 ```
 
 Front Ant with a TLS-terminating reverse proxy (nginx / Caddy / Traefik):
@@ -264,7 +264,7 @@ for the five-step priority — no Origin → `*` → self-origin → `FRONTEND_U
 | Managed same-origin (Persona B) | `https://ant.crosstoken.io` | (operations) | Self-origin auto-allow. |
 | Cloud↔Cloud same-origin (Persona C single-host) | `https://ant.mycompany.com` | unset | Self-origin auto-allow. No env beyond `FRONTEND_URL`. |
 | Cloud↔Cloud split-host | `https://app.mycompany.com` | (optional) | `FRONTEND_URL` allowlist. |
-| ⚠️ Local FE → Custom Cloud BE (dev) | (cloud FE value) | `'http://localhost:5173'` | See [cloud-mode/develop.md](develop.md). |
+| ⚠️ Local FE → Custom Cloud BE (dev) | (cloud FE value) | `'http://localhost:5173'` | See [develop.md § Local FE → remote cloud BE](../develop.md). |
 
 In cloud mode with **both** `FRONTEND_URL` and `ANT_CORS_ORIGINS` unset,
 the BE emits a `[CORS]` startup warning so split-host deployments don't
@@ -362,8 +362,8 @@ but the recovery is faster with snapshots.
 
 ## Next steps
 
-- [Cloud Mode — Develop](develop.md) — running the cloud build on
-  localhost for development.
+- [Develop](../develop.md) — running the cloud build on localhost for
+  development (cloud-auth iteration).
 - [../internals/23-cloud-ide.md](../internals/23-cloud-ide.md) — Cloud
   IDE internals (orchestrator, EFS mount topology, lifecycle).
 - [../internals/02-infrastructure.md](../internals/02-infrastructure.md) —

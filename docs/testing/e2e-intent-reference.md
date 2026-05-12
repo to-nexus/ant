@@ -6,7 +6,7 @@
 
 ```bash
 pnpm dev:infra        # Redis + ChromaDB
-pnpm dev:local:all    # API + Realtime + Worker
+pnpm dev:all    # API + Realtime + Job + Preview + UI + site
 ```
 
 워크스페이스와 피처가 미리 생성되어 있어야 함.

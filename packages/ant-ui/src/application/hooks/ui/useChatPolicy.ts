@@ -5,6 +5,7 @@
  */
 
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { useTranslation } from 'react-i18next';
 
 export interface ChatPolicy {
@@ -42,11 +43,12 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const queuePosition = useStore((state) => state.queuePosition);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
-  const launchMode = useStore((state) => state.launchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const userEmail = useStore((state) => state.userEmail);
 
-  // ✅ Check authentication status
-  const isAuthenticated = launchMode === 'local' || !!userEmail;
+  // ✅ Check authentication status. Cloud (or unresolved BE mode) requires
+  // a signed-in user; local skips the gate entirely.
+  const isAuthenticated = serverMode === 'local' || !!userEmail;
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
   // Chat doesn't have a dismiss button - it only disappears after successful resume

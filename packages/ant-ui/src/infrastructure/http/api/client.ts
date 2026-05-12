@@ -1,26 +1,13 @@
 /// <reference types="vite/client" />
 
-import { determineInitialLaunchMode } from '@/domain/store/launchModeInit';
-
 const DEFAULT_LOCAL_BACKEND_PORT = 4100;
 const STORAGE_KEY_LOCAL_BACKEND_PORT = 'ant-ui:local-backend-port';
 
 /**
- * Get current launch mode. Delegates to the SSOT helper so the storage key,
- * legacy migration, origin detection, and default are resolved in one place.
- */
-export const getLaunchMode = (): 'local' | 'cloud' => {
-  try {
-    return determineInitialLaunchMode();
-  } catch (error) {
-    console.warn('[API] Error reading launch mode:', error);
-    return 'local';
-  }
-};
-
-/**
- * Get local backend port from localStorage
- * @returns port number (default: 4100)
+ * Local backend port — dev convenience only. Read from localStorage so the
+ * Account Configuration panel can override the default 4100 when a user
+ * runs `pnpm dev:api-server` on a different port. Has no effect when
+ * `VITE_CLOUD_BACKEND_BASE` is set (cloud builds reach the BE by URL).
  */
 export const getLocalBackendPort = (): number => {
   try {
@@ -36,19 +23,18 @@ export const getLocalBackendPort = (): number => {
 };
 
 /**
- * Get backend base URL based on current launch mode
- * - local mode: relative paths (Vite proxy routes to each service)
- * - cloud mode: VITE_CLOUD_BACKEND_BASE env var (empty → same-origin)
+ * Backend base URL. Build-time decision: `VITE_CLOUD_BACKEND_BASE` is the
+ * single source of truth for "where is the BE." When set, all API/Realtime
+ * traffic goes there. When unset, paths are relative (Vite proxy in dev,
+ * same-origin in single-host deploy).
+ *
+ * The BE's runtime mode (`ANT_SERVER_MODE`) is orthogonal — it's exposed
+ * via `GET /system/config` (see `configSlice.serverMode`) and only affects
+ * how the FE renders auth / mode label, not which BE it talks to.
  */
 const getBackendBase = (): string => {
-  const mode = getLaunchMode();
-
-  if (mode === 'cloud') {
-    const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
-    return cloudBase ?? '';
-  }
-
-  return '';
+  const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
+  return cloudBase ?? '';
 };
 
 /** API Server base URL (/api/*) */
@@ -77,37 +63,19 @@ export const PREVIEW_BASE = () => getPreviewBase();
 export const SERVER_BASE = () => getBackendBase();
 
 /**
- * OAuth base URL — must bypass the Vite dev proxy in local mode so the
- * Google `redirect_uri` (registered as `http://localhost:{port}/api/auth/google/callback`)
- * matches the origin that Google calls back. Cloud mode reuses the
- * standard backend base (empty = same-origin).
+ * OAuth base URL. When `VITE_CLOUD_BACKEND_BASE` is set (cloud build), the
+ * OAuth callback origin matches that base. Otherwise (local dev) the
+ * callback must hit `http://localhost:{port}` directly so the Google
+ * `redirect_uri` (registered as `http://localhost:{port}/api/auth/google/callback`)
+ * matches the origin Google calls back — bypassing the Vite dev proxy.
  */
 export const OAUTH_BASE = (): string => {
-  if (getLaunchMode() === 'local') {
-    return `http://localhost:${getLocalBackendPort()}`;
-  }
-  return getBackendBase();
+  const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE as string | undefined;
+  if (cloudBase) return cloudBase;
+  return `http://localhost:${getLocalBackendPort()}`;
 };
 
-/**
- * Check if backend server is available
- */
-export async function checkLocalBackend(): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE()}/health`, {
-      method: 'GET',
-      credentials: 'include',
-      signal: AbortSignal.timeout(3000),
-    });
-    return response.ok;
-  } catch {
-    console.warn('[API] Backend not available');
-    return false;
-  }
-}
-
 if (import.meta.env.DEV) {
-  console.log('[API] Launch mode:', getLaunchMode());
   console.log('[API] API_BASE:', API_BASE());
   console.log('[API] REALTIME_BASE:', REALTIME_BASE());
   console.log('[API] PREVIEW_BASE:', PREVIEW_BASE());

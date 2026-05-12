@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder } from 'lucide-react';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { createProject } from '@/infrastructure/http/api';
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -23,10 +24,10 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     setSelectedProject,
     fetchProjects,
     openMainPanelTab,
-    launchMode,
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
+  const serverMode = useStore((state) => selectServerMode(state));
   const projectConfigData = useStore((s) => s.projectConfig.data);
   const projectConfigMissing = useStore(selectProjectConfigMissing);
   const projectConfigReady = useStore(selectProjectConfigExists);
@@ -137,7 +138,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             </div>
           )}
 
-          {launchMode !== 'cloud' &&
+          {serverMode !== 'cloud' &&
             projectConfigReady &&
             !projectConfigData?.localPath &&
             projectConfigData?.repoType !== 'cloud' && (

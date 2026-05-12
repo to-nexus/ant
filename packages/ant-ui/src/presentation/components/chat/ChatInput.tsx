@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, ChevronDown } from 'lucide-react';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -31,7 +32,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { showError } = useAlertModalContext();
   const { t } = useTranslation('chat');
   const isRunning = useStore((state) => state.isRunning);
-  const launchMode = useStore((state) => state.launchMode);
+  const serverMode = useStore((state) => selectServerMode(state));
   const hasPendingClarify = useStore((state) => Object.keys(state.pendingClarifyAnswers).length > 0);
   const userEmail = useStore((state) => state.userEmail);
   const pendingChatInput = useStore((state) => state.pendingChatInput);
@@ -40,7 +41,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [cursorPos, setCursorPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isAuthenticated = launchMode === 'local' || !!userEmail;
+  const isAuthenticated = serverMode === 'local' || !!userEmail;
 
   const chatPolicy = useChatPolicy(messageCount);
   const { stopJob } = useJobExecution();

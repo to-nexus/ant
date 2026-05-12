@@ -50,3 +50,4 @@ export * from './session-log';
 export * from './file-resource';
 export * from './chat-status';
 export * from './chat-events';
+export * from './system-config';

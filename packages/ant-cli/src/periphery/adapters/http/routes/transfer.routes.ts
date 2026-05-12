@@ -14,7 +14,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArtifactTransferService } from '../../../../infrastructure/workspace/ArtifactTransferService';
-import { extractUserContext } from './helpers/userContext';
+import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { TRANSFER_ERROR_MESSAGES } from '../../../../core/types/transfer';
 import { RedisStateStore } from '../../../../infrastructure/state/RedisStateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
@@ -196,9 +196,20 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
   /**
    * POST /api/artifacts/transfer-request
    * Create a transfer request to another user (requires approval).
+   *
+   * Rejected in local mode — local has no organization, so cross-user
+   * transfers are by definition meaningless. Self-transfers go through
+   * `POST /api/artifacts/transfer` instead.
    */
   router.post('/artifacts/transfer-request', async (req: Request, res: Response) => {
     try {
+      if (isLocalServerMode()) {
+        return res.status(400).json({
+          error: 'LOCAL_MODE_NO_CROSS_USER',
+          message: 'Cross-user transfer is not supported in local mode.',
+        });
+      }
+
       const userContext = extractUserContext(req);
       const { recipient, source, destination } = req.body;
 

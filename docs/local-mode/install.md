@@ -7,7 +7,7 @@ Docker and the four Ant processes on your laptop.
 This page targets **Persona A (OSS local-only)**: developers and operators
 who self-host Ant for personal or team use without a managed control
 plane. If you are connecting a local frontend to a remote cloud backend,
-see [cloud-mode/develop.md](../cloud-mode/develop.md) instead.
+see [develop.md](../develop.md) instead.
 
 ## Prerequisites
 
@@ -117,59 +117,48 @@ ANT_VISUAL_PROCESSOR_URL=http://localhost:4103
 
 ## Run
 
-Two ways: dev (with hot reload) or production-style (built artifacts).
+Ant runs as a **4-process topology** (API + Realtime + Job + Preview)
+in every mode — local and cloud share the same data plane. The
+`:cloud` in the script names refers to that topology, not the
+deployment target; with `ANT_SERVER_MODE=local` in your `.env`, you
+get the local auth bypass and Figma desktop MCP.
 
-### Dev mode — quickest path
+### Dev (hot reload)
 
 ```bash
-pnpm dev:local:all
+pnpm dev:all
 ```
 
-Boots three processes in one terminal: the API server (`cli`,
-`ant-api` on `:4100`), the UI dev server (`ui` on `:5173`), and the
-marketing site (`site`). The API server spawns each `job-runner` as a
-child process on demand — no separate worker is needed for local dev.
+Boots the 4 backend processes (`ant-api` :4100, `ant-realtime` :4101,
+`ant-job` worker, `ant-preview` :4102) + UI dev server (`ui` :5173) +
+marketing site (`site`) in one terminal under `concurrently`.
 
-This is enough to use Ant end-to-end **as long as you don't need SSE
-streaming or the preview server**. SSE (chat updates / workflow
-streams / kanban) and per-feature preview servers live in dedicated
-processes (`ant-realtime`, `ant-preview`). If a feature exercises
-them, start the missing processes from extra terminals:
+To run a backend process in isolation (debugging):
 
 ```bash
+pnpm dev:api-server         # API only (:4100)
 pnpm dev:realtime-server    # Realtime SSE (:4101)
-pnpm dev:preview-server     # Preview server (:4102)
-pnpm dev:job-worker         # BullMQ worker — only needed when API delegates jobs via Redis queue (cloud-style)
+pnpm dev:preview-server     # Preview (:4102)
+pnpm dev:job-worker         # BullMQ worker
 ```
 
-Or, if you want the full 4-process layout under one command, use the
-cloud-mode multiplexer:
+To skip real Anthropic calls, use the LLM-mock variant:
 
 ```bash
-ANT_SERVER_MODE=local pnpm dev:cloud:all
+pnpm dev:mock:all
 ```
 
-`dev:cloud:all` runs `dev:cloud` (= 4 BE processes via `concurrently`)
-+ `dev:ui` + `dev:site`. With `ANT_SERVER_MODE=local` overriding the
-mode, you get the local auth bypass with all four BE processes. The
-`dev:local:mock` / `dev:local:mock:all` scripts follow the same
-pattern with `ANT_LLM_MOCK=true`.
-
-### Production-style
+### Production-style (built artifacts)
 
 ```bash
 pnpm build               # type-check, test, and build all packages
-pnpm start:local:all     # API + UI + site (mirrors dev:local:all)
-pnpm start:local:build:all # API + Realtime + Job + Preview + UI + site (full 4-process)
+pnpm start:all     # 4-process backend + UI + site
 ```
 
-`start:local:all` runs only the API + UI + site (matches `dev:local:all`).
-For a full 4-process production-style run, use `start:local:build:all`
-(an alias of `start:cloud` with the local auth bypass).
-
 Behind a process manager (`pm2`, `systemd`), invoke the per-process
-scripts (`start:api-server`, `start:realtime-server`, `start:job-worker`,
-`start:preview-server`) so each gets its own supervised slot.
+scripts (`start:api-server`, `start:realtime-server`,
+`start:job-worker`, `start:preview-server`) so each gets its own
+supervised slot.
 
 ## Health checks
 
@@ -185,14 +174,11 @@ or the BullMQ queue depth).
 
 ## What the UI looks like in local mode
 
-After Phase 1 of the launch-mode work landed, the GNB shows:
-
-- A **Local / Cloud selector**. Local is active by default; the Cloud
-  toggle is disabled with a tooltip ("cloud build origin not
-  configured") unless you set `VITE_CLOUD_BACKEND_BASE` at build time.
-- A **Local Org / Local User badge** where Sign In / Sign Out normally
-  sit in cloud mode. Account Configuration is still reachable from the
-  same dropdown.
+The GNB shows a **Local Org / Local User badge** where Sign In / Sign Out
+normally sit in cloud mode. Account Configuration is reachable from the
+same dropdown. The badge itself is the mode indicator — there is no
+separate mode toggle or label; the BE's `ANT_SERVER_MODE` (sourced from
+its `.env`) is the single source of truth and FE simply mirrors it.
 
 There is no signup / OAuth screen in local mode — everything belongs to
 a single fixed `local:local` tenant.
@@ -218,9 +204,9 @@ In local mode `<org>=local` and `<user>=local`.
   `PORT=4100`, `PORT=4101`, `PORT=4102` (see
   [`packages/ant-cli/package.json`](../../packages/ant-cli/package.json)).
   Override by running the per-process script with a different `PORT`:
-  `PORT=4200 pnpm dev:local`.
+  `PORT=4200 pnpm dev:api-server`.
 - **Redis not running** — `pnpm dev:infra:redis` must be up before
-  `dev:local:all`. There is **no in-memory fallback** — Ant fails fast
+  `dev:all`. There is **no in-memory fallback** — Ant fails fast
   rather than silently using an in-process queue.
 - **OAuth env leftover from a cloud experiment** — local mode ignores
   `FRONTEND_URL` / `GOOGLE_CLIENT_ID` / `ANT_JWT_SECRET`, but if you
@@ -233,8 +219,7 @@ In local mode `<org>=local` and `<user>=local`.
 
 ## Next steps
 
-- [Local Mode — Develop](develop.md) — contributing to Ant core, or
-  forking it.
+- [Develop](../develop.md) — contributing to Ant core, or forking it.
 - [first-feature.md](../getting-started/first-feature.md) — end-to-end
   PRD → Design → Code walkthrough.
 - [Cloud Mode — Install](../cloud-mode/install.md) — when you want a

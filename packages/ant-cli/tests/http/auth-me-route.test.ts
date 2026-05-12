@@ -209,20 +209,46 @@ describe('GET /api/auth/me — cloud mode', () => {
 
 describe('GET /api/auth/me — local mode', () => {
   let app: { url: string; close: () => Promise<void> };
+  let tmpWorkspaceRoot: string;
   const originalMode = process.env.ANT_SERVER_MODE;
+  const originalBasePath = process.env.ANT_WORKSPACE_BASE_PATH;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env.ANT_SERVER_MODE;
+    // Pin the workspace root so `inferLocalDefaultTenant` sees an
+    // isolated, empty tree by default. Individual tests can seed
+    // sub-directories under this root to exercise the 1-org × 1-user
+    // inference path.
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const pathMod = await import('node:path');
+    tmpWorkspaceRoot = await fs.mkdtemp(pathMod.join(os.tmpdir(), 'ant-auth-me-'));
+    process.env.ANT_WORKSPACE_BASE_PATH = tmpWorkspaceRoot;
+    const { __resetInferredLocalDefaultForTests } = await import(
+      '../../src/periphery/adapters/http/routes/helpers/userContext'
+    );
+    __resetInferredLocalDefaultForTests();
   });
 
   afterEach(async () => {
     if (originalMode === undefined) delete process.env.ANT_SERVER_MODE;
     else process.env.ANT_SERVER_MODE = originalMode;
+    if (originalBasePath === undefined) delete process.env.ANT_WORKSPACE_BASE_PATH;
+    else process.env.ANT_WORKSPACE_BASE_PATH = originalBasePath;
+    const { __resetInferredLocalDefaultForTests } = await import(
+      '../../src/periphery/adapters/http/routes/helpers/userContext'
+    );
+    __resetInferredLocalDefaultForTests();
     if (app) await app.close();
+    if (tmpWorkspaceRoot) {
+      const fs = await import('node:fs/promises');
+      await fs.rm(tmpWorkspaceRoot, { recursive: true, force: true });
+    }
   });
 
-  it('returns the fixed Local identity envelope when ANT_SERVER_MODE is unset', async () => {
-    // No JWT service is provided — local mode never inspects JWT.
+  it('falls back to local:local identity when the workspace tree is empty', async () => {
+    // No org / user directories exist yet — inferLocalDefaultTenant
+    // returns null and the response uses the literal `local` defaults.
     app = await startApp(undefined);
     const res = await fetch(`${app.url}/api/auth/me`);
     expect(res.status).toBe(200);
@@ -239,13 +265,36 @@ describe('GET /api/auth/me — local mode', () => {
     });
   });
 
+  it('reflects the inferred tenant when the workspace has exactly one org × one user', async () => {
+    // Seed the workspace tree so inferLocalDefaultTenant produces
+    // `to.nexus / probe` — the same identity every other route handler
+    // sees via `extractUserContext`. This is the SSOT alignment fix.
+    const fs = await import('node:fs/promises');
+    const pathMod = await import('node:path');
+    await fs.mkdir(pathMod.join(tmpWorkspaceRoot, 'to.nexus', 'probe'), {
+      recursive: true,
+    });
+
+    app = await startApp(undefined);
+    const res = await fetch(`${app.url}/api/auth/me`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.user).toEqual({
+      email: 'probe@to.nexus',
+      organization: 'to.nexus',
+      userId: 'probe',
+      name: 'Local User',
+    });
+    expect(body.needsOnboarding).toBe(false);
+  });
+
   it('returns the same Local envelope when ANT_SERVER_MODE=local explicitly', async () => {
     process.env.ANT_SERVER_MODE = 'local';
     app = await startApp(undefined);
     const res = await fetch(`${app.url}/api/auth/me`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.user).toMatchObject({ email: 'local@local', organization: 'local' });
+    expect(body.user).toMatchObject({ organization: 'local', userId: 'local' });
     expect(body.needsOnboarding).toBe(false);
   });
 

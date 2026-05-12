@@ -12,6 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { selectServerMode } from '@/domain/store/selectors/auth';
 import { UI_VISIBLE_TOP_LEVEL_DIRS, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
@@ -43,8 +44,14 @@ export function SendSubTab() {
   const selectedFeature = useStore((s) => s.selectedFeature);
   const preselected = useStore((s) => s.sendPreselectedSource);
   const clearPreselected = useStore((s) => s.clearSendPreselectedSource);
-  const sendTarget = useStore((s) => s.sendTarget);
+  const storedSendTarget = useStore((s) => s.sendTarget);
   const setSendTarget = useStore((s) => s.setSendTarget);
+  const serverMode = useStore((s) => selectServerMode(s));
+  // Local mode has no organization → cross-user transfer is impossible.
+  // Force self-target regardless of any persisted preference; the
+  // "다른 사람" toggle is hidden below.
+  const isLocalMode = serverMode === 'local';
+  const sendTarget = isLocalMode ? 'self' : storedSendTarget;
   const sentRequests = useStore((s) => s.sentRequests);
   const setSentRequests = useStore((s) => s.setSentRequests);
   const { showError } = useAlertModalContext();
@@ -384,42 +391,47 @@ export function SendSubTab() {
       <section>
         <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.destination')}</h4>
 
-        {/* Target toggle: 나 / 다른 사람(멤버 이름) */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-            <button
-              className={cn(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
-                sendTarget === 'self'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              )}
-              onClick={() => { setSendTarget('self'); }}
-            >
-              {t('send.self')}
-            </button>
-            <button
-              className={cn(
-                'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
-                sendTarget === 'other'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              )}
-              onClick={() => { setSendTarget('other'); setMode('copy'); }}
-            >
-              {t('send.others')}
-            </button>
+        {/* Target toggle — only meaningful when the BE has organization
+            members (cloud mode). Local mode has a single fixed tenant
+            and renders no toggle: every transfer is implicitly a
+            self-transfer. */}
+        {!isLocalMode && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+              <button
+                className={cn(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
+                  sendTarget === 'self'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                )}
+                onClick={() => { setSendTarget('self'); }}
+              >
+                {t('send.self')}
+              </button>
+              <button
+                className={cn(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
+                  sendTarget === 'other'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                )}
+                onClick={() => { setSendTarget('other'); setMode('copy'); }}
+              >
+                {t('send.others')}
+              </button>
+            </div>
+            {sendTarget === 'other' && (
+              <MemberPicker
+                members={otherMembers}
+                selectedUserId={targetUserId}
+                onSelect={handleMemberSelect}
+                onDismiss={handleMemberDismiss}
+                placeholder={t('send.selectMember')}
+              />
+            )}
           </div>
-          {sendTarget === 'other' && (
-            <MemberPicker
-              members={otherMembers}
-              selectedUserId={targetUserId}
-              onSelect={handleMemberSelect}
-              onDismiss={handleMemberDismiss}
-              placeholder={t('send.selectMember')}
-            />
-          )}
-        </div>
+        )}
 
         {sendTarget === 'self' ? (
           <div className="space-y-2">
