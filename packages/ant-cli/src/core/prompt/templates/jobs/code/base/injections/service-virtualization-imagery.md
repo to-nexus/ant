@@ -47,15 +47,17 @@ contextually meaningful placeholder:
 
    **Rendering constraint**: External placeholder URLs MUST bypass the
    framework's image optimizer. Use plain `<img>` (HTML element) OR the
-   framework's opt-out attribute for that component. Reason: placeholder
-   services commonly redirect to a CDN host (e.g., `picsum.photos` → 302
-   → `fastly.picsum.photos`), and optimizers validate the redirect
-   target against the framework's allowlist (e.g., a remote-host
-   allowlist in the framework config). The redirect target is rarely
-   documented and changes without notice, so optimizer routing is
-   structurally fragile for placeholder pathways.
-   Bypassing the optimizer is the contract — adding every
-   redirect-target host to `remotePatterns` is not.
+   framework's opt-out attribute for that component. Reason: an image
+   optimizer fetches the upstream URL server-side, follows redirects,
+   and decides image validity by content-sniffing the response body.
+   That pipeline has many environment-dependent failure modes —
+   intermediate proxies returning HTML for the resource, restricted
+   egress on the CDN, stale negative cache entries, third-party
+   placeholder service flakiness — all surfacing as 400 "not a valid
+   image" with no obvious cause. Adding observed failing hosts to the
+   allowlist does not address these; the failures are upstream of the
+   allowlist check. Bypassing the optimizer for placeholder URLs is
+   the contract.
 
 ### Constraints
 
