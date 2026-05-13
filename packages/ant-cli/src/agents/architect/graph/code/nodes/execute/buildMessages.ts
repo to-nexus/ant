@@ -646,7 +646,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     cleanAssistantContent: cleanFileContentFromResponse,
     budgetRecovery: {
-      aggressiveParams: { microcompactHotTail: 1, autoCompactThreshold: 20000, autoCompactHotTail: 1 },
+      aggressiveParams: { autoCompactThreshold: 20000, autoCompactHotTail: 1 },
       stubBlockIndex: 1,
       stubText: '[Project context omitted to fit token budget — use read_file and search_code tools to access codebase]',
     },

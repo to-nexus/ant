@@ -1,8 +1,8 @@
 /**
  * Context Management — shared types and helpers.
  *
- * All context-related modules (compactToolResults, compactTurns, pruneTurns,
- * compactRun, compactJob, retentionPolicy) import from this file.
+ * All context-related modules (compactTurns, pruneTurns, compactRun,
+ * compactJob, retentionPolicy) import from this file.
  */
 
 import type { MessageContentBlock } from '../ports/llm';

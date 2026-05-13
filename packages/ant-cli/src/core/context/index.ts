@@ -9,9 +9,6 @@ export { groupMessagesIntoTurns, isErrorContent } from './types';
 // Constants
 export * from './constants';
 
-// Sub-turn
-export { compactToolResults } from './compactToolResults';
-
 // Turn
 export { compactTurns } from './compactTurns';
 export { TurnPruner } from './pruneTurns';
