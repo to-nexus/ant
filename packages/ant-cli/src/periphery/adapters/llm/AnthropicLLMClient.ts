@@ -173,6 +173,7 @@ export class AnthropicLLMClient implements LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       enableThinking?: boolean;
+      stopSequences?: string[];
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
@@ -198,6 +199,7 @@ export class AnthropicLLMClient implements LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       enableThinking?: boolean;
+      stopSequences?: string[];
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
@@ -240,6 +242,13 @@ export class AnthropicLLMClient implements LLMClient {
       ? Math.max(requestedMaxTokens, thinkingBudget + 2000)
       : requestedMaxTokens;
 
+    // Caller-supplied hard-stop strings. Anthropic terminates generation
+    // (and emits `stop_reason: "stop_sequence"`) the moment any of these
+    // appears in the model's text output. Thinking blocks are unaffected.
+    const stopSequences: string[] | undefined = Array.isArray(options?.stopSequences)
+      ? options!.stopSequences as string[]
+      : undefined;
+
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: maxTokens,
@@ -258,6 +267,7 @@ export class AnthropicLLMClient implements LLMClient {
           input_schema: t.input_schema,
         })),
       } : {}),
+      ...(stopSequences && stopSequences.length > 0 ? { stop_sequences: stopSequences } : {}),
       stream: true,
     });
 

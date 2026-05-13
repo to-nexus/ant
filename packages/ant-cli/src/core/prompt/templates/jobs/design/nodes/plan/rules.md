@@ -157,8 +157,7 @@ that belong to other tasks.
 same response are ignored. The next phase (docGen) runs its own tool
 round when it needs to verify low-level details.
 
-**Constraint**: User-facing narrative for the directive (approach
-summary, key trade-off, follow-up question) goes in a `<reply>...</reply>`
-tag emitted AFTER `<plan>` is closed. The Output Tag Contract bans free
-text outside any registered tag, so do NOT write prose before `<plan>`
-or alongside it.
+**Constraint**: The Output Tag Contract bans free text outside any
+registered tag, so do NOT write prose before `<plan>` opens. Emit
+nothing after `</plan>` closes — the plan node terminates at that
+boundary and docGen consumes the sealed JSON directly.

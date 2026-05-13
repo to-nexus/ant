@@ -74,7 +74,6 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   const createStrategy = () => {
     const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, jobType, undefined);
     strategy.setPlanTaskTitle(taskName);
-    strategy.setParallelTaskName(taskName);
     return strategy;
   };
 
@@ -89,6 +88,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   let thinking = '';
   let thinkingSignature = '';
   let tokenUsage: any = undefined;
+  let capturedStopReason: string | undefined;
 
   applyEstimatedInputTokensFromMessages(state as any, messages);
 
@@ -97,6 +97,10 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     maxTokens,
     enableThinking,
     thinkingBudget: enableThinking ? thinkingBudget : undefined,
+    // Hard-stop on `</plan>` so the model cannot emit trailing narrative
+    // after sealing the JSON plan. Tool-call rounds (no `<plan>` emitted)
+    // are unaffected — the stop string never appears.
+    stopSequences: ['</plan>'],
   })) {
     if (event.type === 'retry') {
       textResponse = '';
@@ -104,6 +108,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
       thinkingSignature = '';
       toolCalls.length = 0;
       tokenUsage = undefined;
+      capturedStopReason = undefined;
       orchestrator = new StreamOrchestrator({
         parser: new XMLStreamParser(),
         renderStrategy: createStrategy(),
@@ -143,6 +148,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
       // Recovery is the caller's concern (caller falls through to a
       // fresh tool-loop today; chunked-emission recovery lives in C).
       const stopReason = (event as any).stopReason as string | undefined;
+      capturedStopReason = stopReason;
       if (stopReason === 'max_tokens' && onMaxTokensTruncation) {
         const planRound = Math.floor((messages.length - 1) / 2);
         await onMaxTokensTruncation({
@@ -150,6 +156,18 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
           round: planRound,
         });
       }
+    }
+  }
+
+  // Normalize provider differences in stop_sequence handling — Anthropic
+  // includes the matched sequence in the output; some Gemini SDK versions
+  // strip it. When `</plan>` was the hard-stop and the run ended cleanly,
+  // re-attach the close tag so `extractPlanText` matches.
+  if (textResponse.includes('<plan>') && !textResponse.includes('</plan>')) {
+    const cleanStop = capturedStopReason === 'stop_sequence' || capturedStopReason === 'end_turn';
+    if (cleanStop) {
+      console.log(`📋 [Plan] Re-attaching </plan> after clean stop (stop_reason=${capturedStopReason})`);
+      textResponse += '</plan>';
     }
   }
 

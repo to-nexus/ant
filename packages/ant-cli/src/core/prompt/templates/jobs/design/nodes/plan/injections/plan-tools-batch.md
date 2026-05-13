@@ -60,8 +60,8 @@ context is used to synthesize a plan automatically without further
 candidate comparison.
 
 ⚠️ **Blind spot**: Spending rounds rehearsing the document body in
-your reply text. The plan phase is for *deciding*, not *writing* —
-keep prose minimal and let the `<plan>` JSON carry the contract.
+free prose. The plan phase is for *deciding*, not *writing* — keep
+prose minimal and let the `<plan>` JSON carry the contract.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## Batch Execution
