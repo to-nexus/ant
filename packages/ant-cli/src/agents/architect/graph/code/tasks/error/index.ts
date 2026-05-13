@@ -22,9 +22,17 @@
  *   - execute (TaskExecuteHook)  — error-variant execute template +
  *                                  remediation plan framing
  *   - command.guard              — execute-phase build/test/typecheck
- *                                  block (Tier 3/4 default — error
- *                                  applies fixes only, diagnostics run
- *                                  in the next verification cycle).
+ *                                  block. Tier-2 self-verify tasks
+ *                                  cross into verify-mode after applying
+ *                                  fixes; the guard then short-circuits
+ *                                  on `ctx.verifyModeActive === true` so
+ *                                  the verify cycle (which IS the gate
+ *                                  cycle) can run tsc/build/test through
+ *                                  `_shared/verify/hooks/executeHook`.
+ *                                  Tier-3/4 error tasks never enter
+ *                                  verify-mode and keep the block intact
+ *                                  end-to-end (diagnostics belong to the
+ *                                  following verification task).
  *
  * Bundle-static hooks (phase-mode-blind):
  *   - decompose.isExclusive       — error tasks always head-of-queue
