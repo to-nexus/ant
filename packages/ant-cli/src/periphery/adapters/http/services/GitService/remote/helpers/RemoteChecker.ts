@@ -52,6 +52,10 @@ export class RemoteChecker {
       // error. Real failures still throw and are logged by callers.
       const octokit = new Octokit({
         auth: token,
+        // Hard ceiling on the GitHub round-trip — keeps the validation step
+        // bounded if TLS/proxy stalls, mirroring the timeout already applied
+        // to direct fetch calls in GitHubAuthService.
+        request: { timeout: 30_000 },
         log: {
           debug: () => {},
           info: () => {},

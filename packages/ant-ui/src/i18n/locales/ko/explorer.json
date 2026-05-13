@@ -85,6 +85,8 @@
     "actionFailed": "{{action}}에 실패했습니다",
     "patNotConfigured": "GitHub PAT가 설정되지 않았습니다. PAT를 등록해주세요.",
     "configurePat": "PAT 설정하기",
+    "operationInProgress": "다른 Git 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.",
+    "operationInProgressWithCountdown": "다른 Git 작업이 진행 중입니다. 약 {{seconds}}초 뒤 다시 시도해주세요.",
     "commitSuccess": "커밋 완료",
     "commitFailed": "커밋 실패",
     "pushSuccess": "Push 완료",
