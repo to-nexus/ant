@@ -242,6 +242,14 @@ export class JobCleanupManager {
                   completedTasks: sourceCompleted.map((t: any) => t.id || t),
                   completedTasksDetails: sourceCompleted,
                   currentTask: undefined,
+                  // Terminal-state invariant — no task is "running" after
+                  // finalize. Every in-flight task is now in `taskQueue` head
+                  // with `interrupted:true`. Clearing this prevents
+                  // KanbanService.buildSessionKanbanData from rendering a
+                  // stale pre-interrupt running task in `inProgress` when the
+                  // worker's handleInterruption checkpoint lost the race to
+                  // this terminal write (ultra-fusing-scone RCA).
+                  runningTasks: [],
                 };
               } else {
                 // Redis is stale wrt the session's completed history — keep
@@ -251,20 +259,35 @@ export class JobCleanupManager {
                   ...sessionData.state,
                   taskQueue: [...runningInterrupted, ...(source.queue ?? [])],
                   currentTask: undefined,
+                  runningTasks: [],
                 };
               }
             } else {
-              // Redis fully drained — session file remains the only source.
-              // Drop currentTask defensively so the Kanban doesn't show a
-              // stale in-progress card. The session's existing taskQueue
-              // (last successful onCheckpoint) is preserved as-is.
-              logger.info(`No Redis source for parallel-mode cleanup; preserving session as-is`, {
-                component: 'JobCleanupManager',
-                jobId
-              });
+              // Redis fully drained — the session file is the only source for
+              // both queued and in-flight tasks. Promote the session's own
+              // `runningTasks` into `taskQueue` head with `interrupted:true`
+              // (the periodic checkpoint does NOT pre-mark; the crash-recovery
+              // boundary — that's us here — owns the projection), then clear
+              // `runningTasks` so the terminal-state invariant holds even when
+              // the worker never landed its post-stop checkpoint.
+              const sessionRunning: any[] = ((sessionData.state as any).runningTasks ?? [])
+                .filter(Boolean)
+                .map((t: any) => ({ ...t, interrupted: true }));
+              const existingQueue: any[] = sessionData.state.taskQueue ?? [];
+              const queueIds = new Set(existingQueue.map((t: any) => t.id));
+              // Defensive de-dup — a worker post-stop write that beat us here
+              // would have placed the same task in `taskQueue`; keep that copy.
+              const projected = sessionRunning.filter((t: any) => !queueIds.has(t.id));
+              logger.info(
+                `No Redis source for parallel-mode cleanup; projecting session.runningTasks onto taskQueue head`,
+                { component: 'JobCleanupManager', jobId },
+                { runningCount: projected.length, queueLen: existingQueue.length },
+              );
               sessionData.state = {
                 ...sessionData.state,
+                taskQueue: [...projected, ...existingQueue],
                 currentTask: undefined,
+                runningTasks: [],
               };
             }
           } else {
