@@ -13,32 +13,43 @@
  *     guards (skip-plan fast paths bail when `isVerifyModeActive(state)`
  *     is true so verification always re-runs gates).
  *
- * **Single writer:** `markVerifyEntered(state)`. Set call sites, all
- * outside this module proper but each living in a node owning its task
- * lifecycle hand-off:
+ * **Single writer:** `markVerifyEntered(state)`, called only from node
+ * bodies whose return delta also commits `_verifyEntered:true` (mutation
+ * for same-turn body reads, delta for the LangGraph reducer commit).
  *
  *   1. `nodes/plan/entry/resolve.ts::handleFreshTaskEntry` —
  *      Tier 3/4 dedicated verification task path. Fires on every fresh
  *      plan-node entry where `isVerificationTask(nextTask)` (i.e. cycle 1
  *      of the queue pop AND every subsequent Path A re-queue cycle).
  *      Replaces the retired `_shared/verify/initSession` writer that the
- *      `vast-curling-perch` cleanup deleted; the cleanup commit
- *      `4673ad7f` removed `initSession.ts` without replacing the
- *      `markVerifyEntered` call site, leaving every dedicated
- *      verification task running with `_verifyEntered=false` for its
- *      entire lifetime — a silent functional drift.
- *   2. `routers/executeRouter` `<done>` arm — Tier 2 self-verify task
- *      path. When the apply phase emits `<done>` and
- *      `requiresVerification(task)` is true, the router calls this
- *      helper just before routing to plan (reverify entry). The next
- *      plan node entry sees `_verifyEntered` and dispatches the
- *      verify-mode hooks.
+ *      `vast-curling-perch` cleanup deleted (commit `4673ad7f`).
+ *   2. `nodes/plan/entry/resolve.ts::handleReverifyEntry` —
+ *      Tier 2 self-verify task path. The apply→verify boundary and every
+ *      subsequent reverify cycle. Plan-entry dispatch detects this from
+ *      observable channel state (`_activePhase='execute'` + `llmResponse.done`
+ *      + `requiresVerification(task) && !isVerificationTask(task)` + non-empty
+ *      `planText`) and routes to `handleReverifyEntry`, which commits
+ *      `delta._verifyEntered:true`. Idempotent: cycle 2+ rewrites
+ *      `true → true` as a no-op under the last-write-wins reducer.
+ *   3. `runner.ts::buildInitialState` (resume restoration) — mutates the
+ *      **input** state object passed to `graph.invoke()`. Persists because
+ *      it precedes graph execution; LangGraph hydrates channels from this
+ *      input as the initial commit.
  *
  * **Reset writer:** `clearForTaskBoundary()` returns
  * `{ _verifyEntered: false }` as a delta object. Phase code spreads it
  * into the success / batch-split / pre-planned return so the next task
  * starts in apply-mode. No phase code writes `_verifyEntered: false`
  * directly.
+ *
+ * ⚠️ **Anti-pattern:** do not flip `_verifyEntered` from a LangGraph
+ * conditional-edge function (`routeAfterX`). LangGraph reads
+ * conditional-edge state fresh from channels via `ChannelRead.doRead`
+ * with the `fresh` flag, so mutations made during routing are silently
+ * discarded. Only node returns commit deltas. Confirmed empirically on
+ * `@langchain/langgraph` 1.0.1 — the prior `executeRouter` `<done>` call
+ * site was a silent no-op for the entire lifetime of every Tier-2
+ * self-verify task (see job `ultra-fusing-scone` RCA).
  *
  * R2 — depends only on the graph state shape; no `nodes/` / `routers/` /
  * `parallel/` imports.
@@ -52,10 +63,9 @@ import type { ArchitectGraphState } from '../../../state';
  * plan/execute/command hooks through `_shared/verify/` instead of the
  * task's apply-phase hooks.
  *
- * Idempotency matters: verification task path calls this every fresh
- * plan entry (initSession is idempotent), and a future re-entry through
- * checkTaskStatus/retry path would call it again. Re-flipping `true →
- * true` is a no-op and intentional.
+ * Idempotency matters: both `handleFreshTaskEntry` (Tier 3/4) and
+ * `handleReverifyEntry` (Tier 2) re-call this on every plan-entry cycle.
+ * Re-flipping `true → true` is a no-op and intentional.
  */
 export function markVerifyEntered(state: ArchitectGraphState): void {
   if (state._verifyEntered === true) return;
