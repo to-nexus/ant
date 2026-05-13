@@ -35,7 +35,6 @@ export interface ComposeOptions {
    */
   budgetRecovery?: {
     aggressiveParams?: {
-      microcompactHotTail: number;
       autoCompactThreshold: number;
       autoCompactHotTail: number;
     };
