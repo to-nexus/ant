@@ -21,7 +21,7 @@
  *     on the phase side — `isDocTask` is used directly (since T6b-κ)
  *     rather than a hook, because skip-planning is a static per-type
  *     fact and no hook context is needed.
- *   - check.evaluate / budgetExhaustedHint — the LLM <done> signal is
+ *   - check.evaluate / noDoneSignalHint — the LLM <done> signal is
  *     sufficient for doc tasks; there is no disk-level completion gate
  *     analogous to test-code's `detectTestFilesFromDisk`, and the
  *     generic "Break down the task scope" hint is correct when the

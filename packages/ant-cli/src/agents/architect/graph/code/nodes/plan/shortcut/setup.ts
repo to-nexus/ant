@@ -2,7 +2,6 @@ import type { LLMClient } from '../../../../../../../core/ports';
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { generatePlanText } from '../llm';
-import { computeBudgetFromPlanText } from '../outcome/budget';
 import { isSetupTask } from '../../../tasks/setup';
 import type { PlanEntryContext } from '../entry';
 
@@ -44,7 +43,6 @@ export async function maybeSetupFastPath(
     currentTask: nextTask,
     lessons: [],
     planText: setupPlanText,
-    _executeBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
     // retries — handleRetryEntry is the single writer (bc1e45b9).
     completedTasksDetails: state.completedTasksDetails || [],
     recursionCount: state.recursionCount,

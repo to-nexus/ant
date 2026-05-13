@@ -236,11 +236,12 @@ export interface TaskCheckHook {
    */
   evaluate?(state: ArchitectGraphState): Violation | null | Promise<Violation | null>;
   /**
-   * Optional hint rendered on the `budget_exhausted` violation's
-   * `suggestedFix` when this task type hits the call-budget guard. Task
-   * types that omit the hint get the generic "break down the scope" message.
+   * Optional hint rendered on the `no_done_signal` violation's
+   * `suggestedFix` when this task type reaches checkTaskStatus without a
+   * `<done>` signal (Safety Net exit). Task types that omit the hint get
+   * the generic "break down the scope" message.
    */
-  budgetExhaustedHint?: string;
+  noDoneSignalHint?: string;
 }
 
 export interface TaskRouterHook {

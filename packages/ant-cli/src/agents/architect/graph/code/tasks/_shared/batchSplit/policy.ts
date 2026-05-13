@@ -110,16 +110,12 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     populateRemediationMode: false,
     appendFinalVerification: true,
   },
-  // Deep-think feature task fan-out (Tier 2/3 directive cases). Parent
-  // owns the integrated reasoning, children carry fixed-scope prePlanText
-  // surfaced as plan-tool-loop INPUT (via
-  // `nodes/plan/injections/parent-pre-plan.md`). Drift between the parent's
-  // predicted sibling exports and actual sibling outputs is detected at
-  // the plan layer, not silently propagated to execute. FV is appended
-  // unless one is already in the queue (hasFinalVerification guard). For
-  // Tier 2 selfVerifyOnDone parents, the existing
-  // `isTier2EscalateCandidate` branch routes through this same policy
-  // (taskPolicy lookup wins over the escalate-only fallback).
+  // feature / ui / design-system share the same fan-out contract:
+  // parentReasoning replicated across batches (sibling drift caught at
+  // the plan layer via `nodes/plan/injections/parent-pre-plan.md`),
+  // FV appended unless one already sits in the queue, Tier 2
+  // `selfVerifyOnDone` parents routed through this same policy because
+  // `taskPolicy` lookup wins over the escalate-only fallback.
   feature: {
     kind: 'drop-and-replace',
     subType: 'feature',
@@ -127,15 +123,16 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     populateRemediationMode: false,
     appendFinalVerification: true,
   },
-  // UI tasks share feature's fan-out shape (parentReasoning replicated
-  // across batches) and the same plan-tool-loop input contract:
-  // `prePlanText` is surfaced via `nodes/plan/injections/parent-pre-plan.md`
-  // so children verify the parent decision against actual sibling outputs
-  // before emitting `planText`. Lineage cycle protection rides on
-  // batchSplitCount carry-over (process.ts).
   ui: {
     kind: 'drop-and-replace',
     subType: 'ui',
+    shape: featureBatchShape,
+    populateRemediationMode: false,
+    appendFinalVerification: true,
+  },
+  'design-system': {
+    kind: 'drop-and-replace',
+    subType: 'design-system',
     shape: featureBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,

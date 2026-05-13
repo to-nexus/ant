@@ -73,9 +73,15 @@ describe('plan/rules.md — REQUIRED markers on LLM-authored semantic fields', (
 });
 
 describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
-  it('section heading is "FAN-OUT AT PLAN TIME (feature / ui)" — no legacy variants', () => {
-    expect(RULES).toMatch(/##\s+🌿\s+FAN-OUT AT PLAN TIME \(feature \/ ui\)/);
+  it('section heading covers feature / ui / design-system — no legacy variants', () => {
+    expect(RULES).toMatch(/##\s+🌿\s+FAN-OUT AT PLAN TIME \(feature \/ ui \/ design-system\)/);
     expect(RULES).not.toMatch(/##\s+🌿\s+(OPTIONAL|PROACTIVE) FAN-OUT/);
+  });
+
+  it('plan-time single-session-closure check is rendered alongside the shared rubric', () => {
+    expect(RULES).toMatch(/Single-session closure \(plan-time check\)/);
+    expect(RULES).toMatch(/one execute round/);
+    expect(RULES).toMatch(/orthogonal to coherence/);
   });
 
   it('renders the shared task-split-rubric partial (SSOT with decompose)', () => {

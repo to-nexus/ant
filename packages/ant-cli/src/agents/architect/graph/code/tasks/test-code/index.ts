@@ -48,7 +48,7 @@
  * surfaces retry violations back through `composeViolationsText`.
  *
  * Intentionally absent:
- *   - check.budgetExhaustedHint — the generic "Break down the task scope"
+ *   - check.noDoneSignalHint — the generic "Break down the task scope"
  *     hint is correct for test-code; only verification overrides.
  *   - scheduling consumer flags `preUiBarrier / preDocBarrier /
  *     preIntegrationBarrier` — test-code only consumes the testgen

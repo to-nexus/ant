@@ -63,7 +63,7 @@
  *     branch to port. `taskRequiresPlan` (planGeneration.ts L230–233)
  *     does NOT exclude feature, so it runs through the standard plan
  *     phase like any artifact-producing task.
- *   - check.evaluate / budgetExhaustedHint — the LLM <done> signal is
+ *   - check.evaluate / noDoneSignalHint — the LLM <done> signal is
  *     sufficient for feature artefact tasks; there is no disk-level
  *     completion gate analogous to test-code's
  *     `detectTestFilesFromDisk`, and the generic "break down the task
@@ -130,7 +130,7 @@ import { composeBundle } from '../_shared/verify';
 // Wired through `composeBundle({...})` so Tier 2 self-verify feature tasks
 // (decompose-time `selfVerifyOnDone:true`) automatically pick up the
 // `_shared/verify/` hook surface (Session, plan/execute/command/check/
-// router/orchestrator/tool/budgetExhaustedHint) once they transition into
+// router/orchestrator/tool/noDoneSignalHint) once they transition into
 // verify-mode via `executeRouter.routeAfterDone`. Tier 3+ feature tasks
 // (no `selfVerifyOnDone`) fall through composeBundle untouched —
 // `requiresVerification` returns false and apply-phase has no

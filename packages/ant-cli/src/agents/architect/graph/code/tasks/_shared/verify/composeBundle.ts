@@ -83,7 +83,7 @@ function composeRouter(apply: TaskRouterHook | undefined): TaskRouterHook {
  * results take precedence — parity only runs when the apply check
  * returned no violation.
  *
- * `budgetExhaustedHint` and any other static fields on the apply check
+ * `noDoneSignalHint` and any other static fields on the apply check
  * pass through unchanged.
  */
 function composeCheck(apply: TaskCheckHook | undefined): TaskCheckHook | undefined {

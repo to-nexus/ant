@@ -98,9 +98,9 @@ describe('tasks/_shared/registry — test-code entry', () => {
     expect(testCodeBundle.tool).toBeUndefined();
     expect(testCodeBundle.router).toBeUndefined();
     expect(testCodeBundle.orchestrator).toBeUndefined();
-    // check.evaluate is published; but budgetExhaustedHint is NOT —
+    // check.evaluate is published; but noDoneSignalHint is NOT —
     // generic "Break down the task scope" is correct for test-code.
-    expect(testCodeBundle.check?.budgetExhaustedHint).toBeUndefined();
+    expect(testCodeBundle.check?.noDoneSignalHint).toBeUndefined();
     // plan.buildPrompt is published (test-code variant); extraTemplateVars
     // is not — the variant template has a self-contained var set.
     expect(testCodeBundle.plan?.extraTemplateVars).toBeUndefined();

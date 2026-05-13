@@ -1,23 +1,18 @@
 /**
  * Execute Router - execute 응답 분석해서 다음 노드 결정
  *
- * 책임:
- * - llmResponse 분석
- * - 다음 노드 결정 (tool / checkTaskStatus / execute)
- *
  * 라우팅 로직:
- * 0. File errors 있으면 → checkTaskStatus (바로 self-healing, tool 불필요)
- * 1. Tool calls 있으면 → tool 노드
- * 2. Done이면 → verification은 plan 재검증, 그 외 checkTaskStatus
+ * 0. File errors → checkTaskStatus (self-healing, tool 불필요)
+ * 1. Tool calls → tool 노드
+ * 2. Done → verification 책임자는 plan 재검증, 그 외 checkTaskStatus
  * 3. 그 외 → execute 노드 (재추론)
  *
  * Safety Nets:
- * A. Final task approaching recursion limit → Force checkTaskStatus
- * B. Repeated tool failures detected → Force checkTaskStatus
+ * A. Final task가 recursion limit에 근접 → checkTaskStatus 강제
+ * B. 최근 5분 내 tool 실패 5회 이상 → checkTaskStatus 강제
  */
 
 import { ArchitectGraphState } from '../state';
-import type { CodeTask } from '../../../types/task';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
@@ -54,17 +49,10 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
   
   const currentTask = state.currentTask;
-  // "Final task" semantics for Safety Nets A/B/E — applies to any task
-  // that has entered verify-mode (Tier 3/4 dedicated verification, OR
-  // Tier 2 self-verify task once `executeRouter`'s `<done>` arm flipped
-  // `_verifyEntered = true`). The recursion-limit, repeat-failure, and
-  // budget guards below all defer to checkTaskStatus only when the
-  // task is in its verification phase, so the predicate is intentionally
-  // task-type-blind.
-  //
-  // We also keep the verification-task-only flag separate (`isVerificationTaskType`)
-  // for log readability — it matches the previous behaviour of distinguishing
-  // "Tier 3/4 dedicated final task" from a self-verify task in verify-mode.
+  // "Final task" = verify-mode active (Tier 3/4 verification, or Tier 2
+  // self-verify after the `<done>` arm flipped `_verifyEntered = true`).
+  // Safety Nets A/B defer to checkTaskStatus only in the verification
+  // phase, so the predicate is task-type-blind.
   const isVerificationTaskType = currentTask ? isVerificationTask(currentTask) : false;
   const isFinalTask = isVerifyModeActive(state) || isVerificationTaskType;
   const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
@@ -122,61 +110,20 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // Safety Net B: Check for repeated tool failures
   if (isFinalTask || isCurrentErrorTask) {
     const recentFailures = detectRecentToolFailures(state);
-    
+
     if (recentFailures >= 5) {
       console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected`);
       console.warn(`   🚨 Forcing checkTaskStatus`);
       return 'checkTaskStatus';
     }
   }
-  
-  // Safety Net D: pre-planned identity-shortcut execute call budget.
-  // Only `error` sub-tasks ride the identity-shortcut (state.planText :=
-  // prePlanText) — feature / test-code / ui carry `prePlanText` but enter
-  // the plan-tool-loop and emit a fresh `planText`, so their budget is
-  // computed in Safety Net E. Gating on the shortcut publication flag
-  // (`acceptsPrePlanText:true`) keeps Safety Net D scoped to the actual
-  // shortcut consumers; gating on `prePlanText` presence alone would
-  // wrongly cap non-shortcut sub-tasks at 25 calls regardless of the
-  // plan's actual scope.
-  const isIdentityShortcutTask =
-    !!(currentTask as CodeTask)?.prePlanText &&
-    hooksIfActive(state)?.plan?.acceptsPrePlanText === true;
-  if (isIdentityShortcutTask) {
-    const callIndex = state._executeCallIndex || 0;
-    const maxPrePlannedCalls = 25;
-    const warningThreshold = Math.floor(maxPrePlannedCalls * 0.8); // 20
-    if (callIndex >= maxPrePlannedCalls) {
-      console.warn(`⚠️  [Router] Pre-planned error task execute call limit reached (${callIndex}/${maxPrePlannedCalls})`);
-      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
-      return 'checkTaskStatus';
-    }
-    if (callIndex === warningThreshold) {
-      console.warn(`⚠️  [Router] Pre-planned error task approaching execute limit (${callIndex}/${maxPrePlannedCalls}) — ${maxPrePlannedCalls - callIndex} calls remaining`);
-    }
-  }
 
-  // Safety Net E: Feature/general task execute call budget
-  // Budget is computed from planText (create×1 + modify×3) when available, otherwise defaults to 20
-  if (!isFinalTask && !isCurrentErrorTask) {
-    const callIndex = state._executeCallIndex || 0;
-    const maxFeatureCalls = state._executeBudget ?? 20;
-    const warningThreshold = Math.floor(maxFeatureCalls * 0.8);
-    if (callIndex >= maxFeatureCalls) {
-      console.warn(`⚠️  [Router] Feature task execute call limit reached (${callIndex}/${maxFeatureCalls}${state._executeBudget ? ' [plan-computed]' : ''})`);
-      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
-      return 'checkTaskStatus';
-    }
-    if (callIndex === warningThreshold) {
-      console.warn(`⚠️  [Router] Feature task approaching execute limit (${callIndex}/${maxFeatureCalls}) — ${maxFeatureCalls - callIndex} calls remaining`);
-    }
-  }
+  // Runaway is bounded by Safety Net A (recursionLimit), Safety Net B
+  // (repeated tool failures), LangGraph's `recursionLimit` ceiling, and
+  // `batch_cycle_limit` for queue-side fan-out. Per-task call-count
+  // budgets have been retired.
 
-  // Safety Net C (verification-only loop guard) was retired by plan §5.3.
-  // Runaway is bounded by Safety Net D/E (`_executeCallIndex` budget),
-  // LangGraph's `recursionLimit`, and the `batch_cycle_limit` fail-safe.
 
-  
   // 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)
   if (state.fileErrors && state.fileErrors.length > 0) {
     console.log(`⚠️  [Router] ${state.fileErrors.length} file error(s) detected → checkTaskStatus (skip tool execution)`);

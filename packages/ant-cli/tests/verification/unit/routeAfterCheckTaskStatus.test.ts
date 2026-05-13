@@ -119,7 +119,7 @@ describe('routeAfterCheckTaskStatus — 3-axis branching', () => {
 
     it('multiple violations behave identically to single violation', () => {
       const multi = routeAfterCheckTaskStatus(makeState({
-        violations: [violation(), violation('budget_exhausted')],
+        violations: [violation(), violation('no_done_signal')],
         retries: 0,
         maxRetries: 3,
       }));
