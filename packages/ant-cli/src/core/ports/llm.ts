@@ -167,7 +167,15 @@ export interface LLMStreamEvent {
   
   // ---- Done ----
   done?: boolean;             // Stream complete flag (type === 'done')
-  
+
+  // ---- Stop reason (type === 'done') ----
+  // Unified across providers. 'max_tokens' is the truncation signal callers
+  // gate on; the rest map a provider-specific finish reason to a stable name.
+  // Anthropic: end_turn/max_tokens/stop_sequence/tool_use/pause_turn/refusal.
+  // OpenAI:    stop/length/tool_calls/content_filter/function_call → length=max_tokens.
+  // Gemini:    STOP/MAX_TOKENS/SAFETY/RECITATION/OTHER/... → MAX_TOKENS=max_tokens.
+  stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'other';
+
   // ---- Usage ----
   usage?: TaskTokenUsage;
   

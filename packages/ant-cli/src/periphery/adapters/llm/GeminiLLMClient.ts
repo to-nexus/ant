@@ -137,6 +137,7 @@ export class GeminiLLMClient implements LLMClient {
     });
 
     let tokenUsage: TaskTokenUsage | undefined;
+    let stopReason: LLMStreamEvent['stopReason'] | undefined;
     // Throttle partial emits: Gemini streams may surface usageMetadata per chunk.
     let lastPartialEmitAt = 0;
     let lastPartialOutputTokens = 0;
@@ -199,6 +200,13 @@ export class GeminiLLMClient implements LLMClient {
             error: { code: 'safety_block', message: 'Response blocked by Gemini safety filter' },
           };
         }
+        // Map Gemini finishReason to the unified stopReason enum. MAX_TOKENS
+        // is the truncation signal callers gate on.
+        switch (finishReason) {
+          case 'STOP': stopReason = 'end_turn'; break;
+          case 'MAX_TOKENS': stopReason = 'max_tokens'; break;
+          default: stopReason = 'other'; break;
+        }
       }
     }
 
@@ -206,6 +214,7 @@ export class GeminiLLMClient implements LLMClient {
       type: 'done',
       done: true,
       usage: tokenUsage,
+      stopReason,
     };
   }
 

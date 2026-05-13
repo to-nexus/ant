@@ -57,8 +57,13 @@ describe('parent-pre-plan partial — render contract', () => {
       prePlanText: PRE_PLAN_JSON,
     });
     expect(rendered).toContain('Parent Sub-Task Pre-Plan');
-    expect(rendered).toContain('starting hypothesis');
-    expect(rendered).toContain('slice boundary');
+    // After safe-braking-eagle B (slim batches[]): feature/ui/design-system
+    // children receive a slice declaration ("which slice you own" + cross-batch
+    // contracts), not a hypothesis to verify. The partial still names the
+    // legacy "diagnostic carry" shape for error/test-code children.
+    expect(rendered).toContain('Slice declaration');
+    expect(rendered).toContain('Diagnostic carry');
+    expect(rendered).toContain('Slice boundary is non-negotiable');
   });
 
   it('renders empty (or whitespace-only) when hasPrePlanText is false', async () => {

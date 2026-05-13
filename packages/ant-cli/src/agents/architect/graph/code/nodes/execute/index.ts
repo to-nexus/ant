@@ -370,7 +370,7 @@ export async function execute(
       
       if (event.type === 'done') {
         isDone = true;
-        
+
         // ✅ Extract token usage and accumulate to task-level
         const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
@@ -397,6 +397,63 @@ export async function execute(
               recursionCount: state.recursionCount,
             }
           );
+        }
+
+        // safe-braking-eagle: observe `max_tokens` truncation that the
+        // executeRouter would otherwise route over as a normal completion.
+        // A logs the event; C-2/C-3 snapshot the in-flight `<file>` /
+        // `<append>` context (BEFORE finalize wipes it) so the next round
+        // can resume from exactly where the LLM stopped.
+        const stopReason = (event as any).stopReason as string | undefined;
+        if (stopReason === 'max_tokens') {
+          const taskId = state.currentTask?.id || 'unknown';
+          const taskName = state.currentTask?.name || 'unknown';
+          const callIdx = newCallIndex - 1;
+
+          // Capture the open file block BEFORE finalize discards it.
+          // The partial content was already streamed to disk via
+          // FileRenderer's incremental writes; this hint just tells the
+          // LLM where to resume with `<append>`.
+          const openFile = orchestrator.getOpenFileContext();
+          if (openFile) {
+            state._maxTokensTruncation = {
+              kind: openFile.kind,
+              path: openFile.path,
+              tailContent: openFile.tailContent,
+            };
+          }
+
+          console.warn(
+            `⚠️  [CodeGen/execute] max_tokens truncated (callIndex=${callIdx}, ` +
+            `output=${capturedUsage?.outputTokens ?? LLM_MAX_TOKENS.DEFAULT}) ` +
+            `for task "${taskName}" (${taskId})` +
+            (openFile
+              ? `. Open <${openFile.kind} path="${openFile.path}"> block detected — ` +
+                `next round will receive a resume hint with the trailing ${openFile.tailContent.length} chars.`
+              : `. No open <file>/<append> block — the LLM was emitting text/thinking; ` +
+                `consider raising LLM_MAX_TOKENS.DEFAULT.`),
+          );
+          const featurePath = state.context?.featurePath;
+          if (featurePath && state._httpJobId) {
+            void getExecutionLogger({
+              featurePath,
+              jobId: state._httpJobId,
+              jobType: 'code',
+            })
+              .log('max_tokens_truncated', {
+                node: 'execute',
+                callIndex: callIdx,
+                outputTokens: capturedUsage?.outputTokens ?? LLM_MAX_TOKENS.DEFAULT,
+                maxTokens: LLM_MAX_TOKENS.DEFAULT,
+                taskName,
+                taskType: state.currentTask?.type,
+                openFilePath: openFile?.path,
+                openFileKind: openFile?.kind,
+                tailCharsCaptured: openFile?.tailContent.length ?? 0,
+                recoveryHint: openFile ? 'continue-via-append' : 'partial-output-discarded',
+              }, taskId)
+              .catch(() => { /* non-blocking */ });
+          }
         }
       }
     }

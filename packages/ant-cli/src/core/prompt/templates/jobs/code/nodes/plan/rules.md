@@ -105,6 +105,8 @@ If you have user-facing narrative (rationale, summary, follow-up question), put 
 
 ⚠️ **Naming contract**: The framework uses your `create[].name` / `modify[].action` / `delete[].reason` (or `batches[].name` when you choose to fan out — see FAN-OUT AT PLAN TIME below) **verbatim** as the child task name and `create[].purpose` / `modify[].changes` (joined) / `delete[].reason` / `batches[].rationale` **verbatim** as the child task description. The system MUST NOT fabricate names — when these REQUIRED fields are missing on an explicit `batches[]` entry, fan-out is rejected and the plan call is re-issued with violation framing. Do NOT use paths-as-names, placeholders (`task-2`, `feature-batch`), or empty strings. Provide a 4-8 word noun/verb phrase that identifies the unit semantically.
 
+Inside a `batches[]` entry, ONLY `name`, `rationale`, and (optional) `requiredFiles` are emitted — not the slice's internal `modify[]` / `create[]` / `delete[]`. The slice's implementation plan is the child plan node's responsibility, not the parent's. See FAN-OUT AT PLAN TIME below.
+
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
 {{#if (or (eq taskType "feature") (eq taskType "ui") (eq taskType "design-system"))}}
@@ -118,19 +120,27 @@ The task arrived with its scope already chosen at decomposition. Fan-out here is
 
 ### Single-session closure (plan-time check)
 
-One `batches[]` entry is one execute session. The observable signal is the volume the batch carries — each `create` / `modify` item corresponds to at least one execute round (read / write / retry on tool errors). When that volume makes single-session closure unrealistic for this work, split — even if the coherence rubric above would otherwise bundle.
+One `batches[]` entry is one execute round. The observable signal is the slice's expected work volume — files touched, modules created, domain breadth. When that volume makes single-round closure unrealistic for this work, split — even if the coherence rubric above would otherwise bundle.
 
 This axis is orthogonal to coherence: the rubric decides *whether the work is separable*, this check decides *whether one session can hold it*. A coherent unit may still need to be split when single-session closure says so. When that happens, `parentReasoning` names single-session closure (not coherence) as the concrete benefit.
+
+### What `batches[]` carries — slice declaration only
+
+A `batches[]` entry **declares a slice**, it does NOT carry the slice's internal implementation plan. Each declared batch is dispatched as a child task whose own plan node re-investigates the codebase and emits its own flat `implementation` block. The parent's responsibility ends at the slice boundary.
+
+This responsibility split is what keeps the parent's output bounded. Restating the implementation per batch here doubles parent output (every byte appears verbatim in the child's `prePlanText`) and forces a 30K+ token round that risks mid-stream `max_tokens` truncation — the silent failure mode the system recovers from by re-running the same plan call from scratch, billing the cost twice.
 
 ### How to emit `batches[]`
 
 The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principles above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
 
-**Constraint**: `parentReasoning` MUST name the concrete benefit (failure isolation / scope boundary / cognitive mode separation) for this specific task. Each batch sees this verbatim.
+**Constraint**: `parentReasoning` MUST name the concrete benefit (failure isolation / scope boundary / cognitive mode separation) for this specific task AND record the **cross-batch contracts** the parent observed (shared export names, file paths the children must agree on, shared types). Children read this verbatim — it is the only channel for sibling-drift prevention.
 
 **Constraint**: Each `batches[].name` is a **noun phrase** identifying the unit (e.g. `"firebase-web-singleton"`, `"axios-http-client-instance"`). Do NOT include framework verbs (`Fix`, `Create`, `Add`, `Update`, `Remove`) — verb-style framing is owned by the runtime UI. Do NOT include paths.
 
 **Constraint**: Each `batches[].rationale` MUST be a complete sentence explaining why this batch is one isolated unit per the principle above. Becomes the child task description verbatim.
+
+**Constraint**: Do NOT carry per-batch `modify[]` / `create[]` / `delete[]` arrays inside a `batches[]` entry. Internal implementation is the child plan's responsibility. The parent communicates **slice boundary** (via `name` + `rationale` + optional `requiredFiles`) and **cross-batch contracts** (via `parentReasoning`) — nothing else.
 
 **Schema (when emitted)**:
 
@@ -138,14 +148,12 @@ The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you
 <plan>
 {
   "task": { "id": "{{taskId}}", "goal": "..." },
-  "parentReasoning": "<concrete benefit + cross-batch decisions: names, contracts, shared types>",
+  "parentReasoning": "<concrete benefit + cross-batch contracts: shared export names, file paths children must agree on, shared types>",
   "batches": [
     {
       "name": "[REQUIRED — noun phrase identifying the unit, e.g. \"firebase-web-singleton\". Becomes the child task name verbatim. NOT a verb, NOT a path, NOT a placeholder.]",
       "rationale": "[REQUIRED — why this batch is one isolated unit. Becomes the child task description verbatim.]",
-      "modify": [...],
-      "create": [...],
-      "delete": []
+      "requiredFiles": ["[OPTIONAL — files the child plan MUST observe before planning; e.g. interface contracts owned by a sibling. Omit when the child can discover them from the directory tree.]"]
     }
   ]
 }

@@ -32,5 +32,17 @@ export interface IStreamParser {
    * Reset parser state (called at start of new stream)
    */
   reset(): void;
+
+  /**
+   * Snapshot of an in-flight file/append block, if the stream cut off
+   * before the closing tag arrived. Returns `null` when no file block is
+   * open. Called by the execute node when the LLM reports
+   * `stopReason === 'max_tokens'` so it can inform the LLM in the next
+   * round where to resume via `<append>`.
+   *
+   * Implementations MAY return a `null`-only stub (e.g. the file-marker
+   * parser has no `<file>` tag concept).
+   */
+  getOpenFileContext?(): { kind: 'file' | 'append'; path: string; tailContent: string } | null;
 }
 

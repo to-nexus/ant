@@ -50,6 +50,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     taskName,
     jobType,
     onTokenUsage,
+    onMaxTokensTruncation,
     minPlanLength = 50,
   } = args;
 
@@ -137,6 +138,17 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
         // prevents `accumulateTokenUsage` racing with the next round's
         // `applyEstimatedInputTokensFromMessages` reseed.
         await onTokenUsage(tokenUsage);
+      }
+      // Truncation observation — the bare fact that we hit maxTokens.
+      // Recovery is the caller's concern (caller falls through to a
+      // fresh tool-loop today; chunked-emission recovery lives in C).
+      const stopReason = (event as any).stopReason as string | undefined;
+      if (stopReason === 'max_tokens' && onMaxTokensTruncation) {
+        const planRound = Math.floor((messages.length - 1) / 2);
+        await onMaxTokensTruncation({
+          outputTokens: tokenUsage?.outputTokens ?? maxTokens,
+          round: planRound,
+        });
       }
     }
   }
