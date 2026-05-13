@@ -720,3 +720,37 @@ export function selectFileStats(state: ChatProjectorState): FileStats {
   fileStatsCache = { events, stats };
   return stats;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Unresolved choice card detection — autoscroll veto signal
+// ═══════════════════════════════════════════════════════════════════════
+//
+// When a choice card is presented (task fail/interrupt etc.) and not yet
+// resolved by the user, autoscroll in ChatHistory must NOT push the card
+// out of the viewport. Parallel-task events arriving in the same feed
+// otherwise displace the card and the user misses it. See ChatHistory.tsx
+// for how this flag gates every autoscroll trigger.
+//
+// INVARIANT — regression-prone: only UNRESOLVED cards are counted. Once
+// the user resolves a card (resume / dismiss / etc.), it must stop
+// influencing autoscroll so subsequent content scrolls past it naturally.
+// Keep the `!item.resolved` condition tight.
+
+export interface PendingChoiceInfo {
+  has: boolean;
+  /** Index of the turn containing the latest unresolved choice card; null if has=false. */
+  turnIndex: number | null;
+}
+
+export function getPendingChoice(turns: Turn[]): PendingChoiceInfo {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    for (const section of turns[i].sections) {
+      for (const item of section.items) {
+        if (item.kind === 'choice' && !item.resolved) {
+          return { has: true, turnIndex: i };
+        }
+      }
+    }
+  }
+  return { has: false, turnIndex: null };
+}
