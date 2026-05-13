@@ -113,16 +113,24 @@ export function processDiagnosticBatchSplit(
       return planText;
     }
 
-    // Validate LLM-authored semantic fields on explicit batches[].
-    // Missing name/rationale =
-    // schema violation = plan-node retry.
+    // Validate LLM-authored semantic + scheduling fields on explicit
+    // batches[]. name/rationale are required on every shape. The
+    // scheduling pair (parallelGroup + priorityInParallelGroup) is
+    // optional per batch, but emission is all-or-nothing across the
+    // fan-out: either every entry declares both fields, or none does.
+    // Whether the LLM emits the pair is the only signal the runtime
+    // uses to decide between lane mode and the legacy default — there
+    // is no task-type / policy-table check. The prompts for slim-shape
+    // types instruct the LLM to emit the pair; other types' prompts
+    // do not, so their outputs land in the legacy branch.
     for (let i = 0; i < parsed.batches.length; i++) {
       const b = parsed.batches[i];
       if (!b || typeof b !== 'object' || typeof b.name !== 'string' || b.name.trim() === '') {
         throw new BatchSplitSchemaViolation({
           entryKind: 'batch',
           ordinal: i,
-          missingField: 'name',
+          field: 'name',
+          reason: 'missing',
           observed: b,
         });
       }
@@ -130,9 +138,93 @@ export function processDiagnosticBatchSplit(
         throw new BatchSplitSchemaViolation({
           entryKind: 'batch',
           ordinal: i,
-          missingField: 'rationale',
+          field: 'rationale',
+          reason: 'missing',
           observed: b,
         });
+      }
+    }
+
+    // All-or-nothing scheduling-pair validation.
+    //
+    // A batch is considered "lane-declared" when BOTH `parallelGroup`
+    // (non-empty string) and `priorityInParallelGroup` (non-negative
+    // integer) are present and valid. Any other state — partial
+    // emission, malformed types — is rejected so the LLM cannot
+    // accidentally communicate two different schedules in one
+    // response. Across the whole fan-out, either every batch is
+    // lane-declared or none is.
+    const isLaneDeclared = (b: any): boolean =>
+      typeof b.parallelGroup === 'string'
+      && b.parallelGroup.trim().length > 0
+      && typeof b.priorityInParallelGroup === 'number'
+      && Number.isInteger(b.priorityInParallelGroup)
+      && b.priorityInParallelGroup >= 0;
+
+    const declaredFlags = parsed.batches.map((b: any) => isLaneDeclared(b));
+    const allDeclared = declaredFlags.every(Boolean);
+    const noneDeclared = declaredFlags.every((d: boolean) => !d);
+
+    if (!allDeclared && !noneDeclared) {
+      // Mixed: identify the offending batch and the specific field issue.
+      for (let i = 0; i < parsed.batches.length; i++) {
+        const b = parsed.batches[i];
+        if (declaredFlags[i]) continue; // this one is fine; look at the broken ones
+        // Decide which field to surface in the violation. Prefer
+        // `parallelGroup` problems first because the LLM keys its lane
+        // identity off that field.
+        const gMissing = b.parallelGroup === undefined;
+        const gBadType = !gMissing && (typeof b.parallelGroup !== 'string' || b.parallelGroup.trim().length === 0);
+        if (gMissing || gBadType) {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'batch',
+            ordinal: i,
+            field: 'parallelGroup',
+            reason: gMissing ? 'missing' : 'invalid',
+            observed: b,
+          });
+        }
+        const rMissing = b.priorityInParallelGroup === undefined;
+        throw new BatchSplitSchemaViolation({
+          entryKind: 'batch',
+          ordinal: i,
+          field: 'priorityInParallelGroup',
+          reason: rMissing ? 'missing' : 'invalid',
+          observed: b,
+        });
+      }
+    }
+
+    const requireLaneSchedule = allDeclared;
+
+    // Within-lane uniqueness: when lane mode is active, every batch in
+    // the same `parallelGroup` must have a distinct
+    // `priorityInParallelGroup`. A collision is an LLM contract
+    // violation — the runtime would have to break the tie with a
+    // hidden rule, which defeats the point of declaring the schedule
+    // explicitly. Reject and let the plan-node retry channel re-issue
+    // with framing.
+    if (requireLaneSchedule) {
+      const seenInLane = new Map<string, Map<number, number>>();
+      for (let i = 0; i < parsed.batches.length; i++) {
+        const b = parsed.batches[i];
+        const lane: string = (b.parallelGroup as string).trim();
+        const rank: number = b.priorityInParallelGroup;
+        const lanePriorities = seenInLane.get(lane) ?? new Map<number, number>();
+        const prior = lanePriorities.get(rank);
+        if (prior !== undefined) {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'batch',
+            ordinal: i,
+            field: 'priorityInParallelGroup',
+            reason: 'collision',
+            observed: b,
+            collidesWith: prior,
+            laneName: lane,
+          });
+        }
+        lanePriorities.set(rank, i);
+        seenInLane.set(lane, lanePriorities);
       }
     }
 
@@ -178,7 +270,7 @@ export function processDiagnosticBatchSplit(
     const inheritedGroup = typeof nextTask.parallelGroup === 'string' && nextTask.parallelGroup.length > 0
       ? nextTask.parallelGroup
       : null;
-    const batchGroupBase = hasFileOverlap
+    const sharedBase = hasFileOverlap
       ? null
       : (inheritedGroup ?? `${nextTask.type}-batch-${Date.now()}`);
 
@@ -230,10 +322,41 @@ export function processDiagnosticBatchSplit(
     const effectiveKind: 'requeue-parent' | 'drop-and-replace' =
       taskPolicy?.kind ?? 'drop-and-replace';
     const parentPriority = nextTask.priority || 500;
-    const subPriority = effectiveKind === 'requeue-parent'
-      ? Math.max(1, parentPriority - 1)
-      : parentPriority;
     const parentBand = nextTask.type === 'feature' ? nextTask.band : undefined;
+
+    // Single source of truth for translating an LLM-emitted batch into
+    // the two runtime scheduling axes (`parallelGroup` + `priority`).
+    // Both axes share the same three-way gate (overlap path → exclusive,
+    // legacy non-slim path → distinct group + parent priority,
+    // slim-shape lane path → LLM-authored lane + parent+offset priority);
+    // returning them together from one branch tree avoids the
+    // duplicate-branch problem that motivated this consolidation.
+    const scheduleFor = (i: number, batch: any): {
+      parallelGroup: string | undefined;
+      priority: number;
+    } => {
+      let parallelGroup: string | undefined;
+      if (sharedBase === null) {
+        parallelGroup = undefined;                            // hasFileOverlap → exclusive=true
+      } else if (!requireLaneSchedule) {
+        parallelGroup = `${sharedBase}-${i}`;                 // existing distinct-per-i path
+      } else {
+        // batch.parallelGroup already validated as a non-empty string above.
+        parallelGroup = `${sharedBase}-${(batch.parallelGroup as string).trim()}`;
+      }
+
+      let priority: number;
+      if (effectiveKind === 'requeue-parent') {
+        priority = Math.max(1, parentPriority - 1);
+      } else if (!requireLaneSchedule) {
+        priority = parentPriority;
+      } else {
+        // batch.priorityInParallelGroup already validated as a non-negative integer.
+        priority = parentPriority + (batch.priorityInParallelGroup as number);
+      }
+
+      return { parallelGroup, priority };
+    };
 
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
@@ -247,16 +370,20 @@ export function processDiagnosticBatchSplit(
       const batchPlanText = shape({ parsed, batch, batchIndex: i, planMode });
 
       // Child task `name` and `description` are LLM-authored verbatim —
-      // no system prefix, no synthesis.
+      // no system prefix, no synthesis. Scheduling fields
+      // (`parallelGroup` / `priority`) are translated from the batch
+      // entry by `scheduleFor` — see its comment above for the three
+      // dispatch shapes.
+      const { parallelGroup, priority } = scheduleFor(i, batch);
       const subTask: CodeTask = {
         id: `${subType}-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         name: batch.name,
         description: batch.rationale,
         type: subType,
-        priority: subPriority,
+        priority,
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
-        parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
+        parallelGroup,
         batchSplitCount: newBatchSplitCount,
         ...(subType === 'feature' ? { band: parentBand } : {}),
       } as CodeTask;

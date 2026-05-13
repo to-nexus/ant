@@ -274,7 +274,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         // hit on this branch as a regression signal for prompt drift.
         console.error(
           `❌ [Plan] BatchSplitSchemaViolation exhausted ${PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS} attempts: ` +
-          `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — ` +
+          `${e.detail.entryKind}[${e.detail.ordinal}] ${e.detail.reason} '${e.detail.field}' — ` +
           `proceeding without fan-out (parent will execute its own plan).`,
         );
         // Clear framing — this attempt's framing has fired its budget.
@@ -296,7 +296,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
       console.warn(
         `⚠️  [Plan] BatchSplitSchemaViolation attempt ${attempt}/${PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS}: ` +
-        `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — retrying with framing`,
+        `${e.detail.entryKind}[${e.detail.ordinal}] ${e.detail.reason} '${e.detail.field}' — retrying with framing`,
       );
       state._batchSplitViolationFraming = buildBatchSplitSchemaViolationFraming(e);
     }

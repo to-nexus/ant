@@ -27,7 +27,8 @@ describe('buildBatchSplitSchemaViolationFraming — batch-entry guidance', () =>
     const text = frame({
       entryKind: 'batch',
       ordinal: 2,
-      missingField: 'name',
+      field: 'name',
+      reason: 'missing',
       observed: { rationale: 'a slice', modify: [] },
     });
     expect(text).toMatch(/violated the plan schema/i);
@@ -39,23 +40,53 @@ describe('buildBatchSplitSchemaViolationFraming — batch-entry guidance', () =>
     expect(text).toMatch(/"rationale":"a slice"/);
   });
 
-  it('batch violation (missing rationale): reminds the LLM BOTH name and rationale are required', () => {
+  it('batch violation (missing rationale): names the field, marks it verbatim, points at child description', () => {
     const text = frame({
       entryKind: 'batch',
       ordinal: 3,
-      missingField: 'rationale',
+      field: 'rationale',
+      reason: 'missing',
       observed: { name: 'unit-x', modify: [] },
     });
     expect(text).toMatch(/batch entry at index 3/);
     expect(text).toMatch(/REQUIRED field: 'rationale'/);
-    expect(text).toMatch(/batches\[\]\.name/);
-    expect(text).toMatch(/batches\[\]\.rationale/);
+    expect(text).toMatch(/`rationale`/);
+    expect(text).toMatch(/child task description/i);
     expect(text).toMatch(/verbatim/i);
   });
 
-  it('framing always reminds that the system MUST NOT fabricate names', () => {
-    const text = frame({ entryKind: 'batch', ordinal: 0, missingField: 'name', observed: null });
-    expect(text).toMatch(/MUST NOT fabricate/i);
+  it('batch violation (invalid parallelGroup): surfaces "invalid" reason and lane-naming guidance', () => {
+    const text = frame({
+      entryKind: 'batch',
+      ordinal: 1,
+      field: 'parallelGroup',
+      reason: 'invalid',
+      observed: { name: 'x', rationale: 'y', parallelGroup: 42 },
+    });
+    expect(text).toMatch(/batch entry at index 1/);
+    expect(text).toMatch(/INVALID value for 'parallelGroup'/);
+    expect(text).toMatch(/`parallelGroup`/);
+    expect(text).toMatch(/lane/i);
+  });
+
+  it('batch violation (collision priorityInParallelGroup): names lane and collidesWith', () => {
+    const text = frame({
+      entryKind: 'batch',
+      ordinal: 2,
+      field: 'priorityInParallelGroup',
+      reason: 'collision',
+      observed: { name: 'c', rationale: 'r', parallelGroup: 'core', priorityInParallelGroup: 0 },
+      collidesWith: 0,
+      laneName: 'core',
+    });
+    expect(text).toMatch(/index 2 and 0 share lane 'core'/);
+    expect(text).toMatch(/MUST be distinct/);
+    expect(text).toMatch(/priorityInParallelGroup/);
+  });
+
+  it('framing always reminds that the system MUST NOT fabricate or guess values', () => {
+    const text = frame({ entryKind: 'batch', ordinal: 0, field: 'name', reason: 'missing', observed: null });
+    expect(text).toMatch(/MUST NOT fabricate or guess/i);
     expect(text).toMatch(/Re-emit the entire <plan>/);
   });
 
@@ -63,7 +94,8 @@ describe('buildBatchSplitSchemaViolationFraming — batch-entry guidance', () =>
     const text = frame({
       entryKind: 'batch',
       ordinal: 0,
-      missingField: 'name',
+      field: 'name',
+      reason: 'missing',
       observed: undefined,
     });
     expect(text).toMatch(/Observed:/);
@@ -75,7 +107,8 @@ describe('buildBatchSplitSchemaViolationFraming — batch-entry guidance', () =>
     const text = frame({
       entryKind: 'batch',
       ordinal: 0,
-      missingField: 'name',
+      field: 'name',
+      reason: 'missing',
       observed: big,
     });
     // Framing must NOT include the full 1000-char payload — truncation keeps
