@@ -510,12 +510,18 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   saveCheckpointSnapshot(
     queue: BaseTask[],
+    runningTasks: BaseTask[],
     completedTasks: BaseTask[],
     tokenUsage?: TaskTokenUsage
   ): void {
     const snapshot: TaskQueueSnapshot = {
-      currentTask: null,           // No "current" — all running tasks are in queue as interrupted
-      currentTasks: undefined,
+      currentTask: null,
+      // In-flight workers reported via `currentTasks` — same field shape as
+      // the live snapshot, unifying disaster-recovery reads. The crash-recovery
+      // boundary (`JobCleanupManager`) is the single site that applies
+      // `interrupted:true` on resume; this snapshot itself carries no
+      // defensive marking so the durable SSOT stays clean during normal run.
+      currentTasks: runningTasks,
       queue,
       completedTasks,
       recursionCount: 0,
@@ -525,9 +531,9 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
 
     // ✅ Use SEPARATE Redis key for checkpoint snapshots (disaster recovery only).
     // CRITICAL: Must NOT use the same key as broadcastKanbanUpdate (TASK_QUEUE_KEY_PREFIX).
-    // Checkpoint snapshots contain running tasks marked as "interrupted" in the queue
-    // (for disaster recovery). If written to the live key, a page refresh between
-    // checkpoint and the next broadcast would show all running tasks as "interrupted".
+    // The checkpoint snapshot now mirrors the live snapshot shape (running in
+    // `currentTasks`, never pre-marked). The cleanup path applies `interrupted:true`
+    // when it projects running→queue on resume.
     const key = `${TASK_QUEUE_CHECKPOINT_KEY_PREFIX}${this.jobId}`;
     // Fire-and-forget — this is a backup, not critical path. Tracked so a
     // close that lands mid-write can still flush the SET before quit.

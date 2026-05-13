@@ -366,6 +366,26 @@ export class KanbanService {
     const completedTaskIds = sessionState.completedTasks || [];
     const completedTasksDetails = sessionState.completedTasksDetails || [];
     const currentTask = sessionState.currentTask || null;
+    // Parallel mode: in-flight workers persist tasks under `runningTasks`
+    // (separate from `taskQueue`) without defensive marking. Tasks here
+    // carry `interrupted:true` only when a real interrupt event stamped them
+    // (handleInterruption → captureWorkerSnapshots). Split per-task by that
+    // flag so:
+    //   - Marked running tasks (graceful stop in progress) render in `todo`
+    //     and TaskCard surfaces the Paused badge — matches the UX of tasks
+    //     that already moved to `taskQueue` via reportStopped.
+    //   - Unmarked running tasks (job actively running, periodic checkpoint)
+    //     render in `inProgress` so a page refresh during normal run does
+    //     not show "Paused".
+    // Hard-kill orphans never reach this branch unmarked — JobCleanupManager
+    // projects them into `taskQueue` with marks at cleanup time.
+    const sessionRunningTasks: any[] = (sessionState as any).runningTasks || [];
+    const runningPaused = sessionRunningTasks.filter((t: any) => t?.interrupted === true);
+    const runningLive = sessionRunningTasks.filter((t: any) => t?.interrupted !== true);
+    const runningIds = new Set<string>([
+      ...(currentTask ? [currentTask.id] : []),
+      ...sessionRunningTasks.map((t: any) => t.id),
+    ]);
 
     const MIN_RECURSION_LIMIT = 5;
     const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
@@ -373,15 +393,22 @@ export class KanbanService {
       ? 200
       : recursionLimit;
 
-    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${sessionTaskQueue.length} ip=${currentTask ? 1 : 0} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning}`);
+    const inProgress = currentTask
+      ? [currentTask, ...runningLive]
+      : runningLive;
+
+    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${sessionTaskQueue.length + runningPaused.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning}`);
 
     return {
       jobId: sessionJobId,
-      todo: sessionTaskQueue.filter((task: any) =>
-        !completedTaskIds.includes(task.id) &&
-        (!currentTask || currentTask.id !== task.id)
-      ),
-      inProgress: currentTask ? [currentTask] : [],
+      todo: [
+        ...runningPaused,
+        ...sessionTaskQueue.filter((task: any) =>
+          !completedTaskIds.includes(task.id) &&
+          !runningIds.has(task.id)
+        ),
+      ],
+      inProgress,
       completed: completedTasksDetails.map((detail: any) => ({
         ...detail,
         status: 'completed',

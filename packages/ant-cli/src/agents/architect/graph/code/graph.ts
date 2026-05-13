@@ -232,6 +232,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               {
                 state: {
                   taskQueue: mergedQueue,
+                  // In-flight tasks: persisted as a separate field so the
+                  // durable SSOT does NOT carry a stale "interrupted"
+                  // snapshot of actively-running work. Crash-recovery
+                  // boundaries (JobCleanupManager / runner.ts orphan path)
+                  // project this onto the queue with `interrupted:true`
+                  // only when the worker actually died.
+                  runningTasks: checkpoint.runningTasks,
                   // String-ID array stays Path B-superseded-free so it
                   // matches main graph's invariant (`state.completedTasks`
                   // = real completions only). Full objects (incl.
@@ -278,13 +285,15 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         // If the session file is corrupted/stale when cleanupJobState reads it,
         // Redis serves as a fallback to prevent task state loss.
         //
-        // Send the SAME mergedQueue we just wrote to the session so the SSOT
-        // stays consistent. Without this, JobCleanupManager's parallel-mode
-        // path overwrites session.taskQueue with Redis's queue (which would
-        // not include failed tasks), erasing the failed cards from the UI.
+        // Send the failed-merged queue AND the runningTasks separately so the
+        // Redis SSOT mirrors what we just wrote to the session: queue carries
+        // failed entries (Retry+Paused cards), runningTasks carries in-flight
+        // work without defensive marking. JobCleanupManager projects running
+        // onto the queue with `interrupted:true` if the worker actually died.
         if (state.deps?.kanbanUpdate?.saveCheckpointSnapshot && state._httpJobId) {
           state.deps.kanbanUpdate.saveCheckpointSnapshot(
             mergedQueue,
+            checkpoint.runningTasks,
             checkpoint.completedTasks,
             checkpoint.tokenUsage,
           );
