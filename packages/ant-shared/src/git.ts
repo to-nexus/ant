@@ -109,6 +109,8 @@ export interface GitOperationError {
   message: string;
   retryable: boolean;
   suggestedAction?: GitSuggestedAction | null;
+  /** Server-recommended minimum wait before retry (ms). Used for conflict countdown UX. */
+  retryAfterMs?: number;
 }
 
 /**

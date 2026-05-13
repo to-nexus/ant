@@ -40,6 +40,18 @@ export function useGitErrorRouting(): (err: GitOperationError | undefined) => { 
         });
         return { handled: true };
       }
+      // Lock contention from a concurrent publish/clone/fetch — surface the
+      // remaining TTL when the server provided one so the user knows how
+      // long to wait, otherwise fall back to a static notice.
+      if (err?.kind === 'conflict' && err.retryable) {
+        const seconds = err.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : null;
+        showError(
+          seconds
+            ? t('git.operationInProgressWithCountdown', { seconds })
+            : t('git.operationInProgress'),
+        );
+        return { handled: true };
+      }
       return { handled: false };
     },
     [showError, openMainPanelTab, t],
