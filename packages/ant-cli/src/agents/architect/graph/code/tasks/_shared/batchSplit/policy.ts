@@ -124,6 +124,15 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
   // FV appended unless one already sits in the queue, Tier 2
   // `selfVerifyOnDone` parents routed through this same policy because
   // `taskPolicy` lookup wins over the escalate-only fallback.
+  //
+  // NOTE: whether spawned siblings serialise or parallelise is NOT a
+  // property of the task type; it is a property of the work, which
+  // only the LLM authoring `batches[]` can know. The runtime reads
+  // optional per-batch `parallelGroup` + `priorityInParallelGroup`
+  // fields when present (lane mode) and falls back to the legacy
+  // distinct-per-i assignment otherwise. The prompts for these
+  // slim-shape task types require the LLM to emit both fields; the
+  // policy table here does not encode that decision.
   feature: {
     kind: 'drop-and-replace',
     subType: 'feature',

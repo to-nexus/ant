@@ -80,7 +80,7 @@ export async function runPlanToolLoopPhase(
       // emissions) but the safety net is here for completeness.
       console.warn(
         `⚠️  [Plan/toolLoop] BatchSplitSchemaViolation in ${callSite}: ` +
-        `${e.detail.entryKind}[${e.detail.ordinal}] missing '${e.detail.missingField}' — ` +
+        `${e.detail.entryKind}[${e.detail.ordinal}] ${e.detail.reason} '${e.detail.field}' — ` +
         `proceeding without fan-out (parent will execute its own plan).`,
       );
       updatedState = finalizePlanOutcome(state, nextTask, {
