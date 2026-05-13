@@ -47,19 +47,28 @@ export function testCodeBatchShape(ctx: BatchPlanShapeCtx): string {
 }
 
 /**
- * Feature batch shape — emitted by deep-think feature task plan when it
- * concludes the work needs to fan out into N physically-isolated child
- * tasks. `parentReasoning` is the parent's solution rationale, replicated
- * onto EVERY child batch so siblings share the same big-picture context
- * (prevents naming/signature drift across siblings — e.g. parent decides
- * `startPreview`; if one child renames it, sibling caller breaks).
+ * Feature batch shape — slim slice declaration. Emitted by feature / ui /
+ * design-system plans when the work fans out into N physically-isolated
+ * child tasks.
  *
- * Children carry this JSON as `prePlanText`. The child plan-tool-loop
- * receives it as INPUT (rendered via
- * `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the
- * parent's predicted exports against actual sibling outputs before
- * emitting `planText`. Identity-shortcut is reserved for `error` only
- * (see `nodes/plan/shortcut/prePlanned.ts`).
+ * Carries the slice **boundary** (`name`, `rationale`, optional
+ * `requiredFiles`) and **cross-batch contracts** (`parentReasoning`) —
+ * NOT the slice's internal `modify[]` / `create[]` / `delete[]` plan.
+ * The child plan-tool-loop re-investigates the codebase and emits its
+ * own flat implementation.
+ *
+ * Why slim (safe-braking-eagle RCA): the previous shape replicated the
+ * parent's full per-batch `modify[]` / `create[]` / `delete[]` arrays
+ * onto every child. The parent had to author them, so its single LLM
+ * response routinely exceeded 30K output tokens and tripped the silent
+ * `max_tokens` cliff. `parentReasoning` already carries the only
+ * cross-batch signal children need (export names, shared types, file
+ * layout) — restating the implementation per batch was duplication, not
+ * coordination. See `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md`.
+ *
+ * Identity-shortcut is reserved for `error` only (which still uses
+ * `diagnosticBatchShape`); feature/ui/design-system children run their
+ * own plan-tool-loop and never inherit prePlanText via the shortcut.
  */
 export function featureBatchShape(ctx: BatchPlanShapeCtx): string {
   const parentReasoning =
@@ -67,15 +76,14 @@ export function featureBatchShape(ctx: BatchPlanShapeCtx): string {
     (ctx.parsed as any).rationale ??
     (ctx.parsed as any).reasoning ??
     '';
+  const requiredFiles = Array.isArray(ctx.batch.requiredFiles)
+    ? ctx.batch.requiredFiles.filter((p: unknown): p is string => typeof p === 'string' && p.length > 0)
+    : [];
   return JSON.stringify({
     task: { id: `batch-${ctx.batchIndex}`, goal: ctx.batch.name },
     goal: ctx.batch.name,
     rationale: ctx.batch.rationale || ctx.batch.name,
-    implementation: {
-      modify: ctx.batch.modify || [],
-      create: ctx.batch.create || [],
-      delete: ctx.batch.delete || [],
-    },
+    ...(requiredFiles.length > 0 ? { requiredFiles } : {}),
     parentReasoning,
   });
 }

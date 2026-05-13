@@ -141,6 +141,30 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
           },
         );
       },
+      onMaxTokensTruncation: ({ outputTokens, round }) => {
+        console.warn(
+          `⚠️  [Design/Plan] max_tokens truncated (round=${round}, output=${outputTokens}) ` +
+          `for task "${currentTask!.name}". The partial output is discarded and the next ` +
+          `tool-loop entry restarts from scratch.`,
+        );
+        const featurePath = state.context?.featurePath;
+        if (featurePath && state._httpJobId) {
+          void getExecutionLogger({
+            featurePath,
+            jobId: state._httpJobId,
+            jobType: 'design',
+          })
+            .log('max_tokens_truncated', {
+              node: 'design-plan',
+              round,
+              outputTokens,
+              maxTokens: LLM_MAX_TOKENS.DEFAULT,
+              taskName: currentTask!.name,
+              recoveryHint: 'fresh-toolloop-restart',
+            }, currentTask!.id)
+            .catch(() => { /* non-blocking */ });
+        }
+      },
     });
   };
 

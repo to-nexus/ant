@@ -268,6 +268,11 @@ export class AnthropicLLMClient implements LLMClient {
     // ✅ Track token usage (accumulate from message_start and message_delta)
     let tokenUsage: TaskTokenUsage | undefined;
 
+    // Stop reason from the final `message_delta` event (Anthropic emits it
+    // there, not on `message_stop`). Mapped to the unified port enum so
+    // callers can gate on `'max_tokens'` without provider-specific knowledge.
+    let stopReason: LLMStreamEvent['stopReason'] | undefined;
+
     // ✅ In-flight usage_partial throttling.
     // message_delta 이벤트는 초당 여러 번 발생할 수 있으므로 게이지 업데이트가
     // Redis/SSE 를 범람시키지 않도록 아래 조건 중 하나를 만족할 때만 partial 을 내보낸다.
@@ -336,6 +341,22 @@ export class AnthropicLLMClient implements LLMClient {
             timestamp: new Date().toISOString(),
           },
         };
+      }
+
+      // Capture the final stop_reason — Anthropic only sends this on the
+      // last `message_delta` (the same event that carries final usage).
+      if (event.type === 'message_delta') {
+        const rawReason = (event as any).delta?.stop_reason as string | undefined;
+        if (rawReason) {
+          switch (rawReason) {
+            case 'end_turn': stopReason = 'end_turn'; break;
+            case 'max_tokens': stopReason = 'max_tokens'; break;
+            case 'stop_sequence': stopReason = 'stop_sequence'; break;
+            case 'tool_use': stopReason = 'tool_use'; break;
+            // pause_turn / refusal / unknown future values
+            default: stopReason = 'other'; break;
+          }
+        }
       }
 
       // ✅ Update usage from message_delta (incremental updates)
@@ -525,6 +546,7 @@ export class AnthropicLLMClient implements LLMClient {
           type: 'done',
           done: true,
           usage: tokenUsage,
+          stopReason,
           metadata: {
             provider: 'anthropic',
             model: this.modelName,

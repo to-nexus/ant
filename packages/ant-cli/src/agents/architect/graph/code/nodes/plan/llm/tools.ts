@@ -27,6 +27,7 @@ import { MessageContentBlock } from "../../../../../../../core/ports/llm";
 import { ArchitectGraphState } from "../../../state";
 import { CodeTask } from "../../../../../types/task";
 import { logPrompt } from "../../../../../../../core/utils/promptLogger";
+import { getExecutionLogger } from "../../../../../../../core/utils/executionLogger";
 import { collectResolvedPartials } from "../../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/graph/llmConfig";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
@@ -112,6 +113,36 @@ export async function runPlanLLMWithTools(
           recursionCount: state.recursionCount,
         },
       );
+    },
+    onMaxTokensTruncation: ({ outputTokens, round }) => {
+      // safe-braking-eagle: surface max_tokens truncation that the legacy
+      // fallthrough path absorbed silently. The output is still discarded
+      // (chunked-emission recovery is option C); A only adds visibility.
+      const taskId = task.id;
+      console.warn(
+        `⚠️  [Plan/toolLoop] max_tokens truncated (round=${round}, output=${outputTokens}) ` +
+        `for task "${task.name}" (${taskId}). The partial output is discarded; the next ` +
+        `tool-loop entry restarts from scratch. Consider bumping LLM_MAX_TOKENS.DEFAULT or ` +
+        `having the plan emit \`batches[]\` to fan out before producing this much detail.`,
+      );
+      const featurePath = state.context?.featurePath;
+      if (featurePath && state._httpJobId) {
+        void getExecutionLogger({
+          featurePath,
+          jobId: state._httpJobId,
+          jobType: 'code',
+        })
+          .log('max_tokens_truncated', {
+            node: 'plan-toolLoop',
+            round,
+            outputTokens,
+            maxTokens: LLM_MAX_TOKENS.DEFAULT,
+            taskName: task.name,
+            taskType: task.type,
+            recoveryHint: 'fresh-toolloop-restart',
+          }, taskId)
+          .catch(() => { /* non-blocking */ });
+      }
     },
   });
 

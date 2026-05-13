@@ -60,6 +60,12 @@ export type ExecutionEventType =
   | 'profile_missing'
   | 'cache_instability'
   | 'execute_interrupted'
+  // safe-braking-eagle RCA: LLM stream hit `maxTokens` ceiling. The output
+  // was truncated mid-stream and discarded (no closing `</plan>` /
+  // `</file>` tag, or mid tool_use); the node fell through to a fresh
+  // tool-loop, billing the tokens twice. See
+  // `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md` § Issue 1/1B.
+  | 'max_tokens_truncated'
   // Stage 0 (silent-passing-cycle) — diagnostic trace events. See
   // docs/tmp/verification-no-progress-staged-recovery.md §5.
   | 'verification_session_change'

@@ -503,8 +503,14 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
         expect(sub.prePlanText).toBeTruthy();
         const parsed = JSON.parse(sub.prePlanText);
         expect(parsed.parentReasoning).toMatch(/wallet adapter/i);
-        expect(parsed.implementation).toBeTruthy();
+        // safe-braking-eagle: feature/ui/design-system children receive a
+        // slim slice declaration only — `parentReasoning` + boundary, no
+        // `implementation` / `diagnostics`. The child plan node authors
+        // its own implementation block.
+        expect(parsed.implementation).toBeUndefined();
         expect(parsed.diagnostics).toBeUndefined();
+        expect(parsed.goal).toBeTruthy();
+        expect(parsed.rationale).toBeTruthy();
         expect(sub.batchSplitCount).toBe(1);
         // parallelGroup inherits parent's group name when files are disjoint.
         expect(sub.parallelGroup).toMatch(/^fe-main-/);
