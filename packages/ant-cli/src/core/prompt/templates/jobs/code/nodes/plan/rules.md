@@ -54,7 +54,7 @@ Generate a **concrete implementation plan** for this task.
 </plan>
 ```
 
-If you have user-facing narrative (rationale, summary, follow-up question), put it in a `<reply>...</reply>` tag — emit it AFTER `<plan>` is closed. Per the Output Tag Contract, the first output token must be `<` of a registered tag, so do NOT write any prose before `<plan>` opens.
+Per the Output Tag Contract, the first output token must be `<` of a registered tag, so do NOT write any prose before `<plan>` opens. Emit nothing after `</plan>` closes — the plan node terminates at that boundary and the next phase consumes the sealed JSON directly.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 JSON SCHEMA FOR `<plan>`

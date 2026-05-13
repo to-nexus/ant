@@ -109,6 +109,7 @@ export class GeminiLLMClient implements LLMClient {
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
+      stopSequences?: string[];
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
@@ -125,6 +126,12 @@ export class GeminiLLMClient implements LLMClient {
       })),
     }] : undefined;
 
+    // Caller-supplied hard-stop strings. Gemini terminates the candidate
+    // and surfaces `finishReason: STOP` once any of these appears.
+    const stopSequences: string[] | undefined = Array.isArray(options?.stopSequences)
+      ? options!.stopSequences as string[]
+      : undefined;
+
     const response = await this.client.models.generateContentStream({
       model: this.modelName,
       contents,
@@ -133,6 +140,7 @@ export class GeminiLLMClient implements LLMClient {
         temperature: this.temperature,
         maxOutputTokens: options?.maxTokens || this.maxTokens,
         ...(geminiTools ? { tools: geminiTools } : {}),
+        ...(stopSequences && stopSequences.length > 0 ? { stopSequences } : {}),
       },
     });
 
