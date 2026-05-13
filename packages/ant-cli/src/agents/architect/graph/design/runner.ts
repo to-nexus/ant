@@ -64,22 +64,29 @@ export async function runDesignGraph(initial: DesignGraphState) {
       
       const hasInterruption = Boolean(session?.state?.interruption);
       const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
-      // ✅ Also detect orphaned interrupted tasks from periodic checkpoints.
-      // saveCheckpoint() marks running tasks as interrupted in the queue as a safety measure,
-      // but doesn't set state.interruption. If the process dies before completion, the session
-      // has tasks with interrupted: true but no top-level interruption field.
-      const hasOrphanedInterruptedTasks = !hasInterruption && hasTaskQueue
-        && session?.state?.taskQueue?.some((t: any) => t.interrupted);
+      // Project the last checkpoint's in-flight tasks onto the queue head with
+      // `interrupted:true`. Two boundaries land tasks here:
+      //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
+      //     leaves them marked + carrying `resumeState`.
+      //   - Hard-kill orphan (process died between save and resume) leaves
+      //     them unmarked; the mark is applied here.
+      // The map is idempotent so the graceful case is a no-op spread.
+      const persistedRunning: any[] = (session?.state as any)?.runningTasks ?? [];
+      const runningMarked = persistedRunning.map((t: any) => ({ ...t, interrupted: true }));
+      const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
+      const hasAnyResumable = hasTaskQueue || runningMarked.length > 0;
 
-      if ((hasInterruption || hasOrphanedInterruptedTasks) && hasTaskQueue && session.state) {
-        console.log(`🔄 [DesignRunner] Resuming: ${session.state.taskQueue?.length || 0} tasks in queue, ${session.state.completedTasks?.length || 0} completed`);
-        
+      if ((hasInterruption || hasOrphanedRunning) && hasAnyResumable && session.state) {
+        const persistedQueue: any[] = (session.state as any).taskQueue ?? [];
+        const finalQueueArr = [...runningMarked, ...persistedQueue];
+        console.log(`🔄 [DesignRunner] Resuming: ${finalQueueArr.length} tasks in queue (running=${runningMarked.length}), ${session.state.completedTasks?.length || 0} completed`);
+
         // ✅ Set isResume flag for graph router
         initial.isResume = true;
-        
+
         // Reconstruct TaskQueue from saved array
         const { TaskQueue } = await import('../../types/task');
-        initial.taskQueue = TaskQueue.from<DesignTask>(session.state.taskQueue);
+        initial.taskQueue = TaskQueue.from<DesignTask>(finalQueueArr);
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];

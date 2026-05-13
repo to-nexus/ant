@@ -166,6 +166,16 @@ export interface SessionState {
   
   // Task Queue State
   taskQueue?: any[];
+  /**
+   * In-flight tasks captured by the parallel orchestrator's periodic
+   * checkpoint. Separate field from `taskQueue` so the durable SSOT does
+   * NOT carry a stale "interrupted" snapshot of actively-running work.
+   * Crash recovery (JobCleanupManager / runner.ts orphan path) is the
+   * single boundary that projects this onto the queue head with
+   * `interrupted:true`. See `ParallelCheckpoint.runningTasks` for the
+   * orchestrator-side contract.
+   */
+  runningTasks?: any[];
   currentTask?: any;
   completedTasks?: string[];
   completedTasksDetails?: any[];

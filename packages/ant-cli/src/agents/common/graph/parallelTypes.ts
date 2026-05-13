@@ -110,7 +110,26 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
  * Checkpoint data for parallel execution state.
  */
 export interface ParallelCheckpoint<T extends BaseTask> {
+  /**
+   * Queued tasks only. Tasks that have been actually interrupted (user stop,
+   * recursion limit, Figma rate-limit, batchSplit Path A re-queue, transient
+   * retry, etc.) carry their `interrupted` mark on the task object and live
+   * here. The orchestrator NEVER pre-marks running tasks into this field as
+   * a safety measure — see `runningTasks` below.
+   */
   taskQueue: T[];
+  /**
+   * In-flight tasks currently assigned to workers. Carries NO defensive
+   * marking. The crash-recovery boundary (`JobCleanupManager` for cloud,
+   * runner.ts orphan-recovery for local CLI) is the single SSOT that
+   * projects this list back onto the queue with `interrupted:true` if the
+   * worker process died between save and resume.
+   *
+   * On graceful interruption (`handleInterruption` → `captureWorkerSnapshots`),
+   * tasks here may already carry `interrupted:true` + `resumeState` from the
+   * snapshot capture; the field accepts that state idempotently.
+   */
+  runningTasks: T[];
   completedTasks: T[];
   failedTasks: FailedTask<T>[];
   tokenUsage: TaskTokenUsage;

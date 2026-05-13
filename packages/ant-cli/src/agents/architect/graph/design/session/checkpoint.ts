@@ -27,6 +27,7 @@ import type {
 import { CONV_KEYS, type ConversationMessage } from "../../../../common/graph/conversations";
 import type { JobTiming } from "../../../../common/graph/timing/JobTimingManager";
 import type { ParallelCheckpoint } from "../../../../common/graph/parallelTypes";
+import { buildResumableFailedTaskBase } from "../../../../common/graph/resumableFailedTask";
 
 type CheckpointArtifacts = Partial<SessionArtifacts> & { state?: Partial<SessionState> };
 
@@ -282,17 +283,19 @@ export async function saveOrchestratorCheckpoint(
   if (!state.deps?.session || !state.context.featureFolder) return;
 
   try {
-    const failedAsQueue: DesignTask[] = checkpoint.failedTasks.map((f) => ({
-      ...f.task,
-      interrupted: true,
-      _failed: true,
-      _failureReason: f.error.message,
-    }) as DesignTask);
+    // SSOT helper: marker trio (`interrupted`/`_failed`/`_failureReason`)
+    // is owned by `buildResumableFailedTaskBase` so design and code jobs
+    // share one shape for the FE's Retry+Paused card. DesignTask has no
+    // CodeTask-specific budget axes, so the base helper is used directly.
+    const failedAsQueue: DesignTask[] = checkpoint.failedTasks.map((f) =>
+      buildResumableFailedTaskBase<DesignTask>(f.task, f.error.message),
+    );
     const failedIds = new Set(failedAsQueue.map((t) => t.id));
     const dedupedQueue = checkpoint.taskQueue.filter((t) => !failedIds.has(t.id));
 
     const patch: Partial<SessionState> = {
       taskQueue: [...failedAsQueue, ...dedupedQueue],
+      runningTasks: checkpoint.runningTasks,
       completedTasks: checkpoint.completedTasks.map((t) => t.id),
       completedTasksDetails: checkpoint.completedTasks,
       tokenUsage: checkpoint.tokenUsage,

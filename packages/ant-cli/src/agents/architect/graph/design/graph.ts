@@ -16,6 +16,7 @@ import { designDetectStrategy } from './nodes/detect/strategy.js';
 import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
+import { buildResumableFailedTaskBase } from '../../../common/graph/resumableFailedTask';
 import { routeAfterDocGen } from "./routers/docGenRouter";
 import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import * as designRouting from "./routing";
@@ -667,6 +668,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   if (result.hasFailures) {
     await saveOrchestratorCheckpoint(state, {
       taskQueue: result.remainingQueue,
+      // Orchestrator has fully drained at this point; no in-flight workers.
+      runningTasks: [],
       completedTasks: result.completedTasks,
       failedTasks: result.failedTasks,
       tokenUsage: result.tokenUsage,
@@ -677,15 +680,14 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
 
   // Re-populate live state.taskQueue with failed (with _failed markers) + remaining
   // so learn detects failures via the queue (SSOT). No separate state.failedTasks
-  // channel — the marker on each task IS the signal.
+  // channel — the marker on each task IS the signal. The marker trio is owned by
+  // `buildResumableFailedTaskBase` so the shape stays uniform with the design
+  // checkpoint writer and the code job's wrapper.
   if (state.taskQueue) {
     for (const f of result.failedTasks) {
-      state.taskQueue.push({
-        ...f.task,
-        interrupted: true,
-        _failed: true,
-        _failureReason: f.error.message,
-      } as DesignTask);
+      state.taskQueue.push(
+        buildResumableFailedTaskBase<DesignTask>(f.task, f.error.message),
+      );
     }
     for (const t of result.remainingQueue) {
       state.taskQueue.push(t);
