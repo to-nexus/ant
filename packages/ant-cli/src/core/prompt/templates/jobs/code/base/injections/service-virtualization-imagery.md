@@ -45,6 +45,17 @@ contextually meaningful placeholder:
    photos, cover images) where authoring SVG is impractical, reference
    a stable public placeholder service URL.
 
+   **Rendering constraint**: External placeholder URLs MUST bypass the
+   framework's image optimizer. Use plain `<img>` (HTML element) OR
+   `<Image unoptimized>` (Next.js). Reason: placeholder services
+   commonly redirect to a CDN host (e.g., `picsum.photos` → 302 →
+   `fastly.picsum.photos`), and optimizers validate the redirect target
+   against the framework's allowlist (`remotePatterns` in Next.js). The
+   redirect target is rarely documented and changes without notice, so
+   optimizer routing is structurally fragile for placeholder pathways.
+   Bypassing the optimizer is the contract — adding every
+   redirect-target host to `remotePatterns` is not.
+
 ### Constraints
 
 - Do NOT leave the image source empty, point to a non-existent local
@@ -68,6 +79,10 @@ contextually meaningful placeholder:
 - Do NOT inline raster bytes (base64) — bundle weight grows linearly
   with virtualized entries. Inline SVG is acceptable; raster goes
   through external placeholder or library
+- External placeholder URLs (pathway 3) MUST NOT be rendered through
+  the framework's image optimizer. See pathway 3 rendering constraint
+  above. This rule trumps any framework convention that defaults to
+  the optimized image component
 
 ### Blind Spot
 
