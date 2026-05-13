@@ -71,22 +71,22 @@ describe('nodes/checkTaskStatus/evaluate', () => {
     expect(result.violations[0].type).toBe('cross_worker_conflict');
   });
 
-  it('injects budget_exhausted when LLM did not signal done', async () => {
+  it('injects no_done_signal when LLM did not signal done', async () => {
     const state = makeState({ llmResponse: { done: false } as any });
     const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
     expect(result.violations).toHaveLength(1);
-    expect(result.violations[0].type).toBe('budget_exhausted');
+    expect(result.violations[0].type).toBe('no_done_signal');
     // Generic task types get the generic hint — no `task.type` branching.
     expect(result.violations[0].suggestedFix).toContain('Break down the task scope');
   });
 
-  it('verification task picks up the verification-specific budget hint via hook', async () => {
+  it('verification task picks up the verification-specific hint via hook', async () => {
     const state = makeState({
       llmResponse: { done: false } as any,
       currentTask: { id: 'v1', name: 'verify', type: 'verification', priority: 10 } as any,
     });
     const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
-    expect(result.violations[0].type).toBe('budget_exhausted');
+    expect(result.violations[0].type).toBe('no_done_signal');
     expect(result.violations[0].suggestedFix).toContain('Verification task did not complete');
   });
 

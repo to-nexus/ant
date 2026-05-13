@@ -187,7 +187,7 @@ export class TaskWorker<T extends BaseTask> {
           // that in-plan retries AND reverify all failed to clear violations.
           const err = new VerificationTerminalError(
             'unresolved_violations',
-            `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
+            `Task "${task.name}" ended with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
           );
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
           await this.orchestrator.reportFailure(this.workerId, completedTask, err);

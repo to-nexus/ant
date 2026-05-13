@@ -107,18 +107,24 @@ If you have user-facing narrative (rationale, summary, follow-up question), put 
 
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
-{{#if (or (eq taskType "feature") (eq taskType "ui"))}}
+{{#if (or (eq taskType "feature") (eq taskType "ui") (eq taskType "design-system"))}}
 ────────────────────────────────────────────────────────────────────────────────
-## 🌿 FAN-OUT AT PLAN TIME (feature / ui)
+## 🌿 FAN-OUT AT PLAN TIME (feature / ui / design-system)
 ────────────────────────────────────────────────────────────────────────────────
 
 The task arrived with its scope already chosen at decomposition. Fan-out here is meaningful only when plan-time investigation reveals sub-structure that decomposition could not foresee.
 
 {{> jobs/code/shared/task-split-rubric }}
 
+### Single-session closure (plan-time check)
+
+One `batches[]` entry is one execute session. The observable signal is the volume the batch carries — each `create` / `modify` item corresponds to at least one execute round (read / write / retry on tool errors). When that volume makes single-session closure unrealistic for this work, split — even if the coherence rubric above would otherwise bundle.
+
+This axis is orthogonal to coherence: the rubric decides *whether the work is separable*, this check decides *whether one session can hold it*. A coherent unit may still need to be split when single-session closure says so. When that happens, `parentReasoning` names single-session closure (not coherence) as the concrete benefit.
+
 ### How to emit `batches[]`
 
-The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principle above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
+The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principles above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
 
 **Constraint**: `parentReasoning` MUST name the concrete benefit (failure isolation / scope boundary / cognitive mode separation) for this specific task. Each batch sees this verbatim.
 

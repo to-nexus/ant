@@ -55,7 +55,7 @@ export type ViolationType =
   | 'no_files'              // 파일 생성 안 됨
   | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)
   | 'cross_worker_conflict' // 병렬 작업 간 파일 충돌 (다른 워커가 이미 생성/수정)
-  | 'budget_exhausted'      // execute call limit 도달 (LLM이 <done> 없이 budget 소진)
+  | 'no_done_signal'        // checkTaskStatus 진입 시점에 LLM이 <done> 없이 종료 (Safety Net A/B 강제 진입 등)
   | 'verification_incomplete' // verification 태스크가 done 신호를 보냈으나 성공한 빌드 커맨드가 없음
   | 'parity_apply_failed'   // Service Virtualization parity check — virtualized variant (USE_MOCK=true) 빌드/테스트 실패
   | 'parity_real_failed'    // Service Virtualization parity check — production variant (USE_MOCK=false) 빌드/테스트 실패
@@ -273,9 +273,6 @@ export interface ArchitectGraphState extends TriageableState {
 
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _executeCallIndex?: number;
-
-  /** Per-task execute call budget computed from planText (create×1 + modify×3). Undefined = use default. */
-  _executeBudget?: number;
 
   /** Which node's tool loop are we in? 'plan' = plan-tool loop, 'execute' = execute-tool loop.
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */

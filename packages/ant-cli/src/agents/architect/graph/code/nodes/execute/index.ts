@@ -307,11 +307,11 @@ export async function execute(
   const isAfterToolCall = nodeExecute.length > 0;
   
   // Remediation-style tasks (verification with its diagnostic plan,
-  // error with its prePlanText) do not need extended thinking —
-  // the plan is already concrete. Enabling thinking here produces
-  // thinking-only responses (no tool calls), which Safety Net C
-  // (threshold=1) immediately kills, wasting an entire plan→execute→
-  // enforce cycle and triggering the "restart from beginning" loop.
+  // error with its prePlanText) do not need extended thinking — the
+  // plan is already concrete. Enabling thinking here produces
+  // thinking-only responses (no tool calls), which the historical
+  // Safety Net C killed; the net is retired but the rationale for
+  // disabling thinking on remediation tasks stands.
   const isRemediationTask =
     isVerificationTask(state.currentTask) || isErrorTask(state.currentTask);
   const hasRemediationPlan = isRemediationTask && !!state.planText;
@@ -662,9 +662,9 @@ export async function execute(
       console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
     }
 
-    // Safety Net C (verification-only loop counter) was retired by plan §5.3.
-    // Runaway is bounded by Safety Net D/E (`_executeCallIndex` budget),
-    // LangGraph's `recursionLimit`, and the `batch_cycle_limit` fail-safe.
+    // Runaway is bounded by Safety Net A (recursionLimit) and Safety Net B
+    // (repeated tool failures) in `executeRouter`, plus LangGraph's
+    // `recursionLimit` ceiling and `batch_cycle_limit` queue-side fan-out.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const toolMutatedThisTurn = state._lastToolBatchMutatedFiles === true;
 
