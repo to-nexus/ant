@@ -85,7 +85,7 @@ Architecture is not a single label — it is the combination of independent desi
 
 **Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies (Service Virtualization) in the catalog section where that adapter is introduced.
 
-**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name; master fallback `USE_MOCK` MAY also be named). Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
+**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME. The toggle name MUST encode the frontend bundler's client-bundle visibility prefix (`NEXT_PUBLIC_USE_MOCK_<NAME>` for Next.js, `VITE_USE_MOCK_<NAME>` for Vite, `REACT_APP_USE_MOCK_<NAME>` for CRA, where `<NAME>` is uppercase snake of the connection name). A bare `USE_MOCK_<NAME>` resolves to `undefined` in client code and the production adapter activates silently — a defect, not a benign warning. Master fallback (same framework prefix as the per-connection toggles) MAY also be named. See `preview-env-contract.md §4.5` for the full naming table. Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
 
 **Constraint**: Mock implementations MUST follow the same DTO contracts as production (as derived from PRD requirements).
 

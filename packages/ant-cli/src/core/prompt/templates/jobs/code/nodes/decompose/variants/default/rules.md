@@ -709,8 +709,8 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 **Constraint — Service Virtualization wiring**: Every `business` external dependency declared in the design document is virtualizable by definition (`# @connection business {name}` is the only signal needed — no extra modifier token). The setup task MUST author `.env.example` entries that:
 
 1. Use `# @connection business {name}` annotation (no extra modifier token for virtualization)
-2. Declare `USE_MOCK_<NAME>=true` directly below the variable, where `<NAME>` is the uppercase snake of the connection name
-3. Optionally declare master `USE_MOCK=true` for default-broadcast across every business connection that lacks a per-connection toggle
+2. Declare the toggle line directly below the variable. The toggle name follows the framework-aware naming table in `preview-env-contract.md §4.5` — bare `USE_MOCK_<NAME>` only when the adapter factory is exclusively server-side; `NEXT_PUBLIC_USE_MOCK_<NAME>` / `VITE_USE_MOCK_<NAME>` / `REACT_APP_USE_MOCK_<NAME>` when the factory is reachable from client code (default for any frontend package)
+3. Optionally declare the master broadcast (`USE_MOCK=true`, `NEXT_PUBLIC_USE_MOCK=true`, `VITE_USE_MOCK=true`, or `REACT_APP_USE_MOCK=true`) using the same prefix as the per-connection toggles in the same file — mixing prefixes makes the master broadcast invisible to client code
 
 The feature task that owns each business-connection port MUST author both production and virtualized adapters in the same task (single unit of work — port + 2 adapters + toggle wiring). `infrastructure` connections (DB / cache / queue via docker-compose) are NOT virtualization targets — they run as real local instances.
 

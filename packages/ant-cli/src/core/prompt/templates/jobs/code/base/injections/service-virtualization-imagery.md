@@ -51,10 +51,11 @@ contextually meaningful placeholder:
   raster, or emit a zero-byte data URI
 - Do NOT replace design-system assets defined by `ui-assets.json` —
   those are authoritative regardless of virtualization state
-- Activation is gated by the same `USE_MOCK_<NAME>` / master `USE_MOCK`
-  env vars defined in `service-virtualization-contract`. When the
-  production adapter is active, imagery comes from the real source
-  (upload pipeline, CDN, database), not from this partial's pathways
+- Activation is gated by the same toggle env var that the SV adapter
+  reads — exact name per the framework-aware table in
+  `preview-env-contract.md §4.5`. When the production adapter is active,
+  imagery comes from the real source (upload pipeline, CDN, database),
+  not from this partial's pathways
 - Placeholder URLs MUST be deterministic per virtualized entity — derive
   the URL from a stable identifier (entity id / index / slug) so
   re-renders show the same image. Random URLs that change every render
