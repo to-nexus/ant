@@ -11,12 +11,13 @@
  * separate user-vs-assistant message scan.
  */
 
-import { useEffect, useRef, useCallback, forwardRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo, forwardRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { PinnedQueryData } from './PinnedQuery';
 import { TurnItem, TypingIndicator } from './TurnItem';
 import { useStore } from '@/domain/store';
 import type { Turn } from '@/domain/store/selectors/chat';
+import { getPendingChoice } from '@/domain/store/selectors/chat';
 
 /**
  * Custom Scroller for Virtuoso that ensures text selection works.
@@ -60,10 +61,22 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
 
   // Auto-scroll: ON by default, OFF only when user explicitly scrolls up,
   // re-enabled when user scrolls back to bottom.
+  //
+  // INVARIANT — every autoscroll trigger below must consult
+  // `pendingRef.current.has`. An unresolved choice card is a 1st-class
+  // citizen of autoscroll policy: while one exists, parallel-task events
+  // must NOT push it out of the viewport. Once resolved, getPendingChoice
+  // immediately reports has=false and normal follow-output resumes — so
+  // resolved cards naturally scroll past with the feed (do NOT gate on
+  // anything beyond `!resolved` in the selector).
   const isAtBottomRef = useRef(true);
   const autoScrollRef = useRef(true);
   // Track previous state to detect content changes within existing turns.
   const prevScrollStateRef = useRef({ turnLen: 0, lastSectionsLen: 0 });
+
+  const pending = useMemo(() => getPendingChoice(turns), [turns]);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
 
   const wheelHandlerRef = useRef<EventListener | null>(null);
   if (!wheelHandlerRef.current) {
@@ -247,12 +260,12 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
   }, [turns.length]);
 
   const handleFollowOutput = useCallback((_isAtBottom: boolean) => {
-    return autoScrollRef.current ? 'auto' : false;
+    return (autoScrollRef.current && !pendingRef.current.has) ? 'auto' : false;
   }, []);
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     isAtBottomRef.current = atBottom;
-    if (atBottom) {
+    if (atBottom && !pendingRef.current.has) {
       autoScrollRef.current = true;
     }
   }, []);
@@ -271,7 +284,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
 
     prevScrollStateRef.current = { turnLen: turns.length, lastSectionsLen: lastTurnSectionsLen };
 
-    if (isNewContentInLastTurn && initialScrollDone.current && autoScrollRef.current) {
+    if (isNewContentInLastTurn && initialScrollDone.current && autoScrollRef.current && !pending.has) {
       const scrollToEnd = () => {
         virtuosoRef.current?.scrollToIndex({
           index: turns.length - 1,
@@ -289,7 +302,36 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
         clearTimeout(t2);
       };
     }
-  }, [lastTurnSectionsLen, lastTurnItemsLen, turns.length]);
+  }, [lastTurnSectionsLen, lastTurnItemsLen, turns.length, pending.has]);
+
+  // Card-into-view transition: when an unresolved choice card first appears
+  // (or switches to a different turn), bring it into view exactly once.
+  // After that, the freeze above keeps it from being pushed off by parallel
+  // events. When resolved → turnIndex becomes null → early-return; resolved
+  // cards have no special treatment and scroll naturally with the feed.
+  const prevPendingTurnIndexRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevPendingTurnIndexRef.current;
+    prevPendingTurnIndexRef.current = pending.turnIndex;
+    if (pending.turnIndex == null) return;
+    if (pending.turnIndex === prev) return;
+    if (!initialScrollDone.current) return;
+    const scrollToCard = () => {
+      virtuosoRef.current?.scrollToIndex({
+        index: pending.turnIndex!,
+        align: 'end',
+        behavior: 'auto',
+      });
+    };
+    const rafId = requestAnimationFrame(scrollToCard);
+    const t1 = setTimeout(scrollToCard, 50);
+    const t2 = setTimeout(scrollToCard, 200);
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [pending.turnIndex]);
 
   const itemContent = useCallback((index: number, turn: Turn) => {
     return (
@@ -313,7 +355,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
 
   const prevShowTypingRef = useRef(false);
   useEffect(() => {
-    if (showTypingInFooter && !prevShowTypingRef.current && initialScrollDone.current && autoScrollRef.current) {
+    if (showTypingInFooter && !prevShowTypingRef.current && initialScrollDone.current && autoScrollRef.current && !pending.has) {
       const scrollToEnd = () => {
         virtuosoRef.current?.scrollToIndex({
           index: turns.length - 1,
@@ -330,7 +372,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
       };
     }
     prevShowTypingRef.current = showTypingInFooter;
-  }, [showTypingInFooter, turns.length]);
+  }, [showTypingInFooter, turns.length, pending.has]);
 
   const Footer = useCallback(() => {
     if (!showTypingInFooter) return null;
