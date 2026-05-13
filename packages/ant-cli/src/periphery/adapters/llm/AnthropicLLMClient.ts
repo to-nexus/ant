@@ -59,6 +59,30 @@ export class AnthropicLLMClient implements LLMClient {
     this.modelName = config.modelName;
   }
 
+  // Opus 4.7+ rejects `thinking.type.enabled` and requires adaptive thinking
+  // with `output_config.effort`; Sonnet 4.6 and earlier still use the legacy
+  // enabled + budget_tokens shape.
+  private buildThinkingParams(
+    enableThinking: boolean,
+    thinkingBudget: number,
+  ): Record<string, any> {
+    if (!enableThinking) return {};
+
+    if (this.modelName.includes('opus-')) {
+      return {
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'medium' },
+      };
+    }
+
+    return {
+      thinking: {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
+      },
+    };
+  }
+
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
     const result = await this.invokeWithUsage(messages, options);
     return result.content;
@@ -118,12 +142,7 @@ export class AnthropicLLMClient implements LLMClient {
           model: this.modelName,
           max_tokens: maxTokens,
           ...(systemParam && { system: systemParam }),
-          ...(enableThinking ? {
-            thinking: {
-              type: 'enabled',
-              budget_tokens: thinkingBudget,
-            }
-          } : {}),
+          ...this.buildThinkingParams(enableThinking, thinkingBudget),
           messages: this.convertMessages(userMessages),
         });
         return await stream.finalMessage();
@@ -253,12 +272,7 @@ export class AnthropicLLMClient implements LLMClient {
       model: this.modelName,
       max_tokens: maxTokens,
       ...(systemParam ? { system: systemParam } : {}),
-      ...(enableThinking ? {
-        thinking: {
-          type: 'enabled',
-          budget_tokens: thinkingBudget,
-        }
-      } : {}),
+      ...this.buildThinkingParams(enableThinking, thinkingBudget),
       messages: this.convertMessages(userMessages),
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({
