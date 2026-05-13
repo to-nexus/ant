@@ -108,8 +108,23 @@ export class StreamOrchestrator {
   }
   
   /**
+   * Snapshot of the parser's in-flight `<file>` / `<append>` block, if any.
+   * MUST be called BEFORE `finalize()` — `finalize` consumes the parser
+   * buffer and clears the block context, losing the path/kind signal.
+   *
+   * Returns `null` when the parser implementation does not expose the
+   * accessor (file-marker parser, mock parser) or when no block is open.
+   *
+   * See `IStreamParser.getOpenFileContext` for the contract and
+   * `XMLStreamParser.getOpenFileContext` for the canonical implementation.
+   */
+  getOpenFileContext(): { kind: 'file' | 'append'; path: string; tailContent: string } | null {
+    return this.parser.getOpenFileContext?.() ?? null;
+  }
+
+  /**
    * Finalize the stream (called after all events processed)
-   * 
+   *
    * @param hasToolCalls - If true, keeps message open for tool execution
    * @returns StreamResult containing raw text and metadata
    */

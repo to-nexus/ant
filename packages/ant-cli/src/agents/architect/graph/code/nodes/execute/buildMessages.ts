@@ -150,6 +150,41 @@ function buildRetryContext(state: ArchitectGraphState) {
 }
 
 /**
+ * Build a one-shot user-content paragraph that tells the LLM how to resume
+ * after a `max_tokens` truncation that cut off a `<file>` / `<append>`
+ * block mid-stream. The partial body has already been written to disk by
+ * FileRenderer's incremental emit; this block just names the path + tail
+ * so the LLM can continue with `<append path="same">` instead of
+ * re-emitting content the disk already has.
+ *
+ * Pure function — no state read/mutate. Caller (buildMessages) reads
+ * `state._maxTokensTruncation`, passes it in, and clears the slot.
+ */
+export function buildMaxTokensResumeHint(
+  info: { kind: 'file' | 'append'; path: string; tailContent: string },
+): string {
+  const previewSafe = info.tailContent.replace(/`/g, '\\`');
+  return (
+    `──────────────────────────────────────────────────────────────\n` +
+    `🪓  PREVIOUS RESPONSE TRUNCATED MID-FILE — RESUME REQUIRED\n` +
+    `──────────────────────────────────────────────────────────────\n\n` +
+    `The previous response hit the LLM output ceiling while emitting a\n` +
+    `\`<${info.kind} path="${info.path}">\` block. The content streamed up to the\n` +
+    `cut point was already written to disk; the closing tag and everything\n` +
+    `after it was lost.\n\n` +
+    `Last \`${info.tailContent.length}\` characters written to disk (verbatim — match\n` +
+    `exactly to find the resume point):\n\n` +
+    `\`\`\`\n${previewSafe}\n\`\`\`\n\n` +
+    `Resume by emitting \`<append path="${info.path}">\` with the content that\n` +
+    `should come immediately after the tail above. Do NOT re-emit any content\n` +
+    `that is already on disk. Keep this round's output well under the ceiling —\n` +
+    `emit only the next chunk and end with \`<done>false</done>\` if more chunks\n` +
+    `remain.\n\n` +
+    `──────────────────────────────────────────────────────────────`
+  );
+}
+
+/**
  * Build messages for LLM using PromptEngine with Prompt Caching
  *
  * ✅ Caching Strategy:
@@ -286,6 +321,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       `Focus on fixing the root cause, not workarounds.\n\n` +
       `──────────────────────────────────────────────────────────────`,
     );
+  }
+
+  // safe-braking-eagle option C: one-shot truncation-recovery hint.
+  // Set by execute when the previous round's stream ended with
+  // `stopReason === 'max_tokens'` while a `<file>` / `<append>` block was
+  // still open. The hint names the path + last ~240 chars already written
+  // to disk so the LLM resumes with `<append>` instead of re-emitting.
+  // Cleared after consumption (per-attempt only).
+  if (state._maxTokensTruncation) {
+    runtimeContextParts.push(buildMaxTokensResumeHint(state._maxTokensTruncation));
+    state._maxTokensTruncation = undefined;
   }
 
   // Split into task-invariant (Block 2, cached) vs turn-variable (Block 3,

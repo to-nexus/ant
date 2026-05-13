@@ -64,6 +64,14 @@ export class XMLStreamParser implements IStreamParser {
   };
   
   private buffer: string = '';
+
+  // Rolling tail of file-block content while a `<file>` or `<append>` block
+  // is open. Used by `getOpenFileContext()` so callers can show the LLM
+  // exactly where its output was cut on a `max_tokens` truncation. Bounded
+  // — only the last `FILE_TAIL_CAP` chars are kept; older content has
+  // already been written to disk by FileRenderer / FileRegistry.
+  private static readonly FILE_TAIL_CAP = 240;
+  private fileTailBuffer: string = '';
   
   parse(event: LLMStreamEvent, state: StreamState): ParsedAction[] {
     const actions: ParsedAction[] = [];
@@ -584,11 +592,12 @@ export class XMLStreamParser implements IStreamParser {
           const fullMatch = fileMatch[0];
           const filePath = fileMatch[1];
           const startIdx = this.buffer.indexOf(fullMatch);
-          
+
           this.buffer = this.buffer.substring(startIdx + fullMatch.length);
           this.context.insideFile = true;
           this.context.currentFilePath = filePath;
-          
+          this.fileTailBuffer = '';
+
           actions.push({
             type: 'file_start',
             data: {
@@ -606,7 +615,7 @@ export class XMLStreamParser implements IStreamParser {
         const endIdx = this.buffer.indexOf('</file>');
         const fileContent = this.buffer.substring(0, endIdx);
         this.buffer = this.buffer.substring(endIdx + '</file>'.length);
-        
+
         // Emit remaining content
         if (fileContent.length > 0) {
           actions.push({
@@ -617,14 +626,15 @@ export class XMLStreamParser implements IStreamParser {
             }
           });
         }
-        
+
         actions.push({
           type: 'file_end',
           data: { filePath: this.context.currentFilePath! }
         });
-        
+
         this.context.insideFile = false;
         this.context.currentFilePath = null;
+        this.fileTailBuffer = '';
         continueParsingLoop = true;
         continue;
       }
@@ -703,7 +713,7 @@ export class XMLStreamParser implements IStreamParser {
             // Emit all complete lines (including the trailing \n)
             const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
             this.buffer = this.buffer.substring(completeLines.length);
-            
+
             actions.push({
               type: 'file_content',
               data: {
@@ -711,6 +721,7 @@ export class XMLStreamParser implements IStreamParser {
                 content: completeLines
               }
             });
+            this.fileTailBuffer = (this.fileTailBuffer + completeLines).slice(-XMLStreamParser.FILE_TAIL_CAP);
             continueParsingLoop = true;  // ✅ Re-check for more lines
           }
         }
@@ -724,11 +735,12 @@ export class XMLStreamParser implements IStreamParser {
           const fullMatch = appendMatch[0];
           const filePath = appendMatch[1];
           const startIdx = this.buffer.indexOf(fullMatch);
-          
+
           this.buffer = this.buffer.substring(startIdx + fullMatch.length);
           this.context.insideAppend = true;
           this.context.currentAppendPath = filePath;
-          
+          this.fileTailBuffer = '';
+
           actions.push({
             type: 'file_start',
             data: {
@@ -740,13 +752,13 @@ export class XMLStreamParser implements IStreamParser {
           continue;
         }
       }
-      
+
       // 19. Check for </append> closing
       if (this.context.insideAppend && this.buffer.includes('</append>')) {
         const endIdx = this.buffer.indexOf('</append>');
         const appendContent = this.buffer.substring(0, endIdx);
         this.buffer = this.buffer.substring(endIdx + '</append>'.length);
-        
+
         // Emit remaining content
         if (appendContent.length > 0) {
           actions.push({
@@ -757,14 +769,15 @@ export class XMLStreamParser implements IStreamParser {
             }
           });
         }
-        
+
         actions.push({
           type: 'file_end',
           data: { filePath: this.context.currentAppendPath! }
         });
-        
+
         this.context.insideAppend = false;
         this.context.currentAppendPath = null;
+        this.fileTailBuffer = '';
         continueParsingLoop = true;
         continue;
       }
@@ -835,7 +848,7 @@ export class XMLStreamParser implements IStreamParser {
             // Emit all complete lines (including the trailing \n)
             const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
             this.buffer = this.buffer.substring(completeLines.length);
-            
+
             actions.push({
               type: 'file_content',
               data: {
@@ -843,12 +856,13 @@ export class XMLStreamParser implements IStreamParser {
                 content: completeLines
               }
             });
+            this.fileTailBuffer = (this.fileTailBuffer + completeLines).slice(-XMLStreamParser.FILE_TAIL_CAP);
             continueParsingLoop = true;  // ✅ Re-check for more lines
           }
         }
         continue;
       }
-      
+
       // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
@@ -1044,6 +1058,31 @@ export class XMLStreamParser implements IStreamParser {
       currentAppendPath: null,
     };
     this.buffer = '';
+    this.fileTailBuffer = '';
+  }
+
+  /**
+   * Snapshot of the in-flight `<file>` or `<append>` block, if any. Used
+   * by the execute node when an LLM stream reports
+   * `stopReason === 'max_tokens'` so the next round can show the LLM
+   * exactly where its output was cut and resume via `<append>`.
+   *
+   * `tailContent` combines previously-emitted file content (capped to
+   * the most recent ~240 chars) with the un-emitted buffer remainder,
+   * so callers see the full visible tail right up to the cut point.
+   * MUST be called BEFORE `finalize()` — finalize emits the buffer and
+   * clears the block context, losing the path/kind signal.
+   */
+  getOpenFileContext(): { kind: 'file' | 'append'; path: string; tailContent: string } | null {
+    if (this.context.insideFile && this.context.currentFilePath) {
+      const tail = (this.fileTailBuffer + this.buffer).slice(-XMLStreamParser.FILE_TAIL_CAP);
+      return { kind: 'file', path: this.context.currentFilePath, tailContent: tail };
+    }
+    if (this.context.insideAppend && this.context.currentAppendPath) {
+      const tail = (this.fileTailBuffer + this.buffer).slice(-XMLStreamParser.FILE_TAIL_CAP);
+      return { kind: 'append', path: this.context.currentAppendPath, tailContent: tail };
+    }
+    return null;
   }
 }
 

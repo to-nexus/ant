@@ -844,6 +844,12 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/execute/injections/chunked-emission": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/execute/injections/lessons": {
     "sources": [
       "auto-injection",

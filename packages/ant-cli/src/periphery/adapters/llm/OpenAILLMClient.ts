@@ -396,7 +396,18 @@ export class OpenAILLMClient implements LLMClient {
             totalTokens: chunk.usage.total_tokens || 0,
           };
         }
-        
+
+        // Map OpenAI finish_reason to the unified stopReason enum.
+        // OpenAI 'length' === Anthropic 'max_tokens' (output ceiling hit).
+        const rawFinish = chunk.choices[0].finish_reason;
+        let stopReason: LLMStreamEvent['stopReason'];
+        switch (rawFinish) {
+          case 'stop': stopReason = 'end_turn'; break;
+          case 'length': stopReason = 'max_tokens'; break;
+          case 'tool_calls': case 'function_call': stopReason = 'tool_use'; break;
+          default: stopReason = 'other'; break;
+        }
+
         // Emit all accumulated tool calls
         for (const [index, buffer] of toolCallBuffers.entries()) {
           if (buffer.name && buffer.arguments) {
@@ -423,11 +434,12 @@ export class OpenAILLMClient implements LLMClient {
             }
           }
         }
-        
+
         yield {
           type: 'done',
           done: true,
           usage: tokenUsage,  // ✅ Include final token usage
+          stopReason,
           metadata: {
             provider: 'openai',
             model: this.modelName,

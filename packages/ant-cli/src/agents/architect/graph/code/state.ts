@@ -397,6 +397,33 @@ export interface ArchitectGraphState extends TriageableState {
   _batchSplitRequeued?: boolean;
 
   /**
+   * One-shot truncation hint produced by the execute node when an LLM
+   * stream cut off with `stopReason === 'max_tokens'` while a `<file>` or
+   * `<append>` block was still open.
+   *
+   * Lifecycle:
+   *   - SET by `nodes/execute/index.ts` immediately after the stream's
+   *     `done` event, BEFORE `orchestrator.finalize()` (the parser's
+   *     `<file>`/`<append>` context is wiped by finalize).
+   *   - READ by `nodes/execute/buildMessages.ts` on the very next execute
+   *     entry — folded into the user message that names the path + last
+   *     ~240 chars so the LLM can resume via `<append path="same">`.
+   *   - CLEARED to `undefined` once the hint has been folded into a
+   *     prompt; per-attempt only, never crosses task boundaries.
+   *
+   * RCA: safe-braking-eagle. The partial content was already written to
+   * disk by FileRenderer's incremental emit + finalize-flush; the hint
+   * just tells the LLM where the cut was so it does NOT re-emit content
+   * the disk already has. See option C in
+   * `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md`.
+   */
+  _maxTokensTruncation?: {
+    kind: 'file' | 'append';
+    path: string;
+    tailContent: string;
+  };
+
+  /**
    * Plan-LLM violation framing carried across attempts of the plan-node
    * inline retry loop (decompose's `ExecutionTierViolation` retry pattern,
    * ported for `BatchSplitSchemaViolation`).

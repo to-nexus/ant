@@ -50,7 +50,8 @@
     "runtime-error-fix": [],
     "missing-dependency-fix": [],
     "port-management": [],
-    "backend-safety": []
+    "backend-safety": [],
+    "chunked-emission": []
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],

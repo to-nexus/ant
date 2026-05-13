@@ -38,27 +38,38 @@ export const LLM_MAX_TOKENS = {
   // Short outputs (no thinking, concise keyword responses)
   KEYWORD: 3200,
 
-  // Default for all other outputs — 32K ensures sufficient text space after thinking budget.
-  // Anthropic model output ceilings (per Anthropic docs as of 2026-04):
-  //   - Sonnet 4.6 / Sonnet 4.5 / Sonnet 4: 64K ceiling (default 32K)
-  //   - Opus 4.7 / Opus 4.6: 128K ceiling
+  // Default for plan / execute / verify / docgen.
+  //
+  // Anthropic model output ceilings (per Anthropic docs, 2026-04):
+  //   - Sonnet 4.6 / 4.5 / 4 (codebase default for code.*): 64K ceiling
+  //   - Opus 4.7 / 4.6 (env override / reviewer): 128K ceiling
   //   - Opus 4 (deprecated, retires 2026-06-15): 32K hard limit
-  // With thinkingBudget 10K, text space = ~22K. With 5K, text space = ~27K.
-  DEFAULT: 32000,
+  //
+  // 64K is the safe default: matches Sonnet's ceiling, well within Opus 4.7's.
+  // With thinkingBudget 10K, text space = ~54K; with 5K, ~59K.
+  //
+  // Why bumped 32K → 64K (safe-braking-eagle RCA):
+  // The legacy 32K cap caused silent mid-stream truncation in plan (parent
+  // emits batches[] with full per-batch detail) and execute (single LLM
+  // round emits a >20KB file). On `stop_reason: max_tokens` the closing
+  // `</plan>` / `</file>` never arrives, the partial output is discarded,
+  // and the orchestrator falls through to a fresh tool-loop — billing the
+  // tokens twice with zero progress. See
+  // `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md`.
+  // Detection lives on `LLMStreamEvent.stopReason` (option A);
+  // chunked-emission recovery is option C.
+  //
+  // Risk model: Opus 4 (deprecated) at 32K would have this rejected. Not
+  // reachable from default config; only at risk if a user explicitly
+  // overrides to the legacy ID before its 2026-06-15 retirement.
+  DEFAULT: 64000,
 
   // Decompose Tier 4 may emit 30+ tasks against multi-ref design docs and
-  // routinely exhausts the 32K DEFAULT mid-`<tasks>` block (the streaming
-  // parser sees `<task>` elements but `</tasks>` never arrives, causing
+  // exhausted the legacy 32K mid-`<tasks>` block (the streaming parser
+  // saw `<task>` elements but `</tasks>` never arrived, causing
   // `parseLLMResponse` to throw "Invalid response: <tasks> tag is required").
   // 64K gives ~54K text budget after thinkingBudget=10K, enough for ~150
-  // tasks at typical sizes.
-  //
-  // Model support:
-  //   - Sonnet 4.6 / 4.5 / 4 (codebase default for code.*): 64K supported
-  //   - Opus 4.7 / 4.6 (codebase default for reviewer/doc; LLMClientFactory
-  //     fallback): 128K supported, 64K well within
-  //   - Opus 4 (deprecated, 32K): would be rejected by Anthropic API. Not
-  //     used by default config; only at risk if a user explicitly overrides
-  //     llmModels.code.decompose to the legacy ID.
+  // tasks at typical sizes. Now identical to DEFAULT, kept as a named
+  // constant for intent and so a future bump can split them again.
   DECOMPOSE: 64000,
 } as const;

@@ -109,6 +109,17 @@ export interface RunPlanWithToolsArgs<TState extends MinimalPlanState = MinimalP
    */
   onTokenUsage?: (usage: any) => void | Promise<void>;
   /**
+   * Optional truncation hook. Fires when the stream's `done` event reports
+   * `stopReason === 'max_tokens'` — the LLM hit its output ceiling and
+   * the response was cut off mid-stream. Caller can log to its
+   * `executionLogger`, raise a UI warning, etc. The helper itself does
+   * NOT recover; that lives in the caller's fallthrough path.
+   *
+   * RCA: safe-braking-eagle (architect (9)/(10)). The 32K silent cliff
+   * looked like a normal completion because nothing observed `stop_reason`.
+   */
+  onMaxTokensTruncation?: (info: { outputTokens: number; round: number }) => void | Promise<void>;
+  /**
    * Minimum length for a `<plan>...</plan>` block to be accepted. Below
    * this threshold the helper ignores the match and falls through to
    * tool-call/fallthrough handling. Default: 50.

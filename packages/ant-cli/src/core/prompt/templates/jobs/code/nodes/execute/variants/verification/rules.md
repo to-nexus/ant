@@ -108,8 +108,10 @@ Matrix — apply the filter to the kind of deviation at hand:
 
 | Tag | Purpose |
 |-----|---------|
-| `<file path="...">` | Create NEW file |
-| `<append path="...">` | Add to end of EXISTING file |
+| `<file path="...">` | Create NEW file (first chunk of a chunked emission, too) |
+| `<append path="...">` | Add to end of EXISTING file — OR continue a `<file>` you opened earlier |
+
+{{> jobs/code/nodes/execute/injections/chunked-emission}}
 
 ### Tool Calling (File Operations & Commands)
 

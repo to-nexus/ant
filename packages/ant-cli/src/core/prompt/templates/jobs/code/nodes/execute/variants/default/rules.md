@@ -186,8 +186,8 @@ Your modularization:
 
 | Tag | Purpose |
 |-----|---------|
-| `<file path="...">` | Create NEW file |
-| `<append path="...">` | Add to end of EXISTING file |
+| `<file path="...">` | Create NEW file (first chunk of a chunked emission, too) |
+| `<append path="...">` | Add to end of EXISTING file — OR continue a `<file>` you opened earlier |
 
 **🚨 CRITICAL: `<file>` and `<append>` tags are SELF-CONTAINED XML, NOT tool calls!**
 
@@ -212,6 +212,8 @@ code...
 
 **The ONLY valid closing for `<file>` is `</file>`. The ONLY valid closing for `<append>` is `</append>`.**
 
+{{> jobs/code/nodes/execute/injections/chunked-emission}}
+
 ### Tool Calling (File Operations & Commands)
 
 | Tool | Purpose |
@@ -229,9 +231,11 @@ code...
 
 | Operation | Method |
 |-----------|--------|
-| Create NEW file | `<file path="...">` tag |
+| Create NEW file (small enough for one round) | `<file path="...">` tag |
+| Create NEW file (expected ≥ ~20 KB) | First chunk: `<file path="...">` + `<done>false</done>`; rest: `<append path="...">` in next rounds |
+| Continue a file truncated by a previous round | `<append path="...">` (do NOT re-emit content already written) |
 | Edit EXISTING file | `edit_file` tool |
-| Append to file | `<append path="...">` tag |
+| Append to existing file (extend separately) | `<append path="...">` tag |
 | Delete single file | `delete_file` tool |
 | Delete directory / multiple files | `run_command` with `rm` |
 
