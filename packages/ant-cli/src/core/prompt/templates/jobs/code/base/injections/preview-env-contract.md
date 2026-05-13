@@ -218,43 +218,66 @@ Before completing any task that creates or modifies `.env.example`, verify:
 
 This is the implementation of Service Virtualization (Mountebank / WireMock-class pattern) at the code-job level. `infrastructure` connections are NOT virtualization targets — local infra (DB / cache / queue via docker-compose) is real, not virtualized.
 
-### Switching Contract — Per-Connection × Master Fallback
+### Toggle Variable Naming (framework-aware)
 
-| Layer | Variable | Resolution priority |
-|---|---|---|
-| Per-connection | `USE_MOCK_<NAME>` (uppercase snake of `@connection` name) | first |
-| Master fallback | `USE_MOCK` | applies when per-connection unset |
-| Default | `false` (production adapter active) | applies when both unset |
+The toggle env var name is derived from the `@connection` name AND the
+runtime visibility required by the adapter factory's consumer. Framework
+bundlers (Next.js, Vite, CRA) strip non-prefixed `process.env.*` references
+from the browser bundle, so an unprefixed `USE_MOCK_*` read in client code
+inlines as `undefined`, the production adapter activates silently, and the
+app makes real network calls that fail with **no build or type error**.
+This is the single most common Service Virtualization defect.
 
-The `USE_MOCK_<NAME>` variable name is derived deterministically from the connection `name` — uppercase, hyphens become underscores. `stripe-api` → `USE_MOCK_STRIPE_API`.
+| Consumer runtime | Toggle name | Master broadcast | Example (`@connection business stripe-api`) |
+|---|---|---|---|
+| Server-only (Node, RSC, server actions, backend services) | `USE_MOCK_<NAME>` | `USE_MOCK` | `USE_MOCK_STRIPE_API` |
+| Next.js — adapter selected from a client component or a module imported by one | `NEXT_PUBLIC_USE_MOCK_<NAME>` | `NEXT_PUBLIC_USE_MOCK` | `NEXT_PUBLIC_USE_MOCK_STRIPE_API` |
+| Vite (React / Vue SPA) | `VITE_USE_MOCK_<NAME>` | `VITE_USE_MOCK` | `VITE_USE_MOCK_STRIPE_API` |
+| CRA | `REACT_APP_USE_MOCK_<NAME>` | `REACT_APP_USE_MOCK` | `REACT_APP_USE_MOCK_STRIPE_API` |
+
+`<NAME>` = uppercase snake of the `@connection` name (hyphens → underscores).
+
+**Determining the runtime**: if any file in the frontend package selects
+the adapter (factory module, store, hook, page component, shared module
+imported by a client component), the toggle MUST use the framework prefix.
+The default for any business connection consumed by a frontend package is
+the prefixed form. Only when adapter selection is exclusively server-side
+(backend service, dedicated server module never imported by client code)
+does the bare `USE_MOCK_<NAME>` apply.
 
 ### .env / .env.example Discipline
 
-Every business `@connection` MUST have its `USE_MOCK_<NAME>` line in `.env.example` with a comment describing what virtualization provides. Master `USE_MOCK` MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys (per the existing invariant).
+Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. The master broadcast toggle MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys (per the existing invariant).
 
 Examples:
 
 ```env
-# Third-party API
+# Third-party API consumed from a Next.js client component
 # @connection business stripe-api
-STRIPE_API_KEY=
-USE_MOCK_STRIPE_API=true
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_USE_MOCK_STRIPE_API=true
 
-# Cross-project backend (resolution token combines with auto-virtualization)
+# Same-project backend consumed from a Vite SPA
 # @connection business backend-api self
 VITE_API_BASE_URL=
-USE_MOCK_BACKEND_API=true
+VITE_USE_MOCK_BACKEND_API=true
 
-# Master broadcast (optional) — applies to every business connection
-# whose own USE_MOCK_<NAME> is unset
-USE_MOCK=true
+# Server-only third-party API (consumed only from backend service)
+# @connection business notification-service
+NOTIFICATION_SERVICE_URL=
+USE_MOCK_NOTIFICATION_SERVICE=true
+
+# Master broadcast (optional) — uses the same framework prefix as the
+# per-connection toggles in the same .env.example
+NEXT_PUBLIC_USE_MOCK=true
 ```
 
 ### Constraints
 - Annotation grammar carries NO virtualization token — the `business` category alone is the contract. Adding a `mock:*` token to an annotation has no effect (and is a syntax error in future grammar revisions).
-- `USE_MOCK_<NAME>` MUST appear in `.env.example` for every business connection — without it, the toggle is invisible to the runtime.
+- The toggle line (per the framework-aware naming table above) MUST appear in `.env.example` for every business connection — without it, the toggle is invisible to the runtime.
 - The virtualized adapter MUST satisfy the SAME interface contract as the production adapter — divergence is a defect, not a benign warning.
-- `infrastructure` connections never declare virtualization. Toggle env vars (`USE_MOCK_*`) attached to infrastructure variable rows have no effect.
+- `infrastructure` connections never declare virtualization. Toggle env vars attached to infrastructure variable rows have no effect.
+- Per-connection toggle and master broadcast in the same `.env.example` MUST share the same framework prefix. Mixing (e.g., `NEXT_PUBLIC_USE_MOCK_STRIPE_API` alongside bare `USE_MOCK`) is a defect because the master broadcast becomes invisible to client code.
 
 ### Blind Spot
 **The adapter pair is EASILY FORGOTTEN when the focus is the production path.** Every business external-dependency port = pair of adapters + toggle var documented in `.env.example`. If the design document declares a business external dependency without a virtualized adapter story, the resulting code cannot run end-to-end before the real backend is available — and that gap surfaces structurally during verification (every business connection is exercised in both modes).

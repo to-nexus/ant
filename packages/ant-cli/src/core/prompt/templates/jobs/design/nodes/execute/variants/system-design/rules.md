@@ -441,7 +441,7 @@ Before generating output, verify:
 | **External dependency ports** | Which infrastructure contracts depend on services outside the project boundary (unconstructed backend, third-party APIs, cross-project services)? |
 | **Implementation multiplicity** | Does each external-dependency port define at least two implementation strategies — production and mock (virtualized)? |
 | **Switching architecture** | Is the mechanism for selecting the active implementation owned by the infrastructure boundary, invisible to domain and application? |
-| **Toggle env var name** | Does the design name the per-port toggle env var (`USE_MOCK_<NAME>`, uppercase snake of the connection name) so the code phase can wire it without re-deciding? Master fallback `USE_MOCK` MAY also be named when broadcast-default is desired. |
+| **Toggle env var name** | Does the design name the per-port toggle env var so the code phase can wire it without re-deciding? Name MUST follow the framework-aware naming table in `preview-env-contract.md §4.5` — `USE_MOCK_<NAME>` for server-only consumers, `NEXT_PUBLIC_USE_MOCK_<NAME>` / `VITE_USE_MOCK_<NAME>` / `REACT_APP_USE_MOCK_<NAME>` when the adapter is selected from client code. Master broadcast (same prefix as the per-connection toggles) MAY also be named when default-broadcast is desired. |
 | **Data contract compliance** | Do virtualized implementations state that responses follow the same DTO contracts as production? |
 
 - **Constraints**:

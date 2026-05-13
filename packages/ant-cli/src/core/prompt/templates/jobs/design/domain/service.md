@@ -116,7 +116,7 @@ For each major external dependency (APIs, storage, queues), document:
 | **Idempotency** | Which operations must be safe to retry and how this is enforced at contract level |
 | **Error propagation** | Which errors map to domain failures, which become user-visible, which are logged only |
 
-- **Development independence (Service Virtualization)**: Each external-dependency contract MUST define production and mock implementation strategies per Infrastructure Independence Guardrail. State the contract name, two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name). Do NOT specify mock implementation details. Local infrastructure (DB, cache, queue via docker-compose) is NOT a Service Virtualization target.
+- **Development independence (Service Virtualization)**: Each external-dependency contract MUST define production and mock implementation strategies per Infrastructure Independence Guardrail. State the contract name, two strategy labels (production + mock), and the toggle env var NAME — chosen per the framework-aware naming table in `preview-env-contract.md §4.5` (server-only consumer → `USE_MOCK_<NAME>`; Next.js client consumer → `NEXT_PUBLIC_USE_MOCK_<NAME>`; Vite → `VITE_USE_MOCK_<NAME>`; CRA → `REACT_APP_USE_MOCK_<NAME>`, where `<NAME>` is uppercase snake of the connection name). Do NOT specify mock implementation details. Local infrastructure (DB, cache, queue via docker-compose) is NOT a Service Virtualization target.
 
 **Constraint**: Do NOT specify exact timeout values, retry counts, backoff formulas, concrete HTTP client libraries, SDK configuration, or monitoring/tooling setup.
 

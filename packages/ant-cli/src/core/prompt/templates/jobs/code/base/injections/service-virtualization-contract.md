@@ -12,21 +12,25 @@ This is the implementation of Service Virtualization at the code-job
 level. Local infrastructure (database, cache, queue via docker-compose)
 is real and is NOT a virtualization target.
 
-### Switching Contract — Per-Connection × Master Fallback
+### Switching Contract
 
-| Layer | Variable | Resolution priority |
-|---|---|---|
-| Per-connection | `USE_MOCK_<NAME>` (uppercase snake of @connection name) | first |
-| Master fallback | `USE_MOCK` | applies when per-connection unset |
-| Default | `false` (production adapter active) | applies when both unset |
+Activation MUST come from a boolean env var per business connection, with
+a master broadcast variable as fallback when the per-connection toggle is
+unset. Default (both unset) is `false` — production adapter active.
+
+**The concrete env var name follows the framework-aware naming rule in
+`preview-env-contract.md §4.5`.** SV adapter selection code reads from
+exactly that name. Do not invent or shorten it (`USE_MOCK_API`,
+`MOCK_BACKEND`, ad-hoc abbreviations, etc. are defects).
 
 ### .env / .env.example Discipline
 
-- Every `business` `@connection` MUST have its `USE_MOCK_<NAME>` line in
+- Every `business` `@connection` MUST have its toggle line declared in
   `.env.example` with a comment describing what the virtualized adapter
-  provides
-- Master `USE_MOCK` MAY be present in `.env.example` to broadcast-default
-  every business connection that lacks a per-connection toggle
+  provides — exact toggle name per `preview-env-contract.md §4.5`
+- The master broadcast toggle MAY be present in `.env.example` to
+  default-broadcast every business connection that lacks a per-connection
+  override — same naming rule applies
 - `.env` MUST mirror `.env.example` keys (per existing
   `preview-env-contract` invariant)
 - Adapter-specific config that ONLY the virtualized adapter reads MUST
