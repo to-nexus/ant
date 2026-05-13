@@ -145,11 +145,16 @@ interface CodeTaskCommon {
  *   1. Apply phase — task-type-specific plan/execute applies fixes.
  *      `command.guard` blocks build/test/typecheck (verification is
  *      handled in the next phase).
- *   2. Reverify phase — `executeRouter.routeAfterDone` routes to the
- *      plan node with `_nextPlanEntry='reverify'`, which fires
- *      `_shared/verify/initSession`. From here, the task uses the
- *      shared verify-mode plan/execute/command/check/router surface
- *      identical to a Tier 3/4 dedicated verification task.
+ *   2. Reverify phase — when execute emits `<done>` with a non-empty
+ *      `planText`, `executeRouter` routes to the plan node via the
+ *      shared `routeAfterDone` hook. The plan node's `resolvePlanEntry`
+ *      detects the apply→verify boundary from observable channel state
+ *      (`_activePhase='execute'` + execute's `done` + non-empty `planText`
+ *      + `requiresVerification(task) && !isVerificationTask(task)`) and
+ *      routes to `handleReverifyEntry`, which commits `_verifyEntered:true`.
+ *      From here, the task uses the shared verify-mode plan/execute/command/
+ *      check/router surface identical to a Tier 3/4 dedicated verification
+ *      task.
  *
  * Set ONLY by decompose for Tier 2 (exactly one task) breakdowns —
  * available on the four task types that can be the sole Tier 2 unit:

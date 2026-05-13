@@ -16,11 +16,7 @@ import { ArchitectGraphState } from '../state';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
-import {
-  isVerifyModeActive,
-  markVerifyEntered,
-  requiresVerification,
-} from '../tasks/_shared/verify';
+import { isVerifyModeActive } from '../tasks/_shared/verify';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 /**
@@ -49,10 +45,11 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
   
   const currentTask = state.currentTask;
-  // "Final task" = verify-mode active (Tier 3/4 verification, or Tier 2
-  // self-verify after the `<done>` arm flipped `_verifyEntered = true`).
-  // Safety Nets A/B defer to checkTaskStatus only in the verification
-  // phase, so the predicate is task-type-blind.
+  // "Final task" = verify-mode active (Tier 3/4 verification task, or a
+  // Tier 2 self-verify task whose plan-node `handleReverifyEntry` committed
+  // `_verifyEntered = true` on the apply→verify boundary). Safety Nets A/B
+  // defer to checkTaskStatus only in the verification phase, so the
+  // predicate is task-type-blind.
   const isVerificationTaskType = currentTask ? isVerificationTask(currentTask) : false;
   const isFinalTask = isVerifyModeActive(state) || isVerificationTaskType;
   const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
@@ -141,31 +138,17 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // returns the next node name; the shared verify-mode router (used by both
   // verification task type AND self-verify Tier 2 tasks via composeBundle)
   // chooses 'plan' for reverify whenever the verification cycle is not
-  // complete (Session.isComplete() === false). The retired
-  // `madeFileChanges` short-circuit is documented in
-  // `tasks/_shared/verify/hooks/router.ts`.
+  // complete.
   //
-  // The router mutates two channels on the apply→reverify transition:
-  //   - `_nextPlanEntry = 'reverify'` for the plan node entry path
-  //   - `markVerifyEntered(state)` for self-verify tasks crossing the
-  //     phase boundary (verification tasks are already in verify-mode
-  //     from initSession; the helper is idempotent).
-  // All downstream resets (`violations`, conversations, counters) live
-  // in `handleReverifyEntry` per R1.
+  // ★ This router is PURE — no state writes. `_verifyEntered` and the
+  // reverify-mode plan-entry path are owned by the plan node
+  // (`resolvePlanEntry`/`handleReverifyEntry`), which detects the
+  // apply→verify boundary from observable channel state and commits
+  // `_verifyEntered:true` in its return delta. Conditional-edge mutations
+  // do not propagate to the next node in LangGraph (state is read fresh
+  // from channels); see `markVerifyEntered.ts` anti-pattern note.
   if (response.done) {
     const hookNext = hooksIfActive(state)?.router?.routeAfterDone?.(state);
-    if (hookNext === 'plan') {
-      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (reverify, via task hook)\n`);
-      state._nextPlanEntry = 'reverify';
-      // Phase mode signal — first transition flips the channel; subsequent
-      // reverify cycles re-call the helper which is a no-op. Self-verify
-      // task's apply phase ends here on the first done; verification task
-      // already had _verifyEntered=true from initSession.
-      if (requiresVerification(currentTask)) {
-        markVerifyEntered(state);
-      }
-      return 'plan';
-    }
     if (hookNext) {
       console.log(`\n🎯 [Router] ✅ task hook → ${hookNext}\n`);
       return hookNext;

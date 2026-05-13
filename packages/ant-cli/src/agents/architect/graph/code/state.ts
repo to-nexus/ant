@@ -267,10 +267,14 @@ export interface ArchitectGraphState extends TriageableState {
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
   _activePhase?: 'plan' | 'execute';
   /**
-   * Why did we enter the plan node? Set by `checkTaskStatus` (`'retry'`)
-   * or `executeRouter` (`'reverify'`), consumed immediately on plan entry.
-   * `undefined` = fresh task from queue. Tool-loop re-entry is detected
-   * separately via `_activePhase === 'plan'` and bypasses this channel.
+   * Why did we enter the plan node? Set by `checkTaskStatus` to `'retry'`,
+   * consumed immediately on plan entry. `undefined` = fresh task from queue
+   * or Tier-2 reverify cycle. Tool-loop re-entry is detected via
+   * `_activePhase === 'plan'` and bypasses this channel; Tier-2 self-verify
+   * apply→verify transition is detected from observable state by
+   * `resolvePlanEntry` (`_activePhase='execute'` + `llmResponse.done` +
+   * `requiresVerification(task) && !isVerificationTask(task)` + non-empty
+   * `planText`) and likewise bypasses this channel.
    */
   _nextPlanEntry?: PlanEntry;
   /**
@@ -464,19 +468,29 @@ export interface ArchitectGraphState extends TriageableState {
    *
    * SSOT writer: `tasks/_shared/verify/markVerifyEntered.ts` —
    * `markVerifyEntered(state)` is the only function that flips this
-   * channel to `true`. Two call paths:
+   * channel to `true`. Two call paths, both inside the plan node so the
+   * commit happens via the plan-node return delta:
    *
-   *   - Verification task: `_shared/verify/initSession` calls
-   *     `markVerifyEntered` on first session creation/hydration.
-   *     Verification tasks enter verify-mode immediately.
-   *   - Self-verify task (Tier 2 with `selfVerifyOnDone:true`):
-   *     `executeRouter` calls `markVerifyEntered` in the `<done>`
-   *     branch when `routeAfterDone === 'plan'` (apply→reverify
-   *     transition).
+   *   - Tier 3/4 verification task: `nodes/plan/entry/resolve.ts::
+   *     handleFreshTaskEntry` calls it on every fresh plan entry where
+   *     `isVerificationTask(task)`.
+   *   - Tier 2 self-verify task (`selfVerifyOnDone:true`):
+   *     `nodes/plan/entry/resolve.ts::handleReverifyEntry` calls it on
+   *     the apply→verify boundary and every subsequent reverify cycle.
+   *     The boundary is detected from observable state — no transient
+   *     flag is needed.
+   *
+   * Plus `runner.ts` resume restoration writes it on the **input** state
+   * before `graph.invoke()` so a resumed mid-reverify session enters in
+   * the right hook surface.
    *
    * Reset to `false` at task boundary in `nodes/checkTaskStatus`.
    * External mutation outside the helper is forbidden (regression
    * test enforces). `undefined` is treated as `false`.
+   *
+   * ⚠️ Never flip from a LangGraph conditional-edge function — those
+   * mutations are read fresh from channels and silently discarded
+   * (see `markVerifyEntered.ts` anti-pattern note).
    */
   _verifyEntered?: boolean;
 

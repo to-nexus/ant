@@ -62,13 +62,23 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
   if (entryReason === 'retry' && state.currentTask) {
     return await handleRetryEntry(state, flags);
   }
-  // Verification task type: every entry (fresh / cycle-N reverify) routes
-  // through the fresh-task entry handler. Only Tier 2 self-verify tasks
-  // (apply→verify transition) take the reverify path.
-  if (entryReason === 'reverify' && state.currentTask) {
-    if (isVerificationTask(state.currentTask)) {
-      return await handleFreshTaskEntry(state, flags);
-    }
+
+  // Tier-2 self-verify apply→verify boundary (and every subsequent reverify
+  // cycle). Detected from committed channel state alone — every input is
+  // already a stable channel value, so no transient flag is needed (the
+  // previous `_nextPlanEntry='reverify'` flag was a router-side mutation
+  // that LangGraph silently discarded; see markVerifyEntered.ts anti-pattern
+  // note). Tier-3/4 verification tasks intentionally fall through to
+  // handleFreshTaskEntry — they reset NODE_PLAN every cycle by design and
+  // own their own _verifyEntered delta from that path.
+  const isTier2ReverifyEntry =
+    !!state.currentTask &&
+    requiresVerification(state.currentTask) &&
+    !isVerificationTask(state.currentTask) &&
+    state._activePhase === 'execute' &&
+    state.llmResponse?.done === true &&
+    !!state.planText?.trim();
+  if (isTier2ReverifyEntry) {
     return await handleReverifyEntry(state, flags);
   }
   return await handleFreshTaskEntry(state, flags);
@@ -143,10 +153,17 @@ async function handleReverifyEntry(
   const nextTask = state.currentTask!;
   console.log(`\n🔄 [Plan] Post-execute verification entry: ${nextTask.name}\n`);
 
-  // Tier 2 self-verify (apply→verify transition). NODE_PLAN is preserved —
-  // the apply phase's plan dialogue stays visible to the LLM as part of the
-  // conversation history; the verify-mode template instructs it to plan
-  // afresh against gate output.
+  // Tier 2 self-verify (apply→verify transition + subsequent reverify cycles).
+  // NODE_PLAN is preserved — the apply phase's plan dialogue stays visible to
+  // the LLM as part of the conversation history; the verify-mode template
+  // instructs it to plan afresh against gate output.
+  //
+  // ★ Phase mode signal — sole SSOT writer for Tier-2 `_verifyEntered`. The
+  // helper is idempotent (reducer is last-write-wins), so cycle 2+ entries
+  // re-write `true → true` as a no-op. Mutation + delta mirrors the pattern
+  // in handleFreshTaskEntry (mutation for same-turn body reads,
+  // `delta._verifyEntered` for the LangGraph reducer commit).
+  state._verifyEntered = true;
   state._executeCallIndex = 0;
   state.violations = [];
   state.conversations = {
@@ -157,6 +174,7 @@ async function handleReverifyEntry(
     _executeCallIndex: 0,
     violations: [],
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
+    _verifyEntered: true,
   };
 
   await recomputeInstallNeeded(state, { detectPmIfMissing: true });

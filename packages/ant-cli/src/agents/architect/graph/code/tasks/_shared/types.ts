@@ -58,14 +58,17 @@ export const DEFAULT_TASK_TYPE: TaskType = 'feature';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * Plan-node entry classification — explicit reasons set by external
- * writers (`checkTaskStatus` → 'retry', `executeRouter` → 'reverify').
- * Fresh entry is encoded as `undefined` (no explicit setter); tool-loop
- * re-entry is detected via `_activePhase === 'plan'` and bypasses this
- * channel entirely. Dead values (`'fresh' | 'resumed' | 'toolLoop'`)
- * were retired — they had 0 setters in production code.
+ * Plan-node entry classification — explicit reason set by `checkTaskStatus`
+ * when it routes back to plan for a retry. Fresh-task entry is encoded as
+ * `undefined`; tool-loop re-entry is detected via `_activePhase === 'plan'`
+ * and bypasses this channel; Tier-2 self-verify reverify entry is detected
+ * by `resolvePlanEntry` from observable channel state (`_activePhase`,
+ * `llmResponse.done`, `currentTask`, `planText`) and also bypasses this
+ * channel. A `'reverify'` value was retired alongside its only writer (the
+ * `executeRouter` conditional-edge mutation, which never propagated to the
+ * next node — see `markVerifyEntered.ts` anti-pattern note).
  */
-export type PlanEntry = 'retry' | 'reverify';
+export type PlanEntry = 'retry';
 
 /**
  * Prompt-build context passed to `plan.buildPrompt` / `plan.extraTemplateVars`.
