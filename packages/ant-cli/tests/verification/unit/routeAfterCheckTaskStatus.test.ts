@@ -23,7 +23,7 @@ function makeState(overrides: Partial<ArchitectGraphState>): ArchitectGraphState
   } as any;
 }
 
-const violation = (type: string = 'verification_incomplete'): Violation => ({
+const violation = (type: string = 'other'): Violation => ({
   type: type as any,
   severity: 'critical',
   message: 'test',

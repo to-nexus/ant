@@ -136,7 +136,7 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
     };
     state._nextPlanEntry = 'retry';
     state.retries = 1;
-    state.violations = [{ type: 'type_error' as any, severity: 'critical', message: 'x' }];
+    state.violations = [{ type: 'other', severity: 'critical', message: 'x' }];
     state.planText = '{"task":{"id":"t1"},"diagnostics":{"totalErrors":1}}';
     state.conversations = {
       [CONV_KEYS.NODE_PLAN]: [

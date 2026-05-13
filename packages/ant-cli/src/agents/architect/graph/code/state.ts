@@ -36,31 +36,23 @@ export interface Violation {
 }
 
 /**
- * Violation Types - 에러 타입 분류
+ * Violation Types — error category taxonomy.
+ *
+ * When adding a new value, land its producer (emitter) in the same change.
+ * Add a consumer branch (router / prompt guidance) only if the new type
+ * needs differentiated handling beyond the default formatter path. Values
+ * without a producer become dead surface and are removed on sight.
  */
-export type ViolationType = 
-  | 'ellipsis'              // 코드에 ... 포함
-  | 'excessive_deletion'    // 과도한 삭제
-  | 'missing_dependency'    // 의존성 누락
-  | 'missing_file'          // 필수 파일 누락
-  | 'missing_static_asset'  // 정적 에셋 경로가 public/static root에 없음 (런타임 404 유발)
-  | 'type_error'            // TypeScript 타입 에러
-  | 'import_error'          // Import 에러
-  | 'syntax_error'          // 문법 에러
-  | 'build_error'           // 빌드 에러
-  | 'lint_error'            // Lint 에러
-  | 'config_error'          // 설정 파일 에러
-  | 'config_incompatibility' // 프레임워크 설정 비호환 (e.g., Next.js Image Optimization + output:export)
-  | 'environment_issue'     // 환경 설정 문제 (NODE_ENV, PATH 등)
-  | 'no_files'              // 파일 생성 안 됨
-  | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)
-  | 'cross_worker_conflict' // 병렬 작업 간 파일 충돌 (다른 워커가 이미 생성/수정)
-  | 'no_done_signal'        // checkTaskStatus 진입 시점에 LLM이 <done> 없이 종료 (Safety Net A/B 강제 진입 등)
-  | 'verification_incomplete' // verification 태스크가 done 신호를 보냈으나 성공한 빌드 커맨드가 없음
-  | 'parity_apply_failed'   // Service Virtualization parity check — virtualized variant (USE_MOCK=true) 빌드/테스트 실패
-  | 'parity_real_failed'    // Service Virtualization parity check — production variant (USE_MOCK=false) 빌드/테스트 실패
-  | 'parity_dto_mismatch'   // Service Virtualization parity check — DTO shape divergence between virtualized / production variants
-  | 'other';                // 기타
+export type ViolationType =
+  | 'missing_file'              // required file missing — checkTaskStatus/evaluate
+  | 'file_operation_failed'     // edit search-block / duplicate-edit etc. — checkTaskStatus/evaluate
+  | 'cross_worker_conflict'     // file owned by another parallel worker — checkTaskStatus/evaluate (parallel only)
+  | 'no_done_signal'            // reached checkTaskStatus without <done> (Safety Net forced exit) — checkTaskStatus/evaluate
+  | 'incomplete_implementation' // test-code task signalled done but no test files on disk — test-code/hooks/check
+  | 'parity_apply_failed'       // Service Virtualization — virtualized variant (USE_MOCK=true) build/test failed
+  | 'parity_real_failed'        // Service Virtualization — production variant (USE_MOCK=false) build/test failed
+  | 'parity_dto_mismatch'       // Service Virtualization — DTO shape divergence between virtualized / production variants
+  | 'other';                    // fallback for unclassified errors — _common/errorHandler.ts
 
 /**
  * Task Priority Mapping
@@ -132,11 +124,6 @@ export interface AttemptHistory {
   keyChanges: string[];            // Human-readable summary of changes
   subtaskName?: string;            // Which subtask this was for (if any)
   errorsAttemptedToFix: string[];  // Which errors this attempt tried to fix
-}
-
-export interface ValidationResult {
-  ok: boolean;
-  violations: Violation[];  // ✅ 구조화된 violation
 }
 
 /**
