@@ -73,7 +73,7 @@ Architecture is not a single label — it is the combination of independent desi
 
 **Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies (Service Virtualization) in the catalog section where that adapter is introduced.
 
-**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name; master fallback `USE_MOCK` MAY also be named). Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
+**Constraint**: For each external-dependency port, state the port name, its role, the two strategy labels (production + mock), and the toggle env var NAME (`USE_MOCK_<NAME>`, uppercase snake of the connection name; master fallback `USE_MOCK` MAY also be named). The bare form applies because backend services read env vars from the runtime process directly — no bundler stripping. Frontend-consumed toggles follow a different framework-aware naming rule documented in `preview-env-contract.md §4.5`. Do NOT specify implementation details (class names, in-memory data structures, mock libraries, switching code).
 
 **Constraint**: Local infrastructure (databases, caches, queues managed by docker-compose) is NOT a Service Virtualization target — they run as real local instances.
 
