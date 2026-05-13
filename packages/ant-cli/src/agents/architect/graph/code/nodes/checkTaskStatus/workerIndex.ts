@@ -194,7 +194,6 @@ export async function workerCheckTaskStatus(
     taskName: state.currentTask?.name || 'Unknown Task',
     attemptNumber: (state.retries || 0) + 1,
     violations: retryableViolations,
-    fixStrategy: 'retry',
     timestamp: Date.now(),
   };
   const enforcementHistory = [...(state.enforcementHistory || []), feedback];

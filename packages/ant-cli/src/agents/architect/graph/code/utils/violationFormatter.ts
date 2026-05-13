@@ -17,17 +17,16 @@ export function formatViolations(violations: Violation[]): string {
   
   return violations.map((v, idx) => {
     const parts = [
-      `${idx + 1}. [${v.severity.toUpperCase()}] ${v.type}`,
+      `${idx + 1}. ${v.type}`,
       `   Message: ${v.message}`
     ];
-    
+
     if (v.file) parts.push(`   File: ${v.file}`);
-    if (v.module) parts.push(`   Module: ${v.module}`);
     if (v.suggestedFix) parts.push(`   💡 Suggested Fix: ${v.suggestedFix}`);
     if (v.isRetryable !== undefined) {
       parts.push(`   ♻️  Retryable: ${v.isRetryable ? 'YES' : 'NO (needs task decomposition)'}`);
     }
-    
+
     return parts.join('\n');
   }).join('\n\n');
 }

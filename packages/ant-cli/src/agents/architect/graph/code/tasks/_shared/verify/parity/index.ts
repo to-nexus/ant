@@ -210,7 +210,6 @@ export async function parityCheck(
     return {
       violation: {
         type: 'parity_apply_failed',
-        severity: 'critical',
         isRetryable: true,
         message:
           'Service Virtualization parity check — virtualized variant (USE_MOCK=true) failed.\n' +
@@ -257,7 +256,6 @@ export async function parityCheck(
       return {
         violation: {
           type: 'parity_dto_mismatch',
-          severity: 'critical',
           isRetryable: true,
           message:
             'Service Virtualization parity check — DTO shape divergence between virtualized and production variants.\n' +
@@ -274,7 +272,6 @@ export async function parityCheck(
     return {
       violation: {
         type: 'parity_real_failed',
-        severity: 'critical',
         isRetryable: true,
         message:
           'Service Virtualization parity check — production variant (USE_MOCK=false) failed while virtualized variant passed.\n' +

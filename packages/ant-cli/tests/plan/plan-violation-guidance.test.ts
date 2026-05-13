@@ -19,7 +19,6 @@ import type { Violation } from '../../src/agents/architect/graph/code/state';
 function violation(overrides: Partial<Violation> = {}): Violation {
   return {
     type: 'other',
-    severity: 'critical',
     message: 'generic error',
     isRetryable: true,
     ...overrides,

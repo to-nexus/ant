@@ -63,7 +63,6 @@ describe('workerCheckTaskStatus — retry dispatch (post-enforce-removal)', () =
     expect(result.enforcementHistory).toHaveLength(1);
     expect(result.enforcementHistory[0].taskId).toBe('t1');
     expect(result.enforcementHistory[0].attemptNumber).toBe(1);
-    expect(result.enforcementHistory[0].fixStrategy).toBe('retry');
     expect(result.enforcementHistory[0].violations).toEqual(result.violations);
   });
 

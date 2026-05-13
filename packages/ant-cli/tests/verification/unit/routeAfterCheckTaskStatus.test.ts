@@ -25,7 +25,6 @@ function makeState(overrides: Partial<ArchitectGraphState>): ArchitectGraphState
 
 const violation = (type: string = 'other'): Violation => ({
   type: type as any,
-  severity: 'critical',
   message: 'test',
   isRetryable: true,
 });
