@@ -94,11 +94,11 @@ describe('RemoteService distributed lock — F5', () => {
     expect(m.history.release).toHaveLength(0);
   });
 
-  it('init wraps with the lock.init key (TTL 300s)', async () => {
+  it('init wraps with the lock.init key (TTL 120s)', async () => {
     patchOp(svc, 'initOp', async () => ({ warnings: [] }));
     await svc.initializeGitHubRepo('proj', userContext);
     expect(history.acquire[0].key).toMatch(/^ant:lock:init:o:u:proj$/);
-    expect(history.acquire[0].ttl).toBe(300);
+    expect(history.acquire[0].ttl).toBe(120);
   });
 
   it('fetch wraps with the lock.fetch key (TTL 180s) and includes feature in the key', async () => {
