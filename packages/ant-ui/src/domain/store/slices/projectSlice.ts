@@ -173,11 +173,13 @@ export const createProjectSlice: StateCreator<
 
   setSelectedFeature: (featureName) => {
     const state = get() as any;
-    
-    // ✅ CRITICAL: Update IDE reload timestamp to force VS Code to reload workspace
-    // This is necessary because VS Code Server runs in Docker and shares state
-    set({ ideReloadTimestamp: Date.now() } as any);
-    
+
+    // Iframe key embeds `selectedFeature` (App.tsx), so a real feature
+    // change already changes the key. Bumping `ideReloadTimestamp` here
+    // is a leftover from the pre-e7ddcc91 always-unmount era and causes
+    // false remounts on same-feature re-sets (session restore echo,
+    // sidebar re-clicks). Removed entirely.
+
     // Calculate isRunning for NEW feature
     const newFeatureKey = state.selectedProject && featureName ? `${state.selectedProject}/${featureName}` : null;
     const newFeatureIsRunning = newFeatureKey ? !!state.runningJobsByFeature[newFeatureKey] : false;

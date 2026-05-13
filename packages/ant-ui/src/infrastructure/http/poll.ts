@@ -30,14 +30,25 @@
  * distinguish (a) a still-mounted iframe pointing at a live pod from
  * (b) a stale `ideBaseUrl` whose backing pod was idle-reaped.
  *
- *   `2xx | 3xx` → `'alive'`  (cold-load avoidance branch — no remount)
- *   `4xx | 5xx` → `'dead'`   (BE proxy returns 404 once `unregisterIDE`
- *                             has run; falls through to slow path → restart)
- *   network err / 1.5s timeout → `'unknown'` (conservative: no-op rather
- *                             than aggressive restart on a transient hiccup)
+ *   `2xx | 3xx`           → `'alive'`   (cold-load avoidance — no remount)
+ *   `404 | 410`           → `'dead'`    (`baseProxy` returns 404 after
+ *                                        `unregisterIDE`; 410 reserved for
+ *                                        future "Gone" semantics)
+ *   `502 | 503 | 504`     → `'dead'`    (proxy reached us but cannot reach
+ *                                        upstream pod — container died
+ *                                        before unregister; c0aaae16's
+ *                                        5xx recovery path)
+ *   other 4xx/5xx         → `'unknown'` (401/403 = JWT renewal,
+ *                                        405 = method mismatch,
+ *                                        500 = transient — conservative
+ *                                        no-op, retry effect / next
+ *                                        visibility tick handles it)
+ *   network err / timeout → `'unknown'` (transient hiccup)
  *
- * HEAD is preferred because the openvscode-server root returns a large
- * HTML payload on GET; we only need the status line.
+ * GET is used (not HEAD) because openvscode-server's workbench root handler
+ * is GET-only and 4xx's on HEAD. The response body is immediately
+ * cancelled so we pay only for status-line + headers. Aligns with the
+ * iframe onLoad probe in App.tsx so probe and load see the same contract.
  */
 export async function probeIdeAlive(
   proxyUrl: string,
@@ -47,13 +58,17 @@ export async function probeIdeAlive(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${proxyUrl}/`, {
-      method: 'HEAD',
+      method: 'GET',
       credentials: 'include',
       cache: 'no-store',
       signal: controller.signal,
     });
+    // Drop the body — we only need the status line.
+    try { await res.body?.cancel(); } catch { /* no-op */ }
     if (res.status >= 200 && res.status < 400) return 'alive';
-    return 'dead';
+    if (res.status === 404 || res.status === 410) return 'dead';
+    if (res.status === 502 || res.status === 503 || res.status === 504) return 'dead';
+    return 'unknown';
   } catch {
     return 'unknown';
   } finally {
