@@ -18,7 +18,7 @@ import type { Violation } from '../../src/agents/architect/graph/code/state';
 
 function violation(overrides: Partial<Violation> = {}): Violation {
   return {
-    type: 'type_error',
+    type: 'other',
     severity: 'critical',
     message: 'generic error',
     isRetryable: true,
@@ -68,7 +68,7 @@ describe('renderViolationGuidance — type-specific actionable guidance', () => 
 
   it('non-special violation type → undefined (no guidance)', () => {
     const guidance = renderViolationGuidance([
-      violation({ type: 'type_error', message: 'type mismatch' }),
+      violation({ type: 'other', message: 'type mismatch' }),
     ]);
     expect(guidance).toBeUndefined();
   });
@@ -97,9 +97,9 @@ describe('composeViolationsText — formatter + guidance composition', () => {
 
   it('renders violations without any narrative injection channel', () => {
     const text = composeViolationsText([
-      violation({ type: 'type_error', message: 'x' }),
+      violation({ type: 'other', message: 'x' }),
     ])!;
-    expect(text).toContain('type_error');
+    expect(text).toContain('other');
     // No trailing "diag-context" style narrative — by design.
   });
 });

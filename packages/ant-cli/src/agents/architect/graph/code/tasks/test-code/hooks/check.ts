@@ -24,7 +24,7 @@
  * test-code tasks.
  */
 
-import type { ArchitectGraphState, Violation, ViolationType } from '../../../state';
+import type { ArchitectGraphState, Violation } from '../../../state';
 import { detectTestFilesFromDisk } from '../../_shared/verify/env/env';
 
 const MESSAGE =
@@ -36,7 +36,7 @@ export async function evaluate(state: ArchitectGraphState): Promise<Violation | 
   const exists = detectTestFilesFromDisk(state.context?.featurePath);
   if (exists) return null;
   return {
-    type: 'incomplete_implementation' as ViolationType,
+    type: 'incomplete_implementation',
     severity: 'critical',
     message: MESSAGE,
     isRetryable: true,
