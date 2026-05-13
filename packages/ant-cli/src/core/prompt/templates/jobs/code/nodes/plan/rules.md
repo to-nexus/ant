@@ -124,6 +124,21 @@ One `batches[]` entry is one execute round. The observable signal is the slice's
 
 This axis is orthogonal to coherence: the rubric decides *whether the work is separable*, this check decides *whether one session can hold it*. A coherent unit may still need to be split when single-session closure says so. When that happens, `parentReasoning` names single-session closure (not coherence) as the concrete benefit.
 
+### Scheduling fields — REQUIRED per batch
+
+Each `batches[]` entry MUST declare both of:
+
+- **`parallelGroup: string`** — a short, meaningful lane name (e.g. `"ui-shared-comp"`, `"design-tokens"`, `"data-domain"`). Siblings sharing the same `parallelGroup` execute **serially** in the order set by `priorityInParallelGroup`. Siblings with **different** `parallelGroup` values run **concurrently**.
+- **`priorityInParallelGroup: number`** — a non-negative integer. Within a lane, the batch with the smaller value dispatches first. Values within a single lane MUST be distinct (e.g. `0, 1, 2` — no duplicates).
+
+**The runtime computes the sub-task's priority as `parentPriority + priorityInParallelGroup`** and uses the LLM-declared `parallelGroup` directly. There is no other channel for declaring the schedule — these two fields are the schedule.
+
+**How to choose lanes.** Put two batches in the **same lane** when one consumes what the other produces (shared types, modules to import, directory layout the consumer expects). Put them in **different lanes** ONLY when you have verified that they are genuinely independent — same parent, no shared output, no shared cross-batch type. When in doubt, place them in one lane: the cost of serializing independent work is small; the cost of racing dependent work is large (the consumer is dispatched before the producer exists).
+
+**How to choose within-lane order.** Set `priorityInParallelGroup` ascending from `0` along the producer → consumer chain inside the lane. The producer that other batches in the same lane depend on takes `0`; its dependents take `1, 2, …`.
+
+The splitting rubric still applies: if two slices are independent *and* small enough to bundle, bundle them per the rubric rather than placing them in two single-batch lanes.
+
 ### What `batches[]` carries — slice declaration only
 
 A `batches[]` entry **declares a slice**, it does NOT carry the slice's internal implementation plan. Each declared batch is dispatched as a child task whose own plan node re-investigates the codebase and emits its own flat `implementation` block. The parent's responsibility ends at the slice boundary.
@@ -153,6 +168,8 @@ The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you
     {
       "name": "[REQUIRED — noun phrase identifying the unit, e.g. \"firebase-web-singleton\". Becomes the child task name verbatim. NOT a verb, NOT a path, NOT a placeholder.]",
       "rationale": "[REQUIRED — why this batch is one isolated unit. Becomes the child task description verbatim.]",
+      "parallelGroup": "[REQUIRED — short, meaningful lane name, e.g. \"ui-shared-comp\". Same value across siblings ⇒ serial in this lane; different values ⇒ parallel across lanes.]",
+      "priorityInParallelGroup": "[REQUIRED — non-negative integer. Lower runs first within the lane. MUST be distinct from other batches sharing the same parallelGroup.]",
       "requiredFiles": ["[OPTIONAL — files the child plan MUST observe before planning; e.g. interface contracts owned by a sibling. Omit when the child can discover them from the directory tree.]"]
     }
   ]
@@ -160,7 +177,7 @@ The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you
 </plan>
 ```
 
-⚠️ **Naming contract (same as the JSON SCHEMA above)**: The framework uses `batches[].name` and `batches[].rationale` **verbatim** as child task name + description. The system MUST NOT fabricate names. Missing `name` or `rationale` = schema violation = the plan call is re-issued with framing.
+⚠️ **Naming contract (same as the JSON SCHEMA above)**: The framework uses `batches[].name` and `batches[].rationale` **verbatim** as child task name + description, and routes `batches[].parallelGroup` + `batches[].priorityInParallelGroup` straight onto the runtime scheduling axes. The system MUST NOT fabricate any of these values. Missing or malformed `name` / `rationale` / `parallelGroup` / `priorityInParallelGroup`, or duplicate `priorityInParallelGroup` within the same lane = schema violation = the plan call is re-issued with framing.
 {{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────

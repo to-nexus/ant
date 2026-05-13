@@ -720,7 +720,7 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
     // Top-level modify/create/delete missing-field throws are gone — those
     // entries no longer get auto-converted into batches[]. Schema validation
     // remains for explicit `batches[]` (the LLM-emitted fan-out path).
-    it('explicit batches[] entry missing `name` throws BatchSplitSchemaViolation(batch, missingField=name)', () => {
+    it('explicit batches[] entry missing `name` throws BatchSplitSchemaViolation(batch, field=name, reason=missing)', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 2 },
@@ -740,10 +740,11 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
       const v = thrown as BatchSplitSchemaViolation;
       expect(v.detail.entryKind).toBe('batch');
       expect(v.detail.ordinal).toBe(0);
-      expect(v.detail.missingField).toBe('name');
+      expect(v.detail.field).toBe('name');
+      expect(v.detail.reason).toBe('missing');
     });
 
-    it('explicit batches[] entry missing `rationale` throws BatchSplitSchemaViolation(batch, missingField=rationale)', () => {
+    it('explicit batches[] entry missing `rationale` throws BatchSplitSchemaViolation(batch, field=rationale, reason=missing)', () => {
       const state = makeState();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 2 },
@@ -763,7 +764,8 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
       const v = thrown as BatchSplitSchemaViolation;
       expect(v.detail.entryKind).toBe('batch');
       expect(v.detail.ordinal).toBe(1);
-      expect(v.detail.missingField).toBe('rationale');
+      expect(v.detail.field).toBe('rationale');
+      expect(v.detail.reason).toBe('missing');
     });
 
     it('explicit batches[] entry with empty-string `name` throws (whitespace-only also missing)', () => {
@@ -782,7 +784,8 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
       expect(thrown).toBeInstanceOf(BatchSplitSchemaViolation);
       const v = thrown as BatchSplitSchemaViolation;
       expect(v.detail.entryKind).toBe('batch');
-      expect(v.detail.missingField).toBe('name');
+      expect(v.detail.field).toBe('name');
+      expect(v.detail.reason).toBe('missing');
     });
   });
 
