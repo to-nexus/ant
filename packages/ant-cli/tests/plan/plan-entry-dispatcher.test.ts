@@ -2,17 +2,19 @@
  * L1 — `resolvePlanEntry` dispatcher invariants.
  *
  * Post verification fix-책임 제거 리팩토링:
- *   - C14: verification fresh entry initialises `state.verification`
- *          (VerificationSession) via the plan hook.
+ *   - Tier 3/4 fresh entry flips `_verifyEntered=true` via
+ *     `handleFreshTaskEntry` (commits in plan-node return delta).
  *   - Retry entry is uniform across all task types — bump `state.retries`,
- *     clear NODE_EXECUTE, preserve NODE_PLAN. Verification used to take a
- *     dedicated branch that reset NODE_PLAN and bumped `Session.attempts`;
- *     that branch was removed because verification never enters retry —
- *     every cycle ends in done:true (via explicit `batches[]` fan-out, the
- *     empty-impl shortcut, or `MAX_BATCH_SPLIT_CYCLES`).
- *   - Reverify entry retains its `isFirstVerifyEntry` NODE_PLAN reset for
- *     self-verify Tier 2's apply→verify transition (apply-phase plan
- *     messages would mix with the verify-mode prompt format otherwise).
+ *     clear NODE_EXECUTE, preserve NODE_PLAN. Verification never enters
+ *     retry; every cycle ends in done:true (via explicit `batches[]`
+ *     fan-out, the empty-impl shortcut, or `MAX_BATCH_SPLIT_CYCLES`).
+ *   - Tier 2 reverify entry (apply→verify boundary and subsequent reverify
+ *     cycles) flips `_verifyEntered=true` via `handleReverifyEntry`,
+ *     detected from observable channel state (`_activePhase='execute'` +
+ *     execute's `done` + non-empty `planText` + `requiresVerification &&
+ *     !isVerificationTask`). NODE_PLAN preserved so the apply-phase plan
+ *     dialogue remains visible to the verify-mode prompt; NODE_EXECUTE
+ *     cleared per cycle.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -102,7 +104,7 @@ describe('resolvePlanEntry — fresh verification task', () => {
     expect(delta._verifyEntered).toBeUndefined();
   });
 
-  it('does NOT flip _verifyEntered for Tier 2 self-verify fresh entry (apply-phase enters first; executeRouter <done> arm flips it later)', async () => {
+  it('does NOT flip _verifyEntered for Tier 2 self-verify fresh entry (apply-phase enters first; handleReverifyEntry flips it on the apply→verify boundary)', async () => {
     // selfVerifyOnDone tasks satisfy `requiresVerification(task)` but their
     // FIRST plan entry is in apply-mode. Only `isVerificationTask(task)`
     // (Tier 3/4) should auto-enter verify-mode here.
@@ -190,10 +192,13 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(1);
   });
 
-  it('reverify entry preserves NODE_PLAN; only NODE_EXECUTE clears (Tier 2 self-verify)', async () => {
+  it('Tier-2 reverify entry preserves NODE_PLAN, clears NODE_EXECUTE, commits _verifyEntered:true (detected from observable channel state, no flag)', async () => {
     // Apply-phase plan dialogue is preserved across the apply→verify
     // boundary so the LLM sees what it tried in conversation history;
-    // only the per-cycle execute log is cleared.
+    // only the per-cycle execute log is cleared. The boundary is
+    // detected from committed channel state (`_activePhase='execute'` +
+    // execute's `done` + non-empty `planText` + `requiresVerification &&
+    // !isVerificationTask`) — no transient flag is needed.
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 'sv1',
@@ -203,7 +208,15 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
       priority: 100,
       selfVerifyOnDone: true,
     } as any;
-    state._nextPlanEntry = 'reverify';
+    state._activePhase = 'execute';
+    state.llmResponse = {
+      done: true,
+      textResponse: '',
+      thinking: '',
+      toolCalls: [],
+    } as any;
+    state.planText = 'apply-phase remediation plan body';
+    state._verifyEntered = false;
     state.conversations = {
       [CONV_KEYS.NODE_PLAN]: [
         { role: 'user', content: 'apply-phase plan round 1' },
@@ -220,6 +233,13 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
     expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
     expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    // Regression guard for job `ultra-fusing-scone`: handleReverifyEntry
+    // MUST commit `_verifyEntered:true` in its delta (and mirror in body
+    // mutation) so subsequent composeBundle dispatch routes through
+    // verify-mode hooks. The prior writer (executeRouter conditional-edge
+    // mutation) silently dropped this flag.
+    expect(delta._verifyEntered).toBe(true);
+    expect(state._verifyEntered).toBe(true);
   });
 
   it('clears node:plan at fresh task entry (task boundary)', async () => {
