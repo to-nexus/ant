@@ -1,36 +1,40 @@
 /**
- * error/hooks/command.ts — TaskCommandHook.guard (apply-phase)
+ * error/hooks/command.ts — TaskCommandHook.guard
  *
  * Error tasks apply fixes from an upstream remediation plan (batch-split
  * output carried on `prePlanText`, or a freshly-generated plan in the rare
  * no-prePlanText path).
  *
- * Apply-phase semantics: error tasks do NOT run build/test/typecheck. The
- * verification responsibility belongs to a separate cycle:
+ * **Apply-phase semantics:** error tasks do NOT run build/test/typecheck.
+ * Diagnostics belong to a separate verification cycle:
  *
- *   - Tier 3/4: a dedicated verification task follows in the queue.
+ *   - Tier 3/4: a dedicated verification task follows in the queue. That
+ *     task does not compose error's apply hooks, so this guard never fires
+ *     there.
  *   - Tier 2 self-verify: this same task transitions into verify-mode
- *     after applying fixes (executeRouter routes `<done>` → plan reverify
- *     → initSession → markVerifyEntered → `_shared/verify/commandGuard`
- *     takes over from there). The dispatch happens at composeBundle —
- *     this guard fires only in apply-phase when `ctx.verificationSession
- *     === undefined`.
+ *     after applying fixes (`resolvePlanEntry → handleReverifyEntry` flips
+ *     `_verifyEntered`; `nodes/tool/index.ts` propagates it as
+ *     `ctx.verifyModeActive`). From that point the guard short-circuits
+ *     on its first line — verify-mode is the gate cycle, so build/test/
+ *     typecheck calls become exactly what the LLM is supposed to run
+ *     (`_shared/verify/hooks/executeHook` + `variants/verification/{base,
+ *     rules}.md`).
+ *
+ * The legacy `_shared/verify/commandGuard` that an older docstring claimed
+ * "took over" in verify-mode was retired in the `vast-curling-perch`
+ * cleanup; no replacement was created because verify-mode's whole purpose
+ * is to run gate commands. The apply guard self-disabling on the first
+ * line replaces that retired surface (civil-flying-golem regression RCA).
  *
  * Install commands (npm/pnpm/pip/go mod) pass through regardless because
  * the remediation plan may legitimately add dependencies in any tier.
  *
  * R1 — task-type-specific command logic lives here; the common handler
- *      stays blind to `task.type`.
- *
- * Why no `selfVerifyOnDone` exception any more: previously this hook
- * allowed gate commands when `selfVerifyOnDone === true` so the Tier 2
- * task could "self-verify inline" in one cycle. The runtime relied
- * entirely on the LLM's prompt compliance — no Session, no gate
- * tracking, no enforcement. The two-cycle design (apply→reverify)
- * replaces that with code-level enforcement: apply-phase blocks gate
- * commands, verify-phase runs them through `_shared/verify/`. The
- * `selfVerifyOnDone` flag survives at decompose time as the Tier 2
- * marker, but command-guard semantics are now uniform across tiers.
+ *      stays blind to `task.type`. Reading `ctx.verifyModeActive` does NOT
+ *      violate R1: the same flag is already read by the Go-build gate at
+ *      `agents/common/tool/handlers/codeCommandPolicy.ts` — it is the
+ *      command-policy layer's public phase signal, not an internal
+ *      verify-mode channel.
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
@@ -53,6 +57,16 @@ export function guard(
   ctx: ToolExecutionContext,
   args: { command: string; verifies?: string },
 ): ToolResult | null {
+  // Verify-mode bypass — once the task crosses into its verify cycle
+  // (`_verifyEntered === true` → tool node sets `verifyModeActive: true`),
+  // `_shared/verify/hooks/executeHook` + `variants/verification/{base,
+  // rules}.md` direct the LLM to self-validate with tsc/build/test. The
+  // apply-phase block below would silently reject those calls, leaving the
+  // verify cycle stuck (civil-flying-golem regression). The Go-build gate
+  // at `agents/common/tool/handlers/codeCommandPolicy.ts` follows the same
+  // pattern.
+  if (ctx.verifyModeActive === true) return null;
+
   const { command, verifies } = args;
 
   // Apply-phase block (uniform across tiers): build/test/typecheck are the
