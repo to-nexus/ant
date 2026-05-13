@@ -5,6 +5,19 @@ import { logger } from '../../../../../../utils/logger';
 import { UserContext } from '../../../../../../core/types/user';
 
 /**
+ * Default simple-git instance options shared across every git invocation in
+ * the GitService surface. `timeout.block` kills a stuck child process if it
+ * produces no stdout/stderr for this long — protects publish/init/push from
+ * TLS/auth hangs that would otherwise pin the Redis init lock for its full
+ * TTL. Spread into every `simpleGit({...})` call so the SSOT lives here.
+ */
+export const SIMPLE_GIT_DEFAULT_OPTS = {
+  binary: 'git',
+  maxConcurrentProcesses: 6,
+  timeout: { block: 60_000 },
+} as const;
+
+/**
  * Worktree validity reasons emitted by {@link GitHelper.isWorktreeStructureValid}.
  * - `no-git-file`     — `.git` marker file does not exist (worktree never created)
  * - `invalid-marker`  — `.git` exists but has malformed `gitdir:` line / read failure
@@ -49,7 +62,7 @@ export class GitHelper {
     
     // Too noisy in normal operation; keep for debug only.
     logger.debug(`.git verified`, { component: 'GitHelper' }, { targetPath });
-    return simpleGit(targetPath);
+    return simpleGit({ baseDir: targetPath, ...SIMPLE_GIT_DEFAULT_OPTS });
   }
 
   /**
@@ -122,7 +135,7 @@ export class GitHelper {
    */
   private static async doEnsureSafeDirectory(targetPath: string): Promise<void> {
     try {
-      const git = simpleGit();
+      const git = simpleGit(SIMPLE_GIT_DEFAULT_OPTS);
       
       // Add the directory to safe.directory (global config)
       // This command is idempotent - adding the same path multiple times is safe

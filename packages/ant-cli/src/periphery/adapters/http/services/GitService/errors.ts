@@ -25,6 +25,7 @@ export interface GitOperationErrorOptions {
   suggestedAction?: GitSuggestedAction | null;
   retryable?: boolean;
   cause?: unknown;
+  retryAfterMs?: number;
 }
 
 const DEFAULT_STATUS_BY_KIND: Record<GitOperationErrorKind, number> = {
@@ -50,6 +51,7 @@ export class GitOperationError extends Error {
   public readonly statusCode: number;
   public readonly retryable: boolean;
   public readonly suggestedAction: GitSuggestedAction | null;
+  public readonly retryAfterMs: number | null;
 
   constructor(
     message: string,
@@ -70,16 +72,19 @@ export class GitOperationError extends Error {
 
     this.retryable = options.retryable ?? DEFAULT_RETRYABLE_BY_KIND[this.kind];
     this.suggestedAction = options.suggestedAction ?? null;
+    this.retryAfterMs = options.retryAfterMs ?? null;
   }
 
   /** Serialize to the canonical cross-boundary contract. */
   toShape(): GitOperationErrorShape {
-    return {
+    const shape: GitOperationErrorShape = {
       kind: this.kind,
       message: this.message,
       retryable: this.retryable,
       suggestedAction: this.suggestedAction ?? null,
     };
+    if (this.retryAfterMs !== null) shape.retryAfterMs = this.retryAfterMs;
+    return shape;
   }
 }
 
@@ -89,6 +94,7 @@ export class GitAuthError extends GitOperationError {
       suggestedAction: options.suggestedAction ?? 'configurePat',
       retryable: options.retryable ?? false,
       cause: options.cause,
+      retryAfterMs: options.retryAfterMs,
     });
     this.name = 'GitAuthError';
   }
@@ -100,6 +106,7 @@ export class GitConflictError extends GitOperationError {
       suggestedAction: options.suggestedAction ?? 'resolveConflict',
       retryable: options.retryable ?? false,
       cause: options.cause,
+      retryAfterMs: options.retryAfterMs,
     });
     this.name = 'GitConflictError';
   }
@@ -111,6 +118,7 @@ export class GitNotFoundError extends GitOperationError {
       suggestedAction: options.suggestedAction ?? 'reconfigureRepo',
       retryable: options.retryable ?? false,
       cause: options.cause,
+      retryAfterMs: options.retryAfterMs,
     });
     this.name = 'GitNotFoundError';
   }
@@ -122,6 +130,7 @@ export class GitConfigError extends GitOperationError {
       suggestedAction: options.suggestedAction ?? 'reconfigureRepo',
       retryable: options.retryable ?? false,
       cause: options.cause,
+      retryAfterMs: options.retryAfterMs,
     });
     this.name = 'GitConfigError';
   }
@@ -133,6 +142,7 @@ export class GitNetworkError extends GitOperationError {
       suggestedAction: options.suggestedAction ?? null,
       retryable: options.retryable ?? true,
       cause: options.cause,
+      retryAfterMs: options.retryAfterMs,
     });
     this.name = 'GitNetworkError';
   }

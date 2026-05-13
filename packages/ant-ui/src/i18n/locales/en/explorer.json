@@ -85,6 +85,8 @@
     "actionFailed": "Failed to {{action}}",
     "patNotConfigured": "GitHub PAT is not configured. Please set up your PAT to proceed.",
     "configurePat": "Set up PAT",
+    "operationInProgress": "Another Git operation is currently in progress. Please try again shortly.",
+    "operationInProgressWithCountdown": "Another Git operation is currently in progress. Please try again in about {{seconds}}s.",
     "commitSuccess": "Committed successfully",
     "commitFailed": "Commit failed",
     "pushSuccess": "Pushed successfully",

@@ -16,7 +16,11 @@ import { REDIS_KEYS } from '../../../../../../core/constants/redis';
 import { GitConflictError } from '../errors';
 
 const LOCK_TTL_CLONE_SEC = 600; // clone is the longest single-flight (full bare clone + flatten)
-const LOCK_TTL_INIT_SEC = 300;
+// Aligned with the FE Promise.race timeout for `publish` (120s) so the lock
+// never outlives the user-visible failure window — InitOperation hangs are
+// already capped by simple-git block timeout (60s) and GitHub fetch/octokit
+// timeouts (30s), so the work itself completes or throws well before this.
+const LOCK_TTL_INIT_SEC = 120;
 const LOCK_TTL_FETCH_SEC = 180;
 
 /**
@@ -82,7 +86,15 @@ export class RemoteService {
       );
     }
     const lock = await acquireLock(this.stateStore, key, ttlSec);
-    if (!lock) throw new GitConflictError(conflictMessage);
+    if (!lock) {
+      // Lock contention is a transient "another op is running" state, not the
+      // permanent merge-conflict / already-exists case — flag it retryable
+      // and surface the TTL so the UI can countdown until the next attempt.
+      throw new GitConflictError(conflictMessage, {
+        retryable: true,
+        retryAfterMs: ttlSec * 1000,
+      });
+    }
     try {
       return await fn();
     } finally {

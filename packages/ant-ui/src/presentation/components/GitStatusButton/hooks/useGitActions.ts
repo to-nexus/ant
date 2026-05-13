@@ -7,6 +7,7 @@ import {
 } from '@/domain/git-world';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
+import { useGitErrorRouting } from '@/application/hooks/git/useGitErrorRouting';
 
 /**
  * Git operation handlers bound to the currently selected (project, feature).
@@ -31,6 +32,7 @@ export function useGitActions(
   const { runGitOperation } = useGitDispatch();
   const { showError, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
+  const handleGitError = useGitErrorRouting();
 
   // Running flags derived from the FSM. Discriminant union ensures only
   // one is true at a time.
@@ -56,10 +58,11 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.commitSuccess'));
       } else {
+        if (handleGitError(result.error).handled) return;
         showError(result.error?.message || t('git.commitFailed'));
       }
     },
-    [selectedProject, snapshot, featureArg, runGitOperation, showError, toast, t],
+    [selectedProject, snapshot, featureArg, runGitOperation, showError, handleGitError, toast, t],
   );
 
   // Pure push — BE's push-variant of the `publish` operation auto-sets
@@ -75,10 +78,11 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.pushSuccess'));
       } else {
+        if (handleGitError(result.error).handled) return;
         showError(result.error?.message || t('git.pushFailed'));
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
   );
 
   // "Publish repository" — remote not yet created. Creates the GitHub repo
@@ -99,13 +103,14 @@ export function useGitActions(
             if (result.success) {
               toast.success(t('git.repoInitialized'));
             } else {
+              if (handleGitError(result.error).handled) return;
               showError(result.error?.message || t('git.pushFailed'));
             }
           });
         },
       });
     },
-    [selectedProject, featureArg, runGitOperation, showConfirm, showError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showConfirm, showError, handleGitError, toast, t],
   );
 
   const handlePull = useMemo(
@@ -118,10 +123,11 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.pullSuccess'));
       } else {
+        if (handleGitError(result.error).handled) return;
         showError(result.error?.message || t('git.pullFailed'));
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
   );
 
   const handleSync = useMemo(
@@ -134,10 +140,11 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.syncSuccess'));
       } else {
+        if (handleGitError(result.error).handled) return;
         showError(result.error?.message || t('git.syncFailed'));
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
   );
 
   const handleDiscard = useMemo(
@@ -161,13 +168,14 @@ export function useGitActions(
             if (result.success) {
               toast.success(t('git.discardSuccess'));
             } else {
+              if (handleGitError(result.error).handled) return;
               showError(result.error?.message || t('git.discardFailed'));
             }
           });
         },
       });
     },
-    [selectedProject, featureArg, runGitOperation, showConfirm, showError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showConfirm, showError, handleGitError, toast, t],
   );
 
   return {

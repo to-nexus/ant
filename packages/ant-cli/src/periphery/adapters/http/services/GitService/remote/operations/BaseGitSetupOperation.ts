@@ -5,7 +5,7 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { isVectorDbEnabled } from '../../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService, GitHubRepoCreateError } from '../../../../../auth/GitHubAuthService';
-import { GitHelper } from '../../helper/GitHelper';
+import { GitHelper, SIMPLE_GIT_DEFAULT_OPTS } from '../../helper/GitHelper';
 import { GitignoreGenerator } from '../helpers/GitignoreGenerator';
 import {
   GitAuthError,
@@ -96,11 +96,7 @@ export abstract class BaseGitSetupOperation {
   }
 
   protected async initializeGit(codebasePath: string, baseBranch: string, userContext: UserContext): Promise<SimpleGit> {
-    const git = simpleGit({
-      baseDir: codebasePath,
-      binary: 'git',
-      maxConcurrentProcesses: 6
-    });
+    const git = simpleGit({ baseDir: codebasePath, ...SIMPLE_GIT_DEFAULT_OPTS });
     
     await git.init([`--initial-branch=${baseBranch}`]);
     
@@ -218,6 +214,11 @@ export abstract class BaseGitSetupOperation {
       }
 
       const errorMsg = error instanceof Error ? error.message : String(error);
+      // AbortSignal.timeout(...) on the fetch rejects with DOMException name 'TimeoutError'.
+      // Map to GitNetworkError so the FE marks it retryable rather than generic-unknown.
+      if (error?.name === 'TimeoutError') {
+        throw new GitNetworkError(`GitHub request timed out while creating ${githubRepo}: ${errorMsg}`, { retryable: true });
+      }
       throw new GitOperationError(`Failed to create GitHub repository ${githubRepo}: ${errorMsg}`, 'unknown');
     }
   }
