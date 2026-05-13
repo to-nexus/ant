@@ -72,7 +72,7 @@ export async function checkTaskStatus(
       taskId: state.currentTask?.id,
       taskType: state.currentTask?.type,
       extra: {
-        violations: violations.map(v => ({ type: v.type, severity: v.severity })),
+        violations: violations.map(v => ({ type: v.type })),
       },
     });
   }
@@ -365,7 +365,6 @@ export async function checkTaskStatus(
     taskName: state.currentTask?.name || 'Unknown Task',
     attemptNumber: (state.retries || 0) + 1,
     violations: retryableViolations,
-    fixStrategy: 'retry',
     timestamp: Date.now(),
   };
   const enforcementHistory = [...(state.enforcementHistory || []), feedback];

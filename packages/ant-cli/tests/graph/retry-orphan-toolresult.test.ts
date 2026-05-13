@@ -141,7 +141,7 @@ describe('mergeDelta semantics — delta wins for top-level, conversations is in
     // handler delta resets must propagate to the reducer.
     const state = {
       _executeCallIndex: 3,
-      violations: [{ type: 'old' as any, severity: 'critical' as const, message: 'stale' }],
+      violations: [{ type: 'old' as any, message: 'stale' }],
       _planSearchWebCount: 7,
       conversations: { [NODE_EXECUTE]: [staleAssistantToolUse] },
     };

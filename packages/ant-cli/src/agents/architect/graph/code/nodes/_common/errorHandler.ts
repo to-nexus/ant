@@ -102,7 +102,6 @@ export function extractErrorDetails(error: unknown): ErrorDetails {
 export function createErrorViolation(errorDetails: ErrorDetails): Violation {
   return {
     type: 'other',
-    severity: 'critical',
     message: `LLM API Error [${errorDetails.type}]: ${errorDetails.message}`,
     suggestedFix: errorDetails.suggestedFix,
     isRetryable: errorDetails.isRetryable

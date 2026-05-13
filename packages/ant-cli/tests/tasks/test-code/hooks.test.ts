@@ -146,7 +146,6 @@ describe('tasks/test-code/hooks/check', () => {
     const v = await checkEvaluate(stateWithFeaturePath(featurePath));
     expect(v).not.toBeNull();
     expect(v?.type).toBe('incomplete_implementation');
-    expect(v?.severity).toBe('critical');
     expect(v?.isRetryable).toBe(true);
     expect(v?.message).toContain('test-code');
   });

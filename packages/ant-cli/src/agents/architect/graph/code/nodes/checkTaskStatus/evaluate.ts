@@ -84,7 +84,6 @@ function fileErrorsToViolations(
     out.push({
       type: violationType,
       message: errorMsg,
-      severity: 'critical',
       file: filePath,
       isRetryable: true,
       suggestedFix,
@@ -118,8 +117,7 @@ function noDoneSignalViolation(
   );
   const hookHint = hooksIfActive(state)?.check?.noDoneSignalHint;
   return {
-    type: 'no_done_signal' as ViolationType,
-    severity: 'critical',
+    type: 'no_done_signal',
     message:
       'Task reached checkTaskStatus without LLM signaling completion via <done> tag. ' +
       'A Safety Net (recursionLimit / repeated tool failures) likely forced the exit.',
