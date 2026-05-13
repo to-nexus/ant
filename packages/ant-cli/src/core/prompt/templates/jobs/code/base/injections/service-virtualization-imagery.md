@@ -46,13 +46,14 @@ contextually meaningful placeholder:
    a stable public placeholder service URL.
 
    **Rendering constraint**: External placeholder URLs MUST bypass the
-   framework's image optimizer. Use plain `<img>` (HTML element) OR
-   `<Image unoptimized>` (Next.js). Reason: placeholder services
-   commonly redirect to a CDN host (e.g., `picsum.photos` → 302 →
-   `fastly.picsum.photos`), and optimizers validate the redirect target
-   against the framework's allowlist (`remotePatterns` in Next.js). The
-   redirect target is rarely documented and changes without notice, so
-   optimizer routing is structurally fragile for placeholder pathways.
+   framework's image optimizer. Use plain `<img>` (HTML element) OR the
+   framework's opt-out attribute for that component. Reason: placeholder
+   services commonly redirect to a CDN host (e.g., `picsum.photos` → 302
+   → `fastly.picsum.photos`), and optimizers validate the redirect
+   target against the framework's allowlist (e.g., a remote-host
+   allowlist in the framework config). The redirect target is rarely
+   documented and changes without notice, so optimizer routing is
+   structurally fragile for placeholder pathways.
    Bypassing the optimizer is the contract — adding every
    redirect-target host to `remotePatterns` is not.
 
