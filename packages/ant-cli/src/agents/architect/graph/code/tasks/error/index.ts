@@ -9,7 +9,7 @@
  * Wired through `composeBundle({...})` so Tier 2 self-verify error
  * tasks (decompose-time `selfVerifyOnDone:true`) automatically pick up
  * the `_shared/verify/` hook surface (Session, plan/execute/command/
- * check/router/orchestrator/tool/budgetExhaustedHint) once they
+ * check/router/orchestrator/tool/noDoneSignalHint) once they
  * transition into verify-mode via `executeRouter.routeAfterDone`.
  * Tier 3/4 error tasks (no `selfVerifyOnDone`) fall through composeBundle
  * untouched — `requiresVerification` returns false and apply-phase

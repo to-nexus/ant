@@ -24,7 +24,6 @@ import {
   isVerificationPassWithoutCodeGen,
 } from '../../../tasks/_shared/verify/emptyImpl';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
-import { computeBudgetFromPlanText } from './budget';
 import { dispatchBatchSplit } from './queueDispatch';
 import { tracePlanFinalize, type PlanEmptyOrigin } from './trace';
 
@@ -105,7 +104,6 @@ export function finalizePlanOutcome(
     currentTask: nextTask,
     lessons: lessons ?? state.lessons ?? [],
     planText,
-    _executeBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
     completedTasksDetails: state.completedTasksDetails || [],
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,

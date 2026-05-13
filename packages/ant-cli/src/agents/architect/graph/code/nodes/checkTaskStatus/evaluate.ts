@@ -94,16 +94,17 @@ function fileErrorsToViolations(
 }
 
 /**
- * Budget-exhaustion guard. `<done>` is the only LLM-driven completion
- * signal; reaching checkTaskStatus without it means the call budget was
- * exhausted. Applies universally — not task-type-gated.
+ * Missing-done-signal guard. `<done>` is the only LLM-driven completion
+ * signal; reaching checkTaskStatus without it means the task exited via
+ * a Safety Net (A: recursionLimit, B: repeated tool failures) or a file
+ * error short-circuit. Applies universally — not task-type-gated.
  *
  * The retry-oriented hint for diagnostic tasks is opt-in via the
- * task-check hook's `budgetExhaustedHint` (set on verification). Task
+ * task-check hook's `noDoneSignalHint` (set on verification). Task
  * types that do not override receive the generic "break down the scope"
  * direction.
  */
-function budgetExhaustionViolation(
+function noDoneSignalViolation(
   state: ArchitectGraphState,
   logPrefix: string,
 ): Violation | null {
@@ -113,15 +114,15 @@ function budgetExhaustionViolation(
   if (llmExplicitlyDone) return null;
 
   console.warn(
-    `⚠️  [${logPrefix}] Task "${task.name}" (type=${task.type}) reached checkTaskStatus without <done> tag — budget exhausted`,
+    `⚠️  [${logPrefix}] Task "${task.name}" (type=${task.type}) reached checkTaskStatus without <done> tag`,
   );
-  const hookHint = hooksIfActive(state)?.check?.budgetExhaustedHint;
+  const hookHint = hooksIfActive(state)?.check?.noDoneSignalHint;
   return {
-    type: 'budget_exhausted' as ViolationType,
+    type: 'no_done_signal' as ViolationType,
     severity: 'critical',
     message:
       'Task reached checkTaskStatus without LLM signaling completion via <done> tag. ' +
-      'The LLM could not complete within the call budget.',
+      'A Safety Net (recursionLimit / repeated tool failures) likely forced the exit.',
     isRetryable: true,
     suggestedFix: hookHint ?? 'Break down the task scope or provide clearer implementation direction.',
   };
@@ -146,8 +147,8 @@ export async function evaluateTaskStatus(
   violations.push(...fileErrorsToViolations(state, opts.logPrefix));
 
   if (violations.length === 0 && state.currentTask) {
-    const budget = budgetExhaustionViolation(state, opts.logPrefix);
-    if (budget) violations.push(budget);
+    const missing = noDoneSignalViolation(state, opts.logPrefix);
+    if (missing) violations.push(missing);
   }
 
   // Task-type-specific completion judgement via hooks.

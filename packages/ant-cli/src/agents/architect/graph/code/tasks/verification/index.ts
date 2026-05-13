@@ -19,10 +19,10 @@ import { routeAfterDone } from '../_shared/verify/hooks/router';
 import { parityCheckEvaluate } from '../_shared/verify/parity';
 
 /**
- * Hint rendered on the `budget_exhausted` violation (execute call loop)
- * for verification cycles. Consumed by `checkTaskStatus/evaluate.ts`.
+ * Hint rendered on the `no_done_signal` violation for verification cycles.
+ * Consumed by `checkTaskStatus/evaluate.ts`.
  */
-const budgetExhaustedHint =
+const noDoneSignalHint =
   'Verification task did not complete — build may have failed. Retry pending.';
 
 export const hooks: TaskHooks = {
@@ -43,7 +43,7 @@ export const hooks: TaskHooks = {
   // `state.virtualizationSnapshot?.hasBusinessConnection` — when no
   // business connections exist, the check is a no-op. Tier 2 self-verify
   // tasks pick up the same hook through `composeBundle`'s check wrapper.
-  check: { budgetExhaustedHint, evaluate: parityCheckEvaluate },
+  check: { noDoneSignalHint, evaluate: parityCheckEvaluate },
   router: { routeAfterDone },
   decompose: { isExclusive },
   conversations: { convKey },

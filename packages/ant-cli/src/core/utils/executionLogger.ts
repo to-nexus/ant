@@ -266,7 +266,7 @@ export class ExecutionLogger {
     taskName: string;
     callIndex: number;
     lastResponseSnippet: string;
-    reason: 'recursion_limit' | 'budget_exhausted';
+    reason: 'recursion_limit';
   }): Promise<void> {
     await this.log('execute_interrupted', data, taskId);
   }

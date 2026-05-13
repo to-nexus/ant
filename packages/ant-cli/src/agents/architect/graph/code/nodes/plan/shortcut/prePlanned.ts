@@ -1,7 +1,6 @@
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import { computeBudgetFromPlanText } from '../outcome/budget';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import { clearForTaskBoundary } from '../../../tasks/_shared/verify/markVerifyEntered';
 import { isVerifyModeActive } from '../../../tasks/_shared/verify';
@@ -60,7 +59,6 @@ export async function maybePrePlannedFastPath(
     ...state,
     currentTask: nextTask,
     planText: prePlanText!,
-    _executeBudget: computeBudgetFromPlanText(prePlanText!),
     retries: 0,
     completedTasksDetails: state.completedTasksDetails || [],
     recursionCount: state.recursionCount,

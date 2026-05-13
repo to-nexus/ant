@@ -68,7 +68,7 @@ describe('tasks/_shared/registry — error entry', () => {
     expect(errorBundle.tool?.onEvent).toBeUndefined();
     expect((errorBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     expect(errorBundle.scheduling).toBeUndefined();
-    expect(errorBundle.check?.budgetExhaustedHint).toBeUndefined();
+    expect(errorBundle.check?.noDoneSignalHint).toBeUndefined();
   });
 });
 

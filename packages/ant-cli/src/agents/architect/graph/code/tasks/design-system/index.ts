@@ -27,7 +27,7 @@
  *   - decompose.isExclusive — design-system tasks are parallel-safe
  *     within the foundation priority tier; serialisation comes from the
  *     shared `parallelGroup`, not from type-level exclusivity.
- *   - check.evaluate / budgetExhaustedHint — the LLM <done> signal is
+ *   - check.evaluate / noDoneSignalHint — the LLM <done> signal is
  *     sufficient; no disk-level completion gate needed.
  *
  * Phase-layer `task.type === 'design-system'` predicate adoption is
