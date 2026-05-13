@@ -5,7 +5,17 @@
  * uploaded / DB-fetched content (avatar, thumbnail, cover, gallery). Three
  * gate axes:
  *
- *   service domain × frontend stack × feature task
+ *   service domain × frontend stack × rendering/scaffolding task type
+ *
+ * The partial owns two responsibilities: (1) placeholder URL authoring
+ * rules (host choice, deterministic seed), and (2) a rendering contract
+ * for placeholder URLs (`unoptimized` or plain `<img>` to bypass the
+ * framework image optimizer, since placeholder services redirect to CDN
+ * hosts that are rarely documented and structurally fragile to allowlist
+ * against). (1) applies to task types that author new placeholders;
+ * (2) applies to ANY task that touches a component or config consuming
+ * those URLs — including error/verification cycles that diagnose and
+ * fix broken imagery. The task-type set below reflects both axes.
  *
  * Domain-Branching Locality (I1) forbids `{{#if (eq domain 'service')}}`
  * inside `templates/jobs/<job>/nodes/<node>/...` rules.md, so the three
@@ -18,6 +28,22 @@
  *   - `service-virtualization-contract` (port shape + toggle grammar)
  *   - `service-virtualization-data`     (non-image FAKE body realism)
  */
+
+/**
+ * Task types that touch image rendering surfaces or placeholder URL
+ * authoring. Excluded: `doc` (no rendering surface), `test-code` (test
+ * fixtures, not user-facing render), `explain` (read-only). If a new
+ * task type lands that authors or modifies image-bearing components or
+ * mock data, add it here.
+ */
+const IMAGERY_ENABLED_TASK_TYPES: ReadonlySet<string> = new Set([
+  'feature',
+  'ui',
+  'design-system',
+  'setup',
+  'error',
+  'verification',
+]);
 
 export interface ServiceVirtualizationImageryGateInput {
   /** Has at least one frontend stack tech tier (or empty stacks set). */
@@ -32,7 +58,8 @@ export interface ServiceVirtualizationImageryGateInput {
 
 /**
  * @returns `true` iff all three gate axes pass (service domain, frontend
- *          stack present, feature task).
+ *          stack present, task type is in
+ *          {@link IMAGERY_ENABLED_TASK_TYPES}).
  */
 export function isServiceVirtualizationImageryActive(
   input: ServiceVirtualizationImageryGateInput,
@@ -40,6 +67,7 @@ export function isServiceVirtualizationImageryActive(
   return (
     input.hasFrontend === true &&
     input.domain === 'service' &&
-    input.taskType === 'feature'
+    input.taskType !== undefined &&
+    IMAGERY_ENABLED_TASK_TYPES.has(input.taskType)
   );
 }
