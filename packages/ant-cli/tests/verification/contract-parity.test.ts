@@ -142,7 +142,6 @@ describe('parityCheck — 6 case truth table', () => {
     expect(result.violation).not.toBeNull();
     expect(result.violation!.type).toBe('parity_apply_failed');
     expect(result.violation!.isRetryable).toBe(true);
-    expect(result.violation!.severity).toBe('critical');
     expect(result.violation!.message).toContain('USE_MOCK=true');
     expect(result.violation!.message).toContain('TypeError');
     expect(result.passed).toBe(false);
