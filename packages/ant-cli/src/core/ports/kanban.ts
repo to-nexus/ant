@@ -108,15 +108,20 @@ export interface TaskQueueUpdatePort {
    * Unlike updateTaskQueue, this does NOT broadcast via Pub/Sub — it only
    * persists the snapshot to Redis so that cleanupJobState can use it as
    * a fallback when the session file is unreadable.
-   * 
+   *
    * Called from the parallel orchestrator's onCheckpoint callback.
-   * 
-   * @param queue - Task queue including running tasks (marked interrupted)
+   *
+   * @param queue - Queued tasks only (failed merged in by writer if applicable).
+   *   Does NOT contain in-flight tasks.
+   * @param runningTasks - Tasks currently assigned to workers. Carries no
+   *   defensive marking. The crash-recovery boundary applies
+   *   `interrupted:true` if the worker process actually died.
    * @param completedTasks - Array of completed task objects
    * @param tokenUsage - Accumulated token usage
    */
   saveCheckpointSnapshot?(
     queue: BaseTask[],
+    runningTasks: BaseTask[],
     completedTasks: BaseTask[],
     tokenUsage?: TaskTokenUsage
   ): void;

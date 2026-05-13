@@ -42,6 +42,9 @@ export {
   ResolvableFields, TriageableFields, DetectableFields,
 } from './annotationHelpers.js';
 
+// Resumable Failed Task Helper (SSOT for failed→queue marker trio across code/design jobs)
+export { buildResumableFailedTaskBase } from './resumableFailedTask.js';
+
 // Timing
 export type { UILocale } from './timing/estimatingLabels.js';
 export { getEstimatingLabel, detectUILocale } from './timing/estimatingLabels.js';

@@ -48,13 +48,27 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
       
       const hasInterruption = Boolean(session?.state?.interruption);
       const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
-      
-      if (hasInterruption && hasTaskQueue && session.state) {
-        console.log(`🔄 Resuming: ${session.state.taskQueue?.length || 0} tasks in queue, ${session.state.completedTasks?.length || 0} completed`);
-        
+      // Project the last checkpoint's in-flight tasks onto the queue head with
+      // `interrupted:true`. Symmetric with design/runner.ts. Two boundaries:
+      //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
+      //     leaves them marked + carrying `resumeState`.
+      //   - Hard-kill orphan (process died between save and resume) leaves
+      //     them unmarked; the mark is applied here.
+      // The map is idempotent so the graceful case is a no-op spread.
+      const persistedRunning: any[] = (session?.state as any)?.runningTasks ?? [];
+      const runningMarked = persistedRunning.map(
+        (t: any) => ({ ...t, interrupted: true }) as CodeTask,
+      );
+      const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
+      const hasAnyResumable = hasTaskQueue || runningMarked.length > 0;
+
+      if ((hasInterruption || hasOrphanedRunning) && hasAnyResumable && session.state) {
+        const persistedQueue = (session.state.taskQueue ?? []) as CodeTask[];
+        console.log(`🔄 Resuming: ${persistedQueue.length + runningMarked.length} tasks in queue (running=${runningMarked.length}), ${session.state.completedTasks?.length || 0} completed`);
+
         // ✅ CRITICAL: Set isResume flag for graph router
         initial.isResume = true;
-        
+
         // Reconstruct TaskQueue from saved array. `normalizeResumedQueueBudgets`
         // is the load-boundary safety net — any task carrying `_failed: true`
         // gets its VerificationBudget axes (batchSplitCount / _failedAttempts)
@@ -62,7 +76,7 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         // This makes the resume-after-permanent-fail contract idempotent and
         // recovers from any historical drift (vast-curling-perch RCA — fix
         // re-deploys after pre-fix saves had stale 11 leaked into Redis).
-        const loadedQueue = (session.state.taskQueue ?? []) as CodeTask[];
+        const loadedQueue = [...runningMarked, ...persistedQueue];
         initial.taskQueue = TaskQueue.from<CodeTask>(normalizeResumedQueueBudgets(loadedQueue));
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];

@@ -337,7 +337,12 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
 
       task.completed = true;
-      task.interrupted = false;  // Clear safety-checkpoint marker from periodic saveCheckpoint()
+      // Defensive clear of re-entry marker. TaskWorker L298 typically clears
+      // it after `resumeState` restore, but paths that bypass resumeState
+      // (batchSplit Path A without snapshot, transient retry without capture)
+      // leave the marker on the live `runningTasks` entry until completion.
+      // Idempotent when already false.
+      task.interrupted = false;
       this.completedTasks.push(task);
       this.consecutiveTimeouts = 0;
 
@@ -1011,21 +1016,23 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   private async saveCheckpoint(interruption?: { reason: string; canResume: boolean }): Promise<void> {
-    // ✅ Include running tasks in the checkpoint queue (marked as interrupted)
-    // so they are NOT lost if the process is killed before workers complete.
-    // Running tasks are placed at the FRONT of the queue for priority on resume.
-    const runningAsTasks: T[] = [];
-    for (const task of this.runningTasks.values()) {
-      runningAsTasks.push({
-        ...task,
-        interrupted: true,
-      } as T);
-    }
-    // Deduplicate: if batch-split re-enqueued a task that is still in runningTasks,
-    // the running version (with latest timing/tokenUsage) takes precedence.
-    const runningIds = new Set(runningAsTasks.map(t => t.id));
-    const queueTasks = this.taskQueue.getAll().filter(t => !runningIds.has(t.id));
-    const fullQueue = [...runningAsTasks, ...queueTasks];
+    // SSOT split: in-flight tasks go to `runningTasks`; the queue field
+    // carries queued + actually-interrupted tasks only. The orchestrator
+    // does NOT defensively pre-mark running tasks here — that conflates
+    // "still in flight" with "was interrupted" and pollutes the durable
+    // FE display. Crash-recovery boundaries (JobCleanupManager for cloud,
+    // runner.ts orphan-recovery for local CLI) are the single projection
+    // site that applies `interrupted:true` if the worker process died
+    // between save and resume.
+    //
+    // Graceful interruption (`handleInterruption` → `captureWorkerSnapshots`)
+    // already stamps `interrupted:true` + `resumeState` directly on each
+    // running task BEFORE this saver runs. Those marks are preserved
+    // through the spread below — the field accepts them idempotently.
+    const runningTasks: T[] = Array.from(this.runningTasks.values()).map(
+      t => ({ ...t }) as T,
+    );
+    const queueTasks = this.taskQueue.getAll();
 
     // Use explicit param if provided; otherwise fall back to instance state.
     // This prevents post-interruption checkpoint saves (e.g. from reportCompletion)
@@ -1036,7 +1043,8 @@ export class TaskOrchestrator<T extends BaseTask> {
         : undefined);
 
     const checkpoint: ParallelCheckpoint<T> = {
-      taskQueue: fullQueue,
+      taskQueue: queueTasks,
+      runningTasks,
       completedTasks: this.completedTasks,
       failedTasks: this.failedTasks,
       tokenUsage: this.accumulatedTokenUsage,

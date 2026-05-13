@@ -213,12 +213,13 @@ export class JobCleanupManager {
 
             const sessionCompleted = sessionData.state.completedTasksDetails || [];
             if (source) {
-              // Live snapshots keep running tasks in `currentTask(s)`; flatten
-              // them into the queue head with `interrupted: true` so the
-              // Kanban shows them as paused. Checkpoints already pre-flatten
-              // running tasks (via `ParallelOrchestrator.saveCheckpoint`), so
-              // currentTask(s) are normally undefined — but we run the same
-              // mapping unconditionally; it's a no-op when empty.
+              // Crash-recovery boundary owns the running→interrupted projection.
+              // Worker-side saveCheckpoint NO LONGER pre-marks running tasks.
+              // Both Redis live snapshot AND checkpoint snapshot now report
+              // in-flight tasks via `currentTasks` (uniform `TaskQueueSnapshot`
+              // shape) — fall back to `currentTask` only for the legacy
+              // sequential-mode single-task shape. Apply `interrupted:true`
+              // here so the Kanban shows them as paused on resume.
               const runningInterrupted = (source.currentTasks ?? (source.currentTask ? [source.currentTask] : []))
                 .filter(Boolean)
                 .map((t: any) => ({ ...t, interrupted: true }));
@@ -390,32 +391,25 @@ export class JobCleanupManager {
           
           try {
             // ✅ Use checkpoint snapshot (separate key from live Kanban snapshot).
-            // Checkpoint already has running tasks placed back in queue as interrupted,
-            // so no reconstruction is needed. Falls back to live snapshot if no checkpoint.
+            // Both checkpoint and live snapshots now report in-flight workers via
+            // `currentTasks` (uniform TaskQueueSnapshot shape after the
+            // running-vs-interrupted split). Project running → queue head with
+            // `interrupted:true` unconditionally — no shape distinction needed.
             const redisSnapshot = await stateStore.getTaskQueueCheckpoint(jobId);
             if (redisSnapshot) {
-              // Checkpoint: running tasks are already in queue as interrupted
-              // Live snapshot: running tasks are in currentTask(s), need reconstruction
-              const isCheckpoint = !redisSnapshot.currentTask && !redisSnapshot.currentTasks?.length;
-              if (isCheckpoint) {
-                fallbackTaskQueue = redisSnapshot.queue || [];
-                fallbackCompletedTasks = redisSnapshot.completedTasks || [];
-              } else {
-                // Fell back to live snapshot — reconstruct interrupted queue
-                const runningTasks = (redisSnapshot.currentTasks || (redisSnapshot.currentTask ? [redisSnapshot.currentTask] : []))
-                  .filter(Boolean)
-                  .map((t: any) => ({ ...t, interrupted: true }));
-                fallbackTaskQueue = [...runningTasks, ...redisSnapshot.queue];
-                fallbackCompletedTasks = redisSnapshot.completedTasks || [];
-              }
+              const runningTasks = (redisSnapshot.currentTasks || (redisSnapshot.currentTask ? [redisSnapshot.currentTask] : []))
+                .filter(Boolean)
+                .map((t: any) => ({ ...t, interrupted: true }));
+              fallbackTaskQueue = [...runningTasks, ...(redisSnapshot.queue || [])];
+              fallbackCompletedTasks = redisSnapshot.completedTasks || [];
               hasFallback = true;
-              logger.info(`Recovered task state from Redis snapshot`, {
+              logger.info(`Recovered task state from Redis checkpoint snapshot`, {
                 component: 'JobCleanupManager',
                 jobId
               }, {
                 queueSize: fallbackTaskQueue.length,
+                runningCount: runningTasks.length,
                 completedCount: fallbackCompletedTasks.length,
-                source: isCheckpoint ? 'checkpoint' : 'live',
               });
             }
           } catch (redisErr) {

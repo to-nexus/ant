@@ -1,24 +1,22 @@
 import type { CodeTask } from '../../../types/task';
+import { buildResumableFailedTaskBase } from '../../../../common/graph/resumableFailedTask';
 
 /**
- * Build the persisted shape for a permanently-failed task that the user
- * is allowed to resume. Resets task-owned VerificationBudget axes
- * (`batchSplitCount`, `_failedAttempts`) so the next user-resume gets
- * a fresh budget — without this, a task that hit `batch_cycle_limit`
- * fails again on the very first batch_split attempt of the resumed run
+ * Build the persisted shape for a permanently-failed CodeTask that the user
+ * is allowed to resume. Layers the CodeTask-specific VerificationBudget
+ * reset (`batchSplitCount`, `_failedAttempts`) on top of the cross-job
+ * marker trio supplied by `buildResumableFailedTaskBase`.
+ *
+ * Without the budget reset, a task that hit `batch_cycle_limit` fails
+ * again on the very first batch_split attempt of the resumed run
  * (vast-curling-perch incident).
  *
- * SSOT for the resume-after-tasks_failed boundary. Every persistence
- * writer that flows back into `taskQueue` (session file, Redis
- * checkpoint snapshot, post-orchestrator session reconciliation) MUST
- * route through this helper. Drift between writers re-opens the bug —
- * `JobCleanupManager` prefers the Redis checkpoint as parallel-mode
- * SSOT, so even a single writer that skips the reset wins.
- *
- * Preserves: the rest of `task` (id / name / type / priority / techTiers
- * / resumeState …), plus `interrupted: true` / `_failed: true` /
- * `_failureReason` markers. The marker trio drives the UI's paused
- * TaskCard and is cleared by `TaskOrchestrator.assignTask` on retry.
+ * SSOT for the resume-after-tasks_failed boundary in the code job. Every
+ * persistence writer that flows back into `taskQueue` (session file,
+ * Redis checkpoint snapshot, post-orchestrator session reconciliation)
+ * MUST route through this helper. Drift between writers re-opens the
+ * bug — `JobCleanupManager` prefers the Redis checkpoint as parallel-
+ * mode SSOT, so even a single writer that skips the reset wins.
  *
  * Why NOT reset `state.retries`? `retries` is state-owned (per-task,
  * cleared on task boundary by the existing graph flow). Only the
@@ -34,15 +32,13 @@ export function buildResumableFailedTask(
   task: CodeTask,
   errorMessage: string,
 ): CodeTask {
-  // `_failed`/`_failureReason`/`_failedAttempts` are runtime-only state
-  // markers (UI render gate + orchestrator retry counter), not declared
-  // on the discriminated union. `unknown` cast bypasses excess-property
-  // checks while preserving the parent task's type/discriminator.
+  // `_failedAttempts` is a runtime-only orchestrator retry counter, not
+  // declared on the discriminated union. `unknown` cast bypasses
+  // excess-property checks while preserving the parent task's
+  // type/discriminator. `interrupted`/`_failed`/`_failureReason` come
+  // from the cross-job base helper.
   return {
-    ...task,
-    interrupted: true,
-    _failed: true,
-    _failureReason: errorMessage,
+    ...buildResumableFailedTaskBase(task, errorMessage),
     batchSplitCount: 0,
     _failedAttempts: 0,
   } as unknown as CodeTask;
