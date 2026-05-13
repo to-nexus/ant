@@ -81,7 +81,6 @@ export function applyRetention(ctx: RetentionContext): ConversationMessage[] {
       if (ctx.nodeHistory.length === 0) return [];
       const tokenManager = new TokenBudgetManager();
       const { result } = compactRun(ctx.nodeHistory, tokenManager, {
-        microcompactHotTail: 1,
         autoCompactThreshold: 30000,
         autoCompactHotTail: 2,
       });

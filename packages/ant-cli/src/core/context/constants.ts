@@ -2,14 +2,6 @@
  * Context Management — all token budget constants.
  */
 
-// === Sub-turn: compactToolResults ===
-export const COMPACTABLE_TOOLS = new Set([
-  'read_file', 'search_code', 'run_command', 'list_files',
-  'search_reference_code', 'read_source_doc',
-]);
-export const MIN_CONTENT_TOKENS_TO_COMPACT = 200;
-export const DEFAULT_COMPACT_TOOL_RESULTS_HOT_TAIL = 3;
-
 // === Turn: compactTurns ===
 export const DEFAULT_COMPACT_TURNS_THRESHOLD = 50_000;
 export const DEFAULT_COMPACT_TURNS_HOT_TAIL = 5;

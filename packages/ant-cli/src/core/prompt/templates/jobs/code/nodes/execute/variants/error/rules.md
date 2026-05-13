@@ -87,7 +87,6 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 `old_str` must match current file content character-by-character.
 
 - Include 3-5 lines of context for uniqueness
-- If a previous `read_file` result shows `[read_file result: ... — content omitted]`, call `read_file` again before `edit_file`
 - If `edit_file` fails: `read_file` the target file, then retry
 
 ### XML Tag Safety

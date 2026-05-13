@@ -131,7 +131,6 @@ Matrix — apply the filter to the kind of deviation at hand:
 
 - Use content from the remediation plan context or previous reads
 - Include 3-5 lines of context for uniqueness
-- If a previous `read_file` result shows `[read_file result: ... — content omitted]`, the content has been compacted. You MUST call `read_file` again before using `edit_file` on that file.
 - If `edit_file` fails with "not found": call `read_file` on that specific file to refresh, then retry.
 
 ### XML Tag Safety
