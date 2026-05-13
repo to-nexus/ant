@@ -91,7 +91,6 @@ export async function generatePlanText(
   const createStrategy = () => {
     const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined, undefined, undefined, undefined, 'plan');
     strategy.setPlanTaskTitle(task.name);
-    strategy.setParallelTaskName(task.name);
     return strategy;
   };
 
@@ -103,6 +102,7 @@ export async function generatePlanText(
 
   let response = '';
   let capturedUsage: any = undefined;
+  let capturedStopReason: string | undefined;
 
   // R3: Provisional input-token estimate from prompt char-size. Overwritten
   // by the first `usage_partial` event from the LLM adapter.
@@ -115,11 +115,16 @@ export async function generatePlanText(
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: true,
       thinkingBudget: LLM_THINKING_BUDGET.PLAN,
+      // Hard-stop the stream the moment `</plan>` closes. The plan node
+      // consumes the sealed JSON only — any trailing narrative is wasted
+      // output and delays the plan→execute transition.
+      stopSequences: ['</plan>'],
     }
   )) {
     if (event.type === 'retry') {
       response = '';
       capturedUsage = undefined;
+      capturedStopReason = undefined;
       orchestrator = new StreamOrchestrator({
         parser: new XMLStreamParser(),
         renderStrategy: createStrategy(),
@@ -141,6 +146,7 @@ export async function generatePlanText(
     if (event.type === 'done') {
       const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage } = await import('../../../../../../common/graph/llmHelpers');
       capturedUsage = extractTokenUsageFromStreamEvent(event);
+      capturedStopReason = (event as any).stopReason;
       if (capturedUsage) {
         accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true });
         updateKanbanTokenUsage(state);
@@ -149,6 +155,19 @@ export async function generatePlanText(
   }
 
   await orchestrator.finalize();
+
+  // Normalize provider differences in stop_sequence handling. Anthropic
+  // includes the matched stop sequence in the output; some Gemini SDK
+  // versions strip it. When we requested a hard-stop on `</plan>` and the
+  // run ended cleanly (not max_tokens), re-attach the closing tag if the
+  // provider omitted it so the extraction regex still matches.
+  if (response.includes('<plan>') && !response.includes('</plan>')) {
+    const cleanStop = capturedStopReason === 'stop_sequence' || capturedStopReason === 'end_turn';
+    if (cleanStop) {
+      console.log(`📋 [Plan] Re-attaching </plan> after clean stop (stop_reason=${capturedStopReason})`);
+      response += '</plan>';
+    }
+  }
 
   const { logTokenUsageToFile } = await import('../../../../../../common/graph/llmHelpers');
   if (capturedUsage) {

@@ -57,7 +57,14 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
       'detect',
       () => llm.stream(
         [{ role: 'user', content: prompt }],
-        { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false },
+        {
+          temperature: LLM_TEMPERATURE.DETECT,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: false,
+          // Hard-stop on `</detect>` — only the sealed JSON payload is
+          // consumed; any trailing tokens are wasted output.
+          stopSequences: ['</detect>'],
+        },
       ),
       () => {},
       { subNode: 'code', promptChars: prompt.length },

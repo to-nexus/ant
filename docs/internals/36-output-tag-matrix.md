@@ -60,7 +60,7 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 | `<edit>` | artifact | stream-action | disk-file | non-blocking | execute |
 | `<delete>` | artifact | stream-action | disk-file | non-blocking | execute |
 | `<plan>` | artifact | stream-action + post-stream | sealed-state + card-only | non-blocking | plan |
-| `<reply>` | narrative | consumed-formatted (`kind=directive_reply`) | chat-line | non-blocking | plan / docGen / execute / direct / generate / ask |
+| `<reply>` | narrative | consumed-formatted (`kind=directive_reply`) | chat-line | non-blocking | docGen / execute / direct / generate / ask |
 | `<done>` | control | consumed-formatted | chat-line (terminal notice) | terminal | execute / docGen / direct |
 | `<clarify>` | control | post-stream + card-only | chat-line + card | blocking | docGen / generate |
 | `<executionTier>` | decision | consumed-formatted + post-stream | sealed-state + chat-line | non-blocking | decompose |
@@ -125,7 +125,7 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 
 | 노드 | 사용 가능한 태그 (대표) | variant 보강 contract |
 |---|---|---|
-| design plan | `<plan>` `<reply>` `<thinking>` | "`<plan>` 은 봉인 JSON. 접근 전략 narrative 는 `<reply>` 1 회." |
+| design plan | `<plan>` `<thinking>` | "`<plan>` 은 봉인 JSON. plan 노드는 `</plan>` 직후 종료 — 후행 narrative 없음. 접근 전략은 후속 docGen 의 `<reply>` 에서 표명." |
 | design docGen (spec) | `<file>` `<append>` `<reply>` `<done>` `<clarify>` `<thinking>` | "spec 본문은 반드시 `<file>` 안. 결정 요약은 `<reply>` 한 번." |
 | design docGen (system / ui-design / game-art-design) | 위와 동일 | variant 별 본문 포맷만 보강 |
 | code execute | `<file>` `<edit>` `<delete>` `<reply>` `<done>` `<thinking>` | task-type 별 보강 |

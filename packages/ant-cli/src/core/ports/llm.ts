@@ -245,12 +245,24 @@ export interface LLMClient {
    * Handles thinking blocks, tool calling, text generation, and prompt caching.
    * Content accepts MessageContentBlock[] for tool-loop conversation history
    * (tool_use, tool_result, thinking blocks) alongside CacheableContent[].
+   *
+   * Recognised options (provider-agnostic; adapters that ignore them are
+   * still spec-compliant):
+   *   - `tools`           → tool-use definitions
+   *   - `maxTokens`       → output cap
+   *   - `enableThinking`  → request extended thinking (provider-dependent)
+   *   - `thinkingBudget`  → token budget for the thinking block
+   *   - `stopSequences`   → hard-stop strings; generation terminates the
+   *                          moment any of these appears in the model's
+   *                          text output. Used to cut wasted tokens after
+   *                          a structural tag (e.g. `</plan>`, `</detect>`).
    */
   stream(
     messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
+      stopSequences?: string[];
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent>;
