@@ -248,8 +248,14 @@ describe('isServiceVirtualizationImageryActive — gate truth table', () => {
     expected: boolean;
   }> = [
     { name: 'service + FE + feature', domain: 'service', hasFrontend: true, taskType: 'feature', expected: true },
-    { name: 'service + FE + ui', domain: 'service', hasFrontend: true, taskType: 'ui', expected: false },
-    { name: 'service + FE + design-system', domain: 'service', hasFrontend: true, taskType: 'design-system', expected: false },
+    { name: 'service + FE + ui', domain: 'service', hasFrontend: true, taskType: 'ui', expected: true },
+    { name: 'service + FE + design-system', domain: 'service', hasFrontend: true, taskType: 'design-system', expected: true },
+    { name: 'service + FE + setup', domain: 'service', hasFrontend: true, taskType: 'setup', expected: true },
+    { name: 'service + FE + error', domain: 'service', hasFrontend: true, taskType: 'error', expected: true },
+    { name: 'service + FE + verification', domain: 'service', hasFrontend: true, taskType: 'verification', expected: true },
+    { name: 'service + FE + doc', domain: 'service', hasFrontend: true, taskType: 'doc', expected: false },
+    { name: 'service + FE + test-code', domain: 'service', hasFrontend: true, taskType: 'test-code', expected: false },
+    { name: 'service + FE + undefined', domain: 'service', hasFrontend: true, taskType: undefined, expected: false },
     { name: 'service + BE + feature', domain: 'service', hasFrontend: false, taskType: 'feature', expected: false },
     { name: 'game + FE + feature', domain: 'game', hasFrontend: true, taskType: 'feature', expected: false },
     { name: 'undefined domain + FE + feature', domain: undefined, hasFrontend: true, taskType: 'feature', expected: false },
