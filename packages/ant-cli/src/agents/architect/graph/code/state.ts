@@ -20,19 +20,20 @@ export interface IntegrationRequirement {
 }
 
 /**
- * Structured Violation - 정형화된 에러 정보
- * 학습 및 분석 가능한 형태로 설계
+ * Structured violation record — per-attempt signal produced by
+ * checkTaskStatus and verify hooks, consumed by routing, plan-prompt
+ * composition, RAG file selection, and execute retry-context injection.
+ *
+ * `isRetryable` is the producer-owned retryability hint; checkTaskStatus
+ * filters non-retryable violations out before recording them in
+ * `EnforcementFeedback`.
  */
 export interface Violation {
-  type: ViolationType;           // 에러 타입 (카테고리)
-  severity: 'critical' | 'major' | 'minor';  // 심각도
-  file?: string;                 // 관련 파일
-  message: string;               // 에러 메시지
-  suggestedFix?: string;         // 제안된 해결 방법
-  isRetryable?: boolean;         // 재시도로 해결 가능한지
-  module?: string;               // 관련 모듈 (missing_dependency인 경우)
-  errorCode?: string;            // 에러 코드 (있으면)
-  metadata?: any;                // ✅ 추가 메타데이터 (에러 통계 등)
+  type: ViolationType;
+  message: string;
+  file?: string;
+  suggestedFix?: string;
+  isRetryable?: boolean;
 }
 
 /**
@@ -106,16 +107,17 @@ export type { ErrorCategory } from '../../../../core/types/session';
 import type { ErrorCategory } from '../../../../core/types/session';
 
 /**
- * Enforcement Feedback - 실패 시 학습 가능한 피드백
+ * Per-attempt enforcement feedback — appended to `state.enforcementHistory`
+ * whenever checkTaskStatus produces retryable violations. Bridges retries
+ * and job resumptions: the array is persisted in the session checkpoint and
+ * read back by `buildRetryContext` so the LLM sees prior attempts.
  */
 export interface EnforcementFeedback {
-  taskId: string;                    // 어떤 task에서 발생했는지
+  taskId: string;
   taskName: string;
-  attemptNumber: number;             // 몇 번째 시도인지
-  violations: Violation[];           // 발생한 에러들 (구조화된 형식)
-  fixStrategy: 'retry' | 'add_tasks' | 'skip';  // 어떤 전략을 선택했는지
-  addedTasks?: CodeTask[];               // 추가된 에러 태스크 (add_tasks인 경우)
-  timestamp: number;                 // 언제 발생했는지
+  attemptNumber: number;
+  violations: Violation[];
+  timestamp: number;
 }
 
 export interface AttemptHistory {

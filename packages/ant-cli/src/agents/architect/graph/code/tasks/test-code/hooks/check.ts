@@ -37,7 +37,6 @@ export async function evaluate(state: ArchitectGraphState): Promise<Violation | 
   if (exists) return null;
   return {
     type: 'incomplete_implementation',
-    severity: 'critical',
     message: MESSAGE,
     isRetryable: true,
     suggestedFix: SUGGESTED_FIX,
