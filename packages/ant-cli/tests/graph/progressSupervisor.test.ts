@@ -335,6 +335,108 @@ describe('ProgressSupervisor', () => {
 
     expect(signal.kind).toBe('hardTimeout');
   });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // postOutputIdleMs (fastFire) — declared by caller via `oneshot: true`.
+  // Bypasses the elapsedMs gate so a process that emits output then leaves
+  // an async handle open is reaped quickly. Silent-from-start is preserved.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  it('postOutputIdleMs (fastFire) fires noOutput shortly after first output goes idle', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'node -e "https.get(...)"',
+      thresholds: {
+        ...baseThresholds,
+        hardTimeoutMs: 999 * 60_000,
+        postOutputIdleMs: 3_000,
+      },
+      enabledSignals: ['noOutput'],
+    });
+
+    const sigPromise = sup.signal();
+    sup.ingestChunk('Status: 302\n');           // first observable output
+    await vi.advanceTimersByTimeAsync(10_000);  // > postOutputIdleMs, far short of noOutputMs
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('noOutput');
+    if (signal.kind === 'noOutput') {
+      expect(signal.hadOutputBeforeSilence).toBe(true);
+      expect(signal.silentMs).toBeGreaterThanOrEqual(3_000);
+    }
+  });
+
+  it('postOutputIdleMs (fastFire) does NOT fire when no output ever arrives — falls back to base noOutput', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'node -e "setTimeout(()=>{}, 999999)"',
+      thresholds: {
+        ...baseThresholds,
+        hardTimeoutMs: 999 * 60_000,
+        postOutputIdleMs: 3_000,
+      },
+      enabledSignals: ['noOutput'],
+    });
+
+    const sigPromise = sup.signal();
+    // Half-way through the noOutput window — still no output, fastFire must
+    // not fire because hasEmittedOutput is false.
+    await vi.advanceTimersByTimeAsync(Math.floor(DEFAULT_NO_OUTPUT_MS / 2));
+    // Push the rest of the way + a slack — base noOutput should now fire.
+    await vi.advanceTimersByTimeAsync(Math.ceil(DEFAULT_NO_OUTPUT_MS / 2) + 5_000);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('noOutput');
+    if (signal.kind === 'noOutput') {
+      expect(signal.hadOutputBeforeSilence).toBe(false);
+      expect(signal.silentMs).toBeGreaterThanOrEqual(DEFAULT_NO_OUTPUT_MS);
+    }
+  });
+
+  it('without postOutputIdleMs, output-then-silent waits for the full noOutputMs window (preserves existing behavior)', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'no-oneshot-flag',
+      thresholds: { ...baseThresholds, hardTimeoutMs: 999 * 60_000 },
+      enabledSignals: ['noOutput'],
+    });
+
+    const sigPromise = sup.signal();
+    sup.ingestChunk('hello\n');
+    // 10s after output — far past postOutputIdleMs but no fast-fire enabled.
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Advance the rest of the noOutput window — should fire then.
+    await vi.advanceTimersByTimeAsync(DEFAULT_NO_OUTPUT_MS);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('noOutput');
+    if (signal.kind === 'noOutput') {
+      expect(signal.hadOutputBeforeSilence).toBe(true);
+      // Total silence >= noOutputMs; not the fast 3s threshold.
+      expect(signal.silentMs).toBeGreaterThanOrEqual(DEFAULT_NO_OUTPUT_MS);
+    }
+  });
+
+  it('postOutputIdleMs (fastFire) lastOutputAt reset by fresh chunks prevents premature fire', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'node -e "setInterval(()=>console.log(\\"tick\\"), 1000)"',
+      thresholds: {
+        ...baseThresholds,
+        hardTimeoutMs: 12_000,
+        postOutputIdleMs: 3_000,
+      },
+      enabledSignals: ['noOutput', 'hardTimeout'],
+    });
+
+    const sigPromise = sup.signal();
+    // Emit a real chunk every 1s for 10s — each chunk resets lastOutputAt so
+    // fastFire never reaches its 3s idle threshold; hardTimeout wins.
+    for (let i = 0; i < 10; i++) {
+      sup.ingestChunk(`tick ${i}\n`);
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    await vi.advanceTimersByTimeAsync(5_000);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('hardTimeout');
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -368,14 +470,26 @@ describe('ProgressSupervisor.renderTermination', () => {
     expect(r.content).toContain('3×');
   });
 
-  it('noOutput → exit 124, message recommends scoped tools (search_code / list_files / read_file)', () => {
-    const sig: ProgressSignal = { kind: 'noOutput', silentMs: 60_000 };
+  it('noOutput silent-from-start → exit 124, message recommends scoped tools (search_code / list_files / read_file)', () => {
+    const sig: ProgressSignal = { kind: 'noOutput', silentMs: 60_000, hadOutputBeforeSilence: false };
     const r = ProgressSupervisor.renderTermination(sig, ctx);
     expect(r.exitCode).toBe(124);
     expect(r.success).toBe(false);
     expect(r.content).toContain('search_code');
     expect(r.content).toContain('list_files');
     expect(r.content).toContain('read_file');
+  });
+
+  it('noOutput output-then-silent → exit 124, message names open async handle + recommends oneshot flag', () => {
+    const sig: ProgressSignal = { kind: 'noOutput', silentMs: 3_000, hadOutputBeforeSilence: true };
+    const r = ProgressSupervisor.renderTermination(sig, ctx);
+    expect(r.exitCode).toBe(124);
+    expect(r.success).toBe(false);
+    expect(r.content).toContain('emitted output then went idle');
+    expect(r.content).toContain('open async handle');
+    expect(r.content).toContain('oneshot');
+    // Silent-from-start hint must NOT leak into this branch.
+    expect(r.content).not.toContain('search_code');
   });
 
   it('hardTimeout → exit 124, message names elapsed minutes', () => {
@@ -389,7 +503,7 @@ describe('ProgressSupervisor.renderTermination', () => {
 
   it('embeds the output tail honouring tailChars', () => {
     const big = 'x'.repeat(20_000);
-    const sig: ProgressSignal = { kind: 'noOutput', silentMs: 60_000 };
+    const sig: ProgressSignal = { kind: 'noOutput', silentMs: 60_000, hadOutputBeforeSilence: false };
     const r = ProgressSupervisor.renderTermination(sig, { command: 'cmd', output: big, tailChars: 1_000 });
     // The body line "Output (last 1000 chars):" + 1000 chars of x's
     expect(r.content).toContain('Output (last 1000 chars):');
