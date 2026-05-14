@@ -19,11 +19,7 @@
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import type { ArchitectGraphState } from '../../../state';
 import type { CodeTask } from '../../../../../types/task';
-import {
-  hasEmptyImplementation,
-  isVerificationPassWithoutCodeGen,
-} from '../../../tasks/_shared/verify/emptyImpl';
-import { hooksForTaskType } from '../../../tasks/_shared/registry';
+import { isVerifyModeActive } from '../../../tasks/_shared/verify';
 import { dispatchBatchSplit } from './queueDispatch';
 import { tracePlanFinalize, type PlanEmptyOrigin } from './trace';
 
@@ -66,10 +62,14 @@ export function finalizePlanOutcome(
     : dispatchBatchSplit(state, preSplitPlanText, nextTask);
 
   const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
-  const diagnosticPass = isVerificationPassWithoutCodeGen(nextTask, planText, batchSplitOccurred);
-  const allowsEmptyImpl = hooksForTaskType(nextTask.type)?.plan?.allowsEmptyImplShortcut === true;
-  const emptyImplShortCircuit = allowsEmptyImpl && hasEmptyImplementation(planText);
-  const isDone = batchSplitOccurred || diagnosticPass || emptyImplShortCircuit;
+  // Verify-mode + 빈 planText(plan-tool-loop의 sentinel shortcut이 비워줌) 면
+  // cycle 종료 신호. task-type-blind — requiresVerification(task)인 모든 task
+  // (verification + selfVerifyOnDone) 가 동일 verify-mode 계약을 공유한다.
+  // (solar-coming-bough 회귀: 옛 게이트는 isVerificationTask/allowsEmptyImplShortcut
+  // 정적 검사라 Tier-2 self-verify의 sentinel을 인식 못 했다.)
+  const verifyMode = isVerifyModeActive(state);
+  const diagnosticPass = verifyMode && planText === '' && !batchSplitOccurred;
+  const isDone = batchSplitOccurred || diagnosticPass;
 
   tracePlanFinalize(state, nextTask, {
     callSite,
@@ -77,18 +77,19 @@ export function finalizePlanOutcome(
     planText,
     batchSplitOccurred,
     diagnosticPass,
-    emptyImplShortCircuit,
-    // Trace key preserves the `isRemediationTask` name (consumers may grep
-    // for it); the underlying axis is now the `allowsEmptyImplShortcut`
-    // hook flag, semantically identical for the verification + error pair.
-    isRemediationTask: allowsEmptyImpl,
+    // 옛 `emptyImplShortCircuit` axis는 `diagnosticPass`로 통합. 로그 스키마
+    // 호환을 위해 키는 유지 (executionLogger / kibana 쿼리 등 외부 grep).
+    emptyImplShortCircuit: false,
+    // 옛 `isRemediationTask`는 `allowsEmptyImplShortcut` 플래그였다. 이제
+    // verify-mode 진입 여부가 그 의미를 직접 표현한다. 키는 grep 호환으로 보존.
+    isRemediationTask: verifyMode,
     decision: isDone ? 'done' : 'execute',
     planEmptyOrigin,
   });
 
   if (callSite === 'plan-index') {
-    if (emptyImplShortCircuit) {
-      console.log(`[Plan] Empty implementation plan detected for ${nextTask.type} task → short-circuit to checkTaskStatus`);
+    if (diagnosticPass) {
+      console.log(`[Plan] Verify-mode sentinel detected for ${nextTask.type} task → short-circuit to checkTaskStatus`);
     }
     console.log(`🔍 [Plan] Returning state with planText: ${planText ? planText.length : 0} chars`);
     if (planText) {

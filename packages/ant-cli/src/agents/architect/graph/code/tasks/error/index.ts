@@ -61,14 +61,14 @@ export const hooks = composeBundle({
       // Sub-tasks carry a fixed-scope `prePlanText`; bypass the diagnostic
       // plan-tool-loop.
       acceptsPrePlanText: true,
-      // NOTE: `allowsEmptyImplShortcut` is intentionally NOT published —
-      // an empty error remediation plan no longer short-circuits at the
-      // plan layer. Execute owns the "nothing to fix" outcome via
-      // `emptyPlanFallback` (`tasks/error/hooks/execute.ts`), which prompts
-      // the LLM to emit `<done>true</done>` directly. Surfacing the
+      // Apply-phase empty plan: Execute owns the "nothing to fix" outcome
+      // via `emptyPlanFallback` (`tasks/error/hooks/execute.ts`), which
+      // prompts the LLM to emit `<done>true</done>` directly. Surfacing the
       // outcome through execute keeps the LLM judgment auditable and
       // routes through the same `<done>` path as the responsibility
-      // fulfilment case.
+      // fulfilment case. The verify-mode sentinel shortcut (Tier-2
+      // self-verify reverify) is owned by the shared verify-mode axis in
+      // `nodes/plan/{llm/tools,outcome/finalize}.ts` — no per-type flag.
     },
     execute: executeHook,
     command: { guard: commandGuard },
