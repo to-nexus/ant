@@ -91,3 +91,4 @@ CLAUDE.md
 
 # Verification scenario harness runtime (fixture source is in packages/ant-cli/tests/verification-scenarios)
 /.ant-test/
+.claude/settings.json
