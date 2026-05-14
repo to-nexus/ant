@@ -150,6 +150,8 @@ if (debugDir) {
   // intercepted and the replacement is re-wrapped, so our probe always
   // sits at the outermost layer.
   let antCurrentFetch = antMakeProbedFetch(globalThis.fetch);
+  let antDescriptorOk = false;
+  let antDescriptorKind = 'unknown';
   try {
     Object.defineProperty(globalThis, 'fetch', {
       configurable: true,
@@ -157,11 +159,84 @@ if (debugDir) {
       set: function (next) {
         antCurrentFetch =
           next && next.__antProbed ? next : antMakeProbedFetch(next);
+        antMarker('fetch-reassign', { byProbed: !!(next && next.__antProbed) });
       },
     });
-  } catch (_e) {
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
+    antDescriptorOk = !!(desc && typeof desc.get === 'function');
+    antDescriptorKind = antDescriptorOk ? 'accessor' : 'data';
+  } catch (e) {
+    antMarker('fetch-descriptor-error', { message: (e && e.message) || String(e) });
     try { globalThis.fetch = antCurrentFetch; } catch (_e2) {}
   }
+  antMarker('fetch-wrap-installed', { ok: antDescriptorOk, kind: antDescriptorKind });
+
+  // node:diagnostics_channel subscription — catches every undici-based
+  // outbound HTTP regardless of which fetch reference the caller holds.
+  // Node 18+ built-in fetch is undici-based, so the image-optimizer's
+  // fetchExternalImage will surface here even if it bypasses our wrap.
+  try {
+    const dc = require('diagnostics_channel');
+    const sub = function (name, handler) {
+      try { dc.channel(name).subscribe(handler); } catch (_) {}
+    };
+    sub('undici:request:create', function (msg) {
+      try {
+        const r = msg && msg.request;
+        antMarker('undici-request', {
+          method: r && r.method,
+          origin: r && r.origin,
+          path: r && r.path,
+        });
+      } catch (_) {}
+    });
+    sub('undici:request:headers', function (msg) {
+      try {
+        const r = msg && msg.request;
+        const res = msg && msg.response;
+        let ct = null;
+        if (res && res.headers && Buffer.isBuffer(res.headers)) {
+          const m = res.headers.toString('latin1').match(/^content-type:\\s*(.+)$/im);
+          if (m) ct = m[1];
+        }
+        antMarker('undici-headers', {
+          origin: r && r.origin,
+          path: r && r.path,
+          statusCode: res && res.statusCode,
+          contentTypeRaw: ct,
+        });
+      } catch (_) {}
+    });
+    sub('undici:request:error', function (msg) {
+      try {
+        const r = msg && msg.request;
+        const err = msg && msg.error;
+        antMarker('undici-error', {
+          origin: r && r.origin,
+          path: r && r.path,
+          message: (err && err.message) || String(err),
+        });
+      } catch (_) {}
+    });
+  } catch (_e) {
+    antMarker('undici-channel-unavailable', {});
+  }
+
+  // One-shot snapshot 5s after boot — by then Next's patchFetch (if any)
+  // has run; lets us verify our probe still sits at the outermost layer.
+  try {
+    const snapshotTimer = setTimeout(function () {
+      try {
+        const f = globalThis.fetch;
+        antMarker('fetch-snapshot', {
+          isProbed: !!(f && f.__antProbed),
+          typeofFetch: typeof f,
+          name: f && f.name,
+        });
+      } catch (_) {}
+    }, 5000);
+    if (snapshotTimer && typeof snapshotTimer.unref === 'function') snapshotTimer.unref();
+  } catch (_) {}
 }
 `;
 
