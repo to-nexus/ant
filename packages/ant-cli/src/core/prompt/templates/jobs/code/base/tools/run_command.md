@@ -28,6 +28,13 @@ When running `docker compose up`, the infrastructure services are running but th
 ⚠️ BLIND SPOT — file creation via shell:
 File creation/overwrite (`cat >`, `echo >`, heredoc) tends to happen when executing multiple `run_command` calls in sequence. Prefer `<file>` tag for file creation — it provides streaming, proper encoding, and buffer synchronization that shell redirection does not.
 
+⚠️ NON-TERMINATING PROCESSES — declare termination intent:
+A command resolves only when its foreground process terminates. Open async handles (network connections, timers, watchers, unconsumed input/output streams) keep a process alive past the observable output. Without intent declaration, such processes are caught only by the default no-output watchdog after a long wait, producing a non-zero exit that misrepresents an otherwise valid operation.
+
+For one-shot operations whose only purpose is producing observable output and then terminating, set `oneshot: true`. The system will reap the process shortly after the output settles, recovering from missing explicit termination in the embedded source.
+
+Do NOT set `oneshot: true` on commands intended to keep running, to emit progress over a long compute, or to compute silently for tens of seconds. Use `keep_running: true` for long-running servers — these flags are mutually exclusive.
+
 ⚠️ SILENT-SLOW COMMANDS — prefer dedicated tools:
 The watchdog terminates commands that produce no output for >60s. For codebase exploration, the following commands scale unpredictably and almost always hit the watchdog — use scoped tools instead:
 
