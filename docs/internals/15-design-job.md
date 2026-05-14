@@ -120,6 +120,10 @@ re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 
 
 XML 스트리밍 방식으로 설계 문서를 생성한다. `conversationHistory` 기반 멀티턴 대화로 tool calling을 포함한다. 완료 판단은 LLM이 `<done>true</done>`을 출력하는 시점이다. `done=false`면 자기 자신으로 재진입하여 LLM 응답을 이어간다. 파일은 즉시 디스크에 기록한다.
 
+**Tool-loop safety net 회수**: docGen 의 call budget 안전망 (`_callLimitReached` / `MAX_NO_OUTPUT_CALLS=15` / `DOCGEN_MAX_CALLS=25`) 과 `call_budget_exhausted` terminal kind, `call_limit` interruption reason 은 모두 retire 되었다 (코드잡의 Safety Net D/E 회수와 동일한 사유 — 거짓양성 생성기). 무한 루프는 LangGraph `recursionLimit` 가 ultimate backstop 으로 잡고, 비생산적 스트릭은 LLM 에 advisory soft/hard warning 으로만 전달한다 (deterministic gate 없음). 디자인잡 plan 노드의 tool-loop round cap (`PLAN_TOOL_LOOP_MAX`) 도 같은 패턴으로 retire 된 상태.
+
+**ui-spec append anchor**: `forceAppend=true` chapter 가 큰 `ui-spec.json` 에 신규 섹션을 추가할 때, 삽입 위치(`appendAnchor`)는 docGen turn 시점에 디스크 상태에서 라이브 계산한다. SSOT 는 [`packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts`](../../packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts) 의 `extractLastSectionKey(content)`. 과거에는 decompose 시점에 pre-compute 했으나, 신축(new-build) 시나리오에서 target file 이 비어 있어 anchor 가 영구 null 로 묶이는 문제가 있었다 — 라이브 계산으로 전환하여 해소.
+
 ### decompose
 
 system-design은 LLM 기반 태스크 분해(documentType + targetFiles + profiles)를 수행한다. ui-design은 LLM 기반 UI 복잡도 분석 후 태스크를 분해한다. explain 모드는 단일 explain 태스크를 생성한다(LLM 호출 없음).

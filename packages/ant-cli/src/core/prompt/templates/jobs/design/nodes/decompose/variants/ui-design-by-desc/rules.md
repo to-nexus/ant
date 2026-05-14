@@ -202,9 +202,13 @@ The system uses per-file mutex + deep merge for concurrent writes. Cross-documen
 
 ### ch2+ (Page/Shared)
 
-**MUST include in description:**
-- "(append)" indicator
-- "Skip documented topics"
+No required text indicators. `forceAppend` flag (auto-injected by the
+decompose post-processor for every ch2+ task) and
+`previousChaptersSummary` (auto-derived from the current target file)
+together surface continuation context to the execute prompt — adding
+duplicate signals into the description body is forbidden because the
+keyword can be misread as a tool name (e.g., LLM hallucinated an
+`append` tool call in incident `tall-ending-bluff`).
 
 ---
 
@@ -233,7 +237,7 @@ Before outputting, verify:
 
 ### Task Descriptions
 - ✅ **ui-spec-ch1 description includes "global settings" or "breakpoints"**
-- ✅ **ch2+ descriptions include "(append)" and "skip documented topics"**
+- ✅ **ch2+ descriptions do NOT carry text indicators for continuation** — `forceAppend` flag is the SSOT
 - ✅ **When PRD source contains `SC-` IDs**: each page chapter description cites `PRD §6 / SC-<name>` and the page chapter task ID embeds `SC-<name>`
 
 ---
