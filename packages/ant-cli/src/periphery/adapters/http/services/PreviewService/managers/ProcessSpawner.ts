@@ -19,8 +19,51 @@ import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../.
 const FETCH_PROBE_SOURCE = `'use strict';
 const fs = require('fs');
 const path = require('path');
+const cp = require('child_process');
 
 const debugDir = process.env.ANT_DEBUG_IMAGE_FETCH_DIR;
+const probeSelf = __filename;
+
+// Propagate this probe to every child process spawned from here. Next.js
+// 'next dev' forks a 'start-server' child that rebuilds NODE_OPTIONS via
+// node:util.parseArgs without an options schema, which can drop our
+// --require=<probe>. Re-inject directly into the spawn-time env so the
+// child also loads this same probe file.
+function antEnsureProbeInEnv(envIn) {
+  const env = envIn ? Object.assign({}, envIn) : Object.assign({}, process.env);
+  const existing = typeof env.NODE_OPTIONS === 'string' ? env.NODE_OPTIONS : '';
+  if (existing.indexOf(probeSelf) === -1) {
+    env.NODE_OPTIONS = (existing + ' --require=' + probeSelf).trim();
+  }
+  if (!env.ANT_DEBUG_IMAGE_FETCH_DIR && process.env.ANT_DEBUG_IMAGE_FETCH_DIR) {
+    env.ANT_DEBUG_IMAGE_FETCH_DIR = process.env.ANT_DEBUG_IMAGE_FETCH_DIR;
+  }
+  return env;
+}
+
+const antOriginalFork = cp.fork;
+cp.fork = function antPatchedFork(modulePath, args, options) {
+  if (args && !Array.isArray(args) && typeof args === 'object') {
+    options = args;
+    args = undefined;
+  }
+  const patched = Object.assign({}, options || {}, {
+    env: antEnsureProbeInEnv(options && options.env),
+  });
+  return antOriginalFork.call(this, modulePath, args, patched);
+};
+
+const antOriginalSpawn = cp.spawn;
+cp.spawn = function antPatchedSpawn(command, args, options) {
+  if (args && !Array.isArray(args) && typeof args === 'object') {
+    options = args;
+    args = undefined;
+  }
+  const patched = Object.assign({}, options || {}, {
+    env: antEnsureProbeInEnv(options && options.env),
+  });
+  return antOriginalSpawn.call(this, command, args, patched);
+};
 
 if (debugDir && typeof global.fetch === 'function') {
   const probeFile = path.join(debugDir, 'probe-' + Date.now() + '-' + process.pid + '.jsonl');
