@@ -46,6 +46,66 @@ antMarker('load', {
   execArgv: process.execArgv,
 });
 
+// Heartbeat — proves the probe-instrumented process is still alive between
+// pulls. If marker.jsonl has many heartbeat lines, the wrap-instrumented
+// process is the one serving requests; otherwise traffic is going to a
+// different process the probe never attached to.
+if (debugDir) {
+  try {
+    var antHeartbeatN = 0;
+    var antHeartbeatTimer = setInterval(function () {
+      try { antMarker('heartbeat', { n: ++antHeartbeatN }); } catch (_) {}
+    }, 10000);
+    if (antHeartbeatTimer && typeof antHeartbeatTimer.unref === 'function') {
+      antHeartbeatTimer.unref();
+    }
+  } catch (_) {}
+}
+
+// Module._compile inject — patches Next.js image-optimizer.js as it loads
+// to call antMarker directly inside fetchExternalImage. Bypasses the
+// globalThis.fetch / undici-channel indirection so we capture the upstream
+// buffer bytes (first64Hex) at the exact point detectContentType decides
+// the 400. Expose antMarker via globalThis for the injected code.
+globalThis.__antMarker = antMarker;
+try {
+  const antModule = require('module');
+  const antOrigCompile = antModule.prototype._compile;
+  antModule.prototype._compile = function antPatchedCompile(content, filename) {
+    try {
+      if (
+        typeof filename === 'string' &&
+        /\\/server\\/image-optimizer\\.js$/.test(filename) &&
+        typeof content === 'string' &&
+        content.indexOf('__antProbeInjected__') === -1
+      ) {
+        antMarker('image-optimizer-compile', { filename: filename });
+        content = content.replace(
+          /async function fetchExternalImage\\(\\s*href\\s*,\\s*maximumResponseBody\\s*\\)\\s*\\{/,
+          'async function fetchExternalImage(href, maximumResponseBody) { ' +
+            '/* __antProbeInjected__ */ ' +
+            'try { if (globalThis.__antMarker) globalThis.__antMarker("image-fetch-enter", { href: href }); } catch (_) {}'
+        );
+        content = content.replace(
+          /const\\s+buffer\\s*=\\s*Buffer\\.concat\\(chunks\\)\\s*;/,
+          'const buffer = Buffer.concat(chunks); ' +
+            'try { if (globalThis.__antMarker) globalThis.__antMarker("image-buffer", { ' +
+              'href: href, ' +
+              'size: buffer.length, ' +
+              'first64Hex: buffer.slice(0, 64).toString("hex"), ' +
+              'contentType: (res && res.headers && res.headers.get) ? res.headers.get("Content-Type") : null ' +
+            '}); } catch (_) {}'
+        );
+      }
+    } catch (e) {
+      try { antMarker('image-optimizer-compile-error', { message: (e && e.message) || String(e) }); } catch (_) {}
+    }
+    return antOrigCompile.call(this, content, filename);
+  };
+} catch (_) {
+  antMarker('module-compile-hook-unavailable', {});
+}
+
 // Propagate this probe to every child process spawned from here. Next.js
 // 'next dev' forks a 'start-server' child that rebuilds NODE_OPTIONS via
 // node:util.parseArgs without an options schema, which can drop our
