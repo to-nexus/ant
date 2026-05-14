@@ -168,13 +168,12 @@ export interface DesignGraphState extends TriageableState {
   /** File operation errors from StreamOrchestrator (incomplete tags, write failures) */
   fileErrors?: string[];
 
-  /** Per-task docGen call counter (reset on task transition) */
+  /** Per-task docGen call counter (reset on task transition). Telemetry only. */
   _docGenCallIndex?: number;
-  
-  /** Set by docGenRouter when call budget exhausted — signals checkTaskStatus to create interruption */
-  _callLimitReached?: boolean;
-  
-  /** Counter for consecutive docGen calls with no file output (non-productive loop detection) */
+
+  /** Counter for consecutive docGen calls with no file output. Feeds the
+   * advisory soft/hard warnings injected into the LLM prompt by docGen —
+   * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */

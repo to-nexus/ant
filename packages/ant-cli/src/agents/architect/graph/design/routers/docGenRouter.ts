@@ -1,20 +1,22 @@
 /**
  * DocGen Router - docGen 응답 분석해서 다음 노드 결정
- * 
+ *
  * 책임:
  * - llmResponse 분석
  * - 다음 노드 결정 (tool / checkTaskStatus / docGen)
- * 
+ *
  * 라우팅 로직:
- * 1. Safety net triggered → checkTaskStatus
+ * 1. Figma MCP 연결 끊김 / recursionLimit 임박 → checkTaskStatus
  * 2. Tool calls 있으면 → tool 노드
  * 3. Done이면 → checkTaskStatus
  * 4. 그 외 → docGen 노드 (재추론)
- * 
- * IMPORTANT: This router is READ-ONLY. All safety net state (_noOutputCallCount,
- * _callLimitReached) is calculated by the docGen node and returned through the
- * LangGraph channel system. Routers are conditional edge functions — their state
- * mutations do NOT persist through LangGraph channels.
+ *
+ * IMPORTANT: This router is READ-ONLY. `_noOutputCallCount` is calculated by
+ * the docGen node and returned through the LangGraph channel system. Routers
+ * are conditional edge functions — their state mutations do NOT persist
+ * through LangGraph channels. The historical `_callLimitReached` gate was
+ * retired alongside the code job's Safety Net D/E; runaway is bounded by
+ * LangGraph `recursionLimit` only.
  */
 
 import { DesignGraphState } from '../state';
@@ -37,14 +39,7 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
   console.log(`   noOutputStreak: ${noOutputCount}`);
-  console.log(`   callLimitReached: ${state._callLimitReached || false}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-
-  // Safety Net: call budget or non-productive loop (computed by docGen node)
-  if (state._callLimitReached) {
-    console.warn(`⚠️  [DocGenRouter] Safety net triggered → checkTaskStatus`);
-    return 'checkTaskStatus';
-  }
 
   if (state._figmaConnectionLost) {
     console.warn(`⚠️  [DocGenRouter] Figma connection lost → checkTaskStatus`);

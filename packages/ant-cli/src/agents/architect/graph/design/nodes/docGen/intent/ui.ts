@@ -20,6 +20,7 @@ import type { FigmaNodeSummary } from '@ant/shared';
 import { designDirOf, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { extractLastSectionKey } from '../../../_shared/anchor';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -466,7 +467,8 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   
   let previousChaptersSummary = '';
   let existingFileContent = '';
-  
+  let liveAnchor: string | null = null;
+
   const taskId = state.currentTask?.id || '';
   const taskDescription = state.currentTask?.description || '';
   const targetFile = state.currentTask?.targetFile;
@@ -503,7 +505,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         existingFileContent = await state.deps.fileSystem.readFile(filePath) || '';
         if (existingFileContent) {
           const isJsonFile = actualTargetFile.endsWith('.json');
-          
+
           if (isJsonFile) {
             try {
               const parsed = JSON.parse(existingFileContent);
@@ -521,9 +523,14 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
               console.warn(`📄 [DocGen UI] Failed to parse ${actualTargetFile} as JSON:`, parseError);
             }
           }
-          
+
+          // Compute live insertion anchor from current disk state. This is the SSOT
+          // for the appendAnchor prompt variable — decompose's earlier pre-computation
+          // was retired because it always saw an empty file in new-build scenarios.
+          liveAnchor = extractLastSectionKey(existingFileContent);
+
           if (previousChaptersSummary) {
-            console.log(`📄 [DocGen UI] Extracted summary from existing ${actualTargetFile}`);
+            console.log(`📄 [DocGen UI] Extracted summary from existing ${actualTargetFile}${liveAnchor ? ` (anchor=${liveAnchor})` : ''}`);
           }
         }
       } else {
@@ -560,10 +567,11 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     forceAppend,
     pathPattern,
     siblingTasks: siblingTasks || '',
-    // Pre-computed by decompose for ui-spec append-mode chapters; null when
-    // the target file is not ui-spec-like or its content is unparseable.
-    // The execute template's anchor partial self-gates on truthiness.
-    appendAnchor: (state.currentTask as DesignTask & { anchorAfterSection?: string })?.anchorAfterSection ?? null,
+    // Live anchor: last section identifier in the current target file, computed
+    // this turn against disk state. Null when the file does not exist yet, is not
+    // a section-keyed JSON, or is unparseable. The execute template's anchor
+    // partial self-gates on truthiness. See `_shared/anchor.ts` for the SSOT.
+    appendAnchor: liveAnchor,
     detectedMode: state.resolvedAction?.mode,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,

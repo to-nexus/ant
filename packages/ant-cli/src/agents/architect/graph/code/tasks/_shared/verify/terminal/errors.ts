@@ -7,12 +7,12 @@ export type VerificationTerminalKind =
   | 'max_retries_exceeded'
   | 'unresolved_violations'
   | 'batch_cycle_limit'
-  | 'orchestrator_fail_limit'
-  // Design job docGen call-budget safety net — `_docGenCallIndex` overrun
-  // surfaces as terminal so `TaskOrchestrator.reportFailure` stops re-
-  // queuing the task. Code job retired the analogous Safety Net D/E and
-  // no longer raises this kind.
-  | 'call_budget_exhausted';
+  | 'orchestrator_fail_limit';
+
+// Both code and design jobs retired the analogous Safety Net D/E.
+// Runaway docGen loops are bounded by LangGraph `recursionLimit`;
+// non-productive streaks are signaled to the LLM via the soft/hard
+// warning messages in `design/nodes/docGen/index.ts` (advisory only).
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;
