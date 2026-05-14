@@ -48,7 +48,7 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 | `explain`               | `2`                        | Exactly one `<task>`, `type: "explain"`, `priority: 200`, `selfVerifyOnDone: false` | `{}` |
 | `explain`               | `3` / `4`                  | Exactly one `<task>`, `type: "explain"`, `priority: 200` | `{}` |
 | `generate` / `refactor` | `1`                        | empty (`<tasks></tasks>`)                             | `{ "targetFiles": [...] }` listing the files the single action touches |
-| `generate` / `refactor` | `2`                        | Exactly one `<task>` (type is one of `error`/`feature`/`ui`/`setup`) with `selfVerifyOnDone: true` | `{}` |
+| `generate` / `refactor` | `2`                        | Exactly one `<task>` (`type` MUST be exactly one of: `"error"`, `"feature"`, `"ui"`, `"setup"`) with `selfVerifyOnDone: true` | `{}` |
 | `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` `<task>` elements INCLUDING a verification task (priority 1000) | `{}` |
 
 **Constraint**: For `generate` / `refactor` modes, the minimum executionTier is `1`. Do NOT emit `<executionTier>0</executionTier>` for these modes. A "no change required" outcome is NEVER a classification-time decision — it can only be the conclusion of a Tier 1+ execution that observes the code and produces no file edits. Tier `0` remains valid ONLY for `explain` mode (read-only textual answer from the directive alone).
@@ -257,6 +257,12 @@ CRITICAL:
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
 | `"ui"` | Visual **implementation** | Apply styles to a renderable feature skeleton. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–699). See UI pairing rule in Independent Output Unit Splitting. |
+| `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 700). See Test Generation Task section for inclusion rubric. |
+| `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 800). See Documentation Task section. |
+| `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
+| `"explain"` | Read-only **explanation** | Explain mode only. Produces prose, never modifies files. See mode×tier matrix. |
+
+**Constraint**: These nine values are the ENTIRE task type enum — never emit any other value (including mode names like `"refactor"` / `"generate"`).
 
 **Principle** — `"design-system"` priority ladder (REQUIRED when visualTier or ui-docs exist):
 - **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
@@ -266,6 +272,8 @@ CRITICAL:
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
 
 **Constraint**: Default to `"feature"` when ambiguous (e.g., "fix" without a clear error/crash).
+
+**Constraint**: Mode keywords in the directive (`generate` / `refactor` / `explain` / 한국어 "리팩토링"·"리팩터링") are **mode signals**, NOT `type` values. Choose `type` from the schema enum by what the task DOES (broken behavior → `"error"`; new behavior → `"feature"`; visual → `"ui"`; etc.) — never copy a mode keyword into `type`. The only mode name that is also a valid `type` is `"explain"`.
 
 **Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling.
 
