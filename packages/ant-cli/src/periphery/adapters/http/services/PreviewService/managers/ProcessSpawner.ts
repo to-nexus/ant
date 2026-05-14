@@ -311,6 +311,90 @@ function ensureFetchProbeOnDisk(): string {
 
 const OUTBOUND_ENV_KEY = /^(HTTPS?_PROXY|NO_PROXY|NODE_TLS_REJECT_UNAUTHORIZED|NODE_EXTRA_CA_CERTS|HTTPS?_AGENT_OPTIONS|UV_THREADPOOL_SIZE)$/i;
 
+// Patch image-optimizer.js directly on disk so any process that requires it
+// (regardless of timing or who installs Module._compile hook first) sees the
+// patched bytes. Bypasses every layer of indirection — cloud verification is
+// `grep __antProbeInjected__ image-optimizer.js`.
+function patchImageOptimizerOnDisk(projectRoot: string, debugDir: string): void {
+  const imgOptPath = path.join(
+    projectRoot,
+    'node_modules/next/dist/server/image-optimizer.js',
+  );
+  const writeMarker = (extra: Record<string, unknown>): void => {
+    try {
+      fs.appendFileSync(
+        path.join(debugDir, 'marker.jsonl'),
+        JSON.stringify({
+          t: new Date().toISOString(),
+          pid: process.pid,
+          kind: 'image-optimizer-disk-patch',
+          ...extra,
+        }) + '\n',
+      );
+    } catch (_e) {
+      /* never break host */
+    }
+  };
+  let original: string;
+  try {
+    original = fs.readFileSync(imgOptPath, 'utf8');
+  } catch (err: any) {
+    writeMarker({
+      stage: 'read',
+      error: err?.message ?? String(err),
+      path: imgOptPath,
+    });
+    return;
+  }
+  if (original.indexOf('__antProbeInjected__') !== -1) {
+    writeMarker({ stage: 'already-patched', length: original.length });
+    return;
+  }
+  const r1 =
+    /async function fetchExternalImage\(\s*href\s*,\s*maximumResponseBody\s*\)\s*\{/;
+  const r2 = /const\s+buffer\s*=\s*Buffer\.concat\(chunks\)\s*;/;
+  const hadEntry = r1.test(original);
+  const hadBuffer = r2.test(original);
+  let patched = original;
+  patched = patched.replace(
+    r1,
+    'async function fetchExternalImage(href, maximumResponseBody) { ' +
+      '/* __antProbeInjected__ */ ' +
+      'try { if (globalThis.__antMarker) globalThis.__antMarker("image-fetch-enter", { href: href }); } catch (_) {}',
+  );
+  patched = patched.replace(
+    r2,
+    'const buffer = Buffer.concat(chunks); ' +
+      'try { if (globalThis.__antMarker) globalThis.__antMarker("image-buffer", { ' +
+      'href: href, ' +
+      'size: buffer.length, ' +
+      'first64Hex: buffer.slice(0, 64).toString("hex"), ' +
+      'contentType: (res && res.headers && res.headers.get) ? res.headers.get("Content-Type") : null ' +
+      '}); } catch (_) {}',
+  );
+  const injected = patched.indexOf('__antProbeInjected__') !== -1;
+  writeMarker({
+    stage: 'pre-write',
+    hadEntry,
+    hadBuffer,
+    injected,
+    originalLength: original.length,
+    patchedLength: patched.length,
+    path: imgOptPath,
+  });
+  if (!injected) return;
+  try {
+    fs.writeFileSync(imgOptPath + '.ant-backup', original);
+    fs.writeFileSync(imgOptPath, patched);
+    writeMarker({ stage: 'write-success' });
+  } catch (err: any) {
+    writeMarker({
+      stage: 'write-error',
+      error: err?.message ?? String(err),
+    });
+  }
+}
+
 function setupImageFetchDiagnostic(
   env: Record<string, string | undefined>,
   options: SpawnOptions,
@@ -334,6 +418,8 @@ function setupImageFetchDiagnostic(
       ),
     };
     fs.appendFileSync(path.join(debugDir, 'env-dump.jsonl'), JSON.stringify(dump) + '\n');
+
+    patchImageOptimizerOnDisk(projectRoot, debugDir);
 
     const probePath = ensureFetchProbeOnDisk();
     env.ANT_DEBUG_IMAGE_FETCH_DIR = debugDir;
