@@ -18,7 +18,6 @@ export type InterruptionReason =
   | 'worker_stalled'        // BullMQ stalled event (process unresponsive)
   | 'tasks_failed'          // Parallel task(s) failed during execution
   | 'consecutive_timeouts'  // Consecutive LLM response timeouts
-  | 'call_limit'            // Design task call budget exhausted
   | 'timeout'               // Job timeout
   | 'server_shutdown'       // Server graceful shutdown
   | 'figma_rate_limited'    // Figma MCP/API rate limit exceeded

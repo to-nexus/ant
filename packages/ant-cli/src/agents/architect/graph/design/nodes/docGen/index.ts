@@ -40,8 +40,6 @@ import { buildMessages } from './intent/system';
 import { buildUiDesignMessages } from './intent/ui';
 import { buildSpecMessages } from './intent/spec';
 
-const MAX_NO_OUTPUT_CALLS = 15;
-
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
 const ARTIFACT_MUTATE_TOOLS = new Set([
   'edit_file', 'delete_file', 'create_file', 'mkdir',
@@ -82,7 +80,8 @@ export async function docGen(
   // ✅ Increment recursion count (track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
-  // ✅ Increment docGen call index (for call budget safety net)
+  // ✅ Increment docGen call index (telemetry / displayed in warnings).
+  // No longer a safety-net gate — runaway is bounded by LangGraph recursionLimit.
   const newCallIndex = (state._docGenCallIndex || 0) + 1;
   
   const llmClient = state.deps?.llm;
@@ -132,36 +131,29 @@ export async function docGen(
   const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
   const isFigmaUiDesign = intentGroup === 'design-ui' && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
 
-  // Progressive call counter + budget warning injection
-  // Figma tasks get higher thresholds to accommodate drill-down queries
+  // Progressive no-output-streak nudge injection (advisory, not enforced —
+  // runaway is bounded by LangGraph `recursionLimit` upstream).
+  // Figma tasks get higher thresholds to accommodate drill-down queries.
+  // When `state.planText` is sealed, plan owns architectural exploration;
+  // docGen's role is "render the decision + verify a few exact paths" — so
+  // tighten the nudges. When no plan is sealed (legacy / dispatcher fallback),
+  // keep the original budget so Codebase Exploration heuristics have room.
   const hasFigmaTools = isFigmaUiDesign || (intentGroup === 'design-spec' && state.figmaAvailable === true);
-  // When `state.planText` is sealed, plan owns architectural
-  // exploration; docGen's role is "render the decision + verify a few
-  // exact paths". Tighten the warning thresholds so the LLM commits to
-  // writing fast. When no plan is sealed (legacy / dispatcher
-  // fallback), keep the original budget so Codebase Exploration
-  // heuristics have room. See
-  // `.claude/plans/plan-docgen-parallel-spring.md`.
-  // The call-budget safety net at L355 below still terminates
-  // non-productive loops in all cases.
   const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
   const softWarnAt = hasFigmaTools ? 10 : (hasSealedPlan ? 4 : 7);
   const hardWarnAt = hasFigmaTools ? 14 : (hasSealedPlan ? 7 : 10);
   const noOutputCount = state._noOutputCallCount || 0;
   if (noOutputCount >= 1) {
-    const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;
     let warningText: string;
     if (noOutputCount >= hardWarnAt) {
-      warningText = `\n\n⚠️ SYSTEM WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls, ${remaining} remaining]\n` +
-        `STOP all reading. You MUST write your document NOW using <file> or <append> tags, or this task will be TERMINATED. ` +
-        `Use the information already in your conversation history.`;
+      warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
+        `You have been reading without producing output. Emit the <append>/<file> body using the conversation history — continued read-only calls just consume your turn budget without progress.`;
     } else if (noOutputCount >= softWarnAt) {
-      warningText = `\n\n⚠️ WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
-        `You MUST start writing your document NOW. You have gathered enough context from source documents. ` +
-        `Do NOT read more — begin output immediately using <file> or <append> tags.`;
+      warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
+        `Begin writing the document body using <append>/<file> tags. Further reads are unlikely to add necessary information.`;
     } else {
-      warningText = `\n\n[call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
-        `Reminder: you MUST start writing output by call ${softWarnAt}-${softWarnAt + 2}. Read in broad ranges (300-500+ lines) and do not exhaustively read every section.`;
+      warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
+        `Reminder: prefer broad reads (300-500+ lines) and start writing by call ${softWarnAt}.`;
     }
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
@@ -175,7 +167,7 @@ export async function docGen(
       }
     }
     const level = noOutputCount >= hardWarnAt ? 'URGENT' : noOutputCount >= softWarnAt ? 'WARNING' : 'INFO';
-    console.log(`⚠️  [DocGen] Budget ${level}: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} no-output calls, ${remaining} remaining`);
+    console.log(`⚠️  [DocGen] No-output streak ${level}: ${noOutputCount} turns`);
   }
 
   // Tool activation: delegate to the per-node tools.ts selector so the
@@ -379,12 +371,11 @@ export async function docGen(
     }
     
     console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
-    console.log(`   SafetyNet: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
+    console.log(`   Telemetry: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
     
-    // Safety Net state calculation (MUST go through channel system via return value)
-    const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
-    const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 25;
-
+    // No-output streak tracker (feeds the advisory soft/hard warnings near
+    // the top of this function; no longer a terminal gate — recursionLimit
+    // is the ultimate backstop).
     const hasNewFileOutput = files.length > 0;
     const hasToolCallsOnly = hasToolCalls && !hasNewFileOutput;
     const prevNoOutputCount = state._noOutputCallCount || 0;
@@ -394,15 +385,6 @@ export async function docGen(
       newNoOutputCount = prevNoOutputCount + 1;
     } else if (hasNewFileOutput) {
       newNoOutputCount = 0;
-    }
-
-    const callLimitReached = newCallIndex >= maxCalls || newNoOutputCount >= MAX_NO_OUTPUT_CALLS;
-
-    if (callLimitReached) {
-      const reason = newCallIndex >= maxCalls
-        ? `call budget exhausted (${newCallIndex}/${maxCalls})`
-        : `non-productive loop (${newNoOutputCount} consecutive tool-only calls)`;
-      console.warn(`⚠️  [DocGen] Safety net triggered: ${reason}`);
     }
 
     // R5 — artifact-mutation-then-no-done detection. When this turn
@@ -418,11 +400,6 @@ export async function docGen(
     const nextPendingDoneCheck = !explicitDone && turnArtifactMutated;
     const prevEscalation = state._doneCheckEscalation || 0;
     const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
-
-    const warningThreshold = Math.floor(maxCalls * 0.8);
-    if (newCallIndex === warningThreshold) {
-      console.warn(`⚠️  [DocGen] Approaching call limit (${newCallIndex}/${maxCalls}) — ${maxCalls - newCallIndex} calls remaining`);
-    }
 
     // Spec clarify detection: if LLM response contains <clarify> tags, pause for user input.
     // Content-level clarify — asks about spec document gaps within the committed
@@ -454,7 +431,6 @@ export async function docGen(
           llmResponse: { textResponse, done: true },
           _docGenCallIndex: newCallIndex,
           _noOutputCallCount: 0,
-          _callLimitReached: false,
           // Clarify pause is treated as a stable boundary — not an
           // artifact-mutation-without-done turn — so reset the gate.
           _pendingDoneCheck: false,
@@ -472,7 +448,6 @@ export async function docGen(
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _docGenCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
-      _callLimitReached: callLimitReached,
       _pendingDoneCheck: nextPendingDoneCheck,
       _doneCheckEscalation: nextDoneCheckEscalation,
       // Phase signal for the tool node + breadcrumbs. Tool routing /

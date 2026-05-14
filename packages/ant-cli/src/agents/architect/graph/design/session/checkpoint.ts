@@ -156,7 +156,7 @@ export async function saveTaskCompleteCheckpoint(
 }
 
 /**
- * Interruption boundary for sequential paths (call_limit, figma_connection_lost).
+ * Interruption boundary for sequential paths (figma_connection_lost, etc.).
  * Caller supplies the replacement task queue (running task re-pushed at front)
  * and the interruption payload; wrapper ensures currentTask is cleared unless
  * the caller explicitly passes one.

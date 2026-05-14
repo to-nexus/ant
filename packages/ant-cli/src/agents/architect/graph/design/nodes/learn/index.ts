@@ -194,7 +194,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const queueTasks = state.taskQueue?.getAll() ?? [];
   const failedInQueue = queueTasks.filter(t => (t as { _failed?: boolean })._failed === true);
   const isLastTask = queueTasks.length === 0;
-  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'call_limit', 'figma_rate_limited', 'figma_connection_lost'];
+  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'figma_rate_limited', 'figma_connection_lost'];
   const staleOrchReason = state.interruption?.reason;
   if (staleOrchReason != null && orchestratorReasons.includes(staleOrchReason)) {
     if (failedInQueue.length > 0) {
@@ -208,7 +208,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const hasOrchestratorFailure = state.interruption?.reason === 'tasks_failed'
     || state.interruption?.reason === 'recursion_limit'
     || state.interruption?.reason === 'consecutive_timeouts'
-    || state.interruption?.reason === 'call_limit'
     || state.interruption?.reason === 'figma_rate_limited'
     || state.interruption?.reason === 'figma_connection_lost';
   const hasDesignError = Boolean(state.designError);

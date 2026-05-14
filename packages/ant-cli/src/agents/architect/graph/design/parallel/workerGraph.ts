@@ -27,18 +27,22 @@ import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
-import { VerificationTerminalError } from '../../code/tasks/_shared/verify/terminal/errors';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
 /**
  * Check task status within a design worker subgraph.
- * 
+ *
  * Validation gates (parity with code job checkTaskStatus):
- * 1.   _callLimitReached → throw (TaskOrchestrator handles as failure)
- * 1.5. _figmaConnectionLost → throw FigmaMCPConnectionError (global interrupt)
+ * 0.   _isStopRequested → return without completing (user-initiated stop)
+ * 1.   _figmaConnectionLost → throw FigmaMCPConnectionError (global interrupt)
  * 2.   fileErrors → throw (incomplete file operations detected)
  * 3.   Normal completion → mark task as completed
+ *
+ * Note: the historical "Gate 1: Call budget exhausted" was retired along with
+ * the code job's Safety Net D/E. Runaway docGen loops are bounded by LangGraph
+ * `recursionLimit`; non-productive streaks are signaled to the LLM via the
+ * advisory warnings in `nodes/docGen/index.ts`.
  */
 async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
@@ -80,36 +84,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Gate 1: Call budget exhausted — fail task (not silently complete)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state._callLimitReached && state.currentTask) {
-    const callIndex = state._docGenCallIndex || 0;
-    console.error(`❌ [workerCheckTaskStatus] Call budget exhausted for "${state.currentTask.name}" (${callIndex} calls) — failing task`);
-    
-    // Preserve tool result cache on task object for retry — avoids re-reading same source docs
-    if (state._toolResultCache) {
-      (state.currentTask as any)._cachedToolResults = state._toolResultCache;
-      const cacheSize = Object.keys(state._toolResultCache).length;
-      console.log(`♻️  [workerCheckTaskStatus] Saved ${cacheSize} cached tool results for potential retry`);
-    }
-    
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
-    }
-
-    // Terminal classification — prevents TaskOrchestrator from re-queuing
-    // this task (which would restart the worker subgraph at `__start__`
-    // → `plan`, reproducing the `spare-keeping-metal` task_fail-then-
-    // plan-loop pattern). See `_shared/verify/terminal/errors.ts`.
-    throw new VerificationTerminalError(
-      'call_budget_exhausted',
-      `Task "${state.currentTask.name}" exhausted call budget (${callIndex} calls) without producing valid output. ` +
-      `This is a deterministic failure — the LLM could not generate the required document within the call limit.`,
-    );
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Gate 1.5: Figma MCP connection lost — global interrupt via TaskOrchestrator
+  // Gate 1: Figma MCP connection lost — global interrupt via TaskOrchestrator
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state._figmaConnectionLost && state.currentTask) {
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -201,7 +176,6 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       tokenUsage: state.tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
-      _callLimitReached: false,
       _toolResultCache: undefined,
     } as any;
   }

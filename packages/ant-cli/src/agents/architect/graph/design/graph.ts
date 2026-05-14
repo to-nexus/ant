@@ -159,72 +159,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     );
   }
   
-  // ✅ CALL LIMIT INTERRUPTION: task force-stopped by call budget
-  if (state._callLimitReached && state.currentTask) {
-    const { TaskTimingHelper } = await import('../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
-    
-    const taskTokenUsage = getTaskTokenUsage(state);
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
-    
-    const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
-    (pausedTask as any).interrupted = true;
-    
-    const callIndex = state._docGenCallIndex || 0;
-    console.warn(`⚠️  [checkTaskStatus] Call limit reached for "${state.currentTask.name}" (${callIndex} calls) — creating interruption`);
-    
-    const { TaskQueue: TQ } = await import('../../types/task');
-    const newQueue = new TQ<DesignTask>();
-    newQueue.push(pausedTask);
-    state.taskQueue?.getAll().forEach((t: any) => {
-      if (t.id !== state.currentTask!.id) newQueue.push(t);
-    });
-    
-    const interruption = {
-      reason: 'call_limit' as const,
-      message: `Task "${state.currentTask.name}" paused: call budget exhausted (${callIndex} calls). Resume to continue.`,
-      timestamp: new Date().toISOString(),
-      canResume: true,
-      metadata: {
-        callLimit: callIndex,
-        tasksRemaining: newQueue.size(),
-        completedCount: (state.completedTasks || []).length,
-      }
-    };
-    
-    await saveInterruptionCheckpoint(state, { taskQueue: newQueue.getAll(), interruption });
+  // Note: the historical "Call limit interruption" gate was retired alongside
+  // the code job's Safety Net D/E. Runaway docGen loops are bounded by
+  // LangGraph `recursionLimit`; the `call_limit` interruption reason is gone.
 
-    if (state._httpJobId && state.deps?.kanbanUpdate) {
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpJobId,
-        null,
-        newQueue.getAll(),
-        state.completedTasksDetails || [],
-        state.recursionCount,
-        state.recursionLimit,
-        state.tokenUsage
-      );
-    }
-    
-    console.log(`⏸️  [checkTaskStatus] Task paused. ${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining`);
-    
-    return {
-      currentTask: undefined,
-      taskQueue: newQueue,
-      _callLimitReached: false,
-      _docGenCallIndex: 0,
-      _noOutputCallCount: 0,
-      _toolResultCache: undefined,
-      fileErrors: undefined,
-      interruption,
-      tokenUsage: state.tokenUsage,
-      _assetValidationFailed: false,
-      _assetValidationRetried: 0,
-    } as any;
-  }
-  
   // ✅ FIGMA CONNECTION LOST INTERRUPTION: Figma MCP failed N consecutive times
   if (state._figmaConnectionLost && state.currentTask) {
     const { TaskTimingHelper } = await import('../code/state');
@@ -280,7 +218,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       taskQueue: newQueue,
       _figmaConnectionLost: false,
       _figmaConsecutiveErrors: 0,
-      _callLimitReached: false,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,
@@ -333,7 +270,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
         _docGenCallIndex: 0,
         _noOutputCallCount: 0,
-        _callLimitReached: false,
       };
     }
   }
@@ -466,7 +402,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       tokenUsage: state.tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
-      _callLimitReached: false,
       _toolResultCache: undefined,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
@@ -785,7 +720,6 @@ export const DesignGraphChannels = {
   figmaStartNodeId: Annotation<any>,
   interruption: Annotation<any>,
   _docGenCallIndex: Annotation<any>,
-  _callLimitReached: Annotation<any>,
   _noOutputCallCount: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
