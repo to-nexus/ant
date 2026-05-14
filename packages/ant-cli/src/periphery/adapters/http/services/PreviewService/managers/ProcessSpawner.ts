@@ -1,10 +1,130 @@
 import { spawn, ChildProcess, execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
+
+// === BEGIN image-fetch diagnostic (TEMPORARY) ===========================
+// Wraps next dev's `global.fetch` so we can capture the first 64 bytes of
+// every outbound HTTP(S) response and tell whether next/image is receiving
+// real image bytes, an HTML interstitial, or an empty buffer. Output goes
+// to `{featurePath}/sessions/architect/debug/image-fetch/probe-*.jsonl`.
+//
+// REMOVE this entire block (and its call site in `spawnNode`) once the
+// root cause of the `detectContentType` 400s is confirmed.
+
+const FETCH_PROBE_SOURCE = `'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const debugDir = process.env.ANT_DEBUG_IMAGE_FETCH_DIR;
+
+if (debugDir && typeof global.fetch === 'function') {
+  const probeFile = path.join(debugDir, 'probe-' + Date.now() + '-' + process.pid + '.jsonl');
+  const originalFetch = global.fetch;
+
+  global.fetch = async function probedFetch(resource, init) {
+    const startedAt = Date.now();
+    let response;
+    let fetchError;
+    try {
+      response = await originalFetch(resource, init);
+    } catch (err) {
+      fetchError = err;
+    }
+
+    try {
+      const requestUrl =
+        typeof resource === 'string'
+          ? resource
+          : resource && typeof resource.url === 'string'
+            ? resource.url
+            : String(resource);
+
+      if (/^https?:/i.test(requestUrl)) {
+        const entry = {
+          t: new Date(startedAt).toISOString(),
+          durationMs: Date.now() - startedAt,
+          requestUrl: requestUrl,
+        };
+
+        if (fetchError) {
+          entry.error = (fetchError && fetchError.message) || String(fetchError);
+        } else {
+          entry.status = response.status;
+          entry.finalUrl = response.url;
+          entry.contentType = response.headers.get('content-type');
+          try {
+            const clone = response.clone();
+            const buf = Buffer.from(await clone.arrayBuffer());
+            entry.size = buf.length;
+            entry.first64Hex = buf.slice(0, 64).toString('hex');
+          } catch (cloneErr) {
+            entry.cloneError = (cloneErr && cloneErr.message) || String(cloneErr);
+          }
+        }
+
+        fs.appendFileSync(probeFile, JSON.stringify(entry) + '\\n');
+      }
+    } catch (_probeErr) {
+      // Probe failures must never break the actual request.
+    }
+
+    if (fetchError) throw fetchError;
+    return response;
+  };
+}
+`;
+
+let cachedProbePath: string | undefined;
+function ensureFetchProbeOnDisk(): string {
+  if (cachedProbePath && fs.existsSync(cachedProbePath)) return cachedProbePath;
+  const probePath = path.join(os.tmpdir(), `ant-image-fetch-probe-${process.pid}.cjs`);
+  fs.writeFileSync(probePath, FETCH_PROBE_SOURCE);
+  cachedProbePath = probePath;
+  return probePath;
+}
+
+const OUTBOUND_ENV_KEY = /^(HTTPS?_PROXY|NO_PROXY|NODE_TLS_REJECT_UNAUTHORIZED|NODE_EXTRA_CA_CERTS|HTTPS?_AGENT_OPTIONS|UV_THREADPOOL_SIZE)$/i;
+
+function setupImageFetchDiagnostic(
+  env: Record<string, string | undefined>,
+  options: SpawnOptions,
+  pkg: PackageInfo,
+): void {
+  try {
+    const projectRoot = options.projectRoot;
+    if (!projectRoot) return;
+    // ANT convention: featurePath/codebase/, so featurePath = dirname(projectRoot).
+    const featurePath = path.dirname(projectRoot);
+    const debugDir = path.join(featurePath, 'sessions', 'architect', 'debug', 'image-fetch');
+    fs.mkdirSync(debugDir, { recursive: true });
+
+    const dump = {
+      t: new Date().toISOString(),
+      pkg: pkg.name,
+      pkgType: pkg.type,
+      mode: process.env.ANT_SERVER_MODE ?? null,
+      outbound: Object.fromEntries(
+        Object.entries(env).filter(([k]) => OUTBOUND_ENV_KEY.test(k)),
+      ),
+    };
+    fs.appendFileSync(path.join(debugDir, 'env-dump.jsonl'), JSON.stringify(dump) + '\n');
+
+    const probePath = ensureFetchProbeOnDisk();
+    env.ANT_DEBUG_IMAGE_FETCH_DIR = debugDir;
+    env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --require=${probePath}`.trim();
+  } catch (err: any) {
+    logger.warn(
+      `[Preview] image-fetch diagnostic setup failed: ${err?.message ?? err}`,
+      { component: 'ProcessSpawner' },
+    );
+  }
+}
+// === END image-fetch diagnostic =========================================
 
 export interface SpawnOptions {
   serverKey: string;
@@ -297,7 +417,7 @@ export class ProcessSpawner {
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
-    const env = {
+    const env: Record<string, string | undefined> = {
       ...process.env,
       ...projectEnv,
       ...connectionsEnv,
@@ -311,7 +431,10 @@ export class ProcessSpawner {
       ...basePathEnv,
       ...(options.extraEnv || {})
     };
-    
+
+    // TEMPORARY: image-fetch diagnostic. Remove once root cause is confirmed.
+    setupImageFetchDiagnostic(env, options, pkg);
+
     logger.warn(`[Preview] Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
     logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
