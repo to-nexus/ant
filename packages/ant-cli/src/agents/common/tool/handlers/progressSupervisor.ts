@@ -71,7 +71,7 @@ export type ProgressSignalKind =
 export type ProgressSignal =
   | { kind: 'serverStartedPattern'; output: string }
   | { kind: 'repeatedSignature'; signature: string; repeat: number; elapsedMs: number }
-  | { kind: 'noOutput'; silentMs: number }
+  | { kind: 'noOutput'; silentMs: number; hadOutputBeforeSilence: boolean }
   | { kind: 'hardTimeout'; elapsedMs: number };
 
 export interface SupervisorThresholds {
@@ -81,6 +81,11 @@ export interface SupervisorThresholds {
   repeatThreshold: number;
   noOutputMs: number;
   hardTimeoutMs: number;
+  /** When set, fires noOutput after `postOutputIdleMs` of silence following
+   *  the first observable (non-banner) output. Bypasses the `elapsedMs`
+   *  gate that defends silent-from-start commands. Caller declares this
+   *  via the `oneshot` tool arg — the system does not infer it. */
+  postOutputIdleMs?: number;
 }
 
 export interface ProgressSupervisorOptions {
@@ -140,6 +145,7 @@ export class ProgressSupervisor {
   private stallMap = new Map<string, number>();
   private lastOutputAt: number;
   private accumulatedOutput = '';
+  private hasEmittedOutput = false;
 
   private resolved = false;
   private resolveFn: ((s: ProgressSignal) => void) | null = null;
@@ -162,6 +168,7 @@ export class ProgressSupervisor {
     for (const line of chunk.split('\n')) pushLineSig(this.stallMap, line);
     if (this.hasNonBannerLine(chunk)) {
       this.lastOutputAt = this.now();
+      this.hasEmittedOutput = true;
     }
   }
 
@@ -213,7 +220,15 @@ export class ProgressSupervisor {
       // short that we waste CPU. ~quarter of the smaller threshold, clamped.
       const candidates: number[] = [];
       if (wantsRepeated) candidates.push(15_000);
-      if (wantsNoOutput) candidates.push(Math.max(5_000, Math.floor(this.thresholds.noOutputMs / 4)));
+      if (wantsNoOutput) {
+        candidates.push(Math.max(5_000, Math.floor(this.thresholds.noOutputMs / 4)));
+        const postOutputIdleMs = this.thresholds.postOutputIdleMs;
+        if (postOutputIdleMs != null) {
+          // Tighter floor when caller declared a short post-output idle window,
+          // so detection latency stays proportional to the declared threshold.
+          candidates.push(Math.max(500, Math.floor(postOutputIdleMs / 4)));
+        }
+      }
       const pollMs = Math.min(...candidates);
 
       const id = setInterval(() => {
@@ -223,8 +238,20 @@ export class ProgressSupervisor {
         if (wantsNoOutput) {
           const silentMs = now - this.lastOutputAt;
           const elapsedMs = now - this.startedAt;
-          if (silentMs >= this.thresholds.noOutputMs && elapsedMs >= this.thresholds.noOutputMs) {
-            this.fire({ kind: 'noOutput', silentMs });
+          const baseFire =
+            silentMs >= this.thresholds.noOutputMs &&
+            elapsedMs >= this.thresholds.noOutputMs;
+          const postOutputIdleMs = this.thresholds.postOutputIdleMs;
+          const fastFire =
+            postOutputIdleMs != null &&
+            this.hasEmittedOutput &&
+            silentMs >= postOutputIdleMs;
+          if (baseFire || fastFire) {
+            this.fire({
+              kind: 'noOutput',
+              silentMs,
+              hadOutputBeforeSilence: this.hasEmittedOutput,
+            });
             return;
           }
         }
@@ -311,9 +338,14 @@ export class ProgressSupervisor {
       }
       case 'noOutput': {
         const sec = Math.round(signal.silentMs / 1000);
-        detail = `No output for ${sec}s. Typically slow filesystem/network walk (find / grep -r / npm ls / git blame / tar / du).`;
         elapsed = `${sec}s`;
-        action = 'Use scoped tools instead: `search_code` / `list_files` for file search, `read_file` (supports ranges) for file content, `npm ls --depth=0 <name>` for deps, `git log -L <file>` for history.';
+        if (signal.hadOutputBeforeSilence) {
+          detail = `Process emitted output then went idle for ${sec}s. Likely cause: foreground process did not reach termination — an open async handle (network connection, timer, watcher, unconsumed stream) is preventing exit.`;
+          action = 'Ensure explicit termination at the end of all async paths in the embedded source. If this command is intended as a one-shot operation, also set `oneshot: true` so the watchdog reaps it immediately after output settles.';
+        } else {
+          detail = `No output for ${sec}s. Typically slow filesystem/network walk (find / grep -r / npm ls / git blame / tar / du).`;
+          action = 'Use scoped tools instead: `search_code` / `list_files` for file search, `read_file` (supports ranges) for file content, `npm ls --depth=0 <name>` for deps, `git log -L <file>` for history.';
+        }
         break;
       }
       case 'hardTimeout': {

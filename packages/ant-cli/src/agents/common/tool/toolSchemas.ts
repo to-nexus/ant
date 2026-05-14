@@ -157,6 +157,10 @@ export const ARCHITECT_TOOLS = {
           type: 'boolean',
           description: 'For long-running servers: set to true to keep server running beyond task completion (very rare). Default: false (auto-cleanup)',
         },
+        oneshot: {
+          type: 'boolean',
+          description: 'Declare this command as a one-shot operation: it should produce observable output and then exit on its own. When true and the process stays alive past last output, the watchdog reaps it shortly (~3s) instead of waiting the default no-output window. Mutually exclusive with keep_running. Default: false.',
+        },
         verifies: {
           type: 'string',
           enum: [...GATE_ORDER] as string[],

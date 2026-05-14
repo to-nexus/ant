@@ -368,7 +368,9 @@ function isLikelyInstallCommand(command: string): boolean {
   return INSTALL_COMMAND_RE.test(command) || GO_DEPENDENCY_COMMAND_RE.test(command);
 }
 
-function resolveThresholds(command: string): SupervisorThresholds {
+const ONESHOT_POST_OUTPUT_IDLE_MS = 3_000;
+
+function resolveThresholds(command: string, opts: { oneshot: boolean }): SupervisorThresholds {
   const isInstall = isLikelyInstallCommand(command);
   return {
     serverDetectionMs: readPositiveInt(process.env.ANT_SERVER_DETECTION_MS, DEFAULT_SERVER_DETECTION_MS),
@@ -380,6 +382,7 @@ function resolveThresholds(command: string): SupervisorThresholds {
       isInstall ? NO_OUTPUT_INSTALL_MS : DEFAULT_NO_OUTPUT_MS,
     ),
     hardTimeoutMs: isInstall ? HARD_TIMEOUT_INSTALL_MS : HARD_TIMEOUT_DEFAULT_MS,
+    postOutputIdleMs: opts.oneshot ? ONESHOT_POST_OUTPUT_IDLE_MS : undefined,
   };
 }
 
@@ -417,7 +420,7 @@ export function createOutputStreamer(
 
 export async function handleRunCommand(
   ctx: ToolExecutionContext,
-  args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
+  args: { command: string; working_directory?: string; keep_running?: boolean; oneshot?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
   if (ctx.allowShellExecution !== true) {
     const { rejectRunCommand } = await import('./codebaseGate');
@@ -447,9 +450,17 @@ export async function handleRunCommand(
 
 async function executeCommandLogic(
   ctx: ToolExecutionContext,
-  args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
+  args: { command: string; working_directory?: string; keep_running?: boolean; oneshot?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
-  const { command, working_directory, keep_running, verifies } = args;
+  const { command, working_directory, keep_running, oneshot, verifies } = args;
+  // Mutually exclusive intent flags: keep_running ("long-running server, leave
+  // alive") and oneshot ("must exit after output"). When both are set, prefer
+  // keep_running so the server contract is preserved.
+  let oneshotEffective = Boolean(oneshot);
+  if (oneshotEffective && keep_running) {
+    console.warn(`   ⚠️ [RunCommand] Both keep_running and oneshot were set — preferring keep_running. Command: ${args.command}`);
+    oneshotEffective = false;
+  }
   const commandPort = ctx.command;
   const fileSystem = ctx.fileSystem;
 
@@ -614,7 +625,7 @@ async function executeCommandLogic(
     const controller = new AbortController();
     const supervisor = new ProgressSupervisor({
       command,
-      thresholds: resolveThresholds(command),
+      thresholds: resolveThresholds(command, { oneshot: oneshotEffective }),
     });
 
     const commandPromise = commandPort.execute(command, {
@@ -831,7 +842,7 @@ export async function handleLongRunningCommand(
     // canonical "is this a real server?" signal for long-running commands.
     const supervisor = new ProgressSupervisor({
       command,
-      thresholds: resolveThresholds(command),
+      thresholds: resolveThresholds(command, { oneshot: false }),
       enabledSignals: ['repeatedSignature', 'noOutput', 'hardTimeout'] as const,
     });
 
