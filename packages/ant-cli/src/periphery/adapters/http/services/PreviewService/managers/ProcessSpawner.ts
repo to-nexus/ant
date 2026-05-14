@@ -96,60 +96,72 @@ cp.spawn = function antPatchedSpawn(command, args, options) {
   return antOriginalSpawn.call(this, command, args, patched);
 };
 
-if (debugDir && typeof global.fetch === 'function') {
+if (debugDir) {
   const probeFile = path.join(debugDir, 'probe-' + Date.now() + '-' + process.pid + '.jsonl');
-  const originalFetch = global.fetch;
 
-  global.fetch = async function probedFetch(resource, init) {
-    const startedAt = Date.now();
-    let response;
-    let fetchError;
-    try {
-      response = await originalFetch(resource, init);
-    } catch (err) {
-      fetchError = err;
-    }
-
-    try {
-      const requestUrl =
-        typeof resource === 'string'
-          ? resource
-          : resource && typeof resource.url === 'string'
-            ? resource.url
-            : String(resource);
-
-      if (/^https?:/i.test(requestUrl)) {
-        const entry = {
-          t: new Date(startedAt).toISOString(),
-          durationMs: Date.now() - startedAt,
-          requestUrl: requestUrl,
-        };
-
-        if (fetchError) {
-          entry.error = (fetchError && fetchError.message) || String(fetchError);
-        } else {
-          entry.status = response.status;
-          entry.finalUrl = response.url;
-          entry.contentType = response.headers.get('content-type');
-          try {
-            const clone = response.clone();
-            const buf = Buffer.from(await clone.arrayBuffer());
-            entry.size = buf.length;
-            entry.first64Hex = buf.slice(0, 64).toString('hex');
-          } catch (cloneErr) {
-            entry.cloneError = (cloneErr && cloneErr.message) || String(cloneErr);
+  function antMakeProbedFetch(inner) {
+    if (typeof inner !== 'function') return inner;
+    const probed = async function antProbedFetch(resource, init) {
+      const startedAt = Date.now();
+      let response, fetchError;
+      try {
+        response = await inner(resource, init);
+      } catch (err) { fetchError = err; }
+      try {
+        const requestUrl =
+          typeof resource === 'string'
+            ? resource
+            : resource && typeof resource.url === 'string'
+              ? resource.url
+              : String(resource);
+        if (/^https?:/i.test(requestUrl)) {
+          const entry = {
+            t: new Date(startedAt).toISOString(),
+            durationMs: Date.now() - startedAt,
+            requestUrl: requestUrl,
+          };
+          if (fetchError) {
+            entry.error = (fetchError && fetchError.message) || String(fetchError);
+          } else {
+            entry.status = response.status;
+            entry.finalUrl = response.url;
+            entry.contentType = response.headers.get('content-type');
+            try {
+              const clone = response.clone();
+              const buf = Buffer.from(await clone.arrayBuffer());
+              entry.size = buf.length;
+              entry.first64Hex = buf.slice(0, 64).toString('hex');
+            } catch (cloneErr) {
+              entry.cloneError = (cloneErr && cloneErr.message) || String(cloneErr);
+            }
           }
+          fs.appendFileSync(probeFile, JSON.stringify(entry) + '\\n');
         }
+      } catch (_probeErr) { /* never break the host request */ }
+      if (fetchError) throw fetchError;
+      return response;
+    };
+    probed.__antProbed = true;
+    return probed;
+  }
 
-        fs.appendFileSync(probeFile, JSON.stringify(entry) + '\\n');
-      }
-    } catch (_probeErr) {
-      // Probe failures must never break the actual request.
-    }
-
-    if (fetchError) throw fetchError;
-    return response;
-  };
+  // Accessor descriptor — any later reassignment to globalThis.fetch
+  // (e.g., Next's patchFetch swapping in createPatchedFetcher) is
+  // intercepted and the replacement is re-wrapped, so our probe always
+  // sits at the outermost layer.
+  let antCurrentFetch = antMakeProbedFetch(globalThis.fetch);
+  try {
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      get: function () { return antCurrentFetch; },
+      set: function (next) {
+        antCurrentFetch =
+          next && next.__antProbed ? next : antMakeProbedFetch(next);
+      },
+    });
+  } catch (_e) {
+    try { globalThis.fetch = antCurrentFetch; } catch (_e2) {}
+  }
 }
 `;
 
