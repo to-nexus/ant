@@ -3,6 +3,8 @@
 🎯 WORK MODE: {{mode}}
 ════════════════════════════════════════════════════════════════════════════════
 
+**Modes and task types are orthogonal axes.** This file owns mode semantics only. The task `type` enum is owned by the Task Schema in the decompose rules. The only overlap is `explain` — both a mode AND a task type by design; `generate` and `refactor` are mode-only and MUST NOT appear as `type` values.
+
 {{#if (eq mode "refactor")}}
 **REFACTOR MODE - Fix/Improve Existing Code**
 
