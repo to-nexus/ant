@@ -24,6 +24,28 @@ const cp = require('child_process');
 const debugDir = process.env.ANT_DEBUG_IMAGE_FETCH_DIR;
 const probeSelf = __filename;
 
+// Marker log — one line per probe LOAD and per intercepted spawn. Captures
+// propagation independently of whether the loaded process actually fires
+// any global.fetch (image-optimizer may use a different fetch path).
+function antMarker(kind, extra) {
+  if (!debugDir) return;
+  try {
+    var line = Object.assign(
+      { t: new Date().toISOString(), pid: process.pid, ppid: process.ppid, kind: kind },
+      extra || {},
+    );
+    fs.appendFileSync(path.join(debugDir, 'marker.jsonl'), JSON.stringify(line) + '\\n');
+  } catch (_e) { /* never break the host process */ }
+}
+
+antMarker('load', {
+  argv0: process.argv0,
+  argv1: process.argv[1],
+  isNextWorker: process.env.NEXT_PRIVATE_WORKER === '1',
+  nodeOptions: process.env.NODE_OPTIONS || null,
+  execArgv: process.execArgv,
+});
+
 // Propagate this probe to every child process spawned from here. Next.js
 // 'next dev' forks a 'start-server' child that rebuilds NODE_OPTIONS via
 // node:util.parseArgs without an options schema, which can drop our
@@ -50,6 +72,10 @@ cp.fork = function antPatchedFork(modulePath, args, options) {
   const patched = Object.assign({}, options || {}, {
     env: antEnsureProbeInEnv(options && options.env),
   });
+  antMarker('fork', {
+    modulePath: typeof modulePath === 'string' ? modulePath : String(modulePath),
+    childNodeOptions: patched.env && patched.env.NODE_OPTIONS,
+  });
   return antOriginalFork.call(this, modulePath, args, patched);
 };
 
@@ -61,6 +87,11 @@ cp.spawn = function antPatchedSpawn(command, args, options) {
   }
   const patched = Object.assign({}, options || {}, {
     env: antEnsureProbeInEnv(options && options.env),
+  });
+  antMarker('spawn', {
+    command: typeof command === 'string' ? command : String(command),
+    args: Array.isArray(args) ? args.slice(0, 8) : null,
+    childNodeOptions: patched.env && patched.env.NODE_OPTIONS,
   });
   return antOriginalSpawn.call(this, command, args, patched);
 };
