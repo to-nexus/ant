@@ -51,19 +51,16 @@ The same component code MUST handle both modes by binding the
 optimizer-bypass attribute to the SV master toggle. Mode behaviour is
 runtime; no source change at mode-switch.
 
-Wiring per framework:
-
-| Framework | Pattern |
-|---|---|
-| Next.js | `<Image src={url} unoptimized={isMockMode()} ... />` |
-| Vite (React / Vue) | same pattern, helper reads `import.meta.env.VITE_USE_MOCK` |
+Wiring pattern (framework-agnostic): if the framework provides an
+image component with an optimizer-bypass prop, bind that prop to a
+single `isMockMode()` helper. Framework-specific component names and
+env-var prefixes live in the per-framework hint files under
+`basis/techTier/framework/*.md` — never enumerate them here.
 
 The `isMockMode()` helper lives once in `shared/lib/` (or the
 equivalent shared location) and reads the framework-prefixed master
-toggle defined by `preview-env-contract.md §4.5`:
-`NEXT_PUBLIC_USE_MOCK` for Next.js, `VITE_USE_MOCK` for Vite. One
-helper, imported by every component that renders virtualizable
-imagery.
+toggle defined by `preview-env-contract.md §4.5`. One helper,
+imported by every component that renders virtualizable imagery.
 
 Why mode-aware: an image optimizer fetches the upstream URL
 server-side, follows redirects, and decides image validity by

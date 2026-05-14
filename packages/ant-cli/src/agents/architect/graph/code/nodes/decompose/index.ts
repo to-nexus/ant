@@ -23,7 +23,12 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
 // Import submodules
-import { validateTasks } from "./validation";
+import {
+  validateTasks,
+  validateTaskTypeEnum,
+  InvalidTaskTypeViolation,
+  buildInvalidTaskTypeViolationFraming,
+} from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
@@ -857,8 +862,29 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         prompts.user = originalUserPrompt + decisionTagViolationFraming + analysisRequiredFraming;
         continue;
       }
+      // Hard contract: every emitted task.type must be a canonical enum
+      // value. Validate inside the retry loop (not after) so the LLM gets
+      // a corrective framing on stochastic mis-categorisation (e.g.
+      // emitting the mode name "refactor" as a task type).
+      validateTaskTypeEnum(parsed.tasks);
       break; // contract satisfied
     } catch (e) {
+      if (e instanceof InvalidTaskTypeViolation) {
+        if (attempt >= MAX_ATTEMPTS) {
+          logErrorHeader('Decompose');
+          console.error(
+            `❌ [Decompose] Invalid task type exhausted ${MAX_ATTEMPTS} attempts: ${e.message}`,
+          );
+          throw e;
+        }
+        console.warn(
+          `⚠️  [Decompose] Invalid task type attempt ${attempt}/${MAX_ATTEMPTS}: ` +
+          `"${e.detail.observedType}" on "${e.detail.taskName}" — retrying with framing`,
+        );
+        prompts.user = originalUserPrompt + buildInvalidTaskTypeViolationFraming(e);
+        continue;
+      }
+
       if (!(e instanceof ExecutionTierViolation)) throw e;
 
       if (attempt >= MAX_ATTEMPTS) {

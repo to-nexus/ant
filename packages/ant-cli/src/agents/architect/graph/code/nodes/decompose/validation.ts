@@ -4,6 +4,66 @@ import { getDesignDocByPackageFromPool } from '../../../../../../core/prompt/bui
 import { isErrorTask } from '../../tasks/error';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 
+const VALID_TASK_TYPES: readonly TaskType[] = [
+  'setup', 'feature', 'design-system', 'ui',
+  'test-code', 'error', 'verification', 'explain', 'doc',
+] as const;
+
+export interface InvalidTaskTypeViolationDetail {
+  observedType: string;
+  taskId?: string;
+  taskName: string;
+  validTypes: readonly TaskType[];
+}
+
+export class InvalidTaskTypeViolation extends Error {
+  readonly detail: InvalidTaskTypeViolationDetail;
+  constructor(detail: InvalidTaskTypeViolationDetail) {
+    super(
+      `Invalid task type "${detail.observedType}" on task ` +
+      `"${detail.taskId ?? '(no id)'} / ${detail.taskName}". ` +
+      `Valid types: ${detail.validTypes.join(', ')}`,
+    );
+    this.name = 'InvalidTaskTypeViolation';
+    this.detail = detail;
+  }
+}
+
+export function buildInvalidTaskTypeViolationFraming(
+  v: InvalidTaskTypeViolation,
+): string {
+  const { observedType, taskName, validTypes } = v.detail;
+  return (
+    '\n\n---\n\n## Retry: invalid task type\n' +
+    `Your previous response emitted \`type: "${observedType}"\` on task ` +
+    `"${taskName}", which is not a valid task type. ` +
+    `Valid task types are: ${validTypes.map(t => `\`${t}\``).join(', ')}. ` +
+    `Mode names (\`generate\`, \`refactor\`, \`explain\`) are NOT task types — ` +
+    `\`refactor\` and \`generate\` exist only as modes. Re-emit the task ` +
+    `with the correct \`type\` for the same work scope.\n`
+  );
+}
+
+/**
+ * Hard contract validation — task type must be one of the canonical enum
+ * values. Throws InvalidTaskTypeViolation so the decompose retry loop can
+ * surface a corrective framing back to the LLM. Called inside the retry
+ * loop; soft validations (design-doc warns, broad-scope warns) live in
+ * `validateTasks` and run once after the loop commits.
+ */
+export function validateTaskTypeEnum(tasks: CodeTask[]): void {
+  for (const t of tasks) {
+    if (!VALID_TASK_TYPES.includes(t.type)) {
+      throw new InvalidTaskTypeViolation({
+        observedType: String(t.type),
+        taskId: t.id,
+        taskName: t.name,
+        validTypes: VALID_TASK_TYPES,
+      });
+    }
+  }
+}
+
 /**
  * Post-validation: Check if LLM correctly classified error vs feature
  * 
@@ -42,7 +102,12 @@ export function detectPotentialMisclassification(
 }
 
 /**
- * Validate tasks after decompose to detect issues
+ * Soft validations that run once after decompose commits — design-doc
+ * package references, broad-scope foundation tasks, error-vs-feature
+ * misclassification, and over-broad refactor/explain shapes.
+ *
+ * Hard type-enum validation is owned by `validateTaskTypeEnum` and runs
+ * inside the decompose retry loop so the LLM gets a chance to self-correct.
  */
 export function validateTasks(
   tasks: CodeTask[],
@@ -50,21 +115,6 @@ export function validateTasks(
   directive: string | undefined,
   artifacts?: ResolvedArtifact[],
 ): void {
-  // Validate task type is one of the known types
-  const VALID_TYPES: TaskType[] = [
-    'setup', 'feature', 'design-system', 'ui',
-    'test-code', 'error', 'verification', 'explain', 'doc'
-  ];
-  for (const t of tasks) {
-    if (!VALID_TYPES.includes(t.type)) {
-      throw new Error(
-        `❌ [Decompose Validation] Invalid task type "${t.type}" on task.\n` +
-        `Valid types: ${VALID_TYPES.join(', ')}\n` +
-        `Task: ${t.id || '(no id)'} / ${t.name}\n`
-      );
-    }
-  }
-
   // Warn about packages referencing non-existent design docs
   if (artifacts && artifacts.length > 0) {
     for (const t of tasks) {

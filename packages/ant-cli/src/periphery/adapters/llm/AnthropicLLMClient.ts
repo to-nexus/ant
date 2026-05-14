@@ -62,6 +62,14 @@ export class AnthropicLLMClient implements LLMClient {
   // Opus 4.7+ rejects `thinking.type.enabled` and requires adaptive thinking
   // with `output_config.effort`; Sonnet 4.6 and earlier still use the legacy
   // enabled + budget_tokens shape.
+  //
+  // Effort mapping: Anthropic publishes no numeric equivalence between
+  // `budget_tokens: N` and adaptive `effort`, but documents that `medium`
+  // "may skip thinking entirely for very simple queries" while `high`
+  // (default) "always thinks". Sonnet's budget_tokens guaranteed thinking;
+  // medium does not. Map thinkingBudget by tier so high-budget callers
+  // (DECOMPOSE/PLAN/REVISE=10000, CODE_EXECUTE=5000) keep the always-thinks
+  // guarantee. `high` is the SDK default so it is safe with any SDK version.
   private buildThinkingParams(
     enableThinking: boolean,
     thinkingBudget: number,
@@ -69,9 +77,10 @@ export class AnthropicLLMClient implements LLMClient {
     if (!enableThinking) return {};
 
     if (this.modelName.includes('opus-')) {
+      const effort = thinkingBudget >= 5000 ? 'high' : 'medium';
       return {
         thinking: { type: 'adaptive' },
-        output_config: { effort: 'medium' },
+        output_config: { effort },
       };
     }
 
