@@ -31,11 +31,13 @@ export const hooks: TaskHooks = {
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/verification/rules',
     // Verification's signature: no plan-text body (only gate diagnostics
     // drive the cycle), uses the plan↔tool loop, exclusive paths-only
-    // RAG fast-path, allows empty-impl shortcut (no fixes → done).
+    // RAG fast-path. The "empty plan → done" shortcut now lives on the
+    // verify-mode dispatch axis (`isVerifyModeActive(state)` checked in
+    // `nodes/plan/llm/tools.ts` and `nodes/plan/outcome/finalize.ts`),
+    // shared with every Tier-2 self-verify task — no per-type flag needed.
     requiresPlanText: false,
     usesToolLoop: true,
     exclusiveFastpath: true,
-    allowsEmptyImplShortcut: true,
   },
   execute: executeHook,
   // Verification task is verify-mode by definition (every run IS a

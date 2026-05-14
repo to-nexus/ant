@@ -31,6 +31,7 @@ import { getExecutionLogger } from "../../../../../../../core/utils/executionLog
 import { collectResolvedPartials } from "../../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/graph/llmConfig";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
+import { isVerifyModeActive } from "../../../tasks/_shared/verify";
 import { selectLLMForTask } from "./selectModel";
 import { runPlanWithTools } from "../../../../../../common/graph/nodes/plan";
 
@@ -156,8 +157,14 @@ export async function runPlanLLMWithTools(
 
   if (result.kind === 'planText') {
     const planText = result.planText;
-    const allowsEmptyPlanShortcut = hooksForTaskType(task.type)?.plan?.allowsEmptyImplShortcut === true;
-    if (allowsEmptyPlanShortcut) {
+    // Verify-mode 진입 자체가 "verify-mode plan 프롬프트가 LLM에게 no-errors
+    // sentinel emit을 지시했고 그 sentinel은 cycle 종료 신호다" 라는 계약을
+    //의미한다. requiresVerification(task)인 모든 task — verification +
+    // selfVerifyOnDone (error/feature/ui/setup) — 가 동일한 verify-mode
+    // 프롬프트·동일 sentinel 계약을 쓰므로 task type을 분기할 필요가 없다.
+    // (solar-coming-bough 회귀: 옛 게이트는 `verification` task에만 fire되어
+    // Tier-2 self-verify의 sentinel을 인식하지 못했고 cycle이 닫히지 않았다.)
+    if (isVerifyModeActive(state)) {
       try {
         const parsed = JSON.parse(planText);
         if (
@@ -166,7 +173,7 @@ export async function runPlanLLMWithTools(
             parsed.implementation?.create?.length === 0 &&
             (parsed.implementation?.delete?.length ?? 0) === 0)
         ) {
-          console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
+          console.log(`✅ [Plan] Verify-mode sentinel detected — returning empty planText for immediate done`);
           return { planText: '' };
         }
       } catch {

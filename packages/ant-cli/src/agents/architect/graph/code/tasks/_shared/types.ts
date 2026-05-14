@@ -182,13 +182,6 @@ export interface TaskPlanHook {
    */
   exclusiveFastpath?: boolean;
   /**
-   * When `state.planText` parses to zero `modify/create/delete` entries
-   * and no `batches`, may the plan node short-circuit to `done:true`?
-   * Verification + error publish `true` (an empty remediation plan
-   * means "nothing to fix").
-   */
-  allowsEmptyImplShortcut?: boolean;
-  /**
    * Task-type-specific RAG retrieval quota override. Caps the total file
    * count delivered to the plan-prompt code context. `undefined` falls
    * back to the integration/foundation vs general defaults in
