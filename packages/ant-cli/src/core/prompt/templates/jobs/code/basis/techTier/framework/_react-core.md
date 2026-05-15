@@ -9,6 +9,7 @@ Blind-spot reminders for React (hooks, types, lifecycle). Pre-training gap only.
 - Index-as-key in reorderable / filterable lists → state leaks between unrelated items.
 - Bare `JSX.*` type reference (`JSX.Element`, `JSX.IntrinsicElements`) under React 19 → TS2304 "Cannot find namespace 'JSX'"; use `React.JSX.*` or named import `import { JSX } from "react"`. A project-local `declare global { namespace JSX { ... } }` shim is a workaround, not a fix.
 - `React.X` namespace type (`React.JSX.Element`, `React.ReactNode`, `React.ComponentProps`, `React.FC`, ...) in a file that does NOT `import React from "react"` → TS2304 "Cannot find name 'React'". Prefer named imports (`import { ReactNode, ComponentProps } from "react"`) unless React is already imported.
+- Project-bundled SVG assets routed through `<img>` or any framework image component → re-introduces network and optimizer pipeline for a vector asset. Import SVGs as React components (SVGR-equivalent inline pattern); inline rendering produces no network request and is basePath-irrelevant.
 
 ## Version Notes
 
