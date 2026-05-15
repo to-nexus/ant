@@ -23,6 +23,7 @@ import {
   buildCleanHeaders as sharedBuildCleanHeaders,
   escapeRegExp as sharedEscapeRegExp,
   extractForwardingContext,
+  fetchWithTransportRetry,
   forwardRequestBody,
   streamUpstreamResponse,
 } from './proxyForwarding';
@@ -348,35 +349,16 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     logger.warn(`[Preview] Target: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
     
     try {
-      // ✅ Retry logic for preview server startup race condition
-      let response: globalThis.Response | null = null;
-      let lastError: Error | null = null;
-      const maxRetries = 3;
-      const retryDelay = 500; // ms
-
       // Build clean headers — use actual previewHost (not localhost)
       const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          response = await fetch(effectiveTargetUrl, {
-            method: req.method,
-            headers: cleanHeaders,
-            ...forwardRequestBody(req),
-          } as RequestInit);
-          break; // Success!
-        } catch (error: any) {
-          lastError = error;
-          if (attempt < maxRetries) {
-            logger.debug(`Retry ${attempt}/${maxRetries} in ${retryDelay}ms`, { component: 'PreviewProxy' });
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-          }
-        }
-      }
 
-      if (!response) {
-        throw lastError || new Error('Failed to connect after retries');
-      }
+      // Transport-error retry shared with baseProxy / deployProxy. Absorbs
+      // dev-server startup races; upstream HTTP errors pass through untouched.
+      const response = await fetchWithTransportRetry(effectiveTargetUrl, {
+        method: req.method,
+        headers: cleanHeaders,
+        ...forwardRequestBody(req),
+      } as RequestInit);
 
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: 'PreviewProxy' });
