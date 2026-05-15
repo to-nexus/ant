@@ -36,7 +36,8 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
 import { parsePreviewKey } from '../state/redisKeyUtils';
-import { toUrlKeyWithService, fromUrlKey, isUrlKey, packageSlug } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { toUrlKeyWithService, fromUrlKey, isUrlKey, packageSlug, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { setEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
@@ -55,6 +56,58 @@ export interface PreviewServerOptions {
   redisUrl: string;  // Required for distributed state
   workspacesPath?: string;
   mode?: 'local' | 'cloud';
+}
+
+/**
+ * Open a raw TCP tunnel between an inbound WebSocket Upgrade and an upstream
+ * dev/static server, replaying the original HTTP request with the Host header
+ * rewritten. Shared by the preview and deploy upgrade branches.
+ */
+function openRawTunnel(
+  req: IncomingMessage,
+  clientSocket: net.Socket,
+  head: Buffer,
+  targetHost: string,
+  targetPort: number,
+  targetPath: string,
+): void {
+  const proxySocket = net.connect(targetPort, targetHost, () => {
+    const rawHeaders: string[] = [];
+    const rawHeaderPairs = req.rawHeaders;
+    for (let i = 0; i < rawHeaderPairs.length; i += 2) {
+      const key = rawHeaderPairs[i];
+      const value = rawHeaderPairs[i + 1];
+      if (key.toLowerCase() === 'host') {
+        rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
+      } else {
+        rawHeaders.push(`${key}: ${value}`);
+      }
+    }
+
+    const upgradeReq =
+      `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
+      rawHeaders.join('\r\n') +
+      '\r\n\r\n';
+
+    proxySocket.write(upgradeReq);
+    if (head.length > 0) {
+      proxySocket.write(head);
+    }
+
+    proxySocket.pipe(clientSocket);
+    clientSocket.pipe(proxySocket);
+  });
+
+  proxySocket.on('error', (err) => {
+    logger.debug(`[PreviewServer] WS proxy error: ${err.message}`, { component: 'PreviewServer' });
+    clientSocket.destroy();
+  });
+  clientSocket.on('error', () => {
+    proxySocket.destroy();
+  });
+  clientSocket.on('close', () => {
+    proxySocket.destroy();
+  });
 }
 
 // ============================================
@@ -969,7 +1022,42 @@ export class PreviewServer {
       // look up the dev server port, then create a raw TCP tunnel to the dev server.
       this.server.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
         try {
-          // Cloud mode: verify JWT from cookie (upgrade bypasses Express middleware)
+          const urlPath = req.url || '/';
+          const segments = urlPath.split('/').filter(Boolean);
+          const firstSegment = segments[0] || '';
+
+          // Deploy path: `/deploy/<urlKey>/...` — public artifact serving, no JWT
+          // (matches the HTTP-side mount at `app.use('/deploy/', ...)`). Routes
+          // the Upgrade to the per-package static server via resolveDeployTarget.
+          if (firstSegment === 'deploy') {
+            const urlKey = segments[1];
+            if (!urlKey || !isUrlKey(urlKey)) { socket.destroy(); return; }
+            const parsed = parseUrlKey(urlKey);
+            if (!parsed) { socket.destroy(); return; }
+
+            const state = await this.deployService.ensureRunning(
+              parsed.tenantId,
+              parsed.userId,
+              parsed.projectId,
+              parsed.feature,
+            );
+            if (!state) { socket.destroy(); return; }
+
+            const target = resolveDeployTarget(state, parsed.serviceName, urlKey);
+            if (!target) { socket.destroy(); return; }
+
+            logger.debug(
+              `[PreviewServer] WS upgrade (deploy): ${urlPath} → ${target.targetHost}:${target.targetPort}`,
+              { component: 'PreviewServer' },
+            );
+
+            // Static server's basePath is `/deploy/<urlKey>`, so the inbound
+            // path already lines up with the upstream — forward as-is.
+            openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath);
+            return;
+          }
+
+          // Preview path: cloud mode requires JWT (upgrade bypasses Express middleware).
           const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
           if (isCloudMode) {
             const jwtService = createJwtServiceFromEnv();
@@ -986,10 +1074,6 @@ export class PreviewServer {
               try { jwtService.verify(token); } catch { socket.destroy(); return; }
             }
           }
-          
-          const urlPath = req.url || '/';
-          const segments = urlPath.split('/').filter(Boolean);
-          const firstSegment = segments[0] || '';
 
           // Check if first segment is a URL-safe serverKey (contains double-dashes)
           if (!isUrlKey(firstSegment)) {
@@ -1021,46 +1105,7 @@ export class PreviewServer {
             component: 'PreviewServer'
           });
 
-          // Open TCP connection to dev server
-          const proxySocket = net.connect(targetPort, targetHost, () => {
-            // Reconstruct the HTTP upgrade request with corrected Host and path
-            const rawHeaders: string[] = [];
-            const rawHeaderPairs = req.rawHeaders;
-            for (let i = 0; i < rawHeaderPairs.length; i += 2) {
-              const key = rawHeaderPairs[i];
-              const value = rawHeaderPairs[i + 1];
-              if (key.toLowerCase() === 'host') {
-                rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
-              } else {
-                rawHeaders.push(`${key}: ${value}`);
-              }
-            }
-
-            const upgradeReq =
-              `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
-              rawHeaders.join('\r\n') +
-              '\r\n\r\n';
-
-            proxySocket.write(upgradeReq);
-            if (head.length > 0) {
-              proxySocket.write(head);
-            }
-
-            // Bidirectional pipe: client ↔ dev server
-            proxySocket.pipe(socket);
-            socket.pipe(proxySocket);
-          });
-
-          proxySocket.on('error', (err) => {
-            logger.debug(`[PreviewServer] WS proxy error: ${err.message}`, { component: 'PreviewServer' });
-            socket.destroy();
-          });
-          socket.on('error', () => {
-            proxySocket.destroy();
-          });
-          socket.on('close', () => {
-            proxySocket.destroy();
-          });
+          openRawTunnel(req, socket, head, targetHost, targetPort, targetPath);
         } catch (error: any) {
           logger.warn(`[PreviewServer] WS upgrade failed: ${error.message}`, { component: 'PreviewServer' });
           socket.destroy();

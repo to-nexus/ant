@@ -8,7 +8,7 @@
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { withRetry } from '../../../../core/utils/retry';
+import { fetchWithTransportRetry } from './proxyForwarding';
 
 export interface BaseProxyConfig {
   portRegistry: PortRegistryPort;
@@ -224,40 +224,21 @@ export abstract class BaseProxyMiddleware {
       const method = (req.method || 'GET').toUpperCase();
       const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
-      // Retry only on transport-level errors (connect refused / reset / DNS / fetch
-      // failed). Upstream 5xx responses are passed through verbatim — masking them
-      // with retries would hide genuine code-server failures that the readinessProbe
-      // is supposed to surface.
-      const response = await withRetry<globalThis.Response>(
-        () => fetch(targetUrl, {
-          method: req.method,
-          headers: {
-            ...req.headers,
-            host: `${targetHost}:${targetPort}`,
-            'accept-encoding': 'identity',
-            'if-none-match': undefined,
-            'if-modified-since': undefined
-          } as any,
-          ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
-        }),
-        {
-          maxAttempts: 6,
-          initialDelayMs: 250,
-          maxDelayMs: 2500,
-          backoffMultiplier: 2,
-          shouldRetry: (err) => {
-            const msg = ((err as Error)?.message || '').toLowerCase();
-            return (
-              msg.includes('econnrefused') ||
-              msg.includes('econnreset') ||
-              msg.includes('socket') ||
-              msg.includes('fetch failed') ||
-              msg.includes('network') ||
-              msg.includes('terminated')
-            );
-          },
-        }
-      );
+      // Transport-error retry policy lives in proxyForwarding.fetchWithTransportRetry
+      // (shared with previewProxy / deployProxy). Upstream 5xx responses are
+      // passed through verbatim — masking them with retries would hide genuine
+      // code-server failures that the readinessProbe is supposed to surface.
+      const response = await fetchWithTransportRetry(targetUrl, {
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: `${targetHost}:${targetPort}`,
+          'accept-encoding': 'identity',
+          'if-none-match': undefined,
+          'if-modified-since': undefined
+        } as any,
+        ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
+      } as RequestInit);
 
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: this.componentName });

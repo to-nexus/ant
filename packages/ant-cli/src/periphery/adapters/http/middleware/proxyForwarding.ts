@@ -19,6 +19,7 @@
 
 import type { Request, Response as ExpressResponse } from 'express';
 import { Readable } from 'stream';
+import { withRetry } from '../../../../core/utils/retry';
 
 /**
  * Hop-by-hop headers (RFC 7230 §6.1) and a couple of conditional-request
@@ -139,6 +140,32 @@ export function forwardRequestBody(req: Request): Record<string, unknown> {
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return {};
   // undici streaming-request requires duplex: 'half' when body is a Readable.
   return { body: req, duplex: 'half' };
+}
+
+/**
+ * Bind an AbortController to the inbound request's lifecycle so the upstream
+ * fetch is canceled when the client disconnects. Spread into the fetch init:
+ *
+ *   fetch(url, { method, headers, ...forwardRequestBody(req), ...forwardRequestAbort(req) })
+ *
+ * Critical for long-lived responses (SSE, large downloads): without this the
+ * upstream connection leaks past the client's disconnect until undici's idle
+ * timeout fires. Short-lived requests are unaffected since the response
+ * completes before the client can typically abort.
+ *
+ * The listener is attached with `once`; if the request completes normally,
+ * `close` fires after the response is sent and the resulting abort is a no-op
+ * (signal is consumed by no one).
+ */
+export function forwardRequestAbort(req: Request): { signal: AbortSignal } {
+  const controller = new AbortController();
+  // Plain-object test mocks may not extend EventEmitter — feature-detect so
+  // unit tests don't have to wire up a real `req` to exercise the proxy.
+  const ee = req as unknown as { once?: (event: string, listener: () => void) => void };
+  if (typeof ee.once === 'function') {
+    ee.once('close', () => controller.abort());
+  }
+  return { signal: controller.signal };
 }
 
 /**
@@ -342,3 +369,44 @@ export async function streamUpstreamResponse(
     res.end();
   }
 }
+
+/**
+ * Match transient transport-layer errors (ECONNREFUSED, socket reset, etc.)
+ * so callers can decide to retry. Upstream HTTP errors (4xx/5xx) do NOT throw
+ * and therefore never reach this predicate — they remain the responsibility of
+ * the caller's readiness probe.
+ */
+export const isTransportError = (err: unknown): boolean => {
+  const msg = ((err as Error)?.message || '').toLowerCase();
+  return (
+    msg.includes('econnrefused') ||
+    msg.includes('econnreset') ||
+    msg.includes('socket') ||
+    msg.includes('fetch failed') ||
+    msg.includes('network') ||
+    msg.includes('terminated')
+  );
+};
+
+/**
+ * Single canonical fetch wrapper for every HTTP reverse proxy in this codebase
+ * (baseProxy / previewProxy / deployProxy). Retries transient transport
+ * failures with exponential backoff; passes upstream HTTP responses through
+ * verbatim.
+ *
+ * Do not introduce per-call-site tuning here — callers should be byte-identical
+ * so that retry behavior is auditable in one place. If a proxy genuinely
+ * needs different policy, it likely needs a different helper, not different
+ * options here.
+ */
+export const fetchWithTransportRetry = (
+  url: string,
+  init: RequestInit,
+): Promise<globalThis.Response> =>
+  withRetry<globalThis.Response>(() => fetch(url, init), {
+    maxAttempts: 6,
+    initialDelayMs: 250,
+    maxDelayMs: 2500,
+    backoffMultiplier: 2,
+    shouldRetry: isTransportError,
+  });

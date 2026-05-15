@@ -25,16 +25,18 @@ import { logger } from '../../../../utils/logger';
 import {
   isUrlKey,
   parseUrlKey,
-  packageSlug,
 } from '../services/PreviewService/utils/serverKeyUtils';
 import type { DeployState } from '../../../../core/ports/portRegistry';
 import {
   buildCleanHeaders,
   escapeRegExp,
   extractForwardingContext,
+  fetchWithTransportRetry,
+  forwardRequestAbort,
   forwardRequestBody,
   streamUpstreamResponse,
 } from './proxyForwarding';
+import { resolveDeployTarget } from './deployRouting';
 
 export interface DeployProxyDeps {
   /**
@@ -109,37 +111,13 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
       return;
     }
 
-    // Resolve which deploy package this URL belongs to.
-    const resolvePackagePort = (state: NonNullable<typeof deployState>): number | null => {
-      const pkgs = state.packages || [];
-      if (pkgs.length === 0) return null;
-      if (serviceName) {
-        // 5-part urlKey: exact slug match (input normalized for BC).
-        const wantedSlug = packageSlug(serviceName);
-        const match = pkgs.find((p) => p.slug === wantedSlug);
-        return match?.port ?? null;
-      }
-      // 4-part urlKey: only valid for single-package deploys. Multi-package
-      // static servers each have a 5-part `basePath`, so a 4-part request
-      // would silently 404 at the upstream — return null here instead so
-      // the proxy renders a clear "not found" with a stable error shape.
-      if (pkgs.length > 1) {
-        logger.warn(
-          `[Deploy] 4-part urlKey '${urlKey}' rejected for multi-package deploy — caller must use 5-part`,
-          { component: 'DeployProxy' },
-        );
-        return null;
-      }
-      return pkgs[0]?.port ?? null;
-    };
-
     const tryProxy = async (state: NonNullable<typeof deployState>): Promise<void> => {
-      const targetPort = resolvePackagePort(state);
-      if (!targetPort) {
+      const target = resolveDeployTarget(state, serviceName, urlKey);
+      if (!target) {
         res.status(404).json({ error: 'Deploy package not found' });
         return;
       }
-      const targetHost = state.host || 'localhost';
+      const { targetHost, targetPort } = target;
       // Static server's basePath = `/deploy/${urlKey}`, so we re-prepend
       // `/deploy/<urlKey>` to req.url (which had `/deploy/` stripped by the
       // Express mount).
@@ -149,10 +127,14 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
       const upstreamHost = `${targetHost}:${targetPort}`;
 
       const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
-      const response = await fetch(targetUrl, {
+      // Transient transport errors (spawn race, brief socket reset) are
+      // absorbed here. Only after all retry attempts fail does control fall
+      // through to the outer catch's rehydrate path.
+      const response = await fetchWithTransportRetry(targetUrl, {
         method: req.method,
         headers,
         ...forwardRequestBody(req),
+        ...forwardRequestAbort(req),
       } as RequestInit);
 
       await streamUpstreamResponse(response, res, { basePath, upstreamHost });

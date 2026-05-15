@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { EventEmitter } from 'events';
 import type { Request, Response, NextFunction } from 'express';
 import { createDeployProxyMiddleware } from '../../src/periphery/adapters/http/middleware/deployProxy';
 
@@ -235,6 +236,115 @@ describe('deploy proxy — request forwarding', () => {
   });
 });
 
+describe('deploy proxy — transport retry', () => {
+  // Fake timers drain `fetchWithTransportRetry`'s exponential-backoff sleeps
+  // (250 + 500 + 1000 + 2000 + 2500 ms) without waiting in real time.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('retries a transient transport failure then forwards the upstream response', async () => {
+    let attempts = 0;
+    fetchSpy.mockImplementation((async () => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('fetch failed');
+      return new Response(null, { status: 204 });
+    }) as any);
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+    const res = mockRes();
+
+    const pending = middleware(mockReq({ url: `/${URL_KEY}/` }), res, mockNext());
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(attempts).toBe(2);
+    expect(res._ctx.statusCode).toBe(204);
+    // Single rehydrate at entry — no second ensureRunning (rehydrate path
+    // not triggered), no hibernated marker.
+    expect(deps.ensureRunning).toHaveBeenCalledTimes(1);
+    expect(deps.updateDeploy).not.toHaveBeenCalled();
+  });
+
+  it('falls through to rehydrate only after transport retries exhaust', async () => {
+    fetchSpy.mockImplementation((async () => {
+      throw new TypeError('ECONNREFUSED 127.0.0.1:30001');
+    }) as any);
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+    const res = mockRes();
+
+    const pending = middleware(mockReq({ url: `/${URL_KEY}/` }), res, mockNext());
+    await vi.runAllTimersAsync();
+    await pending;
+
+    // outer catch hit: hibernated marker, ensureRunning called twice (entry +
+    // rehydrate), eventually unavailable + 502.
+    expect(deps.updateDeploy).toHaveBeenCalledWith(
+      'org',
+      'user',
+      'proj',
+      'feat',
+      expect.objectContaining({ phase: 'hibernated' }),
+    );
+    expect(deps.ensureRunning).toHaveBeenCalledTimes(2);
+    expect(res._ctx.statusCode).toBe(502);
+  });
+
+  it('REGRESSION ANCHOR: passes upstream 5xx through verbatim without retry', async () => {
+    // Retrying 5xx would mask genuine upstream failures that the readiness
+    // probe and clients need to see. Anchor: transient transport retry must
+    // never widen to cover HTTP errors.
+    let calls = 0;
+    fetchSpy.mockImplementation((async () => {
+      calls += 1;
+      return new Response(null, { status: 500 });
+    }) as any);
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+    const res = mockRes();
+
+    const pending = middleware(mockReq({ url: `/${URL_KEY}/` }), res, mockNext());
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(calls).toBe(1);
+    expect(res._ctx.statusCode).toBe(500);
+    expect(deps.updateDeploy).not.toHaveBeenCalled();
+  });
+
+  it('does not retry non-transport errors (e.g. aborted)', async () => {
+    let calls = 0;
+    fetchSpy.mockImplementation((async () => {
+      calls += 1;
+      throw new Error('aborted');
+    }) as any);
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+    const res = mockRes();
+
+    const pending = middleware(mockReq({ url: `/${URL_KEY}/` }), res, mockNext());
+    await vi.runAllTimersAsync();
+    await pending;
+
+    // 1 fetch for the initial tryProxy + 1 fetch for the rehydrate retry —
+    // neither triggers withRetry's backoff because 'aborted' fails the
+    // transport-error predicate.
+    expect(calls).toBe(2);
+    expect(deps.updateDeploy).toHaveBeenCalledWith(
+      'org',
+      'user',
+      'proj',
+      'feat',
+      expect.objectContaining({ phase: 'hibernated' }),
+    );
+    expect(res._ctx.statusCode).toBe(502);
+  });
+});
+
 describe('deploy proxy — response rewriting', () => {
   it('rewrites Set-Cookie Path to be scoped under /deploy/<urlKey>', async () => {
     // Without this, an upstream cookie with Path=/ would apply to every
@@ -273,5 +383,43 @@ describe('deploy proxy — response rewriting', () => {
     await middleware(mockReq({ url: `/${URL_KEY}/login` }), res, mockNext());
 
     expect(res._ctx.headers['location']).toBe(`/deploy/${URL_KEY}/home`);
+  });
+});
+
+describe('deploy proxy — client abort propagation (SSE)', () => {
+  // Real req object backed by EventEmitter so `req.once('close', ...)` fires.
+  // Plain-object mocks used elsewhere bypass the abort wiring via feature-detect.
+  function eventfulReq(): Request & EventEmitter {
+    const ee: any = new EventEmitter();
+    ee.method = 'GET';
+    ee.url = `/${URL_KEY}/api/sse`;
+    ee.path = ee.url;
+    ee.headers = { host: 'ant-preview.crosstoken.io' };
+    ee.protocol = 'https';
+    ee.ip = '203.0.113.7';
+    return ee;
+  }
+
+  it('passes an AbortSignal in the upstream fetch init', async () => {
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+
+    await middleware(eventfulReq(), mockRes(), mockNext());
+
+    expect(lastFetchInit?.signal).toBeInstanceOf(AbortSignal);
+    expect((lastFetchInit!.signal as AbortSignal).aborted).toBe(false);
+  });
+
+  it('aborts the signal when the client request emits close', async () => {
+    const deps = mockDeps({ packages: [{ name: 'web', slug: 'web', port: 30001 }] });
+    const middleware = createDeployProxyMiddleware(deps);
+
+    const req = eventfulReq();
+    await middleware(req, mockRes(), mockNext());
+    const signal = lastFetchInit!.signal as AbortSignal;
+
+    expect(signal.aborted).toBe(false);
+    req.emit('close');
+    expect(signal.aborted).toBe(true);
   });
 });
