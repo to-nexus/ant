@@ -25,6 +25,7 @@ import * as net from 'net';
 import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
+import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter } from '../../periphery/adapters/http/middleware/rateLimiter';
@@ -35,7 +36,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
 import { parsePreviewKey } from '../state/redisKeyUtils';
-import { toUrlKeyWithService, fromUrlKey, isUrlKey, parseUrlKey, packageSlug } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { toUrlKeyWithService, fromUrlKey, isUrlKey, packageSlug } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { setEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
@@ -279,7 +280,12 @@ export class PreviewServer {
 
     // 4b. Deploy proxy — serves deployed static builds via /deploy/:urlKey/*
     // No authentication required: serves user's built static files
-    this.app.use('/deploy/', this.createDeployProxyMiddleware());
+    this.app.use('/deploy/', createDeployProxyMiddleware({
+      ensureRunning: (t, u, p, f) => this.deployService.ensureRunning(t, u, p, f),
+      touchDeploy: (t, u, p, f) => this.stateStore.touchDeploy(t, u, p, f),
+      updateDeploy: (t, u, p, f, patch) => this.stateStore.updateDeploy(t, u, p, f, patch as any),
+      broadcastStatus: (t, u, p, f, status) => this.deployService.broadcastStatus(t, u, p, f, status as any),
+    }));
 
     // 5. Cookie parser (required for JWT cookie auth)
     this.app.use(cookieParser());
@@ -928,143 +934,6 @@ export class PreviewServer {
         message: 'Preview endpoint not found'
       });
     });
-  }
-
-  /**
-   * Create deploy proxy middleware.
-   *
-   * Routes `/deploy/:urlKey/*` to the static server for the matching package.
-   *
-   *   4-part urlKey  → single-package deploy. Routes to `state.packages[0]`.
-   *                    Back-compat with deploys produced before multi-package
-   *                    support — these always have exactly one package.
-   *   5-part urlKey  → multi-package deploy. The 5th segment is the package
-   *                    slug; routes to `state.packages.find(p => p.slug === slug)`.
-   *                    Slug match uses `packageSlug()` for input
-   *                    normalization, mirroring the preview proxy SSOT.
-   */
-  private createDeployProxyMiddleware() {
-    return async (req: Request, res: Response, next: NextFunction) => {
-      const pathAfterDeploy = req.path; // Already has /deploy/ stripped by app.use('/deploy/', ...)
-      const segments = pathAfterDeploy.split('/').filter(Boolean);
-      const urlKey = segments[0];
-
-      if (!urlKey || !isUrlKey(urlKey)) {
-        return next();
-      }
-
-      const parsed = parseUrlKey(urlKey);
-      if (!parsed) {
-        res.status(400).json({ error: 'Invalid deploy key format' });
-        return;
-      }
-
-      const { tenantId, userId, projectId, feature, serviceName } = parsed;
-
-      // Lazy re-hydration: if the static servers are dead (pod restart, idle
-      // eviction, crash), DeployService will re-spawn ALL of them from
-      // meta.json. Returns null when the deploy is truly unavailable.
-      let deployState = await this.deployService.ensureRunning(tenantId, userId, projectId, feature);
-      if (!deployState) {
-        res.status(404).json({ error: 'Deploy unavailable' });
-        return;
-      }
-
-      // Resolve which deploy package this URL belongs to.
-      const resolvePackagePort = (state: NonNullable<typeof deployState>): number | null => {
-        const pkgs = state.packages || [];
-        if (pkgs.length === 0) return null;
-        if (serviceName) {
-          // 5-part urlKey: exact slug match (input normalized for BC).
-          const wantedSlug = packageSlug(serviceName);
-          const match = pkgs.find(p => p.slug === wantedSlug);
-          return match?.port ?? null;
-        }
-        // 4-part urlKey: only valid for single-package deploys. Multi-package
-        // static servers each have a 5-part `basePath`, so a 4-part request
-        // would silently 404 at the upstream — return null here instead so
-        // the proxy renders a clear "not found" with a stable error shape.
-        if (pkgs.length > 1) {
-          logger.warn(`[Deploy] 4-part urlKey '${urlKey}' rejected for multi-package deploy — caller must use 5-part`, { component: 'PreviewServer' });
-          return null;
-        }
-        return pkgs[0]?.port ?? null;
-      };
-
-      const tryProxy = async (state: NonNullable<typeof deployState>): Promise<void> => {
-        const targetPort = resolvePackagePort(state);
-        if (!targetPort) {
-          res.status(404).json({ error: 'Deploy package not found' });
-          return;
-        }
-        const targetHost = state.host || 'localhost';
-        // Static server's basePath = `/deploy/${urlKey}`, so we always proxy
-        // the full original request path (prefix is part of the route).
-        const targetPath = `/deploy/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
-        const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
-
-        const response = await fetch(targetUrl, {
-          method: req.method,
-          headers: {
-            'host': `${targetHost}:${targetPort}`,
-            'accept': req.headers.accept || '*/*',
-          },
-        });
-
-        res.status(response.status);
-        response.headers.forEach((value: string, key: string) => {
-          const lower = key.toLowerCase();
-          if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
-          res.setHeader(key, value);
-        });
-
-        if (response.body) {
-          const { Readable } = await import('stream');
-          const nodeStream = Readable.fromWeb(response.body as any);
-          nodeStream.pipe(res);
-        } else {
-          res.end();
-        }
-
-        this.stateStore.touchDeploy(tenantId, userId, projectId, feature).catch(() => {});
-      };
-
-      try {
-        await tryProxy(deployState);
-      } catch (error: any) {
-        logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'PreviewServer' });
-
-        // Host/port stale (e.g. another pod's entry) — mark hibernated and
-        // attempt a single rehydrate retry on this pod.
-        try {
-          await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, { phase: 'hibernated' });
-        } catch { /* ignore */ }
-
-        try {
-          const retry = await this.deployService.ensureRunning(tenantId, userId, projectId, feature);
-          if (retry) {
-            try {
-              await tryProxy(retry);
-              return;
-            } catch (retryErr: any) {
-              logger.warn(`[Deploy] Proxy retry failed: ${retryErr.message}`, { component: 'PreviewServer' });
-            }
-          }
-        } catch { /* ignore */ }
-
-        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
-          phase: 'unavailable',
-          error: error.message,
-        }).catch(() => {});
-        await this.deployService.broadcastStatus(tenantId, userId, projectId, feature, {
-          phase: 'unavailable',
-          error: error.message,
-        });
-        logger.warn(`[Deploy] Marked unavailable: ${urlKey}`, { component: 'PreviewServer' });
-
-        res.status(502).json({ error: 'Deploy server unreachable' });
-      }
-    };
   }
 
   /**
