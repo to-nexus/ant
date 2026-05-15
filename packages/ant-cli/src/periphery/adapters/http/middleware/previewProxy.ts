@@ -16,10 +16,16 @@
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
-import { Readable } from 'stream';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey, packageSlug } from '../services/PreviewService/utils/serverKeyUtils';
+import {
+  buildCleanHeaders as sharedBuildCleanHeaders,
+  escapeRegExp as sharedEscapeRegExp,
+  extractForwardingContext,
+  forwardRequestBody,
+  streamUpstreamResponse,
+} from './proxyForwarding';
 
 const FAVICON_PATHS = new Set(['/favicon.ico', '/favicon.svg', '/favicon.png']);
 
@@ -30,9 +36,7 @@ const DEFAULT_FAVICON_SVG = Buffer.from(
   '</svg>'
 );
 
-function escapeRegExp(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const escapeRegExp = sharedEscapeRegExp;
 
 /**
  * Rewrite _next/image url param to include basePath.
@@ -71,27 +75,15 @@ export interface PreviewProxyConfig {
   }) => number | undefined | null | Promise<number | undefined | null>;
 }
 
-// Headers that must NOT be forwarded to upstream (hop-by-hop, HTTP/2 forbidden)
-const HOP_BY_HOP_HEADERS = new Set([
-  'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate',
-  'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
-  'if-none-match', 'if-modified-since'
-]);
-
 /**
- * Build clean headers from incoming request — strips hop-by-hop headers
- * and non-string values (arrays/undefined) that would break Node.js fetch.
+ * Build upstream headers — thin local wrapper that hands the heavy lifting
+ * to the shared helper. Preview historically did not inject X-Forwarded-*,
+ * but we now do (no breaking effect — upstream just gains awareness of the
+ * external host, which preview's Next.js dev servers can use for OAuth
+ * callback construction).
  */
 function buildCleanHeaders(req: Request, targetHost: string, targetPort: number): Record<string, string> {
-  const headers: Record<string, string> = {};
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase()) && typeof value === 'string') {
-      headers[key] = value;
-    }
-  }
-  headers['host'] = `${targetHost}:${targetPort}`;
-  headers['accept-encoding'] = 'identity';
-  return headers;
+  return sharedBuildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
 }
 
 /**
@@ -184,7 +176,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               const response = await fetch(targetUrl, {
                 method: req.method,
                 headers: cleanHeaders,
-              });
+                ...forwardRequestBody(req),
+              } as RequestInit);
 
               // Favicon fallback in Referer/Cookie routing path
               if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
@@ -195,20 +188,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 return;
               }
 
-              // Stream response
-              res.status(response.status);
-              response.headers.forEach((value: string, key: string) => {
-                const lower = key.toLowerCase();
-                if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
-                res.setHeader(key, value);
-              });
-
-              if (response.body) {
-                const nodeStream = Readable.fromWeb(response.body as any);
-                nodeStream.pipe(res);
-              } else {
-                res.end();
-              }
+              // Fallback path is a sub-resource (CSS url(), preview cookie
+              // recovery) — basePath rewriting isn't useful here, so pass
+              // through verbatim.
+              await streamUpstreamResponse(response, res);
               return;
             }
           } catch (error: any) {
@@ -370,9 +353,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       let lastError: Error | null = null;
       const maxRetries = 3;
       const retryDelay = 500; // ms
-      const method = (req.method || 'GET').toUpperCase();
-      const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
-      
+
       // Build clean headers — use actual previewHost (not localhost)
       const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
       
@@ -381,8 +362,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           response = await fetch(effectiveTargetUrl, {
             method: req.method,
             headers: cleanHeaders,
-            ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
-          });
+            ...forwardRequestBody(req),
+          } as RequestInit);
           break; // Success!
         } catch (error: any) {
           lastError = error;
@@ -392,11 +373,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
         }
       }
-      
+
       if (!response) {
         throw lastError || new Error('Failed to connect after retries');
       }
-      
+
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: 'PreviewProxy' });
 
@@ -411,34 +392,28 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         return;
       }
 
-      // Copy status and headers (strip hop-by-hop and caching headers)
-      res.status(response.status);
-      response.headers.forEach((value: string, key: string) => {
-        const lower = key.toLowerCase();
-        if (['etag', 'if-none-match', 'if-modified-since', 'last-modified'].includes(lower)) return;
-        if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
-        res.setHeader(key, value);
+      // Preview cookie scoped to /{urlKey} so CSS sub-resource requests (which
+      // arrive without the urlKey in their path) can recover routing via the
+      // cookie. HTML responses only — sub-resources don't need to re-stamp.
+      const extraSetCookies = contentType.includes('text/html')
+        ? [`__ant_preview_sk=${encodeURIComponent(internalKey)}; Path=/${urlKey}; SameSite=Lax`]
+        : undefined;
+
+      // For frontend traffic the externally-visible basePath equals `/${urlKey}`
+      // (and the upstream Next.js dev server is built with the matching
+      // `basePath`/`NEXT_PUBLIC_BASE_PATH`). Backend / strip-prefix routes
+      // (api, 5-part backend pkg) leave `basePath` undefined so Set-Cookie /
+      // Location pass through verbatim.
+      const upstreamBasePath = targetPath.startsWith(`/${urlKey}`)
+        ? `/${urlKey}`
+        : undefined;
+
+      await streamUpstreamResponse(response, res, {
+        basePath: upstreamBasePath,
+        upstreamHost: `${previewHost}:${targetPort}`,
+        cacheControl: 'no-cache, no-store, must-revalidate',
+        extraSetCookies,
       });
-      
-      res.setHeader('cache-control', 'no-cache, no-store, must-revalidate');
-      
-      // Set preview cookie so sub-resource requests can find the urlKey.
-      // Cookie path is scoped to /{urlKey} to prevent cross-project pollution.
-      if (contentType.includes('text/html')) {
-        res.setHeader('Set-Cookie', `__ant_preview_sk=${encodeURIComponent(internalKey)}; Path=/${urlKey}; SameSite=Lax`);
-      }
-      
-      // ✅ Stream response body directly — no buffering, no rewriting.
-      // This preserves Streaming SSR (React 18 Suspense) and avoids
-      // the overhead of reading the entire response into memory.
-      if (response.body) {
-        // Strip content-length since we might be in chunked mode
-        res.removeHeader('content-length');
-        const nodeStream = Readable.fromWeb(response.body as any);
-        nodeStream.pipe(res);
-      } else {
-        res.end();
-      }
     } catch (error: any) {
       // Log detailed error including cause for debugging
       logger.error(`Fetch error: ${error.message}`, { component: 'PreviewProxy' });
