@@ -107,7 +107,6 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'sessions/architect/debug/logs',     visibility: 'internal' },
   { path: 'sessions/architect/debug/tokens',   visibility: 'internal' },
   { path: 'sessions/architect/debug/figma',    visibility: 'internal' },
-  { path: 'sessions/architect/debug/image-fetch', visibility: 'internal' },
   { path: 'sessions/architect/runtime',        visibility: 'internal' },
   { path: 'sessions/architect/runtime/design', visibility: 'internal' },
   { path: 'sessions/architect/runtime/code',   visibility: 'internal' },
