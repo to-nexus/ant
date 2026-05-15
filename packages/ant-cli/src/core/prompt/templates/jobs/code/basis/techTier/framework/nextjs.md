@@ -11,7 +11,7 @@ Blind-spot reminders for pre-training gaps. Verify current behaviour via `search
 - Date / random / locale rendered directly (not gated by `useEffect`) → drift.
 - Both `app/` and `src/app/` present → only one resolves.
 - Server Component (no top-level `'use client'` directive) passing event handler or callback function props to children → `next build` fails at prerender with "Event handlers cannot be passed to Client Component props". Colocate the interactive subtree in its own `'use client'` file.
-- `<Image src="https://...">` without the host in `next.config.*` `images.remotePatterns` → client-hydration throw "hostname not configured"; build passes (validation is browser-only). Component and `next.config.*` MUST update together. For service-virtualization placeholders, see `service-virtualization-imagery` Rendering Contract — do NOT enumerate redirect-target hosts as a fix path.
+- `next/image` `<Image>` for raster — TEMPORARY policy until the ANT preview-server image pipeline is fixed: render every raster slot with plain `<img>` and do NOT add `images.remotePatterns` entries. `/_next/image` follows redirects then content-sniffs the body; unreliable in preview, and `remotePatterns` is downstream of the failure. Use native attributes for responsive/lazy (`loading="lazy"`, `srcset`, `sizes`, `width`/`height`). SVG handled by `_react-core`.
 - `process.env.X` in client code without the `NEXT_PUBLIC_` prefix → inlined as `undefined` in the browser bundle; no build or type error, feature just stops working. Prefix = client-visible; un-prefixed = server-only (prefixing a secret leaks it to the client).
 
 ## Version Notes
