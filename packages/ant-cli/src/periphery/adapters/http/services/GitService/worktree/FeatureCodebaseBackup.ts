@@ -3,9 +3,25 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 
+// Skip .git (worktree marker) and node_modules. node_modules is the
+// concrete ENOTEMPTY trigger on EFS/NFS: pnpm symlink farms with thousands
+// of entries race recursive rm. Other languages (Go, etc.) don't have an
+// equivalent in-tree giant — for any other big directory the maxRetries
+// option on fs.rm absorbs the transient EFS lag.
+const BACKUP_IGNORE = new Set(['.git', 'node_modules']);
+
+// `maxRetries`/`retryDelay` let Node retry rmdir on EFS/NFS eventual-consistency
+// lag (ENOTEMPTY/EBUSY/EPERM) instead of failing the whole publish.
+const RM_OPTS = {
+  recursive: true,
+  force: true,
+  maxRetries: 5,
+  retryDelay: 200,
+} as const;
+
 /**
  * FeatureCodebaseBackup
- * 
+ *
  * Reusable backup/restore utility for feature codebases.
  * Used during worktree creation to preserve existing code that would
  * otherwise be lost when the directory is replaced by a git worktree.
@@ -52,19 +68,19 @@ export class FeatureCodebaseBackup {
       if (!fs.existsSync(featureCodebasePath)) continue;
 
       const files = await fs.promises.readdir(featureCodebasePath);
-      const nonGitFiles = files.filter(f => f !== '.git');
-      if (nonGitFiles.length === 0) continue;
+      const backupItems = files.filter(f => !BACKUP_IGNORE.has(f));
+      if (backupItems.length === 0) continue;
 
       const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const backupPath = path.join(featurePath, '.codebase-backup');
 
       if (fs.existsSync(backupPath)) {
-        await fs.promises.rm(backupPath, { recursive: true, force: true });
+        await fs.promises.rm(backupPath, RM_OPTS);
       }
 
-      console.log(`[FeatureCodebaseBackup] Backing up ${featureName} (${nonGitFiles.length} items)`);
+      console.log(`[FeatureCodebaseBackup] Backing up ${featureName} (${backupItems.length} items)`);
       await fs.promises.mkdir(backupPath, { recursive: true });
-      for (const item of nonGitFiles) {
+      for (const item of backupItems) {
         await fs.promises.cp(
           path.join(featureCodebasePath, item),
           path.join(backupPath, item),
@@ -84,13 +100,15 @@ export class FeatureCodebaseBackup {
   async restoreToWorktree(backupPath: string, worktreePath: string): Promise<void> {
     const existingItems = await fs.promises.readdir(worktreePath);
     for (const item of existingItems) {
-      if (item === '.git') continue;
-      await fs.promises.rm(path.join(worktreePath, item), { recursive: true, force: true });
+      // Skip BACKUP_IGNORE entries so a leftover node_modules in the worktree
+      // is left in place instead of triggering another EFS rm race.
+      if (BACKUP_IGNORE.has(item)) continue;
+      await fs.promises.rm(path.join(worktreePath, item), RM_OPTS);
     }
 
     const backupItems = await fs.promises.readdir(backupPath);
     for (const item of backupItems) {
-      if (item === '.git') continue;
+      if (BACKUP_IGNORE.has(item)) continue;
       await fs.promises.cp(
         path.join(backupPath, item),
         path.join(worktreePath, item),
@@ -106,7 +124,7 @@ export class FeatureCodebaseBackup {
     for (const [featureName, backupPath] of featureBackups) {
       try {
         if (fs.existsSync(backupPath)) {
-          await fs.promises.rm(backupPath, { recursive: true, force: true });
+          await fs.promises.rm(backupPath, RM_OPTS);
         }
       } catch (error: any) {
         console.warn(`[FeatureCodebaseBackup] Failed to clean up backup for ${featureName}: ${error.message}`);
