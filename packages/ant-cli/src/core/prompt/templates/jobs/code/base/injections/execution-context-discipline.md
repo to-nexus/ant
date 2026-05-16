@@ -27,10 +27,10 @@
 
 When you create a module whose code only works in a specific runtime, **declare that requirement on the module itself**. The exact syntax is framework-conventional — see the techTier framework partial(s) for the active stack. General rules:
 
-- If a module references browser-only globals (`window`, `document`, `Audio`, `localStorage`, `IntersectionObserver`, `matchMedia`, `MediaSession`, …), it is **browser-runtime**.
-- If a module references node-only globals (`process`, `Buffer`, `fs`, `path` with FS access, `child_process`, …), it is **node-runtime**.
-- If a module touches platform-specific bindings (native FFI, WASM with browser globals, GPU adapters), it is **platform-restricted**.
-- If a module performs work at module-evaluation time (top-level `await` of a runtime resource, singleton-on-import that constructs a runtime-only object), it inherits its evaluator's runtime — declare accordingly.
+- If a module references browser-only globals (DOM, BOM, Web APIs that exist only in a browser), it is **browser-runtime**.
+- If a module references node-only globals (process control, filesystem, OS bindings), it is **node-runtime**.
+- If a module touches platform-specific bindings (native FFI, WASM with platform-only globals, GPU adapters), it is **platform-restricted**.
+- If a module performs work at module-evaluation time (top-level await of a runtime resource, singleton-on-import that constructs a runtime-only object), it inherits its evaluator's runtime — declare accordingly.
 
 **The default is "portable"** — if a module is genuinely runtime-agnostic, no declaration is needed.
 
@@ -45,7 +45,7 @@ When you wire modules into an entry point you own (root page, root layout, depen
 ### 3. Contract-first composition (every task that imports another's module)
 
 - Before importing a module from another task, look for its runtime declaration. If present, ensure your import site is compatible with that runtime.
-- If absent and the module's code touches runtime-specific APIs at evaluation time, assume **the narrowest runtime** the code implies (e.g., browser-only if `new Audio()` is in the import chain).
+- If absent and the module's code touches runtime-specific APIs at evaluation time, assume **the narrowest runtime** the code implies based on the API surface touched at module evaluation.
 - Never assume portability by default for infrastructure adapters, OS bindings, or hardware-touching code.
 
 ### Why this exists
