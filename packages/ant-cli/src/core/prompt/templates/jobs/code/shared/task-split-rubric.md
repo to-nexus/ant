@@ -18,14 +18,16 @@ Split when the work shows two or more independent units in the sense above AND a
 - **Scope boundary matters** — work materially outside the stated scope was surfaced; absorbing it would erode the deliverable boundary.
 - **Cognitive mode separation matters** — bundling would force the implementer to hold incompatible reasoning modes at once.
 
-### Do not split when the reason reduces to
+### Negative signals — never decisive alone
+
+The signals below cannot, on their own, conclude the splitting decision. Evaluate the "Split when" AND-OR criteria above first. A negative signal only rejects a split whose justification reduces ENTIRELY to it:
 
 - "many files",
 - "files in different places/packages/domains",
 - "the work feels large",
 - the change *pattern* is uniform across locations even if the *locations* are scattered.
 
-A coherent unit that touches many files belongs in one task/batch — splitting it risks pattern drift across siblings.
+A coherent unit that touches many files bundles into one task/batch ONLY when no "Split when" criterion holds. Pattern-drift risk applies to splits chosen against the criteria, not to splits the criteria mandate.
 
 ### Articulation
 
