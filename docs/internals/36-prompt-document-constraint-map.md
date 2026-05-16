@@ -72,6 +72,7 @@
   - techTier
   - intent
   - taskType
+  - band (FeatureTask sub-classification: `foundation` | `integration`; absent on non-feature types)
   - mode
   - role
   - artifact-presence (`hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources`, `uiSource`)

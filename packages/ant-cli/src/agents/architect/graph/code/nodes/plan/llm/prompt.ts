@@ -175,9 +175,15 @@ export async function buildPlanPrompt(
   const prePlanTextRaw = (task as CodeTask).prePlanText;
   const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
 
+  // FeatureTask sub-classification — surfaces the parent's `band` to the
+  // self plan LLM so band-conditional rules in `plan/rules.md` (entry-point
+  // ownership, integration-vs-foundation responsibilities) can dispatch
+  // correctly. Non-feature task types do not carry a band; the template
+  // defaults to the foundation/no-band branch in that case.
+  const taskBand = task.type === 'feature' ? (task as CodeTask).band : undefined;
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
-    directive: state.directive || '', taskType: task.type,
+    directive: state.directive || '', taskType: task.type, taskBand,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`
     // partial is included at the top of `plan/base.md`; this var is what
     // makes the gate evaluate against the user's detected language so
