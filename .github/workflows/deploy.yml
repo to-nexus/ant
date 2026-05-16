@@ -203,9 +203,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   # ===========================================
   # Dev environment - ant-cli deployment (main, dev, ci/* branches)
@@ -289,9 +306,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload mirrors the ant-ui job — see docs/infra/cloudfront-multi-origin-guide.md §9.
+        #   1. _next/static (content-hashed) immutable, no --delete so in-flight HTML keeps loading.
+        #   2. non-hashed root files (favicon, logo) short-cache + revalidate.
+        #   3. HTML last with no-cache; --delete on the HTML-only pass cleans up removed routes.
         run: |
-          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
+          aws s3 sync packages/ant-site/out/_next/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/_next/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "_next/*" --exclude "*.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --delete
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} \
+            --paths "/" "/*"
 
   # ===========================================
   # Dev environment - Deploy all when root package.json changes (main, dev, ci/* branches)
@@ -322,9 +356,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   auto-all-ant-cli-dev-deploy:
     needs: [detect-changes, test-ant-cli]
@@ -397,9 +448,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   # ===========================================
   # Stage branch - ant-cli deployment
@@ -444,9 +512,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload mirrors the ant-ui job — see docs/infra/cloudfront-multi-origin-guide.md §9.
+        #   1. _next/static (content-hashed) immutable, no --delete so in-flight HTML keeps loading.
+        #   2. non-hashed root files (favicon, logo) short-cache + revalidate.
+        #   3. HTML last with no-cache; --delete on the HTML-only pass cleans up removed routes.
         run: |
-          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
+          aws s3 sync packages/ant-site/out/_next/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/_next/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "_next/*" --exclude "*.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --delete
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} \
+            --paths "/" "/*"
 
   # ===========================================
   # Stage branch - ant-preview deployment
@@ -513,9 +598,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   auto-all-ant-cli-stage-deploy:
     needs: [detect-changes, test-ant-cli]
@@ -589,9 +691,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   # ===========================================
   # Manual deployment workflow - ant-site (dev, stage only)
@@ -622,9 +741,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload mirrors the ant-ui job — see docs/infra/cloudfront-multi-origin-guide.md §9.
+        #   1. _next/static (content-hashed) immutable, no --delete so in-flight HTML keeps loading.
+        #   2. non-hashed root files (favicon, logo) short-cache + revalidate.
+        #   3. HTML last with no-cache; --delete on the HTML-only pass cleans up removed routes.
         run: |
-          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
+          aws s3 sync packages/ant-site/out/_next/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/_next/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "_next/*" --exclude "*.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --delete
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} \
+            --paths "/" "/*"
 
   # ===========================================
   # Manual deployment workflow - ant-cli (dev, stage only)
@@ -712,9 +848,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload keeps in-flight clients alive across a deploy:
+        #   1. hashed assets immutable (no --delete, old hashes survive for already-loaded HTML)
+        #   2. non-hashed root files short-cache + revalidate
+        #   3. index.html last with no-cache so a fresh load always picks up the new hash refs
+        # Then invalidate only HTML + non-hashed root (hashed assets cache-bust by filename).
+        # See docs/infra/cloudfront-multi-origin-guide.md §9.
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+          aws s3 sync packages/ant-ui/dist/assets/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/assets/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 cp packages/ant-ui/dist/index.html s3://${{ vars.ANT_UI_S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} \
+            --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   release-deploy-ant-site:
     if: >
@@ -744,9 +897,26 @@ jobs:
           role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
+        # Three-stage upload mirrors the ant-ui job — see docs/infra/cloudfront-multi-origin-guide.md §9.
+        #   1. _next/static (content-hashed) immutable, no --delete so in-flight HTML keeps loading.
+        #   2. non-hashed root files (favicon, logo) short-cache + revalidate.
+        #   3. HTML last with no-cache; --delete on the HTML-only pass cleans up removed routes.
         run: |
-          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
-          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
+          aws s3 sync packages/ant-site/out/_next/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/_next/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "_next/*" --exclude "*.html" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --delete
+
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} \
+            --paths "/" "/*"
 
   release-deploy-ant-cli:
     if: >

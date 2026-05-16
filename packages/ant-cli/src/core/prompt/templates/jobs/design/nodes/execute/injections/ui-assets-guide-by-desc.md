@@ -1,34 +1,7 @@
 ## ui-assets.json Generation Guide (Description-driven)
 
 ### Purpose
-Create a JSON mapping document that connects source assets to their runtime destinations and usage contexts, derived from the directive and PRD.
-
-### ⚠️ CRITICAL: Scope & Path Consistency
-
-**🚨 READ YOUR TASK DESCRIPTION — generate only the asset categories it specifies!**
-
-#### For First Task (no existing document):
-1. **Define the canonical path pattern** in `_meta.pathPattern`
-2. **Generate only categories specified in YOUR task description**
-
-#### For Continuation Tasks (existing document):
-1. **Read the existing JSON structure** to see established patterns
-2. **MUST follow the exact same path patterns** — DO NOT create new subdirectories!
-3. **Skip any assets already documented** — check existing content
-4. **Generate only categories specified in YOUR task description**
-
-**❌ WRONG (Path Inconsistency):**
-```json
-// ch1 established: images → public/images/
-// ch2 uses different path structure — INCONSISTENT!
-"asset-new": { "dest": "public/images/subdir/new.png" }
-```
-
-**✅ CORRECT:**
-```json
-// ch1 established pattern, ch2 follows exactly:
-"asset-new": { "dest": "public/images/new.png" }
-```
+Emit a JSON catalog of the **logical** asset surface — what each asset is, how it should be rendered, and where it appears in the UI. Physical placement (which folder under the generated project) is decided by the code phase based on the target framework. Design phase MUST NOT commit to a destination path.
 
 ### Source-of-truth Priorities
 **When to reference PRD / directive**:
@@ -47,27 +20,17 @@ Create a JSON mapping document that connects source assets to their runtime dest
 - Document only files that exist (or clearly mark placeholder slots)
 - Preserve original filenames unless semantic clarity requires change
 
+#### 2. Logical Metadata Only — No Physical Paths
+- `dest` and `_meta.pathPattern` are NOT part of this schema. The design phase does not know the target framework's static-asset conventions; committing a path here would propagate a framework-blind decision downstream.
+- The code phase resolves placement per framework (e.g. Next.js → `public/assets/`, Vite with SVGR → `src/assets/`) based on `framework` and SVGR availability.
+
 ### JSON Structure
-
-**`dest` is determined by `format`:**
-
-| format | dest pattern | Why |
-|--------|-------------|-----|
-| `svg` | `src/assets/<category>/<file>` | Source tree — required for SVGR import (webpack processes source tree only) |
-| `png`, `jpg`, `webp` | `public/<category>/<file>` | Static serving via framework image component |
 
 ```json
 {
-  "_meta": {
-    "pathPattern": {
-      "<svg-category>": "src/assets/<svg-category>/",
-      "<raster-category>": "public/<raster-category>/"
-    }
-  },
   "<category>": {
     "<asset-id>": {
       "src": "assets/<source-path>",
-      "dest": "<see format-based rule above>",
       "format": "svg | png | jpg | webp",
       "themeAdaptation?": "currentColor | static | partial",
       "usage": "<where this asset appears in the UI>",
@@ -98,38 +61,31 @@ Create a JSON mapping document that connects source assets to their runtime dest
 - Explicit dimensions prevent invisible images (0x0 rendering bug)
 - Code Job can directly use these values in implementation
 
-**Note**: `_meta.pathPattern` ensures continuation chapters use the same destination paths.
-
 ### Example Output
 
 ```xml
 <file path="visual/ui/ant/ui-assets.json">
 {
-  "_meta": {
-    "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
-  },
   "icons": {
     "icon-id": {
       "src": "assets/...",
-      "dest": "src/assets/icons/...",
       "format": "svg",
       "themeAdaptation": "currentColor",
-      "usage": "Usage context"
+      "usage": "Usage context",
+      "rendering": { "method": "explicit", "width": 24, "height": 24 }
     }
   },
   "images": {
     "image-id": {
       "src": "assets/...",
-      "dest": "public/images/...",
       "format": "png",
-      "usage": "Usage context"
+      "usage": "Usage context",
+      "rendering": { "method": "fill", "containerSize": "300x200" }
     }
   }
 }
 </file>
 ```
-
-**Note**: Replace `YOUR_CATEGORY` with the actual category determined from the asset directory structure or directive. The system automatically merges new categories.
 
 ### 🎨 SVG Color Theming (CRITICAL for dark/light mode)
 
@@ -147,7 +103,6 @@ Create a JSON mapping document that connects source assets to their runtime dest
 {
   "icon-wallet": {
     "src": "assets/icons/wallet.svg",
-    "dest": "src/assets/icons/icon-wallet.svg",
     "format": "svg",
     "themeAdaptation": "currentColor",
     "rendering": { "method": "explicit", "width": 20, "height": 20 }
@@ -155,36 +110,18 @@ Create a JSON mapping document that connects source assets to their runtime dest
 }
 ```
 
-**⚠️ `<img>` tag cannot style SVG internals**: If `themeAdaptation` is `"currentColor"`, the asset MUST be rendered inline (React component, SVG sprite) — NOT via `<img src="...">`. Document the required rendering method accordingly.
+**⚠️ `<img>` tag cannot style SVG internals**: If `themeAdaptation` is `"currentColor"`, the asset MUST be rendered inline (React component, SVG sprite) — NOT via `<img src="...">`. Document the required rendering method accordingly; the code phase will then decide between inline rendering and URL reference per framework.
 
 ### Quality Criteria
 
 1. **Complete**: All assets present under `assets/` are documented; missing slots are noted as placeholders if the project needs them
-2. **Accurate**: Paths are correct and verified with `list_assets`
+2. **Accurate**: `src` paths are correct and verified with `list_assets`
 3. **Valid JSON**: Proper JSON syntax
-4. **Consistent**: Same destination path patterns throughout
+4. **Framework-agnostic**: No physical paths, no `dest`, no `_meta.pathPattern` — those belong to the code phase
 5. **Contextual**: Usage context is clear
 
 ### Workflow
 
 1. `list_assets` → Discover all available asset files
 2. Cross-reference the directive / PRD to confirm naming, categories, and per-asset purpose
-3. Generate ui-assets.json with complete mapping structure
-
-{{#if pathPattern}}
-════════════════════════════════════════════════════════════════════════════════
-📁 **PATH_PATTERN - ESTABLISHED IN CHAPTER 1 (MUST FOLLOW!)**
-════════════════════════════════════════════════════════════════════════════════
-
-**ch1 established these destination path patterns:**
-`{{pathPattern}}`
-
-**⚠️ CRITICAL: You MUST use these EXACT paths for new assets!**
-
-Example — if ch1 used `icons → src/assets/icons/`, `images → public/images/`:
-- ✅ CORRECT: Follow the same path pattern exactly (SVG → src/assets/, raster → public/)
-- ❌ WRONG: Create new subdirectories not established in ch1
-
-**DO NOT create new subdirectories or change the path structure!**
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
+3. Generate ui-assets.json with logical metadata only — no placement decisions

@@ -18,7 +18,7 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import type { CodeTask } from "../../../../types/task";
-import type { BaseTask } from "@ant/shared";
+import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { formatViolations } from "../../utils/violationFormatter";
@@ -204,6 +204,56 @@ export function buildMaxTokensResumeHint(
  *   are read from disk and rendered as `Modify Targets — Current Content`
  *   so `edit_file` calls can be constructed without a prior `read_file`.
  */
+
+/**
+ * Framework-aware static-asset destination guidance.
+ *
+ * The design phase (`ui-assets-guide-*.md`) no longer commits to a
+ * physical destination — that decision is gated on the `framework` axis
+ * which only the code phase observes. This helper centralizes the rule
+ * so prompt text stays consistent with whatever the actual generated
+ * project will static-serve.
+ *
+ * Defaults assume SVGR is NOT pre-configured (the common case for
+ * `setup-nextjs` task output). When a project explicitly wires
+ * `@svgr/webpack`, the LLM is free to import SVGs from `src/assets/` —
+ * the `note` field surfaces that option without making it the default.
+ */
+function describeAssetDestinations(framework: string | undefined): {
+  svg: string;
+  raster: string;
+  svgInstruction: string;
+  rasterInstruction: string;
+  note: string | null;
+} {
+  const fw = (framework ?? '').toLowerCase();
+  if (fw === 'nextjs' || fw === 'next' || fw === 'next.js') {
+    return {
+      svg: `codebase/public/assets/<category>/ (URL-referenced, e.g. <img src="/assets/.../foo.svg" />)`,
+      raster: `codebase/public/assets/<category>/ (URL-referenced via <img> or next/image)`,
+      svgInstruction: `copy to codebase/public/assets/ and reference by URL string`,
+      rasterInstruction: `copy to codebase/public/assets/ and reference by URL string`,
+      note: `Next.js serves only /public/* statically — placing SVG under src/assets/ will 404 unless @svgr/webpack is configured AND the SVG is imported (not URL-referenced). If themeAdaptation === "currentColor", consider rendering inline (React component) instead of via <img>.`,
+    };
+  }
+  if (fw === 'vite' || fw === 'cra' || fw === 'create-react-app') {
+    return {
+      svg: `codebase/src/assets/<category>/ (SVGR import — bundler processes source tree)`,
+      raster: `codebase/public/ (URL reference via framework image component)`,
+      svgInstruction: `copy to codebase/src/assets/ and import as React component (SVGR)`,
+      rasterInstruction: `copy to codebase/public/ and use framework image component`,
+      note: null,
+    };
+  }
+  return {
+    svg: `codebase/src/assets/ or codebase/public/ — pick per the framework's static-serving convention`,
+    raster: `codebase/public/ (URL reference) — or the framework's equivalent static folder`,
+    svgInstruction: `place under the framework's static-asset root (URL-referenced) or under src/assets/ if the bundler supports source-tree imports`,
+    rasterInstruction: `place under the framework's static-asset root and reference by URL`,
+    note: `Framework "${framework ?? 'unknown'}" not explicitly recognized — choose paths per its static-serving convention; do NOT assume src/assets/ is web-accessible.`,
+  };
+}
+
 export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
   content: MessageContentBlock[];
@@ -384,6 +434,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       } : null,
+      // SBS gate variable consumed by entry-point-ownership-rule and
+      // execution-context-discipline partials. Mirrors plan/llm/prompt.ts:183 —
+      // only feature tasks carry a band; other types resolve to undefined and
+      // fall through to the non-integration branch. Exposing this here is
+      // required so the band-conditional ownership partial renders the same
+      // SSOT at execute time as at plan time.
+      taskBand: state.currentTask?.type === 'feature'
+        ? (state.currentTask as FeatureTask).band
+        : undefined,
       // R1 template dispatch — the final-verification guard in templates
       // (previously `{{#unless (eq currentTask.priority 1000)}}`) now reads
       // `currentTaskIsFinal` so the verification bundle's classify is the
@@ -892,18 +951,32 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
   // ✅ Runtime assets reminder (text-only, small)
   if (state.runtimeAssetsIndex?.count && state.runtimeAssetsIndex.count > 0) {
     const idx = state.runtimeAssetsIndex;
+    // Framework-aware destination guidance. Physical placement is a
+    // `framework` gate concern (SBS) — the design phase no longer commits
+    // `dest` paths (see ui-assets-guide-*.md), so the code phase derives
+    // them here from the effective tech tier. Old guidance hardcoded
+    // `src/assets/` for SVGs assuming SVGR + webpack, which silently
+    // 404s under Next.js's `/public/*`-only static serving.
+    const taskTechTiers = state.currentTask?.techTiers
+      ?? (getTechTier(state) ? [getTechTier(state)!] : []);
+    const framework = effectiveTechTier(taskTechTiers).framework;
+    const dest = describeAssetDestinations(framework);
+
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(`📦 Available Assets (assets/)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(`Check if this task needs any assets from the list below.`);
-    lines.push(`If needed: SVG (.svg) → copy to codebase/src/assets/ and import as React component (SVGR).`);
-    lines.push(`Raster (png, jpg, webp) → copy to codebase/public/ and use framework image component.`);
+    lines.push(`If needed: SVG (.svg) → ${dest.svgInstruction}`);
+    lines.push(`Raster (png, jpg, webp) → ${dest.rasterInstruction}`);
     lines.push(``);
     if (state.context?.featurePath) {
       lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
     }
-    lines.push(`SVG destination: codebase/src/assets/ (SVGR import — webpack processes source tree only)`);
-    lines.push(`Raster destination: codebase/public/ (URL reference via framework image component)`);
+    lines.push(`SVG destination: ${dest.svg}`);
+    lines.push(`Raster destination: ${dest.raster}`);
+    if (dest.note) {
+      lines.push(`Note: ${dest.note}`);
+    }
     lines.push(``);
     lines.push(`Available files (${idx.count} total):`);
     idx.files.slice(0, 20).forEach((f) => lines.push(`  - ${f}`));

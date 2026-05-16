@@ -1,6 +1,7 @@
 {{!--
   Short-form band-conditional reminder of entry-point ownership, used in
-  bulleted lists (Final Checklist and Output Constraints in plan/rules.md).
+  bulleted lists (Final Checklist and Output Constraints in plan/rules.md,
+  and any equivalent execute-node call sites).
 
   Same SSOT as the sibling `entry-point-ownership-rule` partial — that one
   carries the full prose. This partial emits a single-line body (no list

@@ -159,10 +159,16 @@ Your plan MUST only include work that belongs to YOUR task's scope.
 If a remaining task's description already covers a responsibility,
 that work belongs to THAT task — not yours.
 
-{{> jobs/code/nodes/plan/injections/entry-point-ownership-rule}}
-
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
+
+{{!--
+  Ownership rule is rendered unconditionally below (rules.md:227). The
+  Remaining Tasks block above contextualizes scope when sibling work is
+  visible, but ownership boundaries apply even when remainingTasks is
+  empty (e.g., the integration task running last) — so we do not gate
+  the partial on `hasRemainingTasks`.
+--}}
 
 {{#if directive}}
 ## Original Directive (Ground Truth)
