@@ -47,6 +47,24 @@ interface PlanEntryFlags {
 }
 
 export async function resolvePlanEntry(state: ArchitectGraphState): Promise<PlanEntryResult> {
+  // Channel snapshot — every input to the Tier-2 reverify gate plus adjacent
+  // signals, so a regression like cool-mossing-jewel (2026-05-16) can be
+  // diagnosed from a single log line without re-instrumenting.
+  console.log('[PlanEntry] Channel snapshot:', {
+    hasTask: !!state.currentTask,
+    taskId: state.currentTask?.id,
+    taskType: state.currentTask?.type,
+    selfVerifyOnDone: (state.currentTask as { selfVerifyOnDone?: boolean } | undefined)?.selfVerifyOnDone,
+    requiresVerification: !!state.currentTask && requiresVerification(state.currentTask),
+    isVerificationTask: !!state.currentTask && isVerificationTask(state.currentTask),
+    _activePhase: state._activePhase,
+    llmResponseDone: state.llmResponse?.done,
+    planTextLen: state.planText?.length ?? 0,
+    _verifyEntered: state._verifyEntered,
+    _nextPlanEntry: state._nextPlanEntry,
+    nodePlanMsgs: state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0,
+  });
+
   const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
   const entryReason = inToolLoop ? undefined : state._nextPlanEntry;
   if (!inToolLoop) state._nextPlanEntry = undefined;
@@ -71,13 +89,38 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
   // note). Tier-3/4 verification tasks intentionally fall through to
   // handleFreshTaskEntry — they reset NODE_PLAN every cycle by design and
   // own their own _verifyEntered delta from that path.
+  //
+  // ★ Phase guard uses `_activePhase !== 'plan'` (not `=== 'execute'`) so
+  // that an accidental `undefined` commit on the channel cannot suppress
+  // reverify dispatch. The tool-loop reentry (`_activePhase === 'plan' &&
+  // currentTask`) is already absorbed at line 50, so anything reaching this
+  // point came from outside the plan tool-loop — i.e. the executeRouter
+  // `done:true` arm. Regression: cool-mossing-jewel (2026-05-16) fell into
+  // handleFreshTaskEntry from here, clearing NODE_PLAN and re-prompting
+  // with the apply-mode error template — symptoms matched a phase-channel
+  // leak the strict equality could not survive.
+  const condHasTask = !!state.currentTask;
+  const condRequiresVerify = condHasTask && requiresVerification(state.currentTask!);
+  const condNotVerifyTask = condHasTask && !isVerificationTask(state.currentTask!);
+  const condPhaseNotPlan = state._activePhase !== 'plan';
+  const condDone = state.llmResponse?.done === true;
+  const condPlanText = !!state.planText?.trim();
   const isTier2ReverifyEntry =
-    !!state.currentTask &&
-    requiresVerification(state.currentTask) &&
-    !isVerificationTask(state.currentTask) &&
-    state._activePhase === 'execute' &&
-    state.llmResponse?.done === true &&
-    !!state.planText?.trim();
+    condHasTask &&
+    condRequiresVerify &&
+    condNotVerifyTask &&
+    condPhaseNotPlan &&
+    condDone &&
+    condPlanText;
+  console.log('[PlanEntry] Tier2Reverify gate breakdown:', {
+    condHasTask,
+    condRequiresVerify,
+    condNotVerifyTask,
+    condPhaseNotPlan,
+    condDone,
+    condPlanText,
+    decision: isTier2ReverifyEntry ? 'reverify' : 'fresh',
+  });
   if (isTier2ReverifyEntry) {
     return await handleReverifyEntry(state, flags);
   }

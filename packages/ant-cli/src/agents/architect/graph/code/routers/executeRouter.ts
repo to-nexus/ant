@@ -54,6 +54,12 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   const isFinalTask = isVerifyModeActive(state) || isVerificationTaskType;
   const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
 
+  // Mirror the channel signals the plan node will read on re-entry. Required
+  // to triangulate Tier-2 reverify gate failures (cool-mossing-jewel
+  // regression, 2026-05-16): a mismatch between values here and the
+  // `[PlanEntry] Channel snapshot` line proves the channel was clobbered
+  // between router exit and plan entry.
+  const selfVerifyOnDone = (currentTask as { selfVerifyOnDone?: boolean } | undefined)?.selfVerifyOnDone;
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [executeRouter] Current Task Info:`);
   console.log(`   Task: ${currentTask?.name || 'none'}`);
@@ -63,6 +69,10 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   console.log(`   isErrorTask: ${isCurrentErrorTask}`);
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
+  console.log(`   _activePhase: ${state._activePhase}`);
+  console.log(`   _verifyEntered: ${state._verifyEntered}`);
+  console.log(`   selfVerifyOnDone: ${selfVerifyOnDone}`);
+  console.log(`   planTextLen: ${state.planText?.length ?? 0}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   
   // Safety Net A: Check recursion limit for final task
