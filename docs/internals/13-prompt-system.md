@@ -302,7 +302,7 @@ templates/basis/
 | 용도 | pre-training 갭 환기 (blind-spot reminder) |
 | 금지 | API 레퍼런스·튜토리얼·일반 best practice 등재 |
 | 파일명 | 허용 집합 고정. 집합 외 값은 주입 skip — fallback 금지 |
-| 토큰 예산 | 파일당 ≤ 400 토큰, 섹션당 항목 ≤ 4 |
+| 길이 정책 | 정량 cap 없음. FPOP/SBS/MECE 준수가 primary gate — bloat 회귀는 PR 리뷰가 잡는다. 과거 600-token cap 은 cargo-culted heuristic 으로 SBS-mandated 구체성을 FPOP-위반 압축으로 몰아넣어 제거됨 |
 | 형식 | SBS + FPOP — gate(framework / language) 축의 specifics(버전·API·툴체인 이름)는 의무, gate 무관한 프로젝트 코드 나열은 금지. Hints 계층은 SBS의 canonical 적용 사례 — `framework=X` gate 가 닫혔을 때 `<X>.md` 의 모든 문장이 잉여여야 정상 |
 | 증거 의무 | 항목 추가/변경 PR은 실증 job의 chat/log JSON 경로를 커밋 메시지에 기재 |
 | 유지보수 | 메이저 릴리즈 시에만 업데이트 |
@@ -335,7 +335,7 @@ Next.js는 React를 반드시 쓰지만 SSR 컨텍스트라 CSR 전용 룰(번�
 
 basis 섹션은 `PromptBuilder.buildBasisSection` → `pushBasisTemplate` → `promptPort.render(path, {})` 경로로 조립된다. `render` 는 Handlebars 컴파일러를 거치므로 `{{> name}}` 파싱/확장이 동작한다. 빈 변수 맵(`{}`)을 넘겨도 basis 파일은 `{{variable}}` 바인딩이 없는 정적 markdown이라 missing-var 경고가 나지 않는다.
 
-토큰 예산 측정도 partial 확장 후 합쳐진 텍스트 기준 — `tests/techtier-hint-budget.test.ts` 가 `expandPartials()`로 재귀 치환한 뒤 ≤ 600 토큰을 검증한다.
+`tests/techtier-hint-budget.test.ts` 는 구조 + MECE invariant 만 검증한다: 허용 파일명, 허용 H2 섹션·순서, partial 확장 결과의 React 코어 룰 occurrence 와 CSR-only 마커의 nextjs 차단. 정량 token cap 은 갖지 않는다 (위 길이 정책 참조).
 
 ### Code Job 허용 섹션 (순서·헤더 고정)
 
@@ -392,11 +392,12 @@ Hints 계층 파일(`jobs/code/basis/techTier/**.md`, `jobs/design/basis/techTie
 
 - [ ] 변경 사유가 되는 **실증 chat/log 경로**가 커밋 메시지에 기재되어 있는가?
 - [ ] 추가된 항목이 현 모델이 **이미 알고 있는 일반 지식**이 아닌, **pre-training 갭 / blind-spot**인가?
-- [ ] 파일당 토큰 예산(≤ 400)을 충족하는가? (`tests/techtier-hint-budget.test.ts` 통과)
+- [ ] **FPOP** 준수: 구체 import 예시·스니펫 나열·how-to 튜토리얼 문체·"You MUST" 훈계가 없는가? 제약은 중립적으로 명시되었는가?
+- [ ] **SBS** 준수: gate(framework/language) 축의 버전·API·툴체인 이름이 명시되어 있고 (gate 정보 payload 충족), gate 무관한 specifics 가 섞이지 않았는가?
 - [ ] 허용 섹션 4개 (`Forbidden Patterns` / `Symptom → Upstream Cues` / `Version Notes` / `Toolchain Compatibility`)만 사용했는가?
 - [ ] 파일명이 허용 집합에 속하는가? (집합 외 이름은 주입 skip됨 — fallback 없음)
 - [ ] partial-only 파일은 `_` prefix를 따랐는가? 직접 주입 framework 이름과 충돌하지 않는가?
-- [ ] partial 포함 관계가 MECE한가? — 같은 룰이 두 파일에 중복 등장하지 않고(M), framework별 합쳐진 결과에 누락이 없는가(E)
+- [ ] **MECE** 준수: partial 포함 관계가 MECE한가 — 같은 룰이 두 파일에 중복 등장하지 않고(M), framework별 합쳐진 결과에 누락이 없는가(E)
 - [ ] AutoInjectionResolver 외 경로에서 같은 파일을 중복 주입하고 있지 않은가?
 
 ## 템플릿 렌더링
