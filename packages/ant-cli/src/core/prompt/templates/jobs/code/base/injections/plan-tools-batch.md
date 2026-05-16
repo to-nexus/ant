@@ -50,7 +50,7 @@ Do NOT use tools to explore publicly available, well-known packages. This includ
 
 **Constraint**: Once you have observed the APIs for the design-prescribed dependencies, produce `<plan>` in your NEXT response with the signatures inlined into the relevant `implementation.*` entries. Do NOT continue calling tools after the key APIs have been discovered.
 
-⚠️ **Blind spot**: Calling tools indefinitely without producing `<plan>`. The system enforces a round-trip limit; if you exceed it your exploration context is used to generate the plan automatically. Produce `<plan>` BEFORE hitting the limit.
+⚠️ **Blind spot**: Calling tools indefinitely without producing `<plan>`. This worker has {{remainingRecursionBudget}} node-execution rounds remaining before the system terminates the task. Partial-plan execute is recoverable; recursion-limit termination is not — produce `<plan>` while budget is still ample.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## Batch Execution
