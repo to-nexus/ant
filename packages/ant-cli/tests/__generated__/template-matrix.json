@@ -505,6 +505,24 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/entry-point-ownership-checklist": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/entry-point-ownership-rule": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/execution-context-discipline": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/game-art-source": {
     "sources": [
       "manifest"
@@ -975,18 +993,6 @@
     ]
   },
   "jobs/code/nodes/plan/injections/analysis-block": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/code/nodes/plan/injections/entry-point-ownership-checklist": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/code/nodes/plan/injections/entry-point-ownership-rule": {
     "sources": [
       "partial-ref",
       "manifest"

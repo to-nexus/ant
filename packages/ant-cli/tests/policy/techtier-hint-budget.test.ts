@@ -1,18 +1,23 @@
 /**
- * Phase 5-23/25 — basis/techTier hint file budget + section-header linter.
+ * basis/techTier hint file structural + MECE invariants.
  *
- * Enforces §2.2 of the Phase 2 refactoring plan:
- *   - Each file under `jobs/code/basis/techTier/{framework,language}/`
- *     MUST NOT exceed the token budget. The plan's design target is
- *     ≤ 400 tokens; we enforce a ≤ 600-token hard ceiling using the
- *     OpenAI canonical estimator (`Math.ceil(chars / 4)`). See
- *     `docs/architecture/13-prompt-system.md "Hints 계층"` for the
- *     full rationale — the 600-token ceiling is the "no-bloat" gate
- *     (original `nextjs.md` was ~2000 tokens before this phase).
- *   - Each file may only use the four allowed section headers, in the
- *     prescribed order, and must not introduce other H2 headers.
- *   - Allowed filenames are pinned by the Hints-layer spec; any extra
- *     file on disk must appear in the allowed set.
+ * Active gates:
+ *   - Allowed filenames (pinned by the Hints-layer spec; injection skips
+ *     unknown names — fallback would risk wrong-path injection).
+ *   - Allowed H2 section headers, in the prescribed order. No other H2
+ *     headers may appear.
+ *   - MECE audit: React core rule lives in `_react-core` and reaches
+ *     every React-based framework file exactly once; CSR-only content
+ *     never bleeds into Next.js.
+ *
+ * What this file no longer enforces:
+ *   The earlier 600-raw / 1200-expanded token cap is removed. It was a
+ *   bloat-regression heuristic (originally 400, raised to 600 reactively)
+ *   that did not derive from an aggregate-prompt budget and that forced
+ *   FPOP-violating compression when SBS-mandated framework specifics
+ *   approached the ceiling. FPOP/SBS/MECE compliance is the primary
+ *   quality gate (see `docs/internals/13-prompt-system.md` 비 FPOP / 비
+ *   SBS 금지 목록); bloat regression is a PR-review concern.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -32,33 +37,6 @@ const ALLOWED_SECTIONS = [
   '## Toolchain Compatibility',
 ];
 
-/**
- * Token budget ceilings.
- *
- * - `RAW_TOKEN_CEILING` = 600: per-file cap on the markdown as authored.
- *   400 is the design target; 600 is the hard ceiling that still prevents
- *   the original ~2000-token bloat era.
- * - `EXPANDED_TOKEN_CEILING` = 1200: cap after Handlebars partials expand.
- *   Composite files (e.g. `nextjs.md` = `_react-core` partial + Next.js
- *   body, `react.md` = `_react-core` + `_react-csr`) naturally exceed the
- *   raw ceiling because the rendered output is the sum of parts. 1200 is
- *   still well below the pre-refactor bloat baseline.
- */
-const RAW_TOKEN_CEILING = 600;
-const EXPANDED_TOKEN_CEILING = 1200;
-
-/**
- * Estimate token count for the file. Uses the OpenAI canonical
- * "1 token ≈ 4 characters of English" approximation.
- *
- * This is slightly optimistic for Korean/code-heavy content and slightly
- * pessimistic for pure prose — but stable and reproducible, and the
- * ceiling accounts for the uncertainty.
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
 function collectMd(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -68,9 +46,10 @@ function collectMd(dir: string): string[] {
 
 /**
  * Recursively expand Handlebars `{{> name}}` partial references against
- * the templates directory. Used so that the token budget gate reflects
- * what the LLM actually sees — `react.md` is a thin shell that pulls in
- * `_react-core` + `_react-csr`, and `nextjs.md` pulls in `_react-core`.
+ * the templates directory. Used by the MECE audit so its occurrence
+ * counts reflect what the LLM actually sees — `react.md` is a thin
+ * shell that pulls in `_react-core` + `_react-csr`, and `nextjs.md`
+ * pulls in `_react-core`.
  *
  * Cycle-safe via the `visited` set.
  */
@@ -85,7 +64,7 @@ function expandPartials(text: string, visited = new Set<string>()): string {
   });
 }
 
-describe('basis/techTier hint files — budget', () => {
+describe('basis/techTier hint files — presence', () => {
   const files = [
     ...collectMd(join(BASIS_ROOT, 'framework')),
     ...collectMd(join(BASIS_ROOT, 'language')),
@@ -93,32 +72,6 @@ describe('basis/techTier hint files — budget', () => {
 
   it('at least one file is present', () => {
     expect(files.length).toBeGreaterThan(0);
-  });
-
-  // Raw file budget — prevents authored bloat in any single hint file,
-  // whether leaf (`_react-core`) or composite (`react.md` with partial
-  // references). The composite file's raw size is small because the
-  // body is just `{{> ...}}` references.
-  it.each(files.map(f => [f]))(`%s raw is ≤ ${RAW_TOKEN_CEILING} tokens`, (path) => {
-    const text = readFileSync(path, 'utf8');
-    const tokens = estimateTokens(text);
-    expect(
-      tokens,
-      `${path} raw ${tokens} tokens (chars/4); budget is ${RAW_TOKEN_CEILING}`,
-    ).toBeLessThanOrEqual(RAW_TOKEN_CEILING);
-  });
-
-  // Expanded budget — measures what the LLM actually sees after
-  // Handlebars partials are pulled in. Cap is higher than the raw cap
-  // because composite files legitimately grow by partial inclusion.
-  it.each(files.map(f => [f]))(`%s expanded is ≤ ${EXPANDED_TOKEN_CEILING} tokens`, (path) => {
-    const text = readFileSync(path, 'utf8');
-    const expanded = expandPartials(text);
-    const tokens = estimateTokens(expanded);
-    expect(
-      tokens,
-      `${path} expanded to ${tokens} tokens (chars/4); budget is ${EXPANDED_TOKEN_CEILING}`,
-    ).toBeLessThanOrEqual(EXPANDED_TOKEN_CEILING);
   });
 });
 
