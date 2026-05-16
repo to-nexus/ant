@@ -56,7 +56,9 @@
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],
     "analysis-block": ["analysis", "hasAnalysis"],
-    "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
+    "parent-pre-plan": ["prePlanText", "hasPrePlanText"],
+    "entry-point-ownership-rule": ["taskBand"],
+    "entry-point-ownership-checklist": ["taskBand"]
   },
   "jobs/code/nodes/plan/variants/verification/injections": {
     "contract-parity": []
