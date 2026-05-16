@@ -145,6 +145,14 @@ A `batches[]` entry **declares a slice**, it does NOT carry the slice's internal
 
 This responsibility split is what keeps the parent's output bounded. Restating the implementation per batch here doubles parent output (every byte appears verbatim in the child's `prePlanText`) and forces a 30K+ token round that risks mid-stream `max_tokens` truncation — the silent failure mode the system recovers from by re-running the same plan call from scratch, billing the cost twice.
 
+### Scope conservation across the split
+
+**Constraint**: The union of children's declared responsibilities MUST equal the parent's responsibilities. Every responsibility the parent owns is either (a) absorbed into a named child's `rationale`, or (b) carried by a dedicated child. Uncovered responsibilities are a schema violation — the parent's scope cannot shrink just because the split fanned out.
+
+**Constraint**: When the parent owns **cross-cutting responsibilities** (e.g. an integration/wiring task: framework root entries, route registries, dependency wiring, mandatory accompaniments of an adopted library/framework), at least one child's `rationale` MUST explicitly name those cross-cutting items. Zone-shaped or feature-shaped slices on their own do NOT cover cross-cutting work — that work is horizontal across the slices and falls into the gap unless explicitly placed.
+
+⚠️ **Blind spot**: When the natural split axis is by zone, package, or feature area, cross-cutting responsibilities (root entry boundary, framework-required entrypoints, library accompaniments) are EASILY left out of every child's `rationale` — each child sees its zone as the whole job. State the cross-cutting items in the `rationale` of the child that absorbs them (or emit a dedicated child for them); do not assume they will surface in any single zone-shaped slice on their own.
+
 ### How to emit `batches[]`
 
 The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principles above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
@@ -216,9 +224,7 @@ The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you
 
 **Constraint**: Create and modify ONLY files that belong to YOUR task's scope.
 
-- Do NOT modify shared entry points, routers, or wiring files that another task is responsible for
-- If your module needs to be registered in a shared integration point, the dedicated integration task will handle it
-- Within YOUR task scope, ensure modules you create are properly imported and used by other files you own
+{{> jobs/code/nodes/plan/injections/entry-point-ownership-rule}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚫 DUPLICATE PREVENTION
@@ -401,7 +407,7 @@ Before emitting `<plan>`, internally consider the observations below. These are 
 Before outputting, verify:
 
 - [ ] `<plan>` section contains valid JSON
-- [ ] All files belong to YOUR task scope (no shared entry points)
+- [ ] {{> jobs/code/nodes/plan/injections/entry-point-ownership-checklist}}
 - [ ] No duplicate modules (checked directory tree)
 - [ ] Cross-boundary deps use local interfaces, not full implementations
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
@@ -433,7 +439,7 @@ Before writing `<plan>`, internally cover:
 **Principle**: Valid JSON following the schema above.
 
 **Constraints**:
-- All created files MUST belong to your task's scope (no shared entry points)
+- {{> jobs/code/nodes/plan/injections/entry-point-ownership-checklist}}
 - `location` must be derived from observed directory patterns
 - `assets` must match EXACT paths from ui-assets.json
 - Do NOT invent assets not in ui-assets.json

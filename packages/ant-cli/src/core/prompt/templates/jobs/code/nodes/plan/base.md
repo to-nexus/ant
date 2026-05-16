@@ -125,6 +125,16 @@ from the summary.
 
 
 ────────────────────────────────────────────────────────────────────────────────
+## 🪪 Task Identity
+────────────────────────────────────────────────────────────────────────────────
+
+- **type**: `{{taskType}}`
+{{#if taskBand}}- **band**: `{{taskBand}}` (FeatureTask sub-classification — drives entry-point ownership and cross-cutting responsibilities below)
+{{/if}}
+
+**Constraint**: Rules later in this prompt branch on `type` and `band`. Read the identity above before applying any rule that names them. The wrong branch silently produces a plan that omits work this slice owns.
+
+────────────────────────────────────────────────────────────────────────────────
 
 ## Task (Starting Point)
 
@@ -149,10 +159,7 @@ Your plan MUST only include work that belongs to YOUR task's scope.
 If a remaining task's description already covers a responsibility,
 that work belongs to THAT task — not yours.
 
-Produce your own deliverables (modules, handlers, services, etc.)
-but do NOT register, wire, or integrate them into shared entry points
-or files that another task is responsible for. The responsible task
-will consume your outputs and perform the integration.
+{{> jobs/code/nodes/plan/injections/entry-point-ownership-rule}}
 
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
