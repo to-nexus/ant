@@ -288,7 +288,11 @@ const y = "</append>";    // Use: "</" + "append>"
 
 Existing files (any of the above checks hits): `edit_file` or `<append>`. New files only: `<file>`.
 
-**Constraint**: Only create/modify files within YOUR task's scope. Do NOT modify shared entry points or files that other tasks own.
+**Constraint**: Only create/modify files within YOUR task's scope.
+
+{{> jobs/code/base/injections/entry-point-ownership-rule}}
+
+{{> jobs/code/base/injections/execution-context-discipline}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. No Duplicates
@@ -358,7 +362,10 @@ Module Creation = File Created + Imported + REPLACES Inline Code
 **STEP 2: Import and use it** in other files YOU own in this task
 **STEP 3: Verify no duplicate code remains** within your files
 
-**⚠️ Scope constraint:** Only modify files within YOUR task's scope. If your module needs to be wired into a shared entry point (e.g., application router, main file), that is the integration task's responsibility — NOT yours.
+{{!-- Entry-point ownership boundary lives in the band-conditional partial
+     rendered at the top of this file (see `entry-point-ownership-rule`).
+     Do NOT restate the scope rule here — duplicating it is the MECE
+     violation that the partial exists to prevent. --}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ### ❌ TASK FAILURE Pattern (Duplicate Code)

@@ -142,13 +142,20 @@ CloudFront Distribution > Error Pages:
 
 이 설정은 `/app/*` SPA 라우트에 대한 폴백이다. 사용자가 `/app/some-route`를 직접 방문하면 S3에서 404가 발생하고, CloudFront가 `/app/index.html`을 반환하여 React Router가 클라이언트에서 처리한다.
 
-> **주의**: CloudFront Function (2.3)이 정상 동작하면 이 Custom Error Response는 백업용이다. 두 방식 모두 설정하는 것을 권장한다.
+> **⚠️ 위험: 자산 확장자 404 까지 catch 한다.** 이 Custom Error Response 는 distribution 전체에 적용되며 응답 코드를 가리지 않고 모든 403/404 를 `/app/index.html` (Content-Type: `text/html`) 로 rewrite 한다. 따라서 `/app/assets/index-{hash}.js` 같은 module script 가 S3 에서 404 일 때도 HTML 이 돌아와 브라우저는 `Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"` 로 흰 페이지가 된다. 배포 직후 stale-HTML / `--delete` 된 옛 hash 자산 조합으로 트리거된다 — §9 의 deploy cache strategy 가 이 race 를 원천 차단한다.
+>
+> **운영팀 결정용 옵션** (CloudFront 콘솔/Terraform 작업):
+>
+> - **Option A (권장)**: Custom Error Response 를 제거한다. §2.3 의 viewer-request function 이 이미 확장자 없는 `/app/*` 경로만 `/app/index.html` 로 rewrite 하므로 SPA 라우팅은 깨지지 않는다. 자산 404 는 그대로 404 로 노출되어 디버깅 가능 + 흰 페이지 차단.
+> - **Option B**: Custom Error Response 를 유지하되 viewer 또는 origin response function 에서 `request.uri.includes('.') || request.uri.startsWith('/app/assets/')` 인 경우 rewrite 를 skip 한다. 비-SPA fallback 보존이 필요한 경우만 선택. 복잡도가 더 크다.
+
+> **참고**: CloudFront Function (§2.3) 이 정상 동작하면 이 Custom Error Response 는 백업용일 뿐이다. Option A 로 가도 SPA 라우팅 회귀는 없다.
 
 ### 3.2 Site 404 처리
 
-Custom Error Response는 Distribution 전체에 적용되므로 Site 경로(`/pricing/typo` 등)에서 발생한 404도 `/app/index.html`로 리다이렉트된다. 이는 CloudFront Function (2.4)이 정상 동작할 때는 문제가 되지 않는다 — SSG 빌드 시점에 모든 페이지가 `index.html`로 출력되기 때문이다.
+Custom Error Response 는 Distribution 전체에 적용되므로 Site 경로(`/pricing/typo` 등) 에서 발생한 404 도 `/app/index.html` 로 리다이렉트된다 — Site 사용자가 갑자기 App 셸을 받는 셈이다. 현재는 §2.4 의 viewer-request function 이 모든 Site 라우트를 `index.html` 로 rewrite 해 S3 단에서 404 가 거의 안 나기 때문에 가시화되지 않는다.
 
-만약 Site 전용 404 페이지가 필요하다면, Next.js의 `not-found.tsx`를 활용하여 `404/index.html`을 빌드 출력하고, CloudFront Function (2.4)에서 S3 응답이 403/404일 때 `/404/index.html`로 리라이트하는 별도 Origin Response 함수를 추가해야 한다. 현재는 이 설정 없이도 정상 동작한다.
+§3.1 Option A 를 채택해 Custom Error Response 를 제거하면 Site 404 는 그대로 S3 의 기본 404 응답이 노출된다. Site 전용 404 페이지가 필요하다면 Next.js 의 `not-found.tsx` 로 `404/index.html` 을 빌드 출력하고, 별도 origin response function 에서 Site behavior 의 S3 403/404 만 `/404/index.html` 로 rewrite 하도록 분리한다 — App behavior 와 Site behavior 의 에러 처리가 섞이지 않게 하는 게 핵심이다.
 
 ---
 
@@ -298,3 +305,79 @@ aws s3 sync s3://ant-releases-${ENV}/downloads/desktop/${TAG}/ \
 aws cloudfront create-invalidation --distribution-id $CF_ID \
   --paths "/downloads/desktop/${TAG}/*" "/downloads/desktop/latest/*"
 ```
+
+---
+
+## 9. Deploy Cache Strategy (ant-ui / ant-site S3 sync)
+
+`.github/workflows/deploy.yml` 의 ant-ui / ant-site 배포 step 은 단일 `aws s3 sync --delete` 가 아니라 **파일 종류별 3-단계 sync + 분리 invalidation** 으로 구성된다. 같은 빌드를 보고 있던 in-flight 사용자가 배포 직후 옛 hash 자산을 요청해도 404 가 나지 않도록 보장하는 것이 핵심이다 — 이 race 가 바로 §3.1 의 Custom Error Response 와 결합해 흰 페이지(module-script MIME 에러) 를 유발했던 원인이다.
+
+### 9.1 파일 패턴 × Cache-Control
+
+| 패턴 | Cache-Control | 이유 |
+|------|---------------|------|
+| `/app/assets/*` (Vite content-hash) | `public, max-age=31536000, immutable` | 파일명에 hash 포함 → 내용 바뀌면 새 파일. 영구 캐시 안전. |
+| `/_next/static/*` (Next.js content-hash) | `public, max-age=31536000, immutable` | 동일 이유. |
+| `/app/{favicon,logo,...}.{png,svg,ico}` (비-해시) | `public, max-age=300, must-revalidate` | 파일명 고정 → immutable 위험. 5 분 캐시 후 revalidate. |
+| Site 루트 비-해시 정적 | `public, max-age=300, must-revalidate` | 동일. |
+| `/app/index.html`, `*/index.html` | `no-cache, no-store, must-revalidate` | 새 hash 참조의 진입점 — 항상 fresh 해야 새 자산을 가리킨다. |
+
+### 9.2 배포 4 단계 (ant-ui 예시)
+
+```bash
+# Stage 1: hashed assets, NO --delete (이전 hash 살아남아 in-flight HTML 보호)
+aws s3 sync packages/ant-ui/dist/assets/ s3://$BUCKET/app/assets/ \
+  --cache-control "public, max-age=31536000, immutable"
+
+# Stage 2: non-hashed root assets, short cache
+aws s3 sync packages/ant-ui/dist/ s3://$BUCKET/app/ \
+  --exclude "assets/*" --exclude "index.html" \
+  --cache-control "public, max-age=300, must-revalidate"
+
+# Stage 3: index.html LAST, no-cache (atomic single-file replace)
+aws s3 cp packages/ant-ui/dist/index.html s3://$BUCKET/app/index.html \
+  --cache-control "no-cache, no-store, must-revalidate"
+
+# Stage 4: invalidate HTML + non-hashed (hashed assets는 파일명으로 cache-bust)
+aws cloudfront create-invalidation --distribution-id $CF_ID \
+  --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
+```
+
+ant-site 도 동일 구조 (`out/_next/` → immutable, root 비-해시 → short, `*.html` → no-cache + `--delete`).
+
+### 9.3 핵심 불변식
+
+- **`--delete` 는 hashed 자산에 절대 적용하지 않는다.** in-flight 사용자가 옛 HTML 의 옛 hash 자산을 받아갈 수 있어야 한다.
+- **HTML 은 항상 마지막에 올라간다.** 새 HTML 이 가리키는 새 hash 자산이 S3 에 이미 존재함을 보장한다.
+- **invalidation 은 HTML 경로에만 건다.** 자산은 hash 기반 cache-bust → invalidation 불필요 + 비용 절감.
+
+### 9.4 S3 Lifecycle Rule (별도 인프라 작업)
+
+`--delete` 를 빼면 `/app/assets/` 와 `/_next/static/` 가 무한히 자란다. CloudFront 콘솔/Terraform 으로 다음 lifecycle rule 을 추가한다:
+
+| Bucket | Prefix | Action | Days |
+|--------|--------|--------|------|
+| `ant-ui-{env}` | `app/assets/` | Expiration | 30 |
+| `ant-site-{env}` | `_next/static/` | Expiration | 30 |
+
+30 일은 in-flight 사용자(브라우저에 옛 HTML 이 캐시된 채로 탭을 한참 열어둔 사용자) 가 옛 자산을 다 받아가고도 남는 grace period. `index.html` 의 `no-cache` 와 invalidation 으로 신규 트래픽은 항상 최신 hash 참조를 받으므로 30 일 이상 옛 자산을 보관할 이유가 없다.
+
+### 9.5 검증
+
+배포 후 헤더 확인:
+
+```bash
+aws s3api head-object --bucket $BUCKET --key app/index.html
+# expect: CacheControl: no-cache, no-store, must-revalidate
+
+aws s3api head-object --bucket $BUCKET --key app/assets/<some-hash-file>
+# expect: CacheControl: public, max-age=31536000, immutable
+
+aws s3api head-object --bucket $BUCKET --key app/favicon.png
+# expect: CacheControl: public, max-age=300, must-revalidate
+```
+
+CloudFront access log 회귀 신호:
+
+- `/app/assets/*.js` 응답에 `status=200 + content-type=text/html` 인 케이스 → §3.1 Option A 적용 전이라도 hash 자산이 살아 있으면 0 이어야 한다.
+- `/app/index.html` 의 edge cache-hit 비율 → `no-cache` 헤더 적용 후 의도적으로 매우 낮아야 정상.
