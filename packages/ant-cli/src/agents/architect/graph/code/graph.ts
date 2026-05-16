@@ -606,7 +606,18 @@ export const CodeGraphChannels = {
       llmResponse: Annotation<any>,
       toolResults: Annotation<any>,
       interruption: Annotation<any>,
-      _activePhase: Annotation<any>,
+      // `_activePhase` gates the Tier-2 reverify dispatch in
+      // `resolvePlanEntry`. Bare `Annotation<any>` defaults to last-write-wins
+      // and accepts `undefined` as a real write, so a stray spread or partial
+      // delta from any node could clobber the phase mid-flight and silently
+      // route apply→verify into `handleFreshTaskEntry`. The reducer below
+      // preserves the previous value on `undefined` writes, restricting
+      // mutation to explicit string commits (execute/plan/finalize).
+      // Regression: cool-mossing-jewel (2026-05-16).
+      _activePhase: Annotation<any>({
+        reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+        default: () => undefined,
+      }),
       _nextPlanEntry: Annotation<any>,
       _lastToolBatchMutatedFiles: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
