@@ -980,6 +980,18 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/plan/injections/entry-point-ownership-checklist": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/plan/injections/entry-point-ownership-rule": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/plan/injections/parent-pre-plan": {
     "sources": [
       "partial-ref",
