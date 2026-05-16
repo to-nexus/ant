@@ -224,7 +224,9 @@ The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you
 
 **Constraint**: Create and modify ONLY files that belong to YOUR task's scope.
 
-{{> jobs/code/nodes/plan/injections/entry-point-ownership-rule}}
+{{> jobs/code/base/injections/entry-point-ownership-rule}}
+
+{{> jobs/code/base/injections/execution-context-discipline}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚫 DUPLICATE PREVENTION
@@ -407,7 +409,7 @@ Before emitting `<plan>`, internally consider the observations below. These are 
 Before outputting, verify:
 
 - [ ] `<plan>` section contains valid JSON
-- [ ] {{> jobs/code/nodes/plan/injections/entry-point-ownership-checklist}}
+- [ ] {{> jobs/code/base/injections/entry-point-ownership-checklist}}
 - [ ] No duplicate modules (checked directory tree)
 - [ ] Cross-boundary deps use local interfaces, not full implementations
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
@@ -439,7 +441,7 @@ Before writing `<plan>`, internally cover:
 **Principle**: Valid JSON following the schema above.
 
 **Constraints**:
-- {{> jobs/code/nodes/plan/injections/entry-point-ownership-checklist}}
+- {{> jobs/code/base/injections/entry-point-ownership-checklist}}
 - `location` must be derived from observed directory patterns
 - `assets` must match EXACT paths from ui-assets.json
 - Do NOT invent assets not in ui-assets.json

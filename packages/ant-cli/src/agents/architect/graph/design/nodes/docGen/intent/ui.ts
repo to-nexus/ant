@@ -541,15 +541,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     }
   }
   
-  // ✅ NEW: Extract PATH_PATTERN for ui-assets continuation chapters
-  let pathPattern = '';
-  if (taskId.startsWith('ui-assets') && existingFileContent) {
-    pathPattern = extractPathPattern(existingFileContent);
-    if (pathPattern) {
-      console.log(`📄 [DocGen UI] Extracted PATH_PATTERN from existing ui-assets.json: ${pathPattern}`);
-    }
-  }
-  
   // Build sibling tasks summary for MECE awareness in parallel chapters
   const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = state._allTasksSummary || [];
   const siblingTasks = allTasks
@@ -565,7 +556,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     previousChaptersSummary,
     isLastTaskForDocument,
     forceAppend,
-    pathPattern,
     siblingTasks: siblingTasks || '',
     // Live anchor: last section identifier in the current target file, computed
     // this turn against disk state. Null when the file does not exist yet, is not
@@ -618,7 +608,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             detectedMode: injectedVariables.detectedMode,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             forceAppend: injectedVariables.forceAppend,
-            pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
             siblingTasks: injectedVariables.siblingTasks ? `[${injectedVariables.siblingTasks.length} chars]` : undefined,
             visualTierBasis: visualTierBasis ? `[${visualTierBasis.length} chars]` : undefined,
@@ -633,82 +622,3 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   return finalTemplate;
 }
 
-/**
- * Extract PATH_PATTERN metadata from existing ui-assets.json content
- * 
- * For JSON files: reads from _meta.pathPattern object
- * For MD files (legacy): parses HTML comment
- * 
- * This ensures ch2+ follows the same destination path patterns as ch1.
- */
-function extractPathPattern(content: string): string {
-  if (!content) return '';
-  
-  // Try to parse as JSON first (new format)
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed._meta?.pathPattern) {
-      // Convert object to string format: "logos=public/logos/, icons=public/icons/"
-      const patterns: string[] = [];
-      for (const [key, value] of Object.entries(parsed._meta.pathPattern)) {
-        patterns.push(`${key}=${value}`);
-      }
-      return patterns.join(', ');
-    }
-    
-    // Fallback: infer from actual asset destinations in JSON
-    const destinationPaths = new Set<string>();
-    for (const category of Object.values(parsed)) {
-      if (typeof category === 'object' && category !== null && !('lastSection' in category)) {
-        for (const asset of Object.values(category as Record<string, any>)) {
-          if (asset?.dest) {
-            const dirMatch = (asset.dest as string).match(/(public\/[\w-]+\/)/);
-            if (dirMatch) {
-              destinationPaths.add(dirMatch[1]);
-            }
-          }
-        }
-      }
-    }
-    
-    if (destinationPaths.size > 0) {
-      const patterns: string[] = [];
-      for (const p of destinationPaths) {
-        const dirName = p.replace(/^public\//, '').replace(/\/$/, '');
-        patterns.push(`${dirName}=${p}`);
-      }
-      return patterns.join(', ');
-    }
-  } catch {
-    // Not JSON, try legacy MD format
-  }
-  
-  // Legacy: Look for PATH_PATTERN metadata comment in MD
-  const pathPatternMatch = content.match(/<!-- PATH_PATTERN: (.+?) -->/);
-  if (pathPatternMatch) {
-    return pathPatternMatch[1];
-  }
-  
-  // Legacy fallback: Extract patterns from tables
-  const destinationPaths = new Set<string>();
-  const tableRowMatch = content.matchAll(/\|\s*[\w-]+\s*\|\s*[^|]+\s*\|\s*(public\/[\w/]+)/g);
-  
-  for (const match of tableRowMatch) {
-    const destPath = match[1];
-    const dirMatch = destPath.match(/(public\/[\w-]+\/)/);
-    if (dirMatch) {
-      destinationPaths.add(dirMatch[1]);
-    }
-  }
-  
-  if (destinationPaths.size > 0) {
-    const patterns: string[] = [];
-    for (const p of destinationPaths) {
-      const dirName = p.replace(/^public\//, '').replace(/\/$/, '');
-      patterns.push(`${dirName}=${p}`);
-    }
-    return patterns.join(', ');
-  }
-  
-  return '';
-}

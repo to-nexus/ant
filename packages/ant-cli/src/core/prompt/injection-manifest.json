@@ -41,7 +41,10 @@
     "service-virtualization-contract": [],
     "service-virtualization-data": [],
     "service-virtualization-imagery": [],
-    "response-language": ["userLanguage"]
+    "response-language": ["userLanguage"],
+    "entry-point-ownership-rule": ["taskBand"],
+    "entry-point-ownership-checklist": ["taskBand"],
+    "execution-context-discipline": []
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],
@@ -56,9 +59,7 @@
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],
     "analysis-block": ["analysis", "hasAnalysis"],
-    "parent-pre-plan": ["prePlanText", "hasPrePlanText"],
-    "entry-point-ownership-rule": ["taskBand"],
-    "entry-point-ownership-checklist": ["taskBand"]
+    "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
   },
   "jobs/code/nodes/plan/variants/verification/injections": {
     "contract-parity": []
