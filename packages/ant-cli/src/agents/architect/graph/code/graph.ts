@@ -199,6 +199,23 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         }
       },
       onCheckpoint: async (checkpoint) => {
+        // POISON GATE — Crash-recovery boundary (BullMQJobQueue / JobWorker
+        // stalled handlers) sets `ant:job-poisoned:{id}` before publishing the
+        // pause lifecycle event. If we keep writing the session here, a
+        // checkpoint queued during the SIGTERM grace can land AFTER
+        // cleanupJobState's projection and resurrect un-interrupted
+        // runningTasks. Skip the write — best-effort, missing redis client
+        // (local mode without ANT_REDIS_URL) means no poisoning to honor.
+        try {
+          if (state.deps?.redis && state.jobId) {
+            const poisoned = await state.deps.redis.exists(`ant:job-poisoned:${state.jobId}`);
+            if (poisoned === 1) {
+              console.log(`[ParallelOrchestrator] Checkpoint skipped — job poisoned: ${state.jobId}`);
+              return;
+            }
+          }
+        } catch { /* best-effort */ }
+
         // Merge failed tasks into taskQueue so full task definitions survive
         // process termination (user stop, kill, etc.). Without this, only
         // summary data (taskId/taskName/error) is persisted and the task

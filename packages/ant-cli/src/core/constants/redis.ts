@@ -44,8 +44,6 @@ export const REDIS_KEYS = {
   JOB: {
     /** Job status (running/completed/failed) - ant:job:status:{jobId} */
     STATUS: `${REDIS_DOMAINS.JOB}:status:`,
-    /** Job execution logs - ant:job:logs:{jobId} */
-    LOGS: `${REDIS_DOMAINS.JOB}:logs:`,
     /** Kanban task queue snapshot (live, from broadcasts) - ant:job:taskQueue:{jobId} */
     TASK_QUEUE: `${REDIS_DOMAINS.JOB}:taskQueue:`,
     /** Kanban task queue checkpoint (disaster recovery only) - ant:job:taskQueueCheckpoint:{jobId} */
@@ -258,7 +256,6 @@ export const REDIS_TTL = {
   /** Job-related TTLs */
   JOB: {
     STATUS: 24 * 60 * 60,        // 24 hours
-    LOGS: 7 * 24 * 60 * 60,      // 7 days
     TASK_QUEUE: 24 * 60 * 60,    // 24 hours
     MAPPING: 24 * 60 * 60,       // 24 hours
     USER_STOPPED: 60 * 60,       // 1 hour
