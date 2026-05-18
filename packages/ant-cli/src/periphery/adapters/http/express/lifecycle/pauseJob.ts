@@ -92,4 +92,9 @@ export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<
     completedAt: new Date().toISOString(),
     error: interruption.message,
   });
+
+  // Release the poison flag now that cleanup has projected the final state
+  // into the session file. The next resume cycle must let the orchestrator's
+  // onCheckpoint write again. Idempotent — already-released is a no-op.
+  await stateStore.releaseLock(`ant:job-poisoned:${jobId}`).catch(() => {});
 }

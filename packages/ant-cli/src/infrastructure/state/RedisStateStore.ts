@@ -21,7 +21,6 @@ import Redis from 'ioredis';
 import {
   StateStorePort,
   JobStatusData,
-  LogEntry,
   PortMapping,
   TurnBufferData,
   PendingCardSnapshot,
@@ -256,35 +255,6 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
-  // Job Logs Management
-  // ============================================
-
-  async appendJobLog(jobId: string, log: LogEntry): Promise<void> {
-    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
-    const logWithTimestamp = {
-      ...log,
-      timestamp: log.timestamp || new Date().toISOString()
-    };
-
-    await this.redis.rpush(key, JSON.stringify(logWithTimestamp));
-    await this.redis.expire(key, REDIS_TTL.JOB.LOGS);
-
-    // Publish for real-time streaming
-    await this.publish(`job:${jobId}:logs`, logWithTimestamp);
-  }
-
-  async getJobLogs(jobId: string): Promise<LogEntry[]> {
-    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
-    const logs = await this.redis.lrange(key, 0, -1);
-    return logs.map((l: string) => JSON.parse(l));
-  }
-
-  async clearJobLogs(jobId: string): Promise<void> {
-    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
-    await this.redis.del(key);
-  }
-
-  // ============================================
   // Task Queue Snapshot Management
   // ============================================
 
@@ -504,7 +474,6 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       const pipeline = this.redis.pipeline();
       for (const jobId of jobIdSet) {
         pipeline.del(this.key(REDIS_KEYS.JOB.STATUS, jobId));
-        pipeline.del(this.key(REDIS_KEYS.JOB.LOGS, jobId));
         pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId));
         pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT, jobId));
         pipeline.del(this.key(REDIS_KEYS.JOB.MAPPING, jobId));
@@ -1205,6 +1174,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async releaseLock(key: string): Promise<void> {
     await this.redis.del(key);
+  }
+
+  async exists(key: string): Promise<boolean> {
+    return (await this.redis.exists(key)) === 1;
   }
 
   // ============================================
