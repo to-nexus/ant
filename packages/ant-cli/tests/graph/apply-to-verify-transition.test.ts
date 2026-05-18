@@ -144,13 +144,16 @@ describe('apply→verify transition — Tier-2 self-verify (ultra-fusing-scone r
     expect(delta._verifyEntered).toBe(true);
     expect(state._verifyEntered).toBe(true);
 
-    // NODE_PLAN preserved (handleReverifyEntry path); NODE_EXECUTE cleared.
-    // Under the broken design, `handleFreshTaskEntry` ran instead and
-    // cleared NODE_PLAN, severing the apply-phase plan dialogue.
-    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toBeUndefined();
-    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    // NODE_PLAN and NODE_EXECUTE are BOTH preserved on reverify entry so
+    // `plan/index.ts` can spread them into the plan-LLM messages array
+    // (via compactRun) as conversation history. Plan-finalize later clears
+    // NODE_EXECUTE on its return to execute, so the next execute cycle still
+    // starts fresh. Under the original (cool-mossing-jewel) bug,
+    // `handleFreshTaskEntry` ran and cleared NODE_PLAN, severing the
+    // apply-phase plan dialogue.
+    expect(delta.conversations).toBeUndefined();
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
-    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toHaveLength(2);
   });
 
   it('subsequent reverify cycles are idempotent — re-entering with _verifyEntered already true still commits _verifyEntered:true', async () => {

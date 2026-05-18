@@ -43,6 +43,8 @@ import {
 } from '../../tasks/_shared/batchSplit';
 import { runPlanRAG } from './rag';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
+import { compactRun } from '../../../../../../core/context';
+import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 
 /**
  * Inline retry budget for `BatchSplitSchemaViolation` (see
@@ -128,7 +130,29 @@ async function runMainPlanLLM(
     const { blocks: contentBlocks, vars: hookLogVars } = await buildPlanPromptBlocks(
       state, nextTask, rag.codeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
     );
-    const messages = [{ role: 'user' as const, content: contentBlocks }];
+
+    // Reverify-entry conversation carry. `handleReverifyEntry` preserves
+    // NODE_PLAN and NODE_EXECUTE so the plan-LLM call here can spread them
+    // as conversation history and append the verify-mode prompt as the new
+    // user turn. Empty histories (Tier-3/4 first entry, fresh task entry,
+    // batch-split sub-task) fall through to the legacy single-message shape.
+    // `compactRun` runs the rule-based fact extraction + priority pruning
+    // pipeline (SSOT in `core/context`, also used by retentionPolicy and
+    // sessionWriter) so older tool_use/tool_result pairs get summarised into
+    // a single fact-extraction block while the hot tail stays verbatim.
+    const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
+    const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+    const carryHistory = [...nodePlan, ...nodeExecute];
+    let carryCompacted: Array<{ role: 'user' | 'assistant'; content: any }> = [];
+    if (carryHistory.length > 0) {
+      const tokenManager = new TokenBudgetManager();
+      const { result: compacted } = compactRun(carryHistory as any, tokenManager);
+      carryCompacted = compacted as any;
+    }
+    const messages = [
+      ...carryCompacted,
+      { role: 'user' as const, content: contentBlocks },
+    ];
     const result = await runPlanLLMWithTools(state, messages, nextTask, { extraLogVars: hookLogVars });
     if (result && '_activePhase' in result) {
       await workflowExit(state);
