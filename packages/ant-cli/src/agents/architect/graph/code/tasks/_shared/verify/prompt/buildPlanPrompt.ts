@@ -12,6 +12,7 @@
 
 import type { PlanPromptCtx, PlanPromptResult } from '../../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
+import { CONV_KEYS } from '../../../../../../../common/graph/conversations';
 import { formatCodeContext, mapLang } from '../../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
@@ -98,6 +99,17 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // root-cause them on the next plan cycle.
   const parityActive = state.virtualizationSnapshot?.hasBusinessConnection === true;
 
+  // Conversation history discipline gate. NODE_EXECUTE is carried into the
+  // plan-LLM messages array on reverify entries (see `plan/index.ts` Fix #1)
+  // so the verify-mode plan turn can see what the apply phase actually did.
+  // Those historical tool_use blocks reference execute-phase tools (e.g.
+  // run_command, file_create) that are NOT in the plan-LLM's current `tools`
+  // parameter. Surface a one-line constraint so the LLM treats them as
+  // historical-only and uses its current tools parameter as the SSOT for
+  // callable actions.
+  const hasPriorExecuteHistory =
+    (state.conversations?.[CONV_KEYS.NODE_EXECUTE]?.length ?? 0) > 0;
+
   const _verifySlot = state.resolvedAction?.intent
     ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
     : undefined;
@@ -143,6 +155,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // sub-tasks present).
     allowPersistentProcesses: hasUserRuntimeErrorContext,
     parityActive,
+    // Conversation History Discipline gate. True iff NODE_EXECUTE is being
+    // carried into messages on this reverify entry.
+    hasPriorExecuteHistory,
     // Tier 3 cross-task analysis brief (sealed by Decompose).
     analysis: state.analysis ?? '',
     hasAnalysis: !!state.analysis,
@@ -166,6 +181,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasUserRuntimeErrorContext,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
       parityActive,
+      hasPriorExecuteHistory,
     },
   };
 }

@@ -197,9 +197,15 @@ async function handleReverifyEntry(
   console.log(`\n🔄 [Plan] Post-execute verification entry: ${nextTask.name}\n`);
 
   // Tier 2 self-verify (apply→verify transition + subsequent reverify cycles).
-  // NODE_PLAN is preserved — the apply phase's plan dialogue stays visible to
-  // the LLM as part of the conversation history; the verify-mode template
-  // instructs it to plan afresh against gate output.
+  // NODE_PLAN, NODE_EXECUTE, and `violations` are all preserved here so the
+  // plan-LLM call in `plan/index.ts` can spread them (via `compactRun`) into
+  // its `messages` array — the apply-phase exploration + execution + any
+  // verify-gate findings become conversation history for the verify-mode
+  // plan turn. `plan-finalize` later clears NODE_EXECUTE on its return to
+  // execute, so the next execute cycle still starts with a fresh slate.
+  // `violations` is over-write semantics (last-write-wins; `checkTaskStatus`
+  // is the sole non-empty writer), so preserving it here does not
+  // accumulate stale entries across cycles.
   //
   // ★ Phase mode signal — sole SSOT writer for Tier-2 `_verifyEntered`. The
   // helper is idempotent (reducer is last-write-wins), so cycle 2+ entries
@@ -208,15 +214,8 @@ async function handleReverifyEntry(
   // `delta._verifyEntered` for the LangGraph reducer commit).
   state._verifyEntered = true;
   state._executeCallIndex = 0;
-  state.violations = [];
-  state.conversations = {
-    ...state.conversations,
-    [CONV_KEYS.NODE_EXECUTE]: [],
-  };
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
-    violations: [],
-    conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     _verifyEntered: true,
   };
 

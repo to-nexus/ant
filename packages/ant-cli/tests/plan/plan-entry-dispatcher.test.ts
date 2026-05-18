@@ -12,9 +12,13 @@
  *     cycles) flips `_verifyEntered=true` via `handleReverifyEntry`,
  *     detected from observable channel state (`_activePhase='execute'` +
  *     execute's `done` + non-empty `planText` + `requiresVerification &&
- *     !isVerificationTask`). NODE_PLAN preserved so the apply-phase plan
- *     dialogue remains visible to the verify-mode prompt; NODE_EXECUTE
- *     cleared per cycle.
+ *     !isVerificationTask`). NODE_PLAN, NODE_EXECUTE, and `violations` are
+ *     all preserved on this entry so `plan/index.ts` can spread them (via
+ *     `compactRun`) into the plan-LLM messages array — the apply-phase
+ *     exploration + execution + any verify-gate findings become conversation
+ *     history for the verify-mode plan turn. `plan-finalize` later clears
+ *     NODE_EXECUTE on its return to execute, so the next execute cycle
+ *     still starts fresh.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -192,11 +196,13 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(1);
   });
 
-  it('Tier-2 reverify entry preserves NODE_PLAN, clears NODE_EXECUTE, commits _verifyEntered:true (detected from observable channel state, no flag)', async () => {
-    // Apply-phase plan dialogue is preserved across the apply→verify
-    // boundary so the LLM sees what it tried in conversation history;
-    // only the per-cycle execute log is cleared. The boundary is
-    // detected from committed channel state (`_activePhase='execute'` +
+  it('Tier-2 reverify entry preserves NODE_PLAN, NODE_EXECUTE, and violations (for plan-LLM carry); commits _verifyEntered:true (detected from observable channel state, no flag)', async () => {
+    // Apply-phase plan dialogue AND execute log are both preserved across
+    // the apply→verify boundary so `plan/index.ts` can spread them (via
+    // `compactRun`) into the plan-LLM messages array as conversation
+    // history. `plan-finalize` clears NODE_EXECUTE later on its return to
+    // execute, so the next execute cycle still starts fresh. The boundary
+    // is detected from committed channel state (`_activePhase='execute'` +
     // execute's `done` + non-empty `planText` + `requiresVerification &&
     // !isVerificationTask`) — no transient flag is needed.
     const state = makeFreshVerificationState();
@@ -217,6 +223,7 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
     } as any;
     state.planText = 'apply-phase remediation plan body';
     state._verifyEntered = false;
+    state.violations = [{ type: 'build', message: 'tsc error' }] as any;
     state.conversations = {
       [CONV_KEYS.NODE_PLAN]: [
         { role: 'user', content: 'apply-phase plan round 1' },
@@ -229,10 +236,17 @@ describe('resolvePlanEntry — uniform retry path (verification + non-verificati
 
     const { delta } = await resolvePlanEntry(state);
 
-    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toBeUndefined();
-    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    // No conversation clears in the delta: both NODE_PLAN and NODE_EXECUTE
+    // are carried into the plan-LLM messages array by `plan/index.ts`.
+    expect(delta.conversations).toBeUndefined();
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
-    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toHaveLength(1);
+    // Violations preserved — `checkTaskStatus` is the sole non-empty writer
+    // (over-write semantics, last-write-wins reducer), so preserving here
+    // does not accumulate stale entries; the next verify cycle's gate will
+    // over-write with current findings.
+    expect(delta.violations).toBeUndefined();
+    expect(state.violations).toHaveLength(1);
     // Regression guard for job `ultra-fusing-scone`: handleReverifyEntry
     // MUST commit `_verifyEntered:true` in its delta (and mirror in body
     // mutation) so subsequent composeBundle dispatch routes through

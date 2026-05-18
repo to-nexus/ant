@@ -36,6 +36,12 @@ For verification, independent root causes are the natural units — they typical
 - A 0-error cycle MUST emit an empty plan (`{}` or no `<plan>` block) plus `<done>true</done>`. Do not fabricate a token plan to "stay safe".
 - Do not try to apply a fix yourself. There is no execute phase for this task — the system spawns one error sub-task per `batches[]` entry and re-queues this verification task to re-run gates after they finish.
 
+{{#if hasPriorExecuteHistory}}
+## Conversation History Discipline
+
+The conversation history below contains tool_use blocks from a prior execute phase. Tools callable in THIS turn are exclusively those defined in your `tools` parameter — historical tool names from prior phases are not currently available.
+{{/if}}
+
 {{#if hasSessionSummary}}
 ## Verification Cycle Status
 
