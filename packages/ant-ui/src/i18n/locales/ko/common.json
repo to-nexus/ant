@@ -81,14 +81,16 @@
   },
   "turnTokenGauge": {
     "context": "컨텍스트",
-    "input": "입력",
+    "input": "신규 입력",
+    "cacheRead": "캐시 히트",
+    "cacheCreation": "캐시 기록",
     "output": "출력",
     "main": "메인",
     "worker": "워커 {{n}}",
     "estimatingNote": "프롬프트 크기로 추정한 값 — 실제 사용량이 곧 반영됩니다",
     "moreAria": "게이지 {{count}}개 더",
     "moreTitle": "{{count}}개 더",
-    "ariaLabel": "컨텍스트 {{totalPct}}, 입력 {{input}}, 출력 {{output}}, 최대 {{max}}",
-    "ariaLabelWithTitle": "{{title}}, 컨텍스트 {{totalPct}}, 입력 {{input}}, 출력 {{output}}, 최대 {{max}}"
+    "ariaLabel": "컨텍스트 {{totalPct}}, 프롬프트 {{prompt}}, 최대 {{max}}",
+    "ariaLabelWithTitle": "{{title}}, 컨텍스트 {{totalPct}}, 프롬프트 {{prompt}}, 최대 {{max}}"
   }
 }
