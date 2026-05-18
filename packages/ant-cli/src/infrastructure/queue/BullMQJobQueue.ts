@@ -140,8 +140,10 @@ export class BullMQJobQueue implements JobQueuePort {
       const outputStatus = parsedResult?.output?.status
         || (interruption ? 'paused' : (outerFailed ? 'failed' : 'completed'));
       
-      // ✅ Log for debugging interruption propagation
-      console.log(`📋 [BullMQJobQueue] Job completed | jobId=${jobId} | returnvalueType=${typeof returnvalue} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`);
+      logger.info(
+        `Job completed | jobId=${jobId} | returnvalueType=${typeof returnvalue} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`,
+        { component: 'BullMQJobQueue' }
+      );
       
       const result: JobExecutionResult = {
         success: true,
