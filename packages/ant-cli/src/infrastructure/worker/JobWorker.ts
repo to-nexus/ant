@@ -18,6 +18,7 @@
 
 import { Worker, Job } from 'bullmq';
 import { spawn, ChildProcess } from 'child_process';
+import { monitorEventLoopDelay } from 'perf_hooks';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { StateStorePort } from '../../core/ports/stateStore';
@@ -75,6 +76,7 @@ export class JobWorker {
   private runningProcesses = new Map<string, ChildProcess>();
   private isShuttingDown = false;
   private options: JobWorkerOptions;
+  private eventLoopWatchdog: NodeJS.Timeout | null = null;
 
   constructor(options: JobWorkerOptions) {
     this.options = options;
@@ -263,9 +265,41 @@ export class JobWorker {
     // ✅ Subscribe to stop signals from API server via Redis Pub/Sub
     await this.subscribeToStopSignals();
 
+    // Process-wide event-loop watchdog. Surfaces shared-loop pauses (heavy
+    // sync work in any concurrent job, foreign sync block, GC) independent
+    // of per-job state. The previous incident (2026-05-18 two-job same-pod
+    // stall) had no per-job late-extension warning because the loop was
+    // blocked entirely; a process-level watchdog catches that case.
+    this.startEventLoopWatchdog();
+
     logger.info(`JobWorker started: queue=${queueName}, concurrency=${this.options.concurrency || DEFAULT_CONCURRENCY}`, {
       component: 'JobWorker'
     });
+  }
+
+  /**
+   * Process-wide event-loop lag monitor. Logs whenever the loop is delayed
+   * by more than 1 second — independent of any job. Critical for diagnosing
+   * the "two jobs stalled on same pod within 1 minute" failure mode where
+   * per-job lock-extension timers all stop firing at once.
+   */
+  private startEventLoopWatchdog(): void {
+    let lastTick = Date.now();
+    const TICK_INTERVAL = 500;
+    const LAG_THRESHOLD = 1000;
+    this.eventLoopWatchdog = setInterval(() => {
+      const now = Date.now();
+      const lag = now - lastTick - TICK_INTERVAL;
+      if (lag > LAG_THRESHOLD) {
+        const activeJobs = Array.from(this.runningProcesses.keys());
+        logger.warn(
+          `Event-loop lag ${lag}ms (active jobs: [${activeJobs.join(', ')}])`,
+          { component: 'JobWorker' }
+        );
+      }
+      lastTick = now;
+    }, TICK_INTERVAL);
+    this.eventLoopWatchdog.unref();
   }
 
   /**
@@ -382,7 +416,17 @@ export class JobWorker {
     // --- Timers: lock extension + cancellation polling ---
     // Both are cleaned up via cleanup() on child close/error.
     const timers: NodeJS.Timeout[] = [];
-    const cleanup = () => timers.forEach(t => clearInterval(t));
+    // Additional teardown callbacks registered after the child spawn (e.g.
+    // `loopMon.disable()`). Declared up-here so `cleanup` can be a single
+    // `const` referenced by both `setInterval` callbacks below and child
+    // event handlers further down — without rebinding.
+    const extraCleanups: Array<() => void> = [];
+    const cleanup = () => {
+      timers.forEach(t => clearInterval(t));
+      for (const fn of extraCleanups) {
+        try { fn(); } catch { /* idempotent */ }
+      }
+    };
 
     // --- Async setup (errors propagate normally to processJob catch) ---
 
@@ -497,9 +541,27 @@ export class JobWorker {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
+    // job-runner emits strictly newline-delimited UTF-8 (`RESULT:{json}` /
+    // `PROGRESS:{json}` / logger lines). Decoding at the stream layer drops
+    // the per-chunk `Buffer.toString()` from the hot path.
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+
     logger.info(`Child process spawned with PID: ${child.pid}`, { component: 'JobWorker', jobId });
 
     this.runningProcesses.set(jobId, child);
+
+    // --- Diagnostic counters (Change 5) ---
+    // Owned by spawnJobProcess so they survive the entire child lifecycle and
+    // are read both by the lock-extension late-warning and by the close-time
+    // RESULT-miss diagnostics. Captured by closure in handlers below.
+    const loopMon = monitorEventLoopDelay({ resolution: 50 });
+    loopMon.enable();
+    extraCleanups.push(() => loopMon.disable());
+    let lastExtensionSuccess = Date.now();
+    let peakPendingStdout = 0;
+    let linesProcessed = 0;
+    let droppedBytesTotal = 0;
 
     // --- Timer setup ---
 
@@ -531,11 +593,20 @@ export class JobWorker {
       // Starvation early-warning. If the timer is firing >25% late, the parent
       // event loop is being saturated (heavy IPC, sync ops blocking the loop).
       // Surface this BEFORE elapsed reaches LOCK_DURATION so we can correlate
-      // with the chat-broadcast volume that caused the drift, instead of only
-      // seeing the cliff after a stalled-event has already fired.
+      // with the actual saturation source. The 2026-05-18 incident's worker
+      // logs had NEITHER this warning NOR the "Lock extension failed" warning,
+      // meaning the timer stopped firing entirely — the new loop_p99/loop_max
+      // + lastSuccess fields below let the next stall distinguish "loop
+      // blocked" from "Redis hung against this pod".
       if (elapsed > LOCK_EXTENSION_INTERVAL * 1.25) {
+        const loopP99ms = Math.round(loopMon.percentile(99) / 1e6);
+        const loopMaxMs = Math.round(loopMon.max / 1e6);
+        const msSinceLastSuccess = now - lastExtensionSuccess;
         logger.warn(
-          `Lock-extension timer late by ${elapsed - LOCK_EXTENSION_INTERVAL}ms (interval=${LOCK_EXTENSION_INTERVAL}ms): ${jobId}`,
+          `Lock-extension timer late by ${elapsed - LOCK_EXTENSION_INTERVAL}ms (interval=${LOCK_EXTENSION_INTERVAL}ms, ` +
+          `loop_p99=${loopP99ms}ms, loop_max=${loopMaxMs}ms, peakPendingStdout=${peakPendingStdout}, ` +
+          `linesProcessed=${linesProcessed}, droppedStdoutBytes=${droppedBytesTotal}, ` +
+          `msSinceLastExtendSuccess=${msSinceLastSuccess}): ${jobId}`,
           { component: 'JobWorker', jobId }
         );
       }
@@ -545,6 +616,11 @@ export class JobWorker {
       try {
         await job.extendLock(job.token!, LOCK_DURATION);
         consecutiveLockFailures = 0;
+        lastExtensionSuccess = Date.now();
+        // Reset histogram so the NEXT cycle's percentiles reflect only the
+        // window since the last successful extend — keeps the late-warning
+        // diagnostic correlated with the cycle that triggered it.
+        try { loopMon.reset(); } catch { /* histogram disabled — race in cleanup */ }
       } catch (error: any) {
         consecutiveLockFailures++;
         logger.warn(
@@ -583,71 +659,237 @@ export class JobWorker {
 
     // --- Child lifecycle (event-based — wrapped in Promise) ---
     return new Promise<{ success: boolean; error?: string; output?: any }>((resolve, reject) => {
-      // Line-buffered parser. `child.stdout.on('data', …)` is chunk-based (no
-      // newline guarantee), so RESULT lines that straddle chunk boundaries
-      // would slip past a chunk-local regex. We accumulate the trailing
-      // partial line in `pending*` and process only completed lines.
+      // Line-buffered parser. `child.stdout.on('data', …)` is chunk-based
+      // (no newline guarantee), so RESULT lines that straddle chunk
+      // boundaries would slip past a chunk-local regex. We accumulate the
+      // trailing partial line in `pending*` and process only completed lines.
+      //
+      // Pathological-line guard (Change 1, 2026-05-18 RCA). Without a cap,
+      // a single very-long line with no newline (giant tool dump, LLM probe
+      // blob, jest progress with carriage-returns) makes `pendingStdout +=`
+      // grow indefinitely while `lastIndexOf('\n')` re-scans the entire
+      // buffer per chunk, forcing V8 cons-string flattening and inducing
+      // multi-second GC pauses on the parent's event loop.
+      //
+      // 10 MB cap leaves ~300× headroom over the documented RESULT JSON
+      // size ("28k+ chars" per job-runner.ts). On overflow, drop bytes
+      // until the next newline rather than synthesizing a truncated
+      // "line" — a synthesized prefix that begins with `RESULT:` would
+      // feed garbage to `JSON.parse` and silently lose the real RESULT.
+      const PENDING_STDOUT_HARD_CAP = 10 * 1024 * 1024;
       let pendingStdout = '';
       let pendingStderr = '';
+      let pendingStdoutOverflowed = false;
+      let droppedBytesThisOverflow = 0;
 
-      // RESULT is a single line (`RESULT:{...}\n`). Capture into one variable
-      // instead of accumulating all stdout — RESULT-sized memory only.
+      // RESULT is a single line (`RESULT:{...}\n`). Capture into one
+      // variable instead of accumulating all stdout — RESULT-sized memory
+      // only.
       let resultLine: string | null = null;
 
-      // 64KB tail ring for fallback diagnostics when RESULT regex doesn't
-      // match. Bounded; child output volume no longer drives heap growth.
+      // 64 KB tail ring for fallback diagnostics when RESULT regex doesn't
+      // match. O(1) eviction (Change 3): advance `tailHead` rather than
+      // `Array.shift()`; rebuild via slice only when head crosses the
+      // midpoint. The original `shift()` loop was O(M²) for chunks that
+      // pushed many small lines past the cap.
       const STDOUT_TAIL_MAX = 64 * 1024;
-      const stdoutTail: string[] = [];
-      let stdoutTailBytes = 0;
+      const tailRing: string[] = [];
+      let tailHead = 0;
+      let tailBytes = 0;
       const pushStdoutTail = (s: string) => {
-        stdoutTail.push(s);
-        stdoutTailBytes += s.length;
-        while (stdoutTailBytes > STDOUT_TAIL_MAX && stdoutTail.length > 1) {
-          stdoutTailBytes -= stdoutTail.shift()!.length;
+        tailRing.push(s);
+        tailBytes += s.length;
+        while (tailBytes > STDOUT_TAIL_MAX && tailRing.length - tailHead > 1) {
+          tailBytes -= tailRing[tailHead].length;
+          // Null out so V8 can reclaim the string immediately rather than
+          // waiting for the periodic splice rebuild.
+          tailRing[tailHead] = '';
+          tailHead++;
         }
+        // Amortized rebuild: when more than half the ring is dead slots,
+        // compact in one O(N) splice. Keeps per-push cost O(1).
+        if (tailHead > tailRing.length / 2) {
+          tailRing.splice(0, tailHead);
+          tailHead = 0;
+        }
+      };
+      const readTail = (): string => {
+        let out = '';
+        for (let i = tailHead; i < tailRing.length; i++) out += tailRing[i];
+        return out;
       };
 
       // stderr stays accumulated — terminal-failure debugging surface. 1MB
-      // hard cap is a safety net against runaway stderr loops; normal stderr
-      // is KB-scale.
+      // hard cap is a safety net against runaway stderr loops; normal
+      // stderr is KB-scale.
       const STDERR_HARD_CAP = 1 * 1024 * 1024;
       let stderr = '';
       let stderrTruncated = false;
 
-      const processStdoutLine = (line: string) => {
-        pushStdoutTail(line + '\n');
+      // --- Line processing + batched console.log (Change 2) ---
+      //
+      // The previous handler did N synchronous `console.log` calls per
+      // stdout chunk (one per line). For a chunk carrying thousands of
+      // lines (e.g. concurrent parallel-orchestrator progress, jest output
+      // surfacing through a tool wrapper) this monopolized the event loop
+      // long enough to starve the lock-extension `setInterval` callback —
+      // the documented 2026-05-18 same-pod-same-minute double stall.
+      //
+      // We now (a) parse RESULT/PROGRESS per-line (cheap), (b) emit ONE
+      // `console.log` per slice with `[job-runner:${jobId}] ` re-prefixed
+      // on each line via `join`, and (c) pump the line queue with
+      // `setImmediate` so a 50 000-line burst gives the event loop a
+      // chance to service the lock-extension timer between slices.
+      //
+      // `setImmediate` is required (not `queueMicrotask` / `nextTick`):
+      // those run inside the current phase and never yield to the Timers
+      // phase where `setInterval` lock-extension fires. `setImmediate`
+      // queues into the next iteration's Check phase, so the loop
+      // completes a full revolution before the next pump iteration.
+      //
+      // A single shared `lineQueue` (not per-chunk closures) preserves
+      // console.log ordering across chunks — if chunk B arrives while
+      // chunk A is still pumping, B's lines append to the same queue
+      // and emit AFTER A's remaining slices.
+      const YIELD_LINE_THRESHOLD = 200;
+      const STDOUT_PREFIX = `[job-runner:${jobId}] `;
+      const lineQueue: string[] = [];
+      let pumping = false;
 
+      const processStdoutLineNoLog = (line: string) => {
+        pushStdoutTail(line + '\n');
         if (line.startsWith('RESULT:')) {
           resultLine = line.substring('RESULT:'.length);
         }
-
-        console.log(`[job-runner:${jobId}] ${line}`);
-
         if (line.startsWith('PROGRESS:')) {
           try {
             const progressJson = line.substring('PROGRESS:'.length).trim();
             const progress = JSON.parse(progressJson);
             // Fire-and-forget — `updateProgress` is BullMQ progress metrics;
-            // awaiting on the hot path is what was starving the lock-extension
-            // timer and producing the worker_stalled state.
+            // awaiting on the hot path is what was starving the lock-
+            // extension timer and producing the worker_stalled state.
             job.updateProgress(progress).catch(() => { /* ignore */ });
           } catch { /* ignore parse errors */ }
         }
       };
 
-      child.stdout?.on('data', (data: Buffer) => {
-        pendingStdout += data.toString();
+      const handleSlice = (lines: string[]) => {
+        if (lines.length === 0) return;
+        // Single console.log per slice. `join` re-prefixes every line so
+        // CloudWatch full-text search against `[job-runner:${jobId}]`
+        // continues to match each individual line.
+        console.log(STDOUT_PREFIX + lines.join('\n' + STDOUT_PREFIX));
+        for (let i = 0; i < lines.length; i++) processStdoutLineNoLog(lines[i]);
+        linesProcessed += lines.length;
+      };
+
+      const pump = () => {
+        const slice = lineQueue.splice(0, YIELD_LINE_THRESHOLD);
+        if (slice.length === 0) {
+          pumping = false;
+          return;
+        }
+        handleSlice(slice);
+        if (lineQueue.length > 0) {
+          setImmediate(pump);
+        } else {
+          pumping = false;
+        }
+      };
+
+      const drainQueueSync = () => {
+        // Used by `close` to ensure RESULT (queued just before exit) is
+        // parsed before we resolve. Synchronous — we're already terminal.
+        while (lineQueue.length > 0) {
+          handleSlice(lineQueue.splice(0, YIELD_LINE_THRESHOLD));
+        }
+      };
+
+      // Helper: log + reset the overflow-drop counter when a newline ends
+      // the dropped span. Centralized so both the overflow-recovery and the
+      // same-chunk-newline branches stay consistent.
+      const recordOverflowDrop = () => {
+        droppedBytesTotal += droppedBytesThisOverflow;
+        logger.warn(
+          `Dropped ${droppedBytesThisOverflow}B of stdout (line > ${PENDING_STDOUT_HARD_CAP}B cap): ${jobId}`,
+          { component: 'JobWorker', jobId }
+        );
+        droppedBytesThisOverflow = 0;
+        pendingStdoutOverflowed = false;
+      };
+
+      child.stdout?.on('data', (chunk: string) => {
+        // === Phase 1: handle overflow recovery if needed ===
+        // Loop because a chunk could complete an overflow AND immediately
+        // start another overflow if the remainder after newline is itself
+        // huge (defensive — pipe chunks are normally <= 64 KB so this is
+        // mostly theoretical).
+        let cursor = 0;
+        if (pendingStdoutOverflowed) {
+          const nlIdx = chunk.indexOf('\n', cursor);
+          if (nlIdx === -1) {
+            droppedBytesThisOverflow += chunk.length - cursor;
+            return;
+          }
+          droppedBytesThisOverflow += nlIdx - cursor;
+          recordOverflowDrop();
+          cursor = nlIdx + 1;
+        }
+
+        // === Phase 2: append remaining chunk into pendingStdout with cap ===
+        const remaining = cursor === 0 ? chunk : chunk.substring(cursor);
+        if (pendingStdout.length + remaining.length > PENDING_STDOUT_HARD_CAP) {
+          // The combined size would exceed the cap. The partial line that
+          // pendingStdout represents has no newline (by invariant), so the
+          // overflow boundary is somewhere inside `remaining`. Find the
+          // first newline in `remaining`; everything before it gets
+          // dropped, everything after it starts a fresh accumulation.
+          const origPendingLength = pendingStdout.length;
+          pendingStdout = '';
+          pendingStdoutOverflowed = true;
+          const nlIdx = remaining.indexOf('\n');
+          if (nlIdx !== -1) {
+            droppedBytesThisOverflow = origPendingLength + nlIdx;
+            recordOverflowDrop();
+            // Defensive: if the post-newline remainder is itself >cap,
+            // re-enter overflow. Pipe chunks are normally <= 64 KB so
+            // this is unreachable in practice — keeps the invariant
+            // ("pendingStdout never exceeds cap") airtight regardless.
+            const postNewline = remaining.substring(nlIdx + 1);
+            if (postNewline.length > PENDING_STDOUT_HARD_CAP) {
+              pendingStdoutOverflowed = true;
+              droppedBytesThisOverflow = postNewline.length;
+              return;
+            }
+            pendingStdout = postNewline;
+          } else {
+            droppedBytesThisOverflow = origPendingLength + remaining.length;
+            return;
+          }
+        } else {
+          pendingStdout += remaining;
+        }
+
+        // === Phase 3: extract completed lines, queue them, kick pump ===
+        if (pendingStdout.length > peakPendingStdout) {
+          peakPendingStdout = pendingStdout.length;
+        }
+
         const newlineIdx = pendingStdout.lastIndexOf('\n');
-        if (newlineIdx === -1) return; // No complete line yet — wait for next chunk.
+        if (newlineIdx === -1) return; // No complete line yet.
+
         const completed = pendingStdout.substring(0, newlineIdx);
         pendingStdout = pendingStdout.substring(newlineIdx + 1);
         const lines = completed.split('\n');
-        for (const line of lines) processStdoutLine(line);
+
+        for (let i = 0; i < lines.length; i++) lineQueue.push(lines[i]);
+        if (!pumping) {
+          pumping = true;
+          setImmediate(pump);
+        }
       });
 
-      child.stderr?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-
+      child.stderr?.on('data', (chunk: string) => {
         if (!stderrTruncated) {
           if (stderr.length + chunk.length <= STDERR_HARD_CAP) {
             stderr += chunk;
@@ -670,8 +912,16 @@ export class JobWorker {
       });
 
       child.on('close', (code: number | null) => {
-        // Flush trailing partial lines (child can exit without final newline).
-        if (pendingStdout.length > 0) processStdoutLine(pendingStdout);
+        // Drain any lines queued but not yet pumped, so RESULT (queued
+        // just before exit) is parsed before we resolve.
+        drainQueueSync();
+        // Flush trailing partial lines (child can exit without final
+        // newline). Only safe when NOT in overflow mode — overflow's
+        // partial bytes were a pathological-line fragment we already
+        // discarded.
+        if (pendingStdout.length > 0 && !pendingStdoutOverflowed) {
+          handleSlice([pendingStdout]);
+        }
         if (pendingStderr.length > 0) console.error(`[job-runner:${jobId}:stderr] ${pendingStderr}`);
 
         cleanup();
@@ -682,12 +932,18 @@ export class JobWorker {
           if (resultLine) {
             parsedResult = JSON.parse(resultLine);
           } else {
-            const tail = stdoutTail.join('');
+            const tail = readTail();
             const lastLines = tail.split('\n').filter(Boolean).slice(-5).join(' | ');
-            console.warn(`[JobWorker] RESULT regex no match | jobId=${jobId} | tailBytes=${stdoutTailBytes} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
+            logger.warn(
+              `RESULT regex no match | jobId=${jobId} | tailBytes=${tailBytes} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`,
+              { component: 'JobWorker', jobId }
+            );
           }
         } catch (parseErr: any) {
-          console.warn(`[JobWorker] RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`);
+          logger.warn(
+            `RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`,
+            { component: 'JobWorker', jobId }
+          );
         }
 
         if (code === 0) {
@@ -788,6 +1044,10 @@ export class JobWorker {
     }
 
     this.isShuttingDown = true;
+    if (this.eventLoopWatchdog) {
+      clearInterval(this.eventLoopWatchdog);
+      this.eventLoopWatchdog = null;
+    }
     const activeJobs = Array.from(this.runningProcesses.keys());
     logger.warn(`JobWorker shutting down — active jobs: [${activeJobs.join(', ')}]`, { component: 'JobWorker' });
 
