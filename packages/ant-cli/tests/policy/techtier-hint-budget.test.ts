@@ -31,6 +31,7 @@ const ALLOWED_FRAMEWORK = ['nextjs', 'react', 'react-native', 'nestjs', 'gin'];
 const ALLOWED_LANGUAGE = ['typescript-browser', 'typescript-node', 'go'];
 
 const ALLOWED_SECTIONS = [
+  '## Root Entry Coordinates',
   '## Forbidden Patterns',
   '## Symptom → Upstream Cues',
   '## Version Notes',
@@ -177,5 +178,19 @@ describe('basis/techTier hint files — MECE audit', () => {
 
   it('nextjs.md expanded does NOT contain CSR-only marker', () => {
     expect(countOccurrences(expandedOf('nextjs'), CSR_ONLY_MARKER)).toBe(0);
+  });
+
+  // Root entry coordinate guard — the `feature-route-layer` regression in
+  // `architect-such-grading-knife` planned only `app/(protected)/page.tsx`
+  // and silently dropped the literal `app/page.tsx`, because entry-point-
+  // ownership-rule delegates framework coordinates here. Lock in the
+  // literal-path pin so integration-band tasks have a place to read it
+  // from at plan time.
+  it('nextjs.md pins the literal app/page.tsx root coordinate', () => {
+    const expanded = expandedOf('nextjs');
+    expect(expanded).toContain('app/page.tsx');
+    expect(expanded).toContain('app/layout.tsx');
+    // Route group call-out: pinned so the LLM can't substitute `(group)/page.tsx`
+    expect(expanded).toMatch(/route groups? .*not substitutes?/i);
   });
 });
