@@ -16,7 +16,7 @@
   Branch axis: `taskBand` (SBS gate axis).
 --}}
 {{~#if (eq taskBand "integration")~}}
-All files belong to YOUR task scope; for shared entry points / cross-cutting wirings the parent owns, they ARE in your scope and appear in `create`/`modify`
+All files belong to YOUR task scope; shared entry points / cross-cutting wirings the parent owns appear in `create`/`modify` at the literal path pinned by the tech-tier partial (sibling coordinates are not substitutes)
 {{~else~}}
 All files belong to YOUR task scope (no shared entry points — those are owned by the `integration` band task)
 {{~/if~}}
