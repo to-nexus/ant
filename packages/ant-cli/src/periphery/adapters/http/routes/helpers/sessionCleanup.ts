@@ -102,7 +102,7 @@ export async function appendJobSnapshotToSession(
  * SSOT transaction boundary enforced by `finalizeTerminalJob`.
  *
  * Cleanup surface (best-effort, non-fatal on individual failures):
- *  - Redis: jobStatus (+ jobsByFeature SET srem via deleteJobStatus), logs,
+ *  - Redis: jobStatus (+ jobsByFeature SET srem via deleteJobStatus),
  *    taskQueue (+ checkpoint), workflow state, user-stopped flag, mapping,
  *    kill reason
  *  - In-memory: kanbanService.clearJobMemory (evicts per-job kanban cache)
@@ -125,7 +125,6 @@ export async function sealJobRedisState(
   if (stateStore) {
     const ops = [
       stateStore.deleteJobStatus(jobId),
-      stateStore.clearJobLogs(jobId),
       stateStore.deleteTaskQueue(jobId),
       stateStore.deleteWorkflowState(jobId),
       stateStore.clearUserStopped(jobId),

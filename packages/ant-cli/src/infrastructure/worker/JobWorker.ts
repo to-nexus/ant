@@ -48,7 +48,7 @@ const DEFAULT_CONCURRENCY = 2;
  *   1. The child has already reported the structured `interruption.reason` via
  *      its `RESULT:` payload, so the cause is unambiguous.
  *   2. Each stderr line was already streamed to the console via the
- *      `[job-runner:…:stderr]` prefix and persisted via `appendJobLog`.
+ *      `[job-runner:…:stderr]` prefix.
  *
  * Reasons NOT in this list (`process_crash`, `server_crash`, `api_error`,
  * `unknown`, etc.) fall through to the legacy `Job runner failed` branch
@@ -176,12 +176,29 @@ export class JobWorker {
     this.worker.on('stalled', async (jobId: string) => {
       logger.warn(`Job stalled (worker crash detected): ${jobId}`, { component: 'JobWorker', jobId });
 
-      // Kill the child process for this stalled job (if running in this pod)
+      // POISON FLAG — set BEFORE killing the child so the orchestrator's
+      // onCheckpoint short-circuits its atomicWrite even on the API-server-pod-
+      // first-acquires-lock path where this worker pod never reaches the kill
+      // branch below. Idempotent via acquireLock NX; failure tolerated.
+      await this.stateStore
+        .acquireLock(`ant:job-poisoned:${jobId}`, 600)
+        .catch(() => false);
+
+      // Kill the child process for this stalled job (if running in this pod).
+      // AWAIT the kill so any in-flight onCheckpoint write completes (or is
+      // killed) BEFORE we publish the lifecycle event. Without this, a
+      // checkpoint queued during the 2500ms SIGTERM grace can land AFTER
+      // cleanupJobState's projection and resurrect un-interrupted runningTasks
+      // — reproducing the "3 in_progress" Kanban flip on refresh.
       const stalledChild = this.runningProcesses.get(jobId);
       if (stalledChild && stalledChild.pid) {
         logger.warn(`Killing stalled child process: ${jobId} (PID: ${stalledChild.pid})`, { component: 'JobWorker', jobId });
         await this.setKillReason(jobId, 'worker_stalled');
-        this.killChildGracefully(stalledChild, jobId, 2500).catch(() => {});
+        try {
+          await this.killChildGracefully(stalledChild, jobId, 2500);
+        } catch (err) {
+          logger.warn(`killChildGracefully threw during stall handling: ${jobId}`, { component: 'JobWorker', jobId }, err);
+        }
         this.runningProcesses.delete(jobId);
       }
 
@@ -511,6 +528,18 @@ export class JobWorker {
         return;
       }
 
+      // Starvation early-warning. If the timer is firing >25% late, the parent
+      // event loop is being saturated (heavy IPC, sync ops blocking the loop).
+      // Surface this BEFORE elapsed reaches LOCK_DURATION so we can correlate
+      // with the chat-broadcast volume that caused the drift, instead of only
+      // seeing the cliff after a stalled-event has already fired.
+      if (elapsed > LOCK_EXTENSION_INTERVAL * 1.25) {
+        logger.warn(
+          `Lock-extension timer late by ${elapsed - LOCK_EXTENSION_INTERVAL}ms (interval=${LOCK_EXTENSION_INTERVAL}ms): ${jobId}`,
+          { component: 'JobWorker', jobId }
+        );
+      }
+
       lastExtensionTime = now;
 
       try {
@@ -554,58 +583,108 @@ export class JobWorker {
 
     // --- Child lifecycle (event-based — wrapped in Promise) ---
     return new Promise<{ success: boolean; error?: string; output?: any }>((resolve, reject) => {
-      let stdout = '';
+      // Line-buffered parser. `child.stdout.on('data', …)` is chunk-based (no
+      // newline guarantee), so RESULT lines that straddle chunk boundaries
+      // would slip past a chunk-local regex. We accumulate the trailing
+      // partial line in `pending*` and process only completed lines.
+      let pendingStdout = '';
+      let pendingStderr = '';
+
+      // RESULT is a single line (`RESULT:{...}\n`). Capture into one variable
+      // instead of accumulating all stdout — RESULT-sized memory only.
+      let resultLine: string | null = null;
+
+      // 64KB tail ring for fallback diagnostics when RESULT regex doesn't
+      // match. Bounded; child output volume no longer drives heap growth.
+      const STDOUT_TAIL_MAX = 64 * 1024;
+      const stdoutTail: string[] = [];
+      let stdoutTailBytes = 0;
+      const pushStdoutTail = (s: string) => {
+        stdoutTail.push(s);
+        stdoutTailBytes += s.length;
+        while (stdoutTailBytes > STDOUT_TAIL_MAX && stdoutTail.length > 1) {
+          stdoutTailBytes -= stdoutTail.shift()!.length;
+        }
+      };
+
+      // stderr stays accumulated — terminal-failure debugging surface. 1MB
+      // hard cap is a safety net against runaway stderr loops; normal stderr
+      // is KB-scale.
+      const STDERR_HARD_CAP = 1 * 1024 * 1024;
       let stderr = '';
+      let stderrTruncated = false;
 
-      child.stdout?.on('data', async (data: Buffer) => {
-        const line = data.toString();
-        stdout += line;
+      const processStdoutLine = (line: string) => {
+        pushStdoutTail(line + '\n');
 
-        console.log(`[job-runner:${jobId}] ${line.trim()}`);
+        if (line.startsWith('RESULT:')) {
+          resultLine = line.substring('RESULT:'.length);
+        }
 
-        if (line.includes('PROGRESS:')) {
+        console.log(`[job-runner:${jobId}] ${line}`);
+
+        if (line.startsWith('PROGRESS:')) {
           try {
-            const progressJson = line.split('PROGRESS:')[1].trim();
+            const progressJson = line.substring('PROGRESS:'.length).trim();
             const progress = JSON.parse(progressJson);
-            await job.updateProgress(progress);
-          } catch {
-            // Ignore parse errors
+            // Fire-and-forget — `updateProgress` is BullMQ progress metrics;
+            // awaiting on the hot path is what was starving the lock-extension
+            // timer and producing the worker_stalled state.
+            job.updateProgress(progress).catch(() => { /* ignore */ });
+          } catch { /* ignore parse errors */ }
+        }
+      };
+
+      child.stdout?.on('data', (data: Buffer) => {
+        pendingStdout += data.toString();
+        const newlineIdx = pendingStdout.lastIndexOf('\n');
+        if (newlineIdx === -1) return; // No complete line yet — wait for next chunk.
+        const completed = pendingStdout.substring(0, newlineIdx);
+        pendingStdout = pendingStdout.substring(newlineIdx + 1);
+        const lines = completed.split('\n');
+        for (const line of lines) processStdoutLine(line);
+      });
+
+      child.stderr?.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+
+        if (!stderrTruncated) {
+          if (stderr.length + chunk.length <= STDERR_HARD_CAP) {
+            stderr += chunk;
+          } else {
+            const room = Math.max(0, STDERR_HARD_CAP - stderr.length);
+            stderr += chunk.substring(0, room);
+            stderr += '\n…[stderr truncated at 1MB hard cap]…\n';
+            stderrTruncated = true;
           }
         }
 
-        await this.stateStore.appendJobLog(jobId, {
-          type: 'stdout',
-          message: line,
-          timestamp: new Date().toISOString()
-        });
-      });
-
-      child.stderr?.on('data', async (data: Buffer) => {
-        const line = data.toString();
-        stderr += line;
-
-        console.error(`[job-runner:${jobId}:stderr] ${line.trim()}`);
-
-        await this.stateStore.appendJobLog(jobId, {
-          type: 'stderr',
-          message: line,
-          timestamp: new Date().toISOString()
-        });
+        pendingStderr += chunk;
+        const newlineIdx = pendingStderr.lastIndexOf('\n');
+        if (newlineIdx === -1) return;
+        const completed = pendingStderr.substring(0, newlineIdx);
+        pendingStderr = pendingStderr.substring(newlineIdx + 1);
+        for (const line of completed.split('\n')) {
+          console.error(`[job-runner:${jobId}:stderr] ${line}`);
+        }
       });
 
       child.on('close', (code: number | null) => {
+        // Flush trailing partial lines (child can exit without final newline).
+        if (pendingStdout.length > 0) processStdoutLine(pendingStdout);
+        if (pendingStderr.length > 0) console.error(`[job-runner:${jobId}:stderr] ${pendingStderr}`);
+
         cleanup();
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
 
         let parsedResult: any = { success: code === 0 };
         try {
-          const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
-          if (resultMatch) {
-            parsedResult = JSON.parse(resultMatch[1]);
+          if (resultLine) {
+            parsedResult = JSON.parse(resultLine);
           } else {
-            const stdoutLen = stdout.length;
-            const lastLines = stdout.split('\n').filter(Boolean).slice(-5).join(' | ');
-            console.warn(`[JobWorker] RESULT regex no match | jobId=${jobId} | stdoutLen=${stdoutLen} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
+            const tail = stdoutTail.join('');
+            const lastLines = tail.split('\n').filter(Boolean).slice(-5).join(' | ');
+            console.warn(`[JobWorker] RESULT regex no match | jobId=${jobId} | tailBytes=${stdoutTailBytes} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
           }
         } catch (parseErr: any) {
           console.warn(`[JobWorker] RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`);

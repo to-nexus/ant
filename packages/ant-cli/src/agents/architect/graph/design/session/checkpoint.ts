@@ -282,6 +282,20 @@ export async function saveOrchestratorCheckpoint(
 ): Promise<void> {
   if (!state.deps?.session || !state.context.featureFolder) return;
 
+  // POISON GATE — Crash-recovery boundary (BullMQJobQueue / JobWorker stalled
+  // handlers) sets `ant:job-poisoned:{id}` before publishing the pause
+  // lifecycle event. Skip the write so it can't land AFTER cleanupJobState's
+  // projection and resurrect un-interrupted runningTasks on Kanban.
+  try {
+    if (state.deps?.redis && state.jobId) {
+      const poisoned = await state.deps.redis.exists(`ant:job-poisoned:${state.jobId}`);
+      if (poisoned === 1) {
+        console.log(`[DesignOrchestrator] Checkpoint skipped — job poisoned: ${state.jobId}`);
+        return;
+      }
+    }
+  } catch { /* best-effort */ }
+
   try {
     // SSOT helper: marker trio (`interrupted`/`_failed`/`_failureReason`)
     // is owned by `buildResumableFailedTaskBase` so design and code jobs

@@ -209,7 +209,8 @@ export class BullMQJobQueue implements JobQueuePort {
     this.queueEvents.on('failed', async (args: { jobId: string; failedReason?: string }) => {
       const { jobId, failedReason } = args;
       logger.error(`Job failed: ${jobId}`, { component: 'BullMQJobQueue' }, new Error(failedReason || 'Unknown error'));
-      
+
+      // In-process resume waiters are notified regardless of stall-twin status.
       const callbacks = this.completionCallbacks.get(jobId);
       if (callbacks) {
         const result: JobExecutionResult = {
@@ -221,7 +222,28 @@ export class BullMQJobQueue implements JobQueuePort {
           callback(result);
         }
       }
-      
+
+      // STALL-TWIN guard. With maxStalledCount=0 (JobWorker.ts), BullMQ raises
+      // BOTH `stalled` and `failed("job stalled more than allowable limit")`
+      // for the same stall. The `stalled` handler below publishes the canonical
+      // paused message under `ant:job-stalled:{id}`. Republishing here as
+      // status='failed' would make RouteConfigurator dispatch pauseJob AND
+      // finalizeTerminalJob concurrently (disjoint lock keyspaces) — session
+      // file write race + Redis seal (resume broken). Suppress the redundant
+      // publish; the stalled handler is the authoritative emitter for stalls.
+      const isStallTwin =
+        typeof failedReason === 'string'
+        && /stalled more than allowable limit/i.test(failedReason);
+      if (isStallTwin) {
+        logger.info(
+          `Suppressing failed publish — stall twin of stalled event: ${jobId}`,
+          { component: 'BullMQJobQueue' },
+        );
+        this.progressCallbacks.delete(jobId);
+        this.completionCallbacks.delete(jobId);
+        return;
+      }
+
       // ✅ Broadcast job failure via Redis Pub/Sub for SSE (same as completed handler)
       // Without this, API Server never learns about failed jobs in cloud mode,
       // leaving the UI stuck in "running" state
@@ -256,6 +278,18 @@ export class BullMQJobQueue implements JobQueuePort {
     this.queueEvents.on('stalled', async (args: { jobId: string }) => {
       const { jobId } = args;
       logger.warn(`Job stalled (crash detected): ${jobId}`, { component: 'BullMQJobQueue' });
+
+      // POISON FLAG — set BEFORE the publish so the orchestrator child on the
+      // worker pod short-circuits its onCheckpoint atomicWrite even on the
+      // path where THIS API-server-pod acquires `ant:job-stalled:{id}` first
+      // and the worker pod bails out of its own stalled handler (so its
+      // killChildGracefully await never runs). Without this, child checkpoints
+      // queued during the 2500ms SIGTERM grace can clobber the cleanup
+      // projection and resurrect un-interrupted runningTasks on Kanban.
+      // Idempotent via acquireLock NX; failure tolerated.
+      await this.stateStore
+        .acquireLock(`ant:job-poisoned:${jobId}`, 600)
+        .catch(() => false);
 
       // Multi-pod idempotency: multiple API Server pods receive this event.
       // Only one should process it (same pattern as the 'completed' handler).

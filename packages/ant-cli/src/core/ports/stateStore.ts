@@ -18,10 +18,6 @@ import type { JobType } from '@ant/shared';
 // Re-export for consumers
 export type { TaskQueueSnapshot, JobProjectMapping };
 
-// Re-export LogEntry from http.ts to avoid duplication
-export { LogEntry } from './http';
-import { LogEntry } from './http';
-
 // ============================================
 // Job Status Types
 // ============================================
@@ -165,26 +161,7 @@ export interface StateStorePort {
    * List jobs by project and feature
    */
   listJobsByFeature(projectId: string, featureName: string): Promise<JobStatusData[]>;
-  
-  // ============================================
-  // Job Logs Management
-  // ============================================
-  
-  /**
-   * Append log entry to job
-   */
-  appendJobLog(jobId: string, log: LogEntry): Promise<void>;
-  
-  /**
-   * Get all logs for a job
-   */
-  getJobLogs(jobId: string): Promise<LogEntry[]>;
-  
-  /**
-   * Clear logs for a job
-   */
-  clearJobLogs(jobId: string): Promise<void>;
-  
+
   // ============================================
   // Task Queue Snapshot Management
   // ============================================
@@ -811,7 +788,13 @@ export interface StateStorePort {
    * Release a previously acquired lock.
    */
   releaseLock(key: string): Promise<void>;
-  
+
+  /**
+   * Non-mutating existence check for a key. Used by short-lived flags such
+   * as `ant:job-poisoned:{id}` whose callers must NOT extend the TTL.
+   */
+  exists(key: string): Promise<boolean>;
+
   // ============================================
   // Lifecycle
   // ============================================

@@ -633,15 +633,17 @@ export function createJobRoutes(deps: {
       // ✅ Clear idempotency locks AFTER executeJob so old BullMQ job is
       // removed first (inside enqueue). This closes the stale-event window
       // and ensures locks stay intact if executeJob throws.
-      // Five lock layers: BullMQJobQueue completed, RouteConfigurator
+      // Six lock layers: BullMQJobQueue completed, RouteConfigurator
       // completed, RouteConfigurator failed, finalizeTerminalJob primary,
-      // and pauseJob entry-level (chat SSOT §8) — all TTL 120s.
+      // pauseJob entry-level (chat SSOT §8), and the stall-recovery poison
+      // flag — all TTL ≤120s except poisoned (600s).
       await deps.stateStore.releaseLock(`ant:job-completed:${sessionJobId}`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:completed`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:failed`);
       await deps.stateStore.releaseLock(`ant:job-finalize:${sessionJobId}`);
       await deps.stateStore.releaseLock(`ant:job-pause:${sessionJobId}`);
-      logger.debug(`   ✅ Cleared completion/failure/pause idempotency locks for ${sessionJobId}`);
+      await deps.stateStore.releaseLock(`ant:job-poisoned:${sessionJobId}`);
+      logger.debug(`   ✅ Cleared completion/failure/pause/poison idempotency locks for ${sessionJobId}`);
       
       logger.debug(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
       logger.debug(`   ✅ Resume request completed\n`);
