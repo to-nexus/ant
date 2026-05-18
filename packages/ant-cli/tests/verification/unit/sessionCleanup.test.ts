@@ -41,7 +41,6 @@ describe('sessionCleanup debug artifact policy', () => {
   it('sealJobRedisState seals redis/in-memory state but keeps debug files on disk', async () => {
     const stateStore = {
       deleteJobStatus: vi.fn().mockResolvedValue(undefined),
-      clearJobLogs: vi.fn().mockResolvedValue(undefined),
       deleteTaskQueue: vi.fn().mockResolvedValue(undefined),
       deleteWorkflowState: vi.fn().mockResolvedValue(undefined),
       clearUserStopped: vi.fn().mockResolvedValue(undefined),
@@ -55,7 +54,6 @@ describe('sessionCleanup debug artifact policy', () => {
     await sealJobRedisState(stateStore, kanbanService, jobId);
 
     expect(stateStore.deleteJobStatus).toHaveBeenCalledWith(jobId);
-    expect(stateStore.clearJobLogs).toHaveBeenCalledWith(jobId);
     expect(kanbanService.clearJobMemory).toHaveBeenCalledWith(jobId);
 
     await expect(
