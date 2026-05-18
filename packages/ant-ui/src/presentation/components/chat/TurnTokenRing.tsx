@@ -25,16 +25,21 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /**
  * Compact context-fullness ring for a single graph node / worker. Two arcs
- * (input + output) together form the filled portion, drawn clockwise from
- * 12 o'clock over an empty track. Click opens a tooltip with precise numbers.
+ * together form the filled portion (prompt tokens occupying the context
+ * window), drawn clockwise from 12 o'clock over an empty track:
+ *   - solid: fresh tokens this turn (uncached input + cache-creation writes)
+ *   - light: tokens served from prompt cache (cache_read)
+ * Output tokens are intentionally excluded from the gauge — they are the
+ * model's response, not part of the prompt that fills the context window.
+ * Click opens a tooltip with precise numbers.
  */
 export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
   const { t } = useTranslation('common');
   const view = useMemo(() => buildView(phase, t), [phase, t]);
   if (!view) return null;
 
-  const inputLen = (view.inputPct / 100) * CIRCUMFERENCE;
-  const outputLen = (view.outputPct / 100) * CIRCUMFERENCE;
+  const freshLen = (view.freshPct / 100) * CIRCUMFERENCE;
+  const cachedLen = (view.cachedPct / 100) * CIRCUMFERENCE;
 
   const ring = (
     <div
@@ -57,7 +62,7 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
         />
         {/* Progress arcs — rotate -90deg so drawing starts at 12 o'clock */}
         <g transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}>
-          {inputLen > 0 && (
+          {freshLen > 0 && (
             <circle
               cx={SIZE / 2}
               cy={SIZE / 2}
@@ -65,11 +70,11 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               fill="none"
               strokeWidth={STROKE_WIDTH}
               strokeLinecap="butt"
-              strokeDasharray={`${inputLen} ${CIRCUMFERENCE - inputLen}`}
-              className={`${view.inputStroke} ${view.estimating ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
+              strokeDasharray={`${freshLen} ${CIRCUMFERENCE - freshLen}`}
+              className={`${view.freshStroke} ${view.estimating ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
             />
           )}
-          {outputLen > 0 && (
+          {cachedLen > 0 && (
             <circle
               cx={SIZE / 2}
               cy={SIZE / 2}
@@ -77,9 +82,9 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               fill="none"
               strokeWidth={STROKE_WIDTH}
               strokeLinecap="butt"
-              strokeDasharray={`${outputLen} ${CIRCUMFERENCE - outputLen}`}
-              strokeDashoffset={-inputLen}
-              className={`${view.outputStroke} transition-[stroke-dasharray] duration-300 ease-out`}
+              strokeDasharray={`${cachedLen} ${CIRCUMFERENCE - cachedLen}`}
+              strokeDashoffset={-freshLen}
+              className={`${view.cachedStroke} transition-[stroke-dasharray] duration-300 ease-out`}
             />
           )}
         </g>
@@ -113,10 +118,8 @@ export function summarizeRing(
   phase: PhaseTokenUsage,
   t: (key: string, opts?: Record<string, unknown>) => string,
 ): { title: string; percent: string } {
-  const input = phase.tokenUsage?.inputTokens ?? 0;
-  const output = phase.tokenUsage?.outputTokens ?? 0;
-  const total = input + output;
-  const pct = total <= 0 ? 0 : (total / CONTEXT_WINDOW_MAX_TOKENS) * 100;
+  const prompt = promptTokensOf(phase);
+  const pct = prompt <= 0 ? 0 : (prompt / CONTEXT_WINDOW_MAX_TOKENS) * 100;
   const pctText = pct < 1 ? '<1%' : `${Math.round(pct)}%`;
 
   const parts: string[] = [];
@@ -136,33 +139,48 @@ function buildView(
 ) {
   if (!phase?.tokenUsage) return null;
   const input = phase.tokenUsage.inputTokens ?? 0;
+  const cacheRead = phase.tokenUsage.cacheReadTokens ?? 0;
+  const cacheCreation = phase.tokenUsage.cacheCreationTokens ?? 0;
   const output = phase.tokenUsage.outputTokens ?? 0;
-  const total = input + output;
+
+  // Anthropic Messages API semantics: the prompt tokens the model actually
+  // saw this turn = uncached input + cache_creation writes + cache_read hits.
+  // `inputTokens` alone covers ONLY the cache-miss portion, so summing it
+  // with `outputTokens` (as the gauge previously did) under-reports the real
+  // context fullness whenever prompt caching is active — which is the steady
+  // state for this codebase. Output tokens are the response and do not
+  // occupy this turn's prompt window, so they are tooltip-only.
+  const fresh = input + cacheCreation;
+  const cached = cacheRead;
+  const prompt = fresh + cached;
+
   // Cursor-style: render the ring even at 0 tokens. The empty donut track
   // is the visual placeholder for "node active, no usage yet" — it does
   // not disappear between LLM calls or before the first `usage_partial`.
   const estimating = phase.estimating === true;
 
   const max = CONTEXT_WINDOW_MAX_TOKENS;
-  const totalPct = clampPct((total / max) * 100);
-  const inputPct = clampPct((input / max) * 100);
-  const outputPct = clampPct((output / max) * 100);
+  const totalPct = clampPct((prompt / max) * 100);
+  const freshPct = clampPct((fresh / max) * 100);
+  const cachedPct = clampPct((cached / max) * 100);
 
   const zone: 'ok' | 'warn' | 'danger' =
     totalPct >= 95 ? 'danger' : totalPct >= 80 ? 'warn' : 'ok';
 
-  // OK zone: theme-adaptive neutral (white on dark, slate on light). Input is
-  // solid, output is a lighter variant so the two segments remain visually
-  // distinguishable within a single ring. Warn/danger zones keep amber/red
-  // to preserve the "context filling up" warning signal across themes.
-  const inputStroke =
+  // OK zone: theme-adaptive neutral (white on dark, slate on light). The
+  // "fresh" segment (uncached input + cache writes — what's billable as
+  // new this turn) is solid, the "cached" segment (cache reads carried
+  // forward) is a lighter variant so the two remain distinguishable within
+  // a single 14px ring. Warn/danger zones keep amber/red to preserve the
+  // "context filling up" signal across themes.
+  const freshStroke =
     zone === 'danger'
       ? 'stroke-red-500'
       : zone === 'warn'
       ? 'stroke-amber-500'
       : 'stroke-slate-700 dark:stroke-white';
 
-  const outputStroke =
+  const cachedStroke =
     zone === 'danger'
       ? 'stroke-red-300'
       : zone === 'warn'
@@ -186,14 +204,26 @@ function buildView(
         <span className="tabular-nums">{fmtPct(totalPct)}</span>
       </div>
       <div className="text-[11px] tabular-nums text-gray-600 dark:text-gray-300">
-        {fmt(total)} / {fmt(max)}
+        {fmt(prompt)} / {fmt(max)}
       </div>
       <div className="h-px my-0.5 bg-gray-200 dark:bg-gray-700" />
       <div className="flex items-center justify-between gap-3 tabular-nums">
         <span>{t('turnTokenGauge.input')}</span>
         <span>{fmt(input)}</span>
       </div>
-      <div className="flex items-center justify-between gap-3 tabular-nums">
+      {cacheCreation > 0 && (
+        <div className="flex items-center justify-between gap-3 tabular-nums">
+          <span>{t('turnTokenGauge.cacheCreation')}</span>
+          <span>{fmt(cacheCreation)}</span>
+        </div>
+      )}
+      {cacheRead > 0 && (
+        <div className="flex items-center justify-between gap-3 tabular-nums">
+          <span>{t('turnTokenGauge.cacheRead')}</span>
+          <span>{fmt(cacheRead)}</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 tabular-nums text-gray-500 dark:text-gray-400">
         <span>{t('turnTokenGauge.output')}</span>
         <span>{fmt(output)}</span>
       </div>
@@ -209,27 +239,36 @@ function buildView(
     ? t('turnTokenGauge.ariaLabelWithTitle', {
         title: headerTitle,
         totalPct: fmtPct(totalPct),
-        input: fmt(input),
-        output: fmt(output),
+        prompt: fmt(prompt),
         max: fmt(max),
       })
     : t('turnTokenGauge.ariaLabel', {
         totalPct: fmtPct(totalPct),
-        input: fmt(input),
-        output: fmt(output),
+        prompt: fmt(prompt),
         max: fmt(max),
       });
 
   return {
     totalPct,
-    inputPct,
-    outputPct,
-    inputStroke,
-    outputStroke,
+    freshPct,
+    cachedPct,
+    freshStroke,
+    cachedStroke,
     tooltip,
     ariaLabel,
     estimating,
   };
+}
+
+/**
+ * Prompt tokens occupying the context window this turn:
+ *   uncached input + cache writes + cache reads.
+ * Excludes output (the response, separate from the prompt window).
+ */
+function promptTokensOf(phase: PhaseTokenUsage): number {
+  const u = phase.tokenUsage;
+  if (!u) return 0;
+  return (u.inputTokens ?? 0) + (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
 }
 
 

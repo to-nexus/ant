@@ -81,14 +81,16 @@
   },
   "turnTokenGauge": {
     "context": "Context",
-    "input": "Input",
+    "input": "Input (new)",
+    "cacheRead": "Cached",
+    "cacheCreation": "Cache write",
     "output": "Output",
     "main": "Main",
     "worker": "Worker {{n}}",
     "estimatingNote": "Estimated from prompt size — actual usage arrives shortly",
     "moreAria": "{{count}} more gauges",
     "moreTitle": "{{count}} more",
-    "ariaLabel": "context {{totalPct}}, input {{input}}, output {{output}}, max {{max}}",
-    "ariaLabelWithTitle": "{{title}}, context {{totalPct}}, input {{input}}, output {{output}}, max {{max}}"
+    "ariaLabel": "context {{totalPct}}, prompt {{prompt}}, max {{max}}",
+    "ariaLabelWithTitle": "{{title}}, context {{totalPct}}, prompt {{prompt}}, max {{max}}"
   }
 }
