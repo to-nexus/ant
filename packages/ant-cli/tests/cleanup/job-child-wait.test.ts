@@ -45,7 +45,6 @@ function makeStubs(initialStatuses: Record<string, JobStatusData>) {
       calls.deleteJobStatus.push(jobId);
       delete statuses[jobId];
     },
-    clearJobLogs: async () => undefined,
     deleteTaskQueue: async () => undefined,
     deleteWorkflowState: async () => undefined,
     clearUserStopped: async () => undefined,
