@@ -4,6 +4,10 @@
 
 Blind-spot reminders for pre-training gaps. Verify current behaviour via `search_code` / `read_file` on `node_modules/next/**` when an error cites Next.js internals.
 
+## Root Entry Coordinates
+
+The App Router root entry is the group-less pair `app/page.tsx` + `app/layout.tsx` (or under `src/app/` when the codebase uses the `src/` convention). Route groups `(group)/page.tsx` route to `/` semantically, but they are organizational layers (group-scoped `layout`/`loading`/`error`), not substitutes for the root entry — emitting only `(group)/page.tsx` and omitting `app/page.tsx` leaves the framework root coordinate empty even when `/` superficially serves traffic. The `integration` band task owns both literal coordinates; route groups attach in addition, not instead.
+
 ## Forbidden Patterns
 
 - `typeof window` / `document` guards that change JSX between server render and client initial render → hydration mismatch.
