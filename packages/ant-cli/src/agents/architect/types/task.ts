@@ -201,7 +201,10 @@ export type CodeTask =
  * task type, add a variant here and `decompose` will route accordingly.
  */
 export type DesignTask = DocTask & {
-  targetFile?: string;             // Which design document (e.g., "be-system-main.md")
+  targetFile?: string;             // Which design document (e.g., "be-system-main.md", "wallet-login.md")
+  targetDir?: string;              // Optional output directory override. When set, callers (docGen) use it
+                                   // instead of designDirOf(targetFile). Used by spec tasks whose filenames
+                                   // no longer carry a "spec-" prefix and thus cannot be routed by filename alone.
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
 
   /**

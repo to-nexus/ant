@@ -4,7 +4,8 @@
  * Builds LLM messages for spec document generation.
  * Supports chapter-based decomposition: each DesignTask may represent a single
  * section of the spec document. Sections are appended sequentially to the same
- * spec-{slug}.md file.
+ * spec file (currently `architecture/spec/{slug}.md`, no `spec-` prefix; legacy
+ * workspaces may still hold `spec-{slug}.md` from before the prefix was dropped).
  *
  * - sectionIndex === 0 (first): uses <file> tag to create the document
  * - sectionIndex > 0: uses <append> tag, provides previous sections as context
@@ -51,7 +52,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   if (!isFirstSection && state.deps?.fileSystem && state.context.featurePath) {
     try {
       const pathModule = await import('path');
-      const specOutputDir = designDirOf(targetFile);
+      const specOutputDir = task?.targetDir ?? designDirOf(targetFile);
       let specDocPath = `${state.context.featurePath}/${specOutputDir}/${targetFile}`;
       const rootPath = state.deps.fileSystem.getRootPath?.();
       if (rootPath && pathModule.isAbsolute(specDocPath)) {
@@ -83,7 +84,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // The template's `{{#if planText}}` gate fires on Handlebars
   // string-truthiness, so no separate "hasSealedPlan" flag is needed.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const specDir = designDirOf(targetFile);
+  const specDir = task?.targetDir ?? designDirOf(targetFile);
   const planText = state.planText && state.planText.trim().length > 0 ? state.planText : '';
 
   // runtimeContext carries Target Document / Current Task / User
@@ -181,7 +182,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     try {
       const pathModule = await import('path');
       if (state.deps?.fileSystem && state.context.featurePath) {
-        const refactorOutputDir = designDirOf(targetFile);
+        const refactorOutputDir = task?.targetDir ?? designDirOf(targetFile);
         let specDocPath = `${state.context.featurePath}/${refactorOutputDir}/${targetFile}`;
         const rootPath = state.deps.fileSystem.getRootPath?.();
         if (rootPath && pathModule.isAbsolute(specDocPath)) {
