@@ -78,7 +78,7 @@ export function resolveSlotEntries(
         const subgroups: SlotSubgroup[] = def.uiSources.map(sub => {
           let files = listDirWithMeta(fileTree, sub.dir).map(f => {
             const warnings = warningCtx ? resolveFileWarnings(f.path, f.meta?.size, warningCtx, f.meta?.isTemplate, f.meta?.templateReason ?? undefined, f.meta?.templateContentLength, f.meta?.templateThreshold) : [];
-            return { name: f.name, path: f.path, size: f.meta?.size, warnings };
+            return { name: f.name, path: f.path, meta: f.meta, warnings };
           });
           if (excludePaths && excludePaths.size > 0) {
             files = files.filter(f => !excludePaths.has(f.path));
@@ -117,12 +117,12 @@ export function resolveSlotEntries(
         const node = findFileNode(fileTree, def.path);
         if (node) {
           const warnings = warningCtx ? resolveFileWarnings(def.path, node.meta?.size, warningCtx, node.meta?.isTemplate, node.meta?.templateReason ?? undefined, node.meta?.templateContentLength, node.meta?.templateThreshold) : [];
-          files = [{ name: def.path.split('/').pop() || def.path, path: def.path, size: node.meta?.size, warnings }];
+          files = [{ name: def.path.split('/').pop() || def.path, path: def.path, meta: node.meta, warnings }];
         }
       } else if (def.path) {
         files = listDirWithMeta(fileTree, def.path).map(f => {
           const warnings = warningCtx ? resolveFileWarnings(f.path, f.meta?.size, warningCtx, f.meta?.isTemplate, f.meta?.templateReason ?? undefined, f.meta?.templateContentLength, f.meta?.templateThreshold) : [];
-          return { name: f.name, path: f.path, size: f.meta?.size, warnings };
+          return { name: f.name, path: f.path, meta: f.meta, warnings };
         });
       }
       if (def.excludeFiles && def.excludeFiles.length > 0) {

@@ -122,17 +122,26 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     // workspace with both `visual/ui/ant/*` and `visual/ui/figma/figma.json`
     // would auto-select both, producing a RAC that BE detect's
     // `validateUiSourceExclusivity` rejects mid-run.
-    let defaultRefPaths = refEntries
+    const refCandidates = refEntries
       .filter(e => e.def.required)
       .flatMap(e =>
         e.def.type === 'ui-source' && e.subgroups
           ? pickDefaultUiSourceRefs(e.subgroups)
           : e.files,
       )
-      .filter(f => f.warnings.length === 0)
-      .map(f => f.path);
-    if (slots.refsSingleSelect && defaultRefPaths.length > 1) {
-      defaultRefPaths = defaultRefPaths.slice(0, 1);
+      .filter(f => f.warnings.length === 0);
+    // refsSingleSelect intents (rev-*, gen-code-spec/dev-by-spec) auto-pick
+    // the most recently modified candidate, not the alphabetically-first one
+    // — users iterating "generate doc → use doc" expect the doc they just
+    // produced. Candidates without mtime sort last (deterministic fallback).
+    let defaultRefPaths: string[];
+    if (slots.refsSingleSelect && refCandidates.length > 1) {
+      const latest = [...refCandidates].sort(
+        (a, b) => (b.meta?.mtime ?? 0) - (a.meta?.mtime ?? 0),
+      )[0];
+      defaultRefPaths = [latest.path];
+    } else {
+      defaultRefPaths = refCandidates.map(f => f.path);
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });

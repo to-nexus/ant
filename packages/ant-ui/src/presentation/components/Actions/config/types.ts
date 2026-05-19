@@ -1,4 +1,4 @@
-import type { SlotDef, UiSource } from '@ant/shared';
+import type { FileResourceMeta, SlotDef, UiSource } from '@ant/shared';
 
 export interface SlotWarning {
   type: 'invalid-file' | 'invalid-env';
@@ -10,7 +10,14 @@ export interface SlotWarning {
 export interface SlotFileEntry {
   name: string;
   path: string;
-  size?: number;
+  /**
+   * Server stat record (size / mtime / template state) — copied through
+   * from the source `FileNode.meta`. Carrying `meta` whole instead of
+   * cherry-picking individual fields keeps `SlotFileEntry` aligned with
+   * the `FileResourceMeta` SSOT and unlocks `mtime`-based default ranking
+   * for `refsSingleSelect` intents.
+   */
+  meta?: FileResourceMeta;
   warnings: SlotWarning[];
 }
 
