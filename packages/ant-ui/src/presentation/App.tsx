@@ -20,8 +20,17 @@ import { MainContentArea } from '@/presentation/components/layout/MainContentAre
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight } from 'lucide-react';
-import { Skeleton, Spinner } from '@/presentation/components/common/async';
+import { Spinner } from '@/presentation/components/common/async';
 import { selectProjectsLoaded } from '@/domain/store/selectors';
+import {
+  useIdeBaseUrl,
+  useIdeOverlayMode,
+  useIdeReloadTimestamp,
+  useIdeWorkspacePath,
+} from '@/domain/store/selectors/ideSelectorHooks';
+import { useIdeHealthMonitor } from '@/application/hooks/ide/useIdeHealthMonitor';
+import { useIdeStuckDetector } from '@/application/hooks/ide/useIdeStuckDetector';
+import { IdeConnectionPanel } from '@/presentation/components/common/ide/IdeConnectionPanel';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
@@ -278,88 +287,32 @@ function App() {
     }
   }, [shouldShowQuickStart]);
   
-  const ideBaseUrl = useStore((state) => state.ideBaseUrl);
-  const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
+  const ideWorkspacePath = useIdeWorkspacePath();
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
-  const ideReloadTimestamp = useStore((state) => state.ideReloadTimestamp);
-  const ideConnecting = useStore((state) => state.ideConnecting);
-  const ideConnectError = useStore((state) => state.ideConnectError);
-  const ideFrameLoaded = useStore((state) => state.ideFrameLoaded);
+  const ideReloadTimestamp = useIdeReloadTimestamp();
+  const ideBaseUrl = useIdeBaseUrl();
+  const overlayMode = useIdeOverlayMode();
 
-  // ✅ Auto-recover when iframe fails to load. Single dispatcher: every
-  // recovery attempt calls `startIdeSession`, whose fast-path probes the
-  // pod once and either no-ops (alive) or transitions to slow path (dead).
-  // No soft/hard branching here — that decision lives in the SSOT.
-  const ideRetryCountRef = useRef(0);
-  const lastIdeBaseUrlRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (mainView !== 'codeIde') return;
-    if (!ideBaseUrl || ideConnecting) return;
-    if (!selectedProject) return;
+  // ✅ Health monitor — 30s probe + SSE soft-disconnect signal. Active only
+  // while the IDE session is `connected`; the hook gates internally.
+  useIdeHealthMonitor();
+  // ✅ Stuck detector — per-phase thresholds (pod-pending 45s, image-pulling
+  // 180s, etc.). Marks the session stuck if the current phase doesn't
+  // advance, surfacing the "Force reset" CTA in IdeConnectionPanel.
+  useIdeStuckDetector();
 
-    if (lastIdeBaseUrlRef.current !== ideBaseUrl) {
-      lastIdeBaseUrlRef.current = ideBaseUrl;
-      ideRetryCountRef.current = 0;
-    }
-
-    // Stop retries once iframe successfully loaded
-    if (ideFrameLoaded) return;
-
-    // After 2 automatic recoveries still no success — surface explicit failure
-    // so IdeLoadingOverlay flips to the `failed` state and exposes a manual
-    // retry button instead of spinning forever.
-    if (ideRetryCountRef.current >= 2) {
-      if (!useStore.getState().ideConnectError) {
-        useStore.getState().setIdeConnecting(false, 'IDE failed to load after recovery attempts.');
-      }
-      return;
-    }
-
-    const t = setTimeout(() => {
-      if (!useStore.getState().ideFrameLoaded) {
-        ideRetryCountRef.current += 1;
-        void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
-      }
-    }, ideRetryCountRef.current === 0 ? 1200 : 3500);
-
-    return () => clearTimeout(t);
-  }, [mainView, ideBaseUrl, ideConnecting, ideFrameLoaded, selectedProject, selectedFeature]);
-
-  // ✅ Visibility preempt — when the user returns to the tab after >10 min
-  // (the idle-reap window), check the iframe's pod is still alive BEFORE
-  // the stale iframe rasterizes a 404 page. `startIdeSession`'s fast-path
-  // does the actual probe; this effect is just the trigger. 30s throttle
-  // keeps tab-switch storms cheap.
-  const lastVisibilityCheckRef = useRef<number>(0);
-  useEffect(() => {
-    if (mainView !== 'codeIde') return;
-
-    const handler = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (!selectedProject) return;
-      const state = useStore.getState();
-      if (!state.ideBaseUrl || state.ideConnecting) return;
-      const now = Date.now();
-      if (now - lastVisibilityCheckRef.current < 30_000) return;
-      lastVisibilityCheckRef.current = now;
-      void state.startIdeSession(selectedProject, selectedFeature || undefined);
-    };
-
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
-  }, [mainView, selectedProject, selectedFeature]);
-
-  // ✅ Refresh-safe: if we reload while in codeIde view, re-connect to IDE automatically.
-  // Delegates to the `startIdeSession` SSOT so this path also gets the
-  // pre-flight probe; no duplicate startCloudIDE / setIdeBaseUrl logic here.
+  // ✅ Refresh-safe: if we reload while in codeIde view, re-connect to IDE
+  // automatically. `startIdeSession` handles the inflight/idempotent guards
+  // internally so we don't need to gate here beyond "do we have a baseUrl?".
+  // overlayMode === 'hidden' folds both `idle` and `connected` together — we
+  // discriminate by `ideBaseUrl` (idle has none, connected has it).
   useEffect(() => {
     if (mainView !== 'codeIde') return;
     if (!selectedProject) return;
-    if (ideBaseUrl) return;
-    if (ideConnecting) return;
-
+    if (overlayMode !== 'hidden') return;
+    if (ideBaseUrl) return; // already connected
     void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
-  }, [mainView, selectedProject, selectedFeature, ideBaseUrl, ideConnecting]);
+  }, [mainView, selectedProject, selectedFeature, overlayMode, ideBaseUrl]);
   
   // ✅ Domain data (via Application Hooks)
   const { kanbanData } = useKanban();
@@ -586,23 +539,8 @@ function App() {
           className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}
           style={{ display: mainView === 'codeIde' ? 'block' : 'none' }}
         >
-          {ideConnecting || !ideBaseUrl ? (
-            <IdeLoadingOverlay
-              message={ideConnectError ? 'failed' : 'connecting'}
-              errorMessage={ideConnectError}
-              onRetry={selectedProject ? () => void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined) : undefined}
-            />
-          ) : (
-            <div className="relative w-full h-full">
-              {!ideFrameLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
-                  <IdeLoadingOverlay
-                    message={ideConnectError ? 'failed' : 'loading'}
-                    errorMessage={ideConnectError}
-                    onRetry={selectedProject ? () => void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined) : undefined}
-                  />
-                </div>
-              )}
+          <div className="relative w-full h-full">
+            {ideBaseUrl && (
               <iframe
                 key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
                 src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
@@ -611,11 +549,9 @@ function App() {
                 onLoad={async () => {
                   // onLoad fires on both real content and proxy error pages
                   // (cross-origin onError is unreliable). Re-probe the proxy
-                  // to distinguish them. `< 400` is the success window —
-                  // a 404 here means `baseProxy` returned "ide not found"
-                  // because the pod was idle-reaped, NOT a legitimate
-                  // workbench response. Treat 4xx/5xx as dead and delegate
-                  // recovery to `startIdeSession` (single SSOT).
+                  // to distinguish: `< 400` = real workbench → `iframeLoaded`,
+                  // `>= 400` = idle-reaped / dead → delegate to `requestReconnect`
+                  // / `startIdeSession`.
                   try {
                     const res = await fetch(`${ideBaseUrl}/`, {
                       method: 'GET',
@@ -623,17 +559,26 @@ function App() {
                       cache: 'no-store',
                     });
                     if (res.status >= 200 && res.status < 400) {
-                      useStore.getState().setIdeFrameLoaded(true);
+                      useStore.getState().iframeLoaded();
                     } else if (selectedProject) {
+                      // dead proxy → drop to disconnected with iframe-error
+                      // signal, then ask startIdeSession to recover.
+                      useStore.getState().iframeLoadFailed?.('Proxy returned an error status');
                       void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
                     }
                   } catch {
-                    // network error — leave ideFrameLoaded=false; retry effect handles it
+                    // network error — let the health monitor's probe pick it up.
                   }
                 }}
               />
-            </div>
-          )}
+            )}
+            {overlayMode !== 'hidden' && selectedProject && (
+              <IdeConnectionPanel
+                projectId={selectedProject}
+                featureName={selectedFeature || undefined}
+              />
+            )}
+          </div>
         </div>
 
         {/* Agents View */}
@@ -699,50 +644,6 @@ function App() {
       )}
     </AlertModalProvider>
     </ToastProvider>
-  );
-}
-
-/**
- * Small helper used by the codeIde view's loading states. Centralises the
- * skeleton + spinner + i18n message so both the "container starting" and
- * "iframe loading" phases share one visual.
- */
-function IdeLoadingOverlay({
-  message,
-  errorMessage,
-  onRetry,
-}: {
-  message: 'connecting' | 'loading' | 'failed';
-  errorMessage?: string;
-  onRetry?: () => void;
-}) {
-  const { t } = useTranslation('async');
-  const text =
-    message === 'failed'
-      ? t('ide.failed', { message: errorMessage ?? '' })
-      : message === 'connecting'
-        ? t('ide.connecting')
-        : t('ide.loading');
-  return (
-    <div className="w-full h-full flex items-center justify-center">
-      <div className="max-w-lg w-full px-6">
-        <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
-          <Skeleton variant="text" className="w-44 mb-4" />
-          <Skeleton variant="text" className="w-full mb-2" delayMs={80} />
-          <Skeleton variant="text" className="w-5/6 mb-6" delayMs={160} />
-          <div className="text-sm text-gray-600 dark:text-gray-300">{text}</div>
-          {message === 'failed' && onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-4 inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#161b22] transition-colors"
-            >
-              {t('ide.retry')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 

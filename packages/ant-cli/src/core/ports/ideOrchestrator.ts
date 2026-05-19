@@ -80,6 +80,17 @@ export interface IDEOrchestratorPort {
     projectId: string,
     feature?: string
   ): Promise<{ success: boolean; message?: string }>;
+
+  /**
+   * Force-reset a single feature's IDE pod — escape hatch for stuck pods.
+   * Differs from stop() by using gracePeriod=0 and verifying state-store
+   * cleanup. Used by the FE "강제 초기화" (force reset) action.
+   */
+  forceReset(
+    tenantId: string,
+    projectId: string,
+    feature?: string
+  ): Promise<{ success: boolean; message?: string }>;
   
   /**
    * Get IDE instance status

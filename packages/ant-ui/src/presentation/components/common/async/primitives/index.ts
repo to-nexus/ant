@@ -4,3 +4,5 @@ export { Skeleton } from './Skeleton';
 export type { SkeletonProps, SkeletonVariant } from './Skeleton';
 export { ProgressBar } from './ProgressBar';
 export type { ProgressBarProps } from './ProgressBar';
+export { StepIndicator } from './StepIndicator';
+export type { StepIndicatorProps, StepIndicatorStep, StepStatus } from './StepIndicator';

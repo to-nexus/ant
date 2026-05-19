@@ -114,6 +114,19 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
+   * Force-reset — Docker has no separate "force" semantics (no grace period
+   * concept beyond SIGKILL). Compose from `stop()`; same end state as K8s
+   * forceReset for the FE caller.
+   */
+  async forceReset(
+    tenantId: string,
+    projectId: string,
+    feature: string = RESERVED_FEATURE_NAME
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.stop(tenantId, projectId, feature);
+  }
+
+  /**
    * Get IDE instance status
    */
   async getStatus(

@@ -153,18 +153,63 @@ export interface UIActions {
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
   toggleShowWorkflow: () => void;
   setMainView: (mode: 'agents' | 'codeIde') => void;
-  setIdeBaseUrl: (url: string | undefined) => void;
   setIdeWorkspacePath: (path: string | undefined) => void;
   switchToCodeIdeView: (workspacePath: string) => void;
-  setIdeConnecting: (connecting: boolean, error?: string) => void;
-  setIdeFrameLoaded: (loaded: boolean) => void;
-  reloadIdeFrame: () => void;
   /**
-   * Start an IDE session: call BE, pre-flight the proxy URL until it serves
-   * HTTP, then publish the URL. Single SSOT — both NavBar click and App.tsx
-   * reconnect effect call this so the pre-flight gate cannot be bypassed.
+   * Bump `ideReloadTimestamp` to force-remount the iframe without changing
+   * baseUrl. Used after a successful reconnect probe.
+   */
+  bumpIdeReloadTimestamp: () => void;
+  /**
+   * Start an IDE session: BE call → waitForIdeReady → flip to `frameLoading`.
+   * Single SSOT — both NavBar click and App.tsx reconnect effect call this so
+   * the pre-flight gate cannot be bypassed.
    */
   startIdeSession: (projectId: string, featureName?: string) => Promise<void>;
+  /**
+   * SSE handler entry — update the current `starting` session's phase. No-op
+   * if not in `starting` (stale event).
+   */
+  updateIdePhase: (phase: import('@ant/shared').IdePhase, detail?: string) => void;
+  /**
+   * iframe `src` has been set (App.tsx sets `ideBaseUrl` then renders the
+   * iframe). Transition `starting` → `frameLoading`.
+   */
+  iframeMounted: (baseUrl: string) => void;
+  /**
+   * iframe `onLoad` fired. Transition `frameLoading` → `connected`.
+   */
+  iframeLoaded: () => void;
+  /**
+   * iframe load failed / never fired. Any state → `failed`.
+   */
+  iframeLoadFailed: (reason: string) => void;
+  /**
+   * Mark the current `connected` session as disconnected. No-op in other
+   * kinds — disconnect detection only makes sense for a previously-live
+   * session.
+   */
+  markDisconnected: (signal: 'probe-dead' | 'sse-channel-down' | 'iframe-error') => void;
+  /**
+   * Mark the current `starting` session as stuck (phase hasn't advanced past
+   * its per-phase threshold). No-op outside `starting`.
+   */
+  markStuck: () => void;
+  /**
+   * Re-probe a disconnected session. Probe-alive → bump iframe + reconnect
+   * succeeds → connected. Probe-dead → promote to slow path (Restart).
+   */
+  requestReconnect: () => Promise<void>;
+  /**
+   * Force-reset — call POST /cloud-ide/reset, then drop to `idle` (no auto-
+   * restart; user must explicitly Open IDE again).
+   */
+  forceResetIdeSession: (projectId: string, featureName?: string) => Promise<void>;
+  /**
+   * Close — call POST /cloud-ide/stop (best-effort, swallow errors since
+   * idle reap will clean up if it fails) and drop to `idle`.
+   */
+  closeIdeSession: (projectId: string, featureName?: string) => Promise<void>;
   selectMainPanelTab: (tab: MainPanelTabId) => void;
   openMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
   closeMainPanelTab: (tab: Exclude<StaticMainPanelTab, 'job'>) => void;
@@ -293,13 +338,9 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   splitLayout: 'vertical',
   showWorkflow: true,
   mainView: 'agents',
-  ideBaseUrl: undefined,
+  ideSession: { kind: 'idle' as const },
   ideWorkspacePath: undefined,
   ideReloadTimestamp: 0,
-  ideConnecting: false,
-  ideConnectError: undefined,
-  ideFrameLoaded: false,
-  ideLastStartedKey: undefined,
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
   mainPanelTabOrder: [],
@@ -366,11 +407,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set({ mainView: mode });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
 
-    // Tab switch is a pure visibility toggle now — the IDE iframe stays
+    // Tab switch is a pure visibility toggle — the IDE iframe stays
     // mounted across mainView changes (App.tsx renders both containers with
-    // a `display` toggle). Resetting `ideFrameLoaded` here would flash the
-    // skeleton over a live VSCode session, so the only legitimate writers
-    // are `reloadIdeFrame` and `startIdeSession` (slow path).
+    // a `display` toggle). Touching `ideSession.kind` here would flash the
+    // overlay over a live VSCode session, so the only legitimate writers
+    // are `bumpIdeReloadTimestamp` and `startIdeSession` (slow path).
 
     // IDE -> Agents 전환 시 stale 데이터 refresh
     if (prev === 'codeIde' && mode === 'agents') {
@@ -395,63 +436,131 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     }
   },
 
-  setIdeBaseUrl: (url) => {
-    set({ ideBaseUrl: url });
-  },
-
   setIdeWorkspacePath: (path) => {
     set({ ideWorkspacePath: path });
   },
 
   switchToCodeIdeView: (workspacePath) => {
-    set({ 
+    set({
       ideWorkspacePath: workspacePath,
       mainView: 'codeIde'
     });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
   },
 
-  setIdeConnecting: (connecting, error) => {
-    set({ ideConnecting: connecting, ideConnectError: error });
+  bumpIdeReloadTimestamp: () => {
+    set({ ideReloadTimestamp: Date.now() });
   },
 
-  setIdeFrameLoaded: (loaded) => {
-    set({ ideFrameLoaded: loaded });
+  updateIdePhase: (phase, _detail) => {
+    const s = get().ideSession;
+    if (s.kind !== 'starting') return;   // stale event — silently drop
+    set({ ideSession: { ...s, phase } });
   },
 
-  reloadIdeFrame: () => {
-    set({ ideReloadTimestamp: Date.now(), ideFrameLoaded: false } as any);
+  iframeMounted: (baseUrl) => {
+    const s = get().ideSession;
+    if (s.kind !== 'starting') return;
+    set({
+      ideSession: { kind: 'frameLoading', baseUrl, mountedAt: Date.now(), sessionKey: s.sessionKey },
+    });
+  },
+
+  iframeLoaded: () => {
+    const s = get().ideSession;
+    if (s.kind !== 'frameLoading' && s.kind !== 'reconnecting') return;
+    set({
+      ideSession: { kind: 'connected', baseUrl: s.baseUrl, sessionKey: s.sessionKey },
+    });
+  },
+
+  iframeLoadFailed: (reason) => {
+    const s = get().ideSession;
+    const previousBaseUrl = 'baseUrl' in s ? s.baseUrl : undefined;
+    set({
+      ideSession: { kind: 'failed', error: reason, ...(previousBaseUrl ? { previousBaseUrl } : {}) },
+    });
+  },
+
+  markDisconnected: (signal) => {
+    const s = get().ideSession;
+    if (s.kind !== 'connected') return;
+    set({
+      ideSession: {
+        kind: 'disconnected',
+        baseUrl: s.baseUrl,
+        sessionKey: s.sessionKey,
+        detectedAt: Date.now(),
+        signal,
+      },
+    });
+  },
+
+  markStuck: () => {
+    const s = get().ideSession;
+    if (s.kind !== 'starting' || s.stuckSince !== undefined) return;
+    set({ ideSession: { ...s, stuckSince: Date.now() } });
+  },
+
+  requestReconnect: async () => {
+    const s = get().ideSession;
+    if (s.kind !== 'disconnected') return;
+    set({
+      ideSession: {
+        kind: 'reconnecting',
+        baseUrl: s.baseUrl,
+        sessionKey: s.sessionKey,
+        attemptStartedAt: Date.now(),
+      },
+    });
+
+    const { probeIdeAlive } = await import('@/infrastructure/http/poll');
+    const liveness = await probeIdeAlive(s.baseUrl);
+
+    if (liveness === 'dead') {
+      // Server is gone — promote to slow path. Caller (UI button) is expected
+      // to chain a `startIdeSession` next, but we surface the failure here so
+      // the overlay shows it cleanly.
+      set({
+        ideSession: { kind: 'failed', error: 'IDE server is gone — try Restart IDE', previousBaseUrl: s.baseUrl },
+      });
+      return;
+    }
+
+    // alive | unknown — bump iframe key and let onLoad transition to connected.
+    set({
+      ideSession: {
+        kind: 'frameLoading',
+        baseUrl: s.baseUrl,
+        mountedAt: Date.now(),
+        sessionKey: s.sessionKey,
+      },
+      ideReloadTimestamp: Date.now(),
+    });
   },
 
   startIdeSession: async (projectId, featureName) => {
     const state = get();
-    const sessionKey = `${projectId}:${featureName || ''}`;
+    const featureKeyPart = featureName || '';
+    const sessionKey = `${projectId}:${featureKeyPart}`;
 
-    // Inflight collapse — a previous call for the same identity is already
-    // running its slow path. This is the SSOT for dedup; the slow path
-    // marks `ideLastStartedKey` at entry (not at success) so concurrent
-    // callers from onLoad probe / retry effect / visibility / NavBar all
-    // hit this branch and become no-ops. State-based, no closure lock.
-    if (state.ideConnecting && state.ideLastStartedKey === sessionKey) {
+    // Inflight collapse — a slow path for the same identity is already
+    // running (kind=starting / frameLoading with matching sessionKey).
+    // Concurrent callers (NavBar / retry effect / visibility) become no-ops.
+    const s = state.ideSession;
+    if ((s.kind === 'starting' || s.kind === 'frameLoading' || s.kind === 'reconnecting') && s.sessionKey === sessionKey) {
       return;
     }
 
-    // Idempotent fast path — same identity, session previously succeeded.
-    // Probe liveness to distinguish (a) live pod we should reuse from
-    // (b) stale `ideBaseUrl` whose pod was idle-reaped. `e7ddcc91`'s
-    // cold-load invariant lives here: alive/unknown returns without
-    // touching the iframe; only confirmed `dead` falls through to remount.
-    if (
-      state.ideBaseUrl &&
-      !state.ideConnecting &&
-      !state.ideConnectError &&
-      state.ideLastStartedKey === sessionKey
-    ) {
+    // Idempotent fast path — already connected to this session. Probe
+    // liveness to distinguish (a) live pod we should reuse from (b) stale
+    // baseUrl whose pod was idle-reaped.
+    if (s.kind === 'connected' && s.sessionKey === sessionKey) {
       const { probeIdeAlive } = await import('@/infrastructure/http/poll');
-      const liveness = await probeIdeAlive(state.ideBaseUrl);
+      const liveness = await probeIdeAlive(s.baseUrl);
       if (liveness !== 'dead') {
         if (get().mainView !== 'codeIde') {
-          set({ mainView: 'codeIde' } as any);
+          set({ mainView: 'codeIde' });
           saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
         }
         return;
@@ -459,19 +568,13 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       // 'dead' → fall through to slow path (pod re-creation)
     }
 
-    // Slow path — first start, identity change, recovery after error, or
-    // confirmed dead pod above. `ideLastStartedKey` is set up-front so
-    // concurrent callers hit the inflight branch instead of double-firing
-    // `POST /cloud-ide/start`.
+    // Slow path — enter `starting` BEFORE the BE call so concurrent entrants
+    // hit the inflight branch above instead of double-firing /cloud-ide/start.
     set({
-      ideBaseUrl: undefined,
-      ideConnecting: true,
-      ideConnectError: undefined,
-      ideFrameLoaded: false,
+      ideSession: { kind: 'starting', phase: null, startedAt: Date.now(), sessionKey },
       ideWorkspacePath: `/${projectId}`,
-      ideLastStartedKey: sessionKey,
       mainView: 'codeIde',
-    } as any);
+    });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
 
     try {
@@ -485,23 +588,64 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       // would otherwise GET a 500 from a still-booting code-server.
       await waitForIdeReady(proxyUrl, 15_000);
 
+      // Stale-start guard — if the user navigated away or another session
+      // started during the await, drop our result.
+      const post = get().ideSession;
+      if (post.kind !== 'starting' || post.sessionKey !== sessionKey) {
+        return;
+      }
+
       set({
-        ideBaseUrl: proxyUrl,
+        ideSession: { kind: 'frameLoading', baseUrl: proxyUrl, mountedAt: Date.now(), sessionKey },
         ideWorkspacePath: instance.workspacePath || `/${projectId}`,
         ideReloadTimestamp: Date.now(),
-        ideFrameLoaded: false,
-        ideConnecting: false,
-        ideConnectError: undefined,
-        ideLastStartedKey: sessionKey,
-      } as any);
+      });
     } catch (error: any) {
-      // On failure, clear `ideLastStartedKey` so the next attempt is not
-      // collapsed by the inflight guard above.
+      // Stale-start guard — don't clobber a newer session with an old error.
+      const post = get().ideSession;
+      if (post.kind === 'starting' && post.sessionKey === sessionKey) {
+        set({
+          ideSession: { kind: 'failed', error: error?.message || 'Failed to start IDE' },
+        });
+      }
+    }
+  },
+
+  forceResetIdeSession: async (projectId, featureName) => {
+    const featureKeyPart = featureName || '';
+    const sessionKey = `${projectId}:${featureKeyPart}`;
+    // Show "starting" briefly while the BE clears state — gives the user
+    // visible feedback that the request is in flight.
+    set({
+      ideSession: { kind: 'starting', phase: null, startedAt: Date.now(), sessionKey },
+    });
+
+    try {
+      const { resetCloudIDE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+      await resetCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+      // No auto-restart — drop to idle and wait for explicit user action.
+      // The cause may be environmental (node shortage, registry outage); an
+      // immediate retry would reproduce the same stuck state.
+      set({ ideSession: { kind: 'idle' } });
+    } catch (error: any) {
       set({
-        ideConnecting: false,
-        ideConnectError: error?.message || 'Failed to start IDE',
-        ideLastStartedKey: undefined,
-      } as any);
+        ideSession: { kind: 'failed', error: error?.message || 'Force reset failed' },
+      });
+    }
+  },
+
+  closeIdeSession: async (projectId, featureName) => {
+    // Drop to idle immediately so the iframe unmounts — don't make the user
+    // wait on the BE stop. Stop is best-effort; idle reap will clean up if
+    // it fails.
+    set({ ideSession: { kind: 'idle' } });
+
+    try {
+      const { stopCloudIDE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+      await stopCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[uiSlice] IDE stop failed (idle reap will handle):', e?.message ?? e);
     }
   },
 

@@ -121,23 +121,44 @@ export type EditorMainPanelTabId = `editor:${string}`;
 export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
 export type MainPanelTabOrderItem = Exclude<MainPanelTabId, 'job'>;
 
+/**
+ * IDE session lifecycle — discriminated union, the SSOT for every IDE
+ * lifecycle UI signal (startup phase / iframe load / disconnect / failure).
+ *
+ * Reads MUST go through `domain/store/selectors/ideSelectors.ts`; direct
+ * `state.ideSession.kind === '...'` reads outside that module are forbidden.
+ * Writes go through the typed actions on UISlice.
+ *
+ * `sessionKey = ${projectId}:${featureName}` lets stale-start guards (BE SSE
+ * matching, App.tsx visibility checks) discriminate this session from a
+ * previous one without leaking startedAt / baseUrl identity comparisons.
+ */
+export type IdeSessionState =
+  | { kind: 'idle' }
+  | { kind: 'starting'; phase: import('@ant/shared').IdePhase | null; startedAt: number; sessionKey: string; stuckSince?: number }
+  | { kind: 'frameLoading'; baseUrl: string; mountedAt: number; sessionKey: string }
+  | { kind: 'connected'; baseUrl: string; sessionKey: string }
+  | { kind: 'disconnected'; baseUrl: string; sessionKey: string; detectedAt: number; signal: 'probe-dead' | 'sse-channel-down' | 'iframe-error' }
+  | { kind: 'reconnecting'; baseUrl: string; sessionKey: string; attemptStartedAt: number }
+  | { kind: 'failed'; error: string; previousBaseUrl?: string };
+
 export interface UIState {
   theme: 'light' | 'dark';
   language: 'en' | 'ko';
   splitLayout: 'horizontal' | 'vertical';
   showWorkflow: boolean;
   mainView: 'agents' | 'codeIde';
-  ideBaseUrl: string | undefined; // ✅ Cloud IDE: direct URL returned from /api/cloud-ide/start
+  // SSOT for IDE lifecycle — see `IdeSessionState`. Use selectors from
+  // `domain/store/selectors/ideSelectors.ts`; do NOT read kind/baseUrl/etc
+  // directly from this field outside the selectors module.
+  ideSession: IdeSessionState;
+  // Orthogonal to ideSession lifecycle — user's selected workspace path,
+  // preserved across sessions. Set on first session and rehydrated thereafter.
   ideWorkspacePath: string | undefined;
-  ideReloadTimestamp: number; // ✅ Add timestamp to force IDE reload
-  ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
-  ideConnectError: string | undefined;
-  ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
-  // Identity (`${projectId}:${featureName ?? ''}`) of the last successful
-  // startIdeSession. Used by the idempotency fast-path so repeated entries
-  // (NavBar click while already in IDE, refresh effect re-trigger) skip the
-  // BE start + waitForIdeReady poll and just flip mainView.
-  ideLastStartedKey: string | undefined;
+  // iframe force-remount trigger — bumped by `bumpIdeReloadTimestamp()` when
+  // we want the iframe to reload but stay on the same baseUrl (post-reconnect
+  // success). Combined with baseUrl as the iframe `key`.
+  ideReloadTimestamp: number;
   mainPanelActiveTab: MainPanelTabId;
   mainPanelOpenTabs: {
     projectConfig: boolean;
