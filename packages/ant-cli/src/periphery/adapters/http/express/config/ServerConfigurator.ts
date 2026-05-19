@@ -3,6 +3,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
+import { createIdeFaviconStub, createIdeVsdaStub } from '../../middleware/ideStubInterceptors';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
@@ -31,9 +32,10 @@ export class ServerConfigurator {
    * 2. Favicon (avoid noisy 401s)
    * 3. Cookie parser (needed by IDE proxy auth)
    * 4. IDE proxy auth (JWT check before proxy intercepts)
-   * 5. Proxy middleware (intercepts /ide/ requests, no next())
-   * 6. Body parsers (must come after proxy)
-   * 7. General JWT auth (all other routes)
+   * 5. IDE stub interceptors (short-circuit cosmetic-noise paths; after JWT, before proxy)
+   * 6. Proxy middleware (intercepts /ide/ requests, no next())
+   * 7. Body parsers (must come after proxy)
+   * 8. General JWT auth (all other routes)
    */
   configure(app: Express): void {
     if (process.env.NODE_ENV === 'production') {
@@ -44,6 +46,7 @@ export class ServerConfigurator {
     this.setupFaviconHandler(app);
     this.setupCookieParser(app);
     this.setupIdeProxyAuth(app);
+    this.setupIdeStubInterceptors(app);
     this.setupProxyMiddleware(app);
     this.setupBodyParsers(app);
     this.setupAuthentication(app);
@@ -78,10 +81,23 @@ export class ServerConfigurator {
   }
 
   /**
+   * Short-circuit cosmetic-noise paths (vsda.js / vsda_bg.wasm / favicon.ico)
+   * under `/ide/{key}/...` before the proxy forwards them upstream. Runs after
+   * setupIdeProxyAuth() so cloud-mode JWT gating still applies.
+   *
+   * See ideStubInterceptors.ts for rationale (gitpod/openvscode-server omits
+   * vsda; favicon would generate 404 + text/plain MIME mismatch in console).
+   */
+  private setupIdeStubInterceptors(app: Express): void {
+    app.use(createIdeFaviconStub());
+    app.use(createIdeVsdaStub());
+  }
+
+  /**
    * Setup proxy middleware for IDE containers
    * IMPORTANT: Must be registered BEFORE body parsers (proxy streams raw bytes)
    * JWT auth is handled by setupIdeProxyAuth() which runs before this.
-   * 
+   *
    * Note: Preview Proxy moved to ant-preview (see 10-cloud-architecture.md)
    */
   private setupProxyMiddleware(app: Express): void {

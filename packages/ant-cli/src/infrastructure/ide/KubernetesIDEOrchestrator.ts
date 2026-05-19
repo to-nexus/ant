@@ -33,6 +33,8 @@ import { logger } from '../../utils/logger';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import { resolveK8sWorktreeMounts } from './k8sWorktreeMounts';
 import { waitForHttpReady } from './readiness';
+import { createIdePhaseEmitter, IdePhaseEmitter } from './idePhaseEmitter';
+import type { IdePhase } from '@ant/shared';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -625,9 +627,20 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         logger.debug(`Service already exists: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
       }
 
+      // Emitter for FE-observable startup phases (pod-pending / image-pulling
+      // / container-ready / http-ready). User-scoped Redis broadcast channel;
+      // failures are swallowed inside the emitter.
+      const phaseEmitter = createIdePhaseEmitter(
+        this.stateStore,
+        userContext,
+        projectId,
+        feature,
+        Date.now(),
+      );
+
       // Wait for pod to be ready
       logger.debug(`Waiting for Pod to be ready: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
-      await this.waitForPodReady(resourceName);
+      await this.waitForPodReady(resourceName, TIMEOUTS.POD_READY, phaseEmitter);
       logger.info(`Pod is ready: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
 
       // Get pod info
@@ -648,6 +661,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           }, probeErr);
         }
       }
+
+      // Emit the final phase — workbench HTTP is now reachable. The FE will
+      // transition to its `frameLoading` state (step 5) when the iframe mounts.
+      void phaseEmitter.emit('http-ready');
 
       // Register in state store (IDE is feature-level)
       await this.stateStore.registerIDE(
@@ -700,14 +717,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   /**
    * Wait for pod to become ready
    */
-  private async waitForPodReady(resourceName: string, timeoutMs: number = TIMEOUTS.POD_READY): Promise<void> {
+  private async waitForPodReady(
+    resourceName: string,
+    timeoutMs: number = TIMEOUTS.POD_READY,
+    emitter?: IdePhaseEmitter,
+  ): Promise<void> {
     const startTime = Date.now();
-    
+
     // ✅ WARN level for production visibility
     logger.warn(`⏳ Waiting for Pod: ${resourceName} (timeout: ${timeoutMs / 1000}s)`, {
       component: 'KubernetesIDEOrchestrator'
     });
-    
+
     let lastPhase = '';
     let lastWaitReason = '';
     while (Date.now() - startTime < timeoutMs) {
@@ -721,16 +742,16 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         const waiting = containerStatuses?.state?.waiting;
         const waitReason = waiting?.reason || '';
         const waitMessage = waiting?.message || '';
-        
+
         // Check pod conditions for scheduling issues (important for Pending phase)
         const conditions = pod.status?.conditions || [];
         const podScheduled = conditions.find(c => c.type === 'PodScheduled');
         const schedulingIssue = podScheduled?.status === 'False' ? podScheduled.message : '';
-        
+
         // Log when phase or wait reason changes, or every 30 seconds
         const elapsed = Date.now() - startTime;
         const shouldLog = phase !== lastPhase || waitReason !== lastWaitReason || elapsed % 30000 < 2000;
-        
+
         if (shouldLog) {
           const waitInfo = waiting ? ` [${waitReason}: ${waitMessage}]` : '';
           const scheduleInfo = schedulingIssue ? ` [Scheduling: ${schedulingIssue}]` : '';
@@ -746,6 +767,17 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         // on /ide/<key>/ port 3000) succeeds — guaranteeing openvscode-server is
         // actually serving HTTP, not just that the container PID is alive.
         const readyCond = conditions.find(c => c.type === 'Ready');
+
+        // Emit FE-observable sub-phase. Dedup + image-pulling throttle live in the
+        // emitter; we just call on every poll and let it decide.
+        if (emitter) {
+          const sub = derivePhaseFromPodState(phase, waitReason, podScheduled?.status, readyCond?.status);
+          if (sub) {
+            // Fire-and-forget — emitter swallows errors. Don't block the poll.
+            void emitter.emit(sub, waitMessage || schedulingIssue || undefined);
+          }
+        }
+
         if (phase === 'Running' && readyCond?.status === 'True') {
           logger.warn(`✅ Pod is ready (HTTP responding): ${resourceName} (took ${Math.round(elapsed / 1000)}s)`, {
             component: 'KubernetesIDEOrchestrator'
@@ -909,13 +941,19 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * The DELETE body sets `gracePeriodSeconds` so termination is fast (default
    * is 30s). `waitForPodDeletion` honors a longer 60s timeout for safety
    * margin in slow clusters — see TIMEOUTS.POD_DELETION rationale.
+   *
+   * Pass `gracePeriodSeconds: 0` from `forceReset()` for immediate teardown
+   * when the user explicitly asks to escape a stuck pod.
    */
-  private async deleteResources(resourceName: string): Promise<void> {
-    logger.info(`Deleting K8s resources: ${resourceName}`, {
+  private async deleteResources(
+    resourceName: string,
+    gracePeriodSeconds: number = POD_DELETION_GRACE_SECONDS,
+  ): Promise<void> {
+    logger.info(`Deleting K8s resources: ${resourceName} (grace=${gracePeriodSeconds}s)`, {
       component: 'KubernetesIDEOrchestrator'
     });
 
-    const gracePeriodBody = { gracePeriodSeconds: POD_DELETION_GRACE_SECONDS };
+    const gracePeriodBody = { gracePeriodSeconds };
 
     try {
       await this.k8sRequest(
@@ -923,7 +961,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         'DELETE',
         gracePeriodBody
       );
-      logger.info(`Pod ${resourceName} delete request sent (grace=${POD_DELETION_GRACE_SECONDS}s)`, {
+      logger.info(`Pod ${resourceName} delete request sent (grace=${gracePeriodSeconds}s)`, {
         component: 'KubernetesIDEOrchestrator'
       });
     } catch (err: any) {
@@ -993,6 +1031,79 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         component: 'KubernetesIDEOrchestrator'
       }, error);
 
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Force-reset a single feature's IDE pod — escape hatch for stuck pods.
+   *
+   * Differs from `stop()` in two ways:
+   *   1. `gracePeriodSeconds: 0` (vs default 5s) — no graceful close, kubelet
+   *      tears down immediately. Used when the pod is in an unrecoverable
+   *      state (ImagePullBackOff, CrashLoopBackOff, etc.) and we just want
+   *      it gone.
+   *   2. State-store cleanup verification: poll `getIDE` until it returns
+   *      null (300ms × 17 ≈ 5s). If a stale mapping persists, re-issue
+   *      `unregisterIDE` and throw — the caller can decide to retry or
+   *      surface the error to the user.
+   *
+   * After `forceReset` returns, the FE is expected to drop to `idle` and
+   * wait for a manual restart (not auto-retry) — see plan D-3.
+   */
+  async forceReset(
+    tenantId: string,
+    projectId: string,
+    feature: string = RESERVED_FEATURE_NAME,
+  ): Promise<{ success: boolean; message?: string }> {
+    const tenantParts = tenantId.split(':');
+    const orgId = tenantParts[0] || '';
+    const userId = tenantParts.length > 1 ? tenantParts[1] : '';
+
+    const instanceKey = createIDEKey(orgId, userId, projectId, feature);
+    const resourceName = this.createResourceName(instanceKey);
+
+    logger.warn(`💥 Force-resetting K8s IDE: ${instanceKey}`, {
+      component: 'KubernetesIDEOrchestrator',
+    });
+
+    try {
+      await this.deleteResources(resourceName, 0);
+
+      try {
+        await this.waitForPodDeletion(resourceName);
+      } catch (waitErr: any) {
+        logger.warn(`Pod deletion wait timed out during force-reset (continuing): ${waitErr.message}`, {
+          component: 'KubernetesIDEOrchestrator',
+        });
+      }
+
+      await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
+
+      // Verification — confirm the IDE mapping is actually gone from the state
+      // store. Polls 300ms × 17 ≈ 5s. A stale mapping after this window is a
+      // genuine cleanup failure worth surfacing.
+      const VERIFY_MAX_ATTEMPTS = 17;
+      const VERIFY_INTERVAL_MS = 300;
+      for (let attempt = 0; attempt < VERIFY_MAX_ATTEMPTS; attempt++) {
+        const stale = await this.stateStore.getIDE(orgId, userId, projectId, feature);
+        if (!stale) return { success: true };
+        await new Promise(r => setTimeout(r, VERIFY_INTERVAL_MS));
+      }
+
+      // One last unregister attempt — sometimes the first DEL races with a
+      // touchIDE write. If still present, throw so the caller sees it.
+      await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
+      const finalCheck = await this.stateStore.getIDE(orgId, userId, projectId, feature);
+      if (finalCheck) {
+        throw new Error(`State store mapping for ${instanceKey} persisted after force-reset`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      logger.error(`Force-reset failed: ${instanceKey}`, {
+        component: 'KubernetesIDEOrchestrator',
+      }, error);
       return { success: false, message: error.message };
     }
   }
@@ -1237,4 +1348,38 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       }
     }
   }
+}
+
+/**
+ * Map K8s pod state to a FE-observable startup phase. Returns `null` while
+ * the pod is in a transient/unknown state we don't surface (e.g., Succeeded /
+ * Failed — `start()` raises a hard error in those branches).
+ *
+ *   - phase='Pending' + PodScheduled.status !== 'True'          → 'pod-pending'
+ *   - waiting.reason ∈ {ContainerCreating, Pulling, ImagePullBackOff, ErrImagePull}
+ *                                                                → 'image-pulling'
+ *   - phase='Running' + Ready.status !== 'True'                  → 'container-ready'
+ *   - else                                                       → null
+ */
+function derivePhaseFromPodState(
+  phase: string,
+  waitReason: string,
+  podScheduledStatus: string | undefined,
+  readyCondStatus: string | undefined,
+): IdePhase | null {
+  if (phase === 'Pending' && podScheduledStatus !== 'True') {
+    return 'pod-pending';
+  }
+  if (
+    waitReason === 'ContainerCreating' ||
+    waitReason === 'Pulling' ||
+    waitReason === 'ImagePullBackOff' ||
+    waitReason === 'ErrImagePull'
+  ) {
+    return 'image-pulling';
+  }
+  if (phase === 'Running' && readyCondStatus !== 'True') {
+    return 'container-ready';
+  }
+  return null;
 }

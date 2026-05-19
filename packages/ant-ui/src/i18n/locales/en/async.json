@@ -14,9 +14,55 @@
     "dismiss": "Dismiss"
   },
   "ide": {
-    "connecting": "Starting the IDE container…",
-    "loading": "Loading the IDE…",
-    "failed": "IDE failed to load: {{message}}",
-    "retry": "Retry"
+    "step": {
+      "podPending": "Scheduling node",
+      "imagePulling": "Pulling container image",
+      "containerReady": "Starting container",
+      "httpReady": "Connecting to workbench",
+      "frameLoad": "Loading editor"
+    },
+    "elapsed": "{{seconds}}s elapsed",
+    "stuck": {
+      "banner": "{{step}} has been running for {{seconds}}s. This may be an environmental issue.",
+      "forceResetCta": "Force reset"
+    },
+    "disconnected": {
+      "title": "IDE connection lost",
+      "since": "{{seconds}}s ago",
+      "softProbing": "Checking connection…",
+      "reconnecting": "Reconnecting…",
+      "canDo": {
+        "heading": "What you can do",
+        "reconnect": {
+          "label": "Reconnect",
+          "desc": "Check whether the server is still alive (~30s)"
+        },
+        "restart": {
+          "label": "Restart IDE",
+          "desc": "Try reusing the existing pod (~60s). Unsaved changes may be lost."
+        },
+        "forceReset": {
+          "label": "Force reset",
+          "desc": "Tear down the pod and clear all IDE state. You'll need to restart manually."
+        },
+        "close": {
+          "label": "Close IDE",
+          "desc": "Release the pod immediately and return to the main view"
+        }
+      },
+      "cannotDo": {
+        "heading": "What we can't do here",
+        "vscodeReconnect": "VSCode's own reconnect modal inside the iframe is not controllable from ANT. This panel overlays on top of it when shown.",
+        "unsavedBuffer": "Browser isolation means unsaved editor changes can't be preserved by ANT.",
+        "directKubectl": "If you need direct K8s access, contact your operator."
+      }
+    },
+    "forceResetConfirm": {
+      "title": "Force reset the IDE?",
+      "body": "The pod will be completely deleted and any unsaved changes will be lost. You'll need to manually restart after the reset.",
+      "confirm": "Force reset",
+      "cancel": "Cancel"
+    },
+    "failed": "IDE failed to start: {{message}}"
   }
 }

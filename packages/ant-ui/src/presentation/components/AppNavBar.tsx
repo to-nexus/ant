@@ -105,7 +105,8 @@ export function AppNavBar({}: AppNavBarProps) {
     // pre-flight probe, base-url publish, and error surfacing.
     await useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
 
-    const err = useStore.getState().ideConnectError;
+    const { selectIdeConnectError } = await import('@/domain/store/selectors/ideSelectors');
+    const err = selectIdeConnectError(useStore.getState());
     if (err) {
       console.error('[GlobalNavBar] Failed to open IDE:', err);
       setEditorTooltip(t('viewMode.failedToOpenIde'));
