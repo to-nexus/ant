@@ -75,3 +75,38 @@ export async function startCloudIDE(
   if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to start cloud IDE');
   return data;
 }
+
+/**
+ * Graceful stop — gracePeriod=5s. Used by the "Close IDE" action; idle reap
+ * also calls the same endpoint after 10 minutes of inactivity.
+ */
+export async function stopCloudIDE(
+  projectId: string,
+  featureName: string = RESERVED_FEATURE_NAME,
+): Promise<{ success: boolean; message?: string }> {
+  const response = await authFetch(`${API_BASE()}/cloud-ide/stop`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, featureName }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to stop cloud IDE');
+  return data;
+}
+
+/**
+ * Force-reset — gracePeriod=0 + state-store cleanup verification. Used by the
+ * "강제 초기화" (force reset) action when a startup is stuck. No auto-restart;
+ * the FE drops to `idle` after success.
+ */
+export async function resetCloudIDE(
+  projectId: string,
+  featureName: string = RESERVED_FEATURE_NAME,
+): Promise<{ success: boolean; cleared?: { pod: boolean; stateStore: boolean }; message?: string }> {
+  const response = await authFetch(`${API_BASE()}/cloud-ide/reset`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, featureName }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to reset cloud IDE');
+  return data;
+}

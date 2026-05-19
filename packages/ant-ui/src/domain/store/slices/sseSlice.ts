@@ -272,6 +272,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', createBridgeHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', createTransferHandler(get)));
 
+    // IDE startup sub-phase events — broadcast on the user-scoped channel
+    // for every IDE pod the user is watching. Match against the *current*
+    // session's sessionKey to drop stale events (different feature, or a
+    // session that has already advanced past `starting`).
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId('idePhase', (data: SSEMessageMap['idePhase']) => {
+        const s = get();
+        const currentKey = s.ideSession?.kind === 'starting' ? s.ideSession.sessionKey : undefined;
+        if (!currentKey || currentKey !== data.sessionKey) return;
+        s.updateIdePhase?.(data.phase, data.detail);
+      }),
+    );
+
     sliceHandlerIds.push(
       sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();

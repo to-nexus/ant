@@ -232,19 +232,69 @@ export function createCloudIDERoutes(
     try {
       const { projectId, featureName } = req.body;
       const userContext: UserContext = extractUserContext(req);
-      
+
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
       }
-      
+
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
-      
+
       const result = await ideOrchestrator.stop(tenantId, projectId, featureName || RESERVED_FEATURE_NAME);
-      
+
       res.json({ success: result.success, message: result.message });
-      
+
     } catch (error: any) {
       logger.warn(`Stop failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
+      sendErrorResponse(res, 500, error, 'CloudIDE');
+    }
+  });
+
+  /**
+   * POST /cloud-ide/reset
+   *
+   * Force-reset a single feature's IDE pod. Differs from `/stop`:
+   *   - gracePeriodSeconds=0 (no graceful close)
+   *   - State-store cleanup verified (polls until getIDE === null)
+   *
+   * Used by the FE "강제 초기화" (force reset) action when a startup is
+   * stuck (image pull stalled, CrashLoopBackOff, etc). The FE drops to
+   * `idle` after success and waits for a manual restart — does NOT
+   * auto-retry (the cause may be environmental).
+   */
+  router.post('/reset', async (req: Request, res: Response) => {
+    try {
+      const { projectId, featureName } = req.body;
+      const userContext: UserContext = extractUserContext(req);
+
+      if (!projectId) {
+        return res.status(400).json({ error: 'projectId is required' });
+      }
+
+      const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+
+      const result = await ideOrchestrator.forceReset(
+        tenantId,
+        projectId,
+        featureName || RESERVED_FEATURE_NAME,
+      );
+
+      if (!result.success) {
+        return res.status(500).json({
+          success: false,
+          message: result.message,
+        });
+      }
+
+      res.json({
+        success: true,
+        cleared: { pod: true, stateStore: true },
+      });
+    } catch (error: any) {
+      logger.warn(
+        `Reset failed: ${error.message}`,
+        { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName },
+        error,
+      );
       sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
