@@ -3,7 +3,7 @@ import { ArchitectGraphState } from "../../state";
 import { SessionRun } from "../../../../../../core/types";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
-import { designDirOf } from "@ant/shared";
+import { designDirOf, ARTIFACT_PREFIX } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import { evaluateBcGate } from './bcGate';
@@ -478,9 +478,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           const jobId = state.jobId || 'unknown';
           const meta = buildConsumedMeta(jobId);
 
-          const markFile = async (filename: string) => {
+          const markFile = async (filename: string, dirHint?: string) => {
             const isJson = filename.endsWith('.json');
-            const canonicalDir = path.join(featureDirRel, designDirOf(filename));
+            // dirHint is required for spec files whose filenames no longer carry
+            // a "spec-" prefix (designDirOf falls back to architecture/system for
+            // unprefixed .md). Other artifact kinds keep working via designDirOf.
+            const canonicalDir = path.join(featureDirRel, dirHint ?? designDirOf(filename));
             for (const dir of [canonicalDir]) {
               const filePath = path.join(dir, filename);
               if (await state.deps!.fileSystem!.fileExists(filePath)) {
@@ -501,7 +504,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           // RAC role='ref' — replaces the legacy `state.selectedSpec` lookup.
           const { ArtifactPoolView } = await import('../../../../../../core/artifact/ArtifactPipeline');
           const activeSpecRefFilename = new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename();
-          if (activeSpecRefFilename) await markFile(activeSpecRefFilename);
+          if (activeSpecRefFilename) await markFile(activeSpecRefFilename, ARTIFACT_PREFIX.SPEC.replace(/\/$/, ''));
         } catch (err: any) {
           console.warn(`⚠️  [Learn] Failed to mark consumed documents: ${err.message}`);
         }

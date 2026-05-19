@@ -38,9 +38,10 @@ async function stripInternalMarkers(
   fileSystem: { readFile(p: string): Promise<string>; writeFile(p: string, c: string): Promise<void> },
   featurePath: string,
   targetFile: string,
+  targetDir?: string,
 ): Promise<void> {
   try {
-    const dir = designDirOf(targetFile);
+    const dir = targetDir ?? designDirOf(targetFile);
     const filePath = path.join(featurePath, dir, targetFile);
     const content = await fileSystem.readFile(filePath);
     const cleaned = content.replace(INTERNAL_MARKER_RE, '');
@@ -335,7 +336,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     // Strip internal markers from output file when last chapter for a document completes
     const taskForMarkers = state.currentTask as any;
     if (taskForMarkers?.isLastTaskForDocument && taskForMarkers?.targetFile && state.deps?.fileSystem && state.context?.featurePath) {
-      await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile);
+      await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile, taskForMarkers.targetDir);
     }
     
     // Save checkpoint after completing a task (task-complete boundary).

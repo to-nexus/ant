@@ -216,7 +216,11 @@ export async function docGen(
   // ui-spec.json) rather than a single targetFile.
   if (intentGroup !== 'design-ui' && state.currentTask?.targetFile) {
     const targetFile = state.currentTask.targetFile;
-    const expectedTargetFile = `${designDirOf(targetFile)}/${targetFile}`;
+    // Spec tasks (since the spec- prefix was dropped) ship an explicit
+    // `targetDir`; other artifact kinds still derive their dir from the
+    // filename prefix via designDirOf().
+    const targetDir = state.currentTask.targetDir ?? designDirOf(targetFile);
+    const expectedTargetFile = `${targetDir}/${targetFile}`;
     renderStrategy.setExpectedTargetFile(expectedTargetFile);
   }
 
