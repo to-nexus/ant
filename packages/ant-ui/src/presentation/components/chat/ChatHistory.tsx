@@ -316,6 +316,14 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
     if (pending.turnIndex == null) return;
     if (pending.turnIndex === prev) return;
     if (!initialScrollDone.current) return;
+    // Skip if the unresolved card lives in a non-last turn — auto-scrolling
+    // upward to a card outside the current tail surprises the user (e.g.
+    // a card just resolved triggers a new job whose first phase attaches
+    // a fresh choice to an earlier turn, which would jump the viewport
+    // away from the tail). The card stays visible without an autoscroll
+    // because `pendingRef.has` already gates `followOutput` off, so new
+    // content cannot push it off-screen. Manual scroll-up is preserved.
+    if (pending.turnIndex !== latestRef.current.turns.length - 1) return;
     const scrollToCard = () => {
       virtuosoRef.current?.scrollToIndex({
         index: pending.turnIndex!,

@@ -362,11 +362,15 @@ function buildTrailingThinkingMerge(
   activeThinking?: string,
 ): TrailingThinkingMerge | null {
   if (renderItems.length === 0) return null;
-  let endIndex = renderItems.length - 1;
-  while (endIndex >= 0 && renderItems[endIndex].kind !== 'thinking') {
-    endIndex -= 1;
-  }
-  if (endIndex < 0) return null;
+  // Merge invariant — adjacency-strict (mirrors aggregateChatStatuses's
+  // contiguous-family merge for status cards): the active thinking stream
+  // may only merge into thinking entries that sit at the END of the
+  // render list. If the tail is not a thinking entry, render the active
+  // stream via SectionStack's separate `<ShimmerCard streamingText>`
+  // overlay below — never reach across read/file/message entries to
+  // merge into a stale thought block above the chronological tail.
+  if (renderItems[renderItems.length - 1].kind !== 'thinking') return null;
+  const endIndex = renderItems.length - 1;
 
   let startIndex = endIndex;
   while (startIndex - 1 >= 0 && renderItems[startIndex - 1].kind === 'thinking') {

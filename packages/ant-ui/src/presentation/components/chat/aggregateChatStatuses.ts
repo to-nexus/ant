@@ -65,8 +65,24 @@ interface FamilyConfig {
   scopeKeys: readonly string[];
 }
 
+/**
+ * Per-file entry preserved across aggregation. Single-shot `read` /
+ * `read_source` slots carry a `(filePath, startLine, endLine, totalLines)`
+ * payload in their metadata; without this richer entry shape, the
+ * aggregator would collapse them to `string[]` and the expandable drawer
+ * could only show paths — line ranges visible on a non-aggregated card
+ * header would silently vanish the moment two reads merged. List/grep/
+ * explore families that carry only paths land here as `{ path }`.
+ */
+interface AggregatedFileEntry {
+  path: string;
+  startLine?: number;
+  endLine?: number;
+  totalLines?: number;
+}
+
 interface MergedMetadata {
-  filesList: string[];       // dedup'd file paths collected so far
+  filesList: AggregatedFileEntry[]; // dedup'd file entries (path + optional line range)
   filesCount: number;        // sum of filesCount across merged slots
   totalFiles: number;        // sum of totalFiles across merged slots
   totalMatches: number;      // sum of totalMatches (searched_code)
@@ -186,15 +202,33 @@ function hasError(line: ChatStatusLine): boolean {
   return !!(line.metadata && (line.metadata as { error?: unknown }).error);
 }
 
-function pushUniqueFilePath(list: string[], path: string | undefined): void {
-  if (!path) return;
-  if (list.includes(path)) return;
-  list.push(path);
+function pushUniqueFileEntry(
+  list: AggregatedFileEntry[],
+  entry: AggregatedFileEntry | undefined,
+): void {
+  if (!entry || !entry.path) return;
+  // Dedup on path; if the same path arrives again with a different line
+  // range we keep the first (chronologically earliest) entry — replay
+  // semantics match `selectTurns.foldSection`'s last-write-wins for status
+  // cards, but line ranges within an aggregation usually identify
+  // distinct slices of the same file, so first-write keeps the most
+  // representative one. Callers normalise BE metadata into entries.
+  if (list.some((e) => e.path === entry.path)) return;
+  list.push(entry);
 }
 
-function pushUniqueFilePaths(list: string[], add: string[] | undefined): void {
+function pushUniqueFileEntries(
+  list: AggregatedFileEntry[],
+  add: ReadonlyArray<string | AggregatedFileEntry> | undefined,
+): void {
   if (!add || add.length === 0) return;
-  for (const path of add) pushUniqueFilePath(list, path);
+  for (const item of add) {
+    if (typeof item === 'string') {
+      pushUniqueFileEntry(list, { path: item });
+    } else if (item && typeof item === 'object' && typeof item.path === 'string') {
+      pushUniqueFileEntry(list, item);
+    }
+  }
 }
 
 /**
@@ -248,13 +282,22 @@ function mergeInto(bucket: BucketState, line: ChatStatusLine): void {
 
   // Completed slot -> push its path (if any) to the dedup'd file list.
   if (completedNow) {
-    // filePath from read / read_source
+    // filePath + optional line range from read / read_source.
     const filePath = meta?.filePath as string | undefined;
-    pushUniqueFilePath(bucket.merged.filesList, filePath);
+    if (filePath) {
+      pushUniqueFileEntry(bucket.merged.filesList, {
+        path: filePath,
+        startLine: meta?.startLine as number | undefined,
+        endLine: meta?.endLine as number | undefined,
+        totalLines: meta?.totalLines as number | undefined,
+      });
+    }
 
     // filesList may also be carried by list/grep/search/explore etc.
-    const incomingList = meta?.filesList as string[] | undefined;
-    pushUniqueFilePaths(bucket.merged.filesList, incomingList);
+    // Accept both legacy `string[]` shape and the new entry shape so
+    // upstream tools can opt into richer entries incrementally.
+    const incomingList = meta?.filesList as ReadonlyArray<string | AggregatedFileEntry> | undefined;
+    pushUniqueFileEntries(bucket.merged.filesList, incomingList);
 
     // Count/stat summation for list-like families. For read/read_source,
     // BE does not populate filesCount per call, so filesList.length is
