@@ -22,6 +22,9 @@ import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { generateMnemonic } from "../../../../../../utils/humanId";
+
+const SPEC_TARGET_DIR = 'architecture/spec';
 
 interface DecomposeContext {
   phaseStart: number;
@@ -57,16 +60,29 @@ function stripDesignTargetPrefix(file: string): string {
 }
 
 function isValidSpecFileName(file: string): boolean {
-  return /^spec-[a-z0-9-]+\.md$/.test(file);
+  // Current: prefix-less (file already lives under architecture/spec/).
+  // Legacy:  spec-* prefix (kept for BC with workspaces created before
+  //          the prefix was dropped — see plan spec-giggly-glade.md).
+  return /^(spec-)?[a-z0-9][a-z0-9-]*\.md$/.test(file);
 }
 
-export function resolveSpecTargetFileForMode(
+export async function resolveSpecTargetFileForMode(
   state: DesignGraphState,
   jobMode: string,
   slug: string,
-): string {
+): Promise<string> {
   if (jobMode !== 'refactor') {
-    return `spec-${slug}.md`;
+    const baseName = `${slug}.md`;
+    const fs = state.deps?.fileSystem;
+    if (!fs || !state.context?.featurePath) {
+      // Deps unavailable (e.g. unit test harness) — skip the disk check and
+      // emit the plain filename. Disk collisions are the only reason to
+      // append a mnemonic, so the no-deps path is the same as "no collision".
+      return baseName;
+    }
+    const exists = await fs.fileExists(`${state.context.featurePath}/${SPEC_TARGET_DIR}/${baseName}`);
+    if (!exists) return baseName;
+    return `${slug}-${generateMnemonic()}.md`;
   }
 
   const targets = state.resolvedAction?.target ?? [];
@@ -79,7 +95,7 @@ export function resolveSpecTargetFileForMode(
   const fileName = stripDesignTargetPrefix(targets[0]);
   if (!isValidSpecFileName(fileName)) {
     throw new Error(
-      `[specDecompose] rev-spec target must match "spec-*.md": ${fileName}`,
+      `[specDecompose] rev-spec target must match a spec filename (e.g. wallet-login.md or legacy spec-wallet-login.md): ${fileName}`,
     );
   }
 
@@ -173,7 +189,9 @@ async function decomposeSpecSections(
     const parsed = parseLLMJsonResponse(response);
 
     const rawSlug = typeof parsed.slug === 'string' ? parsed.slug : '';
-    const slug = rawSlug.replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
+    // 30-char cap leaves room for the optional `-{adj}-{noun}` mnemonic
+    // appended by resolveSpecTargetFileForMode() on disk collision.
+    const slug = rawSlug.replace(/[^a-z0-9-]/g, '').slice(0, 30) || `feature-${Date.now()}`;
     const title = (typeof parsed.title === 'string' && parsed.title.length > 0)
       ? parsed.title
       : directive.slice(0, 60);
@@ -218,7 +236,7 @@ export async function decomposeSpec(
 
   const { slug, title, tasks, executionTier } = await decomposeSpecSections(state);
   console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
-  const targetFile = resolveSpecTargetFileForMode(state, jobMode, slug);
+  const targetFile = await resolveSpecTargetFileForMode(state, jobMode, slug);
   const parallelGroup = targetFile.replace(/\.md$/, '');
 
   console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${tasks.length} chapter(s)`);
@@ -234,6 +252,7 @@ export async function decomposeSpec(
       type: 'doc',
       priority: 200 + index * 10,
       targetFile,
+      targetDir: SPEC_TARGET_DIR,
       description: directive,
       sectionIndex: index,
       totalSections: tasks.length,

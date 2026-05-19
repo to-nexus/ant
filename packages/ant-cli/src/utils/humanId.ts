@@ -101,3 +101,16 @@ export function generateHumanId(): string {
   const noun = NOUNS[((bytes[4] << 8) | bytes[5]) % NOUNS.length];
   return `${adj}-${verb}-${noun}`;
 }
+
+/**
+ * 2-word mnemonic (adjective-noun) for short identifiers — e.g. spec
+ * filename disambiguation when an LLM-chosen slug already exists on disk.
+ * Reuses the same dictionaries as generateHumanId() to keep one SSOT.
+ */
+export function generateMnemonic(): string {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  const adj = ADJECTIVES[((bytes[0] << 8) | bytes[1]) % ADJECTIVES.length];
+  const noun = NOUNS[((bytes[2] << 8) | bytes[3]) % NOUNS.length];
+  return `${adj}-${noun}`;
+}
