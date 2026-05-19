@@ -484,13 +484,27 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
               <div className="space-y-1">
                 {filesList.map((file: any, idx: number) => {
                   const filePath = typeof file === 'string' ? file : file.path;
+                  // Aggregated read / read_source slots carry a per-file
+                  // line range so the drawer matches the single-card header
+                  // format (`Read: src/foo.ts (L42-L50 of 200)`). Other
+                  // families (list / grep / explore) send plain strings, so
+                  // this branch falls through to no label.
+                  const lineRange =
+                    typeof file === 'object' && file?.startLine
+                      ? ` (L${file.startLine}-L${file.endLine ?? '?'}${file.totalLines ? ` of ${file.totalLines}` : ''})`
+                      : '';
                   return (
-                    <div 
-                      key={idx} 
+                    <div
+                      key={idx}
                       className="flex items-start gap-2 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
                     >
                       <FileCode className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
-                      <span className="font-mono break-all">{filePath}</span>
+                      <span className="font-mono break-all">
+                        {filePath}
+                        {lineRange && (
+                          <span className="text-gray-500 dark:text-gray-500">{lineRange}</span>
+                        )}
+                      </span>
                     </div>
                   );
                 })}
