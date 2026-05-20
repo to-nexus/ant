@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
 import { Settings } from 'lucide-react';
 import { NodeType, NodeImportance, ActiveWorkerNode } from '@/domain/models/workflow';
-import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfoList } from '@/shared/utils/actor-utils';
 
@@ -68,23 +67,22 @@ const NODE_SIZE = {
 
 export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   const { t } = useTranslation('kanban');
-  const splitLayout = useStore(state => state.splitLayout);
   const isExpanded = data.isExpanded || false;
   const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
   const colorClass = `${NODE_COLORS_LIGHT[data.nodeType]} ${NODE_COLORS_DARK[data.nodeType]}`;
-  
+
   const actorInfoList = getActorInfoList(data.actors || [], data.llmInfo);
-  
+
   // ✅ Track isActive changes
   useEffect(() => {
     if (data.isActive) {
       // console.log('[WorkflowNode] ⭐ NODE ACTIVE:', data.label); // ✅ Too verbose
     }
   }, [data.isActive, data.label]);
-  
-  // 화면 분할 방향에 따라 Handle 위치 변경
-  const targetPosition = splitLayout === 'horizontal' ? Position.Top : Position.Left;
-  const sourcePosition = splitLayout === 'horizontal' ? Position.Bottom : Position.Right;
+
+  // Fixed LR layout — workflow is a full-pane view, edges flow left → right.
+  const targetPosition = Position.Left;
+  const sourcePosition = Position.Right;
   
   if (isExpanded) {
     // 확장된 상태

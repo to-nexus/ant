@@ -1,6 +1,5 @@
 import { MainPanel } from '../MainPanel';
 import { MainPanelTabsBar } from '../MainPanelTabsBar';
-import { SplitLayout } from '../SplitLayout';
 import { KanbanBoard } from '../kanban';
 import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
@@ -28,7 +27,6 @@ import {
 
 interface MainContentAreaProps {
   connectionStatus: 'connected' | 'disconnected' | 'error';
-  splitLayout: 'vertical' | 'horizontal';
   kanbanData: KanbanData;
   workflowState: WorkflowRealtimeState | null;
 }
@@ -41,7 +39,6 @@ interface MainContentAreaProps {
  */
 export function MainContentArea({
   connectionStatus,
-  splitLayout,
   kanbanData,
   workflowState,
 }: MainContentAreaProps) {
@@ -53,7 +50,7 @@ export function MainContentArea({
   const selectedFile = useStore((s) => s.selectedFile);
   const editorTabs = useStore((s) => s.editorTabs);
   const activeEditorTabId = useStore((s) => s.activeEditorTabId);
-  const showWorkflow = useStore((s) => s.showWorkflow);
+  const taskViewMode = useStore((s) => s.taskViewMode);
   const selectedProject = useStore((s) => s.selectedProject);
   const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
   const updateProjectConfig = useStore((s) => s.updateProjectConfig);
@@ -167,12 +164,8 @@ export function MainContentArea({
         </div>
       ) : (
         <div className="flex-1 h-full">
-          {showWorkflow ? (
-            <SplitLayout
-              direction={splitLayout}
-              first={<KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />}
-              second={<AgentWorkflowBoard workflowState={workflowState} />}
-            />
+          {taskViewMode === 'workflow' ? (
+            <AgentWorkflowBoard workflowState={workflowState} />
           ) : (
             <div className="h-full overflow-y-auto">
               <KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />

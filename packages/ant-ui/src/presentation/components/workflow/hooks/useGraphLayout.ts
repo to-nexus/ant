@@ -36,20 +36,18 @@ export function useGraphLayout(
   realtimeState: WorkflowRealtimeState | null,
   config?: any
 ) {
-  const splitLayout = useStore(state => state.splitLayout);
   const theme = useStore(state => state.theme);
-  
+
   return useMemo(() => {
     if (!metadata) {
       return { nodes: [], edges: [] };
     }
-    
+
     const llmInfo = realtimeState?.llmInfo ?? null;
-    
-    // 화면 분할 방향에 따라 워크플로우 방향 결정
-    // horizontal (좌우 분할) → 워크플로우는 세로로 (TB)
-    // vertical (상하 분할) → 워크플로우는 가로로 (LR)
-    const rankdir = splitLayout === 'horizontal' ? 'TB' : 'LR';
+
+    // Workflow is a full-pane view (mutually exclusive with kanban), so the
+    // dagre direction is fixed LR. splitLayout no longer influences it.
+    const rankdir = 'LR';
     
     // Helper: check if a node is currently active (any worker occupying it)
     const isNodeActive = (nodeId: string) =>
@@ -220,7 +218,7 @@ export function useGraphLayout(
     });
     
     return { nodes: layoutedNodes, edges: rfEdges };
-  }, [metadata, realtimeState, splitLayout, theme, config]);
+  }, [metadata, realtimeState, theme, config]);
 }
 
 /**

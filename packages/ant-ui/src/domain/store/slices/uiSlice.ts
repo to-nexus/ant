@@ -151,7 +151,7 @@ export interface UIActions {
   setTheme: (theme: 'light' | 'dark') => void;
   setLanguage: (language: 'en' | 'ko') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
-  toggleShowWorkflow: () => void;
+  setTaskViewMode: (mode: 'kanban' | 'workflow') => void;
   setMainView: (mode: 'agents' | 'codeIde') => void;
   setIdeWorkspacePath: (path: string | undefined) => void;
   switchToCodeIdeView: (workspacePath: string) => void;
@@ -336,7 +336,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   theme: getInitialTheme(),
   language: getInitialLanguage(),
   splitLayout: 'vertical',
-  showWorkflow: true,
+  taskViewMode: 'kanban',
   mainView: 'agents',
   ideSession: { kind: 'idle' as const },
   ideWorkspacePath: undefined,
@@ -398,8 +398,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set({ splitLayout: layout });
   },
 
-  toggleShowWorkflow: () => {
-    set((s: any) => ({ showWorkflow: !s.showWorkflow }));
+  setTaskViewMode: (mode) => {
+    set({ taskViewMode: mode });
   },
 
   setMainView: (mode) => {
