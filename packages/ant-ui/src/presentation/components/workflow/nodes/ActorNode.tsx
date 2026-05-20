@@ -53,7 +53,7 @@ const ACTOR_COLORS_DARK: Record<ActorType, string> = {
 };
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
-  const { splitLayout, selectedProject, selectedFeature } = useStore();
+  const { selectedProject, selectedFeature } = useStore();
   const { t } = useTranslation('kanban');
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   const [config, setConfig] = React.useState<ProjectConfig | null>(null);
@@ -106,8 +106,8 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
   
   const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
   
-  // 화면 분할 방향에 따라 Handle 위치 변경
-  const targetPosition = splitLayout === 'horizontal' ? Position.Top : Position.Left;
+  // Fixed LR — workflow is full-pane, edges flow left → right.
+  const targetPosition = Position.Left;
   
   // LOCAL_STORAGE와 VECTOR_DB는 DB 모양 (실린더)
   const isDatabase = data.actorType === ActorType.LOCAL_STORAGE || data.actorType === ActorType.VECTOR_DB;

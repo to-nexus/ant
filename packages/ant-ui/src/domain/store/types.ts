@@ -183,7 +183,7 @@ export interface UIState {
   theme: 'light' | 'dark';
   language: 'en' | 'ko';
   splitLayout: 'horizontal' | 'vertical';
-  showWorkflow: boolean;
+  taskViewMode: 'kanban' | 'workflow';
   mainView: 'agents' | 'codeIde';
   // SSOT for IDE lifecycle — see `IdeSessionState`. Use selectors from
   // `domain/store/selectors/ideSelectors.ts`; do NOT read kind/baseUrl/etc

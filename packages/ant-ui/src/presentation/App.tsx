@@ -228,7 +228,6 @@ function App() {
   const isRunning = useStore((state) => state.isRunning);
   const connectionStatus = useStore((state) => state.connectionStatus);
   const setSession = useStore((state) => state.setSession);
-  const splitLayout = useStore((state) => state.splitLayout);
   const mainView = useStore((state) => state.mainView);
   
   // ✅ Onboarding state
@@ -614,7 +613,6 @@ function App() {
           {/* Main Content Area */}
           <MainContentArea
             connectionStatus={connectionStatus}
-            splitLayout={splitLayout}
             kanbanData={kanbanData}
             workflowState={workflowData}
           />
