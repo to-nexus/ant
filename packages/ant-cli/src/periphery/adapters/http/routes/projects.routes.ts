@@ -11,7 +11,9 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { GitOperationError } from '../services/GitService/errors';
+import { ProjectDeletionError } from '../services/ProjectService/errors';
 import type { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
+import { randomBytes } from 'crypto';
 
 function handleGitError(res: Response, error: any, context: string, projectId: string) {
   const message = error instanceof Error ? error.message : String(error);
@@ -139,19 +141,44 @@ export function createProjectsRoutes(deps: {
   });
   
   // Delete a project
+  //
+  // Returns:
+  //   - 200: { success: true, message }
+  //   - 404: { error: 'Project not found' }
+  //   - 409: { kind: 'projectDeletion', stage, error, hint, leftovers?, canForceCleanup: true, correlationId }
+  //          → user can retry with ?force=true to opt out of strict gating
+  //   - 500: { kind: 'projectDeletion', stage, error, hint, leftovers?, canForceCleanup: false, correlationId }
+  //          → force already attempted; surface the underlying failure
   router.delete('/projects/:id', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const force = req.query.force === 'true';
     try {
-      const projectId = req.params.id;
       const userContext = extractUserContext(req);
-      
-      await deps.projectService.deleteProject(projectId, userContext);
+      await deps.projectService.deleteProject(projectId, userContext, { force });
       res.json({ success: true, message: `Project ${projectId} deleted` });
     } catch (error: any) {
-      if (error.message === 'Project not found') {
-        res.status(404).json({ error: error.message });
-      } else {
-        sendErrorResponse(res, 500, error, 'Projects');
+      if (error?.message === 'Project not found') {
+        return res.status(404).json({ error: error.message });
       }
+      if (error instanceof ProjectDeletionError) {
+        const correlationId = randomBytes(4).toString('hex');
+        const shape = error.toShape();
+        const statusCode = shape.canForceCleanup ? 409 : 500;
+        logger.warn(
+          `[Projects] DELETE failed at stage='${shape.stage}' (force=${force}) [cid:${correlationId}]`,
+          { component: 'Projects', projectId },
+          { stage: shape.stage, message: shape.message, leftovers: shape.leftovers },
+        );
+        // body.error holds the user-facing message (consistent with
+        // GitOperationError → toShape().message); structured fields are
+        // sibling so the FE can drive a step-rail / Force Delete CTA.
+        return res.status(statusCode).json({
+          error: shape.message,
+          ...shape,
+          correlationId,
+        });
+      }
+      sendErrorResponse(res, 500, error, 'Projects');
     }
   });
   

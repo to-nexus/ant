@@ -64,5 +64,28 @@
       "cancel": "Cancel"
     },
     "failed": "IDE failed to start: {{message}}"
+  },
+  "projectDeletion": {
+    "title": "Deleting project",
+    "body": "Removing project '{{projectId}}' and cleaning up resources…",
+    "step": {
+      "cancelJobs": "Cancelling running jobs",
+      "ideCleanup": "Stopping IDE pod",
+      "previewCleanup": "Stopping preview server",
+      "redisCleanup": "Clearing Redis state",
+      "fsVerify": "Verifying filesystem cleanup"
+    },
+    "completed": {
+      "title": "Project deleted",
+      "body": "'{{projectId}}' was removed successfully."
+    },
+    "failed": {
+      "title": "Deletion failed",
+      "stage": "Step {{current}}/{{total}} ({{label}}) failed",
+      "forceDelete": "Force Delete",
+      "dismiss": "Close",
+      "leftoversShow": "Show {{count}} leftover entr{{count, plural, one {y} other {ies}}}",
+      "correlationId": "Error ID: {{cid}}"
+    }
   }
 }

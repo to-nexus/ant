@@ -8,6 +8,7 @@ import { logger } from '../../../../../utils/logger';
 import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { GitBootstrapSSOT } from '../GitService/remote/operations/BaseGitSetupOperation';
+import { DeletionVerificationError } from './errors';
 
 /**
  * ProjectCrudService
@@ -349,11 +350,13 @@ export class ProjectCrudService {
    * BEFORE this runs: K8s pod wait → preview pub/sub ack → child exit wait
    * → Redis state cleanup → THIS deleteProject.
    *
-   * On timeout, throws an error that includes leftover paths (top-N) so the
-   * user / FE wizard can identify which infra owner is still holding the
-   * directory open.
+   * On timeout, throws a typed `DeletionVerificationError` carrying the
+   * leftover paths so the caller (`ProjectService.deleteProject`) can wrap
+   * it into a `ProjectDeletionError` for the route response. `force = true`
+   * extends the poll window from 10s to 20s so NFS silly-rename has more
+   * time to release file handles before giving up.
    */
-  async deleteProject(id: string, userContext: UserContext): Promise<void> {
+  async deleteProject(id: string, userContext: UserContext, opts: { force?: boolean } = {}): Promise<void> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
 
     // Check if project exists
@@ -368,9 +371,11 @@ export class ProjectCrudService {
     await fs.promises.rm(projectPath, { recursive: true, force: true });
 
     // Verify completion. NFS silly-rename + slow file-handle release means
-    // the path can briefly resurface after the rm resolves; poll for up to 10s.
+    // the path can briefly resurface after the rm resolves; poll for up to
+    // 10s (default) or 20s (force mode — gives a stuck holder more time to
+    // release before we surface a verify error).
     const POLL_INTERVAL_MS = 200;
-    const MAX_POLL_ATTEMPTS = 50; // 50 × 200ms = 10s
+    const MAX_POLL_ATTEMPTS = opts.force ? 100 : 50; // 200ms × N
     for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
       const exists = await fs.promises
         .access(projectPath)
@@ -389,12 +394,7 @@ export class ProjectCrudService {
       // Path read failed — likely transient; leave leftovers empty.
     }
 
-    throw new Error(
-      `Project deletion verification timed out: ${projectPath} still exists after fs.rm. ` +
-        `Leftovers (top ${leftovers.length}): ${leftovers.join(', ') || '<unreadable>'}. ` +
-        `Likely causes: open file handles in IDE pod / job-worker child / preview process. ` +
-        `Use POST /projects/:id?force=true to retry after waiting briefly.`,
-    );
+    throw new DeletionVerificationError(projectPath, leftovers);
   }
   
   /**

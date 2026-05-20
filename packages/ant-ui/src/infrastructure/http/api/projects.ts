@@ -22,8 +22,17 @@ export function renameProject(oldId: string, newId: string): Promise<{ success: 
   return apiPut(`${API_BASE()}/projects/${encodeURIComponent(oldId)}/rename`, { newId });
 }
 
-export function deleteProject(projectId: string): Promise<void> {
-  return apiDelete(`${API_BASE()}/projects/${encodeURIComponent(projectId)}`);
+/**
+ * Delete a project. Pass `opts.force = true` to opt out of strict
+ * cascade gating — steps 1-4 (cancel jobs / IDE cleanup / preview ack /
+ * Redis cleanup) tolerate failures with warn logs instead of throwing,
+ * and the fs verification poll window extends from 10s to 20s. The
+ * route returns 409 (with `canForceCleanup: true`) on the strict path
+ * and 500 if force was already attempted.
+ */
+export function deleteProject(projectId: string, opts: { force?: boolean } = {}): Promise<void> {
+  const qs = opts.force ? '?force=true' : '';
+  return apiDelete(`${API_BASE()}/projects/${encodeURIComponent(projectId)}${qs}`);
 }
 
 export async function fetchSession(projectId: string): Promise<Session | null> {
