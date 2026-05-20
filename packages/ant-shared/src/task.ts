@@ -46,12 +46,42 @@ export interface TaskTiming {
 }
 
 /**
- * Anthropic context window (100%) used as the UI context-gauge denominator.
- * SSOT for both backend ([TokenBudgetManager](../../ant-cli/src/core/utils/tokenBudget.ts) default)
- * and frontend [TurnTokenGauge](../../ant-ui/src/presentation/components/chat/TurnTokenGauge.tsx).
- * Update this single constant when migrating to a different model with a different context window.
+ * Per-model context-window lookup. SSOT for the UI gauge's denominator and
+ * the backend [TokenBudgetManager](../../ant-cli/src/core/utils/tokenBudget.ts).
+ *
+ * Strict: an unknown model id throws. Silent fallback to a hardcoded 200k
+ * would produce a 5× under-reported gauge when running against Opus 4.7's 1M
+ * variant. Update the map (and only the map) when adding a new model.
+ *
+ * The map is the SSOT for "what context window does THIS model expose"; phase
+ * snapshots carry the resolved number on `PhaseTokenUsage.contextWindow` so
+ * the gauge does not need to know modelId at all.
  */
-export const CONTEXT_WINDOW_MAX_TOKENS = 200_000;
+export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
+  // Anthropic
+  'claude-opus-4-7': 200_000,
+  'claude-opus-4-7[1m]': 1_000_000,
+  'claude-sonnet-4-6': 200_000,
+  'claude-haiku-4-5-20251001': 200_000,
+  // OpenAI / Gemini follow when wired
+};
+
+export function getModelContextWindow(modelId: string | undefined | null): number {
+  if (!modelId) {
+    throw new Error(
+      '[getModelContextWindow] modelId is required — no silent fallback to 200k. ' +
+      'Caller must supply state.deps.llm.modelName or equivalent.',
+    );
+  }
+  const window = MODEL_CONTEXT_WINDOWS[modelId];
+  if (window === undefined) {
+    throw new Error(
+      `[getModelContextWindow] Unknown modelId "${modelId}". ` +
+      `Add to MODEL_CONTEXT_WINDOWS in @ant/shared/task.ts.`,
+    );
+  }
+  return window;
+}
 
 /** LLM token consumption for a task or aggregate */
 export interface TaskTokenUsage {
@@ -64,11 +94,42 @@ export interface TaskTokenUsage {
   callCount?: number;
 }
 
+/**
+ * Phase-snapshot source mode.
+ *
+ *   - `live`        — numbers came from an LLM API response (`usage_partial`
+ *                     mid-stream or the terminal `done` event). Solid ring.
+ *   - `estimating`  — pre-call approximation (e.g. `applyEstimatedInputTokens`
+ *                     char→token estimate). Will be overwritten by the first
+ *                     `usage_partial`. Dashed / paler ring.
+ *   - `baseline`    — predicted next-call floor from the Phase-2 baseline
+ *                     estimator endpoint (no LLM call ran yet for this
+ *                     workspace). Dashed track, tooltip explains "next call
+ *                     ≥ this much".
+ *
+ * Replaces the legacy `estimating: boolean` flag — `mode` is the single
+ * discriminator across all three publishing moments (entry seed, mid-stream,
+ * terminal, baseline).
+ */
+export type PhaseSnapshotMode = 'live' | 'estimating' | 'baseline';
+
 /** Per-phase token usage entry for non-task-queue jobs (visual, plan) */
 export interface PhaseTokenUsage {
   phase: string;
   label?: string;
   tokenUsage: TaskTokenUsage;
+  /**
+   * Source mode of the snapshot's numbers. Drives the gauge's visual variant
+   * (solid vs. dashed) and tooltip wording. See {@link PhaseSnapshotMode}.
+   */
+  mode: PhaseSnapshotMode;
+  /**
+   * Model's full context window in tokens (resolved via
+   * `getModelContextWindow(modelId)`). Required so the gauge's denominator
+   * is model-aware — Opus 4.7 1M variant vs. Sonnet 200k must not collapse
+   * into a single hardcoded constant.
+   */
+  contextWindow: number;
   /**
    * Worker identity (only set when the snapshot originated inside a parallel
    * worker subgraph). Undefined for the main graph / sequential execution.
@@ -77,17 +138,6 @@ export interface PhaseTokenUsage {
   workerId?: number;
   /** Optional running task name tied to this worker, for tooltip disambiguation. */
   taskName?: string;
-  /**
-   * Provisional snapshot flag. True while the numbers come from a pre-call
-   * prompt-size approximation (char → token ratio, no API-reported usage yet).
-   * The flag is cleared as soon as a `usage_partial` or `done` event from the
-   * LLM adapter overwrites the snapshot with API-reported figures.
-   *
-   * The chat-input token gauge can render a distinct visual cue (dashed ring,
-   * paler fill, tooltip note) when this is true so users understand the number
-   * is an estimate, not a measurement.
-   */
-  estimating?: boolean;
 }
 
 // ============================================
@@ -257,12 +307,28 @@ export interface KanbanData {
    * keyed internally by `workerId` (undefined → main graph / sequential).
    *
    * - Overwritten per worker on each stream `done` event.
-   * - Preserved across SSE gaps via `kanbanReducer` when a broadcast omits it.
    * - Cleared per worker when a parallel worker terminates.
+   * - `mode` is always `'live'` (or transiently `'estimating'` for the gap
+   *   before the first `usage_partial` event).
    *
-   * The chat-input context gauge renders one battery per entry.
+   * The chat-input context gauge renders one battery per entry. When this
+   * array is empty / undefined, the gauge falls back to
+   * {@link KanbanData.baselinePhaseTokenUsage}.
    */
   currentPhaseTokenUsages?: PhaseTokenUsage[];
+
+  /**
+   * Baseline next-call floor from the Phase-2 estimator endpoint. Always
+   * `mode: 'baseline'`. Shown by the chat-input gauge only when no `live`
+   * entry exists in {@link KanbanData.currentPhaseTokenUsages} (i.e. job is
+   * idle / completed / never ran). Single snapshot (not an array) because the
+   * baseline predicts ONE upcoming LLM call, not parallel workers.
+   *
+   * Populated by `KanbanBroadcaster.setBaseline()` after the baseline
+   * estimator endpoint computes a fresh value. Phase-2 wires this; Phase-3
+   * landed the schema slot ahead of that work.
+   */
+  baselinePhaseTokenUsage?: PhaseTokenUsage;
 
   // Job metadata
   jobType?: string;

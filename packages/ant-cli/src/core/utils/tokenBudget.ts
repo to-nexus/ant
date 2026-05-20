@@ -13,7 +13,22 @@
  */
 
 import type { MessageContentBlock } from '../ports/llm';
-import { CONTEXT_WINDOW_MAX_TOKENS } from '@ant/shared';
+import { getModelContextWindow } from '@ant/shared';
+
+/**
+ * Local default for the BE-internal budget guard.
+ *
+ * NOT the UI gauge denominator — that lives on
+ * {@link import('@ant/shared').PhaseTokenUsage.contextWindow} and is resolved
+ * per-snapshot via `getModelContextWindow(modelId)`. This guard runs before
+ * any LLM call to warn when a composed prompt approaches the model's window;
+ * callers who know their model SHOULD pass `modelId` or `maxTokens` so the
+ * warning threshold tracks the real ceiling.
+ *
+ * Kept as a *named local* (not re-exported) so accidental re-coupling with
+ * the gauge SSOT shows up as an explicit import, not a stale constant grab.
+ */
+const FALLBACK_BUDGET_CONTEXT_WINDOW = 200_000;
 
 export interface TokenAreaBudgets {
   systemPrompt: number;         // System prompt + rules + profile
@@ -23,7 +38,10 @@ export interface TokenAreaBudgets {
 }
 
 export interface TokenBudgetConfig {
-  maxTokens: number;           // 최대 허용 토큰 (Anthropic limit: 200K)
+  /** Maximum context window in tokens. If omitted, derived from `modelId`; if both omitted, falls back to FALLBACK_BUDGET_CONTEXT_WINDOW. */
+  maxTokens: number;
+  /** Active LLM model id; used to look up `maxTokens` via `getModelContextWindow` when `maxTokens` is not explicitly passed. */
+  modelId?: string;
   safetyMargin: number;         // 안전 마진 (기본: 10%)
   warningThreshold: number;     // 경고 임계값 (기본: 80%)
   toolOverheadTokens: number;   // Tool definitions overhead (not in messages)
@@ -48,8 +66,16 @@ export class TokenBudgetManager {
   private config: TokenBudgetConfig;
   
   constructor(config?: Partial<TokenBudgetConfig>) {
+    // Precedence: explicit maxTokens > model-derived window > FALLBACK.
+    // The fallback is here for legacy call sites that pre-date model-aware
+    // budgeting; they still get a usable guard, just not model-precise.
+    const resolvedMaxTokens =
+      config?.maxTokens
+      ?? (config?.modelId ? getModelContextWindow(config.modelId) : undefined)
+      ?? FALLBACK_BUDGET_CONTEXT_WINDOW;
     this.config = {
-      maxTokens: config?.maxTokens || CONTEXT_WINDOW_MAX_TOKENS,
+      maxTokens: resolvedMaxTokens,
+      ...(config?.modelId && { modelId: config.modelId }),
       safetyMargin: config?.safetyMargin || 0.10,  // 10% margin
       warningThreshold: config?.warningThreshold || 0.80,  // 80% threshold
       toolOverheadTokens: config?.toolOverheadTokens || 2000,  // ~7-8 tools × ~250 tokens each

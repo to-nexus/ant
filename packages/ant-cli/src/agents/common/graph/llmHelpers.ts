@@ -8,9 +8,28 @@
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
-import { TaskTokenUsage, PhaseTokenUsage } from '@ant/shared';
+import { TaskTokenUsage, PhaseTokenUsage, getModelContextWindow } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
 import { getEstimatingLabel, resolveNodePhaseLabel, type UILocale } from './timing/estimatingLabels';
+
+/**
+ * Resolve the active model id from the graph state. SSOT lookup path is
+ * `state.deps.llm.modelName` — every LLM-calling node has an `LLMClient`
+ * injected through `state.deps.llm`, and the `LLMClient` interface exposes
+ * `readonly modelName: string`. Throws if missing so a misconfigured DI
+ * surfaces immediately instead of producing a silent denominator drift.
+ */
+function resolveModelName(state: TokenTrackingState): string {
+  const deps = (state as { deps?: { llm?: { modelName?: string } } }).deps;
+  const modelName = deps?.llm?.modelName;
+  if (!modelName) {
+    throw new Error(
+      '[llmHelpers] state.deps.llm.modelName is missing — every LLM-calling ' +
+      'node must inject an LLMClient via state.deps.llm. No silent fallback.',
+    );
+  }
+  return modelName;
+}
 
 /**
  * Re-export TaskTokenUsage as TokenUsage for convenience
@@ -63,10 +82,18 @@ export function beginNodePhase(
 ): void {
   const workerId = (state as any).workerId;
   const taskName = (state as any).currentTask?.name;
+  // Zero-seed carries the live model's full context window so the gauge has
+  // a correct denominator from frame 0, even before the first usage_partial
+  // arrives. `mode: 'live'` because subsequent overwrites all flow from LLM
+  // API events; the only `mode: 'estimating'` writer is
+  // `applyEstimatedInputTokens` further below.
+  const modelName = resolveModelName(state);
   state.currentPhaseTokenUsage = {
     phase,
     ...(label && { label }),
     tokenUsage: initTokenUsage(),
+    mode: 'live',
+    contextWindow: getModelContextWindow(modelName),
     ...(typeof workerId === 'number' && { workerId }),
     ...(typeof taskName === 'string' && taskName.length > 0 && { taskName }),
   };
@@ -215,15 +242,17 @@ export function accumulateTokenUsage(
       totalTokens: usage.inputTokens + usage.outputTokens,
       ...(usage.cacheReadTokens !== undefined && { cacheReadTokens: usage.cacheReadTokens }),
       ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
-      callCount: 1,
+      // callCount intentionally omitted — `state.currentPhaseTokenUsage` is
+      // the LATEST-call snapshot (overwrite semantics), so a stamped
+      // `callCount: 1` would be misleading. Job-level / task-level counts
+      // live on `state.tokenUsage` / `state._currentTaskTokenUsage`.
     };
-    // Clear any `estimating` flag installed by `applyEstimatedInputTokens`.
-    // Providers that never emit `usage_partial` (currently OpenAI) would
-    // otherwise leave the snapshot in the "estimating" visual state
-    // permanently since `maybeUpdatePhaseTokenUsage` wouldn't fire.
-    if (state.currentPhaseTokenUsage.estimating) {
-      state.currentPhaseTokenUsage.estimating = false;
-    }
+    // Promote the snapshot back to `'live'` — any prior `'estimating'` state
+    // installed by `applyEstimatedInputTokens` is now superseded by an
+    // API-reported usage. This is also the safety net for providers without
+    // usage_partial events (OpenAI) where `maybeUpdatePhaseTokenUsage`
+    // never fires mid-stream.
+    state.currentPhaseTokenUsage.mode = 'live';
 
     const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
     kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
@@ -258,8 +287,11 @@ export function updatePhaseTokenUsageSnapshot(
     totalTokens: usage.inputTokens + usage.outputTokens,
     ...(usage.cacheReadTokens !== undefined && { cacheReadTokens: usage.cacheReadTokens }),
     ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
-    callCount: 1,
+    // callCount omitted — overwrite semantics (see accumulateTokenUsage).
   };
+  // Promote to `'live'` — any prior estimating snapshot is superseded by an
+  // API-reported usage_partial event.
+  state.currentPhaseTokenUsage.mode = 'live';
 
   const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
   kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
@@ -279,10 +311,9 @@ export function maybeUpdatePhaseTokenUsage(
   event: { type?: string; usage?: TokenUsage },
 ): void {
   if (event.type === 'usage_partial' && event.usage) {
+    // `updatePhaseTokenUsageSnapshot` already sets `mode: 'live'`; nothing
+    // further to clear (the legacy boolean `estimating` flag is gone).
     updatePhaseTokenUsageSnapshot(state, event.usage);
-    if (state.currentPhaseTokenUsage?.estimating) {
-      state.currentPhaseTokenUsage.estimating = false;
-    }
   }
 }
 
@@ -335,9 +366,9 @@ export function applyEstimatedInputTokens(
     inputTokens: approxInput,
     outputTokens: 0,
     totalTokens: approxInput,
-    callCount: 0,
+    // callCount omitted — phase snapshot uses overwrite semantics.
   };
-  snapshot.estimating = true;
+  snapshot.mode = 'estimating';
 
   const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
   kanbanUpdate?.updateCurrentPhaseTokenUsage?.(snapshot);
@@ -381,9 +412,14 @@ export interface PhaseTrackingState {
 /**
  * Upsert a phase's token usage into phaseTokenUsages array.
  * Merges if a matching phase already exists (for looping nodes like generate/direct).
+ *
+ * Unlike `currentPhaseTokenUsage` (overwrite semantics for the latest single
+ * call), `phaseTokenUsages` entries accumulate across calls within the same
+ * phase — `callCount` is meaningful here and represents the total LLM calls
+ * aggregated into the entry.
  */
 export function upsertPhaseTokenUsage(
-  state: PhaseTrackingState,
+  state: PhaseTrackingState & TokenTrackingState,
   phase: string,
   usage: TaskTokenUsage,
   label?: string,
@@ -413,6 +449,8 @@ export function upsertPhaseTokenUsage(
       phase,
       label,
       tokenUsage: { ...usage, callCount: usage.callCount ?? 1 },
+      mode: 'live',
+      contextWindow: getModelContextWindow(resolveModelName(state)),
     });
   }
 }

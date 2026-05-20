@@ -26,12 +26,19 @@ function mkUsage(input: number, output: number): TokenUsage {
 
 type StateWithDeps = TokenTrackingState & {
   _uiLocale?: string;
-  deps?: { kanbanUpdate?: { updateCurrentPhaseTokenUsage?: (snap: any) => void } };
+  deps?: {
+    /** Phase-3: required for getModelContextWindow stamp in beginNodePhase. */
+    llm?: { modelName: string };
+    kanbanUpdate?: { updateCurrentPhaseTokenUsage?: (snap: any) => void };
+  };
 };
+
+/** Default LLM stub for tests — Phase-3 SSOT requires `state.deps.llm.modelName`. */
+const TEST_LLM = { modelName: 'claude-opus-4-7' };
 
 describe('withPhaseTracking — phase snapshot seed', () => {
   it('initializes currentPhaseTokenUsage with zero counts before node runs', async () => {
-    const state: StateWithDeps = {};
+    const state: StateWithDeps = { deps: { llm: TEST_LLM } };
     const observed: Array<TokenTrackingState['currentPhaseTokenUsage']> = [];
 
     const node = (s: StateWithDeps) => {
@@ -45,27 +52,33 @@ describe('withPhaseTracking — phase snapshot seed', () => {
     expect(observed[0]?.phase).toBe('plan');
     expect(observed[0]?.tokenUsage.inputTokens).toBe(0);
     expect(observed[0]?.tokenUsage.outputTokens).toBe(0);
+    // Phase-3: zero-seed retains callCount=0 from initTokenUsage. Subsequent
+    // overwrites by accumulate/updatePhaseTokenUsageSnapshot drop callCount
+    // because phase snapshots are LATEST-call, not cumulative.
     expect(observed[0]?.tokenUsage.callCount).toBe(0);
+    // Phase-3: zero-seed carries mode='live' and the model's contextWindow.
+    expect(observed[0]?.mode).toBe('live');
+    expect(observed[0]?.contextWindow).toBe(200_000); // claude-opus-4-7
   });
 
   it('resolves English label by default and Korean when _uiLocale is ko', async () => {
-    const en: StateWithDeps = {};
+    const en: StateWithDeps = { deps: { llm: TEST_LLM } };
     await withPhaseTracking('plan', (_s: StateWithDeps) => ({}) as any)(en);
     expect(en.currentPhaseTokenUsage?.label).toBe('Planning');
 
-    const ko: StateWithDeps = { _uiLocale: 'ko' };
+    const ko: StateWithDeps = { _uiLocale: 'ko', deps: { llm: TEST_LLM } };
     await withPhaseTracking('plan', (_s: StateWithDeps) => ({}) as any)(ko);
     expect(ko.currentPhaseTokenUsage?.label).toBe('작업 계획 중');
   });
 
   it('falls back to the phaseId itself for unknown ids', async () => {
-    const state: StateWithDeps = {};
+    const state: StateWithDeps = { deps: { llm: TEST_LLM } };
     await withPhaseTracking('made-up-phase', (_s: StateWithDeps) => ({}) as any)(state);
     expect(state.currentPhaseTokenUsage?.label).toBe('made-up-phase');
   });
 
   it('re-seeds on re-entry so a second invocation overwrites the prior snapshot', async () => {
-    const state: StateWithDeps = {};
+    const state: StateWithDeps = { deps: { llm: TEST_LLM } };
     await withPhaseTracking('plan', (s: StateWithDeps) => {
       accumulateTokenUsage(s, mkUsage(500, 100));
       return {} as any;
@@ -81,7 +94,7 @@ describe('withPhaseTracking — phase snapshot seed', () => {
 
 describe('accumulateTokenUsage — SSOT broadcast', () => {
   it('overwrites (not accumulates) the node-phase snapshot on each call', async () => {
-    const state: StateWithDeps = {};
+    const state: StateWithDeps = { deps: { llm: TEST_LLM } };
     beginNodePhase(state, 'plan', 'Planning');
 
     accumulateTokenUsage(state, mkUsage(100, 10));
@@ -90,13 +103,17 @@ describe('accumulateTokenUsage — SSOT broadcast', () => {
     accumulateTokenUsage(state, mkUsage(500, 50));
     expect(state.currentPhaseTokenUsage?.tokenUsage.inputTokens).toBe(500);
     expect(state.currentPhaseTokenUsage?.tokenUsage.outputTokens).toBe(50);
-    expect(state.currentPhaseTokenUsage?.tokenUsage.callCount).toBe(1);
+    // Phase-3: PhaseTokenUsage.tokenUsage carries NO callCount on overwrite.
+    // The single-call snapshot is exactly that — no accumulator counter
+    // belongs in a value with overwrite semantics.
+    expect(state.currentPhaseTokenUsage?.tokenUsage.callCount).toBeUndefined();
+    expect(state.currentPhaseTokenUsage?.mode).toBe('live');
   });
 
   it('broadcasts exactly once per accumulate invocation via kanbanUpdate', () => {
     const updateCurrentPhaseTokenUsage = vi.fn();
     const state: StateWithDeps = {
-      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+      deps: { llm: TEST_LLM, kanbanUpdate: { updateCurrentPhaseTokenUsage } },
     };
     beginNodePhase(state, 'plan', 'Planning');
 
@@ -113,6 +130,9 @@ describe('accumulateTokenUsage — SSOT broadcast', () => {
 
   it('does NOT broadcast when the phase snapshot is not initialized', () => {
     const updateCurrentPhaseTokenUsage = vi.fn();
+    // Note: no `beginNodePhase` call below, so `resolveModelName` is never
+    // invoked — deps.llm intentionally omitted to keep this exercise focused
+    // on the "no phase seeded" path.
     const state: StateWithDeps = {
       deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
     };
@@ -124,7 +144,7 @@ describe('accumulateTokenUsage — SSOT broadcast', () => {
   });
 
   it('is safe when kanbanUpdate is absent (optional chain guards both deps and method)', () => {
-    const state: StateWithDeps = {};
+    const state: StateWithDeps = { deps: { llm: TEST_LLM } };
     beginNodePhase(state, 'plan');
 
     expect(() => accumulateTokenUsage(state, mkUsage(100, 10))).not.toThrow();
@@ -136,7 +156,7 @@ describe('withPhaseTracking — end-to-end broadcast SSOT', () => {
   it('a single LLM call inside a wrapped node results in exactly one gauge broadcast', async () => {
     const updateCurrentPhaseTokenUsage = vi.fn();
     const state: StateWithDeps = {
-      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+      deps: { llm: TEST_LLM, kanbanUpdate: { updateCurrentPhaseTokenUsage } },
     };
 
     await withPhaseTracking('execute', (s: StateWithDeps) => {
@@ -160,7 +180,7 @@ describe('withPhaseTracking — parallel worker identity', () => {
     const state: StateWithDeps & { workerId?: number; currentTask?: { name: string } } = {
       workerId: 2,
       currentTask: { name: 'setup-design-system' },
-      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+      deps: { llm: TEST_LLM, kanbanUpdate: { updateCurrentPhaseTokenUsage } },
     };
 
     await withPhaseTracking('plan', (s: typeof state) => {
@@ -176,7 +196,7 @@ describe('withPhaseTracking — parallel worker identity', () => {
   it('omits workerId on the snapshot when the state has none (main / sequential)', async () => {
     const updateCurrentPhaseTokenUsage = vi.fn();
     const state: StateWithDeps = {
-      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+      deps: { llm: TEST_LLM, kanbanUpdate: { updateCurrentPhaseTokenUsage } },
     };
 
     await withPhaseTracking('plan', (s: StateWithDeps) => {
