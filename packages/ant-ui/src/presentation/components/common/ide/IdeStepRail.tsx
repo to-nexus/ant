@@ -64,5 +64,5 @@ export function IdeStepRail({ currentStep, elapsedSeconds, isStuck = false, isFa
     };
   });
 
-  return <StepIndicator steps={steps} orientation="horizontal" />;
+  return <StepIndicator steps={steps} orientation="vertical" />;
 }
