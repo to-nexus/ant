@@ -66,6 +66,19 @@ export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   // OpenAI / Gemini follow when wired
 };
 
+/**
+ * Fallback context window used by UI surfaces (e.g. `TurnTokenGauge`'s
+ * empty-state ring) when no live / baseline `PhaseTokenUsage` snapshot is
+ * available yet. Picked to match the modal value of `MODEL_CONTEXT_WINDOWS`
+ * (3 of 4 supported models use 200_000). When a snapshot lands, the gauge
+ * switches to its model-specific `contextWindow` — this constant is only
+ * the first-frame placeholder, never a long-lived ground truth.
+ *
+ * Update if `MODEL_CONTEXT_WINDOWS` ever shifts so a different value
+ * becomes the modal denominator.
+ */
+export const DEFAULT_FALLBACK_CONTEXT_WINDOW = 200_000;
+
 export function getModelContextWindow(modelId: string | undefined | null): number {
   if (!modelId) {
     throw new Error(
