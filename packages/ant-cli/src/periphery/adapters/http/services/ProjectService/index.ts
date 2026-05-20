@@ -17,6 +17,12 @@ import type { JobQueuePort } from '../../../../../core/ports/queue';
 import { logger } from '../../../../../utils/logger';
 import { requestPreviewCleanup } from './previewCleanup';
 import { cancelAllProjectJobs } from './projectJobCascade';
+import { DeletionVerificationError, ProjectDeletionError } from './errors';
+import {
+  createProjectDeletionPhaseEmitter,
+  type ProjectDeletionPhaseEmitter,
+} from './projectDeletionPhaseEmitter';
+import type { ProjectDeletionPhase } from '@ant/shared';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';
@@ -96,7 +102,7 @@ export class ProjectService {
   async createProject(id: string, userContext: UserContext, opts?: { force?: boolean }): Promise<void> {
     if (opts?.force) {
       try {
-        await this.deleteProject(id, userContext);
+        await this.deleteProject(id, userContext, { force: true });
       } catch (e: any) {
         if (e?.message !== 'Project not found') throw e;
       }
@@ -113,7 +119,10 @@ export class ProjectService {
    * with the new id.
    */
   async renameProject(oldId: string, newId: string, userContext: UserContext): Promise<void> {
-    await this.stopProjectRuntime(oldId, userContext);
+    // rename: tolerate every step failure (force=true) — the rename itself
+    // is the user's recovery action; surfacing mid-cascade errors as 500s
+    // would block legitimate renames just because IDE/preview cleanup blipped.
+    await this.stopProjectRuntime(oldId, userContext, { force: true });
     return this.projectCrud.renameProject(oldId, newId, userContext);
   }
 
@@ -130,60 +139,155 @@ export class ProjectService {
    *      ack timeout is logged + tolerated (preview may not be running in dev).
    *   4. stateStore.cleanupProject — DEL all project-scoped Redis keys.
    *   5. projectCrud.deleteProject — fs.rm with verification loop.
+   *
+   * Progress is published as `projectDeletionPhase` SSE events so the FE
+   * renders a per-step rail. Failures wrap into `ProjectDeletionError` so
+   * the route returns a structured body (stage / hint / leftovers /
+   * canForceCleanup) instead of a generic 500.
+   *
+   * Force mode (`opts.force === true`): steps 1-4 swallow failures with
+   * warn logs (matching the old best-effort behavior). Step 5 still throws
+   * on verify timeout — leaving the directory partially deleted would
+   * surface as a confusing 409 on the next createProject.
    */
-  async deleteProject(id: string, userContext: UserContext): Promise<void> {
-    await this.stopProjectRuntime(id, userContext);
-    return this.projectCrud.deleteProject(id, userContext);
+  async deleteProject(id: string, userContext: UserContext, opts: { force?: boolean } = {}): Promise<void> {
+    const startedAt = Date.now();
+    const emitter = this.stateStore
+      ? createProjectDeletionPhaseEmitter(this.stateStore, userContext, id, startedAt)
+      : null;
+
+    await this.stopProjectRuntime(id, userContext, { force: opts.force ?? false }, emitter);
+
+    await emitter?.emit('fsVerify', 'active');
+    try {
+      await this.projectCrud.deleteProject(id, userContext, { force: opts.force });
+      await emitter?.emit('fsVerify', 'complete');
+    } catch (err: any) {
+      if (err?.message === 'Project not found') {
+        // Pre-cascade existence check — surface as-is (route maps to 404).
+        throw err;
+      }
+      if (err instanceof DeletionVerificationError) {
+        await emitter?.emit('fsVerify', 'failed', `${err.leftovers.length} leftover entries`);
+        throw new ProjectDeletionError('fsVerify', err, {
+          canForceCleanup: !opts.force,
+          hint: opts.force
+            ? 'Force-delete still left files on disk — likely an active IDE pod or preview process holding open handles. Retry after waiting briefly.'
+            : 'Filesystem still holds open file handles. Try Force Delete to extend the wait window.',
+          leftovers: err.leftovers,
+        });
+      }
+      // Unknown disk error — also surface as fsVerify failure so the FE
+      // can still render the step rail. Force-retry is offered because the
+      // most common cause (transient EBUSY/ENOTEMPTY) responds to it.
+      await emitter?.emit('fsVerify', 'failed', err?.message ?? String(err));
+      throw new ProjectDeletionError('fsVerify', err instanceof Error ? err : new Error(String(err)), {
+        canForceCleanup: !opts.force,
+        hint: 'Disk-level delete failed. Try Force Delete.',
+      });
+    }
   }
 
   /**
    * SSOT cascade: cancel jobs → stop IDE → preview cleanup → Redis cleanup.
    *
    * Shared by `deleteProject` and `renameProject` so the four lifecycle
-   * steps cannot drift. Each step is best-effort with explicit warn on
-   * failure; continuing past a failure is intentional (we still want fs.rm
-   * / fs.rename to run, and the disk-level verification loop is the final
-   * gate that throws when state is unrecoverable).
+   * steps cannot drift.
+   *
+   * Step behavior:
+   * - `force = false`: a step failure throws `ProjectDeletionError` immediately
+   *   with `canForceCleanup: true` — the FE can retry with `?force=true` to
+   *   opt out of the strict gate.
+   * - `force = true`: failures are warn-logged and the cascade continues
+   *   (matches the legacy best-effort behavior — fs.rm verification is the
+   *   final gate). Also used by `renameProject` so a rename never fails on
+   *   transient infra blips.
+   *
+   * `emitter` may be undefined (rename path doesn't broadcast deletion-phase
+   * events). When present, each step emits active → complete | failed.
    */
-  private async stopProjectRuntime(projectId: string, userContext: UserContext): Promise<void> {
-    if (this.stateStore && this.jobQueue) {
+  private async stopProjectRuntime(
+    projectId: string,
+    userContext: UserContext,
+    opts: { force: boolean },
+    emitter?: ProjectDeletionPhaseEmitter | null,
+  ): Promise<void> {
+    const runStep = async (
+      phase: ProjectDeletionPhase,
+      run: (() => Promise<void>) | null,
+      hint: string,
+    ): Promise<void> => {
+      if (!run) return; // dep unavailable — silently skip (e.g. no stateStore)
+      await emitter?.emit(phase, 'active');
       try {
-        const features = await this.featureCrud.listFeatures(projectId, userContext);
-        await cancelAllProjectJobs({
-          stateStore: this.stateStore,
-          jobQueue: this.jobQueue,
-          projectId,
-          features,
-          userContext,
-        });
+        await run();
+        await emitter?.emit(phase, 'complete');
       } catch (e: any) {
-        logger.warn(`[ProjectService] cancelAllProjectJobs failed for project ${projectId} (continuing)`, { component: 'ProjectService' }, e);
+        await emitter?.emit(phase, 'failed', e?.message ?? String(e));
+        if (!opts.force) {
+          throw new ProjectDeletionError(phase, e instanceof Error ? e : new Error(String(e)), {
+            canForceCleanup: true,
+            hint,
+          });
+        }
+        logger.warn(
+          `[ProjectService] ${phase} failed (force=true — continuing)`,
+          { component: 'ProjectService' },
+          { projectId, error: e?.message },
+        );
       }
-    }
+    };
 
-    if (this.ideOrchestrator) {
-      try {
-        await this.ideOrchestrator.cleanupProject(userContext, projectId, { deleteHome: true });
-      } catch (e: any) {
-        logger.warn(`[ProjectService] IDE cleanup for project ${projectId} failed (continuing)`, { component: 'ProjectService' }, e);
-      }
-    }
+    await runStep(
+      'cancelJobs',
+      this.stateStore && this.jobQueue
+        ? async () => {
+            const features = await this.featureCrud.listFeatures(projectId, userContext);
+            await cancelAllProjectJobs({
+              stateStore: this.stateStore!,
+              jobQueue: this.jobQueue!,
+              projectId,
+              features,
+              userContext,
+            });
+          }
+        : null,
+      'Some jobs failed to cancel cleanly. Try Force Delete to skip the strict wait.',
+    );
 
-    if (this.stateStore) {
-      try {
-        await requestPreviewCleanup(this.stateStore, 'project', userContext, projectId);
-      } catch (e: any) {
-        logger.warn(`[ProjectService] Preview cleanup ack timed out (continuing)`, { component: 'ProjectService' }, { projectId, error: e?.message });
-      }
-    }
+    await runStep(
+      'ideCleanup',
+      this.ideOrchestrator
+        ? async () => {
+            await this.ideOrchestrator!.cleanupProject(userContext, projectId, { deleteHome: true });
+          }
+        : null,
+      'IDE pod did not shut down in time. Try Force Delete (the pod will be deleted with grace=0).',
+    );
 
-    if (this.stateStore) {
-      try {
-        await this.stateStore.cleanupProject(userContext.organizationId, userContext.userId, projectId);
-      } catch (e: any) {
-        logger.warn(`[ProjectService] Redis state cleanup failed (continuing)`, { component: 'ProjectService' }, { projectId, error: e?.message });
-      }
-    }
+    await runStep(
+      'previewCleanup',
+      this.stateStore
+        ? async () => {
+            await requestPreviewCleanup(this.stateStore!, 'project', userContext, projectId);
+          }
+        : null,
+      'Preview server did not acknowledge cleanup. Try Force Delete (cleanup will be skipped).',
+    );
+
+    await runStep(
+      'redisCleanup',
+      this.stateStore
+        ? async () => {
+            await this.stateStore!.cleanupProject(
+              userContext.organizationId,
+              userContext.userId,
+              projectId,
+            );
+          }
+        : null,
+      'Redis state cleanup failed. Try Force Delete to skip the strict gate.',
+    );
   }
   
   async getProjectConfig(id: string, userContext: UserContext): Promise<any> {

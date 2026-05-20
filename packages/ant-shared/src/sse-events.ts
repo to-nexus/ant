@@ -35,7 +35,8 @@ export type SSEMessageType =
   | 'transfer'
   | 'unseenArtifacts'
   | 'bridge'
-  | 'idePhase';
+  | 'idePhase'
+  | 'projectDeletionPhase';
 
 /**
  * IDE startup sub-phase observable to the FE. Step 5 (`frame-load`) is FE-only
@@ -57,6 +58,50 @@ export type IdePhaseEventData = {
   sessionKey: string;
   elapsedMs: number;
   detail?: string;
+};
+
+/**
+ * Project deletion cascade sub-phases observable to the FE. Mirrors the 5
+ * stages of `ProjectService.deleteProject` (`stopProjectRuntime` 4 + final
+ * fs verification). Each phase carries a status so the FE can render the
+ * step rail (pending → active → complete | failed).
+ */
+export type ProjectDeletionPhase =
+  | 'cancelJobs'
+  | 'ideCleanup'
+  | 'previewCleanup'
+  | 'redisCleanup'
+  | 'fsVerify';
+
+export type ProjectDeletionPhaseStatus = 'active' | 'complete' | 'failed';
+
+/**
+ * Payload for `projectDeletionPhase` SSE events. `sessionKey = projectId`
+ * (only one deletion may be in-flight per project at a time). FE drops
+ * events whose sessionKey doesn't match the current `projectDeletionSession`.
+ */
+export type ProjectDeletionPhaseEventData = {
+  phase: ProjectDeletionPhase;
+  status: ProjectDeletionPhaseStatus;
+  projectId: string;
+  sessionKey: string;
+  elapsedMs: number;
+  detail?: string;
+};
+
+/**
+ * Cross-boundary error shape for project deletion failures. Mirrors
+ * `GitOperationErrorShape` so the FE can route deletion errors the same
+ * way it routes git errors.
+ */
+export type ProjectDeletionErrorShape = {
+  kind: 'projectDeletion';
+  stage: ProjectDeletionPhase;
+  message: string;
+  hint?: string;
+  leftovers?: string[];
+  canForceCleanup: boolean;
+  retryable: boolean;
 };
 
 /**
@@ -95,6 +140,7 @@ export type GitStateEventData =
 export interface SSEMessageMap {
   gitState: GitStateEventData;
   idePhase: IdePhaseEventData;
+  projectDeletionPhase: ProjectDeletionPhaseEventData;
 }
 
 // Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.

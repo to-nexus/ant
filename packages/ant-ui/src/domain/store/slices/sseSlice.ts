@@ -285,6 +285,22 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }),
     );
 
+    // Project deletion cascade phase events. sessionKey = projectId; drop
+    // events that don't match the current in-flight deletion (e.g. a late
+    // event for a previously cancelled session).
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId(
+        'projectDeletionPhase',
+        (data: SSEMessageMap['projectDeletionPhase']) => {
+          const s = get();
+          const sess = s.projectDeletionSession;
+          if (sess?.kind !== 'deleting') return;
+          if (sess.projectId !== data.sessionKey) return;
+          s.updateProjectDeletionPhase?.(data.phase, data.status);
+        },
+      ),
+    );
+
     sliceHandlerIds.push(
       sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();

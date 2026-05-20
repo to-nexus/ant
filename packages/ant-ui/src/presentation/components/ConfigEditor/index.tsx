@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil } from 'lucide-react';
 import { ProjectConfig, fetchOrgConfig, fetchUserConfig, renameProject, deleteProject } from '@/infrastructure/http/api';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
+import { ProjectDeletionPanel } from '@/presentation/components/common/ProjectDeletion/ProjectDeletionPanel';
+import type { ProjectDeletionErrorShape } from '@ant/shared';
 import { useGitSnapshot, useGitPat, useGitPatDispatch } from '@/domain/git-world';
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/storage';
 import { useAvailableModels } from './hooks/useAvailableModels';
@@ -239,6 +242,49 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     });
   };
 
+  // SSE-driven progress + structured error are surfaced through the
+  // ProjectDeletionPanel below; do not call `showError` here for project
+  // deletion failures — the panel renders the stage/hint/leftovers.
+  const startProjectDeletion = useStore((s) => s.startProjectDeletion);
+  const markProjectDeletionComplete = useStore((s) => s.markProjectDeletionComplete);
+  const markProjectDeletionFailed = useStore((s) => s.markProjectDeletionFailed);
+  const resetProjectDeletionSession = useStore((s) => s.resetProjectDeletionSession);
+
+  const runDelete = async (projectId: string, force: boolean) => {
+    setIsDeleting(true);
+    startProjectDeletion(projectId);
+    try {
+      await deleteProject(projectId, { force });
+      markProjectDeletionComplete();
+      await fetchProjects();
+      setSelectedProject('');
+      useStore.getState().closeMainPanelTab('projectConfig');
+    } catch (error) {
+      // Structured ProjectDeletionError → ApiError carries kind/stage/canForceCleanup/correlationId.
+      if (error instanceof ApiError && error.kind === 'projectDeletion' && error.stage) {
+        const shape: ProjectDeletionErrorShape = {
+          kind: 'projectDeletion',
+          stage: error.stage as ProjectDeletionErrorShape['stage'],
+          message: error.message,
+          canForceCleanup: error.canForceCleanup ?? false,
+          retryable: error.canForceCleanup ?? false,
+          ...(error.hint !== undefined ? { hint: error.hint } : {}),
+          ...(error.leftovers !== undefined ? { leftovers: error.leftovers } : {}),
+        };
+        markProjectDeletionFailed(shape, error.correlationId ?? '');
+      } else {
+        // Non-structured (network blip / 401 / etc.) — keep showing the
+        // generic alert popup so we don't lose the signal. Reset deletion
+        // session so the panel disappears.
+        resetProjectDeletionSession();
+        const message = error instanceof Error ? error.message : 'Failed to delete project';
+        showError(message);
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleDeleteProject = () => {
     if (!selectedProject) return;
     showConfirm(
@@ -250,21 +296,19 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         type: 'warning',
         title: t('dangerZone.deleteProject'),
         confirmText: t('dangerZone.deleteProject'),
-        onConfirm: async () => {
-          setIsDeleting(true);
-          try {
-            await deleteProject(selectedProject);
-            await fetchProjects();
-            setSelectedProject('');
-            useStore.getState().closeMainPanelTab('projectConfig');
-          } catch (error: any) {
-            showError(error.message || 'Failed to delete project');
-          } finally {
-            setIsDeleting(false);
-          }
+        onConfirm: () => {
+          void runDelete(selectedProject, false);
         },
       }
     );
+  };
+
+  const handleForceDelete = () => {
+    const sess = useStore.getState().projectDeletionSession;
+    if (sess.kind !== 'failed') return;
+    const projectId = sess.projectId;
+    if (!projectId) return;
+    void runDelete(projectId, true);
   };
 
   return (
@@ -418,6 +462,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           )}
         </div>
       </div>
+
+      {/* Real-time deletion progress + structured error popup. Mounted at
+          component scope so it overlays the whole editor; disappears when
+          the slice returns to `idle`. */}
+      <ProjectDeletionPanel onForceDelete={handleForceDelete} />
     </div>
   );
 }
