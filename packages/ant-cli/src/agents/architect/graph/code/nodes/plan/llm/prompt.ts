@@ -175,6 +175,30 @@ export async function buildPlanPrompt(
   const prePlanTextRaw = (task as CodeTask).prePlanText;
   const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
 
+  // Parent-pre-plan shape SSOT — type-based, regex-free.
+  // - slice declaration: feature / ui / design-system / test-code each receive
+  //   the parent's slice (`task.goal` + `slice` rationale + optional create[]
+  //   manifest). All four author / refine their own implementation block.
+  // - diagnostic carry: error sub-task receives a per-root-cause manifest
+  //   from the verification parent (separate `apply-mode` semantic).
+  // - cross-batch contracts: only feature/ui/design-system siblings actually
+  //   share runtime contracts (export names / shared types). test-code
+  //   siblings write disjoint test files; verification mandate against
+  //   sibling-output is unsatisfiable there and must be silenced.
+  const isSliceDeclaration = hasPrePlanText && (
+    task.type === 'feature' ||
+    task.type === 'ui' ||
+    task.type === 'design-system' ||
+    task.type === 'test-code'
+  );
+  const isDiagnosticCarry = hasPrePlanText && task.type === 'error';
+  const hasCrossBatchContracts = hasPrePlanText && (
+    task.type === 'feature' ||
+    task.type === 'ui' ||
+    task.type === 'design-system'
+  );
+  const batchSplitCount = (task as CodeTask).batchSplitCount ?? 0;
+
   // FeatureTask sub-classification — surfaces the parent's `band` to the
   // self plan LLM so band-conditional rules in `plan/rules.md` (entry-point
   // ownership, integration-vs-foundation responsibilities) can dispatch
@@ -193,6 +217,10 @@ export async function buildPlanPrompt(
     userLanguage: state.context?.userLanguage || 'en',
     prePlanText: hasPrePlanText ? prePlanTextRaw : '',
     hasPrePlanText,
+    isSliceDeclaration,
+    isDiagnosticCarry,
+    hasCrossBatchContracts,
+    batchSplitCount,
     documents: planDocs, hasDocuments: allDocs.length > 0,
     isSpecDriven: isSpecDriven || false,
     projectCodeContext: fmtCtx, directoryTree: codeContext?.directoryTree || '',

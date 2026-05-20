@@ -46,11 +46,16 @@ Do NOT use tools to explore publicly available, well-known packages. This includ
 ## Finalization Discipline
 ────────────────────────────────────────────────────────────────────────────────
 
-**Principle**: After gathering sufficient information from Priority 1-2, produce `<plan>` promptly.
+**Observable termination predicate** — the ONLY signal that decides when to stop calling tools:
 
-**Constraint**: Once you have observed the APIs for the design-prescribed dependencies, produce `<plan>` in your NEXT response with the signatures inlined into the relevant `implementation.*` entries. Do NOT continue calling tools after the key APIs have been discovered.
+> Can you name the `implementation.create[]` / `modify[]` entries (or `batches[]` entries when fanning out) that satisfy `task.goal` — including each file's path and a one-line `purpose` — *without fabricating any path or signature you have not observed*?
+>
+> - **Yes** → emit `<plan>` in your next response. Do NOT call further tools.
+> - **No** → call the tools needed to satisfy the predicate above, then re-evaluate.
 
-⚠️ **Blind spot**: Calling tools indefinitely without producing `<plan>`. This worker has {{remainingRecursionBudget}} node-execution rounds remaining before the system terminates the task. Partial-plan execute is recoverable; recursion-limit termination is not — produce `<plan>` while budget is still ample.
+This is the only termination condition. Text elsewhere that sounds like a stopping cue ("after observation", "after key APIs are discovered", "once slice boundaries are identified") is context guidance about *what information you typically need* to satisfy the predicate above — it is NOT an independent gate.
+
+⚠️ **Blind spot — Recursion budget**: This worker has {{remainingRecursionBudget}} node-execution rounds remaining before the system terminates the task. Recursion-limit termination is unrecoverable.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## Batch Execution
