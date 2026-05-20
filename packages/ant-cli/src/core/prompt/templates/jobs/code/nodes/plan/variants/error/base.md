@@ -232,6 +232,4 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships â
 - Modifying source files (use the code execution phase for that)
 
 {{> jobs/code/base/injections/persistent-process-policy}}
-
-**Constraint**: After reading error-related files and optionally running diagnostics / reproducer, produce `<plan>` promptly. Do NOT continue calling tools after sufficient information is gathered.
 {{/if}}
