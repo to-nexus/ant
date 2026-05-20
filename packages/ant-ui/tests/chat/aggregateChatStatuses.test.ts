@@ -41,6 +41,11 @@ function bodyOf(entry: { line: ChatStatusLine }): string {
   return generateChatStatusContent(entry.line.statusType, entry.line.metadata as any);
 }
 
+// b034fc8e: filesList output shape is `AggregatedFileEntry[]` (string[] input still accepted).
+function paths(paths: readonly string[]): Array<{ path: string }> {
+  return paths.map((path) => ({ path }));
+}
+
 describe('aggregateChatStatuses — pass-through', () => {
   it('returns empty array for empty input', () => {
     expect(aggregateChatStatuses([])).toEqual([]);
@@ -80,7 +85,7 @@ describe('aggregateChatStatuses — read family adjacent merge', () => {
     expect(out[0].originalIndex).toBe(0);
     expect(out[0].mergedCount).toBe(3);
     expect(out[0].line.statusType).toBe('read');
-    expect(out[0].line.metadata?.filesList).toEqual(['a.ts', 'b.ts', 'c.ts']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a.ts', 'b.ts', 'c.ts']));
     expect(out[0].line.metadata).toMatchObject({ aggregated: true });
   });
 
@@ -92,7 +97,7 @@ describe('aggregateChatStatuses — read family adjacent merge', () => {
     ];
     const out = aggregateChatStatuses(input);
     expect(out).toHaveLength(1);
-    expect(out[0].line.metadata?.filesList).toEqual(['a.ts', 'b.ts']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a.ts', 'b.ts']));
   });
 
   it('does NOT merge across a non-matching family (read → listed_files → read)', () => {
@@ -125,7 +130,7 @@ describe('aggregateChatStatuses — trailing progress merge', () => {
     const entry = out[0];
     expect(entry.mergedCount).toBe(3);
     expect(entry.line.statusType).toBe('reading');
-    expect(entry.line.metadata?.filesList).toEqual(['a.ts', 'b.ts']);
+    expect(entry.line.metadata?.filesList).toEqual(paths(['a.ts', 'b.ts']));
     // Trailing in-flight path is surfaced via detail line, not filesList.
     expect(entry.line.metadata).toMatchObject({
       currentFilePath: 'c.ts',
@@ -142,7 +147,7 @@ describe('aggregateChatStatuses — trailing progress merge', () => {
     const out = aggregateChatStatuses(input);
     expect(out).toHaveLength(1);
     expect(out[0].line.statusType).toBe('read');
-    expect(out[0].line.metadata?.filesList).toEqual(['a.ts', 'b.ts']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a.ts', 'b.ts']));
     expect(out[0].line.metadata?.currentFilePath).toBeUndefined();
   });
 });
@@ -161,7 +166,7 @@ describe('aggregateChatStatuses — listed_files scope lock', () => {
     ];
     const out = aggregateChatStatuses(input);
     expect(out).toHaveLength(1);
-    expect(out[0].line.metadata?.filesList).toEqual(['a', 'b', 'c']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a', 'b', 'c']));
     expect(out[0].line.metadata?.pattern).toBe('src');
     expect(out[0].line.metadata?.filesCount).toBe(8);
     expect(out[0].line.metadata?.totalFiles).toBe(14);
@@ -227,7 +232,7 @@ describe('aggregateChatStatuses — other families', () => {
     const out = aggregateChatStatuses(input);
     expect(out).toHaveLength(1);
     // filesList dedup: c appears once.
-    expect(out[0].line.metadata?.filesList).toEqual(['a', 'b', 'c', 'd']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a', 'b', 'c', 'd']));
     expect(out[0].line.metadata?.filesCount).toBe(5);
   });
 
@@ -249,7 +254,7 @@ describe('aggregateChatStatuses — other families', () => {
     ];
     const out = aggregateChatStatuses(input);
     expect(out).toHaveLength(1);
-    expect(out[0].line.metadata?.filesList).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(out[0].line.metadata?.filesList).toEqual(paths(['a', 'b', 'c', 'd', 'e']));
     expect(out[0].line.metadata?.filesCount).toBe(5);
   });
 
