@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { IdePhase } from '@ant/shared';
 import { StepIndicator } from '../async/primitives/StepIndicator';
-import type { StepIndicatorStep, StepStatus } from '../async/primitives/StepIndicator';
+import { buildStepStatusArray } from '../async/buildStepStatusArray';
 
 /**
  * The 5 startup steps surfaced to the user. The first 4 are BE-emitted
@@ -36,32 +36,29 @@ export interface IdeStepRailProps {
   isFailed?: boolean;
 }
 
-function statusFor(stepIdx: number, currentIdx: number, isStuck: boolean, isFailed: boolean): StepStatus {
-  if (stepIdx < currentIdx) return 'complete';
-  if (stepIdx === currentIdx) {
-    if (isFailed) return 'failed';
-    if (isStuck) return 'failed'; // visually marks the step as needing attention
-    return 'active';
-  }
-  return 'pending';
-}
-
 export function IdeStepRail({ currentStep, elapsedSeconds, isStuck = false, isFailed = false }: IdeStepRailProps) {
   const { t } = useTranslation('async');
-  const currentIdx = currentStep === null ? 0 : STEP_ORDER.indexOf(currentStep);
 
-  const steps: StepIndicatorStep[] = STEP_ORDER.map((id, idx) => {
-    const status = statusFor(idx, currentIdx, isStuck, isFailed);
-    const trailing =
+  const labels = STEP_ORDER.reduce(
+    (acc, id) => ({ ...acc, [id]: t(STEP_LABEL_KEY[id]) }),
+    {} as Record<IdeStepId, string>,
+  );
+
+  // IDE's "stuck" + "failed" both surface visually as a failed-styled active
+  // step; in either case the user needs the attention hint. We model this as
+  // `forceActiveStatus: 'failed'` rather than passing `failedPhase` so subsequent
+  // steps still appear pending (legacy IDE rail behavior).
+  const forceActiveStatus = isFailed || isStuck ? 'failed' : undefined;
+
+  const steps = buildStepStatusArray<IdeStepId>({
+    order: STEP_ORDER,
+    currentPhase: currentStep,
+    forceActiveStatus,
+    labels,
+    trailingFor: (_phase, status) =>
       status === 'active' && elapsedSeconds !== undefined && elapsedSeconds > 0
         ? t('ide.elapsed', { seconds: elapsedSeconds })
-        : undefined;
-    return {
-      id,
-      label: t(STEP_LABEL_KEY[id]),
-      status,
-      trailing,
-    };
+        : undefined,
   });
 
   return <StepIndicator steps={steps} orientation="vertical" />;

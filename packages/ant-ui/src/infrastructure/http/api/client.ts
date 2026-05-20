@@ -197,6 +197,14 @@ export class ApiError extends Error {
   canForceCleanup?: boolean;
   /** Optional human-readable hint from the server (paired with canForceCleanup). */
   hint?: string;
+  /** Server-issued correlation ID for cross-referencing logs (e.g. project deletion). */
+  correlationId?: string;
+  /** Discriminator from structured BE error envelopes (e.g. 'projectDeletion'). */
+  kind?: string;
+  /** Stage of the failing cascade (project deletion). */
+  stage?: string;
+  /** Leftover paths from a failed verification step (project deletion fsVerify). */
+  leftovers?: string[];
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -208,6 +216,10 @@ export class ApiError extends Error {
     this.allowed = data?.allowed as string[] | undefined;
     this.canForceCleanup = data?.canForceCleanup as boolean | undefined;
     this.hint = data?.hint as string | undefined;
+    this.correlationId = data?.correlationId as string | undefined;
+    this.kind = data?.kind as string | undefined;
+    this.stage = data?.stage as string | undefined;
+    this.leftovers = data?.leftovers as string[] | undefined;
   }
 }
 

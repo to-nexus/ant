@@ -13,20 +13,22 @@ import { createChatSlice, ChatSlice } from './slices/chatSlice';
 import { createFeatureLogSlice, FeatureLogSlice } from './slices/featureLogSlice';
 import { createTransferSlice, TransferSlice } from './slices/transferSlice';
 import { createDeploySlice, DeploySlice } from './slices/deploySlice';
+import { createProjectDeletionSlice, ProjectDeletionSlice } from './slices/projectDeletionSlice';
 import { createGitWorldSlice, type GitWorldSlice } from '../git-world';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
 
 // Combined store type
-export type Store = ProjectSlice & 
-  FileSlice & 
-  JobSlice & 
-  SSESlice & 
-  UISlice & 
+export type Store = ProjectSlice &
+  FileSlice &
+  JobSlice &
+  SSESlice &
+  UISlice &
   GitWorldSlice &
-  PreviewSlice & 
+  PreviewSlice &
   DeploySlice &
-  AuthSlice & 
-  ConfigSlice & 
+  ProjectDeletionSlice &
+  AuthSlice &
+  ConfigSlice &
   ProjectConfigSlice &
   ResetSlice &
   ChatSlice &
@@ -77,6 +79,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createFeatureLogSlice(set, get, store),
     ...createTransferSlice(set, get, store),
     ...createDeploySlice(set, get, store),
+    ...createProjectDeletionSlice(set, get, store),
     
     // Override with persistent state
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,

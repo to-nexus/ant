@@ -142,6 +142,43 @@ export type IdeSessionState =
   | { kind: 'reconnecting'; baseUrl: string; sessionKey: string; attemptStartedAt: number }
   | { kind: 'failed'; error: string; previousBaseUrl?: string };
 
+/**
+ * Project deletion lifecycle — discriminated union mirroring the BE cascade.
+ *
+ * `sessionKey = projectId` (only one deletion can run per project at a time).
+ * The SSE handler in `sseSlice` drops events whose sessionKey doesn't match
+ * the current `deleting` session, so a late-arriving event for a previously
+ * cancelled deletion can never overwrite the UI.
+ *
+ * `phaseHistory` tracks which phases completed/failed so the step rail can
+ * mark them appropriately even when the SSE stream is reconnected mid-flight.
+ */
+export type ProjectDeletionPhaseSnapshot = {
+  phase: import('@ant/shared').ProjectDeletionPhase;
+  status: 'complete' | 'failed';
+};
+
+export type ProjectDeletionSession =
+  | { kind: 'idle' }
+  | {
+      kind: 'deleting';
+      projectId: string;
+      phase: import('@ant/shared').ProjectDeletionPhase | null;
+      startedAt: number;
+      phaseHistory: ProjectDeletionPhaseSnapshot[];
+    }
+  | { kind: 'completed'; projectId: string; completedAt: number }
+  | {
+      kind: 'failed';
+      projectId: string;
+      stage: import('@ant/shared').ProjectDeletionPhase;
+      message: string;
+      hint?: string;
+      leftovers?: string[];
+      canForceCleanup: boolean;
+      correlationId: string;
+    };
+
 export interface UIState {
   theme: 'light' | 'dark';
   language: 'en' | 'ko';
