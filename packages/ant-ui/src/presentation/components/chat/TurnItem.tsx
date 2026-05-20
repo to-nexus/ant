@@ -33,10 +33,6 @@ import remarkGfm from 'remark-gfm';
 import type {
   ChatStatusLine,
   ChatStatusType,
-  ChatThinkingLine,
-  ChatAssistantMessageLine,
-  ChatChoicePresentedLine,
-  ChatChoiceResolvedLine,
   ChatUserTurnLine,
   PendingCardSnapshot,
   LogJobType,
@@ -62,6 +58,11 @@ import {
   type TurnSection,
 } from '@/domain/store/selectors/chat';
 import { shouldSuppressPreviewOnlyStatusCard } from './statusCardVisibility';
+import {
+  buildTrailingThinkingMerge,
+  type RenderEntry,
+  type TrailingThinkingMerge,
+} from './trailingThinkingMerge';
 
 interface TurnItemProps {
   turn: Turn;
@@ -138,8 +139,8 @@ const SectionStack = memo(function SectionStack({
   // (thinking / assistant_message / choice) act as boundaries.
   const renderItems = useMemo(() => buildRenderItems(section), [section]);
   const trailingThinkingMerge = useMemo(
-    () => buildTrailingThinkingMerge(renderItems, section.activeThinking),
-    [renderItems, section.activeThinking],
+    () => buildTrailingThinkingMerge(renderItems, section.activeThinking, section.activeText),
+    [renderItems, section.activeThinking, section.activeText],
   );
 
   // CardId set of items that have already finalized — used to skip
@@ -274,31 +275,6 @@ function buildSectionHeader(section: TurnSection): string | null {
 // Render-entry assembly: thinking / aggregated-status / message / choice
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-type RenderEntry =
-  | { key?: string; kind: 'thinking'; line: ChatThinkingLine }
-  | {
-      key?: string;
-      kind: 'status';
-      line: ChatStatusLine;
-      pending?: PendingCardSnapshot;
-    }
-  | { key?: string; kind: 'assistant_message'; line: ChatAssistantMessageLine }
-  | {
-      key?: string;
-      kind: 'choice';
-      presented: ChatChoicePresentedLine;
-      resolved?: ChatChoiceResolvedLine;
-    };
-
-interface TrailingThinkingMerge {
-  startIndex: number;
-  endIndex: number;
-  hasActiveThinking: boolean;
-  mergedText: string;
-  mergedDurationMs?: number;
-  mergedLine: ChatThinkingLine;
-}
-
 /**
  * Walk the section's items and produce a flat render list, applying
  * `aggregateChatStatuses` to consecutive runs of `kind:'status'`.
@@ -355,59 +331,6 @@ function buildRenderItems(section: TurnSection): RenderEntry[] {
   }
   flushStatus();
   return out;
-}
-
-function buildTrailingThinkingMerge(
-  renderItems: RenderEntry[],
-  activeThinking?: string,
-): TrailingThinkingMerge | null {
-  if (renderItems.length === 0) return null;
-  // Merge invariant — adjacency-strict (mirrors aggregateChatStatuses's
-  // contiguous-family merge for status cards): the active thinking stream
-  // may only merge into thinking entries that sit at the END of the
-  // render list. If the tail is not a thinking entry, render the active
-  // stream via SectionStack's separate `<ShimmerCard streamingText>`
-  // overlay below — never reach across read/file/message entries to
-  // merge into a stale thought block above the chronological tail.
-  if (renderItems[renderItems.length - 1].kind !== 'thinking') return null;
-  const endIndex = renderItems.length - 1;
-
-  let startIndex = endIndex;
-  while (startIndex - 1 >= 0 && renderItems[startIndex - 1].kind === 'thinking') {
-    startIndex -= 1;
-  }
-
-  const thinkingEntries = renderItems.slice(startIndex, endIndex + 1);
-  const hasActiveThinking = Boolean(activeThinking);
-  const shouldMerge = hasActiveThinking || thinkingEntries.length > 1;
-  if (!shouldMerge) return null;
-
-  const baseLine = (thinkingEntries[0] as { kind: 'thinking'; line: ChatThinkingLine }).line;
-  const mergedText =
-    thinkingEntries
-      .map((entry) => (entry as { kind: 'thinking'; line: ChatThinkingLine }).line.text)
-      .join('') + (activeThinking ?? '');
-
-  const mergedDurationMs = thinkingEntries.reduce<number | undefined>((acc, entry) => {
-    const duration = (entry as { kind: 'thinking'; line: ChatThinkingLine }).line.durationMs;
-    if (typeof duration !== 'number') return acc;
-    return (acc ?? 0) + duration;
-  }, undefined);
-
-  const mergedLine: ChatThinkingLine = {
-    ...baseLine,
-    text: mergedText,
-    ...(typeof mergedDurationMs === 'number' ? { durationMs: mergedDurationMs } : {}),
-  };
-
-  return {
-    startIndex,
-    endIndex,
-    hasActiveThinking,
-    mergedText,
-    mergedDurationMs,
-    mergedLine,
-  };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
