@@ -23,6 +23,7 @@ async function* makeStream(response: string) {
 function buildState(opts: { directive?: string; hasExistingTarget?: boolean; llmResponse?: string }) {
   const llm = {
     stream: () => makeStream(opts.llmResponse ?? ''),
+    modelName: 'claude-opus-4-7',
   };
   const promptBuilder = {
     render: async () => '(rendered prompt)',
