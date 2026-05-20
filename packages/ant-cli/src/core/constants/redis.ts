@@ -27,6 +27,8 @@ export const REDIS_DOMAINS = {
   THROTTLE: `${APP_PREFIX}:throttle`,
   /** Cloud-mode auth records (users / organizations / memberships) — Redis projection of the SQL schema in Phase 3. */
   AUTH: `${APP_PREFIX}:auth`,
+  /** Compaction-aware baseline-estimate cache (per-tenant + per-(intent, model, RAC, draft)). */
+  BASELINE: `${APP_PREFIX}:baseline`,
 } as const;
 
 // ============================================
@@ -246,6 +248,30 @@ export const REDIS_KEYS = {
     /** Email → userId lookup - ant:auth:user:byEmail:{emailLower} (string) */
     USER_BY_EMAIL: `${REDIS_DOMAINS.AUTH}:user:byEmail:`,
   },
+
+  /**
+   * Baseline estimate cache (ant:baseline:*)
+   *
+   * Tenant-scoped per-(intent, model, RAC fingerprint, draft hash). 5-min TTL
+   * amortises the Anthropic countTokens call across rapid keystrokes inside
+   * the 300ms debounce window. SSOT: `core/baselineEstimate/cache.ts`.
+   *
+   * Key shape:
+   *   ant:baseline:{orgId}:{userId}:{projectId}:{featureName}:{intent}:{modelId}:{racFp}:{draftHash}
+   */
+  BASELINE: {
+    KEY: (
+      orgId: string,
+      userId: string,
+      projectId: string,
+      featureName: string,
+      intent: string,
+      modelId: string,
+      racFingerprint: string,
+      draftHash: string,
+    ): string =>
+      `${REDIS_DOMAINS.BASELINE}:${orgId}:${userId}:${projectId}:${featureName}:${intent}:${modelId}:${racFingerprint}:${draftHash}`,
+  },
 } as const;
 
 // ============================================
@@ -301,6 +327,11 @@ export const REDIS_TTL = {
   ARTIFACTS: {
     UNSEEN: 7 * 24 * 60 * 60,    // 7 days
     FILETREE: 24 * 60 * 60,      // 24 hours (aligned with job lifecycle)
+  },
+
+  /** Baseline estimate cache TTL — 5 minutes. */
+  BASELINE: {
+    ENTRY: 300,
   },
 } as const;
 

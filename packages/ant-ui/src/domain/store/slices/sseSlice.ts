@@ -46,6 +46,18 @@ export interface SSEState {
 export interface SSEActions {
   updateKanban: (data: KanbanData) => void;
   updateKanbanRecursion: (recursionCount: number, recursionLimit?: number, recursionTaskName?: string) => void;
+  /**
+   * Single writer for `kanban.baselinePhaseTokenUsage` from the REST path
+   * (PR-2 baseline endpoint). The SSE path lands the same field via
+   * `handleKanbanUpdate`'s preserve-on-omission branch — both routes
+   * funnel through reducer-equivalent semantics so the gauge sees a
+   * monotonic update stream regardless of source.
+   *
+   * Direct `useStore.setState({ kanban: ... })` mutation of this field
+   * from anywhere else is forbidden — that fork is the SSOT trap PR-2
+   * explicitly closes.
+   */
+  updateBaselinePhaseTokenUsage: (snapshot: import('@ant/shared').PhaseTokenUsage | undefined) => void;
   appendChatEvent: (event: ChatLine) => void;
   replaceChatEvents: (events: ChatLine[], buffers: Record<BufferKey, StreamingBuffer>, serverTs: string) => void;
   applyStreamingDelta: (
@@ -112,6 +124,14 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   },
 
   updateKanban: (data) => handleKanbanUpdate(data, set, get),
+
+  updateBaselinePhaseTokenUsage: (snapshot) => {
+    set((state: any) => ({
+      kanban: state.kanban
+        ? { ...state.kanban, baselinePhaseTokenUsage: snapshot }
+        : state.kanban,
+    }));
+  },
 
   appendChatEvent: (event) => {
     set((state: any) => ({

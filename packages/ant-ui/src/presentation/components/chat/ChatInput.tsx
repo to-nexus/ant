@@ -16,6 +16,7 @@ import { useAgentJobOptions } from './hooks/useAgentJobOptions';
 import { useChatSubmit } from './hooks/useChatSubmit';
 import { useResizableHeight } from './hooks/useResizableHeight';
 import { useMentionAutocomplete } from './hooks/useMentionAutocomplete';
+import { useBaselineEstimate } from '@/application/hooks/baseline/useBaselineEstimate';
 import { ChatFileChangeSummary } from './ChatFileChangeSummary';
 import { AgentJobToolbar, CHAT_INPUT_MIN_WIDTH_PX } from './AgentJobToolbar';
 import { ActionMetadataBadges } from './ActionMetadataBadges';
@@ -49,6 +50,19 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { handleSubmit } = useChatSubmit({ message, setMessage, showError });
   const { textareaHeight, isResizing, handleResizeStart, handleResizeMove, handleResizeEnd } = useResizableHeight();
   const mention = useMentionAutocomplete(message, cursorPos);
+
+  // PR-2 baseline gauge — fire-and-forget hook. Debounced 300ms inside.
+  // Writes `kanban.baselinePhaseTokenUsage` so `TurnTokenRing` renders
+  // the predicted next-call floor when no live job is running.
+  const selectedIntentId = useStore((state) => state.selectedIntentId);
+  const actionMetadataRefs = useStore((state) => state.actionMetadata.refs);
+  const actionMetadataContext = useStore((state) => state.actionMetadata.context);
+  useBaselineEstimate({
+    intent: selectedIntentId ?? undefined,
+    refs: actionMetadataRefs ?? [],
+    context: actionMetadataContext ?? [],
+    draftText: message,
+  });
 
   // Consume pending chat input (from fix, quick action, template, etc.)
   useEffect(() => {
