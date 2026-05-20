@@ -48,6 +48,8 @@ export interface TaskQueueSnapshot {
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   currentPhaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
+  /** Pre-job baseline snapshot (mode: 'baseline'). Single value, broadcast-only. */
+  baselinePhaseTokenUsage?: import('@ant/shared').PhaseTokenUsage;
   jobTiming?: import('@ant/shared').JobTiming;
   // Node activity banner (for reconnect/recovery)
   estimatingLabel?: string;

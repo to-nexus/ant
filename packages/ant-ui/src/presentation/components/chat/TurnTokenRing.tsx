@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CONTEXT_WINDOW_MAX_TOKENS, type PhaseTokenUsage } from '@ant/shared';
+import { type PhaseTokenUsage } from '@ant/shared';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 export interface TokenRingProps {
@@ -71,7 +71,7 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               strokeWidth={STROKE_WIDTH}
               strokeLinecap="butt"
               strokeDasharray={`${freshLen} ${CIRCUMFERENCE - freshLen}`}
-              className={`${view.freshStroke} ${view.estimating ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
+              className={`${view.freshStroke} ${view.provisional ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
             />
           )}
           {cachedLen > 0 && (
@@ -119,7 +119,8 @@ export function summarizeRing(
   t: (key: string, opts?: Record<string, unknown>) => string,
 ): { title: string; percent: string } {
   const prompt = promptTokensOf(phase);
-  const pct = prompt <= 0 ? 0 : (prompt / CONTEXT_WINDOW_MAX_TOKENS) * 100;
+  const max = phase.contextWindow;
+  const pct = prompt <= 0 || max <= 0 ? 0 : (prompt / max) * 100;
   const pctText = pct < 1 ? '<1%' : `${Math.round(pct)}%`;
 
   const parts: string[] = [];
@@ -157,9 +158,16 @@ function buildView(
   // Cursor-style: render the ring even at 0 tokens. The empty donut track
   // is the visual placeholder for "node active, no usage yet" — it does
   // not disappear between LLM calls or before the first `usage_partial`.
-  const estimating = phase.estimating === true;
+  //
+  // `mode` is the SSOT discriminator (legacy `estimating: boolean` was
+  // replaced in Phase 3). `estimating` and `baseline` both render as dashed
+  // / paler rings so the user understands the number is provisional, while
+  // `live` is the solid measured value.
+  const estimating = phase.mode === 'estimating';
+  const baseline = phase.mode === 'baseline';
+  const provisional = estimating || baseline;
 
-  const max = CONTEXT_WINDOW_MAX_TOKENS;
+  const max = phase.contextWindow;
   const totalPct = clampPct((prompt / max) * 100);
   const freshPct = clampPct((fresh / max) * 100);
   const cachedPct = clampPct((cached / max) * 100);
@@ -232,6 +240,13 @@ function buildView(
           {t('turnTokenGauge.estimatingNote')}
         </div>
       )}
+      {baseline && (
+        <div className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400 italic">
+          {t('turnTokenGauge.baselineNote', {
+            defaultValue: 'Predicted next call (no LLM activity yet). Real measurement replaces this once the job starts.',
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -257,6 +272,8 @@ function buildView(
     tooltip,
     ariaLabel,
     estimating,
+    baseline,
+    provisional,
   };
 }
 

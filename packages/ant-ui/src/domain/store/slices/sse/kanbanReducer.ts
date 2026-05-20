@@ -45,11 +45,20 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   if (data.phaseTokenUsages === undefined && existingKanban?.phaseTokenUsages !== undefined) {
     data = { ...data, phaseTokenUsages: existingKanban.phaseTokenUsages };
   }
-  // Preserve currentPhaseTokenUsages when incoming update omits it, so the
-  // chat input context gauge retains the last known value during idle periods
-  // (between turns, when the kanban broadcaster has no LLM call to snapshot).
-  if (data.currentPhaseTokenUsages === undefined && existingKanban?.currentPhaseTokenUsages !== undefined) {
-    data = { ...data, currentPhaseTokenUsages: existingKanban.currentPhaseTokenUsages };
+  // NOTE: previously preserved `currentPhaseTokenUsages` when an incoming
+  // update omitted it, to keep the gauge visible during idle. That sticky
+  // was an in-memory-only partial fix (page reload wiped it) and is
+  // superseded by Phase-2's baseline endpoint, which the gauge falls back
+  // to via `baselinePhaseTokenUsage`. We now let live snapshots clear
+  // when the broadcaster omits them, so the gauge transitions to baseline
+  // mode immediately on job end.
+  //
+  // Baseline snapshot mirrors the same shape — preserve on omission so SSE
+  // hiccups don't blank the baseline ring. The baseline endpoint refresh
+  // is the authoritative writer; this only protects against transient
+  // SSE-broadcast-omits-field gaps mid-job.
+  if (data.baselinePhaseTokenUsage === undefined && existingKanban?.baselinePhaseTokenUsage !== undefined) {
+    data = { ...data, baselinePhaseTokenUsage: existingKanban.baselinePhaseTokenUsage };
   }
 
   const kanbanJobId = data.jobId;

@@ -19,8 +19,17 @@ import { TokenRing, summarizeRing } from './TurnTokenRing';
  *    shrinks with `AgentJobToolbar`'s icon-only breakpoints).
  */
 export function TurnTokenGauge() {
-  const phases = useStore((state) => state.kanban?.currentPhaseTokenUsages);
-  const visiblePhases = useMemo(() => filterActive(phases), [phases]);
+  const livePhases = useStore((state) => state.kanban?.currentPhaseTokenUsages);
+  const baselinePhase = useStore((state) => state.kanban?.baselinePhaseTokenUsage);
+  // Priority: live phases (job running, mid-stream snapshots) > baseline
+  // (predicted next-call floor, Phase-2 endpoint). When neither exists, the
+  // gauge returns null below. This is the SSOT for "what does the gauge
+  // show when there is no active LLM call" — see Phase-3 plan §3.3.
+  const visiblePhases = useMemo(() => {
+    const live = filterActive(livePhases);
+    if (live.length > 0) return live;
+    return baselinePhase ? [baselinePhase] : [];
+  }, [livePhases, baselinePhase]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const [slotWidth, setSlotWidth] = useState<number>(0);
