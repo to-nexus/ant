@@ -22,7 +22,7 @@
 
 import { TextContentBlock } from "../../../../../../../core/ports/llm";
 import { ArchitectGraphState } from "../../../state";
-import { CodeTask } from "../../../../../types/task";
+import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
 import {
@@ -204,7 +204,7 @@ export async function buildPlanPrompt(
   // ownership, integration-vs-foundation responsibilities) can dispatch
   // correctly. Non-feature task types do not carry a band; the template
   // defaults to the foundation/no-band branch in that case.
-  const taskBand = task.type === 'feature' ? (task as CodeTask).band : undefined;
+  const taskBand = task.type === 'feature' ? (task as FeatureCodeTask).band : undefined;
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,

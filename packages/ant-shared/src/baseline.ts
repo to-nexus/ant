@@ -39,12 +39,36 @@ export interface BaselineEstimate {
   };
   staticFloor: { tokens: number };
   dynamic: {
-    /** Sum of RAC ref+context body tokens (0 in infer mode). */
+    /**
+     * Sum of RAC ref+context bodies as they will appear in the heaviest
+     * node's FIRST LLM call AFTER compaction. Large bodies are replaced
+     * with structural outlines + `read_file(path, startLine, endLine)`
+     * hints (matching production's `ArtifactPipeline.compactArtifacts` /
+     * `designSelector.prepareRacInjection` thresholds — refs 8 KB,
+     * context 2 KB at decompose; uniform 30 KB at plan/execute/docGen).
+     *
+     * Excluded by design:
+     * - Decompaction tokens (LLM-driven follow-up `read_file` calls land
+     *   in later turns, not the first call's `inputTokens`).
+     * - Prior assistant turn carry (no prior turn at baseline time — the
+     *   predicted next call is the first call of the next job).
+     *
+     * 0 in infer mode at T0 (RAC paths unknown until detect resolves).
+     */
     racBodyTokens: number;
-    /** Char→token estimate of the user's draft input (0 when empty). */
+    /** Token count of the user's draft input as measured by Anthropic
+     *  `count_tokens` (0 when empty). */
     userMessageTokens: number;
   };
-  /** `staticFloor.tokens + dynamic.racBodyTokens + dynamic.userMessageTokens`. */
+  /**
+   * Reported as the Anthropic `count_tokens` result on the full assembled
+   * prompt (system + user + tools) — the single-call ground truth. The
+   * three `staticFloor.tokens` / `dynamic.racBodyTokens` /
+   * `dynamic.userMessageTokens` parts are a best-effort decomposition
+   * that should sum to within ±5% of `total`; small differences come
+   * from Anthropic message-framing tokens that are non-linear in the
+   * subtraction-based decomposition.
+   */
   total: number;
   /** From `getModelContextWindow(modelId)`. The gauge's denominator. */
   contextWindow: number;
