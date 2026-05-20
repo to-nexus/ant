@@ -376,6 +376,96 @@ export function createJobRoutes(deps: {
   //
   // Used by e2e test helpers and ops runbooks. The ant-ui FE does not call
   // this endpoint in the normal flow — see docs/testing/e2e-runbook.md.
+  // Baseline estimate — compaction-aware prediction of the heaviest LLM
+  // call the next job will make. Powers the chat-input gauge's `baseline`
+  // mode (PR-2 of cursor-iridescent-waffle). 5-min cache amortises the
+  // Anthropic countTokens call across rapid keystrokes inside the FE's
+  // 300ms debounce window.
+  //
+  // NOTE: declared BEFORE `/jobs/:jobId/...` so express's path matcher
+  // does not greedily bind "baseline-estimate" as a jobId.
+  router.get('/jobs/baseline-estimate', async (req: Request, res: Response) => {
+    const intent = req.query.intent as string | undefined;
+    const projectId = req.query.projectId as string | undefined;
+    const featureName = req.query.featureName as string | undefined;
+    const draftText = (req.query.draftText as string | undefined) ?? '';
+    const refsRaw = req.query.refs;
+    const contextRaw = req.query.context;
+    const modelId =
+      (req.query.modelId as string | undefined) ||
+      process.env.AI_MODEL_NAME ||
+      'claude-opus-4-7';
+
+    if (!intent || !projectId || !featureName) {
+      res.status(400).json({ error: 'intent, projectId, featureName are required' });
+      return;
+    }
+
+    const parseList = (raw: unknown): string[] => {
+      if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+      if (typeof raw === 'string' && raw.length > 0) {
+        return raw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      return [];
+    };
+    const refs = parseList(refsRaw);
+    const context = parseList(contextRaw);
+
+    let userContext: { userId: string; organizationId: string };
+    try {
+      userContext = extractUserContext(req);
+    } catch (err) {
+      sendErrorResponse(res, 401, err, 'BaselineEstimate');
+      return;
+    }
+
+    let featurePath: string;
+    try {
+      featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    } catch (err) {
+      sendErrorResponse(res, 404, err, 'BaselineEstimate');
+      return;
+    }
+
+    const { estimateBaseline, BaselineEstimateError } = await import(
+      '../../../../core/baselineEstimate/estimator'
+    );
+    try {
+      const estimate = await estimateBaseline({
+        intent: intent as any,
+        featurePath,
+        refs,
+        context,
+        draftText,
+        modelId,
+        tenantScope: {
+          orgId: userContext.organizationId,
+          userId: userContext.userId,
+          projectId,
+          featureName,
+        },
+        stateStore: deps.stateStore,
+      });
+      res.json(estimate);
+    } catch (err) {
+      if (err instanceof BaselineEstimateError) {
+        if (err.kind === 'intent-unmapped' || err.kind === 'unknown-model') {
+          res.status(400).json({ error: err.kind, message: err.message });
+          return;
+        }
+        // count-tokens-unavailable → 503 + explicit reason. The FE's gauge
+        // stays in its no-baseline state (honest) rather than displaying a
+        // fabricated floor.
+        res.status(503).json({
+          error: 'count_tokens unavailable',
+          reason: err.message,
+        });
+        return;
+      }
+      sendErrorResponse(res, 500, err, 'BaselineEstimate');
+    }
+  });
+
   router.get('/jobs/:jobId/status', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     const status = await getJobStatusAsync(jobId);

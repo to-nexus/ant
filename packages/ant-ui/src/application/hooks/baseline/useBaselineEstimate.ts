@@ -1,21 +1,22 @@
 /**
- * useBaselineEstimate — Phase-3 STUB.
+ * useBaselineEstimate — PR-2 fetcher.
  *
- * Phase 2 will wire this hook to `GET /api/jobs/baseline-estimate` with
- * debounced refetch on (intent, refs, context, draft) change and writes
- * the result into the `kanban.baselinePhaseTokenUsage` slice so the
- * chat-input gauge can render the predicted next-call floor.
+ * Calls `GET /api/jobs/baseline-estimate` with a 300ms debounce on every
+ * (intent, refs, context, draftText, project, feature) change. Writes the
+ * result into the kanban slice via `updateBaselinePhaseTokenUsage` — the
+ * single REST-side writer for `kanban.baselinePhaseTokenUsage`. The gauge
+ * (`TurnTokenRing`) reads that field as a fallback when no `live`
+ * `currentPhaseTokenUsages` entry exists.
  *
- * For now the hook is a no-op so we can land the schema + UI plumbing
- * (PhaseTokenUsage.mode='baseline', gauge priority selector, broadcast
- * field) ahead of the endpoint. Consumers can mount this hook today; it
- * does nothing until Phase 2.
- *
- * Intentionally has NO side effects — does not subscribe, does not fetch.
- * Returning `undefined` keeps the gauge in its default (no baseline) state.
+ * Failure policy: on 4xx / 5xx / network, do NOTHING (don't blank the
+ * existing baseline, don't fabricate one). The PR-2 endpoint returns 503
+ * when Anthropic countTokens is unavailable — silently leaving the gauge
+ * in its no-baseline state is more honest than a placeholder estimate.
  */
 
-import type { BaselineEstimate } from '@ant/shared';
+import { useEffect, useRef } from 'react';
+import type { BaselineEstimate, PhaseTokenUsage } from '@ant/shared';
+import { useStore } from '@/domain/store';
 
 export interface UseBaselineEstimateInput {
   /** Currently selected intent (from action card). */
@@ -24,20 +25,73 @@ export interface UseBaselineEstimateInput {
   refs?: readonly string[];
   /** Explicit context paths from action card. */
   context?: readonly string[];
-  /** Current chat-input draft text (Phase 2 will char-count it). */
+  /** Current chat-input draft text. */
   draftText?: string;
 }
 
-export interface UseBaselineEstimateResult {
-  estimate: BaselineEstimate | undefined;
-  isLoading: boolean;
-  error: Error | undefined;
+const DEBOUNCE_MS = 300;
+
+function toPhaseTokenUsage(estimate: BaselineEstimate): PhaseTokenUsage {
+  return {
+    phase: estimate.heaviestNode.node,
+    label: `${estimate.heaviestNode.job}/${estimate.heaviestNode.node}`,
+    mode: 'baseline',
+    contextWindow: estimate.contextWindow,
+    tokenUsage: {
+      inputTokens: estimate.total,
+      outputTokens: 0,
+      totalTokens: estimate.total,
+    },
+  };
 }
 
-export function useBaselineEstimate(
-  _input: UseBaselineEstimateInput = {},
-): UseBaselineEstimateResult {
-  // Phase 3 stub — no network call. Phase 2 swaps this body for a real
-  // debounced fetcher (React Query or equivalent) keyed on the input.
-  return { estimate: undefined, isLoading: false, error: undefined };
+export function useBaselineEstimate(input: UseBaselineEstimateInput = {}): void {
+  const updateBaseline = useStore(s => s.updateBaselinePhaseTokenUsage);
+  const selectedProject = useStore(s => s.selectedProject);
+  const selectedFeature = useStore(s => s.selectedFeature);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRef = useRef<AbortController | null>(null);
+
+  const intent = input.intent;
+  const refsKey = (input.refs ?? []).join('|');
+  const contextKey = (input.context ?? []).join('|');
+  const draftText = input.draftText ?? '';
+
+  useEffect(() => {
+    if (!intent || !selectedProject || !selectedFeature) return;
+
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    if (inFlightRef.current) inFlightRef.current.abort();
+
+    debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      inFlightRef.current = controller;
+
+      const params = new URLSearchParams({
+        intent,
+        projectId: selectedProject,
+        featureName: selectedFeature,
+      });
+      if (draftText) params.set('draftText', draftText);
+      if (refsKey) params.set('refs', refsKey.replace(/\|/g, ','));
+      if (contextKey) params.set('context', contextKey.replace(/\|/g, ','));
+
+      try {
+        const res = await fetch(`/api/jobs/baseline-estimate?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as BaselineEstimate;
+        updateBaseline(toPhaseTokenUsage(data));
+      } catch {
+        // Network error or aborted — leave the gauge in its current state.
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+      if (inFlightRef.current) inFlightRef.current.abort();
+    };
+  }, [intent, refsKey, contextKey, draftText, selectedProject, selectedFeature, updateBaseline]);
 }
