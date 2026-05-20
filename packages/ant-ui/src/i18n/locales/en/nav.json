@@ -14,7 +14,10 @@
     "code": "Code",
     "openEditor": "Open codebase in editor",
     "selectProjectFirst": "Select a project first",
-    "failedToOpenIde": "Failed to open IDE"
+    "failedToOpenIde": "Failed to open IDE",
+    "label": "Task view mode",
+    "kanban": "Kanban",
+    "workflow": "Workflow"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -65,11 +68,6 @@
   "splitLayout": {
     "columns": "Columns Grid (Side by Side)",
     "rows": "Stacked Rows"
-  },
-  "viewMode": {
-    "label": "Task view mode",
-    "kanban": "Kanban",
-    "workflow": "Workflow"
   },
   "desktop": {
     "offline": "Ant Desktop",
