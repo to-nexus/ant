@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MoreHorizontal } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { type PhaseTokenUsage } from '@ant/shared';
+import { DEFAULT_FALLBACK_CONTEXT_WINDOW, type PhaseTokenUsage } from '@ant/shared';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { TokenRing, summarizeRing } from './TurnTokenRing';
 
@@ -22,13 +22,35 @@ export function TurnTokenGauge() {
   const livePhases = useStore((state) => state.kanban?.currentPhaseTokenUsages);
   const baselinePhase = useStore((state) => state.kanban?.baselinePhaseTokenUsage);
   // Priority: live phases (job running, mid-stream snapshots) > baseline
-  // (predicted next-call floor, Phase-2 endpoint). When neither exists, the
-  // gauge returns null below. This is the SSOT for "what does the gauge
-  // show when there is no active LLM call" — see Phase-3 plan §3.3.
+  // (predicted next-call floor, Phase-2 endpoint) > 0/contextWindow empty
+  // placeholder. The gauge must remain visible at all times — when no
+  // snapshot exists yet, we synthesize a single placeholder entry so the
+  // ring shows 0 / sticky-contextWindow (falling back to
+  // DEFAULT_FALLBACK_CONTEXT_WINDOW on the very first frame). The sticky
+  // ref preserves the last-known contextWindow across transient empty
+  // states (job end / SSE reconnect / fetch failure) so the denominator
+  // does not flicker between 200k and the model-specific value.
+  const lastKnownContextWindowRef = useRef<number | undefined>(undefined);
+
   const visiblePhases = useMemo(() => {
     const live = filterActive(livePhases);
-    if (live.length > 0) return live;
-    return baselinePhase ? [baselinePhase] : [];
+    if (live.length > 0) {
+      lastKnownContextWindowRef.current = live[0].contextWindow;
+      return live;
+    }
+    if (baselinePhase) {
+      lastKnownContextWindowRef.current = baselinePhase.contextWindow;
+      return [baselinePhase];
+    }
+    const placeholder: PhaseTokenUsage = {
+      phase: '',
+      label: undefined,
+      mode: 'baseline',
+      contextWindow:
+        lastKnownContextWindowRef.current ?? DEFAULT_FALLBACK_CONTEXT_WINDOW,
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+    return [placeholder];
   }, [livePhases, baselinePhase]);
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -43,8 +65,6 @@ export function TurnTokenGauge() {
     ro.observe(host);
     return () => ro.disconnect();
   }, []);
-
-  if (!visiblePhases.length) return null;
 
   // Geometry (keep in sync with TurnTokenRing + AgentJobToolbar min-width math):
   //   ring     = 14px square (SVG donut)
