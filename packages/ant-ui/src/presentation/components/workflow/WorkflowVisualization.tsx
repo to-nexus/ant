@@ -50,8 +50,8 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const selectedJobType = useStore(state => state.selectedJobType);
   const isRunning = useStore(state => state.isRunning);  // ✅ Job 실행 상태
   const theme = useStore(state => state.theme);
-  const splitLayout = useStore(state => state.splitLayout);
-  
+
+
   // ✅ Track terminal bar height for workflow controls positioning
   React.useEffect(() => {
     const updateControlsPosition = () => {
@@ -171,7 +171,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
       reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
       fitViewTimerRef.current = null;
     }, 50);
-  }, [reactFlowInstance, nodes.length, splitLayout, isRunning, trackingTarget?.nodeId]);
+  }, [reactFlowInstance, nodes.length, isRunning, trackingTarget?.nodeId]);
   
   // ✅ 활성 노드로 자동 포커스 + 줌인
   React.useEffect(() => {

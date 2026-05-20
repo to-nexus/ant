@@ -48,6 +48,5 @@ Agent Workflow Board는 MainPanel의 split layout에서 두 번째 영역에 표
 ## 관련 컴포넌트
 
 - `MainPanel`: 상위 컨테이너
-- `SplitLayout`: 분할 레이아웃 관리
-- `KanbanBoard`: Task 관리 (동일 위계)
+- `KanbanBoard`: Task 관리 (mutually exclusive — `taskViewMode` 로 전환)
 

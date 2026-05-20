@@ -105,11 +105,9 @@
   headerBar={<MainPanelBar />}
   footer={<TerminalBar />}
 >
-  <SplitLayout
-    direction="vertical"
-    first={<KanbanBoard />}
-    second={<AgentWorkflowBoard />}
-  />
+  {/* Kanban and Workflow are mutually exclusive — pick one based on
+      `taskViewMode` from the ui slice. */}
+  {taskViewMode === 'workflow' ? <AgentWorkflowBoard /> : <KanbanBoard />}
 </MainPanel>
 ```
 
@@ -144,27 +142,6 @@
 ```tsx
 <TerminalBar />
 ```
-
-### SplitLayout
-**Resizable split pane layout**
-
-- Supports horizontal (left/right) or vertical (top/bottom) split
-- Draggable resizer with visual feedback
-- Minimum size constraints (default: 50px - compact header only)
-- Independent scrolling for each panel
-- Customizable initial ratio (default: 0.5)
-
-```tsx
-<SplitLayout
-  direction="vertical"
-  initialRatio={0.5}
-  minSize={50}
-  first={<KanbanBoard />}
-  second={<AgentWorkflowBoard />}
-/>
-```
-
----
 
 ### BoardContainer
 **Minimal base wrapper for board-style components**
@@ -210,10 +187,9 @@
 components/
 ├── GlobalNavBar.tsx          # Top navigation bar (독립적)
 ├── Bar.tsx                   # Base component for all bars ⭐
-├── MainPanel.tsx             # Central viewport (supports split)
-├── MainPanelBar.tsx          # Status bar + layout toggles
+├── MainPanel.tsx             # Central viewport
+├── MainPanelBar.tsx          # Status bar + view-mode toggles
 ├── TerminalBar.tsx           # Terminal output bar
-├── SplitLayout.tsx           # Resizable split pane ⭐
 ├── BoardContainer.tsx        # Base board wrapper
 ├── kanban/                   # Kanban Board (Task management)
 │   ├── KanbanBoard.tsx
@@ -285,26 +261,19 @@ components/
    - 일관된 높이 (`h-10`)
    - 일관된 패딩 (`px-4`)
    - 일관된 텍스트 크기 (`text-sm`)
-2. **MainPanel** = Always split layout
-   - **No single board view** (항상 2개 보드 표시)
-   - Default: Vertical (상하) split
-   - Toggle: Horizontal (좌우) split
-   - Resizable panels (drag divider)
-3. **SplitLayout** = IDE-style split pane
-   - Draggable resizer with visual feedback
-   - Independent scrolling per panel
-   - Minimum size constraints (50px - compact header only)
-   - 1:1 default ratio (adjustable)
-4. **BoardContainer** = Minimal wrapper (no padding/borders, compact header)
-5. **Board equality** = KanbanBoard와 AgentWorkflowBoard는 동일한 위계
-6. **Feature folders** = Self-contained board implementations (kanban/, workflow/)
-7. **Composition** = Mix and match components
+2. **MainPanel** = Single active view
+   - Kanban and Workflow are **mutually exclusive** — driven by `taskViewMode`
+   - When in Kanban: `splitLayout` decides column arrangement (horizontal = stacked, vertical = grid-cols-3)
+   - When in Workflow: graph is fixed LR (left → right), split toggle is hidden
+3. **BoardContainer** = Minimal wrapper (no padding/borders, compact header)
+4. **Board equality** = KanbanBoard와 AgentWorkflowBoard는 동일한 위계
+5. **Feature folders** = Self-contained board implementations (kanban/, workflow/)
+6. **Composition** = Mix and match components
 
 ## 📖 Related Documentation
 
 - `/components/kanban/README.md` - Kanban Board details
 - `/components/workflow/README.md` - Agent Workflow Board details
 - `/components/BoardContainer.tsx` - Base container API
-- `/components/SplitLayout.tsx` - Split pane implementation
 - `/lib/design-system.ts` - Theme colors and semantic colors
-- `/lib/store.ts` - Global state management (includes splitLayout state)
+- `/lib/store.ts` - Global state management (includes `splitLayout` + `taskViewMode`)
