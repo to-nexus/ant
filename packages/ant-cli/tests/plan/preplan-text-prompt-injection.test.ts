@@ -51,19 +51,54 @@ describe('parent-pre-plan partial — render contract', () => {
     adapter = new FilePromptAdapter(TEMPLATES_DIR);
   });
 
-  it('renders the Parent Sub-Task Pre-Plan block when hasPrePlanText is true', async () => {
+  it('renders the slice-declaration block when isSliceDeclaration is true', async () => {
     const rendered = await adapter.render(PARTIAL_NAME, {
       hasPrePlanText: true,
+      isSliceDeclaration: true,
       prePlanText: PRE_PLAN_JSON,
     });
     expect(rendered).toContain('Parent Sub-Task Pre-Plan');
-    // After safe-braking-eagle B (slim batches[]): feature/ui/design-system
-    // children receive a slice declaration ("which slice you own" + cross-batch
-    // contracts), not a hypothesis to verify. The partial still names the
-    // legacy "diagnostic carry" shape for error/test-code children.
     expect(rendered).toContain('Slice declaration');
-    expect(rendered).toContain('Diagnostic carry');
     expect(rendered).toContain('Slice boundary is non-negotiable');
+    // diagnostic-carry body is gated separately
+    expect(rendered).not.toContain('Diagnostic carry');
+  });
+
+  it('renders the diagnostic-carry block when isDiagnosticCarry is true', async () => {
+    const rendered = await adapter.render(PARTIAL_NAME, {
+      hasPrePlanText: true,
+      isDiagnosticCarry: true,
+      prePlanText: PRE_PLAN_JSON,
+    });
+    expect(rendered).toContain('Parent Sub-Task Pre-Plan');
+    expect(rendered).toContain('Diagnostic carry');
+    expect(rendered).toContain('Verify file existence and export names');
+    expect(rendered).not.toContain('Slice declaration');
+  });
+
+  it('renders the sibling-divergence blind spot only when hasCrossBatchContracts is true', async () => {
+    const withContracts = await adapter.render(PARTIAL_NAME, {
+      hasPrePlanText: true,
+      isSliceDeclaration: true,
+      hasCrossBatchContracts: true,
+      prePlanText: PRE_PLAN_JSON,
+    });
+    expect(withContracts).toContain('Sibling sub-tasks ran in parallel');
+    expect(withContracts).toContain('Cross-batch contracts are non-negotiable');
+
+    // dotv1 fix lock — test-code-shape sub-task (slice-decl without cross-batch
+    // contracts) must NOT receive the sibling-output verification mandate.
+    // Sibling test-code sub-tasks write disjoint test files; there is no
+    // shared export to verify, so the mandate would be unsatisfiable and
+    // drive the LLM into a re-read cycle.
+    const withoutContracts = await adapter.render(PARTIAL_NAME, {
+      hasPrePlanText: true,
+      isSliceDeclaration: true,
+      hasCrossBatchContracts: false,
+      prePlanText: PRE_PLAN_JSON,
+    });
+    expect(withoutContracts).not.toContain('Sibling sub-tasks ran in parallel');
+    expect(withoutContracts).not.toContain('Cross-batch contracts are non-negotiable');
   });
 
   it('renders empty (or whitespace-only) when hasPrePlanText is false', async () => {
@@ -180,5 +215,89 @@ describe('buildPlanPrompt — generic path passes prePlanText vars', () => {
     const baseCall = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/base');
     expect(baseCall).toBeDefined();
     expect(baseCall!.vars.hasPrePlanText).toBe(false);
+  });
+
+  // 5-vars predicate matrix lock — type-based partial gating contract.
+  // Each row asserts the four predicate vars derived from `task.type` +
+  // `hasPrePlanText`, plus the lineage `batchSplitCount` passthrough.
+  // Drift = silent misclassification of a sub-task → wrong partial branch.
+  describe('predicate vars matrix (isSliceDeclaration / isDiagnosticCarry / hasCrossBatchContracts)', () => {
+    function buildSubTaskOfType(type: CodeTask['type'], prePlanText?: string, batchSplitCount?: number): CodeTask {
+      return {
+        id: `${type}-batch-x`,
+        name: `${type}-batch`,
+        description: 'sub-task',
+        type,
+        priority: 350,
+        ...(prePlanText !== undefined ? { prePlanText } : {}),
+        ...(batchSplitCount !== undefined ? { batchSplitCount } : {}),
+      } as CodeTask;
+    }
+
+    async function renderVars(task: CodeTask) {
+      const { promptBuilder, renderCalls } = makeStubBuilder();
+      const state = buildState({ deps: { promptBuilder } as any });
+      await buildPlanPrompt(state, task, undefined, undefined, undefined, undefined, { hasTools: true });
+      const baseCall = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/base');
+      expect(baseCall, 'plan/base template was not rendered').toBeDefined();
+      return baseCall!.vars;
+    }
+
+    it('feature sub-task with prePlanText → slice + cross-batch contracts', async () => {
+      const vars = await renderVars(buildSubTaskOfType('feature', PRE_PLAN_JSON));
+      expect(vars.hasPrePlanText).toBe(true);
+      expect(vars.isSliceDeclaration).toBe(true);
+      expect(vars.isDiagnosticCarry).toBe(false);
+      expect(vars.hasCrossBatchContracts).toBe(true);
+    });
+
+    it('ui sub-task with prePlanText → slice + cross-batch contracts', async () => {
+      const vars = await renderVars(buildSubTaskOfType('ui', PRE_PLAN_JSON));
+      expect(vars.isSliceDeclaration).toBe(true);
+      expect(vars.hasCrossBatchContracts).toBe(true);
+    });
+
+    it('design-system sub-task with prePlanText → slice + cross-batch contracts', async () => {
+      const vars = await renderVars(buildSubTaskOfType('design-system', PRE_PLAN_JSON));
+      expect(vars.isSliceDeclaration).toBe(true);
+      expect(vars.hasCrossBatchContracts).toBe(true);
+    });
+
+    // dotv1 fix — test-code is a slice declaration but has NO cross-batch
+    // contracts (sibling tests are disjoint). Verification mandate must
+    // not fire here.
+    it('test-code sub-task with prePlanText → slice WITHOUT cross-batch contracts', async () => {
+      const vars = await renderVars(buildSubTaskOfType('test-code', PRE_PLAN_JSON));
+      expect(vars.hasPrePlanText).toBe(true);
+      expect(vars.isSliceDeclaration).toBe(true);
+      expect(vars.isDiagnosticCarry).toBe(false);
+      expect(vars.hasCrossBatchContracts).toBe(false);
+    });
+
+    it('error sub-task with prePlanText → diagnostic carry, no slice, no cross-batch', async () => {
+      const vars = await renderVars(buildSubTaskOfType('error', PRE_PLAN_JSON));
+      expect(vars.hasPrePlanText).toBe(true);
+      expect(vars.isSliceDeclaration).toBe(false);
+      expect(vars.isDiagnosticCarry).toBe(true);
+      expect(vars.hasCrossBatchContracts).toBe(false);
+    });
+
+    it('task without prePlanText → all four predicates false (regardless of type)', async () => {
+      for (const type of ['feature', 'ui', 'design-system', 'test-code', 'error'] as const) {
+        const vars = await renderVars(buildSubTaskOfType(type, undefined));
+        expect(vars.hasPrePlanText, `${type}/hasPrePlanText`).toBe(false);
+        expect(vars.isSliceDeclaration, `${type}/isSliceDeclaration`).toBe(false);
+        expect(vars.isDiagnosticCarry, `${type}/isDiagnosticCarry`).toBe(false);
+        expect(vars.hasCrossBatchContracts, `${type}/hasCrossBatchContracts`).toBe(false);
+      }
+    });
+
+    it('batchSplitCount is surfaced verbatim for lineage tracking', async () => {
+      const vars = await renderVars(buildSubTaskOfType('test-code', PRE_PLAN_JSON, 3));
+      expect(vars.batchSplitCount).toBe(3);
+
+      const varsDefault = await renderVars(buildSubTaskOfType('test-code', PRE_PLAN_JSON));
+      expect(varsDefault.batchSplitCount).toBe(0);
+    });
   });
 });
