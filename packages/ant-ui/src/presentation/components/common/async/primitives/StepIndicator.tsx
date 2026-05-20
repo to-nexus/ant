@@ -102,14 +102,9 @@ export function StepIndicator({
                 </span>
               )}
             </div>
-            {!isLast && (
+            {!isLast && !isVertical && (
               <span
-                className={twMerge(
-                  isVertical
-                    ? 'ml-3 w-px h-3'
-                    : 'flex-1 h-px',
-                  STATE_CONNECTOR_CLASS[step.status === 'complete' ? 'complete' : 'pending'],
-                )}
+                className={twMerge('flex-1 h-px', STATE_CONNECTOR_CLASS[step.status === 'complete' ? 'complete' : 'pending'])}
                 aria-hidden="true"
               />
             )}
