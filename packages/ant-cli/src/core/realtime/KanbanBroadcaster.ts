@@ -70,6 +70,18 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    * `MAIN_WORKER_KEY` (-1) stands in for "no workerId" (sequential / main graph).
    */
   private cachedCurrentPhaseTokenUsages: Map<number, PhaseTokenUsage> = new Map();
+  /**
+   * Pre-job baseline snapshot (always `mode: 'baseline'`). Populated by
+   * `setBaseline()` after the Phase-2 baseline estimator computes a fresh
+   * value; broadcast verbatim under `KanbanData.baselinePhaseTokenUsage`.
+   *
+   * Lives next to (not inside) `cachedCurrentPhaseTokenUsages` because the
+   * baseline is a single snapshot per-job (not per-worker) and the UI consumes
+   * it only when no `live` entries exist. Keying it into the worker map would
+   * collide with cleanup logic (`clearWorkerPhaseTokenUsage` /
+   * `dropMainEstimatingSnapshotIfPresent`).
+   */
+  private cachedBaselinePhaseTokenUsage?: PhaseTokenUsage;
   // Cached task lists from last updateTaskQueue (NOT from broadcastKanbanUpdate,
   // which is also called during estimating with empty arrays).
   private cachedCurrentTasks: BaseTask[] = [];
@@ -256,6 +268,30 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Set or clear the pre-job baseline snapshot. Phase-2 wires the baseline
+   * estimator endpoint to call this when a fresh estimate is computed.
+   * Broadcasting is fire-and-forget; the UI surface (chat-input gauge) shows
+   * the baseline only when there is no `live` entry in
+   * `cachedCurrentPhaseTokenUsages`.
+   */
+  setBaseline(snapshot: PhaseTokenUsage | undefined): void {
+    this.cachedBaselinePhaseTokenUsage = snapshot;
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        this.cachedCurrentTasks,
+        this.cachedQueue,
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast baseline:`, err.message);
+      })
+    );
+  }
+
+  /**
    * Drop the per-worker snapshot when a parallel worker terminates. The next
    * broadcast will no longer include that worker's battery.
    */
@@ -433,6 +469,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
+      ...(this.cachedBaselinePhaseTokenUsage && { baselinePhaseTokenUsage: this.cachedBaselinePhaseTokenUsage }),
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
@@ -467,6 +504,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
+      ...(this.cachedBaselinePhaseTokenUsage && { baselinePhaseTokenUsage: this.cachedBaselinePhaseTokenUsage }),
       jobType: this.jobType,
       agent: this.agent,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
