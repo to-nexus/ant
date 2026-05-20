@@ -103,6 +103,7 @@ const designUiDetectResponse = `<detect>
 function buildDetectState(opts: { figmaUrl: string; llmResponse: string }) {
   const llm = {
     stream: () => makeStream(opts.llmResponse),
+    modelName: 'claude-opus-4-7',
   };
   const promptBuilder = {
     render: async () => '(rendered detect prompt)',
