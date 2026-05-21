@@ -7,8 +7,7 @@
     "assets": "에셋",
     "meta": "메타",
     "sessions": "세션",
-    "send": "보내기",
-    "receive": "받기",
+    "transfer": "전송",
     "emptyDir": "비어있는 디렉토리",
     "dirHint": {
       "plan": "기획 문서",

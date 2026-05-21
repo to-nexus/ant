@@ -30,13 +30,6 @@
     "deleteItem": "Delete {{title}}",
     "settings": "Settings"
   },
-  "dropdown": {
-    "stoppingPreview": "Stopping preview server...",
-    "startingPreview": "Starting preview server...",
-    "cannotStartStop": "Cannot start/stop dev server (task running or not available)",
-    "stopDevServer": "Stop dev server",
-    "startDevServer": "Start dev server"
-  },
   "connection": {
     "failed": "Connection Failed",
     "connecting": "Connecting...",

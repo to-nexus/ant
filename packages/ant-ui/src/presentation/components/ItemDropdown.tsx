@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
-import { Spinner } from '@/presentation/components/common/async';
+import { ChevronDown, LucideIcon, Settings } from 'lucide-react';
 import type { ElementType } from 'react';
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
@@ -31,11 +30,6 @@ interface ItemDropdownProps {
   }) => React.ReactNode;
   onSettingsClick?: () => void;
   settingsIcon?: ElementType;  // Custom icon for settings button (default: Settings gear)
-  onPlayClick?: () => void;
-  onStopClick?: () => void;
-  isPlaying?: boolean;
-  playButtonDisabled?: boolean;  // ✅ Play 버튼 비활성화 여부
-  playButtonLoading?: boolean;   // ✅ Play 버튼 로딩 중 여부
   disabled?: boolean;  // ✅ 작업 진행 중 선택 변경 불가
   disabledReason?: string;  // ✅ 비활성화 이유 (tooltip)
   canCreate?: boolean;  // ✅ + New 가능 여부
@@ -62,11 +56,6 @@ export function ItemDropdown({
   renderCreateForm,
   onSettingsClick,
   settingsIcon: SettingsIcon = Settings,
-  onPlayClick,
-  onStopClick,
-  isPlaying = false,
-  playButtonDisabled = false,  // ✅ 기본값: 활성화
-  playButtonLoading = false,   // ✅ 기본값: 로딩 아님
   disabled = false,
   disabledReason,
   canCreate = true,
@@ -305,42 +294,6 @@ export function ItemDropdown({
           
           {/* Right side icons container */}
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-            {/* Play/Stop button - only show when item is selected and callback is provided */}
-            {selectedItem && (onPlayClick || onStopClick) && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isPlaying && onStopClick) {
-                    onStopClick();
-                  } else if (!isPlaying && !playButtonDisabled && !playButtonLoading && onPlayClick) {
-                    onPlayClick();
-                  }
-                }}
-                disabled={playButtonDisabled && !isPlaying}
-                className={`p-1 rounded transition-colors pointer-events-auto ${
-                  playButtonDisabled && !isPlaying
-                    ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-600'
-                    : isPlaying 
-                      ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:bg-gray-50 dark:hover:bg-[#30363d]' 
-                      : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:bg-gray-50 dark:hover:bg-[#30363d]'
-                }`}
-                title={
-                  playButtonLoading 
-                    ? (isPlaying ? t('dropdown.stoppingPreview') : t('dropdown.startingPreview'))
-                    : playButtonDisabled
-                      ? t('dropdown.cannotStartStop')
-                      : (isPlaying ? t('dropdown.stopDevServer') : t('dropdown.startDevServer'))
-                }
-              >
-                {playButtonLoading ? (
-                  <Spinner size="md" tone="inherit" />
-                ) : isPlaying ? (
-                  <Square className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-              </button>
-            )}
             {/* Settings button - only show when item is selected and callback is provided */}
             {selectedItem && onSettingsClick && (
               <button
