@@ -200,7 +200,21 @@ function listDirWithMeta(fileTree: FileNode[], dirPath: string): Array<{ name: s
     if (!found || found.type !== 'directory' || !found.children) return [];
     nodes = found.children;
   }
-  return nodes
-    .filter(n => n.type === 'file')
-    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, meta: n.meta }));
+  // Recursive walk: handoff is free-form and may carry nested subdirs
+  // (screens/login/spec.md, assets/logo.png). Without recursion, FE drops
+  // those files and the RAC selection never reaches BE — even though
+  // loadResolvedArtifacts.walkDir handles nested paths correctly.
+  const out: Array<{ name: string; path: string; meta?: FileNode['meta'] }> = [];
+  const walk = (children: FileNode[], prefix: string): void => {
+    for (const child of children) {
+      const childPath = `${prefix}/${child.name}`;
+      if (child.type === 'file') {
+        out.push({ name: child.name, path: childPath, meta: child.meta });
+      } else if (child.type === 'directory' && child.children) {
+        walk(child.children, childPath);
+      }
+    }
+  };
+  walk(nodes, dirPath);
+  return out;
 }
