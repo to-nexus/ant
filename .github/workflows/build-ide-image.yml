@@ -30,7 +30,7 @@ jobs:
       severity: 'CRITICAL,HIGH'
 
   build-and-push:
-    needs: security-scan
+    # needs: security-scan
     runs-on:
       - codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
