@@ -2,7 +2,7 @@ name: Build IDE image
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
     paths:
       - packages/ant-cli/Dockerfile.ide
       - packages/ant-cli/docker/ide/**
@@ -19,46 +19,52 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: 412381771241.dkr.ecr.ap-northeast-2.amazonaws.com
+  SERVICE_NAME: ant-ide
   TARGET_ENV: ${{ github.event.inputs.env || 'dev' }}
 
 jobs:
+  security-scan:
+    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan.yml@master
+    with:
+      severity: 'CRITICAL,HIGH'
+
   build-and-push:
-    runs-on: ubuntu-latest
+    # needs: security-scan
+    runs-on:
+      - codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-2
 
       - name: Login to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registries: "412381771241"
+
+      - name: Set image tags
+        id: tags
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          ECR_REPO="${{ env.ECR_REGISTRY }}/${{ env.TARGET_ENV }}/${{ env.SERVICE_NAME }}"
+          echo "image_sha=${ECR_REPO}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${ECR_REPO}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Build image
-        id: build
         run: |
-          IMAGE_URI=${{ steps.ecr-login.outputs.registry }}/${TARGET_ENV}/ant-ide:${{ github.sha }}
-          docker build -f packages/ant-cli/Dockerfile.ide -t "$IMAGE_URI" .
-          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
-
-      - name: Trivy scan (HIGH/CRITICAL only)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ steps.build.outputs.image_uri }}
-          severity: HIGH,CRITICAL
-          exit-code: 1
-          ignore-unfixed: true
+          docker build \
+            -f packages/ant-cli/Dockerfile.ide \
+            -t "${{ steps.tags.outputs.image_sha }}" \
+            -t "${{ steps.tags.outputs.image_latest }}" \
+            .
 
       - name: Push image
-        run: docker push ${{ steps.build.outputs.image_uri }}
-
-      - name: Tag latest (dev only)
-        if: env.TARGET_ENV == 'dev'
         run: |
-          LATEST=${{ steps.ecr-login.outputs.registry }}/dev/ant-ide:latest
-          docker tag ${{ steps.build.outputs.image_uri }} "$LATEST"
-          docker push "$LATEST"
+          docker push "${{ steps.tags.outputs.image_sha }}"
+          docker push "${{ steps.tags.outputs.image_latest }}"
