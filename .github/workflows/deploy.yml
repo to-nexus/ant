@@ -61,7 +61,7 @@ jobs:
   # Security scan (Trivy vuln + secret)
   # ===========================================
   security-scan:
-    uses: ./.github/workflows/security-scan.yml
+    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan.yml@master
     with:
       severity: 'CRITICAL,HIGH'
 
