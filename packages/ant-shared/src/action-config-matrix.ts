@@ -738,6 +738,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
     ],
     target: { kind: 'revise' },
     buildDisabled: true,

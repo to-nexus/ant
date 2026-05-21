@@ -2,7 +2,8 @@ import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
 import { INTENT_DEFINITIONS, getConfigSlotsForDomain, getIntentLabel, type ActionMetadata, type IntentId } from '@ant/shared';
-import { X, Target, Crosshair, FileText, BookOpen, Zap, Lock } from 'lucide-react';
+import { X, Target, Crosshair, FileText, Folder, BookOpen, Zap, Lock } from 'lucide-react';
+import { BadgeOverflowRow, type BadgeOverflowItem } from './BadgeOverflowRow';
 
 interface BadgeProps {
   icon: any;
@@ -36,6 +37,16 @@ interface ActionMetadataBadgesProps {
   readOnly?: boolean;
 }
 
+function describePath(p: string): { isFolder: boolean; display: string } {
+  const isFolder = p.endsWith('/');
+  if (isFolder) {
+    const stripped = p.replace(/\/+$/, '');
+    const tail = stripped.split('/').pop() || stripped;
+    return { isFolder: true, display: `${tail}/` };
+  }
+  return { isFolder: false, display: p.split('/').pop() || p };
+}
+
 export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetadataBadgesProps) {
   const { i18n } = useTranslation();
   const lang = i18n.language as 'en' | 'ko';
@@ -55,13 +66,25 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
     return getConfigSlotsForDomain(meta.intent as IntentId, meta.domain ?? 'service');
   }, [meta.intent, meta.domain]);
 
-  const isRefLocked = useCallback((refPath: string): boolean => {
-    if (!slots) return false;
-    return slots.refs.some(r =>
-      (r.locked || r.codebase) &&
-      (r.type === 'file' ? refPath === r.path : !r.path || refPath.startsWith(r.path + '/'))
-    );
-  }, [slots]);
+  const isLockedIn = useCallback(
+    (path: string, list: NonNullable<typeof slots>['refs'] | undefined): boolean => {
+      if (!list) return false;
+      return list.some(s =>
+        (s.locked || s.codebase) &&
+        (s.type === 'file' ? path === s.path : !s.path || path.startsWith(s.path + '/')),
+      );
+    },
+    [],
+  );
+
+  const isRefLocked = useCallback(
+    (refPath: string): boolean => isLockedIn(refPath, slots?.refs),
+    [slots, isLockedIn],
+  );
+  const isCtxLocked = useCallback(
+    (ctxPath: string): boolean => isLockedIn(ctxPath, slots?.context),
+    [slots, isLockedIn],
+  );
 
   const hasAnything = meta.explicit || meta.intent
     || (meta.target && meta.target.length > 0)
@@ -99,11 +122,15 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
     updateActionMetadata({ explicit: undefined, context: nextCtx && nextCtx.length > 0 ? nextCtx : undefined });
   };
 
-  return (
-    <div className="flex flex-wrap gap-1.5 px-3 pt-2 pb-1">
-      {meta.explicit && (
-        <span className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors
-          bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300`}>
+  const pinned: BadgeOverflowItem[] = [];
+  const overflowable: BadgeOverflowItem[] = [];
+
+  if (meta.explicit) {
+    pinned.push({
+      key: 'explicit',
+      node: (
+        <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors
+          bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
           <Zap className="w-3 h-3 shrink-0" />
           <span>Explicit</span>
           {!readOnly && (
@@ -117,9 +144,14 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
             </button>
           )}
         </span>
-      )}
+      ),
+    });
+  }
 
-      {meta.intent && intentLabel && (
+  if (meta.intent && intentLabel) {
+    pinned.push({
+      key: `intent:${meta.intent}`,
+      node: (
         <Badge
           icon={Target}
           label="intent"
@@ -127,42 +159,65 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           color="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
           onRemove={readOnly ? undefined : handleRemoveIntent}
         />
-      )}
+      ),
+    });
+  }
 
-      {meta.target?.map(tgt => (
+  meta.target?.forEach(tgt => {
+    pinned.push({
+      key: `target:${tgt}`,
+      node: (
         <Badge
-          key={tgt}
           icon={Crosshair}
           label="target"
-          value={tgt.split('/').pop() || tgt}
+          value={describePath(tgt).display}
           color="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300"
         />
-      ))}
+      ),
+    });
+  });
 
-      {meta.refs?.map(ref => {
-        const locked = isRefLocked(ref);
-        return (
-          <Badge
-            key={ref}
-            icon={locked ? Lock : FileText}
-            label="ref"
-            value={ref.split('/').pop() || ref}
-            color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
-            onRemove={readOnly || locked ? undefined : () => handleRemoveRef(ref)}
-          />
-        );
-      })}
+  meta.refs?.forEach(ref => {
+    const locked = isRefLocked(ref);
+    const { isFolder, display } = describePath(ref);
+    const icon = locked ? Lock : (isFolder ? Folder : FileText);
+    const node = (
+      <Badge
+        icon={icon}
+        label="ref"
+        value={display}
+        color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+        onRemove={readOnly || locked ? undefined : () => handleRemoveRef(ref)}
+      />
+    );
+    const item: BadgeOverflowItem = { key: `ref:${ref}`, node };
+    if (locked) pinned.push(item);
+    else overflowable.push(item);
+  });
 
-      {meta.context?.map(ctx => (
-        <Badge
-          key={ctx}
-          icon={BookOpen}
-          label="ctx"
-          value={ctx.split('/').pop() || ctx}
-          color="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
-          onRemove={readOnly ? undefined : () => handleRemoveContext(ctx)}
-        />
-      ))}
-    </div>
+  meta.context?.forEach(ctx => {
+    const locked = isCtxLocked(ctx);
+    const { isFolder, display } = describePath(ctx);
+    const icon = locked ? Lock : (isFolder ? Folder : BookOpen);
+    const node = (
+      <Badge
+        icon={icon}
+        label="ctx"
+        value={display}
+        color="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+        onRemove={readOnly || locked ? undefined : () => handleRemoveContext(ctx)}
+      />
+    );
+    const item: BadgeOverflowItem = { key: `ctx:${ctx}`, node };
+    if (locked) pinned.push(item);
+    else overflowable.push(item);
+  });
+
+  return (
+    <BadgeOverflowRow
+      pinned={pinned}
+      overflowable={overflowable}
+      className="px-3 pt-2 pb-1"
+    />
   );
 }
