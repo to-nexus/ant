@@ -295,7 +295,7 @@ CRITICAL:
 {{#if (eq uiSource 'handoff')}}
 **Constraint**: a handoff bundle is selected — create `"design-system"` task(s) that will observe the bundle:
 - Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure derived from whatever the handoff files explicitly show. Do NOT set `uiSections` (handoff has no schema).
-- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. Components MUST be extracted from patterns observable in the handoff.
+- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. Component **design patterns** (structure, layout hierarchy, micro-interactions) MUST be derived from observations of the handoff; the **implementation** is authored in the target codebase's framework and conventions at execute time. Do NOT plan tasks whose deliverable is a verbatim copy of a handoff code file.
 {{/if}}
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
