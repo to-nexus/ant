@@ -58,10 +58,19 @@ permissions:
 
 jobs:
   # ===========================================
+  # Security scan (Trivy vuln + secret)
+  # ===========================================
+  security-scan:
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      severity: 'CRITICAL,HIGH'
+
+  # ===========================================
   # Detect changes in main, dev, stage, or ci branches
   # ===========================================
   detect-changes:
     if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
+    needs: security-scan
     runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}

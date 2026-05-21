@@ -24,7 +24,13 @@ env:
   TARGET_ENV: ${{ github.event.inputs.env || 'dev' }}
 
 jobs:
+  security-scan:
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      severity: 'CRITICAL,HIGH'
+
   build-and-push:
+    needs: security-scan
     runs-on:
       - codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -57,15 +63,6 @@ jobs:
             -t "${{ steps.tags.outputs.image_sha }}" \
             -t "${{ steps.tags.outputs.image_latest }}" \
             .
-
-      - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          image-ref: ${{ steps.tags.outputs.image_sha }}
-          severity: CRITICAL,HIGH
-          exit-code: 1
-          ignore-unfixed: true
-          scanners: vuln
 
       - name: Push image
         run: |
