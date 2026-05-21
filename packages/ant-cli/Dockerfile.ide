@@ -1,0 +1,45 @@
+# ANT IDE image — extends gitpod/openvscode-server with ANT tools + warm-pool entrypoint.
+# Build via GitHub Actions → push to AWS ECR ({env}/ant-ide:<tag>).
+# Base image pinned by @sha256 after first stable build.
+FROM gitpod/openvscode-server:latest
+
+USER root
+
+# Single apt layer — minimal diff.
+# vim/make: user-facing tools (rosy-tome).
+# redis-tools/jq/curl: claim-watcher.sh dependencies (Track B prelayer, dormant when ANT_IDE_POOL_MODE != true).
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        vim \
+        make \
+        ca-certificates \
+        curl \
+        jq \
+        redis-tools \
+ && rm -rf /var/lib/apt/lists/*
+
+# mise — system-wide install. Pin MISE_VERSION after first stable build.
+# MISE_INSTALL_PATH targets /usr/local/bin directly; gitpod's base image sets
+# root's HOME to /home/workspace, so the installer's default $HOME/.local/bin
+# lands outside PATH for non-root users.
+ARG MISE_VERSION=v2025.1.0
+RUN curl -fsSL https://mise.run \
+      | MISE_VERSION=${MISE_VERSION} MISE_INSTALL_PATH=/usr/local/bin/mise sh \
+ && /usr/local/bin/mise --version
+
+# Activate mise for interactive bash shells.
+# /etc/bash.bashrc survives the per-user $HOME bind mount in IDEService (see L336-L341).
+RUN printf '\n# ANT IDE: mise auto-activate\neval "$(/usr/local/bin/mise activate bash)"\n' >> /etc/bash.bashrc
+
+# Default editor for git / less. /etc/gitconfig also survives bind mounts.
+RUN printf '[core]\n\teditor = vim\n' >> /etc/gitconfig
+
+# Track B prelayer — entrypoint dispatcher + claim-watcher.
+# When ANT_IDE_POOL_MODE != "true", entrypoint.sh passthroughs to openvscode-server (Track A behavior).
+COPY packages/ant-cli/docker/ide/entrypoint.sh /usr/local/bin/ant-ide-entrypoint.sh
+COPY packages/ant-cli/docker/ide/claim-watcher.sh /usr/local/bin/claim-watcher.sh
+RUN chmod +x /usr/local/bin/ant-ide-entrypoint.sh /usr/local/bin/claim-watcher.sh
+
+USER openvscode-server
+
+ENTRYPOINT ["/usr/local/bin/ant-ide-entrypoint.sh"]

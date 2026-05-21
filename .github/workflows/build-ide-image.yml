@@ -1,0 +1,64 @@
+name: Build IDE image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/ant-cli/Dockerfile.ide
+      - packages/ant-cli/docker/ide/**
+      - .github/workflows/build-ide-image.yml
+  workflow_dispatch:
+    inputs:
+      env:
+        type: choice
+        options: [dev, stage, prod]
+        default: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TARGET_ENV: ${{ github.event.inputs.env || 'dev' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        id: build
+        run: |
+          IMAGE_URI=${{ steps.ecr-login.outputs.registry }}/${TARGET_ENV}/ant-ide:${{ github.sha }}
+          docker build -f packages/ant-cli/Dockerfile.ide -t "$IMAGE_URI" .
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan (HIGH/CRITICAL only)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.build.outputs.image_uri }}
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+
+      - name: Push image
+        run: docker push ${{ steps.build.outputs.image_uri }}
+
+      - name: Tag latest (dev only)
+        if: env.TARGET_ENV == 'dev'
+        run: |
+          LATEST=${{ steps.ecr-login.outputs.registry }}/dev/ant-ide:latest
+          docker tag ${{ steps.build.outputs.image_uri }} "$LATEST"
+          docker push "$LATEST"
