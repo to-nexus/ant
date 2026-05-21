@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowLeftRight, Upload, X, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
@@ -1102,20 +1102,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
           <button
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-            onClick={() => openTransferTab({ subTab: 'send' })}
-            title={t('panel.send')}
-          >
-            <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
-            {!isNarrow && <span>{t('panel.send')}</span>}
-          </button>
-          <button
             className="relative inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-            onClick={() => openTransferTab({ subTab: 'receive' })}
-            title={t('panel.receive')}
+            onClick={() => openTransferTab({ subTab: pendingTransferCount > 0 ? 'receive' : 'send' })}
+            title={t('panel.transfer')}
           >
-            <ArrowDownLeft className="h-3.5 w-3.5 shrink-0" />
-            {!isNarrow && <span>{t('panel.receive')}</span>}
+            <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+            {!isNarrow && <span>{t('panel.transfer')}</span>}
             {pendingTransferCount > 0 && (
               <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                 {pendingTransferCount > 99 ? '99+' : pendingTransferCount}
