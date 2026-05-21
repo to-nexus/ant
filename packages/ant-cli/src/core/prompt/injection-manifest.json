@@ -14,7 +14,8 @@
     "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"],
     "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"],
     "game-art-design-policy": [],
-    "codebase-channel": ["codebaseRole", "codebaseEntryPoints"]
+    "codebase-channel": ["codebaseRole", "codebaseEntryPoints"],
+    "handoff-code-shape-discipline": []
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],

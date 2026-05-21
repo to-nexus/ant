@@ -7,7 +7,7 @@ dictionary keys (D25).
 
 ### Surface scope (sub-sourced canonical)
 - Output path: `visual/game-art/ant/game-art-spec.json`
-- `ant/` is the LLM-generated canonical sub-source (mirrors `visual/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
+- `ant/` is the LLM-generated canonical sub-source (mirrors `visual/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks. When `handoff/` is activated, its `*-by-handoff.md` variant MUST include `{{> jobs/shared/injections/handoff-code-shape-discipline }}` so the same code-shape vs token-shape discipline that governs UI handoff applies to game-art handoff.
 
 ### Spec vs Assets distinction (CRITICAL)
 
