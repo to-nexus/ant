@@ -5,12 +5,8 @@ import { ItemDropdown } from '../../ItemDropdown';
 interface FeatureDropdownProps {
   features: Array<{ name: string; path: string }>;
   selectedFeature: string | undefined;
-  isPreviewLoading: boolean;
-  previewRunning: boolean;
   canChangeFeature: boolean;
   canCreateFeature: boolean;
-  canStartPreview: boolean;
-  canStopPreview: boolean;
   disabledReason?: string;
   createDisabledReason?: string;
   onFeatureChange: (featureName: string | null) => void;
@@ -18,8 +14,6 @@ interface FeatureDropdownProps {
   onDelete: (featureName: string) => Promise<void>;
   canDelete?: (featureName: string) => string | null;
   onItemCreated?: () => void;
-  onPlayClick: () => void;
-  onStopClick: () => void;
   onSettingsClick?: () => void;
   onOpenWizard?: () => void;
   forceInlineCreate?: boolean;
@@ -30,12 +24,8 @@ interface FeatureDropdownProps {
 export function FeatureDropdown({
   features,
   selectedFeature,
-  isPreviewLoading,
-  previewRunning,
   canChangeFeature,
   canCreateFeature,
-  canStartPreview,
-  canStopPreview,
   disabledReason,
   createDisabledReason,
   onFeatureChange,
@@ -43,8 +33,6 @@ export function FeatureDropdown({
   onDelete,
   canDelete,
   onItemCreated,
-  onPlayClick,
-  onStopClick,
   onSettingsClick,
   onOpenWizard,
   forceInlineCreate,
@@ -70,17 +58,12 @@ export function FeatureDropdown({
       onItemCreated={onItemCreated}
       placeholder={t('feature.placeholder')}
       inputPlaceholder={t('featureDropdown.featureNamePlaceholder')}
-      onPlayClick={onPlayClick}
-      onStopClick={onStopClick}
       onSettingsClick={onSettingsClick}
       settingsIcon={Monitor}
-      isPlaying={previewRunning}
       disabled={!canChangeFeature}
       disabledReason={disabledReason}
       canCreate={canCreateFeature}
       createDisabledReason={createDisabledReason}
-      playButtonDisabled={!canStartPreview && !canStopPreview}
-      playButtonLoading={isPreviewLoading}
       onOpenWizard={onOpenWizard}
       forceInlineCreate={forceInlineCreate}
       onForceInlineCreateHandled={onForceInlineCreateHandled}

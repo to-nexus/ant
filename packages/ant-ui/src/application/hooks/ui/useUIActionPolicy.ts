@@ -26,8 +26,6 @@
 
 import { useStore } from '@/domain/store';
 import { selectServerMode } from '@/domain/store/selectors/auth';
-import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
-import { selectPreviewVM } from '@/domain/store/selectors/previewSelectors';
 
 export interface UIActionPolicy {
   // ============================================
@@ -59,13 +57,7 @@ export interface UIActionPolicy {
   canUploadFiles: boolean;      // 파일 업로드
   canDeleteFile: boolean;       // 파일 삭제
   canSelectFile: boolean;       // 파일 선택/보기 (항상 가능)
-  
-  // ============================================
-  // Preview Actions (프리뷰 서버)
-  // ============================================
-  canStartPreview: boolean;   // 프리뷰 시작 가능
-  canStopPreview: boolean;    // 프리뷰 중단 가능
-  
+
   // ============================================
   // Display Policy (표시/숨김 정책)
   // ============================================
@@ -99,10 +91,6 @@ export function useUIActionPolicy(): UIActionPolicy {
   const selectedFeature = useStore(state => state.selectedFeature);
   const serverMode = useStore(state => selectServerMode(state));
   const userEmail = useStore(state => state.userEmail);
-  // Preview state is per-feature; compute VM for the active selection.
-  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
-  const previewVM = useStore((s: any) => selectPreviewVM(s, featureKey));
-  const isPreviewLoading = previewVM.isLoading;
 
   // ============================================
   // Policy Rules (정책 규칙)
@@ -145,31 +133,9 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT disconnected
    */
   const canStop = isRunning && !isStopping && canPerformAnyAction;
-  
-  /**
-   * Rule 5: Preview 시작 조건
-   * - NOT job running (작업 실행 중 아님)
-   * - NOT preview loading (프리뷰 시작/중단 중 아님)
-   * - NOT in transitional phase (installing, starting, validating)
-   * - NOT disconnected
-   * - project 선택됨
-   * - Backend reports canStart (filesystem has runnable scripts)
-   */
-  const isPreviewTransitioning = ['installing', 'starting', 'validating'].includes(
-    previewVM.phase ?? '',
-  );
-  const backendCanStart = previewVM.canStart;
-  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !previewVM.running && backendCanStart;
-  
-  /**
-   * Rule 6: Preview 중단 조건
-   * - Preview running OR in transitional phase (installing/starting)
-   * - NOT disconnected
-   */
-  const canStopPreview = (previewVM.running || isPreviewTransitioning) && canPerformAnyAction;
 
   /**
-   * Rule 7: Feature 생성 조건
+   * Rule 5: Feature 생성 조건
    * - project 선택됨
    * - Git worktree가 feature별 분리되므로 작업 중에도 생성 허용
    */
@@ -230,11 +196,7 @@ export function useUIActionPolicy(): UIActionPolicy {
     canUploadFiles: !isWorkInProgress && canPerformAnyAction,
     canDeleteFile: !isWorkInProgress && canPerformAnyAction,
     canSelectFile: canPerformAnyAction,  // 파일 선택/보기는 항상 가능 (서버 연결 시)
-    
-    // Preview Actions
-    canStartPreview,
-    canStopPreview,
-    
+
     // Display Policy
     shouldShowWorkflowIndicators: isRunning && !isStopping,  // 실행 중이고 중단 중이 아닐 때만 표시
     shouldShowInterruptUI: !isRunning && !isStopping,  // 작업이 멈춘 상태일 때만 표시 (+ kanbanData 조건은 컴포넌트에서 추가 체크)

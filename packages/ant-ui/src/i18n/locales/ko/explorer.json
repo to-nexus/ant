@@ -30,13 +30,6 @@
     "deleteItem": "{{title}} 삭제",
     "settings": "설정"
   },
-  "dropdown": {
-    "stoppingPreview": "프리뷰 서버 중지 중...",
-    "startingPreview": "프리뷰 서버 시작 중...",
-    "cannotStartStop": "개발 서버를 시작/중지할 수 없습니다 (작업 진행 중이거나 사용 불가)",
-    "stopDevServer": "개발 서버 중지",
-    "startDevServer": "개발 서버 시작"
-  },
   "connection": {
     "failed": "연결 실패",
     "connecting": "연결 중...",
