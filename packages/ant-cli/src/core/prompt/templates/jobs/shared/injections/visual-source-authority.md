@@ -17,7 +17,7 @@ The three sources NEVER coexist — RAC resolution rejects mixed selections. The
 
 - **ant** — JSON contents are authoritative. `ui-spec` wins over `system-design` for layout, `ui-tokens` wins for design values, `ui-assets` wins for source→destination mappings.
 - **figma** — The MCP response is authoritative. `figma.json` itself is only a workfile pointer; do not infer tokens or layout from it. Use `figma_get_variable_defs` for tokens when present, `figma_get_design_context` for layout, `figma_get_screenshot` for visual verification.
-- **handoff** — Files read via `read_file` are authoritative for whatever they explicitly show; schema is never assumed. Pick the most explicit representation per property after reading; ignore conflicting evidence from the same bundle. Binary entries are path-only references.
+- **handoff** — Files read via `read_file` are authoritative for **design intent** only (layout, tokens, hierarchy, micro-interactions); **code-shaped** entries are observed for intent and reimplemented under the target codebase's framework — never transplanted (see `handoff-code-shape-discipline` for the partition). Schema is never assumed; pick the most explicit representation per property; ignore conflicting evidence; binary entries are path-only references.
 
 ### Cross-source rules (always apply)
 

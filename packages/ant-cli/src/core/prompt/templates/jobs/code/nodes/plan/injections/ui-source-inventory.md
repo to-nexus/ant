@@ -43,6 +43,7 @@
    - Record for each planned read: (a) the path, (b) the property family expected (colour / spacing / radius / typography), (c) why that file is the most explicit source per property.
    - Constraint: Do NOT assume schema consistency across files. If two files claim the same property, the plan MUST pick ONE authoritative file rather than merging.
    - Constraint: Do NOT plan reads on binary-kind entries — reference them by path only.
+   - Constraint: Code-shaped entries (per `handoff-code-shape-discipline`) MUST NOT appear in the token inventory — token transcription is reserved for token-shaped entries; code-shaped files belong to the ui-task evidence map and are observed for intent.
 
 2. **INTEGRATION CHAIN**
    - Identify the global CSS entry file and the CSS framework in use
@@ -87,8 +88,9 @@
 
 5. **LAYOUT & COMPONENT OBSERVATION (deferred to read_file)**
    - Do NOT commit to specific layout values here — they come from `read_file` at execute time against the paths recorded in step 4.
-   - Plan the extraction order: which file is read first, what property is expected from it, and what to do if the observation is absent.
+   - Plan the observation order: which file is read first, what design property is expected from it, and what to do if the observation is absent.
    - Constraint: If a property is not observable in any planned read, note it as "unspecified" and defer to framework conventions — do NOT invent.
+   - Constraint: For code-shaped entries (per `handoff-code-shape-discipline`), the plan MUST NOT specify "copy this component" or "reuse this markup" as an action — implementation is authored at execute time under the target codebase's framework and sibling conventions. Plan only the observation of design intent.
 {{/if}}
 
 {{/if}}

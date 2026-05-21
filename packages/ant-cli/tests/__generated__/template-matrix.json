@@ -1559,6 +1559,12 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/handoff-code-shape-discipline": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/memory": {
     "sources": [
       "auto-injection",
