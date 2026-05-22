@@ -41,7 +41,17 @@ A coherent unit that touches many files bundles into one task/batch ONLY when no
 
 When you split, name the concrete benefit for this specific work. Generic phrasing means you are splitting where you should bundle.
 
-When the split is justified by Authorship density, articulate each batch's investigation footprint: name the shared reads, the shared decision context, and the diff boundary (e.g., "each batch = one component family — one read of the family's existing tokens, one mapping decision, one verifiable diff inside the family"). Two articulation failures rule out the split:
+**Articulation is symmetric — required for BOTH split and bundle decisions when ≥ 2 implementation entries span ≥ 2 distinct files.**
+
+When you SPLIT (via Authorship density), articulate each batch's investigation footprint: name the shared reads, the shared decision context, and the diff boundary (e.g., "each batch = one component family — one read of the family's existing tokens, one mapping decision, one verifiable diff inside the family"). Two articulation failures rule out the split:
 
 - If you cannot name the SHARED investigation inside a batch (each edit needs its own read), the batch is too coarse — split further.
 - If you cannot name what makes batches DIFFERENT investigations (their reads and decisions overlap), the batches collapse into one — merge.
+
+When you BUNDLE (emit a flat plan with multiple substantive entries across multiple files), articulate the SINGLE investigation footprint shared by every entry — name the one read context, the one decision, and the one diff boundary that ties them. Place this articulation in `task.goal` (or a top-level `bundleRationale` string) so it is visible to the next reader. Three articulation failures rule out the bundle:
+
+- If naming the footprint requires hand-waving (e.g., "they're all card components", "they all use the same token system") rather than a concrete shared read + decision, the entries do NOT share one investigation — split into `batches[]`.
+- If each entry's `purpose` / `changes` references a *different* existing-file state to read (each location has its own DOM tree, its own variant table, its own preserve-exports contract), each is its own investigation — split.
+- If you find yourself padding the plan with "audit-pass — no change needed" entries to make a uniform-looking flat plan, the audit entries are not part of the investigation footprint. Drop them from `implementation[]` and re-evaluate whether the remaining substantive entries share one investigation; if not, split.
+
+**Self-honesty clause**: if your bundle articulation is something you would NOT write in a code-review comment to a human teammate ("these 18 cards all need Aurora tokens" is not a footprint; "all 18 cards swap a fixed list of `dark:` class names to `var(--…)` token references with no DOM inspection per card" is a footprint), it is rationalization. Treat it as a bundle articulation failure and split.
