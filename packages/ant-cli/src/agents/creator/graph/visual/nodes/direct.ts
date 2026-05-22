@@ -21,6 +21,7 @@ import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.j
 import { executeSketchTool } from './sketchTools.js';
 import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
+import { detectImageMimeFromBuffer } from '../../../../../core/utils/imageMime.js';
 
 const MAX_CLARIFY = 5;
 const MAX_TOOL_ROUNDS = 5;
@@ -181,9 +182,15 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       const imagePath = fs.existsSync(thumbPath) ? thumbPath : fullPath;
       if (fs.existsSync(imagePath)) {
         const data = fs.readFileSync(imagePath);
-        const ext = path.extname(imagePath).toLowerCase();
-        const mediaType: 'image/png' | 'image/jpeg' | 'image/webp' =
-          ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        // Sniff magic bytes so a mislabelled `.png` (actually JPEG) does
+        // not produce an Anthropic 400 (sage-orbiting-grain RCA). GIF
+        // isn't part of this site's MediaType union — skip silently if
+        // the sketch is GIF or unrecognised.
+        const detected = detectImageMimeFromBuffer(data);
+        if (detected !== 'image/png' && detected !== 'image/jpeg' && detected !== 'image/webp') {
+          continue;
+        }
+        const mediaType: 'image/png' | 'image/jpeg' | 'image/webp' = detected;
         const label = state.sketchVariations?.[i]?.label || `Sketch ${i + 1}`;
         sketchImageBlocks.push(
           { type: 'text', text: `\n[Sketch #${i + 1}: ${label}]` },
@@ -501,12 +508,13 @@ function loadSketchAsFinalImage(
     if (!fs.existsSync(fullPath)) return undefined;
 
     const data = fs.readFileSync(fullPath);
-    const ext = path.extname(fullPath).toLowerCase();
-    const mimeType = (
-      ext === '.png' ? 'image/png'
-      : ext === '.webp' ? 'image/webp'
-      : 'image/jpeg'
-    ) as GeneratedImage['mimeType'];
+    // Sniff magic bytes — extension-based detection misclassifies the
+    // 4 .png-named JPEG screenshots (sage-orbiting-grain RCA).
+    const detected = detectImageMimeFromBuffer(data);
+    if (detected !== 'image/png' && detected !== 'image/jpeg' && detected !== 'image/webp') {
+      return undefined;
+    }
+    const mimeType: GeneratedImage['mimeType'] = detected;
 
     const variation = state.sketchVariations?.[index];
     const prompt = (state.basePrompt && variation)

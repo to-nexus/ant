@@ -82,7 +82,18 @@ export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<
     featureName,
   });
 
-  await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
+  // Thread 'paused' as the explicit terminal status so cleanupJobState can
+  // disambiguate paused vs canceled (user_stopped) vs failed downstream
+  // without re-deriving from interruption.reason alone.
+  await deps.cleanupJobState(
+    jobId,
+    projectId,
+    featureName,
+    interruption,
+    jobType,
+    userContext,
+    'paused',
+  );
 
   // updateJobStatus is null-safe: if the status key was already evicted
   // (e.g. via a concurrent seal on another pod) this becomes a no-op

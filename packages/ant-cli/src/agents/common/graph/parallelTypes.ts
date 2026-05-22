@@ -63,7 +63,12 @@ export interface OrchestratorConfig {
    *   tokens+assets (100–299) ──[spec]   ──▶ spec      (300–349)
    *
    * Each flag, when true, prevents the downstream tier from starting
-   * while any upstream task is still running or queued.
+   * while any upstream task is still **running**. Queue order itself
+   * enforces ordering when decompose places prerequisites earlier; the
+   * barrier only fires once an upstream task has been dispatched (not
+   * merely queued behind the consumer). This avoids circular waits when
+   * decompose intentionally orders a producer task after its consumers
+   * (e.g. a post-UI cleanup feature).
    */
   barriers?: {
     /** Blocks feature (300+) until all foundation (200–299) tasks complete. */

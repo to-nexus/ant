@@ -15,6 +15,7 @@ import type {
   ImageContentBlock,
 } from '../../../../../core/ports/llm.js';
 import type { VisualGraphState } from '../types.js';
+import { detectImageMimeFromBuffer } from '../../../../../core/utils/imageMime.js';
 
 export const VISUAL_SKETCH_TOOLS: ToolDefinition[] = [
   {
@@ -119,11 +120,18 @@ function executeReadSketch(
     }
 
     const data = fs.readFileSync(fullPath);
-    const ext = path.extname(fullPath).toLowerCase();
-    const mediaType: ImageContentBlock['source']['media_type'] =
-      ext === '.png' ? 'image/png'
-      : ext === '.webp' ? 'image/webp'
-      : 'image/jpeg';
+    // Sniff magic bytes — Anthropic 400 rejects extension/content mismatch
+    // (sage-orbiting-grain RCA).
+    const detected = detectImageMimeFromBuffer(data);
+    if (detected !== 'image/png' && detected !== 'image/jpeg' && detected !== 'image/webp') {
+      return buildToolResult(
+        toolUseId,
+        toolName,
+        `Sketch file format not supported (must be PNG/JPEG/WEBP): ${sketchPath}`,
+        true,
+      );
+    }
+    const mediaType: ImageContentBlock['source']['media_type'] = detected;
 
     const base64 = data.toString('base64');
 
