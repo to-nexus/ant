@@ -136,6 +136,11 @@ export async function finalizeTerminalJob(
 
   // 2. Session patch + broadcast + cancelled chat message. Skipped for
   //    Feature DELETE cascade where the directory is about to be removed.
+  //    finalStatus is forwarded so cleanupJobState/broadcastFinalUpdate
+  //    can write the correct SessionRun.status + kanbanSnapshot.status —
+  //    in particular for the failed-without-interruption case (orchestrator
+  //    deadlock, child crash) where the legacy interruption-only derivation
+  //    silently fell back to 'completed' (such-pinning-milky RCA).
   if (!skipSessionPatch) {
     try {
       await deps.cleanupJobState(
@@ -145,6 +150,7 @@ export async function finalizeTerminalJob(
         interruption,
         jobType,
         userContext,
+        finalStatus,
       );
     } catch (err) {
       // Non-fatal: the seal below still runs to protect the invariant.

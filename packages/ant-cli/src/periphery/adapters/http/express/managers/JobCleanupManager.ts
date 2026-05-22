@@ -47,15 +47,24 @@ export class JobCleanupManager {
   ) {}
 
   /**
-   * Clean up job state when stopped or completed
+   * Clean up job state when stopped or completed.
+   *
+   * `finalStatus` carries the terminal-status decision from the caller
+   * (`finalizeTerminalJob` / `pauseJob`). When omitted, the legacy
+   * interruption-derived mapping in `broadcastFinalUpdate` is used. The
+   * parameter exists because pre-fix the chain derived SessionRun.status
+   * purely from `interruptionReason` presence and fell back to
+   * `'completed'` for any failed-without-interruption case (e.g.
+   * orchestrator deadlock) — see the `such-pinning-milky` RCA.
    */
   async cleanupJobState(
-    jobId: string, 
-    projectId?: string, 
+    jobId: string,
+    projectId?: string,
     featureName?: string,
     interruptionReason?: InterruptionDetails,
     explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
-    userContext?: UserContext
+    userContext?: UserContext,
+    finalStatus?: SessionRunStatus,
   ): Promise<void> {
     logger.info(`cleanupJobState`, { 
       component: 'JobCleanupManager', 
@@ -487,6 +496,7 @@ export class JobCleanupManager {
           effectiveUserContext,
           jobId,
           interruptionReason,
+          finalStatus,
         );
       } else {
         this.stateTracker.cleanup(jobId);
@@ -509,7 +519,28 @@ export class JobCleanupManager {
     // the user has no UI handle on the paused job. NX-guarded inside
     // ChatService so duplicate pause sources (StaleJobRecovery, BullMQ
     // stalled handler, etc.) cannot double-emit.
-    if (interruptionReason && mapping.projectId && mapping.featureName) {
+    //
+    // Synthesise a generic interruption when the caller signalled a hard
+    // failure (`finalStatus === 'failed'`) without an explicit reason —
+    // this covers the orchestrator deadlock path and any other "child
+    // returned outputStatus=failed with hasInterruption=false" exit. Pre-fix
+    // those jobs silently dropped past the Phase B gate, the chat panel
+    // received no visual signal, and the user perceived the job as
+    // completed despite remaining queued tasks (such-pinning-milky RCA).
+    // SessionRun.status is governed separately by the `finalStatus`-driven
+    // `derivedStatus` in `broadcastFinalUpdate` so the synthesis here does
+    // NOT collapse a failed run to 'paused' on disk.
+    const cardInterruption: InterruptionDetails | undefined = interruptionReason
+      ?? (finalStatus === 'failed'
+        ? {
+            reason: 'unknown',
+            message: 'Job ended in failed state without explicit interruption details',
+            timestamp: new Date().toISOString(),
+            canResume: false,
+          }
+        : undefined);
+
+    if (cardInterruption && mapping.projectId && mapping.featureName) {
       // Invariant I2 — see `shouldSuppressCancelledCardForClarify`.
       // `sessionData` may be null if Phase A's `readSessionData` threw —
       // `awaitingClarify` then defaults to falsy, so the card emits
@@ -524,7 +555,7 @@ export class JobCleanupManager {
         logger.info(
           `Suppressing cancelled card for clarify-paused non-task job (Invariant I2)`,
           { component: 'JobCleanupManager', jobId },
-          { jobType, reason: interruptionReason.reason },
+          { jobType, reason: cardInterruption.reason },
         );
       } else {
         // Backstop for the cancelled-turn streaming overlay: sweep
@@ -558,21 +589,21 @@ export class JobCleanupManager {
             mapping.featureName,
             jobId,
             {
-              reason: interruptionReason.reason,
-              message: interruptionReason.message,
+              reason: cardInterruption.reason,
+              message: cardInterruption.message,
               jobType: jobType as any,
-              designErrorType: (interruptionReason.metadata as any)?.designErrorType,
+              designErrorType: (cardInterruption.metadata as any)?.designErrorType,
               userContext: effectiveUserContext,
             },
           );
           logger.info(
             `appendChoicePresentedCancelled result`,
             { component: 'JobCleanupManager', jobId },
-            { emitted: result.emitted, cardId: result.cardId, reason: interruptionReason.reason },
+            { emitted: result.emitted, cardId: result.cardId, reason: cardInterruption.reason },
           );
         } catch (err) {
           logger.error(
-            `appendChoicePresentedCancelled threw — Resume/Dismiss UI will be missing for this pause (reason=${interruptionReason.reason})`,
+            `appendChoicePresentedCancelled threw — Resume/Dismiss UI will be missing for this pause (reason=${cardInterruption.reason})`,
             { component: 'JobCleanupManager', jobId },
             err,
           );
@@ -600,6 +631,7 @@ export class JobCleanupManager {
     userContext: UserContext,
     jobId: string,
     interruptionReason?: InterruptionDetails,
+    finalStatus?: SessionRunStatus,
   ): Promise<void> {
     try {
       const state = this.stateTracker.getState();
@@ -623,6 +655,26 @@ export class JobCleanupManager {
         userContext
       );
       
+      // Derive SessionRun.status with `finalStatus` as the SSOT when the
+      // caller provided it (finalizeTerminalJob always does; pauseJob
+      // passes `'paused'`). Fall back to the legacy interruption-derived
+      // mapping only when finalStatus is omitted (HTTP routes / hard-
+      // reset paths that don't yet thread the parameter).
+      //
+      // Pre-fix bug: `interruption ? ... : 'completed'` collapsed every
+      // failed-without-interruption case (orchestrator deadlock, child
+      // crash, lock_expired w/o killReason) to 'completed', and the FE
+      // rendered such runs as "완료" despite tasks remaining in the
+      // kanbanSnapshot. See the `such-pinning-milky` RCA.
+      const derivedStatus: SessionRunStatus = interruptionReason
+        ? (interruptionReason.reason === 'user_stopped' ? 'canceled' : 'paused')
+        : (finalStatus ?? 'completed');
+
+      // Inject onto the kanbanData itself so any consumer of the
+      // kanbanSnapshot (FE replay endpoint, session.runs[i].kanbanSnapshot)
+      // sees the terminal status without round-tripping to SessionRun.
+      (kanbanData as { status?: SessionRunStatus }).status = derivedStatus;
+
       // Persist per-jobId kanban snapshot into session.runs[] for dropdown replay.
       // Best-effort: failures here must not block the broadcast.
       try {
@@ -631,10 +683,7 @@ export class JobCleanupManager {
           mapping.projectId,
           mapping.featureName,
         );
-        const status: SessionRunStatus = interruptionReason
-          ? (interruptionReason.reason === 'user_stopped' ? 'canceled' : 'paused')
-          : 'completed';
-        await appendJobSnapshotToSession(featurePath, jobType, jobId, kanbanData, status);
+        await appendJobSnapshotToSession(featurePath, jobType, jobId, kanbanData, derivedStatus);
       } catch (snapErr) {
         logger.warn(
           `Failed to persist kanban snapshot to session`,

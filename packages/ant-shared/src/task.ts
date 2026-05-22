@@ -353,6 +353,22 @@ export interface KanbanData {
   // Interruption state
   interruption?: InterruptionDetails;
 
+  /**
+   * Terminal lifecycle status when the kanban represents a sealed run.
+   * Mirrors `SessionRun.status` from the BE so the FE can render a result
+   * badge ("실패" / "완료" / "중단됨" / "취소됨") without round-tripping to
+   * the SessionRun. Absent on live `dataSource: 'live'` payloads.
+   *
+   * Pre-fix regression (such-pinning-milky, 2026-05-21): orchestrator
+   * deadlock produced `outputStatus='failed', hasInterruption=false`. The
+   * BE sealed `JOB.STATUS` as `failed` but `broadcastFinalUpdate` derived
+   * SessionRun.status purely from `interruption` and fell back to
+   * `completed`. The FE then rendered the run as "완료" despite 11 tasks
+   * remaining in the queue. Carrying the terminal status on the kanban
+   * (and on SessionRun) closes that gap at the schema layer.
+   */
+  status?: 'completed' | 'failed' | 'canceled' | 'paused';
+
   // Node activity banner (shown when a non-task node is running)
   estimatingLabel?: string;       // Current node activity label (e.g., "환경 분석 중")
   estimatingStartedAt?: string;   // ISO timestamp when current phase started (for timer)

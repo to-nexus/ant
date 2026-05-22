@@ -706,34 +706,27 @@ export class TaskOrchestrator<T extends BaseTask> {
   // ============================================
 
   private computeBarriers() {
+    // Queue order = dependency order. Each barrier reads ONLY `running` —
+    // a queued blocker that sits BEHIND the candidate task is not a
+    // pre-requirement; the queue's own head-first scan already enforces
+    // ordering when decompose places prerequisites earlier. Including
+    // `queued.some(blocker)` was an over-defensive heuristic that created
+    // a circular wait whenever decompose intentionally ordered a producer
+    // task (e.g. a post-UI cleanup feature) after its consumers — see the
+    // `such-pinning-milky` RCA. Lock structure (`requestTask` runs inside
+    // `lock.runExclusive`) closes the race window that the `queued` check
+    // appeared to defend: by the time worker N+1 reads `running.some()`,
+    // worker N's `assignTask` has already populated `runningTasks`.
     const b = this.config.barriers;
     const running = Array.from(this.runningTasks.values());
-    const queued = this.taskQueue.getAll();
     return {
-      hasPreFeatureWork: !!b?.feature && (
-        running.some(isFoundationTask) || queued.some(isFoundationTask)
-      ),
-      hasPreIntegrationWork: !!b?.integration && (
-        running.some(isPreIntegrationWork) || queued.some(isPreIntegrationWork)
-      ),
-      hasPreUiWork: !!b?.ui && (
-        running.some((t) => schedBlocks(t, 'blocksUi')) ||
-        queued.some((t) => schedBlocks(t, 'blocksUi'))
-      ),
-      hasPreTestgenWork: !!b?.['test-code'] && (
-        running.some((t) => schedBlocks(t, 'blocksTestgen')) ||
-        queued.some((t) => schedBlocks(t, 'blocksTestgen'))
-      ),
-      hasPreDocWork: !!b?.doc && (
-        running.some((t) => schedBlocks(t, 'blocksDoc')) ||
-        queued.some((t) => schedBlocks(t, 'blocksDoc'))
-      ),
-      hasPreAssetsWork: !!b?.assets && (
-        running.some(isTokensTask) || queued.some(isTokensTask)
-      ),
-      hasPreSpecWork: !!b?.spec && (
-        running.some(isTokensOrAssetsTask) || queued.some(isTokensOrAssetsTask)
-      ),
+      hasPreFeatureWork: !!b?.feature && running.some(isFoundationTask),
+      hasPreIntegrationWork: !!b?.integration && running.some(isPreIntegrationWork),
+      hasPreUiWork: !!b?.ui && running.some((t) => schedBlocks(t, 'blocksUi')),
+      hasPreTestgenWork: !!b?.['test-code'] && running.some((t) => schedBlocks(t, 'blocksTestgen')),
+      hasPreDocWork: !!b?.doc && running.some((t) => schedBlocks(t, 'blocksDoc')),
+      hasPreAssetsWork: !!b?.assets && running.some(isTokensTask),
+      hasPreSpecWork: !!b?.spec && running.some(isTokensOrAssetsTask),
     };
   }
 

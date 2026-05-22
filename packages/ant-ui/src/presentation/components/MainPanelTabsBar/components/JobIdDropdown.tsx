@@ -221,20 +221,63 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                         )}
                         title={entry.jobId}
                       >
-                        {isCurrent ? (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
-                            aria-hidden
-                          />
-                        ) : entry.live ? (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"
-                            aria-label={t('tabs.liveJob')}
-                            title={t('tabs.liveJob')}
-                          />
-                        ) : (
-                          <span className="w-1.5 h-1.5 flex-shrink-0" aria-hidden />
-                        )}
+                        {(() => {
+                          // Status priority: live signals (current/amber) take
+                          // precedence over the persisted terminal status.
+                          // Past runs surface their `kanbanSnapshot.status` so
+                          // failed/canceled/paused jobs are visually distinct
+                          // from completed ones — pre-fix the slot was empty
+                          // for every non-live row regardless of outcome, which
+                          // let a `failed` job (status sealed correctly on the
+                          // BE) read to the user as "완료" (such-pinning-milky
+                          // RCA).
+                          if (isCurrent) {
+                            return (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
+                                aria-hidden
+                              />
+                            );
+                          }
+                          if (entry.live) {
+                            return (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"
+                                aria-label={t('tabs.liveJob')}
+                                title={t('tabs.liveJob')}
+                              />
+                            );
+                          }
+                          const past = snapshot?.status;
+                          if (past === 'failed') {
+                            return (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"
+                                aria-label={t('tabs.failedJob', { defaultValue: 'Failed' })}
+                                title={t('tabs.failedJob', { defaultValue: 'Failed' })}
+                              />
+                            );
+                          }
+                          if (past === 'canceled') {
+                            return (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0"
+                                aria-label={t('tabs.canceledJob', { defaultValue: 'Canceled' })}
+                                title={t('tabs.canceledJob', { defaultValue: 'Canceled' })}
+                              />
+                            );
+                          }
+                          if (past === 'paused') {
+                            return (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0"
+                                aria-label={t('tabs.pausedJob', { defaultValue: 'Paused' })}
+                                title={t('tabs.pausedJob', { defaultValue: 'Paused' })}
+                              />
+                            );
+                          }
+                          return <span className="w-1.5 h-1.5 flex-shrink-0" aria-hidden />;
+                        })()}
                         <span>{entry.jobId}</span>
                       </button>
                       {/* Always two flex slots after id so gap-2 is even whether a badge is missing */}
