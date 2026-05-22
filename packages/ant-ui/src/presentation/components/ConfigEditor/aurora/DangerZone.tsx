@@ -140,7 +140,7 @@ function DangerSolidButton({
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.65 : 1,
         boxShadow: '0 4px 14px -4px oklch(60% 0.22 25 / 0.4)',
-        transition: 'background 0.2s ease, box-shadow 0.2s ease, opacity 0.15s ease',
+        transition: 'box-shadow 0.2s ease, opacity 0.15s ease',
       }}
     >
       {children}

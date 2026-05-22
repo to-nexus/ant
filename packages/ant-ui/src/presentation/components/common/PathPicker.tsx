@@ -108,7 +108,7 @@ export function PathPicker({
           className={cn(
             'flex items-center gap-2 py-1 px-2 rounded text-sm transition-colors',
             isSelected
-              ? 'bg-blue-100 text-blue-900'
+              ? 'bg-[color:var(--violet-100)] text-[color:var(--violet-900)]'
               : (isDir || canSelectFile)
               ? 'hover:bg-[color:var(--bg-hover)] text-[color:var(--text-2)] cursor-pointer'
               : 'text-[color:var(--text-4)] cursor-default'
@@ -126,9 +126,9 @@ export function PathPicker({
         >
           {isDir ? (
             isExpanded ? (
-              <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              <FolderOpen className="w-4 h-4 text-[color:var(--violet-500)] flex-shrink-0" />
             ) : (
-              <Folder className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              <Folder className="w-4 h-4 text-[color:var(--violet-500)] flex-shrink-0" />
             )
           ) : (
             <FileIcon filePath={node.name} size={16} />
@@ -140,8 +140,8 @@ export function PathPicker({
               className={cn(
                 'p-0.5 rounded transition-colors flex-shrink-0',
                 isSelected
-                  ? 'text-blue-600'
-                  : 'text-[color:var(--text-4)] hover:text-blue-600 hover:bg-blue-50'
+                  ? 'text-[color:var(--violet-600)]'
+                  : 'text-[color:var(--text-4)] hover:text-[color:var(--violet-600)] hover:bg-[color:var(--bg-hover)]'
               )}
               title={t('pathPicker.selectFolder')}
               onClick={(e) => {
@@ -157,7 +157,7 @@ export function PathPicker({
           )}
           {/* File selected indicator */}
           {!isDir && isSelected && (
-            <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />
+            <Check className="w-4 h-4 text-[color:var(--violet-600)] flex-shrink-0" />
           )}
         </div>
         {isDir && isExpanded && node.children && (

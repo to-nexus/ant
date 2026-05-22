@@ -1,9 +1,15 @@
 
 import { useState, type MouseEvent } from 'react';
-import { GitBranch, Monitor, X } from 'lucide-react';
+import { ChevronRight, GitBranch, Monitor, X } from 'lucide-react';
 
 interface FeatureRowProps {
   name: string;
+  /**
+   * Deprecated — branch line is now surfaced by `<GitToolbar />` under the
+   * active project row (see ProjectSection). FeatureRow renders a single
+   * mono name line per the B3 handoff. Prop is kept for backwards-compat
+   * but is intentionally ignored.
+   */
   branch?: string | null;
   isActive: boolean;
   disabled?: boolean;
@@ -37,7 +43,7 @@ interface FeatureRowProps {
  */
 export function FeatureRow({
   name,
-  branch,
+  // branch intentionally ignored — surfaced via <GitToolbar /> instead.
   isActive,
   disabled,
   disabledReason,
@@ -80,12 +86,11 @@ export function FeatureRow({
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        height: 28,
-        padding: '0 8px',
+        padding: '6px 10px',
         borderRadius: 6,
         cursor: disabled ? 'not-allowed' : isActive ? 'default' : 'pointer',
         background: isActive
-          ? 'color-mix(in srgb, var(--pink-500) 12%, transparent)'
+          ? 'color-mix(in srgb, var(--pink-300) 18%, transparent)'
           : hover
             ? 'var(--bg-hover)'
             : 'transparent',
@@ -93,51 +98,34 @@ export function FeatureRow({
           ? '1px solid color-mix(in srgb, var(--pink-500) 35%, transparent)'
           : '1px solid transparent',
         opacity: disabled ? 0.5 : 1,
-        transition: 'background 120ms ease, border-color 120ms ease',
         minWidth: 0,
+        transition: 'background var(--dur-fast)',
       }}
     >
       <GitBranch
         size={12}
         style={{
-          color: isActive ? 'var(--pink-500)' : 'var(--text-3)',
+          color: isActive ? 'var(--pink-600)' : 'var(--text-3)',
           flexShrink: 0,
         }}
       />
 
-      {/* Name + branch line — both truncate with ellipsis */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span
-          className="font-mono"
-          style={{
-            fontSize: 12,
-            fontWeight: isActive ? 600 : 500,
-            color: isActive ? 'var(--text-1)' : 'var(--text-2)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            minWidth: 0,
-          }}
-        >
-          {name}
-        </span>
-        {branch && (
-          <span
-            className="font-mono"
-            style={{
-              fontSize: 10,
-              color: 'var(--text-3)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-              lineHeight: 1.2,
-            }}
-          >
-            {branch}
-          </span>
-        )}
-      </div>
+      {/* Feature name — single mono line (handoff B3 spec) */}
+      <span
+        className="font-mono"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 12,
+          fontWeight: isActive ? 600 : 500,
+          color: isActive ? 'var(--pink-700)' : 'var(--text-2)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
+      </span>
 
       {!isActive && showSwitchHint && (
         <button
@@ -146,20 +134,33 @@ export function FeatureRow({
             e.stopPropagation();
             onSwitch();
           }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--pink-600)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-3)';
+          }}
+          title={`${name}으로 전환 (worktree 변경)`}
           style={{
             height: 22,
             padding: '0 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
             borderRadius: 6,
-            fontSize: 11,
-            fontWeight: 600,
-            color: '#fff',
-            background: 'var(--gradient-aurora)',
-            boxShadow: 'var(--shadow-glow-aurora)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: 'var(--text-3)',
+            background: 'transparent',
             border: 'none',
             cursor: 'pointer',
             flexShrink: 0,
+            transition: 'all var(--dur-fast)',
           }}
         >
+          <ChevronRight size={12} />
           전환
         </button>
       )}
@@ -178,7 +179,7 @@ export function FeatureRow({
               borderRadius: 6,
               color: 'var(--text-3)',
               background: 'transparent',
-              border: '1px solid var(--border-1)',
+              border: 'none',
               cursor: 'not-allowed',
               opacity: 0.5,
               flexShrink: 0,
@@ -193,6 +194,14 @@ export function FeatureRow({
               e.stopPropagation();
               onDelete();
             }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--pink-600)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-3)';
+            }}
             aria-label="Delete feature"
             title="Delete feature"
             style={{
@@ -204,9 +213,10 @@ export function FeatureRow({
               borderRadius: 6,
               color: 'var(--text-3)',
               background: 'transparent',
-              border: '1px solid var(--border-1)',
+              border: 'none',
               cursor: 'pointer',
               flexShrink: 0,
+              transition: 'all var(--dur-fast)',
             }}
           >
             <X size={12} />
@@ -223,7 +233,15 @@ export function FeatureRow({
                 e.stopPropagation();
                 onOpenPreviewEditor();
               }}
-              title="Preview editor"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--pink-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
+              title="Preview Editor 열기"
               style={{
                 height: 22,
                 padding: '0 8px',
@@ -231,13 +249,14 @@ export function FeatureRow({
                 alignItems: 'center',
                 gap: 4,
                 borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--text-1)',
-                background: 'var(--surface-1)',
-                border: '1px solid var(--border-1)',
+                fontSize: 10,
+                fontWeight: 700,
+                color: 'var(--text-3)',
+                background: 'transparent',
+                border: 'none',
                 cursor: 'pointer',
                 flexShrink: 0,
+                transition: 'all var(--dur-fast)',
               }}
             >
               <Monitor size={12} />
@@ -251,8 +270,16 @@ export function FeatureRow({
                 e.stopPropagation();
                 onClear();
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--pink-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
               aria-label="Clear feature selection"
-              title="Clear feature selection"
+              title="선택 해제"
               style={{
                 height: 22,
                 width: 22,
@@ -262,9 +289,10 @@ export function FeatureRow({
                 borderRadius: 6,
                 color: 'var(--text-3)',
                 background: 'transparent',
-                border: '1px solid var(--border-1)',
+                border: 'none',
                 cursor: 'pointer',
                 flexShrink: 0,
+                transition: 'all var(--dur-fast)',
               }}
             >
               <X size={12} />

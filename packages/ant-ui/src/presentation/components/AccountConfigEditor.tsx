@@ -969,7 +969,6 @@ function C3aGitHubIdentityCard({
             borderRadius: 'var(--r-md)',
             cursor: isSaving ? 'not-allowed' : 'pointer',
             opacity: isSaving ? 0.5 : 1,
-            transition: 'background 0.15s ease',
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.background =

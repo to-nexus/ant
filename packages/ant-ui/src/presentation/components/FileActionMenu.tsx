@@ -240,7 +240,7 @@ export function FileActionMenu({
         ref={triggerRef}
         size="sm"
         variant="ghost"
-        className="h-6 w-6 p-0 text-[color:var(--text-3)] hover:text-gray-700 hover:bg-[color:var(--bg-active)]"
+        className="h-6 w-6 p-0 text-[color:var(--text-3)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-active)]"
         onClick={handleToggle}
       >
         <MoreHorizontal className="w-4 h-4" />
@@ -271,7 +271,7 @@ export function FileActionMenu({
                 className={cn(
                   'flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors',
                   isDanger
-                    ? 'text-red-600 hover:bg-red-50'
+                    ? 'text-[color:var(--status-error-fg)] hover:bg-[color:var(--bg-hover)]'
                     : 'text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)]'
                 )}
                 onClick={(e) => {

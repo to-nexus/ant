@@ -121,7 +121,6 @@ export function AppNavBar({}: AppNavBarProps) {
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border-1)',
         boxShadow: 'var(--shadow-sm)',
-        transition: 'background var(--dur-fast) var(--ease-smooth)',
       }}
     >
       <div className="px-2 sm:px-4 py-2 sm:py-3">
@@ -244,7 +243,6 @@ export function AppNavBar({}: AppNavBarProps) {
                   border: '1px solid var(--border-2)',
                   color: 'var(--text-2)',
                   borderRadius: 'var(--r-sm)',
-                  transition: 'background var(--dur-fast) var(--ease-smooth)',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'var(--bg-hover)';
@@ -280,7 +278,6 @@ export function AppNavBar({}: AppNavBarProps) {
                         style={{
                           background: selected ? 'var(--bg-active)' : 'transparent',
                           color: selected ? 'var(--violet-700)' : 'var(--text-2)',
-                          transition: 'background var(--dur-fast) var(--ease-smooth)',
                         }}
                         onMouseEnter={(e) => {
                           if (!selected) {
@@ -311,7 +308,6 @@ export function AppNavBar({}: AppNavBarProps) {
               style={{
                 background: 'var(--bg-surface-2)',
                 color: 'var(--text-2)',
-                transition: 'background var(--dur-fast) var(--ease-smooth)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--bg-hover)';
@@ -391,7 +387,6 @@ export function AppNavBar({}: AppNavBarProps) {
                         color: 'var(--text-2)',
                         background: 'transparent',
                         borderRadius: 'var(--r-md)',
-                        transition: 'background var(--dur-fast) var(--ease-smooth)',
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = 'var(--bg-hover)';
@@ -427,7 +422,6 @@ export function AppNavBar({}: AppNavBarProps) {
                       style={{
                         background: 'var(--bg-surface-2)',
                         borderRadius: 'var(--r-md)',
-                        transition: 'background var(--dur-fast) var(--ease-smooth)',
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = 'var(--bg-hover)';
@@ -486,7 +480,6 @@ export function AppNavBar({}: AppNavBarProps) {
                           className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
                           style={{
                             color: 'var(--text-2)',
-                            transition: 'background var(--dur-fast) var(--ease-smooth)',
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'var(--bg-hover)';
@@ -507,7 +500,6 @@ export function AppNavBar({}: AppNavBarProps) {
                           className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
                           style={{
                             color: 'var(--text-2)',
-                            transition: 'background var(--dur-fast) var(--ease-smooth)',
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'var(--bg-hover)';

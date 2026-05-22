@@ -38,7 +38,7 @@ function FallbackCodeBlock({ code, errorMessage }: { code: string; errorMessage?
   return (
     <div className="space-y-2">
       {errorMessage && (
-        <div className="text-xs text-red-600">
+        <div className="text-xs" style={{ color: 'var(--status-error-fg)' }}>
           Mermaid rendering failed: {errorMessage}
         </div>
       )}

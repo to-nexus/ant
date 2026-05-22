@@ -53,8 +53,9 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
   const isFilled = value.trim().length > 0;
 
   return (
-    <div className={`group flex items-start gap-0 border-b border-[color:var(--border-1)] last:border-b-0
-      ${isFilled ? 'bg-emerald-50/60' : ''}`}
+    <div
+      className={`group flex items-start gap-0 border-b border-[color:var(--border-1)] last:border-b-0`}
+      style={isFilled ? { background: 'oklch(from var(--status-done-fg) l c h / 0.12)' } : undefined}
     >
       {/* Wrapping textarea */}
       <textarea
@@ -66,11 +67,11 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
         disabled={disabled}
         rows={1}
         className={`flex-1 py-2.5 px-5 text-sm border-0 resize-none overflow-hidden
-          placeholder:text-gray-400
-          focus:outline-none focus:bg-blue-50/50
+          placeholder:text-[color:var(--text-4)]
+          focus:outline-none focus:bg-[color:var(--bg-hover)]
           disabled:opacity-50 disabled:cursor-not-allowed
           ${isFilled
-            ? 'bg-transparent font-mono text-emerald-800'
+            ? 'bg-transparent font-mono text-[color:var(--status-done-fg)]'
             : 'bg-transparent text-[color:var(--text-1)]'
           }`}
         style={{ wordBreak: 'break-all' }}
@@ -83,9 +84,9 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
         onClick={onRemove}
         disabled={disabled}
         className="flex-shrink-0 w-8 mt-2 h-8 flex items-center justify-center
-          text-gray-300
+          text-[color:var(--text-4)]
           opacity-0 group-hover:opacity-100 focus:opacity-100
-          hover:text-red-500
+          hover:text-[color:var(--status-error-fg)]
           transition-all disabled:hidden"
         tabIndex={-1}
       >
@@ -198,9 +199,9 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
 
         {/* New entry row (hidden when maxValues reached) */}
         {!(group.maxValues && group.values.length >= group.maxValues) && (
-          <div className="flex items-center gap-0 bg-gray-50/50">
+          <div className="flex items-center gap-0 bg-[color:var(--bg-surface-2)]">
             <div className="flex-shrink-0 w-10 py-2.5 flex items-center justify-center">
-              <Plus className="w-3.5 h-3.5 text-gray-300" />
+              <Plus className="w-3.5 h-3.5 text-[color:var(--text-4)]" />
             </div>
             <input
               ref={newRowRef}
@@ -216,7 +217,7 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
               disabled={disabled}
               className="flex-1 py-2.5 px-3 text-sm bg-transparent border-0
                 text-[color:var(--text-1)]
-                placeholder:text-gray-400
+                placeholder:text-[color:var(--text-4)]
                 focus:outline-none
                 disabled:opacity-50 disabled:cursor-not-allowed"
               spellCheck={false}

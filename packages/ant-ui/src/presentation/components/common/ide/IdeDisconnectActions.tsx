@@ -98,8 +98,8 @@ function ActionRow({
         onClick={() => void onClick()}
         className={
           tone === 'muted'
-            ? 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md text-[color:var(--text-2)] border border-transparent hover:bg-gray-100 transition-colors'
-            : 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-[color:var(--text-2)] hover:bg-gray-50 transition-colors'
+            ? 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md text-[color:var(--text-2)] border border-transparent hover:bg-[color:var(--bg-hover)] transition-colors'
+            : 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors'
         }
       >
         {label}

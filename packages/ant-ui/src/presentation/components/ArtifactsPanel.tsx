@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowLeftRight, Upload, X, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Folder, FolderOpen, ArrowLeftRight, Upload, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
@@ -11,6 +11,8 @@ import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNoti
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FileActionMenu';
+import { SectionShell, type SectionAccent } from './layout/Explorer/SectionShell';
+import { RowList } from './layout/Explorer/RowList';
 import { isCanonicalDir, isStructuralCanonicalDir, getArtifactDirPolicy, validateFileForDir } from '@/shared/utils/canonical-dirs';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
@@ -20,6 +22,54 @@ import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListTo
 import { UI_VISIBLE_TOP_LEVEL_DIRS, UI_VISIBLE_FILES, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
+
+/**
+ * Top-level folder accent palette — ported from handoff `b3-explorer.jsx`
+ * (`PROJECT_DOTS` + `DOMAIN_ACCENT`, L21–L37). The handoff used 4 raw oklch
+ * literals (violet / pink / orange / cool); here we map each ant-ui
+ * UI-visible top-level domain onto the aurora-tokens.css palette that is
+ * actually defined for the build target (violet / pink / amber / teal).
+ *
+ * Spec §R2: domain hint chip removed — top-level folders are
+ * distinguished by folder-icon accent color only. Nested children
+ * inherit no accent (see `DirectoryView.renderNode`).
+ */
+const DOMAIN_ACCENT: Record<string, string> = {
+  plan: 'var(--violet-500)',
+  system: 'var(--pink-500)',
+  spec: 'var(--amber-500)',
+  ui: 'var(--pink-500)',
+  'game-art': 'var(--amber-500)',
+  data: 'var(--teal-500)',
+  assets: 'var(--teal-500)',
+  meta: 'var(--violet-500)',
+  sessions: 'var(--teal-500)',
+  // Legacy domain — kept so existing fixtures continue to render with the
+  // pink accent the prior in-file map used.
+  architecture: 'var(--pink-500)',
+  visual: 'var(--amber-500)',
+};
+
+/**
+ * Maps a top-level artifact domain onto the SectionShell `accent` palette
+ * (handoff Explorer SectionShell only supports violet/pink/orange/cool).
+ * SectionShell internally translates these to `--violet-500` / `--pink-500`
+ * / `--orange-500` / `--teal-500`. `amber` (used by `DOMAIN_ACCENT` for the
+ * folder-icon tint) maps to `orange`; `teal` to `cool`.
+ */
+const DOMAIN_SECTION_ACCENT: Record<string, SectionAccent> = {
+  plan: 'violet',
+  system: 'pink',
+  spec: 'orange',
+  ui: 'pink',
+  'game-art': 'orange',
+  data: 'cool',
+  assets: 'cool',
+  meta: 'violet',
+  sessions: 'cool',
+  architecture: 'pink',
+  visual: 'orange',
+};
 
 function FigmaIcon({ className, muted }: { className?: string; muted?: boolean }) {
   if (muted) {
@@ -101,6 +151,60 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
   );
 }
 
+/**
+ * TransferTinyButton — chrome-less header action button mirroring the
+ * handoff TinyButton pattern (b3-explorer.jsx L78–L103). Hovers reveal
+ * an orange-600 foreground over `var(--bg-hover)`; rest state is fully
+ * transparent so the section header chrome stays quiet.
+ */
+function TransferTinyButton({
+  isNarrow,
+  title,
+  label,
+  onClick,
+}: {
+  isNarrow: boolean;
+  title: string;
+  label: string;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={title}
+      style={{
+        height: 22,
+        padding: isNarrow ? 0 : '0 8px',
+        width: isNarrow ? 22 : 'auto',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        background: hover ? 'var(--bg-hover)' : 'transparent',
+        color: hover ? 'var(--orange-600)' : 'var(--text-3)',
+        border: 'none',
+        borderRadius: 6,
+        fontSize: 10,
+        fontWeight: 700,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        flexShrink: 0,
+        transition: 'all var(--dur-fast)',
+      }}
+    >
+      <ArrowLeftRight size={12} />
+      {!isNarrow && <span>{label}</span>}
+    </button>
+  );
+}
+
 function TemplateStatusIndicator({ reason, contentLength, threshold, t }: {
   reason?: string;
   contentLength?: number;
@@ -144,19 +248,28 @@ interface DirectoryViewProps {
   onMarkSeen?: (paths: string[]) => void;
   fileIndicators?: Record<string, React.ReactNode>;
   sectionPrefix?: string;
-  /** Top-level folder accent color (CSS var) — replaces domain hint chip per spec §5.4. */
-  accentColor?: string;
   /** When returns true, mutation is blocked and a warning was shown — do not open delete confirm. */
   notifyArtifactMutationBlocked?: () => boolean;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, fileIndicators, sectionPrefix, accentColor, notifyArtifactMutationBlocked }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, fileIndicators, sectionPrefix, notifyArtifactMutationBlocked }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['plan', 'architecture', 'visual', 'assets', 'meta']));
-  const [sectionCollapsed, setSectionCollapsed] = useState(false);
   const highlightedDirs = useStore(s => s.highlightedArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
   const clearSpotlightTarget = useStore(s => s.clearSpotlightTarget);
+
+  // Spotlight relevance: when a spotlight target exists, this section is
+  // "relevant" only if the target path belongs to this domain. Used both
+  // as initial SectionShell expanded state and as part of the SectionShell
+  // remount key so that switching spotlight targets re-applies the
+  // expanded initial value.
+  const belongsToSpotlight = !spotlightTarget
+    ? true
+    : !sectionPrefix
+      ? true
+      : spotlightTarget.path === sectionPrefix
+        || spotlightTarget.path.startsWith(sectionPrefix + '/');
 
   useEffect(() => {
     if (highlightedDirs.length === 0) return;
@@ -175,19 +288,18 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   useEffect(() => {
     if (!spotlightTarget) {
       setExpandedDirs(new Set(nodes.map(n => n.path)));
-      setSectionCollapsed(false);
       return;
     }
     const targetPath = spotlightTarget.path;
     const belongsToThisSection = !sectionPrefix || targetPath.startsWith(sectionPrefix + '/') || targetPath === sectionPrefix;
 
     if (!belongsToThisSection) {
-      setSectionCollapsed(true);
+      // SectionShell remounts (key includes belongsToSpotlight) and collapses
+      // via its `expanded={false}` initial when this section is off-target.
       setExpandedDirs(new Set());
       return;
     }
 
-    setSectionCollapsed(false);
     const parts = targetPath.split('/');
     const depth = spotlightTarget.type === 'file' ? parts.length - 1 : parts.length;
     const requiredDirs = new Set<string>();
@@ -205,6 +317,9 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
   const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
+  // Per-row hover state — drives the violet wash + 3-dot reveal, mirrors
+  // handoff `b3-explorer.jsx::FileTree` `activePath`.
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const { showConfirm } = useAlertModalContext();
@@ -393,14 +508,17 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isMenuActive = activeMenuPath === node.path;
     const isUnseen = node.type === 'file' && unseenArtifacts.includes(node.path);
     const unseenCount = isDirectory ? getUnseenCount(node.path) : 0;
-    // Apply accent color only to the section's own top-level folder
-    // (matches sectionPrefix). Nested children inherit no accent so the
-    // visual hierarchy stays subtle.
-    const isSectionRoot = isDirectory && sectionPrefix !== undefined && node.path === sectionPrefix;
-    const folderIconColor = isSectionRoot && accentColor ? accentColor : 'var(--violet-500)';
+    // Top-level folder accent — only the section's domain root carries
+    // an accent (`plan` / `system` / `spec` / `ui` / …); nested children
+    // inherit no accent so the visual hierarchy stays subtle.
+    // Mirrors handoff `b3-explorer.jsx::FileTree::renderNode` L750–L760.
+    const topLevelKey = node.path.split('/')[0];
+    const accentColor = currentLevel === 0 ? DOMAIN_ACCENT[topLevelKey] : undefined;
+    const folderIconColor = accentColor ?? 'var(--text-3)';
     const isStructural = isDirectory && isStructuralCanonicalDir(node.path);
     const isDragTarget = isDirectory && dragOverPath === node.path;
     const isRenaming = renamingPath === node.path;
+    const isHover = activePath === node.path;
     const isHighlighted = highlightedDirs.some(d => node.path === d || node.path.endsWith('/' + d));
     const isSpotlighted = spotlightTarget?.path === node.path;
 
@@ -412,22 +530,53 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
         data-spotlight-path={isSpotlighted ? node.path : undefined}
       >
         <div
+          onMouseEnter={() => setActivePath(node.path)}
+          onMouseLeave={() => setActivePath(prev => (prev === node.path ? null : prev))}
           className={cn(
-            'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
-            isSelected 
-              ? 'bg-blue-100 border-l-2 border-blue-500 font-medium text-blue-900' 
-              : isDragTarget && !isStructural
-                ? 'bg-blue-50 outline-2 outline-dashed outline-blue-400'
-                : isDirectory && isExpanded
-                  ? 'bg-[color:var(--bg-canvas)] hover:bg-[color:var(--bg-hover)]'
-                  : 'hover:bg-[color:var(--bg-hover)]',
-            isMenuActive && !isDragTarget && (isSelected
-              ? 'ring-1 ring-blue-400'
-              : 'bg-amber-50 ring-1 ring-amber-300'),
-            isHighlighted && 'artifact-highlight ring-1 ring-blue-300',
+            'flex items-center justify-between group',
+            // Drag/menu/highlight visual state — Aurora violet/amber tokens applied inline; cn() palette literals fully purged (R7).
+            isHighlighted && 'artifact-highlight',
             isSpotlighted && 'artifact-spotlight'
           )}
-          style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
+          style={(() => {
+            // Base row style — selection, hover, layout (lowest precedence).
+            const base: React.CSSProperties = {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: `4px 10px 4px ${10 + currentLevel * 14}px`,
+              borderRadius: isSelected ? '0 var(--r-sm) var(--r-sm) 0' : 'var(--r-sm)',
+              cursor: 'pointer',
+              background: isSelected
+                ? 'oklch(from var(--violet-300) l c h / 0.20)'
+                : isHover
+                  ? 'var(--bg-hover)'
+                  : 'transparent',
+              borderLeft: isSelected ? '2px solid var(--violet-500)' : '2px solid transparent',
+              transition: 'background var(--dur-fast)',
+              minHeight: 22,
+            };
+            // Highlight (lower than menu/drag — applied first so later overrides win).
+            if (isHighlighted) {
+              base.boxShadow = 'inset 0 0 0 1px var(--violet-300)';
+            }
+            // Menu-active state (overrides highlight; defers to drag below).
+            if (isMenuActive && !isDragTarget) {
+              if (isSelected) {
+                base.boxShadow = 'inset 0 0 0 1px var(--violet-400)';
+              } else {
+                base.background = 'oklch(from var(--amber-500) l c h / 0.18)';
+                base.boxShadow = 'inset 0 0 0 1px oklch(from var(--amber-500) l c h / 0.45)';
+              }
+            }
+            // Drag-target state (highest precedence — overrides menu/highlight).
+            if (isDragTarget && !isStructural) {
+              base.background = 'oklch(from var(--violet-200) l c h / 0.30)';
+              base.outline = '2px dashed var(--violet-400)';
+              base.outlineOffset = '-2px';
+            }
+            return base;
+          })()}
         >
           <div 
             className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
@@ -447,17 +596,17 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             {node.type === 'directory' ? (
               isExpanded ? (
                 <FolderOpen
-                  className="w-4 h-4 flex-shrink-0"
-                  style={{ color: folderIconColor }}
+                  size={12}
+                  style={{ color: folderIconColor, flexShrink: 0 }}
                 />
               ) : (
                 <Folder
-                  className="w-4 h-4 flex-shrink-0"
-                  style={{ color: folderIconColor }}
+                  size={12}
+                  style={{ color: folderIconColor, flexShrink: 0 }}
                 />
               )
             ) : (
-              <FileIcon filePath={node.name} size={16} />
+              <FileIcon filePath={node.name} size={12} />
             )}
             {isRenaming ? (
               <input
@@ -480,21 +629,28 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   setRenamingPath(null);
                 }}
                 onClick={(e) => e.stopPropagation()}
-                className="flex-1 min-w-0 px-1 py-0 text-sm border border-blue-400 rounded bg-[color:var(--bg-surface)] text-[color:var(--text-1)] outline-none"
+                className="flex-1 min-w-0 px-1 py-0 text-sm rounded bg-[color:var(--bg-surface)] text-[color:var(--text-1)] outline-none"
+                style={{ border: '1px solid var(--violet-400)' }}
                 autoFocus
               />
             ) : (
               <>
-                <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
+                <span
+                  className="font-mono"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 11.5,
+                    color: isSelected ? 'var(--violet-700)' : 'var(--text-2)',
+                    fontWeight: isSelected ? 600 : isUnseen ? 700 : (currentLevel === 0 ? 600 : 500),
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {node.name}
+                </span>
                 {!isDirectory && fileIndicators?.[node.name]}
-                {isDirectory && unseenCount > 0 && (
-                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
-                    {unseenCount > 99 ? '99+' : unseenCount}
-                  </span>
-                )}
-                {isUnseen && (
-                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                )}
               </>
             )}
           </div>
@@ -589,8 +745,14 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               ? node.children.map((child) => renderNode(child, currentLevel + 1))
               : (
                 <div
-                  className={cn('py-1 text-[11px] italic', textColors.tertiary)}
-                  style={{ paddingLeft: `${(currentLevel + 1) * 12 + 8}px` }}
+                  style={{
+                    paddingTop: 2,
+                    paddingBottom: 2,
+                    paddingLeft: `${10 + (currentLevel + 1) * 14 + 18}px`,
+                    fontSize: 10,
+                    fontStyle: 'italic',
+                    color: 'var(--text-4)',
+                  }}
                 >
                   {t(`panel.dirAccepted.${node.name}`, { defaultValue: '' }) || t('panel.emptyDir')}
                 </div>
@@ -605,79 +767,97 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   const rootDropEnabled = !!(sectionPrefix && onDropFiles);
   const rootIsDragTarget = rootDropEnabled && dragOverPath === sectionPrefix;
 
+  // Hidden upload input — kept outside SectionShell so the action menu
+  // (which lives in SectionShell's `action` slot) can still trigger it.
+  const hiddenUploadInput = sectionPrefix && onUploadFiles && !rootIsStructural ? (
+    <input
+      type="file"
+      multiple
+      className="hidden"
+      id={`upload-${sectionPrefix}`}
+      accept={getArtifactDirPolicy(sectionPrefix)?.acceptedExtensions?.join(',') || undefined}
+      onChange={(e) => {
+        if (e.target.files && onUploadFiles) {
+          onUploadFiles(sectionPrefix, e.target.files);
+          e.target.value = '';
+        }
+      }}
+    />
+  ) : null;
+
+  // Domain-root action menu (sessions/ is system-internal — never exposed).
+  const headerAction = sectionPrefix && !isSessionSection ? (
+    <FileActionMenu
+      nodePath={sectionPrefix}
+      nodeType="directory"
+      nodeName={sectionPrefix}
+      isSessionPath={false}
+      isClearableDir={rootIsClearable}
+      onUpload={onUploadFiles && !rootIsStructural ? () => {
+        document.getElementById(`upload-${sectionPrefix}`)?.click();
+      } : undefined}
+      onCreateFile={onCreateFile && !rootIsStructural ? () => {
+        setCreateType('file');
+        setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
+        setNewFileName('');
+      } : undefined}
+      onCreateDirectory={onCreateDirectory && !rootIsStructural && rootAllowSubdirs ? () => {
+        setCreateType('directory');
+        setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
+        setNewFileName('');
+      } : undefined}
+      onClearContents={rootIsClearable && onDelete ? () => {
+        if (notifyArtifactMutationBlocked?.()) return;
+        showConfirm(t('confirm.clearContentsDetail', { name: sectionPrefix }), {
+          type: 'warning',
+          title: t('confirm.clearContentsTitle'),
+          confirmText: t('confirm.clearAll'),
+          cancelText: t('common:button.cancel'),
+          onConfirm: () => onDelete(sectionPrefix)
+        });
+      } : undefined}
+      onOpenChange={(open) => setActiveMenuPath(open ? sectionPrefix : null)}
+    />
+  ) : null;
+
+  // Drop wrapper — RowList provides only scroll/flex; drop chrome (dashed
+  // border, tinted background, data-drop-* attrs, drag handlers) lives on
+  // an outer wrapper so the visual surface mirrors handoff's chrome-less
+  // explorer rows while still preserving the existing drag/drop policy.
+  const dropWrapperStyle: React.CSSProperties = rootIsDragTarget
+    ? rootIsStructural
+      ? {
+          border: '2px dashed var(--red-500)',
+          borderRadius: 'var(--r-md)',
+          transition: 'border-color var(--dur-fast), background var(--dur-fast)',
+        }
+      : {
+          border: '2px dashed var(--violet-400)',
+          borderRadius: 'var(--r-md)',
+          background: 'oklch(from var(--violet-200) l c h / 0.18)',
+          transition: 'border-color var(--dur-fast), background var(--dur-fast)',
+        }
+    : {
+        border: '2px solid transparent',
+        borderRadius: 'var(--r-md)',
+        transition: 'border-color var(--dur-fast), background var(--dur-fast)',
+      };
+
   return (
-    <div>
-      <div className="flex items-center mb-2 gap-1">
-        <button
-          type="button"
-          onClick={() => setSectionCollapsed(prev => !prev)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md hover:bg-[color:var(--bg-hover)] transition-colors"
-        >
-          {sectionCollapsed
-            ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-            : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-          <span className="font-medium text-sm text-[color:var(--text-2)]">{title}</span>
-        </button>
-        {/* Hidden upload input for the domain-root header menu */}
-        {sectionPrefix && onUploadFiles && !rootIsStructural && (
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            id={`upload-${sectionPrefix}`}
-            accept={getArtifactDirPolicy(sectionPrefix)?.acceptedExtensions?.join(',') || undefined}
-            onChange={(e) => {
-              if (e.target.files && onUploadFiles) {
-                onUploadFiles(sectionPrefix, e.target.files);
-                e.target.value = '';
-              }
-            }}
-          />
-        )}
-        {/* sessions/ is system-internal — never expose section-level mutation menu */}
-        {!sectionCollapsed && sectionPrefix && !isSessionSection && (
-          <FileActionMenu
-            nodePath={sectionPrefix}
-            nodeType="directory"
-            nodeName={sectionPrefix}
-            isSessionPath={false}
-            isClearableDir={rootIsClearable}
-            onUpload={onUploadFiles && !rootIsStructural ? () => {
-              document.getElementById(`upload-${sectionPrefix}`)?.click();
-            } : undefined}
-            onCreateFile={onCreateFile && !rootIsStructural ? () => {
-              setCreateType('file');
-              setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
-              setNewFileName('');
-            } : undefined}
-            onCreateDirectory={onCreateDirectory && !rootIsStructural && rootAllowSubdirs ? () => {
-              setCreateType('directory');
-              setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
-              setNewFileName('');
-            } : undefined}
-            onClearContents={rootIsClearable && onDelete ? () => {
-              if (notifyArtifactMutationBlocked?.()) return;
-              showConfirm(t('confirm.clearContentsDetail', { name: sectionPrefix }), {
-                type: 'warning',
-                title: t('confirm.clearContentsTitle'),
-                confirmText: t('confirm.clearAll'),
-                cancelText: t('common:button.cancel'),
-                onConfirm: () => onDelete(sectionPrefix)
-              });
-            } : undefined}
-            onOpenChange={(open) => setActiveMenuPath(open ? sectionPrefix : null)}
-          />
-        )}
-      </div>
-      {sectionCollapsed ? null : <div
-        className={cn(
-          'rounded-lg p-2 bg-[color:var(--bg-canvas)]/50 max-h-96 overflow-y-auto scrollbar-hide border-2 transition-colors',
-          rootIsDragTarget
-            ? rootIsStructural
-              ? 'border-dashed border-red-400'
-              : 'border-dashed border-blue-400 bg-blue-50/50'
-            : 'border-transparent ring-1 ring-gray-200',
-        )}
+    <SectionShell
+      // Remount when spotlight relevance flips so the new `expanded`
+      // initial takes effect (SectionShell owns open/closed state
+      // internally; the remount is the only safe way to overwrite it).
+      key={`section-${sectionPrefix ?? 'root'}-${String(belongsToSpotlight)}`}
+      eyebrow={title}
+      accent={DOMAIN_SECTION_ACCENT[sectionPrefix ?? ''] ?? 'violet'}
+      count={null}
+      expanded={belongsToSpotlight}
+      action={headerAction}
+    >
+      {hiddenUploadInput}
+      <div
+        style={dropWrapperStyle}
         data-drop-dir={rootDropEnabled ? sectionPrefix : undefined}
         data-drop-blocked={rootDropEnabled && rootIsStructural ? '' : undefined}
         onDragOver={(e) => {
@@ -751,10 +931,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             No files in {title.toLowerCase()}
           </div>
         ) : (
-          nodes.map((node) => renderNode(node, 0))
+          <RowList ariaLabel={title} maxHeight={384}>
+            {nodes.map((node) => renderNode(node, 0))}
+          </RowList>
         )}
-      </div>}
-    </div>
+      </div>
+    </SectionShell>
   );
 }
 
@@ -1081,80 +1263,55 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   const sessionsNodes = topLevelByName.get('sessions')?.children || [];
 
-  // Top-level folder accent color (spec §5.4 / §1.1.6: domain hint chip
-  // removed — top-level folders are distinguished by accent color only).
-  const DOMAIN_ACCENT: Record<string, string> = {
-    plan: 'var(--violet-500)',
-    architecture: 'var(--pink-500)',
-    visual: 'var(--orange-500)',
-    assets: 'var(--teal-500)',
-    meta: 'var(--violet-500)',
-    sessions: 'var(--teal-500)',
-  };
+  const transferButton = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <TransferTinyButton
+        isNarrow={isNarrow}
+        title={t('panel.transfer')}
+        label={t('panel.transfer')}
+        onClick={() => openTransferTab({ subTab: pendingTransferCount > 0 ? 'receive' : 'send' })}
+      />
+      {pendingTransferCount > 0 && (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            openTransferTab({ subTab: 'receive' });
+          }}
+          title={t('panel.transferPending', { count: pendingTransferCount, defaultValue: `${pendingTransferCount} pending` })}
+          aria-label={`${pendingTransferCount} pending`}
+          style={{
+            minWidth: 16,
+            height: 16,
+            padding: '0 5px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--red-500)',
+            color: 'var(--text-on-brand)',
+            fontSize: 10,
+            fontWeight: 800,
+            borderRadius: 999,
+            cursor: 'pointer',
+            boxShadow: '0 0 10px color-mix(in srgb, var(--red-500) 45%, transparent)',
+          }}
+        >
+          {pendingTransferCount > 99 ? '99+' : pendingTransferCount}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div
-      className="space-y-3"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => e.preventDefault()}
     >
-      <h3
-        className="flex items-center justify-between"
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--text-2)',
-        }}
+      <SectionShell
+        eyebrow={t('panel.title')}
+        accent="violet"
+        count={null}
+        action={transferButton}
       >
-        <span className="flex items-center gap-2 min-w-0">
-          <Package className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />
-          <span className="truncate">{t('panel.title')}</span>
-        </span>
-        <span className="flex items-center shrink-0" style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={() => openTransferTab({ subTab: pendingTransferCount > 0 ? 'receive' : 'send' })}
-            title={t('panel.transfer')}
-            style={{
-              position: 'relative',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              height: 22,
-              padding: isNarrow ? '0 6px' : '0 8px',
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'none',
-              color: 'var(--text-2)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border-1)',
-              cursor: 'pointer',
-            }}
-          >
-            <ArrowLeftRight className="h-3 w-3 shrink-0" />
-            {!isNarrow && <span>{t('panel.transfer')}</span>}
-            {pendingTransferCount > 0 && (
-              <span
-                aria-label={`${pendingTransferCount} pending`}
-                style={{
-                  position: 'absolute',
-                  top: -3,
-                  right: -3,
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: 'var(--red-500)',
-                  boxShadow: '0 0 0 2px var(--surface-1)',
-                }}
-              />
-            )}
-          </button>
-        </span>
-      </h3>
       <div className="space-y-3">
         {visibleTopLevelDirs.map(({ name }) => {
           const dirNode = topLevelByName.get(name);
@@ -1213,7 +1370,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               onDelete={handleDelete}
               onSend={handleSend}
               onDownload={handleDownload}
-              accentColor={DOMAIN_ACCENT[name]}
               onDropError={showDropError}
               unseenArtifacts={unseenArtifacts}
               onMarkSeen={markArtifactsSeen}
@@ -1235,11 +1391,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
           onDropError={showDropError}
           isSessionSection={true}
-          accentColor={DOMAIN_ACCENT.sessions}
           notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
         />
 
       </div>
+      </SectionShell>
 
       {/* Upload conflict modal */}
       <UploadConflictModal
@@ -1258,8 +1414,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               className={cn(
                 'rounded-xl border shadow-lg p-3 space-y-2 cursor-pointer transition-colors',
                 uploadState.completed
-                  ? 'border-green-200 bg-[color:var(--bg-surface)]'
-                  : 'border-blue-200 bg-[color:var(--bg-surface)]',
+                  ? 'border-[color:var(--status-done-fg)] bg-[color:var(--bg-surface)]'
+                  : 'border-[color:var(--violet-500)] bg-[color:var(--bg-surface)]',
               )}
               onClick={uploadState.completed ? dismissUpload : undefined}
             >
@@ -1267,8 +1423,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
                 <span className={cn(
                   'flex items-center gap-2 text-xs font-medium truncate',
                   uploadState.completed
-                    ? 'text-green-700'
-                    : 'text-blue-700',
+                    ? 'text-[color:var(--status-done-fg)]'
+                    : 'text-[color:var(--violet-700)]',
                 )}>
                   {uploadState.completed
                     ? <Check className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1281,26 +1437,30 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleCancelUpload(); }}
-                  className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-[color:var(--bg-active)] text-gray-400 hover:text-gray-600 transition-colors"
+                  className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-[color:var(--bg-active)] text-[color:var(--text-4)] hover:text-[color:var(--text-3)] transition-colors"
                   title={uploadState.completed ? t('upload.dismiss') : t('upload.cancel')}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <div className={cn(
-                'w-full h-2 rounded-full overflow-hidden',
-                uploadState.completed ? 'bg-green-100' : 'bg-blue-100',
-              )}>
+              <div
+                className="w-full h-2 rounded-full overflow-hidden"
+                style={{
+                  background: uploadState.completed
+                    ? 'oklch(from var(--status-done-fg) l c h / 0.15)'
+                    : 'var(--violet-100)',
+                }}
+              >
                 <div
-                  className={cn(
-                    'h-full rounded-full transition-[width] duration-200',
-                    uploadState.completed ? 'bg-green-500' : 'bg-blue-500',
-                  )}
-                  style={{ width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%' }}
+                  className="h-full rounded-full transition-[width] duration-200"
+                  style={{
+                    width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%',
+                    background: uploadState.completed ? 'var(--status-done-fg)' : 'var(--violet-500)',
+                  }}
                 />
               </div>
               {uploadState.total > 0 && !uploadState.completed && (
-                <div className="text-[10px] text-blue-500 text-right font-medium">
+                <div className="text-[10px] text-[color:var(--violet-500)] text-right font-medium">
                   {Math.round((uploadState.loaded / uploadState.total) * 100)}%
                 </div>
               )}
@@ -1308,17 +1468,21 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           )}
           {dropError && (
             <div
-              className="relative rounded-xl border border-red-200 bg-[color:var(--bg-surface)] shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
+              className="relative rounded-xl border bg-[color:var(--bg-surface)] shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
+              style={{ borderColor: 'var(--status-error-fg)' }}
               onClick={() => setDropError(null)}
             >
-              <span className="flex items-center gap-2 text-xs font-medium text-red-700">
+              <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--status-error-fg)]">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                 {dropError}
               </span>
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-100">
+              <div
+                className="absolute bottom-0 left-0 right-0 h-0.5"
+                style={{ background: 'oklch(from var(--status-error-fg) l c h / 0.15)' }}
+              >
                 <div
-                  className="h-full bg-red-500"
-                  style={{ animation: 'shrink-progress 3000ms linear forwards' }}
+                  className="h-full"
+                  style={{ background: 'var(--status-error-fg)', animation: 'shrink-progress 3000ms linear forwards' }}
                 />
               </div>
               <style>{`@keyframes shrink-progress{from{width:100%}to{width:0%}}`}</style>

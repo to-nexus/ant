@@ -18,9 +18,13 @@ export function ConnectionBanner({ visible }: ConnectionBannerProps) {
   return (
     <div
       className="fixed top-0 left-0 right-0 z-[9998] flex items-center justify-center gap-2
-                 h-10 bg-amber-50 border-b border-amber-200
                  text-amber-800 text-sm font-medium
                  animate-fadeIn select-none"
+      style={{
+        height: 40,
+        background: 'var(--amber-50)',
+        borderBottom: '1px solid var(--amber-300)',
+      }}
     >
       <Spinner size="md" tone="inherit" />
       <span>{t('serverDown.connecting', 'Trying to reconnect to server...')}</span>

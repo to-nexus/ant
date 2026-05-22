@@ -103,8 +103,8 @@ export function MemberPicker({
         className={cn(
           'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border transition-colors',
           selectedUserId
-            ? 'border-blue-300 bg-blue-50 text-blue-700'
-            : 'border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-3)] hover:border-gray-400',
+            ? 'border-[color:var(--violet-300)] bg-[color:var(--violet-50)] text-[color:var(--violet-700)]'
+            : 'border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-3)] hover:border-[color:var(--border-1)]',
           className
         )}
         onClick={handleOpen}
@@ -113,7 +113,7 @@ export function MemberPicker({
         <span className="truncate max-w-[120px]">{selectedUserId || effectivePlaceholder}</span>
         {selectedUserId && (
           <X
-            className="w-3 h-3 ml-0.5 hover:text-red-500 transition-colors"
+            className="w-3 h-3 ml-0.5 hover:text-[color:var(--status-error-fg)] transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               onSelect('');
@@ -131,14 +131,14 @@ export function MemberPicker({
         >
           {/* Search */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-[color:var(--border-1)]">
-            <Search className="w-4 h-4 text-gray-400 shrink-0" />
+            <Search className="w-4 h-4 text-[color:var(--text-4)] shrink-0" />
             <input
               ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('memberPicker.searchPlaceholder')}
-              className="flex-1 text-sm bg-transparent outline-none text-[color:var(--text-1)] placeholder-gray-400"
+              className="flex-1 text-sm bg-transparent outline-none text-[color:var(--text-1)] placeholder-[color:var(--text-4)]"
             />
           </div>
 
@@ -155,15 +155,15 @@ export function MemberPicker({
                   className={cn(
                     'flex items-center gap-2 w-full px-3 py-2 text-sm text-left transition-colors',
                     m.userId === selectedUserId
-                      ? 'bg-blue-50 text-blue-700'
+                      ? 'bg-[color:var(--violet-50)] text-[color:var(--violet-700)]'
                       : 'text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)]'
                   )}
                   onClick={() => handleSelect(m.userId)}
                 >
-                  <User className="w-4 h-4 text-gray-400 shrink-0" />
+                  <User className="w-4 h-4 text-[color:var(--text-4)] shrink-0" />
                   <span className="truncate">{m.userId}</span>
                   {m.userId === selectedUserId && (
-                    <span className="ml-auto text-xs text-blue-500">{t('label.selected')}</span>
+                    <span className="ml-auto text-xs text-[color:var(--violet-500)]">{t('label.selected')}</span>
                   )}
                 </button>
               ))

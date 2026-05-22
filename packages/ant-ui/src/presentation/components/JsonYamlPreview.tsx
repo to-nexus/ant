@@ -28,19 +28,19 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
 
   if (typeof value === 'boolean') {
     return (
-      <span className="text-purple-600 font-medium">
+      <span style={{ color: 'var(--code-token-boolean)', fontWeight: 500 }}>
         {value ? 'true' : 'false'}
       </span>
     );
   }
 
   if (typeof value === 'number') {
-    return <span className="text-blue-600">{value}</span>;
+    return <span style={{ color: 'var(--code-token-number)' }}>{value}</span>;
   }
 
   if (typeof value === 'string') {
     return (
-      <span className="text-green-600">
+      <span style={{ color: 'var(--code-token-string)' }}>
         "{value}"
       </span>
     );
@@ -55,7 +55,10 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
       <span>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center text-gray-500 hover:text-gray-700"
+          className="inline-flex items-center"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-2)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         </button>
@@ -90,7 +93,10 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
       <span>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center text-gray-500 hover:text-gray-700"
+          className="inline-flex items-center"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-2)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         </button>
@@ -104,7 +110,7 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
           <div>
             {entries.map(([key, val]) => (
               <div key={key} style={indentStyle}>
-                <span className="text-rose-600 font-medium mr-1">"{key}"</span>
+                <span style={{ color: 'var(--code-token-property)', fontWeight: 500, marginRight: 4 }}>"{key}"</span>
                 <span className="text-[color:var(--text-3)] mr-1">:</span>
                 <RenderValue value={val} indent={indent + 1} />
               </div>
@@ -159,7 +165,7 @@ function JsonlPreview({ content, t }: { content: string; t: (key: string) => str
           <div className="p-2">
             {error ? (
               <>
-                <div className="text-red-500 text-xs mb-1">⚠️ Parse Error: {error}</div>
+                <div className="text-xs mb-1" style={{ color: 'var(--status-error-fg)' }}>⚠️ Parse Error: {error}</div>
                 <pre className="text-xs text-[color:var(--text-3)] whitespace-pre-wrap">{raw}</pre>
               </>
             ) : (
@@ -198,10 +204,18 @@ export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
   if (error) {
     return (
       <div className="p-4">
-        <div className="text-red-500 font-medium mb-2">
+        <div className="mb-2" style={{ color: 'var(--status-error-fg)', fontWeight: 500 }}>
           ⚠️ {fileType.toUpperCase()} Parse Error
         </div>
-        <pre className="text-sm text-red-600 bg-red-50 p-3 rounded-md overflow-x-auto">
+        <pre
+          className="text-sm overflow-x-auto"
+          style={{
+            color: 'var(--status-error-fg)',
+            background: 'oklch(from var(--red-500) l c h / 0.08)',
+            padding: 12,
+            borderRadius: 'var(--r-md)',
+          }}
+        >
           {error}
         </pre>
         <div className="mt-4 text-[color:var(--text-3)] text-sm">

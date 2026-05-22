@@ -19,7 +19,7 @@ const SHAPE: Record<SkeletonVariant, string> = {
   text: 'h-4 rounded',
   rect: 'rounded',
   circle: 'rounded-full',
-  card: 'rounded-lg border border-gray-200 bg-[color:var(--bg-surface-2)] p-3',
+  card: 'rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface-2)] p-3',
 };
 
 /**

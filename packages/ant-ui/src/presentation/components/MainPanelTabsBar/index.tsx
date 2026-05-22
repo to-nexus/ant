@@ -1,11 +1,12 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, Workflow } from 'lucide-react';
 import { TabButton } from './components/TabButton';
 import { JobIdDropdown } from './components/JobIdDropdown';
 import { EditorTabActions } from './components/EditorTabActions';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { useTranslation } from 'react-i18next';
+import { ViewModeButton } from '../aurora/ViewModeButton';
 
 /**
  * MainPanelTabsBar - Tab navigation for Main Panel
@@ -32,6 +33,8 @@ export function MainPanelTabsBar() {
   const pinEditorTab = useStore((state) => state.pinEditorTab);
   const unpinEditorTab = useStore((state) => state.unpinEditorTab);
   const closeEditorTab = useStore((state) => state.closeEditorTab);
+  const taskViewMode = useStore((state) => state.taskViewMode);
+  const setTaskViewMode = useStore((state) => state.setTaskViewMode);
 
   const getJobTabLabel = () => t('tabs.job');
 
@@ -119,7 +122,22 @@ export function MainPanelTabsBar() {
         ))}
       </div>
     ),
-    right: undefined,
+    right: (
+      <div className="flex items-center gap-1 px-2">
+        <ViewModeButton
+          icon={LayoutGrid}
+          label={t('tabs.kanban', 'Kanban')}
+          active={taskViewMode === 'kanban'}
+          onClick={() => setTaskViewMode('kanban')}
+        />
+        <ViewModeButton
+          icon={Workflow}
+          label={t('tabs.workflow', 'Workflow')}
+          active={taskViewMode === 'workflow'}
+          onClick={() => setTaskViewMode('workflow')}
+        />
+      </div>
+    ),
     className: undefined,
   });
   

@@ -34,10 +34,27 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
   const isEmpty = empty || false;
   const isAmber = emptyStyle === 'amber';
 
-  const borderClass = isEmpty
+  // §R13: empty variants migrated from Tailwind amber/gray palette to
+  // Aurora-token inline-style recipes (oklch alpha for the surface,
+  // dashed border via inline shorthand). Non-empty branches stay on
+  // existing token classNames (out of §R13 scope).
+  const emptyAmberStyle: React.CSSProperties = {
+    background: 'oklch(from var(--amber-50) l c h / 0.5)',
+    border: '1px dashed var(--amber-300)',
+  };
+  const emptyGrayStyle: React.CSSProperties = {
+    background: 'oklch(from var(--bg-surface-2) l c h / 0.5)',
+    border: '1px dashed var(--border-2)',
+    opacity: 0.5,
+  };
+  const wrapperStyle: React.CSSProperties | undefined = isEmpty
     ? isAmber
-      ? 'border-dashed border-amber-300 bg-amber-50/50'
-      : 'border-dashed border-gray-300 bg-gray-50/50 opacity-50'
+      ? emptyAmberStyle
+      : emptyGrayStyle
+    : undefined;
+
+  const borderClass = isEmpty
+    ? ''
     : hasWarnings || isDisabled
       ? 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60'
       : locked
@@ -46,14 +63,24 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
           ? 'bg-emerald-50 border-emerald-200'
           : 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60';
 
+  // For empty branches the wrapper applies its own border via inline-style
+  // (dashed) — skip the Tailwind `border` utility so it doesn't paint a
+  // solid 1px line under the dashed inline border.
+  const borderUtil = isEmpty ? '' : 'border';
+
   const nameClass = isEmpty && isAmber
-    ? 'text-sm truncate block text-amber-700 font-medium'
+    ? 'text-sm truncate block font-medium'
     : `text-sm truncate block ${hasWarnings ? 'text-[color:var(--text-4)]' : 'text-[color:var(--text-1)]'}`;
+  const nameStyle: React.CSSProperties | undefined =
+    isEmpty && isAmber ? { color: 'var(--amber-700)' } : undefined;
 
   const canToggle = !isDisabled && !locked && !!onToggle;
 
   return (
-    <div className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all border ${borderClass}`}>
+    <div
+      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${borderUtil} ${borderClass}`}
+      style={wrapperStyle}
+    >
       <button
         type="button"
         onClick={() => canToggle && onToggle?.()}
@@ -74,7 +101,7 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
           )}
         </span>
         <span className="min-w-0 text-left">
-          <span className={nameClass}>{name}</span>
+          <span className={nameClass} style={nameStyle}>{name}</span>
           <span className="text-xs text-[color:var(--text-4)] truncate block">{path}</span>
         </span>
       </button>

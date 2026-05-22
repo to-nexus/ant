@@ -348,8 +348,8 @@ export function SendSubTab() {
                 className={cn(
                   'inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors',
                   isAddingPath
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-blue-600 hover:bg-blue-50'
+                    ? 'bg-[color:var(--violet-100)] text-[color:var(--violet-700)]'
+                    : 'text-[color:var(--violet-600)] hover:bg-[color:var(--bg-hover)]'
                 )}
                 onClick={() => setIsAddingPath(!isAddingPath)}
               >
@@ -403,7 +403,7 @@ export function SendSubTab() {
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'self'
                     ? 'bg-white text-[color:var(--text-1)] shadow-sm'
-                    : 'text-[color:var(--text-3)] hover:text-gray-700'
+                    : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('self'); }}
               >
@@ -414,7 +414,7 @@ export function SendSubTab() {
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'other'
                     ? 'bg-white text-[color:var(--text-1)] shadow-sm'
-                    : 'text-[color:var(--text-3)] hover:text-gray-700'
+                    : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('other'); setMode('copy'); }}
               >
@@ -606,11 +606,11 @@ function SentRequestCard({ request, onCancel, onDelete }: {
 }) {
   const { t } = useTranslation('transfer');
   const statusIcons: Record<string, React.ReactNode> = {
-    pending: <Clock className="w-4 h-4 text-yellow-500" />,
-    approved: <CheckCircle className="w-4 h-4 text-green-500" />,
-    rejected: <XCircle className="w-4 h-4 text-red-500" />,
-    cancelled: <Ban className="w-4 h-4 text-gray-400" />,
-    expired: <Timer className="w-4 h-4 text-gray-400" />,
+    pending: <Clock className="w-4 h-4 text-[color:var(--status-progress-fg,var(--orange-500))]" />,
+    approved: <CheckCircle className="w-4 h-4 text-[color:var(--status-done-fg)]" />,
+    rejected: <XCircle className="w-4 h-4 text-[color:var(--status-error-fg)]" />,
+    cancelled: <Ban className="w-4 h-4 text-[color:var(--text-4)]" />,
+    expired: <Timer className="w-4 h-4 text-[color:var(--text-4)]" />,
   };
   const timeAgo = getTimeAgo(request.createdAt, t);
   const isCompleted = request.status !== 'pending';
@@ -634,14 +634,14 @@ function SentRequestCard({ request, onCancel, onDelete }: {
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs text-gray-400">{timeAgo}</span>
+        <span className="text-xs text-[color:var(--text-4)]">{timeAgo}</span>
         {request.status === 'pending' && (
-          <button className="text-xs text-red-500 hover:text-red-600 hover:underline"
+          <button className="text-xs text-[color:var(--status-error-fg)] hover:brightness-110 hover:underline"
             onClick={() => onCancel(request.id)}>{t('action.cancel')}</button>
         )}
         {isCompleted && (
           <button
-            className="p-0.5 rounded text-gray-300 hover:text-gray-500 hover:bg-[color:var(--bg-active)] opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-0.5 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)] opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onDelete(request.id)}
             title={t('send.removeFromHistory')}
           >
@@ -746,7 +746,7 @@ function SplitTransferButton({
               className={cn(
                 'flex flex-col w-full px-3 py-2 text-left transition-colors',
                 mode === opt.value
-                  ? 'bg-blue-50'
+                  ? 'bg-[color:var(--violet-50)]'
                   : 'hover:bg-[color:var(--bg-hover)]'
               )}
               onClick={() => { onModeChange(opt.value); setIsDropdownOpen(false); }}
@@ -754,11 +754,11 @@ function SplitTransferButton({
               <span className={cn(
                 'text-sm font-medium',
                 mode === opt.value
-                  ? 'text-blue-700'
+                  ? 'text-[color:var(--violet-700)]'
                   : 'text-[color:var(--text-2)]'
               )}>
                 {opt.label}
-                {mode === opt.value && <span className="ml-1.5 text-xs text-blue-500">✓</span>}
+                {mode === opt.value && <span className="ml-1.5 text-xs text-[color:var(--violet-500)]">✓</span>}
               </span>
               <span className="text-xs text-[color:var(--text-4)] mt-0.5">{opt.desc}</span>
             </button>
@@ -782,9 +782,15 @@ function getTimeAgo(dateStr: string, t: (key: string, opts?: Record<string, unkn
 // ─── Inline Warning Banner ───
 function InlineWarning({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
-      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-      <span className="text-xs text-amber-700">{message}</span>
+    <div
+      className="flex items-start gap-2 px-3 py-2 rounded-lg border"
+      style={{
+        background: 'oklch(from var(--orange-500) l c h / 0.12)',
+        borderColor: 'oklch(from var(--orange-500) l c h / 0.3)',
+      }}
+    >
+      <AlertTriangle className="w-4 h-4 text-[color:var(--orange-500)] shrink-0 mt-0.5" />
+      <span className="text-xs" style={{ color: 'oklch(from var(--orange-500) calc(l - 0.2) c h)' }}>{message}</span>
     </div>
   );
 }

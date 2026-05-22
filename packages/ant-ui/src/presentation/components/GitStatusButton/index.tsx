@@ -101,7 +101,7 @@ export function GitStatusButton() {
 
   return (
     <>
-      <div className="flex-1 min-w-0 flex gap-1.5 items-center">
+      <div className="w-full flex gap-1.5 items-center">
         <ActionButton
           isCommitting={isCommitting}
           isPushing={isPushing}
@@ -118,7 +118,7 @@ export function GitStatusButton() {
           onClick={() => handleDiscard(selectedFiles.length < totalChanges ? selectedFiles : undefined)}
           variant="outline"
           size="sm"
-          className="px-2 py-1.5 text-xs transition-colors"
+          className="flex items-center justify-center w-[26px] h-[26px] p-0 flex-shrink-0 transition-colors"
           style={{
             background: 'color-mix(in srgb, var(--red-500) 8%, transparent)',
             border: '1px solid color-mix(in srgb, var(--red-500) 28%, transparent)',
@@ -127,11 +127,11 @@ export function GitStatusButton() {
           disabled={totalChanges === 0 || isDiscarding}
           title={t('git.discardAll')}
         >
-          <Undo2 className="w-3.5 h-3.5" />
+          <Undo2 className="w-3 h-3" />
         </Button>
       </div>
       {totalChanges > 0 && (
-        <div className="w-full order-last">
+        <div className="w-full">
           <GitChangesPanel
             staged={snapshot.staged}
             unstaged={snapshot.unstaged}

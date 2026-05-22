@@ -96,7 +96,6 @@ export function ChangedBar({
           fontWeight: 600,
           cursor: isSaving ? 'not-allowed' : 'pointer',
           opacity: isSaving ? 0.5 : 1,
-          transition: 'background 0.15s ease',
         }}
       >
         되돌리기

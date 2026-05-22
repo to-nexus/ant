@@ -326,7 +326,7 @@ export function UploadConflictModal({
               }`,
               cursor: 'pointer',
               userSelect: 'none',
-              transition: 'all var(--dur-fast) var(--ease-smooth)',
+              transition: 'transform var(--dur-fast) var(--ease-smooth), opacity var(--dur-fast) var(--ease-smooth), box-shadow var(--dur-fast) var(--ease-smooth)',
             }}
           >
             <Toggle checked={applyToAll} onChange={setApplyToAll} size="sm" />
