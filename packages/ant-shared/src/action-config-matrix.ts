@@ -728,6 +728,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      ctxDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }),
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
     chatRequiresRefs: false,
@@ -739,6 +740,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      ctxDir(SPEC_DIR, L.specDocs, { excludeSelectedRefs: true, createIntent: 'gen-spec', humanLabel: HL.specDocs }),
     ],
     target: { kind: 'revise' },
     buildDisabled: true,
@@ -779,6 +781,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
       gameArtSourceCtx(),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+      ctxDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }),
     ],
     target: { kind: 'codebase' },
     buildDisabled: true,
