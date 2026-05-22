@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# pnpm workspace — npm lock 잔재 방지 (pnpm-lock.yaml 만 SSOT)
+package-lock.json
+
 # Environment variables
 .env
 .env.local
