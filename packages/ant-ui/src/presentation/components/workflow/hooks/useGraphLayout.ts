@@ -10,23 +10,23 @@ import dagre from 'dagre';
 import { WorkflowGraphMetadata, WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 
-// Edge 스타일 헬퍼
-const getEdgeStyle = (edgeType: string, isActive: boolean, theme: 'light' | 'dark') => {
-  const baseStroke = theme === 'dark' ? '#64748b' : '#475569'; // slate-500/700
-  const errorStroke = theme === 'dark' ? '#ef4444' : '#dc2626'; // red-500/600
-  const loopStroke = theme === 'dark' ? '#8b5cf6' : '#7c3aed'; // violet-500/600
-  const activeStroke = '#10b981'; // emerald-500
-  
+// Edge 스타일 헬퍼 — Aurora tokens auto-flip via [data-theme].
+const getEdgeStyle = (edgeType: string, isActive: boolean) => {
+  const baseStroke = 'var(--text-3)';
+  const errorStroke = 'var(--red-500)';
+  const loopStroke = 'var(--violet-500)';
+  const activeStroke = 'var(--emerald-500)';
+
   return {
     strokeWidth: isActive ? 3 : 2,
-    stroke: edgeType === 'error' ? errorStroke : 
+    stroke: edgeType === 'error' ? errorStroke :
             edgeType === 'loop' ? loopStroke :
             isActive ? activeStroke : baseStroke
   };
 };
 
-const getEdgeLabelStyle = (theme: 'light' | 'dark') => ({
-  fill: theme === 'dark' ? '#f1f5f9' : '#1e293b', // slate-100/800
+const getEdgeLabelStyle = () => ({
+  fill: 'var(--text-1)',
   fontWeight: 500,
   fontSize: 11
 });
@@ -102,8 +102,8 @@ export function useGraphLayout(
       const isActive = realtimeState?.activeNodes?.some(
         w => w.previousNodeId === edge.source && w.nodeId === edge.target
       ) ?? false;
-      const edgeStyle = getEdgeStyle(edge.type, isActive, theme);
-      
+      const edgeStyle = getEdgeStyle(edge.type, isActive);
+
       return {
         id: edge.id,
         source: edge.source,
@@ -112,11 +112,11 @@ export function useGraphLayout(
         label: edge.label,
         animated: isActive,
         style: edgeStyle,
-        labelStyle: getEdgeLabelStyle(theme),
-        labelBgStyle: { 
-          fill: theme === 'dark' ? '#1e293b' : '#ffffff', 
+        labelStyle: getEdgeLabelStyle(),
+        labelBgStyle: {
+          fill: 'var(--bg-surface)',
           fillOpacity: 0.95,
-          stroke: theme === 'dark' ? '#334155' : '#cbd5e1',
+          stroke: 'var(--border-1)',
           strokeWidth: 1
         },
         labelBgPadding: [6, 8] as [number, number],
@@ -137,9 +137,9 @@ export function useGraphLayout(
           isNodeActive(node.id) && 
           realtimeState?.activeActors?.includes(actorId);
         
-        const actorStroke = isActiveInteraction 
-          ? '#10b981' 
-          : theme === 'dark' ? '#64748b' : '#64748b';
+        const actorStroke = isActiveInteraction
+          ? 'var(--emerald-500)'
+          : 'var(--text-3)';
         
         actorEdges.push({
           id: `${node.id}-to-actor-${actorId}`,

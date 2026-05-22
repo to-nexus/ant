@@ -40,7 +40,8 @@
   },
   "task": {
     "paused": "Paused",
-    "failed": "Failed"
+    "failed": "Failed",
+    "new": "NEW"
   },
   "activeNode": {
     "node": "Node:",

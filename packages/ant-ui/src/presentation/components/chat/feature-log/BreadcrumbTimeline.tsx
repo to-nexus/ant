@@ -42,7 +42,7 @@ export function BreadcrumbTimeline() {
 
   if (status === 'loading' && ordered.length === 0) {
     return (
-      <div className="flex items-center justify-center p-6 text-sm text-gray-500 dark:text-gray-400">
+      <div className="flex items-center justify-center p-6 text-sm text-[color:var(--text-3)]">
         {t('breadcrumb.loading', { defaultValue: 'Loading timeline…' })}
       </div>
     );
@@ -50,9 +50,9 @@ export function BreadcrumbTimeline() {
 
   if (status === 'error') {
     return (
-      <div className="p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="p-4 text-sm text-red-600">
         {t('breadcrumb.loadError', { defaultValue: 'Failed to load timeline.' })}
-        {error ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{error}</div> : null}
+        {error ? <div className="mt-1 text-xs text-[color:var(--text-3)]">{error}</div> : null}
       </div>
     );
   }
@@ -61,7 +61,7 @@ export function BreadcrumbTimeline() {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center">
         <div className="text-3xl mb-3 opacity-60">🧭</div>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+        <p className="text-sm text-[color:var(--text-3)]">
           {t('breadcrumb.empty', {
             defaultValue: 'No breadcrumbs yet. Completed tasks will appear here as navigation anchors.',
           })}
@@ -125,10 +125,10 @@ function DateSeparator({ row }: { row: Extract<RenderRow, { kind: 'date' }> }) {
       role="separator"
       aria-label={label}
     >
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-3)]">
         {label}
       </span>
-      <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700/60" />
+      <span className="flex-1 h-px bg-[color:var(--bg-surface-3)]/60" />
     </div>
   );
 }
@@ -150,11 +150,11 @@ function TurnGroup({ row }: { row: Extract<RenderRow, { kind: 'turn' }> }) {
   }
 
   return (
-    <section className="relative pl-4 border-l-2 border-gray-200 dark:border-gray-700/70">
+    <section className="relative pl-4 border-l-2 border-[color:var(--border-1)]">
       <header className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
-          <time className="text-xs text-gray-500 dark:text-gray-400">{headerTime}</time>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+          <time className="text-xs text-[color:var(--text-3)]">{headerTime}</time>
+          <span className="text-[11px] text-[color:var(--text-3)]">
             {t('breadcrumb.group.tasks', {
               count: row.items.length,
               defaultValue: '{{count}} tasks',
@@ -181,8 +181,8 @@ function TurnGroup({ row }: { row: Extract<RenderRow, { kind: 'turn' }> }) {
 function ModeBadge({ mode }: { mode: 'generate' | 'refactor' }) {
   const palette =
     mode === 'refactor'
-      ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50'
-      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50';
+      ? 'bg-purple-50 text-purple-700 border-purple-200'
+      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
   return (
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${palette}`}
@@ -215,16 +215,16 @@ function BreadcrumbItem({
   const hasFiles = !!anchors.files && anchors.files.length > 0;
 
   return (
-    <article className={`relative ${inGroup ? '' : 'pl-4 border-l-2 border-gray-200 dark:border-gray-700/70'}`}>
+    <article className={`relative ${inGroup ? '' : 'pl-4 border-l-2 border-[color:var(--border-1)]'}`}>
       <span
-        className={`absolute top-1 -left-[5px] flex items-center justify-center w-2 h-2 rounded-full ring-2 ring-white dark:ring-gray-900 ${dot}`}
+        className={`absolute top-1 -left-[5px] flex items-center justify-center w-2 h-2 rounded-full ring-2 ring-white ${dot}`}
         aria-hidden="true"
       />
       <header className="flex items-baseline justify-between gap-2 mb-1">
-        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        <span className="text-[11px] font-medium text-[color:var(--text-3)] uppercase tracking-wide">
           {t(`breadcrumb.scope.${line.scope}`, { defaultValue: line.scope })}
         </span>
-        <time className="text-[11px] text-gray-400 dark:text-gray-500">{timeLabel}</time>
+        <time className="text-[11px] text-[color:var(--text-4)]">{timeLabel}</time>
       </header>
       <SummaryBlock summary={line.summary} />
 
@@ -252,7 +252,7 @@ function BreadcrumbItem({
       )}
 
       {(stats.created || stats.modified || stats.deleted || stats.touched) && (
-        <footer className="mt-2 flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+        <footer className="mt-2 flex flex-wrap gap-3 text-[11px] text-[color:var(--text-3)]">
           {stats.created ? <span>+{stats.created}</span> : null}
           {stats.modified ? <span>~{stats.modified}</span> : null}
           {stats.deleted ? <span>-{stats.deleted}</span> : null}
@@ -277,7 +277,7 @@ function SummaryBlock({ summary }: { summary: string }) {
   const mightClip = summary.length > 220 || summary.split('\n').length > 4;
 
   return (
-    <div className="text-sm text-gray-800 dark:text-gray-100">
+    <div className="text-sm text-[color:var(--text-1)]">
       <p
         className={`whitespace-pre-line break-words ${expanded || !mightClip ? '' : 'line-clamp-4'}`}
       >
@@ -287,7 +287,7 @@ function SummaryBlock({ summary }: { summary: string }) {
         <button
           type="button"
           onClick={() => setExpanded(v => !v)}
-          className="mt-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+          className="mt-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
         >
           {expanded
             ? t('breadcrumb.summary.collapse', { defaultValue: 'Collapse' })
@@ -318,7 +318,7 @@ function AnchorRow({
 }) {
   return (
     <div className="mt-2 flex items-start gap-2">
-      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">
+      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-3)]">
         {label}
       </span>
       <AnchorChipList items={items} kind={kind} collapsible={collapsible} />
@@ -357,7 +357,7 @@ function AnchorChipList({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-mono bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-mono bg-[color:var(--bg-canvas)]/60 text-[color:var(--text-3)] border-[color:var(--border-1)] hover:bg-[color:var(--bg-hover)]"
         >
           {t('breadcrumb.anchors.moreFiles', {
             count: hidden,
@@ -371,9 +371,9 @@ function AnchorChipList({
 
 function AnchorChip({ label, kind }: { label: string; kind: 'spec' | 'path' | 'file' }) {
   const palette: Record<typeof kind, string> = {
-    spec: 'bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50',
-    path: 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/50',
-    file: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50',
+    spec: 'bg-purple-50 text-purple-700 border-purple-200',
+    path: 'bg-blue-50 text-blue-700 border-blue-200',
+    file: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   };
   return (
     <span
@@ -392,12 +392,12 @@ function AnchorChip({ label, kind }: { label: string; kind: 'spec' | 'path' | 'f
 function scopeDot(scope: FeatureBreadcrumbLine['scope']): string {
   switch (scope) {
     case 'initial_creation':
-      return 'bg-emerald-500';
+      return 'bg-aurora-emerald-500';
     case 'refactor':
-      return 'bg-purple-500';
+      return 'bg-aurora-violet-500';
     case 'modification':
     default:
-      return 'bg-blue-500';
+      return 'bg-aurora-violet-400';
   }
 }
 

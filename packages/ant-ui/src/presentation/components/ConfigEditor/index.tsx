@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil } from 'lucide-react';
-import { ProjectConfig, fetchOrgConfig, fetchUserConfig, renameProject, deleteProject } from '@/infrastructure/http/api';
+import {
+  ProjectConfig,
+  fetchOrgConfig,
+  fetchUserConfig,
+  renameProject,
+  deleteProject,
+} from '@/infrastructure/http/api';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
@@ -12,16 +19,26 @@ import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/sto
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
-import { ConfigEditorHeader } from './components/ConfigEditorHeader';
 import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { LLMModelsSection } from './components/LLMModelsSection';
 import { DangerZoneSection } from '../common/DangerZoneSection';
+import {
+  TwoColLayout,
+  TocNav,
+  useActiveSection,
+  ChangedBar,
+  SectionCard,
+  FieldLabel,
+  AuroraInput,
+} from './aurora';
 
 interface ConfigEditorProps {
   config: ProjectConfig;
   onSave: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
   onClose: () => void;
 }
+
+const SECTION_IDS = ['c3p-identity', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
@@ -36,11 +53,14 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     hasChanges,
     serverMode,
   } = useConfigEditor(config, defaultModelId);
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
   const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
+
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const activeSection = useActiveSection([...SECTION_IDS], scrollerRef);
 
   // Git snapshot (determines if branchBase is editable)
   const snapshot = useGitSnapshot();
@@ -48,7 +68,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const patState = useGitPat();
   const { fetchGitPat } = useGitPatDispatch();
 
-  // Ensure the PAT slice is primed — owner inference uses `patState.username`.
   useEffect(() => {
     if (patState === null) void fetchGitPat();
   }, [patState, fetchGitPat]);
@@ -63,9 +82,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   // Load GitHub owner info (user override > org > personal) for quick-fill.
-  // Re-runs when `patState` updates so `personalOwner` is not stuck empty after
-  // async PAT prime. Read PAT from the store after org/user await so the value
-  // is not stale across a slow network.
   useEffect(() => {
     let cancelled = false;
     async function loadGithubOwners() {
@@ -83,10 +99,13 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
         const defaultOwner = effectiveOrgOwner || personalOwner;
         if (defaultOwner) {
-          setEditedConfig(prev => {
+          setEditedConfig((prev) => {
             if (prev.githubRepo) return prev;
             const repoName = prev.repositoryName || 'my-project';
-            return { ...prev, githubRepo: `https://github.com/${defaultOwner}/${repoName}` };
+            return {
+              ...prev,
+              githubRepo: `https://github.com/${defaultOwner}/${repoName}`,
+            };
           });
         }
       } catch (error) {
@@ -106,26 +125,34 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       setGithubRepoManuallyEdited(true);
     }
 
-    setEditedConfig(prev => {
+    setEditedConfig((prev) => {
       const newConfig = {
         ...prev,
-        [key]: value
+        [key]: value,
       };
 
-      if (key === 'repositoryName' && typeof value === 'string' && prev.githubRepo && !githubRepoManuallyEdited) {
+      if (
+        key === 'repositoryName' &&
+        typeof value === 'string' &&
+        prev.githubRepo &&
+        !githubRepoManuallyEdited
+      ) {
         const match = prev.githubRepo.match(/^(https:\/\/github\.com\/[^/]+\/)([^/]*)$/);
         if (match) {
-          const sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+          const sanitized = value
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
           newConfig.githubRepo = `${match[1]}${sanitized}`;
         }
       }
 
       return newConfig;
     });
-    
-    // Clear error for this field
+
     if (errors[key]) {
-      setErrors(prev => {
+      setErrors((prev) => {
         const newErrors = { ...prev };
         delete newErrors[key];
         return newErrors;
@@ -135,22 +162,20 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
-    CONFIG_SCHEMA.forEach(field => {
+
+    CONFIG_SCHEMA.forEach((field) => {
       if (field.required && !editedConfig[field.key]) {
         newErrors[field.key] = t('projectEditor.fieldRequired', { field: t(field.label) });
       }
     });
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = async () => {
-    if (!validate()) {
-      return;
-    }
-    
+    if (!validate()) return;
+
     setIsSaving(true);
     try {
       const result = await onSave(editedConfig);
@@ -167,15 +192,15 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   };
 
   const handleModelChange = (job: string, nodeType: string, modelId: string) => {
-    setEditedConfig(prev => ({
+    setEditedConfig((prev) => ({
       ...prev,
       llmModels: {
         ...prev.llmModels,
         [job]: {
           ...(prev.llmModels?.[job as keyof NonNullable<typeof prev.llmModels>] || {}),
-          [nodeType]: modelId || undefined
-        }
-      }
+          [nodeType]: modelId || undefined,
+        },
+      },
     }));
   };
 
@@ -189,7 +214,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       onConfirm: () => {
         setEditedConfig(config);
         setErrors({});
-      }
+      },
     });
   };
 
@@ -211,40 +236,39 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       return;
     }
 
-    showConfirm(t('projectEditor.renameConfirm', { oldName: selectedProject, newName: trimmed }), {
-      type: 'warning',
-      title: t('projectEditor.renameProject'),
-      confirmText: t('common:button.confirm'),
-      cancelText: t('common:button.cancel'),
-      onConfirm: async () => {
-        setIsRenaming(true);
-        try {
-          await renameProject(selectedProject!, trimmed);
+    showConfirm(
+      t('projectEditor.renameConfirm', { oldName: selectedProject, newName: trimmed }),
+      {
+        type: 'warning',
+        title: t('projectEditor.renameProject'),
+        confirmText: t('common:button.confirm'),
+        cancelText: t('common:button.cancel'),
+        onConfirm: async () => {
+          setIsRenaming(true);
+          try {
+            await renameProject(selectedProject!, trimmed);
 
-          // Migrate PROJECT_LAST_FEATURES mapping key
-          const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
-          if (projectFeatures[selectedProject!] !== undefined) {
-            projectFeatures[trimmed] = projectFeatures[selectedProject!];
-            delete projectFeatures[selectedProject!];
-            saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, projectFeatures);
+            const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
+            if (projectFeatures[selectedProject!] !== undefined) {
+              projectFeatures[trimmed] = projectFeatures[selectedProject!];
+              delete projectFeatures[selectedProject!];
+              saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, projectFeatures);
+            }
+
+            await fetchProjects();
+            setSelectedProject(trimmed);
+            setIsEditingName(false);
+            showSuccess(t('projectEditor.renameSuccess'));
+          } catch (error: any) {
+            showError(error.message || t('projectEditor.renameFailed'));
+          } finally {
+            setIsRenaming(false);
           }
-
-          await fetchProjects();
-          setSelectedProject(trimmed);
-          setIsEditingName(false);
-          showSuccess(t('projectEditor.renameSuccess'));
-        } catch (error: any) {
-          showError(error.message || t('projectEditor.renameFailed'));
-        } finally {
-          setIsRenaming(false);
-        }
-      }
-    });
+        },
+      },
+    );
   };
 
-  // SSE-driven progress + structured error are surfaced through the
-  // ProjectDeletionPanel below; do not call `showError` here for project
-  // deletion failures — the panel renders the stage/hint/leftovers.
   const startProjectDeletion = useStore((s) => s.startProjectDeletion);
   const markProjectDeletionComplete = useStore((s) => s.markProjectDeletionComplete);
   const markProjectDeletionFailed = useStore((s) => s.markProjectDeletionFailed);
@@ -260,7 +284,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       setSelectedProject('');
       useStore.getState().closeMainPanelTab('projectConfig');
     } catch (error) {
-      // Structured ProjectDeletionError → ApiError carries kind/stage/canForceCleanup/correlationId.
       if (error instanceof ApiError && error.kind === 'projectDeletion' && error.stage) {
         const shape: ProjectDeletionErrorShape = {
           kind: 'projectDeletion',
@@ -273,9 +296,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         };
         markProjectDeletionFailed(shape, error.correlationId ?? '');
       } else {
-        // Non-structured (network blip / 401 / etc.) — keep showing the
-        // generic alert popup so we don't lose the signal. Reset deletion
-        // session so the panel disappears.
         resetProjectDeletionSession();
         const message = error instanceof Error ? error.message : 'Failed to delete project';
         showError(message);
@@ -289,8 +309,15 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     if (!selectedProject) return;
     showConfirm(
       <>
-        <p className="text-sm">{t('dangerZone.deleteProjectConfirm', { name: selectedProject })}</p>
-        <p className="text-sm mt-2 text-gray-600 dark:text-gray-400 whitespace-pre-line">{t('dangerZone.deleteProjectConfirmMsg')}</p>
+        <p className="text-sm">
+          {t('dangerZone.deleteProjectConfirm', { name: selectedProject })}
+        </p>
+        <p
+          className="text-sm mt-2 whitespace-pre-line"
+          style={{ color: 'var(--text-3)' }}
+        >
+          {t('dangerZone.deleteProjectConfirmMsg')}
+        </p>
       </>,
       {
         type: 'warning',
@@ -299,7 +326,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         onConfirm: () => {
           void runDelete(selectedProject, false);
         },
-      }
+      },
     );
   };
 
@@ -311,135 +338,258 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     void runDelete(projectId, true);
   };
 
+  // Per-section dirty flags
+  const identityDirty =
+    !!selectedProject &&
+    isEditingName &&
+    newProjectName.trim() !== '' &&
+    newProjectName.trim() !== selectedProject;
+
+  const repositoryDirty = useMemo(() => {
+    const keys: Array<keyof ProjectConfig> = [
+      'repositoryName',
+      'repoType',
+      'localPath',
+      'githubRepo',
+      'branchBase',
+    ];
+    return keys.some((k) => editedConfig[k] !== config[k]);
+  }, [editedConfig, config]);
+
+  const llmDirty = useMemo(() => {
+    return JSON.stringify(editedConfig.llmModels ?? {}) !== JSON.stringify(config.llmModels ?? {});
+  }, [editedConfig, config]);
+
+  const changedCount = [identityDirty, repositoryDirty, llmDirty].filter(Boolean).length;
+
+  const tocElement = (
+    <TocNav
+      items={[
+        { id: 'c3p-identity', label: '아이덴티티', icon: 'Cube', dirty: identityDirty },
+        { id: 'c3p-repository', label: '저장소', icon: 'GitBranch', dirty: repositoryDirty },
+        { id: 'c3p-llm', label: 'LLM 모델', icon: 'Brain', dirty: llmDirty },
+        { id: 'c3p-danger', label: '위험 영역', icon: 'AlertTriangle' },
+      ]}
+      active={activeSection}
+      onSelect={(id) => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }}
+    />
+  );
+
   return (
-    <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
-      <ConfigEditorHeader
-        hasChanges={hasChanges}
-        isSaving={isSaving}
-        onSave={handleSave}
-        onDiscardChanges={handleDiscardChanges}
-      />
-      
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-6">
-          {/* Project Name (rename) Section */}
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-canvas)',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
+      <div ref={scrollerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <TwoColLayout toc={tocElement}>
+          <ChangedBar
+            hasChanges={hasChanges}
+            isSaving={isSaving}
+            count={changedCount}
+            onSave={handleSave}
+            onDiscard={handleDiscardChanges}
+          />
+
+          {/* Identity */}
           {selectedProject && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {t('projectEditor.projectName')}
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t('projectEditor.projectNameDesc')}
-              </p>
+            <SectionCard
+              id="c3p-identity"
+              icon="Cube"
+              title="아이덴티티"
+              accent="cool"
+              description={t('projectEditor.projectNameDesc')}
+            >
+              <FieldLabel>{t('projectEditor.projectName')}</FieldLabel>
               {isEditingName ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRename();
-                      if (e.key === 'Escape') {
-                        setIsEditingName(false);
-                        setNewProjectName(selectedProject || '');
-                      }
-                    }}
-                    autoFocus
-                    disabled={isRenaming}
-                    className="flex-1 px-3 py-2 border rounded-md text-sm 
-                      bg-white dark:bg-gray-800 
-                      text-gray-900 dark:text-white
-                      border-gray-300 dark:border-gray-600
-                      focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                      disabled:opacity-50"
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <AuroraInput
+                      value={newProjectName}
+                      onChange={setNewProjectName}
+                      disabled={isRenaming}
+                      mono
+                      autoComplete="off"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleRename();
+                        if (e.key === 'Escape') {
+                          setIsEditingName(false);
+                          setNewProjectName(selectedProject || '');
+                        }
+                      }}
+                    />
+                  </div>
                   <button
-                    onClick={handleRename}
-                    disabled={isRenaming || !newProjectName.trim() || newProjectName.trim() === selectedProject}
-                    className="px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    type="button"
+                    onClick={() => void handleRename()}
+                    disabled={
+                      isRenaming ||
+                      !newProjectName.trim() ||
+                      newProjectName.trim() === selectedProject
+                    }
+                    style={{
+                      height: 32,
+                      padding: '0 12px',
+                      background: 'var(--gradient-aurora)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--r-md)',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor:
+                        isRenaming ||
+                        !newProjectName.trim() ||
+                        newProjectName.trim() === selectedProject
+                          ? 'not-allowed'
+                          : 'pointer',
+                      opacity:
+                        isRenaming ||
+                        !newProjectName.trim() ||
+                        newProjectName.trim() === selectedProject
+                          ? 0.5
+                          : 1,
+                    }}
                   >
-                    {isRenaming ? '...' : t('common:button.save')}
+                    {isRenaming ? '…' : t('common:button.save')}
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setIsEditingName(false);
                       setNewProjectName(selectedProject || '');
                     }}
                     disabled={isRenaming}
-                    className="px-3 py-2 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                    style={{
+                      height: 32,
+                      padding: '0 12px',
+                      background: 'transparent',
+                      border: '1px solid var(--border-2)',
+                      borderRadius: 'var(--r-md)',
+                      color: 'var(--text-2)',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: isRenaming ? 'not-allowed' : 'pointer',
+                      opacity: isRenaming ? 0.5 : 1,
+                    }}
                   >
                     {t('common:button.cancel')}
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2 border rounded-md text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: '8px 12px',
+                      borderRadius: 'var(--r-md)',
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-1)',
+                      color: 'var(--text-1)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 13,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {selectedProject}
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setNewProjectName(selectedProject || '');
                       setIsEditingName(true);
                     }}
-                    className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
                     title={t('projectEditor.renameProject')}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'transparent',
+                      border: '1px solid var(--border-2)',
+                      borderRadius: 'var(--r-md)',
+                      color: 'var(--text-3)',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s ease, color 0.15s ease',
+                    }}
                   >
-                    <Pencil className="w-4 h-4" />
+                    <Pencil size={14} strokeWidth={2} />
                   </button>
                 </div>
               )}
-            </div>
+            </SectionCard>
           )}
 
-          {CONFIG_SCHEMA.map(field => (
-            <ConfigField
-              key={field.key}
-              field={field}
-              value={editedConfig[field.key]}
-              hasError={!!errors[field.key]}
-              errorMessage={errors[field.key]}
-              isRepoTypeDisabled={isRepoTypeDisabled(field.key)}
-              showLocalPath={false}
-              onChange={handleChange}
-              githubOwnerInfo={githubOwnerInfo}
-              projectName={editedConfig.repositoryName}
-              gitSnapshot={snapshot}
-            />
-          ))}
+          {/* Repository */}
+          <SectionCard
+            id="c3p-repository"
+            icon="GitBranch"
+            title={t('schema.repositoryName')}
+            accent="violet-pink"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {CONFIG_SCHEMA.map((field) => (
+                <ConfigField
+                  key={field.key}
+                  field={field}
+                  value={editedConfig[field.key]}
+                  hasError={!!errors[field.key]}
+                  errorMessage={errors[field.key]}
+                  isRepoTypeDisabled={isRepoTypeDisabled(field.key)}
+                  showLocalPath={false}
+                  onChange={handleChange}
+                  githubOwnerInfo={githubOwnerInfo}
+                  projectName={editedConfig.repositoryName}
+                  gitSnapshot={snapshot}
+                />
+              ))}
 
-          {/* Base Branch: editable before git init, read-only after */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {t('schema.baseBranch')}
-            </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {isGitInitialized
-                ? t('schema.baseBranchDesc')
-                : t('schema.baseBranchEditable')}
-            </p>
-            {isGitInitialized ? (
-              <div className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 cursor-default">
-                {editedConfig.branchBase || 'main'}
+              {/* Base branch */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <FieldLabel>{t('schema.baseBranch')}</FieldLabel>
+                <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--text-4)' }}>
+                  {isGitInitialized
+                    ? t('schema.baseBranchDesc')
+                    : t('schema.baseBranchEditable')}
+                </p>
+                {isGitInitialized ? (
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: 'var(--r-md)',
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-1)',
+                      color: 'var(--text-2)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 13,
+                    }}
+                  >
+                    {editedConfig.branchBase || 'main'}
+                  </div>
+                ) : (
+                  <AuroraInput
+                    value={editedConfig.branchBase || ''}
+                    onChange={(v) => handleChange('branchBase', v)}
+                    placeholder="main"
+                    mono
+                  />
+                )}
               </div>
-            ) : (
-              <input
-                type="text"
-                value={editedConfig.branchBase || ''}
-                onChange={(e) => handleChange('branchBase', e.target.value)}
-                placeholder="main"
-                className="w-full px-3 py-2 border rounded-md text-sm
-                  bg-white dark:bg-gray-800
-                  text-gray-900 dark:text-white
-                  border-gray-300 dark:border-gray-600
-                  focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                  placeholder:text-gray-400 dark:placeholder:text-gray-500"
-              />
-            )}
-          </div>
-          
-          {/* LLM Models Section */}
+            </div>
+          </SectionCard>
+
+          {/* LLM Models — renders its own SectionCard with id="c3p-llm" */}
           <LLMModelsSection
             editedConfig={editedConfig}
             availableModels={availableModels}
@@ -447,9 +597,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             onModelChange={handleModelChange}
           />
 
-          {/* Danger Zone — Delete Project */}
+          {/* Danger Zone */}
           {selectedProject && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <div id="c3p-danger">
               <DangerZoneSection
                 title={t('dangerZone.deleteProject')}
                 description={t('dangerZone.deleteProjectDesc')}
@@ -460,12 +610,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               />
             </div>
           )}
-        </div>
+        </TwoColLayout>
       </div>
 
-      {/* Real-time deletion progress + structured error popup. Mounted at
-          component scope so it overlays the whole editor; disappears when
-          the slice returns to `idle`. */}
       <ProjectDeletionPanel onForceDelete={handleForceDelete} />
     </div>
   );

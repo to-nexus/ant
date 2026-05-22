@@ -68,7 +68,7 @@ export function ProjectDeletionPanel({ onForceDelete }: ProjectDeletionPanelProp
     >
       {session.kind === 'deleting' && (
         <div>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-sm text-[color:var(--text-3)] mb-4">
             {t('projectDeletion.body', { projectId: session.projectId })}
           </p>
           <ProjectDeletionStepRail
@@ -81,10 +81,13 @@ export function ProjectDeletionPanel({ onForceDelete }: ProjectDeletionPanelProp
 
       {session.kind === 'completed' && (
         <div className="flex items-center gap-3 py-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-semibold">
+          <span
+            className="flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold"
+            style={{ background: 'var(--status-done-bg)', color: 'var(--status-done-fg)' }}
+          >
             ✓
           </span>
-          <span className="text-sm text-gray-700 dark:text-gray-300">
+          <span className="text-sm text-[color:var(--text-2)]">
             {t('projectDeletion.completed.body', { projectId: session.projectId })}
           </span>
         </div>
@@ -124,15 +127,15 @@ function FailedView({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3">
-        <p className="text-sm font-medium text-rose-700 dark:text-rose-300">
+      <div className="rounded-md border border-rose-200 bg-rose-50 p-3">
+        <p className="text-sm font-medium text-rose-700">
           {t('projectDeletion.failed.stage', { current: stageNumber, total: 5, label: stageLabel })}
         </p>
-        <p className="text-sm text-rose-600 dark:text-rose-400 mt-1 whitespace-pre-wrap break-words">
+        <p className="text-sm text-rose-600 mt-1 whitespace-pre-wrap break-words">
           {session.message}
         </p>
         {session.hint && (
-          <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-2">{session.hint}</p>
+          <p className="text-xs text-rose-600/80 mt-2">{session.hint}</p>
         )}
       </div>
 
@@ -140,12 +143,12 @@ function FailedView({
         <details
           open={leftoversOpen}
           onToggle={(e) => setLeftoversOpen((e.target as HTMLDetailsElement).open)}
-          className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2"
+          className="rounded-md border border-[color:var(--border-1)] bg-[color:var(--bg-canvas)]/40 px-3 py-2"
         >
-          <summary className="cursor-pointer text-xs text-gray-600 dark:text-gray-400">
+          <summary className="cursor-pointer text-xs text-[color:var(--text-3)]">
             {t('projectDeletion.failed.leftoversShow', { count: session.leftovers.length })}
           </summary>
-          <ul className="mt-2 text-xs font-mono text-gray-700 dark:text-gray-300 space-y-1 max-h-40 overflow-auto">
+          <ul className="mt-2 text-xs font-mono text-[color:var(--text-2)] space-y-1 max-h-40 overflow-auto">
             {session.leftovers.map((p) => (
               <li key={p} className="truncate">{p}</li>
             ))}
@@ -154,7 +157,7 @@ function FailedView({
       )}
 
       {session.correlationId && (
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+        <p className="text-[11px] text-[color:var(--text-4)] tabular-nums">
           {t('projectDeletion.failed.correlationId', { cid: session.correlationId })}
         </p>
       )}
@@ -163,7 +166,7 @@ function FailedView({
         <button
           type="button"
           onClick={onClose}
-          className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="px-3 py-1.5 text-sm rounded-md border border-[color:var(--border-2)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors"
         >
           {t('projectDeletion.failed.dismiss')}
         </button>

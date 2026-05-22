@@ -18,7 +18,10 @@ import { cn } from '@/shared/utils/design-system';
 import type { WizardStep, ExecStepId, ExecStepStatus, ExecStepState } from './types';
 import { designDirOf } from '@ant/shared';
 import { isCanonicalDesignDoc, isValidName, sanitizeRepoName, delay, generateProjectName, generateFeatureName } from './constants';
-import { WizardStepIndicator } from './WizardStepIndicator';
+import {
+  WizardStepIndicator,
+  type WizardStep as AuroraWizardStep,
+} from '@/presentation/components/aurora';
 import { StepProjectSetup } from './StepProjectSetup';
 import { StepGitIntegration } from './StepGitIntegration';
 import { StepFilesAndStart } from './StepFilesAndStart';
@@ -531,6 +534,15 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   // ── Render ──
 
+  // Project the wizard's 1/2/3 numeric steps into the shared aurora
+  // WizardStepIndicator's WizardStep[] contract. `hasValue` encodes the
+  // emerald-checkmark / violet-current state expected by the primitive.
+  const auroraSteps: AuroraWizardStep[] = ([1, 2, 3] as const).map((step) => ({
+    id: String(step),
+    label: t(`quickstart.projectWizard.step${step}Title`),
+    hasValue: step < currentStep || (step === currentStep && canGoNext[step]),
+  }));
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} onBackdropClick={handleBackdropClick} title={`${t('quickstart.projectWizard.title')} — ${mode === 'design' ? t('quickstart.projectWizard.modeDesign') : t('quickstart.projectWizard.modeCode')}`} size="xl">
       {isExecuting ? (
@@ -613,56 +625,40 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div
+            className="flex items-center justify-between pt-4"
+            style={{
+              borderTop: '1px solid var(--border-1)',
+              background: 'oklch(from var(--bg-surface-2) l c h / 0.6)',
+            }}
+          >
             <WizardStepIndicator
-              currentStep={currentStep}
-              maxVisited={maxVisited}
-              onStepClick={goToStep}
-              t={t}
+              steps={auroraSteps}
+              currentIndex={currentStep - 1}
+              onStepClick={(idx) => {
+                const target = (idx + 1) as WizardStep;
+                if (target <= maxVisited) goToStep(target);
+              }}
+              size="sm"
             />
             <div className="flex items-center gap-2">
               {currentStep < 3 ? (
-                <button
-                  onClick={handleNext}
+                <NextButton
                   disabled={!canGoNext[currentStep]}
-                  className={cn(
-                    'px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all',
-                    'disabled:opacity-40 disabled:cursor-not-allowed',
-                    canGoNext[currentStep]
-                      ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100'
-                      : '',
-                  )}
-                >
-                  {t('quickstart.projectWizard.nextStep')}
-                </button>
+                  onClick={handleNext}
+                  label={t('quickstart.projectWizard.nextStep')}
+                />
               ) : (
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <button
+                  <CreateOnlyButton
                     onClick={() => handleSubmit(false)}
-                    className={cn(
-                      'px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap',
-                      'border border-gray-300 dark:border-gray-600',
-                      'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800',
-                      'hover:bg-gray-50 dark:hover:bg-gray-700',
-                    )}
-                  >
-                    {t('quickstart.projectWizard.createOnly')}
-                  </button>
-                  <button
-                    onClick={() => handleSubmit(true)}
+                    label={t('quickstart.projectWizard.createOnly')}
+                  />
+                  <SubmitButton
                     disabled={!canSubmit}
-                    className={cn(
-                      'inline-flex items-center gap-2 px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white rounded-lg shadow-md whitespace-nowrap',
-                      'disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none',
-                      canSubmit && 'transform hover:scale-[1.02] active:scale-[0.98]',
-                      'transition-all duration-200',
-                      mode === 'design'
-                        ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-indigo-500/20'
-                        : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/20',
-                    )}
-                  >
-                    {t('quickstart.projectWizard.submit')}
-                  </button>
+                    onClick={() => handleSubmit(true)}
+                    label={t('quickstart.projectWizard.submit')}
+                  />
                 </div>
               )}
             </div>
@@ -670,5 +666,119 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         </div>
       )}
     </Modal>
+  );
+}
+
+// ─── Footer button primitives (Aurora-skinned) ─────────────────────────
+
+function NextButton({ disabled, onClick, label }: { disabled: boolean; onClick: () => void; label: string }) {
+  const [hover, setHover] = useState(false);
+  const [press, setPress] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPress(false); }}
+      onMouseDown={() => setPress(true)}
+      onMouseUp={() => setPress(false)}
+      className={cn(
+        'px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all',
+        'disabled:opacity-50 disabled:cursor-not-allowed',
+      )}
+      style={{
+        background: disabled
+          ? 'var(--bg-surface-2)'
+          : 'var(--gradient-aurora)',
+        backgroundSize: '180% 180%',
+        backgroundPosition: hover && !disabled ? '100% 50%' : '0% 50%',
+        color: disabled ? 'var(--text-3)' : 'white',
+        border: 'none',
+        borderRadius: 'var(--r-lg, 10px)',
+        boxShadow: disabled
+          ? 'none'
+          : '0 4px 14px -4px oklch(60% 0.20 290 / 0.3)',
+        transform: disabled
+          ? 'none'
+          : press
+            ? 'scale(0.97)'
+            : hover
+              ? 'translateY(-1px)'
+              : 'none',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CreateOnlyButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all"
+      style={{
+        background: hover ? 'var(--bg-hover)' : 'var(--bg-surface)',
+        border: '1.5px solid var(--border-2)',
+        color: 'var(--text-2)',
+        borderRadius: 'var(--r-lg, 10px)',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SubmitButton({ disabled, onClick, label }: { disabled: boolean; onClick: () => void; label: string }) {
+  const [hover, setHover] = useState(false);
+  const [press, setPress] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPress(false); }}
+      onMouseDown={() => setPress(true)}
+      onMouseUp={() => setPress(false)}
+      className="relative inline-flex items-center gap-2 px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap overflow-hidden transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      style={{
+        background: disabled
+          ? 'var(--bg-surface-2)'
+          : 'var(--gradient-aurora)',
+        backgroundSize: '180% 180%',
+        backgroundPosition: hover && !disabled ? '100% 50%' : '0% 50%',
+        color: disabled ? 'var(--text-3)' : 'white',
+        border: 'none',
+        borderRadius: 'var(--r-lg, 10px)',
+        boxShadow: disabled ? 'none' : 'var(--shadow-glow-aurora)',
+        transform: disabled
+          ? 'none'
+          : press
+            ? 'scale(0.97)'
+            : hover
+              ? 'translateY(-1px) scale(1.02)'
+              : 'none',
+      }}
+    >
+      {/* Sparkle shine sweep on hover */}
+      {!disabled && (
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(120deg, transparent 30%, oklch(100% 0 0 / 0.25) 50%, transparent 70%)',
+            transform: hover ? 'translateX(120%)' : 'translateX(-120%)',
+            transition: 'transform 0.7s var(--ease-smooth)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      <span className="relative">{label}</span>
+    </button>
   );
 }

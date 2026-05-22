@@ -24,7 +24,7 @@ export function createMarkdownComponents(
   return {
     pre: ({ node, className, children, ...props }) => (
       <pre
-        className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
+        className="my-2 px-4 py-3 rounded-lg bg-[color:var(--bg-canvas)] text-sm font-mono whitespace-pre-wrap break-words"
         style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
         {...props}
       >
@@ -51,7 +51,7 @@ export function createMarkdownComponents(
 
       return (
         <code
-          className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-words"
+          className="px-1.5 py-0.5 rounded bg-[color:var(--bg-surface-2)] text-sm font-mono break-words"
           {...props}
         >
           {children}
@@ -60,7 +60,7 @@ export function createMarkdownComponents(
     },
     a: ({ node, children, ...props }) => (
       <a
-        className="text-blue-600 dark:text-blue-400 hover:underline break-words"
+        className="text-blue-600 hover:underline break-words"
         target="_blank"
         rel="noopener noreferrer"
         {...props}
@@ -70,14 +70,14 @@ export function createMarkdownComponents(
     ),
     table: ({ node, children, ...props }) => (
       <div className="overflow-x-auto my-4">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props}>
+        <table className="min-w-full divide-y divide-gray-200" {...props}>
           {children}
         </table>
       </div>
     ),
     th: ({ node, children, ...props }) => (
       <th
-        className="px-4 py-2 bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold break-words"
+        className="px-4 py-2 bg-[color:var(--bg-canvas)] text-left text-xs font-semibold break-words"
         {...props}
       >
         {children}
@@ -85,7 +85,7 @@ export function createMarkdownComponents(
     ),
     td: ({ node, children, ...props }) => (
       <td
-        className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-sm break-words"
+        className="px-4 py-2 border-t border-[color:var(--border-1)] text-sm break-words"
         {...props}
       >
         {children}

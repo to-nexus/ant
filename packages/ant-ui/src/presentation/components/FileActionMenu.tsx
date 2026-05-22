@@ -18,7 +18,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2, CheckCircle, Pencil } from 'lucide-react';
-import { Button } from './common/button';
+import { Button } from '@/presentation/components/aurora';
 import { cn } from '@/shared/utils/design-system';
 
 interface FileActionMenuProps {
@@ -240,7 +240,7 @@ export function FileActionMenu({
         ref={triggerRef}
         size="sm"
         variant="ghost"
-        className="h-6 w-6 p-0 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+        className="h-6 w-6 p-0 text-[color:var(--text-3)] hover:text-gray-700 hover:bg-[color:var(--bg-active)]"
         onClick={handleToggle}
       >
         <MoreHorizontal className="w-4 h-4" />
@@ -249,7 +249,7 @@ export function FileActionMenu({
       {isOpen && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[9999] min-w-[172px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+          className="fixed z-[9999] min-w-[172px] rounded-md border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           {menuItems.map((item, index) => {
@@ -257,7 +257,7 @@ export function FileActionMenu({
               return (
                 <div
                   key={`sep-${index}`}
-                  className="my-1 border-t border-gray-200 dark:border-gray-700"
+                  className="my-1 border-t border-[color:var(--border-1)]"
                 />
               );
             }
@@ -271,8 +271,8 @@ export function FileActionMenu({
                 className={cn(
                   'flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors',
                   isDanger
-                    ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'text-red-600 hover:bg-red-50'
+                    : 'text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)]'
                 )}
                 onClick={(e) => {
                   e.stopPropagation();

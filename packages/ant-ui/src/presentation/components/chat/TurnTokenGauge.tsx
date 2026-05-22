@@ -121,15 +121,16 @@ function MoreRingsDropdown({ phases }: MoreRingsDropdownProps) {
     <Tooltip
       content={<MoreDropdownList phases={phases} />}
       placement="top"
-      className="!p-1.5 !rounded-md !shadow-xl !border !bg-white dark:!bg-slate-900"
+      className="!p-1.5 !rounded-md !bg-[color:var(--bg-surface)] !border-[color:var(--border-1)] !shadow-[var(--shadow-lg)]"
     >
       <button
         type="button"
         className="flex items-center justify-center w-[22px] h-[14px] rounded
-                   border border-gray-300 dark:border-gray-600
-                   text-gray-500 dark:text-gray-300
-                   hover:bg-gray-100 dark:hover:bg-gray-700
+                   border border-[color:var(--border-1)]
+                   text-[color:var(--text-3)]
+                   hover:bg-[color:var(--bg-hover)]
                    transition-colors"
+        style={{ background: 'oklch(from var(--bg-surface) l c h / 0.7)' }}
         aria-label={t('turnTokenGauge.moreAria', { count: phases.length })}
         title={t('turnTokenGauge.moreTitle', { count: phases.length })}
       >
@@ -149,11 +150,12 @@ function MoreDropdownList({ phases }: { phases: PhaseTokenUsage[] }) {
           <li
             key={ringKey(phase, idx)}
             className="flex items-center justify-between gap-2 px-2 py-1 rounded
-                       hover:bg-gray-100 dark:hover:bg-slate-800
-                       text-xs text-gray-700 dark:text-gray-200"
+                       hover:bg-[color:var(--bg-hover)]
+                       text-xs"
+            style={{ color: 'var(--text-2)' }}
           >
             <span className="truncate min-w-0 flex-1">{summary.title}</span>
-            <span className="tabular-nums text-[11px] text-gray-500 dark:text-gray-400 mr-1">
+            <span className="tabular-nums text-[11px] mr-1" style={{ color: 'var(--text-3)' }}>
               {summary.percent}
             </span>
             {/* Nested tooltip: clicking the ring opens its own popover on top. */}
@@ -211,8 +213,11 @@ function computeVisibleCount(
   // If we haven't measured yet, render up to 3 to avoid layout thrash.
   if (slotWidth <= 0) return { inlineCount: Math.min(3, total), showMore: total > 3 };
 
-  const fitsAll = total * ringW + (total - 1) * gap;
-  if (fitsAll <= slotWidth) return { inlineCount: total, showMore: false };
+  // Hard cap: spec reduces inline cap to 3 max.
+  const cap = Math.min(3, total);
+
+  const fitsAll = cap * ringW + (cap - 1) * gap;
+  if (cap === total && fitsAll <= slotWidth) return { inlineCount: total, showMore: false };
 
   // Need the more button; reserve moreW + gap for it.
   const usable = slotWidth - moreW - gap;
@@ -220,13 +225,16 @@ function computeVisibleCount(
   // Each inline ring costs ringW + gap.
   let inlineCount = Math.max(0, Math.floor((usable + gap) / (ringW + gap)));
   inlineCount = Math.min(inlineCount, total - 1);
+  // Apply the hard 3-cap after measurement as well.
+  inlineCount = Math.min(inlineCount, 3);
 
   // Common-sense skip: if only ONE ring would be hidden, show it instead of
   // the more-button. Swapping moreW(22) for ringW(14) actually REDUCES total
   // width by 8px (moreW - ringW = 8; gap unchanged), so this always fits.
-  if (total - inlineCount === 1) {
+  // BUT respect the 3-cap: never inline more than 3 even to skip the button.
+  if (total - inlineCount === 1 && total <= 3) {
     return { inlineCount: total, showMore: false };
   }
 
-  return { inlineCount, showMore: true };
+  return { inlineCount, showMore: inlineCount < total };
 }

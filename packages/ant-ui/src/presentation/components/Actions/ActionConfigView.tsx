@@ -307,7 +307,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
               <Section
                 title={t('section.basis')}
                 icon={Layers}
-                iconColor="text-violet-500 dark:text-violet-400"
+                iconColor="text-[var(--violet-500)]"
               >
                 <BasisSummaryBar
                   basisSlot={slots.basis}
@@ -336,7 +336,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             <Section
               title={t('section.refs')}
               icon={FileText}
-              iconColor="text-emerald-500 dark:text-emerald-400"
+              iconColor="text-[var(--emerald-500)]"
               hint={refsHint}
             >
               {hasRefSlots ? (
@@ -354,7 +354,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   lang={lang}
                 />
               ) : slots.refs[0]?.emptyHint ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+                <p className="text-xs italic px-1" style={{ color: 'var(--text-3)' }}>
                   {slots.refs[0].emptyHint[lang] || slots.refs[0].emptyHint.en}
                 </p>
               ) : null}
@@ -364,7 +364,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             <Section
               title={t('section.context')}
               icon={BookOpen}
-              iconColor="text-gray-500 dark:text-gray-400"
+              iconColor="text-[var(--text-3)]"
               hint={hasCtxSlots ? { label: t('section.optional'), tooltip: t('section.optionalHint'), colorScheme: 'gray' as const } : undefined}
             >
               {hasCtxSlots ? (
@@ -382,7 +382,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   lang={lang}
                 />
               ) : (
-                <p className="text-xs text-gray-400 dark:text-gray-500 italic px-1">
+                <p className="text-xs italic px-1" style={{ color: 'var(--text-3)' }}>
                   {t('section.none')}
                 </p>
               )}
@@ -392,7 +392,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             <Section
               title={t('section.target')}
               icon={Crosshair}
-              iconColor="text-orange-500 dark:text-orange-400"
+              iconColor="text-[var(--orange-500)]"
               hint={targetHint}
             >
               <TargetDisplay

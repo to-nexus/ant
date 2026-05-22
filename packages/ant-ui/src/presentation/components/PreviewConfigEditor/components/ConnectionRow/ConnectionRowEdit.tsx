@@ -5,11 +5,56 @@ import type {
   ConnectionResolution,
   Feature,
 } from '@/infrastructure/http/api';
+import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora';
 import type { DraftState } from './useConnectionRowDraft';
 import { ResolutionChips } from './ResolutionChips';
 import { useConnectionRowDraft } from './useConnectionRowDraft';
 import { useProjectFeatureLookup } from './useProjectFeatureLookup';
 import { VirtualizationToggle } from './VirtualizationToggle';
+
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: 4,
+  fontSize: 10,
+  fontWeight: 700,
+  color: 'var(--text-4)',
+  letterSpacing: 1.2,
+  textTransform: 'uppercase',
+};
+
+const iconBtnStyle = (tone: 'confirm' | 'cancel' | 'delete'): React.CSSProperties => {
+  const color =
+    tone === 'confirm'
+      ? 'oklch(45% 0.16 155)'
+      : tone === 'delete'
+        ? 'var(--status-error-fg)'
+        : 'var(--text-3)';
+  return {
+    width: 22,
+    height: 22,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-2)',
+    borderRadius: 'var(--r-sm)',
+    color,
+    cursor: 'pointer',
+    padding: 0,
+  };
+};
+
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  padding: '2px 9px',
+  fontSize: 10,
+  fontWeight: 700,
+  borderRadius: 'var(--r-pill)',
+  border: active ? '1px solid var(--violet-200)' : '1px solid var(--border-2)',
+  background: active ? 'oklch(94% 0.06 290)' : 'var(--bg-surface-2)',
+  color: active ? 'var(--violet-700)' : 'var(--text-3)',
+  cursor: 'pointer',
+  transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+});
 
 /**
  * Edit-mode form for a connection row. All draft state is local until the
@@ -61,29 +106,60 @@ export function ConnectionRowEdit({
   };
 
   return (
-    <div className="px-2.5 py-2.5 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-blue-200 dark:border-blue-800 space-y-2.5">
+    <div
+      style={{
+        padding: 12,
+        background: 'var(--bg-surface)',
+        border: '1.5px solid var(--violet-300)',
+        borderRadius: 'var(--r-lg)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
       {/* A. Name + Actions */}
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={draft.name}
-          onChange={(e) => setDraft(d => ({ ...d, name: e.target.value }))}
-          className="flex-1 px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600
-                   bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
-          placeholder="Connection name"
-        />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <AuroraInput
+            value={draft.name}
+            onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
+            placeholder="Connection name"
+          />
+        </div>
         {onToggleVirtualization && (
           <VirtualizationToggle conn={conn} onToggle={onToggleVirtualization} />
         )}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={handleConfirm} className="p-0.5 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors" title="Confirm">
-            <Check className="w-3.5 h-3.5" />
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleConfirm}
+            style={iconBtnStyle('confirm')}
+            title="Confirm"
+          >
+            <Check size={11} strokeWidth={2.4} />
           </button>
-          <button onClick={onCancel} className="p-0.5 text-gray-400 hover:text-gray-600 transition-colors" title="Cancel">
-            <X className="w-3.5 h-3.5" />
+          <button
+            type="button"
+            onClick={onCancel}
+            style={iconBtnStyle('cancel')}
+            title="Cancel"
+          >
+            <X size={11} strokeWidth={2.4} />
           </button>
-          <button onClick={onDelete} className="p-0.5 text-red-400 hover:text-red-600 transition-colors" title="Delete">
-            <Trash2 className="w-3.5 h-3.5" />
+          <button
+            type="button"
+            onClick={onDelete}
+            style={iconBtnStyle('delete')}
+            title="Delete"
+          >
+            <Trash2 size={11} strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -92,17 +168,15 @@ export function ConnectionRowEdit({
       <ResolutionChips conn={conn} draft={draft} setDraft={setDraft} />
 
       {/* C. Resolution Detail */}
-      <div className="space-y-1.5">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {draft.resolution.type === 'url' && (
           <div>
-            <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">URL</label>
-            <input
-              type="text"
+            <label style={fieldLabelStyle}>URL</label>
+            <AuroraInput
               value={draft.urlInput}
-              onChange={(e) => setDraft(d => ({ ...d, urlInput: e.target.value }))}
+              onChange={(v) => setDraft((d) => ({ ...d, urlInput: v }))}
               placeholder="http://localhost:3000/api"
-              className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
-                       bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              mono
             />
           </div>
         )}
@@ -110,31 +184,34 @@ export function ConnectionRowEdit({
         {draft.resolution.type === 'docker' && (
           <>
             <div>
-              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Service</label>
-              <input
-                type="text"
+              <label style={fieldLabelStyle}>Service</label>
+              <AuroraInput
                 value={draft.resolution.service || ''}
-                onChange={(e) => setDraft(d => {
-                  if (d.resolution.type !== 'docker') return d;
-                  return {
-                    ...d,
-                    resolution: { type: 'docker', service: e.target.value, port: d.resolution.port },
-                  };
-                })}
+                onChange={(v) =>
+                  setDraft((d) => {
+                    if (d.resolution.type !== 'docker') return d;
+                    return {
+                      ...d,
+                      resolution: {
+                        type: 'docker',
+                        service: v,
+                        port: d.resolution.port,
+                      },
+                    };
+                  })
+                }
                 placeholder="e.g. database, redis"
-                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
-                         bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
               />
             </div>
             <div>
-              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Connection</label>
-              <input
-                type="text"
+              <label style={fieldLabelStyle}>Connection</label>
+              <AuroraInput
                 value={draft.connectionString}
-                onChange={(e) => setDraft(d => ({ ...d, connectionString: e.target.value }))}
+                onChange={(v) =>
+                  setDraft((d) => ({ ...d, connectionString: v }))
+                }
                 placeholder="postgres://user:pw@host:5432/db"
-                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
-                         bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                mono
               />
             </div>
           </>
@@ -154,20 +231,64 @@ export function ConnectionRowEdit({
       </div>
 
       {/* D. Env Injection Preview */}
-      <div className="rounded border border-dashed border-gray-300 dark:border-gray-600 px-2.5 py-1.5">
-        <div className="text-[9px] text-gray-400 dark:text-gray-500 mb-1 font-medium uppercase tracking-wider">.env</div>
-        <div className="flex items-center gap-1.5">
-          <input
-            type="text"
-            value={draft.envVar}
-            onChange={(e) => setDraft(d => ({ ...d, envVar: e.target.value }))}
-            className="w-32 px-1.5 py-0.5 text-[11px] font-mono rounded border border-gray-300 dark:border-gray-600
-                     bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
-            placeholder="ENV_VAR"
-          />
-          <span className="text-[11px] text-gray-400 font-mono">=</span>
-          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 break-all flex-1 min-w-0">
-            {derivedValue || <span className="text-gray-300 dark:text-gray-600 italic">empty</span>}
+      <div
+        style={{
+          padding: '8px 10px',
+          border: '1px dashed var(--border-2)',
+          borderRadius: 'var(--r-md)',
+          background: 'var(--bg-surface-2)',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            color: 'var(--text-4)',
+            marginBottom: 4,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}
+        >
+          .env
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 140, flexShrink: 0 }}>
+            <AuroraInput
+              value={draft.envVar}
+              onChange={(v) => setDraft((d) => ({ ...d, envVar: v }))}
+              placeholder="ENV_VAR"
+              mono
+            />
+          </div>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--text-4)',
+            }}
+          >
+            =
+          </span>
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--text-3)',
+              wordBreak: 'break-all',
+            }}
+          >
+            {derivedValue || (
+              <span
+                style={{
+                  color: 'var(--text-4)',
+                  fontStyle: 'italic',
+                }}
+              >
+                empty
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -196,43 +317,58 @@ function AntProjectFields({
   if (draft.resolution.type !== 'ant-project') return null;
   const res = draft.resolution;
 
+  const loadingTextStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '2px 8px',
+    fontSize: 10,
+    color: 'var(--text-4)',
+  };
+
   return (
-    <div className="space-y-1.5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div>
-        <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Project</label>
-        <div className="flex flex-wrap gap-1">
+        <label style={fieldLabelStyle}>Project</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           <button
-            onClick={() => setDraft(d => ({
-              ...d,
-              name: d.name || 'self',
-              resolution: { type: 'ant-project', projectId: 'self', feature: 'self' },
-            }))}
-            className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
-              draftProjectId === 'self'
-                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
+            type="button"
+            onClick={() =>
+              setDraft((d) => ({
+                ...d,
+                name: d.name || 'self',
+                resolution: {
+                  type: 'ant-project',
+                  projectId: 'self',
+                  feature: 'self',
+                },
+              }))
+            }
+            style={chipStyle(draftProjectId === 'self')}
           >
             self
           </button>
           {loadingProjects ? (
-            <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
+            <span style={loadingTextStyle}>
               <Spinner size="sm" tone="inherit" /> Loading...
             </span>
           ) : (
             projects.map((p) => (
               <button
                 key={p}
-                onClick={() => setDraft(d => ({
-                  ...d,
-                  name: d.name || p,
-                  resolution: { type: 'ant-project', projectId: p, feature: '' },
-                }))}
-                className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
-                  draftProjectId === p
-                    ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
+                type="button"
+                onClick={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    name: d.name || p,
+                    resolution: {
+                      type: 'ant-project',
+                      projectId: p,
+                      feature: '',
+                    },
+                  }))
+                }
+                style={chipStyle(draftProjectId === p)}
               >
                 {p}
               </button>
@@ -242,27 +378,39 @@ function AntProjectFields({
       </div>
       {draftProjectId && draftProjectId !== 'self' && (
         <div>
-          <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Feature</label>
-          <div className="flex flex-wrap gap-1">
+          <label style={fieldLabelStyle}>Feature</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {loadingFeatures ? (
-              <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
+              <span style={loadingTextStyle}>
                 <Spinner size="sm" tone="inherit" /> Loading...
               </span>
             ) : features.length === 0 ? (
-              <span className="text-[10px] text-gray-400 px-2 py-0.5 italic">No features found</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-4)',
+                  fontStyle: 'italic',
+                  padding: '2px 8px',
+                }}
+              >
+                No features found
+              </span>
             ) : (
               features.map((f) => (
                 <button
                   key={f.name}
-                  onClick={() => setDraft(d => ({
-                    ...d,
-                    resolution: { type: 'ant-project', projectId: draftProjectId!, feature: f.name },
-                  }))}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
-                    res.feature === f.name
-                      ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      resolution: {
+                        type: 'ant-project',
+                        projectId: draftProjectId!,
+                        feature: f.name,
+                      },
+                    }))
+                  }
+                  style={chipStyle(res.feature === f.name)}
                 >
                   {f.name}
                 </button>
@@ -273,24 +421,59 @@ function AntProjectFields({
       )}
       {draftProjectId && draftProjectId !== 'self' && res.feature && (
         <div>
-          <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Service <span className="text-gray-400 dark:text-gray-600">(optional)</span></label>
-          <input
-            type="text"
+          <label style={fieldLabelStyle}>
+            Service{' '}
+            <span
+              style={{
+                color: 'var(--text-4)',
+                fontWeight: 600,
+                textTransform: 'none',
+                letterSpacing: 0,
+              }}
+            >
+              (optional)
+            </span>
+          </label>
+          <AuroraInput
             value={res.serviceName || ''}
-            onChange={(e) => setDraft(d => ({
-              ...d,
-              resolution: { ...d.resolution, serviceName: e.target.value || undefined } as ConnectionResolution,
-            }))}
+            onChange={(v) =>
+              setDraft((d) => ({
+                ...d,
+                resolution: {
+                  ...d.resolution,
+                  serviceName: v || undefined,
+                } as ConnectionResolution,
+              }))
+            }
             placeholder="e.g. api, redirect"
-            className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
-                     bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
           />
         </div>
       )}
-      <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 10,
+          color: 'var(--text-4)',
+        }}
+      >
         <span>Proxy</span>
-        <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-          {draftProjectId === 'self' ? '(auto)' : `/${draftProjectId}--${res.feature || '...'}${res.serviceName ? '--' + res.serviceName : ''}`}
+        <code
+          style={{
+            fontFamily: 'var(--font-mono)',
+            padding: '1px 7px',
+            borderRadius: 'var(--r-sm)',
+            background: 'var(--bg-surface-2)',
+            color: 'var(--text-3)',
+            border: '1px solid var(--border-2)',
+          }}
+        >
+          {draftProjectId === 'self'
+            ? '(auto)'
+            : `/${draftProjectId}--${res.feature || '...'}${
+                res.serviceName ? '--' + res.serviceName : ''
+              }`}
         </code>
       </div>
     </div>

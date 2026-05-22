@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { GitCommit, Upload, Download, RefreshCw, Check, Globe } from 'lucide-react';
-import { Button } from '../../common/button';
+import { Button } from '@/presentation/components/aurora';
 import { Spinner } from '../../common/async';
 import {
   useGitCta,
@@ -53,12 +53,15 @@ export function ActionButton({
   const cta = useGitCta();
   const isFetchBlockingCta = useGitSnapshotRefreshing();
 
-  const actionButtonClass = `flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
-                     bg-emerald-500/10 dark:bg-emerald-500/10 
-                     border-emerald-500/30 dark:border-emerald-500/30
-                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
-                     text-emerald-600 dark:text-emerald-400
-                     transition-colors`;
+  // Aurora "done" tone — semantic success color via design tokens.
+  // (spec §1.1.6: emerald is the status=done semantic, but ONLY through tokens.)
+  const actionButtonClass =
+    'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden transition-colors';
+  const actionButtonStyle: React.CSSProperties = {
+    background: 'var(--status-done-bg)',
+    border: '1px solid color-mix(in srgb, var(--emerald-500) 30%, transparent)',
+    color: 'var(--status-done-fg)',
+  };
 
   if (cta.kind === 'commit') {
     const commitCount = selectedFiles ? selectedFiles.length : cta.count;
@@ -69,12 +72,8 @@ export function ActionButton({
           onClick={() => onCommit(selectedFiles)}
           variant="outline"
           size="sm"
-          className="flex-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
-                     bg-emerald-500/10 dark:bg-emerald-500/10 
-                     border-emerald-500/30 dark:border-emerald-500/30
-                     hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
-                     text-emerald-600 dark:text-emerald-400
-                     transition-colors"
+          className={actionButtonClass}
+          style={actionButtonStyle}
           disabled={isCommitting || isFetchBlockingCta || (selectedFiles !== undefined && selectedFiles.length === 0)}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
@@ -106,6 +105,7 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
+          style={actionButtonStyle}
           disabled={isPushing || isFetchBlockingCta}
           title={cta.variant === 'noRemoteWithFeatures'
             ? t('config:git.publishToGitHubDesc')
@@ -133,6 +133,7 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
+          style={actionButtonStyle}
           disabled={isSyncing || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
@@ -170,6 +171,7 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
+          style={actionButtonStyle}
           disabled={isPushing || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
@@ -196,6 +198,7 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
+          style={actionButtonStyle}
           disabled={isPulling || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
@@ -222,11 +225,12 @@ export function ActionButton({
         variant="outline"
         size="sm"
         disabled
-        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
-                   opacity-50 cursor-default
-                   text-gray-600 dark:text-gray-400
-                   border-gray-300 dark:border-gray-600
-                   bg-gray-50 dark:bg-gray-800/50"
+        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden opacity-50 cursor-default"
+        style={{
+          color: 'var(--text-3)',
+          border: '1px solid var(--border-1)',
+          background: 'var(--surface-2)',
+        }}
       >
         <Check className="w-3.5 h-3.5 flex-shrink-0" />
         <span className="action-label truncate">{t('git.noChanges')}</span>

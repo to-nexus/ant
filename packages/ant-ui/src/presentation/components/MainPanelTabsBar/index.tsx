@@ -3,7 +3,6 @@ import { Bar } from '../Bar';
 import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } from 'lucide-react';
 import { TabButton } from './components/TabButton';
 import { JobIdDropdown } from './components/JobIdDropdown';
-import { JobControls } from './components/JobControls';
 import { EditorTabActions } from './components/EditorTabActions';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { useTranslation } from 'react-i18next';
@@ -120,14 +119,8 @@ export function MainPanelTabsBar() {
         ))}
       </div>
     ),
-    right: (
-      activeTab === 'job' ? (
-        <div className="flex items-center gap-3">
-          <JobControls />
-        </div>
-      ) : null
-    ),
-    className: 'border-b border-gray-200 dark:border-[#30363d]'
+    right: undefined,
+    className: undefined,
   });
   
   return (

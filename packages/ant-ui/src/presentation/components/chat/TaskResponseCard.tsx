@@ -17,6 +17,7 @@ import remarkGfm from 'remark-gfm';
 import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { lineToContent } from './cards/lineToContent';
+import { TurnCardShell } from './cards/TurnCardShell';
 
 interface TaskResponseCardProps {
   line: ChatStatusLine;
@@ -82,31 +83,35 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending }
   }, [textContent, isActive, isUserScrolling]);
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700/60 rounded-lg overflow-hidden bg-white dark:bg-gray-800/50">
+    <TurnCardShell hoverLift={hasContent && isCompleted}>
       {/* Header */}
       <button
         onClick={() => hasContent && isCompleted && setIsCollapsed(!isCollapsed)}
         disabled={!hasContent || !isCompleted}
-        className={`w-full bg-gray-50/50 dark:bg-gray-800/40 px-2.5 py-1.5 ${
-          hasContent && isCompleted ? 'hover:bg-gray-100/50 dark:hover:bg-gray-700/30 cursor-pointer' : 'cursor-default'
+        className={`w-full px-2.5 py-1.5 ${
+          hasContent && isCompleted ? 'cursor-pointer' : 'cursor-default'
         } transition-colors`}
+        style={{ background: 'transparent' }}
       >
         <div className="flex items-center gap-1.5">
           {isActive ? (
             <Spinner size="md" tone="muted" className="flex-shrink-0" />
           ) : (
-            <MessageSquare className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+            <MessageSquare className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
           )}
 
-          <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate flex-1 text-left">
+          <span
+            className="text-[11px] font-medium truncate flex-1 text-left"
+            style={{ color: 'var(--text-1)' }}
+          >
             {taskName || 'Task'}
           </span>
 
           {isCompleted && hasContent && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0" style={{ color: 'var(--text-3)' }}>
               {isCollapsed ?
-                <ChevronRight className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 opacity-60" /> :
-                <ChevronDown className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 opacity-60" />
+                <ChevronRight className="w-3.5 h-3.5 opacity-60" /> :
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
               }
             </div>
           )}
@@ -115,15 +120,15 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending }
 
       {/* Content */}
       {shouldShowContent && (
-        <div className="border-t border-gray-200 dark:border-gray-700/60">
+        <div style={{ borderTop: '1px solid var(--border-1)' }}>
           <div
             ref={contentRef}
             className="px-4 py-3 max-h-[288px] overflow-y-auto scrollbar-thin"
             style={{ overflowAnchor: 'none' }}
             onScroll={handleScroll}
           >
-            <div className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
-                 style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+            <div className="prose prose-sm max-w-none w-full select-text"
+                 style={{ wordBreak: 'break-word', overflowWrap: 'break-word', color: 'var(--text-1)' }}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={MARKDOWN_COMPONENTS}
@@ -134,6 +139,6 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending }
           </div>
         </div>
       )}
-    </div>
+    </TurnCardShell>
   );
 });

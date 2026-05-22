@@ -1,11 +1,51 @@
 import type { ServiceCategory, ConnectionResolution, ServiceConnection } from '@/infrastructure/http/api';
-import {
-  RESOLUTION_OPTIONS,
-  RESOLUTION_COLORS,
-  CATEGORY_CHIP_COLORS,
-} from '../../constants';
-import { ChipSelector } from '../ChipSelector';
+import { RESOLUTION_OPTIONS } from '../../constants';
 import type { DraftState } from './useConnectionRowDraft';
+
+function AuroraChipRow<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {options.map((opt) => {
+        const isActive = opt === value;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            style={{
+              padding: '2px 9px',
+              fontSize: 10,
+              fontWeight: 700,
+              borderRadius: 'var(--r-pill)',
+              border: isActive
+                ? '1px solid transparent'
+                : '1px solid var(--border-2)',
+              background: isActive
+                ? 'var(--gradient-violet-pink)'
+                : 'var(--bg-surface-2)',
+              color: isActive ? 'white' : 'var(--text-3)',
+              cursor: 'pointer',
+              transition:
+                'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+              letterSpacing: '0.02em',
+              textTransform: 'capitalize',
+            }}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Category + resolution chip selectors for edit mode. Encapsulates the
@@ -53,19 +93,32 @@ export function ResolutionChips({
   };
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <ChipSelector
-        options={['business', 'infrastructure']}
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        flexWrap: 'wrap',
+      }}
+    >
+      <AuroraChipRow
+        options={['business', 'infrastructure'] as const}
         value={draft.category}
-        onChange={handleCategoryChange}
-        colorMap={CATEGORY_CHIP_COLORS}
+        onChange={(v) => handleCategoryChange(v)}
       />
-      <span className="text-gray-300 dark:text-gray-600 text-xs">|</span>
-      <ChipSelector
-        options={allowedResolutions}
+      <span
+        aria-hidden
+        style={{
+          width: 1,
+          height: 12,
+          background: 'var(--border-2)',
+          display: 'inline-block',
+        }}
+      />
+      <AuroraChipRow
+        options={allowedResolutions as readonly string[]}
         value={draft.resolution.type}
-        onChange={handleResolutionChange}
-        colorMap={RESOLUTION_COLORS}
+        onChange={(v) => handleResolutionChange(v)}
       />
     </div>
   );

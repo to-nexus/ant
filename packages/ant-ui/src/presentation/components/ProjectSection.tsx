@@ -1,20 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createProject } from '@/infrastructure/http/api';
-import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
-import { GitStatusButton } from './GitStatusButton';
-import { GitMenuButton } from './GitMenuButton';
 import { useGitSnapshot } from '@/domain/git-world';
 import {
   selectProjectConfigMissing,
 } from '@/domain/store/selectors';
+import { SectionShell } from './layout/Explorer/SectionShell';
+import { RowList } from './layout/Explorer/RowList';
+import { ProjectRow, type ProjectDotAccent } from './layout/Explorer/ProjectRow';
+import { GitToolbar } from './layout/Explorer/GitToolbar';
 
-export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
+const PROJECT_DOTS: ProjectDotAccent[] = ['violet', 'pink', 'orange', 'cool'];
+
+/** Deterministic 4px accent dot color per project name (spec §5.4). */
+function pickAccent(name: string): ProjectDotAccent {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return PROJECT_DOTS[Math.abs(h) % PROJECT_DOTS.length];
+}
+
+export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation('explorer');
   const {
     projects,
@@ -30,13 +40,13 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
 
   const [showWizard, setShowWizard] = useState(false);
   const [forceInlineCreate, setForceInlineCreate] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
   const handleOpenWizard = useCallback(() => setShowWizard(true), []);
   const handleCloseWizard = useCallback(() => setShowWizard(false), []);
   const handleCreateEmpty = useCallback(() => {
     setShowWizard(false);
     setForceInlineCreate(true);
   }, []);
-  const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
 
@@ -68,74 +78,253 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     openMainPanelTab('projectConfig');
   };
 
-  const projectItems = projects.map((p: string) => ({ name: p }));
+  const projectAccents = useMemo(() => {
+    const map: Record<string, ProjectDotAccent> = {};
+    for (const p of projects) map[p] = pickAccent(p);
+    return map;
+  }, [projects]);
+
+  // Order: active project on top, others below.
+  const orderedProjects = useMemo(() => {
+    if (!selectedProject) return projects;
+    return [
+      selectedProject,
+      ...projects.filter((p) => p !== selectedProject),
+    ];
+  }, [projects, selectedProject]);
+
+  const handleSwitchProject = useCallback(
+    (name: string) => {
+      if (!policy.canChangeProject) return;
+      setSelectedProject(name);
+    },
+    [policy.canChangeProject, setSelectedProject],
+  );
+
+  const handleClearProject = useCallback(() => {
+    setSelectedProject(undefined);
+  }, [setSelectedProject]);
+
+  const handleSubmitNewProject = useCallback(async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    try {
+      await handleCreateProject(name);
+      setNewProjectName('');
+      setForceInlineCreate(false);
+      fetchProjects();
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      showError(t('workspace.createFailed'));
+    }
+  }, [newProjectName, fetchProjects, showError, t]);
 
   return (
     <div>
-      <ItemDropdown
-        title={t('workspace.title')}
-        icon={Folder}
-        items={projectItems}
-        selectedItem={selectedProject}
-        onSelect={setSelectedProject}
-        onCreate={handleCreateProject}
-        onItemCreated={fetchProjects}
-        placeholder={t('workspace.placeholder')}
-        inputPlaceholder={t('workspace.inputPlaceholder')}
-        onSettingsClick={handleConfigClick}
-        disabled={!policy.canChangeProject}
-        disabledReason={policy.disabledReason || undefined}
-        onOpenWizard={handleOpenWizard}
-        forceInlineCreate={forceInlineCreate}
-        onForceInlineCreateHandled={handleForceInlineCreateHandled}
-        isNarrow={explorerWidth < 260}
-      />
+      <SectionShell
+        eyebrow={t('workspace.title')}
+        count={projects.length}
+        accent="violet"
+        action={
+          <button
+            type="button"
+            onClick={handleOpenWizard}
+            disabled={!policy.canChangeProject}
+            title={
+              !policy.canChangeProject
+                ? policy.disabledReason || undefined
+                : t('workspace.inputPlaceholder')
+            }
+            aria-label={t('workspace.inputPlaceholder')}
+            style={{
+              height: 22,
+              width: 22,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 6,
+              color: '#fff',
+              background: 'var(--gradient-aurora)',
+              boxShadow: 'var(--shadow-glow-aurora)',
+              border: 'none',
+              cursor: policy.canChangeProject ? 'pointer' : 'not-allowed',
+              opacity: policy.canChangeProject ? 1 : 0.5,
+            }}
+          >
+            <Plus size={12} />
+          </button>
+        }
+      >
+        {projects.length === 0 ? (
+          <div
+            style={{
+              padding: '12px 8px',
+              fontSize: 12,
+              color: 'var(--text-3)',
+              textAlign: 'center',
+              border: '1px dashed var(--border-1)',
+              borderRadius: 8,
+              background: 'var(--surface-2)',
+            }}
+          >
+            {t('workspace.placeholder')}
+          </div>
+        ) : (
+          <RowList ariaLabel={t('workspace.title')}>
+            {orderedProjects.map((name) => {
+              const isActive = name === selectedProject;
+              const row = (
+                <ProjectRow
+                  key={name}
+                  name={name}
+                  isActive={isActive}
+                  accent={projectAccents[name] || 'violet'}
+                  disabled={!policy.canChangeProject && !isActive}
+                  disabledReason={policy.disabledReason || undefined}
+                  onSwitch={() => handleSwitchProject(name)}
+                  onClear={isActive ? handleClearProject : undefined}
+                  onSettings={isActive ? handleConfigClick : undefined}
+                />
+              );
+              // Git toolbar sits directly under the active project row,
+              // INSIDE the RowList so it stays adjacent to the selection
+              // it controls. The list is scrollable up to 240px (RowList
+              // default); preview-editor entry and other always-visible
+              // controls live in `FeatureSection` outside its own list.
+              if (isActive) {
+                return (
+                  <div key={name}>
+                    {row}
+                    <GitToolbar />
+                    {snapshot?.currentBranch && (
+                      <div
+                        className="font-mono truncate"
+                        style={{
+                          marginTop: 4,
+                          padding: '2px 10px',
+                          fontSize: 11,
+                          color: 'var(--text-3)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={snapshot.currentBranch}
+                      >
+                        {snapshot.currentBranch}
+                      </div>
+                    )}
+                    {projectConfigMissing && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          border: '1px solid color-mix(in srgb, var(--orange-500) 35%, transparent)',
+                          background: 'color-mix(in srgb, var(--orange-500) 12%, transparent)',
+                          color: 'var(--orange-500)',
+                          fontSize: 11,
+                          display: 'flex',
+                          gap: 6,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <span aria-hidden>⚠️</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          {t('config:git.configRequired')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return row;
+            })}
+          </RowList>
+        )}
+
+        {forceInlineCreate && (
+          <div
+            style={{
+              marginTop: 6,
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+            }}
+          >
+            <input
+              type="text"
+              autoFocus
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleSubmitNewProject();
+                if (e.key === 'Escape') {
+                  setForceInlineCreate(false);
+                  setNewProjectName('');
+                }
+              }}
+              placeholder={t('workspace.inputPlaceholder')}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 26,
+                padding: '0 8px',
+                borderRadius: 6,
+                fontSize: 12,
+                color: 'var(--text-1)',
+                background: 'var(--surface-1)',
+                border: '1px solid var(--border-1)',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleSubmitNewProject()}
+              disabled={!newProjectName.trim()}
+              style={{
+                height: 26,
+                padding: '0 10px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#fff',
+                background: 'var(--gradient-aurora)',
+                boxShadow: 'var(--shadow-glow-aurora)',
+                border: 'none',
+                cursor: newProjectName.trim() ? 'pointer' : 'not-allowed',
+                opacity: newProjectName.trim() ? 1 : 0.5,
+              }}
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setForceInlineCreate(false);
+                setNewProjectName('');
+              }}
+              style={{
+                height: 26,
+                padding: '0 10px',
+                borderRadius: 6,
+                fontSize: 11,
+                color: 'var(--text-3)',
+                background: 'transparent',
+                border: '1px solid var(--border-1)',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </SectionShell>
 
       <CreationWizardModal
         isOpen={showWizard}
         onClose={handleCloseWizard}
         onCreateEmpty={handleCreateEmpty}
       />
-
-      {/* Git Status Section — the two Git buttons sit side-by-side and
-          read through the same `git-world` selectors:
-            <GitStatusButton /> → primary action (Commit/Push/Pull/Sync/Publish)
-            <GitMenuButton />   → secondary dropdown (Clone/Init/Publish/Push/Pull/Fetch)
-          Their consistency is guaranteed by shared selectors + FSM. */}
-      {selectedProject && (
-        <div className="mt-2">
-          <div className="flex flex-wrap gap-1.5 items-center">
-            <GitStatusButton />
-            <GitMenuButton />
-          </div>
-
-          {/* Current Branch Display.
-              Branch name comes from the git-world snapshot. Rendered only
-              once the snapshot is loaded and a `.git` directory exists. */}
-          {snapshot?.currentBranch && (
-            <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400 truncate">
-              {explorerWidth >= 260 && <>{t('config:git.currentBranch')}{' '}</>}
-              <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{snapshot.currentBranch}</span>
-            </div>
-          )}
-
-          {/* Warning Messages */}
-          {projectConfigMissing && (
-            <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
-              <div className="flex items-start gap-1.5">
-                <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-orange-700 dark:text-orange-300">
-                    {t('config:git.configRequired')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-        </div>
-      )}
     </div>
   );
 }

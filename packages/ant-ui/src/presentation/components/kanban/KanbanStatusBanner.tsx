@@ -14,42 +14,47 @@ interface KanbanStatusBannerProps {
 /**
  * Get display styling for each variant
  */
-function getVariantStyles(variant: BannerVariant) {
+function getVariantStyles(variant: BannerVariant): {
+  bg: string;
+  border: string;
+  title: string;
+  text: string;
+} {
   switch (variant) {
     case 'info':
       return {
-        bgClass: 'bg-blue-50 dark:bg-blue-950',
-        borderClass: 'border-blue-300 dark:border-blue-700',
-        titleClass: 'text-blue-900 dark:text-blue-200',
-        textClass: 'text-blue-800 dark:text-blue-300'
+        bg: 'var(--bg-surface)',
+        border: 'var(--border-1)',
+        title: 'var(--violet-500)',
+        text: 'var(--text-2)',
       };
     case 'warning':
       return {
-        bgClass: 'bg-orange-50 dark:bg-orange-950',
-        borderClass: 'border-orange-300 dark:border-orange-700',
-        titleClass: 'text-orange-900 dark:text-orange-200',
-        textClass: 'text-orange-800 dark:text-orange-300'
+        bg: 'var(--bg-surface)',
+        border: 'var(--border-1)',
+        title: 'var(--orange-500)',
+        text: 'var(--text-2)',
       };
     case 'error':
       return {
-        bgClass: 'bg-red-50 dark:bg-red-950',
-        borderClass: 'border-red-300 dark:border-red-700',
-        titleClass: 'text-red-900 dark:text-red-200',
-        textClass: 'text-red-800 dark:text-red-300'
+        bg: 'var(--bg-surface)',
+        border: 'var(--border-1)',
+        title: 'var(--red-500)',
+        text: 'var(--text-2)',
       };
     case 'success':
       return {
-        bgClass: 'bg-green-50 dark:bg-green-950',
-        borderClass: 'border-green-300 dark:border-green-700',
-        titleClass: 'text-green-900 dark:text-green-200',
-        textClass: 'text-green-800 dark:text-green-300'
+        bg: 'var(--bg-surface)',
+        border: 'var(--border-1)',
+        title: 'var(--status-done-fg)',
+        text: 'var(--text-2)',
       };
     case 'processing':
       return {
-        bgClass: 'bg-purple-50 dark:bg-purple-950',
-        borderClass: 'border-purple-300 dark:border-purple-700',
-        titleClass: 'text-purple-900 dark:text-purple-200',
-        textClass: 'text-purple-800 dark:text-purple-300'
+        bg: 'var(--bg-surface)',
+        border: 'var(--border-1)',
+        title: 'var(--violet-500)',
+        text: 'var(--text-2)',
       };
   }
 }
@@ -76,15 +81,27 @@ export function KanbanStatusBanner({
   const titleSize = compact ? 'text-base' : 'text-lg';
   
   return (
-    <div className={`mb-4 ${paddingClass} ${styles.bgClass} border-2 ${styles.borderClass} rounded-lg`}>
+    <div
+      className={`mb-4 ${paddingClass} rounded-lg`}
+      style={{
+        background: styles.bg,
+        border: `2px solid ${styles.border}`,
+      }}
+    >
       <div className="flex items-start gap-4">
         <div className={iconSize}>{icon}</div>
         <div className="flex-1 min-w-0">
-          <div className={`font-semibold ${titleSize} ${styles.titleClass} mb-2`}>
+          <div
+            className={`font-semibold ${titleSize} mb-2`}
+            style={{ color: styles.title }}
+          >
             {title}
           </div>
           {message && (
-            <div className={`text-sm ${styles.textClass} ${children ? 'mb-3' : ''}`}>
+            <div
+              className={`text-sm ${children ? 'mb-3' : ''}`}
+              style={{ color: styles.text }}
+            >
               {message}
             </div>
           )}

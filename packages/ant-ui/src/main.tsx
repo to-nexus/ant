@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './presentation/App';
+import './styles/aurora-tokens.css';
 import './index.css';
 import './i18n';
 

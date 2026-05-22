@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
@@ -31,6 +31,7 @@ import {
 import { useIdeHealthMonitor } from '@/application/hooks/ide/useIdeHealthMonitor';
 import { useIdeStuckDetector } from '@/application/hooks/ide/useIdeStuckDetector';
 import { IdeConnectionPanel } from '@/presentation/components/common/ide/IdeConnectionPanel';
+import { IdeFrame } from '@/presentation/components/FileEditorPanel/IdeFrame';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
@@ -66,14 +67,45 @@ function logAuthFailure(phase: 'post-oauth' | 'mount', result: AuthMeResult): vo
   );
 }
 
+const AuroraCasesDevPage = import.meta.env.DEV
+  ? lazy(() => import('@/presentation/pages/dev/AuroraCases'))
+  : null;
+
 function App() {
-  const location = useLocation();
-  const navigate = useNavigate();
   const { t } = useTranslation('nav');
 
   useEffect(() => {
     document.title = t('brand.tabTitle');
   }, [t]);
+
+  return (
+    <Routes>
+      <Route
+        path="/dev/aurora-cases"
+        element={
+          import.meta.env.DEV && AuroraCasesDevPage ? (
+            <Suspense
+              fallback={
+                <div style={{ padding: 24, color: 'var(--text-3)' }}>
+                  Loading Aurora cases…
+                </div>
+              }
+            >
+              <AuroraCasesDevPage />
+            </Suspense>
+          ) : (
+            <div style={{ padding: 24 }}>Not available in production build.</div>
+          )
+        }
+      />
+      <Route path="*" element={<AppShell />} />
+    </Routes>
+  );
+}
+
+function AppShell() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // ✅ Cross-tab auth bridge — react to `logout` / `session-expired` posted
   // from another tab. The dispatching tab runs cleanup directly via
@@ -442,7 +474,10 @@ function App() {
     return (
       <ToastProvider>
         <AlertModalProvider>
-          <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+          <div
+            className="h-screen flex flex-col transition-colors"
+            style={{ background: 'var(--bg-canvas)' }}
+          >
             <AppNavBar />
           </div>
         </AlertModalProvider>
@@ -475,7 +510,10 @@ function App() {
     return (
       <ToastProvider>
         <AlertModalProvider>
-          <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+          <div
+            className="h-screen flex flex-col transition-colors"
+            style={{ background: 'var(--bg-canvas)' }}
+          >
             <AppNavBar />
             <div className="flex-1 flex items-center justify-center">
               <Spinner size="lg" tone="muted" />
@@ -492,7 +530,10 @@ function App() {
     return (
       <ToastProvider>
         <AlertModalProvider>
-          <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
+          <div
+            className={`h-screen flex flex-col transition-all duration-350 ${viewOpacity}`}
+            style={{ background: 'var(--bg-canvas)' }}
+          >
             <AppNavBar />
             <QuickStart
               existingProjectId={quickStartProjectId === '__new__' ? undefined : quickStartProjectId}
@@ -520,7 +561,8 @@ function App() {
     <AlertModalProvider>
       <ServerDownDetector />
       <div
-        className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors"
+        className="h-screen flex flex-col transition-colors"
+        style={{ background: 'var(--bg-canvas)' }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => e.preventDefault()}
       >
@@ -539,38 +581,13 @@ function App() {
           style={{ display: mainView === 'codeIde' ? 'block' : 'none' }}
         >
           <div className="relative w-full h-full">
-            {ideBaseUrl && (
-              <iframe
-                key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
-                src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
-                className="w-full h-full border-0"
-                title="ANT Code Editor"
-                onLoad={async () => {
-                  // onLoad fires on both real content and proxy error pages
-                  // (cross-origin onError is unreliable). Re-probe the proxy
-                  // to distinguish: `< 400` = real workbench → `iframeLoaded`,
-                  // `>= 400` = idle-reaped / dead → delegate to `requestReconnect`
-                  // / `startIdeSession`.
-                  try {
-                    const res = await fetch(`${ideBaseUrl}/`, {
-                      method: 'GET',
-                      credentials: 'include',
-                      cache: 'no-store',
-                    });
-                    if (res.status >= 200 && res.status < 400) {
-                      useStore.getState().iframeLoaded();
-                    } else if (selectedProject) {
-                      // dead proxy → drop to disconnected with iframe-error
-                      // signal, then ask startIdeSession to recover.
-                      useStore.getState().iframeLoadFailed?.('Proxy returned an error status');
-                      void useStore.getState().startIdeSession(selectedProject, selectedFeature || undefined);
-                    }
-                  } catch {
-                    // network error — let the health monitor's probe pick it up.
-                  }
-                }}
-              />
-            )}
+            <IdeFrame
+              projectId={selectedProject}
+              featureName={selectedFeature || undefined}
+              ideBaseUrl={ideBaseUrl}
+              ideWorkspacePath={ideWorkspacePath}
+              ideReloadTimestamp={ideReloadTimestamp}
+            />
             {overlayMode !== 'hidden' && selectedProject && (
               <IdeConnectionPanel
                 projectId={selectedProject}
@@ -596,13 +613,17 @@ function App() {
 
           {/* Collapsed Explorer Button */}
           {isExplorerCollapsed && (
-            <div className="w-10 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col items-center shrink-0 transition-colors shadow-sm">
+            <div
+              className="w-10 flex flex-col items-center shrink-0 transition-colors shadow-sm"
+              style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-1)' }}
+            >
               <button
                 onClick={() => {
                   setIsExplorerCollapsed(false);
                   setExplorerWidth(320);
                 }}
-                className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                className="h-10 w-10 flex items-center justify-center text-[color:var(--text-3)] hover:text-gray-700 transition-colors"
+                style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border-1)' }}
                 title="Expand Explorer"
               >
                 <ChevronRight className="w-4 h-4" />

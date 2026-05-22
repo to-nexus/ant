@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Github } from 'lucide-react';
-import { Button } from '@/presentation/components/common/button';
+import { Button } from '@/presentation/components/aurora';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 interface MenuTriggerButtonProps {

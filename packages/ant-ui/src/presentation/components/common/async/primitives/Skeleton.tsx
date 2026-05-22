@@ -19,7 +19,7 @@ const SHAPE: Record<SkeletonVariant, string> = {
   text: 'h-4 rounded',
   rect: 'rounded',
   circle: 'rounded-full',
-  card: 'rounded-lg border border-gray-200 dark:border-[#30363d] bg-gray-100 dark:bg-gray-800 p-3',
+  card: 'rounded-lg border border-gray-200 bg-[color:var(--bg-surface-2)] p-3',
 };
 
 /**
@@ -31,7 +31,7 @@ export function Skeleton({ variant = 'rect', className = '', delayMs = 0, childr
   const base =
     variant === 'card'
       ? 'animate-pulse'
-      : 'animate-pulse bg-gray-200 dark:bg-gray-700';
+      : 'animate-pulse bg-[color:var(--bg-surface-3)]';
   // twMerge resolves utility-class conflicts deterministically so callers
   // can override colours/sizes via className without source-order guessing.
   return (

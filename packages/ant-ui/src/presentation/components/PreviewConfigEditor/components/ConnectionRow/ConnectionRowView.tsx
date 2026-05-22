@@ -1,12 +1,73 @@
-import { Pencil, MessageSquare } from 'lucide-react';
-import type { ServiceConnection } from '@/infrastructure/http/api';
+import { useState } from 'react';
 import {
-  STATUS_COLORS,
-  RESOLUTION_COLORS,
-  CATEGORY_BADGE,
-} from '../../constants';
+  Pencil,
+  MessageSquare,
+  Server,
+  Database,
+  ArrowRight,
+  Package,
+  Box,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { ServiceConnection } from '@/infrastructure/http/api';
+import { SignalRing } from '@/presentation/components/ConfigEditor/aurora';
+import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
 import { getResolutionLabel, generateFixMessage } from '../../utils';
 import { VirtualizationToggle } from './VirtualizationToggle';
+
+const CATEGORY_META: Record<
+  string,
+  { gradient: string; Icon: LucideIcon }
+> = {
+  business: {
+    gradient:
+      'linear-gradient(135deg, oklch(60% 0.18 250), oklch(56% 0.20 280))',
+    Icon: Server,
+  },
+  infrastructure: {
+    gradient:
+      'linear-gradient(135deg, oklch(68% 0.18 50), oklch(64% 0.20 30))',
+    Icon: Database,
+  },
+};
+
+const RESOLUTION_CHIP_TONE: Record<
+  string,
+  { bg: string; fg: string; border: string; Icon: LucideIcon }
+> = {
+  url: {
+    bg: 'var(--bg-surface-2)',
+    fg: 'var(--text-3)',
+    border: 'var(--border-2)',
+    Icon: ArrowRight,
+  },
+  docker: {
+    bg: 'oklch(94% 0.06 220)',
+    fg: 'oklch(48% 0.18 220)',
+    border: 'oklch(80% 0.10 220)',
+    Icon: Package,
+  },
+  'ant-project': {
+    bg: 'oklch(94% 0.06 290)',
+    fg: 'var(--violet-700)',
+    border: 'var(--violet-200)',
+    Icon: Box,
+  },
+};
+
+function ringStateForConn(conn: ServiceConnection): SignalRingState | null {
+  if (conn.resolution.type === 'url') return null;
+  switch (conn.status) {
+    case 'active':
+      return 'running';
+    case 'starting':
+      return 'starting';
+    case 'error':
+      return 'error';
+    default:
+      return 'idle';
+  }
+}
 
 /**
  * Read-only display of a connection. The Virtualization toggle (if the
@@ -27,75 +88,279 @@ export function ConnectionRowView({
   onFix: (msg: string) => void;
   onToggleVirtualization?: (active: boolean) => void;
 }) {
-  const statusClass = STATUS_COLORS[conn.status || 'stopped'] || STATUS_COLORS['stopped'];
-  const catBadge = CATEGORY_BADGE[conn.category] || CATEGORY_BADGE.business;
-  const CatIcon = catBadge.icon;
-  const resClass = RESOLUTION_COLORS[conn.resolution.type] || RESOLUTION_COLORS.url;
+  const [hover, setHover] = useState(false);
+  const catMeta = CATEGORY_META[conn.category] || CATEGORY_META.business;
+  const CatIcon = catMeta.Icon;
+  const resTone =
+    RESOLUTION_CHIP_TONE[conn.resolution.type] || RESOLUTION_CHIP_TONE.url;
+  const ResIcon = resTone.Icon;
+  const ring = ringStateForConn(conn);
+  const dirty = conn.missingAnnotation || conn.userModified;
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-gray-50 dark:bg-gray-800/50 group">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <CatIcon className={`w-3 h-3 ${catBadge.color} flex-shrink-0`} />
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-            {conn.name}
-          </span>
-          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${resClass}`}>
-            {conn.resolution.type}
-          </span>
-          {conn.resolution.type !== 'url' && (
-            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusClass}`}>
-              {conn.status || 'stopped'}
-            </span>
-          )}
-          {(conn.missingAnnotation || conn.userModified) && (
-            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300"
-              title={conn.userModified ? 'Changes not yet applied to project files' : 'Missing @connection annotation in .env.example'}
-            >
-              {conn.userModified ? 'modified' : '!annotation'}
-            </span>
-          )}
-          {onToggleVirtualization && (
-            <VirtualizationToggle conn={conn} onToggle={onToggleVirtualization} />
-          )}
-        </div>
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-0.5">
-          <code className="text-[10px] text-gray-500 dark:text-gray-400">
-            {conn.envVar}
-          </code>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500">&rarr;</span>
-          <code
-            className="text-[10px] text-gray-500 dark:text-gray-400 break-all"
-            title={conn.resolution.type !== 'url' && conn.value ? conn.value : undefined}
-          >
-            {getResolutionLabel(conn)}
-          </code>
-        </div>
-      </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-        <button
-          onClick={onEdit}
-          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          title="Edit"
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative',
+        padding: 12,
+        paddingLeft: 14,
+        background: 'var(--bg-surface)',
+        border: `1.5px solid ${hover ? 'var(--violet-300)' : 'var(--border-2)'}`,
+        borderRadius: 'var(--r-lg)',
+        overflow: 'hidden',
+        minHeight: 96,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+        boxShadow: hover
+          ? '0 4px 12px -6px oklch(55% 0.18 290 / 0.25)'
+          : 'none',
+      }}
+    >
+      {/* Category accent strip */}
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 3,
+          background: catMeta.gradient,
+        }}
+      />
+
+      {/* Dirty corner indicator */}
+      {dirty && (
+        <span
+          title={
+            conn.userModified
+              ? 'Changes not yet applied to project files'
+              : 'Missing @connection annotation in .env.example'
+          }
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            padding: '1px 6px',
+            fontSize: 9,
+            fontWeight: 800,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            background: 'oklch(94% 0.06 50)',
+            color: 'oklch(50% 0.16 50)',
+            border: '1px solid oklch(82% 0.10 50)',
+            borderRadius: 'var(--r-pill)',
+          }}
         >
-          <Pencil className="w-3 h-3" />
-        </button>
-        {(conn.missingAnnotation || conn.userModified) && (
-          <button
-            onClick={() => {
-              onFix(generateFixMessage(conn));
-              onUpdate({ userModified: false });
+          {conn.userModified ? 'MODIFIED' : '!ANNOTATION'}
+        </span>
+      )}
+
+      {/* Header: avatar + name + ring */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          minWidth: 0,
+          paddingRight: dirty ? 80 : 0,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 'var(--r-sm)',
+            background: catMeta.gradient,
+            color: 'white',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <CatIcon size={12} strokeWidth={2.2} />
+        </span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 13,
+            fontWeight: 800,
+            color: 'var(--text-1)',
+            letterSpacing: '-0.005em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={conn.name}
+        >
+          {conn.name}
+        </span>
+        {ring && <SignalRing state={ring} size={9} />}
+      </div>
+
+      {/* Resolution chip row */}
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 3,
+            padding: '2px 8px',
+            borderRadius: 'var(--r-sm)',
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            background: resTone.bg,
+            color: resTone.fg,
+            border: `1px solid ${resTone.border}`,
+          }}
+        >
+          <ResIcon size={9} strokeWidth={2.4} />
+          {conn.resolution.type}
+        </span>
+        {conn.source && conn.source !== '*' && (
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color: 'var(--text-4)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 120,
             }}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                     bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300
-                     hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
-            title="Apply changes to project files"
+            title={conn.source}
           >
-            <MessageSquare className="w-3 h-3" />
-            Fix
-          </button>
+            {conn.source}
+          </span>
+        )}
+        {onToggleVirtualization && (
+          <VirtualizationToggle
+            conn={conn}
+            onToggle={onToggleVirtualization}
+          />
         )}
       </div>
+
+      {/* Env var + resolution label */}
+      <div
+        style={{
+          marginTop: 'auto',
+          paddingTop: 8,
+          borderTop: '1px dashed var(--border-1)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          minWidth: 0,
+        }}
+      >
+        <code
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--text-2)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={conn.envVar}
+        >
+          {conn.envVar}
+        </code>
+        <code
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10.5,
+            color: 'var(--text-4)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={
+            conn.resolution.type !== 'url' && conn.value
+              ? conn.value
+              : getResolutionLabel(conn)
+          }
+        >
+          ↳ {getResolutionLabel(conn)}
+        </code>
+      </div>
+
+      {/* Hover actions */}
+      {hover && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Edit"
+            style={{
+              width: 22,
+              height: 22,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-2)',
+              borderRadius: 'var(--r-sm)',
+              color: 'var(--text-3)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            <Pencil size={10} strokeWidth={2.2} />
+          </button>
+          {dirty && (
+            <button
+              type="button"
+              onClick={() => {
+                onFix(generateFixMessage(conn));
+                onUpdate({ userModified: false });
+              }}
+              title="Apply changes to project files"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '3px 7px',
+                fontSize: 10,
+                fontWeight: 700,
+                background: 'oklch(94% 0.06 50)',
+                color: 'oklch(50% 0.16 50)',
+                border: '1px solid oklch(82% 0.10 50)',
+                borderRadius: 'var(--r-sm)',
+                cursor: 'pointer',
+              }}
+            >
+              <MessageSquare size={9} strokeWidth={2.2} />
+              Fix
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

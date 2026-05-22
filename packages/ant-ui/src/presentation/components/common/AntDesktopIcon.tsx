@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react';
+
 interface AntDesktopIconProps {
   className?: string;
   muted?: boolean;
+  style?: CSSProperties;
 }
 
 /**
@@ -8,10 +11,10 @@ interface AntDesktopIconProps {
  * Matches the branding in /public/favicon.png.
  * When `muted` is true, renders in currentColor (inherits text-gray-* from parent).
  */
-export function AntDesktopIcon({ className, muted }: AntDesktopIconProps) {
+export function AntDesktopIcon({ className, muted, style }: AntDesktopIconProps) {
   if (muted) {
     return (
-      <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className={className} style={style} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="16" cy="16" r="4" fill="currentColor" opacity="0.7" />
         <circle cx="8" cy="8" r="2.5" fill="currentColor" opacity="0.5" />
         <circle cx="24" cy="8" r="2.5" fill="currentColor" opacity="0.5" />
@@ -26,7 +29,7 @@ export function AntDesktopIcon({ className, muted }: AntDesktopIconProps) {
   }
 
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} style={style} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="antGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#3b82f6" />

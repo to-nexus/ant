@@ -25,25 +25,50 @@ export function VirtualizationToggle({
   if (!conn.virtualization) return null;
 
   const active = conn.virtualization.active;
-  const baseClass =
-    'px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-  const activeChipClass = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300';
-  const realChipClass = 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300';
-  const inactiveClass = 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700';
+
+  const baseStyle: React.CSSProperties = {
+    padding: '2px 8px',
+    fontSize: 10,
+    fontWeight: 700,
+    borderRadius: 'var(--r-pill)',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+    letterSpacing: '0.02em',
+  };
+
+  const realActive: React.CSSProperties = {
+    ...baseStyle,
+    background: 'oklch(94% 0.04 240 / 0.55)',
+    color: 'oklch(42% 0.14 250)',
+    border: '1px solid oklch(84% 0.08 240)',
+  };
+  const virtActive: React.CSSProperties = {
+    ...baseStyle,
+    background: 'oklch(94% 0.06 290 / 0.55)',
+    color: 'var(--violet-700)',
+    border: '1px solid var(--violet-200)',
+  };
+  const inactive: React.CSSProperties = {
+    ...baseStyle,
+    background: 'var(--bg-surface-2)',
+    color: 'var(--text-4)',
+    border: '1px solid var(--border-2)',
+  };
 
   return (
     <div
       role="group"
       aria-label="Service Virtualization toggle"
-      className="flex items-center gap-1"
       title={`Service Virtualization: ${conn.virtualization.toggleEnvVar}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
     >
       <button
         type="button"
         onClick={() => onToggle(false)}
         disabled={disabled || !active}
         aria-pressed={!active}
-        className={`${baseClass} ${!active ? realChipClass : inactiveClass}`}
+        style={!active ? realActive : inactive}
         title={`Use real endpoint (${conn.virtualization.toggleEnvVar}=false)`}
       >
         Real
@@ -53,7 +78,7 @@ export function VirtualizationToggle({
         onClick={() => onToggle(true)}
         disabled={disabled || active}
         aria-pressed={active}
-        className={`${baseClass} ${active ? activeChipClass : inactiveClass}`}
+        style={active ? virtActive : inactive}
         title={`Use virtualized adapter (${conn.virtualization.toggleEnvVar}=true)`}
       >
         Virtualized

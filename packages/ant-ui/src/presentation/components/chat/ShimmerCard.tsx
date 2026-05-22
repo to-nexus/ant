@@ -119,15 +119,21 @@ function ThinkingVariant({ text, collapsed, durationMs, isStreaming }: ThinkingV
       {/* Header - clickable when completed */}
       <button
         onClick={() => isThinkingComplete && hasThinkingContent && setIsThinkingExpanded(!isThinkingExpanded)}
-        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors rounded-md ${isThinkingComplete && hasThinkingContent ? 'hover:bg-gray-100/50 dark:hover:bg-gray-800/30 cursor-pointer' : ''}`}
+        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors rounded-md ${isThinkingComplete && hasThinkingContent ? 'hover:bg-[color:var(--bg-hover)] cursor-pointer' : ''}`}
         disabled={!isThinkingComplete || !hasThinkingContent}
       >
-        <Brain className="w-3 h-3 text-gray-400 dark:text-gray-500" />
-        <span className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">
+        <Brain className="w-3 h-3" style={{ color: 'var(--text-4)' }} />
+        <span
+          className={`text-[11px] font-medium ${!isThinkingComplete ? 'shimmer-text' : ''}`}
+          style={{ color: 'var(--text-3)' }}
+        >
           {!isThinkingComplete ? 'Thinking...' : durationText ? `Thought for ${durationText}` : 'Thought'}
         </span>
         {isThinkingComplete && hasThinkingContent && (
-          <ChevronRight className={`w-3 h-3 text-gray-400 dark:text-gray-500 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`} />
+          <ChevronRight
+            className={`w-3 h-3 ml-auto transition-transform ${isThinkingExpanded ? 'rotate-90' : ''}`}
+            style={{ color: 'var(--text-4)' }}
+          />
         )}
       </button>
 
@@ -135,8 +141,14 @@ function ThinkingVariant({ text, collapsed, durationMs, isStreaming }: ThinkingV
       {hasThinkingContent && !isThinkingCollapsed && (
         <div
           ref={thinkingScrollRef}
-          className="mt-1 px-4 py-3 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900/20 rounded-md max-h-[300px] overflow-y-auto scrollbar-thin"
-          style={{ overflowAnchor: 'none' }}
+          className="mt-1 px-4 py-3 text-[11px] leading-relaxed max-h-[300px] overflow-y-auto scrollbar-thin"
+          style={{
+            overflowAnchor: 'none',
+            color: 'var(--text-3)',
+            background: 'oklch(from var(--bg-surface-2) l c h / 0.6)',
+            border: '1px solid var(--border-1)',
+            borderRadius: 'var(--r-sm)',
+          }}
           onScroll={handleScroll}
         >
           <pre className="whitespace-pre-wrap font-mono opacity-70">{text}</pre>

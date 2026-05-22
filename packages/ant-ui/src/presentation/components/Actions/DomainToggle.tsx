@@ -64,11 +64,21 @@ export function DomainToggle({ className, topLevel = false }: DomainToggleProps)
 
   return (
     <div className={`flex items-center gap-2 ${className ?? ''}`}>
-      <Globe className="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-      <span className="text-xs font-medium text-gray-600 dark:text-gray-300 shrink-0">
+      <Globe className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--blue-500)' }} />
+      <span
+        className="text-xs font-medium shrink-0"
+        style={{ color: 'var(--text-2)' }}
+      >
         {t('domain.toggle.label')}
       </span>
-      <div role="radiogroup" className="flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-900">
+      <div
+        role="radiogroup"
+        className="flex items-center gap-1 rounded-md p-0.5"
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-2)',
+        }}
+      >
         {domains.map((d) => {
           const active = current === d;
           return (
@@ -81,10 +91,16 @@ export function DomainToggle({ className, topLevel = false }: DomainToggleProps)
               disabled={!topLevel}
               aria-disabled={!topLevel}
               className={`px-2 py-1 text-xs rounded transition-colors ${
-                active
-                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                active ? 'font-medium' : ''
               } ${!topLevel ? 'cursor-default opacity-80' : ''}`}
+              style={
+                active
+                  ? {
+                      background: 'var(--gradient-violet-pink)',
+                      color: 'var(--text-on-brand)',
+                    }
+                  : { color: 'var(--text-3)' }
+              }
             >
               {t(`domain.toggle.option.${d}`)}
             </button>

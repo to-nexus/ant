@@ -11,7 +11,7 @@ import { PlaceholderButton } from './components/PlaceholderButton';
 import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 import { GitChangesPanel } from './components/GitChangesPanel';
-import { Button } from '../common/button';
+import { Button } from '@/presentation/components/aurora';
 import { useStore } from '@/domain/store';
 
 /**
@@ -118,12 +118,12 @@ export function GitStatusButton() {
           onClick={() => handleDiscard(selectedFiles.length < totalChanges ? selectedFiles : undefined)}
           variant="outline"
           size="sm"
-          className="px-2 py-1.5 text-xs
-                     bg-red-500/5 dark:bg-red-500/5
-                     border-red-500/20 dark:border-red-500/20
-                     hover:bg-red-500/10 dark:hover:bg-red-500/10
-                     text-red-500 dark:text-red-400
-                     transition-colors"
+          className="px-2 py-1.5 text-xs transition-colors"
+          style={{
+            background: 'color-mix(in srgb, var(--red-500) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--red-500) 28%, transparent)',
+            color: 'var(--red-500)',
+          }}
           disabled={totalChanges === 0 || isDiscarding}
           title={t('git.discardAll')}
         >

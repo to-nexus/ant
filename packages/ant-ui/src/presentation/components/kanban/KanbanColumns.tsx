@@ -1,4 +1,4 @@
-import { Badge } from '@/presentation/components/common/badge';
+import { Badge } from '@/presentation/components/aurora';
 import { TaskCard } from '../TaskCard';
 import { motion, LayoutGroup } from 'framer-motion';
 import { UnifiedTask } from '@/domain/models/task';
@@ -7,7 +7,13 @@ import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { PopAppear, TaskCardShineSweep, useAutoScrollOnGrowth } from '../common/motion';
+import { PopAppear, useAutoScrollOnGrowth } from '../common/motion';
+import {
+  SparkleOrbits,
+  GlowHalo,
+  ShimmerSweepOverlay,
+  CompletedCheckChip,
+} from './TaskCardEffects';
 
 /**
  * Inline node status shown directly below each in-progress task card.
@@ -23,12 +29,29 @@ function InlineNodeStatus({ node }: { node: ActiveWorkerNode | undefined }) {
     nodeId.split(/(?=[A-Z])/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 px-3 py-1 bg-gray-50/50 dark:bg-gray-800/30 rounded-b-lg border-x border-b border-gray-200/60 dark:border-gray-700/40">
+    <div
+      className="flex min-w-0 items-center gap-1.5 px-3 py-1 rounded-b-lg"
+      style={{
+        background: 'var(--bg-surface-2)',
+        borderLeft: '1px solid var(--border-1)',
+        borderRight: '1px solid var(--border-1)',
+        borderBottom: '1px solid var(--border-1)',
+      }}
+    >
       <div className="relative flex h-1.5 w-1.5 shrink-0">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+        <span
+          className="animate-ping absolute inline-flex h-full w-full rounded-full"
+          style={{ background: 'var(--violet-500)', opacity: 0.75 }}
+        ></span>
+        <span
+          className="relative inline-flex rounded-full h-1.5 w-1.5"
+          style={{ background: 'var(--violet-500)' }}
+        ></span>
       </div>
-      <span className="min-w-0 text-[10px] font-medium text-blue-600 dark:text-blue-400 [overflow-wrap:anywhere]">
+      <span
+        className="min-w-0 text-[10px] font-medium [overflow-wrap:anywhere]"
+        style={{ color: 'var(--violet-500)' }}
+      >
         {formatNodeName(node.nodeId)}
       </span>
     </div>
@@ -123,8 +146,8 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 {t('columns.todo')}</h3>
-            <Badge variant="secondary" className="text-xs">
+            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>📝 {t('columns.todo')}</h3>
+            <Badge tone="neutral" className="text-xs">
               {sortedTodoTasks.length}
             </Badge>
           </div>
@@ -150,7 +173,7 @@ export function KanbanColumns({
               );
             })}
             {sortedTodoTasks.length === 0 && !isHorizontalSplit && (
-              <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
+              <div className="text-center text-sm py-8" style={{ color: 'var(--text-3)' }}>
                 {t('columns.noPendingTasks')}
               </div>
             )}
@@ -164,8 +187,8 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 {t('columns.inProgress')}</h3>
-            <Badge variant="secondary" className="text-xs">
+            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>🚀 {t('columns.inProgress')}</h3>
+            <Badge tone="neutral" className="text-xs">
               {inProgressTasks.length}
             </Badge>
           </div>
@@ -208,7 +231,7 @@ export function KanbanColumns({
               );
             })}
             {inProgressTasks.length === 0 && !isHorizontalSplit && (
-              <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
+              <div className="text-center text-sm py-8" style={{ color: 'var(--text-3)' }}>
                 {t('columns.noTaskInProgress')}
               </div>
             )}
@@ -222,8 +245,8 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ {t('columns.completed')}</h3>
-            <Badge variant="secondary" className="text-xs">
+            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>✅ {t('columns.completed')}</h3>
+            <Badge tone="neutral" className="text-xs">
               {completedTasks.length}
             </Badge>
           </div>
@@ -251,14 +274,26 @@ export function KanbanColumns({
                   }}
                   className="min-w-0"
                 >
-                  <TaskCardShineSweep variant="completed" active={isNewlyCompleted}>
+                  {isNewlyCompleted ? (
+                    <div className="relative">
+                      <GlowHalo rounded="rounded-lg" />
+                      <ShimmerSweepOverlay variant="completed-slow" rounded="rounded-lg" />
+                      <SparkleOrbits rounded="rounded-lg" />
+                      <div className="relative z-10 flex items-start gap-1">
+                        <CompletedCheckChip />
+                        <div className="flex-1 min-w-0">
+                          <TaskCard task={task} status="completed" justCompleted />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
                     <TaskCard task={task} status="completed" />
-                  </TaskCardShineSweep>
+                  )}
                 </motion.div>
               );
             })}
             {completedTasks.length === 0 && !isHorizontalSplit && (
-              <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
+              <div className="text-center text-sm py-8" style={{ color: 'var(--text-3)' }}>
                 {t('columns.noCompletedTasks')}
               </div>
             )}
