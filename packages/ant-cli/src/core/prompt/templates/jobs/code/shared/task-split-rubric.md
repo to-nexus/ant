@@ -20,8 +20,8 @@ Split when the work shows two or more independent units in the sense above AND a
 - **Authorship density matters** — a unit with one consistent cognitive mode may still demand multiple separate *investigations* to author. The natural batch boundary is the *investigation boundary*: one read of the relevant existing state, one coordinated set of decisions, one verifiable diff. Split across investigation boundaries; bundle within one investigation. File count alone is not the signal — it is whether the edits inside a candidate batch share their investigation (the same reads + the same decision context informing multiple edits) or each demands its own.
 
 Calibration (Authorship density):
-- Uniform mechanical change across many files (one investigation of the pattern, N mechanical applications) = one investigation. One batch, no split regardless of file count.
-- "Rewrite each X for new Y" where X has its own existing state to inspect and own integration to plan = one investigation per X. Split into one batch per X.
+- Uniform mechanical change across many files (one investigation of the pattern, N mechanical applications) = one investigation. One batch, no split regardless of file count. **Disqualifier — this case requires NO per-location state to read before applying the change**: locations must accept the same edit blindly. If each location has distinct existing markup, signatures, or styling the author must inspect to apply the change correctly, the work is NOT this case — surface uniformity of the *recipe* is necessary but not sufficient.
+- "Rewrite each X for new Y" where X has its own existing state to inspect and own integration to plan = one investigation per X. Split into one batch per X. **Self-check**: if applying the same recipe to each location requires inspecting that location's existing state first, each location is its own investigation — this case, not the mechanical case above.
 - "Edit N unrelated files for N unrelated reasons" — N investigations that share nothing; the existing 3 axes (coherence) likely flag this as not-a-unit before this axis fires.
 
 **Grain — neither finer than one investigation nor coarser than one.** Over-splitting (one batch per file when files share an investigation) burns plan-tool-loop priming on the same reads repeatedly and produces no coordination value — forbidden. Over-bundling (multiple investigations in one batch) forces the executor to re-investigate midway — split it. The right grain is one investigation per batch, no finer and no coarser.
@@ -33,7 +33,7 @@ The signals below cannot, on their own, conclude the splitting decision. Evaluat
 - "many files" *alone* — informational. The decision turns on investigation boundaries (Authorship density above): many files under one investigation footprint (one read of shared context, one coordinated decision, one diff boundary) bundle into one batch regardless of count; many files spanning multiple investigation footprints split into one batch per footprint. File count alone is neither necessary nor sufficient.
 - "files in different places/packages/domains",
 - "the work feels large",
-- the change *pattern* is uniform across locations even if the *locations* are scattered.
+- the change *recipe* is uniform across locations — recipe uniformity does not by itself imply the mechanical case above; it must still pass the per-location-state disqualifier.
 
 A coherent unit that touches many files bundles into one task/batch ONLY when no "Split when" criterion holds. Pattern-drift risk applies to splits chosen against the criteria, not to splits the criteria mandate.
 
