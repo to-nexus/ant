@@ -1,6 +1,6 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Settings, X } from 'lucide-react';
+import { ChevronRight, Settings, X } from 'lucide-react';
 
 export type ProjectDotAccent = 'violet' | 'pink' | 'orange' | 'cool';
 
@@ -91,36 +91,43 @@ export function ProjectRow({
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        height: 28,
-        padding: '0 8px',
+        padding: '6px 10px',
         borderRadius: 6,
         cursor: disabled ? 'not-allowed' : isActive ? 'default' : 'pointer',
         background: isActive
-          ? 'color-mix(in srgb, var(--violet-500) 12%, transparent)'
+          ? 'color-mix(in srgb, var(--violet-300) 20%, transparent)'
           : hover
             ? 'var(--bg-hover)'
             : 'transparent',
         border: isActive
-          ? '1px solid color-mix(in srgb, var(--violet-500) 35%, transparent)'
+          ? '1px solid color-mix(in srgb, var(--violet-400) 40%, transparent)'
           : '1px solid transparent',
         opacity: disabled ? 0.5 : 1,
-        transition: 'background 120ms ease, border-color 120ms ease',
+        transition: 'background var(--dur-fast)',
       }}
     >
-      {/* 4px accent dot */}
+      {/* 8px accent dot inside 12px cell — always glows (handoff spec) */}
       <span
         aria-hidden
         style={{
-          width: 4,
-          height: 4,
-          borderRadius: 999,
-          background: DOT_COLOR[accent],
+          width: 12,
+          height: 12,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           flexShrink: 0,
-          boxShadow: isActive
-            ? `0 0 6px 1px color-mix(in srgb, ${DOT_COLOR[accent]} 60%, transparent)`
-            : 'none',
         }}
-      />
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: DOT_COLOR[accent],
+            boxShadow: `0 0 12px ${DOT_COLOR[accent]}`,
+          }}
+        />
+      </span>
 
       {/* Project name (mono) */}
       <span
@@ -130,7 +137,7 @@ export function ProjectRow({
           minWidth: 0,
           fontSize: 12,
           fontWeight: isActive ? 600 : 500,
-          color: isActive ? 'var(--text-1)' : 'var(--text-2)',
+          color: isActive ? 'var(--violet-700)' : 'var(--text-1)',
         }}
       >
         {name}
@@ -138,7 +145,7 @@ export function ProjectRow({
 
       {rightSlot}
 
-      {/* Right adornments */}
+      {/* Right adornments — TinyButton chrome-less style (handoff) */}
       {!isActive && showSwitchHint && (
         <button
           type="button"
@@ -146,20 +153,33 @@ export function ProjectRow({
             e.stopPropagation();
             onSwitch();
           }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--violet-600)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-3)';
+          }}
+          title={`${name}으로 전환`}
           style={{
             height: 22,
             padding: '0 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
             borderRadius: 6,
-            fontSize: 11,
-            fontWeight: 600,
-            color: '#fff',
-            background: 'var(--gradient-aurora)',
-            boxShadow: 'var(--shadow-glow-aurora)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: 'var(--text-3)',
+            background: 'transparent',
             border: 'none',
             cursor: 'pointer',
             flexShrink: 0,
+            transition: 'all var(--dur-fast)',
           }}
         >
+          <ChevronRight size={12} />
           전환
         </button>
       )}
@@ -173,8 +193,16 @@ export function ProjectRow({
                 e.stopPropagation();
                 onSettings();
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--violet-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
               aria-label="Project settings"
-              title="Project settings"
+              title="프로젝트 설정"
               style={{
                 height: 22,
                 width: 22,
@@ -182,11 +210,12 @@ export function ProjectRow({
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 6,
-                color: 'var(--text-2)',
+                color: 'var(--text-3)',
                 background: 'transparent',
-                border: '1px solid var(--border-1)',
+                border: 'none',
                 cursor: 'pointer',
                 flexShrink: 0,
+                transition: 'all var(--dur-fast)',
               }}
             >
               <Settings size={12} />
@@ -199,8 +228,16 @@ export function ProjectRow({
                 e.stopPropagation();
                 onClear();
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--violet-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
               aria-label="Clear selection"
-              title="Clear selection"
+              title="선택 해제"
               style={{
                 height: 22,
                 width: 22,
@@ -210,9 +247,10 @@ export function ProjectRow({
                 borderRadius: 6,
                 color: 'var(--text-3)',
                 background: 'transparent',
-                border: '1px solid var(--border-1)',
+                border: 'none',
                 cursor: 'pointer',
                 flexShrink: 0,
+                transition: 'all var(--dur-fast)',
               }}
             >
               <X size={12} />

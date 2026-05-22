@@ -226,6 +226,61 @@
 }
 
 /* ============================================================================
+   R8 — PHANTOM TOKEN ALIASES (additive; call-site sweep deferred)
+   ----------------------------------------------------------------------------
+   Legacy var names retained for call-site compatibility. 19 call sites across
+   13 files under presentation/ reference --surface-1 / --surface-2 / --shadow-1
+   / --shadow-2 which were renamed during the Aurora port. Aliases resolve those
+   references to the canonical Aurora tokens until a follow-up release migrates
+   the call sites and drops the aliases.
+   The dark scope re-declares the aliases because --bg-surface differs per
+   scope; aliases must inherit from the scoped value, which redeclaration
+   enforces.
+   ============================================================================ */
+:root,
+html[data-theme="light"] {
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-2);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+}
+
+html[data-theme="dark"] {
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-2);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+}
+
+/* ============================================================================
+   R9 — CODE-CONTENT TOKENS
+   ----------------------------------------------------------------------------
+   Code-content tokens — flip with [data-theme]. Used by JsonYamlPreview,
+   markdown link/error rendering, and streaming status chips. Values target
+   ≥ 4.5:1 contrast against --bg-surface-2 in each theme.
+   ============================================================================ */
+:root,
+html[data-theme="light"] {
+  --code-token-keyword: var(--violet-700);
+  --code-token-string: oklch(45% 0.15 145);
+  --code-token-number: oklch(45% 0.18 250);
+  --code-token-boolean: var(--violet-700);
+  --code-token-null: var(--text-3);
+  --code-token-property: oklch(45% 0.18 15);
+  --code-token-punctuation: var(--text-3);
+}
+
+html[data-theme="dark"] {
+  --code-token-keyword: var(--violet-300);
+  --code-token-string: oklch(75% 0.16 145);
+  --code-token-number: oklch(75% 0.16 250);
+  --code-token-boolean: var(--violet-300);
+  --code-token-null: var(--text-4);
+  --code-token-property: oklch(75% 0.16 15);
+  --code-token-punctuation: var(--text-4);
+}
+
+/* ============================================================================
    BASE
    ============================================================================ */
 * { box-sizing: border-box; }
@@ -425,4 +480,21 @@ code, pre { font-family: var(--font-mono); }
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
   border-color: var(--border-2);
+}
+
+/* ============================================================================
+   R1 — THEME-SWITCH TRANSITION SUPPRESSION (Layer B)
+   ----------------------------------------------------------------------------
+   Paired with `uiSlice.ts::applyTheme` (Layer A) which sets `data-theme-
+   switching` on <html> for two animation frames around the `[data-theme]`
+   flip. Prevents the cascade animation that would otherwise fire across
+   every element when every CSS variable resolves to a new value — turning
+   a hundreds-of-elements transition storm into a single-frame repaint.
+   ============================================================================ */
+html[data-theme-switching],
+html[data-theme-switching] *,
+html[data-theme-switching] *::before,
+html[data-theme-switching] *::after {
+  transition: none !important;
+  animation-duration: 0s !important;
 }

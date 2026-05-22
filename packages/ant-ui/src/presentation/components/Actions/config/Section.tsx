@@ -39,21 +39,48 @@ export interface SectionProps {
   children?: React.ReactNode;
 }
 
-const HINT_CLASSES: Record<SectionHintColor, string> = {
-  gray:    'bg-[var(--bg-surface-2)] text-[var(--text-3)] border-[var(--border-2)]',
-  amber:   'bg-amber-50 text-amber-700 border-amber-200',
-  blue:    'bg-blue-50 text-blue-700 border-blue-200',
-  violet:  'bg-violet-50 text-violet-700 border-violet-200',
-  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  orange:  'bg-orange-50 text-orange-700 border-orange-200',
+// §R13: Aurora-token inline-style recipes. `blue` is remapped to violet
+// (Aurora has no first-class blue ramp) — see Spec §R13.
+const HINT_TONES: Record<SectionHintColor, React.CSSProperties> = {
+  gray: {
+    background: 'var(--bg-surface-2)',
+    color: 'var(--text-3)',
+    border: '1px solid var(--border-2)',
+  },
+  amber: {
+    background: 'var(--amber-50)',
+    color: 'var(--amber-700)',
+    border: '1px solid var(--amber-200)',
+  },
+  blue: {
+    background: 'var(--violet-50)',
+    color: 'var(--violet-700)',
+    border: '1px solid var(--violet-200)',
+  },
+  violet: {
+    background: 'var(--violet-50)',
+    color: 'var(--violet-700)',
+    border: '1px solid var(--violet-200)',
+  },
+  emerald: {
+    background: 'var(--emerald-50)',
+    color: 'var(--emerald-700)',
+    border: '1px solid var(--emerald-200)',
+  },
+  orange: {
+    background: 'var(--orange-50)',
+    color: 'var(--orange-700)',
+    border: '1px solid var(--orange-200)',
+  },
 };
 
 function HintChip({ hint }: { hint: SectionHint }) {
   const scheme = hint.colorScheme ?? 'gray';
-  const chipClass = HINT_CLASSES[scheme] ?? HINT_CLASSES.gray;
+  const tone = HINT_TONES[scheme] ?? HINT_TONES.gray;
   const chip = (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${chipClass}`}
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+      style={tone}
     >
       {hint.label}
     </span>

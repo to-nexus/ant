@@ -520,7 +520,6 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                       borderRadius: 'var(--r-md)',
                       color: 'var(--text-3)',
                       cursor: 'pointer',
-                      transition: 'background 0.15s ease, color 0.15s ease',
                     }}
                   >
                     <Pencil size={14} strokeWidth={2} />

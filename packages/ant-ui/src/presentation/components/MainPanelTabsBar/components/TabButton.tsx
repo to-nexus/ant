@@ -67,13 +67,16 @@ export function TabButton({
     ? {
         position: 'relative',
         background: 'var(--bg-surface)',
-        color: 'var(--text-1)',
-        boxShadow: 'inset 0 0 0 1px var(--violet-500)',
+        color: 'var(--violet-700)',
+        border: '1px solid var(--violet-200)',
+        boxShadow: 'var(--shadow-xs)',
+        borderRadius: 'var(--r-sm) var(--r-sm) 0 0',
       }
     : {
         position: 'relative',
-        background: rootHover ? 'var(--bg-hover)' : 'var(--bg-surface-2)',
+        background: rootHover ? 'var(--bg-hover)' : 'transparent',
         color: 'var(--text-3)',
+        border: '1px solid transparent',
       };
 
   const closeStyle: React.CSSProperties = closeHover
@@ -139,9 +142,8 @@ export function TabButton({
             left: 0,
             right: 0,
             bottom: 0,
-            height: '2px',
-            background: 'var(--gradient-aurora)',
-            borderRadius: '2px',
+            height: '1px',
+            background: 'var(--violet-500)',
           }}
         />
       )}

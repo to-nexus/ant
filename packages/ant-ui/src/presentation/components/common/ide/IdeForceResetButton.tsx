@@ -22,8 +22,8 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
   const baseClass =
     'inline-flex items-center px-3 py-1.5 text-sm rounded-md transition-colors';
   const tone = emphasized
-    ? 'bg-rose-600 text-white hover:bg-rose-500'
-    : 'border border-gray-300 bg-white text-[color:var(--text-2)] hover:bg-gray-50';
+    ? 'bg-[color:var(--status-error-fg)] text-white hover:brightness-110'
+    : 'border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)]';
 
   return (
     <>
@@ -41,7 +41,7 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
           aria-modal="true"
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
         >
-          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-6 max-w-md w-full mx-4">
+          <div className="bg-[color:var(--bg-surface)] rounded-xl shadow-xl border border-[color:var(--border-1)] p-6 max-w-md w-full mx-4">
             <h3 className="text-base font-semibold text-[color:var(--text-1)] mb-2">
               {t('ide.forceResetConfirm.title')}
             </h3>
@@ -53,7 +53,7 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={busy}
-                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-[color:var(--text-2)] hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors disabled:opacity-50"
               >
                 {t('ide.forceResetConfirm.cancel')}
               </button>
@@ -70,7 +70,7 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
                   }
                 }}
                 disabled={busy}
-                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md bg-rose-600 text-white hover:bg-rose-500 transition-colors disabled:opacity-50"
+                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md bg-[color:var(--status-error-fg)] text-white hover:brightness-110 transition-colors disabled:opacity-50"
               >
                 {t('ide.forceResetConfirm.confirm')}
               </button>

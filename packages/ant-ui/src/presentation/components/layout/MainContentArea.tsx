@@ -84,7 +84,15 @@ export function MainContentArea({
             </p>
             <a
               href={getSignInUrl({ oauthBase: OAUTH_BASE(), returnTo: '/app/' })}
-              className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              className="inline-block px-4 py-2 rounded-md text-sm font-medium"
+              style={{
+                background: 'var(--gradient-aurora)',
+                color: 'var(--text-on-brand, #fff)',
+                boxShadow: 'var(--shadow-glow-aurora)',
+                transition: 'filter var(--dur-fast, 150ms) var(--ease-smooth, ease)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
             >
               {tAuth('signIn.button')}
             </a>

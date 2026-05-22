@@ -37,7 +37,6 @@ export function LocalUserBadge() {
           background: 'var(--bg-surface-2)',
           border: '1px solid var(--border-2)',
           borderRadius: 'var(--r-md)',
-          transition: 'background var(--dur-fast) var(--ease-smooth)',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = 'var(--bg-hover)';
@@ -82,7 +81,6 @@ export function LocalUserBadge() {
             className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
             style={{
               color: 'var(--text-2)',
-              transition: 'background var(--dur-fast) var(--ease-smooth)',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--bg-hover)';

@@ -88,7 +88,12 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
                   onClick={() => !isSelected && onSelect(item.id)}
                   className="shrink-0 px-3 py-1.5 rounded-lg text-left transition-all duration-200"
                   style={{
-                    background: isSelected ? 'var(--bg-surface-2)' : 'transparent',
+                    background: isSelected ? 'var(--bg-surface)' : 'transparent',
+                    color: isSelected ? 'var(--violet-700)' : 'var(--text-3)',
+                    border: isSelected
+                      ? '1px solid var(--violet-200)'
+                      : '1px solid transparent',
+                    boxShadow: isSelected ? 'var(--shadow-xs)' : undefined,
                     cursor: isSelected ? 'default' : 'pointer',
                   }}
                 >
@@ -107,7 +112,7 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
                     <span
                       className="text-sm whitespace-nowrap transition-colors duration-200"
                       style={{
-                        color: isSelected ? 'var(--text-1)' : 'var(--text-3)',
+                        color: isSelected ? 'inherit' : 'var(--text-3)',
                         fontWeight: isSelected ? 600 : 400,
                       }}
                     >

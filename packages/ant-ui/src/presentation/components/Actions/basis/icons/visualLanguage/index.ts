@@ -1,3 +1,5 @@
+// design-content-exempt: visual-language-swatch
+// 이 디렉터리의 swatch 컴포넌트는 디자인 시스템 카탈로그용으로 Tailwind 팔레트 색명을 의도적으로 유지합니다 — F22/F23 grep exempt
 export { ModernSaasPreview, ModernSaasFullPreview } from './ModernSaas';
 export { EnterprisePreview, EnterpriseFullPreview } from './Enterprise';
 export { FintechPremiumPreview, FintechPremiumFullPreview } from './FintechPremium';

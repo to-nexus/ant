@@ -33,7 +33,6 @@ export function VirtualizationToggle({
     borderRadius: 'var(--r-pill)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
-    transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
     letterSpacing: '0.02em',
   };
 

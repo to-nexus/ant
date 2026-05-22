@@ -133,7 +133,10 @@ export function OrganizationOnboardingScreen() {
 
   return (
     <div className="h-screen w-screen flex items-center justify-center bg-[color:var(--bg-canvas)] px-4">
-      <div className="w-full max-w-md bg-[color:var(--bg-surface)] border border-gray-200 rounded-lg shadow-lg p-8">
+      <div
+        className="w-full max-w-md bg-[color:var(--bg-surface)] shadow-lg p-8"
+        style={{ border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)' }}
+      >
         <div className="flex items-center gap-3 mb-6">
           <Building2 className="w-8 h-8 text-indigo-600" />
           <h1 className="text-xl font-semibold text-[color:var(--text-1)]">
@@ -163,11 +166,12 @@ export function OrganizationOnboardingScreen() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={t('onboarding.organizationPlaceholder')}
                 disabled={submitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md
+                className="w-full px-3 py-2
                            bg-[color:var(--bg-surface)] text-[color:var(--text-1)]
                            placeholder-gray-400
                            focus:outline-none focus:ring-2 focus:ring-indigo-500
                            disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)' }}
               />
               {searching && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">

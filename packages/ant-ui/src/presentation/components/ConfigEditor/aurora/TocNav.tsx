@@ -84,7 +84,6 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
               textAlign: 'left',
               borderRadius: 'var(--r-md)',
               cursor: 'pointer',
-              transition: 'background 0.15s ease, color 0.15s ease',
             }}
           >
             {isActive && (

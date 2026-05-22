@@ -17,6 +17,9 @@ interface RowListProps {
  *  • Git toolbar and Preview Editor entry button live OUTSIDE — they
  *    are siblings of `<RowList>` in the parent layout and therefore
  *    stay fixed regardless of row scroll position.
+ *  • Per the B3 handoff, this container is a chrome-less scroller:
+ *    no border, no surface background, no padding. Visual separation
+ *    between rows comes from each row's own hover/active background.
  */
 export function RowList({ children, maxHeight = 240, ariaLabel }: RowListProps) {
   return (
@@ -29,11 +32,6 @@ export function RowList({ children, maxHeight = 240, ariaLabel }: RowListProps) 
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
-        padding: 2,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--border-1)',
-        borderRadius: 8,
       }}
     >
       {children}

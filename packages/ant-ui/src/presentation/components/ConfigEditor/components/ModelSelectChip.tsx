@@ -207,7 +207,6 @@ export function ModelSelectChip({
               fontSize: 12.5,
               cursor: 'pointer',
               textAlign: 'left',
-              transition: 'background 0.12s ease',
             }}
           >
             <span style={{ fontSize: 11, opacity: 0.6 }}>
@@ -292,7 +291,6 @@ export function ModelSelectChip({
                         fontSize: 12.5,
                         cursor: 'pointer',
                         textAlign: 'left',
-                        transition: 'background 0.12s ease',
                       }}
                     >
                       <span style={{ fontSize: 11, opacity: 0.5 }}>
@@ -349,7 +347,6 @@ export function ModelSelectChip({
           fontWeight: 700,
           fontFamily: 'var(--font-display)',
           cursor: 'pointer',
-          transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
           ...triggerStyle,
         }}
       >

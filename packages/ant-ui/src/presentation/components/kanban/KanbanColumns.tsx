@@ -1,4 +1,3 @@
-import { Badge } from '@/presentation/components/aurora';
 import { TaskCard } from '../TaskCard';
 import { motion, LayoutGroup } from 'framer-motion';
 import { UnifiedTask } from '@/domain/models/task';
@@ -14,6 +13,118 @@ import {
   ShimmerSweepOverlay,
   CompletedCheckChip,
 } from './TaskCardEffects';
+
+/**
+ * Column-level accent tokens. Mirrors the handoff `KANBAN_COLUMNS` palette
+ * (visual/ui/handoff/project/a2-workspace.jsx) using the nearest Aurora
+ * tokens — todo=violet, in-progress=pink, completed=cool/teal.
+ */
+const COLUMN_TOKENS = {
+  todo: {
+    color: 'var(--violet-500)',
+    gradient: 'var(--gradient-violet-pink)',
+  },
+  inProgress: {
+    color: 'var(--pink-500)',
+    gradient: 'var(--gradient-pink-orange)',
+  },
+  completed: {
+    color: 'var(--teal-500)',
+    gradient: 'var(--gradient-cool)',
+  },
+} as const;
+
+/**
+ * KanbanColumnShell — handoff column container.
+ * Wraps a header row (color dot + label + counter pill, with a 2px gradient
+ * bar at the very top) and a scrollable list body. Both layout modes
+ * (horizontal split / vertical split) share the same chrome.
+ */
+function KanbanColumnShell({
+  accent,
+  label,
+  count,
+  isHorizontalSplit,
+  children,
+}: {
+  accent: { color: string; gradient: string };
+  label: string;
+  count: number;
+  isHorizontalSplit: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={isHorizontalSplit ? 'flex flex-col' : 'flex flex-col min-h-0'}
+      style={{
+        background: 'oklch(from var(--bg-surface) l c h / 0.78)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        borderRadius: 'var(--r-xl)',
+        border: '1px solid var(--border-1)',
+        overflow: 'hidden',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="relative flex items-center gap-2 px-3.5 py-3 shrink-0"
+        style={{ borderBottom: '1px solid var(--border-1)' }}
+      >
+        {/* Top 2px gradient bar */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: accent.color,
+            opacity: 0.85,
+          }}
+        />
+        {/* Color dot */}
+        <span
+          aria-hidden
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: '50%',
+            background: accent.color,
+            boxShadow: `0 0 14px ${accent.color}`,
+            flexShrink: 0,
+          }}
+        />
+        <h3
+          className="font-semibold text-sm truncate"
+          style={{ color: 'var(--text-1)' }}
+        >
+          {label}
+        </h3>
+        <span
+          className="ml-auto px-2 py-[2px] rounded-full text-[10px] font-bold"
+          style={{
+            background: 'var(--bg-surface-3)',
+            color: 'var(--text-2)',
+          }}
+        >
+          {count}
+        </span>
+      </div>
+      {/* Body */}
+      <div
+        className={
+          isHorizontalSplit
+            ? 'flex flex-col gap-2 p-2.5'
+            : 'flex flex-col gap-2 p-2.5 overflow-y-auto scrollbar-hide'
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Inline node status shown directly below each in-progress task card.
@@ -135,31 +246,18 @@ export function KanbanColumns({
   
   return (
     <LayoutGroup>
-      <div className={isHorizontalSplit ? 
-        "flex flex-col gap-4" : 
+      <div className={isHorizontalSplit ?
+        "flex flex-col gap-4" :
         "grid grid-cols-3 gap-4 h-full"
       }>
         {/* TO DO Column */}
-        <div className={isHorizontalSplit ? 
-          "flex flex-col" : 
-          "flex flex-col min-h-0"
-        }>
-          {/* Column Header */}
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>📝 {t('columns.todo')}</h3>
-            <Badge tone="neutral" className="text-xs">
-              {sortedTodoTasks.length}
-            </Badge>
-          </div>
-          
-          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
-          <div
-            ref={todoListRef}
-            className={isHorizontalSplit ?
-              "space-y-2 pr-2" :
-              "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
-            }
-          >
+        <KanbanColumnShell
+          accent={COLUMN_TOKENS.todo}
+          label={t('columns.todo')}
+          count={sortedTodoTasks.length}
+          isHorizontalSplit={isHorizontalSplit}
+        >
+          <div ref={todoListRef} className="flex flex-col gap-2">
             {sortedTodoTasks.map((task) => {
               const taskId = task.id || task.name;
               return (
@@ -168,7 +266,13 @@ export function KanbanColumns({
                   fresh={newlyAddedTodoIds.has(taskId)}
                   layoutId={`task-${taskId}`}
                 >
-                  <TaskCard task={task} status="todo" />
+                  <TaskCard
+                    task={task}
+                    status="todo"
+                    columnColor={COLUMN_TOKENS.todo.color}
+                    columnGradient={COLUMN_TOKENS.todo.gradient}
+                    newlyAdded={newlyAddedTodoIds.has(taskId)}
+                  />
                 </PopAppear>
               );
             })}
@@ -178,34 +282,24 @@ export function KanbanColumns({
               </div>
             )}
           </div>
-        </div>
+        </KanbanColumnShell>
 
         {/* IN PROGRESS Column */}
-        <div className={isHorizontalSplit ? 
-          "flex flex-col" : 
-          "flex flex-col min-h-0"
-        }>
-          {/* Column Header */}
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>🚀 {t('columns.inProgress')}</h3>
-            <Badge tone="neutral" className="text-xs">
-              {inProgressTasks.length}
-            </Badge>
-          </div>
-          
-          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
-          <div className={isHorizontalSplit ? 
-            "space-y-3 pr-2" : 
-            "space-y-3 overflow-y-auto pr-2 scrollbar-hide"
-          }>
+        <KanbanColumnShell
+          accent={COLUMN_TOKENS.inProgress}
+          label={t('columns.inProgress')}
+          count={inProgressTasks.length}
+          isHorizontalSplit={isHorizontalSplit}
+        >
+          <div className="flex flex-col gap-3">
             {inProgressTasks.map((task) => {
               const taskId = task.id || task.name;
-              
+
               // Find the active node for this specific task
               const taskActiveNode = workflowDisplayedState?.activeNodes?.find(
                 n => n.taskId === taskId || n.taskName === task.name
               );
-              
+
               return (
                 <div key={`in-progress-${taskId}`} className="min-w-0 space-y-0">
                   <motion.div
@@ -213,7 +307,7 @@ export function KanbanColumns({
                     className="min-w-0"
                     layoutId={`task-${taskId}`}
                     layout
-                    transition={{ 
+                    transition={{
                       layout: {
                         type: "spring",
                         stiffness: 500,
@@ -221,9 +315,11 @@ export function KanbanColumns({
                       }
                     }}
                   >
-                    <TaskCard 
-                      task={task} 
+                    <TaskCard
+                      task={task}
                       status="in-progress"
+                      columnColor={COLUMN_TOKENS.inProgress.color}
+                      columnGradient={COLUMN_TOKENS.inProgress.gradient}
                     />
                   </motion.div>
                   <InlineNodeStatus node={taskActiveNode} />
@@ -236,26 +332,16 @@ export function KanbanColumns({
               </div>
             )}
           </div>
-        </div>
+        </KanbanColumnShell>
 
         {/* COMPLETED Column */}
-        <div className={isHorizontalSplit ? 
-          "flex flex-col" : 
-          "flex flex-col min-h-0"
-        }>
-          {/* Column Header */}
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>✅ {t('columns.completed')}</h3>
-            <Badge tone="neutral" className="text-xs">
-              {completedTasks.length}
-            </Badge>
-          </div>
-          
-          {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
-          <div className={isHorizontalSplit ? 
-            "space-y-2 pr-2" : 
-            "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
-          }>
+        <KanbanColumnShell
+          accent={COLUMN_TOKENS.completed}
+          label={t('columns.completed')}
+          count={completedTasks.length}
+          isHorizontalSplit={isHorizontalSplit}
+        >
+          <div className="flex flex-col gap-2">
             {completedTasks.slice().reverse().map((task) => {
               const taskId = task.id || task.name;
               const isNewlyCompleted = newlyCompletedIds.has(taskId);
@@ -276,18 +362,33 @@ export function KanbanColumns({
                 >
                   {isNewlyCompleted ? (
                     <div className="relative">
-                      <GlowHalo rounded="rounded-lg" />
-                      <ShimmerSweepOverlay variant="completed-slow" rounded="rounded-lg" />
+                      <GlowHalo rounded="rounded-lg" accent={COLUMN_TOKENS.completed} />
+                      <ShimmerSweepOverlay
+                        variant="completed-slow"
+                        rounded="rounded-lg"
+                        accent={COLUMN_TOKENS.completed}
+                      />
                       <SparkleOrbits rounded="rounded-lg" />
                       <div className="relative z-10 flex items-start gap-1">
                         <CompletedCheckChip />
                         <div className="flex-1 min-w-0">
-                          <TaskCard task={task} status="completed" justCompleted />
+                          <TaskCard
+                            task={task}
+                            status="completed"
+                            columnColor={COLUMN_TOKENS.completed.color}
+                            columnGradient={COLUMN_TOKENS.completed.gradient}
+                            justCompleted
+                          />
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <TaskCard task={task} status="completed" />
+                    <TaskCard
+                      task={task}
+                      status="completed"
+                      columnColor={COLUMN_TOKENS.completed.color}
+                      columnGradient={COLUMN_TOKENS.completed.gradient}
+                    />
                   )}
                 </motion.div>
               );
@@ -298,7 +399,7 @@ export function KanbanColumns({
               </div>
             )}
           </div>
-        </div>
+        </KanbanColumnShell>
       </div>
     </LayoutGroup>
   );

@@ -23,7 +23,6 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   background: active ? 'oklch(94% 0.06 290)' : 'var(--bg-surface-2)',
   color: active ? 'var(--violet-700)' : 'var(--text-3)',
   cursor: 'pointer',
-  transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
   textTransform: 'capitalize',
 });
 

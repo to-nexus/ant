@@ -6,7 +6,6 @@ import { createProject } from '@/infrastructure/http/api';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
-import { useGitSnapshot } from '@/domain/git-world';
 import {
   selectProjectConfigMissing,
 } from '@/domain/store/selectors';
@@ -36,7 +35,6 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     createProjectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
-  const snapshot = useGitSnapshot();
 
   const [showWizard, setShowWizard] = useState(false);
   const [forceInlineCreate, setForceInlineCreate] = useState(false);
@@ -110,14 +108,15 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     if (!name) return;
     try {
       await handleCreateProject(name);
+      await fetchProjects();
+      setSelectedProject(name);
       setNewProjectName('');
       setForceInlineCreate(false);
-      fetchProjects();
     } catch (err) {
       console.error('Failed to create project:', err);
       showError(t('workspace.createFailed'));
     }
-  }, [newProjectName, fetchProjects, showError, t]);
+  }, [newProjectName, fetchProjects, setSelectedProject, showError, t]);
 
   return (
     <div>
@@ -130,6 +129,15 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             type="button"
             onClick={handleOpenWizard}
             disabled={!policy.canChangeProject}
+            onMouseEnter={(e) => {
+              if (!policy.canChangeProject) return;
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--violet-600)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-3)';
+            }}
             title={
               !policy.canChangeProject
                 ? policy.disabledReason || undefined
@@ -143,12 +151,12 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 6,
-              color: '#fff',
-              background: 'var(--gradient-aurora)',
-              boxShadow: 'var(--shadow-glow-aurora)',
+              color: 'var(--text-3)',
+              background: 'transparent',
               border: 'none',
               cursor: policy.canChangeProject ? 'pointer' : 'not-allowed',
               opacity: policy.canChangeProject ? 1 : 0.5,
+              transition: 'all var(--dur-fast)',
             }}
           >
             <Plus size={12} />
@@ -158,88 +166,59 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
         {projects.length === 0 ? (
           <div
             style={{
-              padding: '12px 8px',
-              fontSize: 12,
+              padding: '14px 8px',
+              fontSize: 11,
+              fontStyle: 'italic',
               color: 'var(--text-3)',
               textAlign: 'center',
-              border: '1px dashed var(--border-1)',
-              borderRadius: 8,
-              background: 'var(--surface-2)',
             }}
           >
             {t('workspace.placeholder')}
           </div>
         ) : (
-          <RowList ariaLabel={t('workspace.title')}>
-            {orderedProjects.map((name) => {
-              const isActive = name === selectedProject;
-              const row = (
-                <ProjectRow
-                  key={name}
-                  name={name}
-                  isActive={isActive}
-                  accent={projectAccents[name] || 'violet'}
-                  disabled={!policy.canChangeProject && !isActive}
-                  disabledReason={policy.disabledReason || undefined}
-                  onSwitch={() => handleSwitchProject(name)}
-                  onClear={isActive ? handleClearProject : undefined}
-                  onSettings={isActive ? handleConfigClick : undefined}
-                />
-              );
-              // Git toolbar sits directly under the active project row,
-              // INSIDE the RowList so it stays adjacent to the selection
-              // it controls. The list is scrollable up to 240px (RowList
-              // default); preview-editor entry and other always-visible
-              // controls live in `FeatureSection` outside its own list.
-              if (isActive) {
+          <>
+            <RowList ariaLabel={t('workspace.title')}>
+              {orderedProjects.map((name) => {
+                const isActive = name === selectedProject;
                 return (
-                  <div key={name}>
-                    {row}
-                    <GitToolbar />
-                    {snapshot?.currentBranch && (
-                      <div
-                        className="font-mono truncate"
-                        style={{
-                          marginTop: 4,
-                          padding: '2px 10px',
-                          fontSize: 11,
-                          color: 'var(--text-3)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={snapshot.currentBranch}
-                      >
-                        {snapshot.currentBranch}
-                      </div>
-                    )}
-                    {projectConfigMissing && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          padding: '6px 8px',
-                          borderRadius: 6,
-                          border: '1px solid color-mix(in srgb, var(--orange-500) 35%, transparent)',
-                          background: 'color-mix(in srgb, var(--orange-500) 12%, transparent)',
-                          color: 'var(--orange-500)',
-                          fontSize: 11,
-                          display: 'flex',
-                          gap: 6,
-                          alignItems: 'flex-start',
-                        }}
-                      >
-                        <span aria-hidden>⚠️</span>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          {t('config:git.configRequired')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  <ProjectRow
+                    key={name}
+                    name={name}
+                    isActive={isActive}
+                    accent={projectAccents[name] || 'violet'}
+                    disabled={!policy.canChangeProject && !isActive}
+                    disabledReason={policy.disabledReason || undefined}
+                    onSwitch={() => handleSwitchProject(name)}
+                    onClear={isActive ? handleClearProject : undefined}
+                    onSettings={isActive ? handleConfigClick : undefined}
+                  />
                 );
-              }
-              return row;
-            })}
-          </RowList>
+              })}
+            </RowList>
+            {selectedProject && <GitToolbar />}
+            {selectedProject && projectConfigMissing && (
+              <div
+                style={{
+                  margin: '0 10px 8px',
+                  padding: 7,
+                  borderRadius: 6,
+                  border: '1px solid color-mix(in srgb, var(--orange-500) 22%, transparent)',
+                  background: 'color-mix(in srgb, var(--orange-500) 8%, transparent)',
+                  color: 'var(--orange-600)',
+                  fontSize: 11,
+                  display: 'flex',
+                  gap: 6,
+                  alignItems: 'flex-start',
+                  lineHeight: 1.4,
+                }}
+              >
+                <span aria-hidden>⚠️</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {t('config:git.configRequired')}
+                </span>
+              </div>
+            )}
+          </>
         )}
 
         {forceInlineCreate && (
@@ -287,7 +266,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
                 borderRadius: 6,
                 fontSize: 11,
                 fontWeight: 600,
-                color: '#fff',
+                color: 'var(--text-on-brand)',
                 background: 'var(--gradient-aurora)',
                 boxShadow: 'var(--shadow-glow-aurora)',
                 border: 'none',

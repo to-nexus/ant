@@ -26,7 +26,7 @@ const inputBaseStyle = (
     boxShadow: focused && !disabled && !hasError ? '0 0 0 3px oklch(64% 0.20 290 / 0.18)' : 'none',
     cursor: disabled ? 'not-allowed' : 'text',
     outline: 'none',
-    transition: 'all 150ms var(--ease-smooth)',
+    transition: 'transform 150ms var(--ease-smooth), opacity 150ms var(--ease-smooth), box-shadow 150ms var(--ease-smooth)',
   };
 };
 

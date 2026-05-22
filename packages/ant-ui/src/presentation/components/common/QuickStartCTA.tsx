@@ -124,7 +124,7 @@ export function QuickStartCTA({
           width: 32,
           height: 32,
           borderRadius: '50%',
-          background: 'rgba(255, 255, 255, 0.22)',
+          background: 'color-mix(in srgb, var(--text-on-brand) 22%, transparent)',
         }}
       >
         <Icon
@@ -143,7 +143,7 @@ export function QuickStartCTA({
         {hint && (
           <span
             className="block text-xs mt-0.5 leading-snug truncate"
-            style={{ color: 'rgba(255, 255, 255, 0.85)' }}
+            style={{ color: 'color-mix(in srgb, var(--text-on-brand) 85%, transparent)' }}
           >
             {hint}
           </span>

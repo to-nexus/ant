@@ -276,7 +276,6 @@ function OwnerPill({ active, accentFg, accentBg, accentRing, onClick, children }
         color: active ? accentFg : 'var(--text-3)',
         border: active ? `1px solid ${accentRing}` : '1px solid var(--border-1)',
         cursor: 'pointer',
-        transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
       }}
     >
       {children}

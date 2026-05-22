@@ -179,13 +179,23 @@ function TurnGroup({ row }: { row: Extract<RenderRow, { kind: 'turn' }> }) {
 }
 
 function ModeBadge({ mode }: { mode: 'generate' | 'refactor' }) {
-  const palette =
+  // §R13: Aurora-token inline-style recipe (blue/purple palette removed).
+  const tone =
     mode === 'refactor'
-      ? 'bg-purple-50 text-purple-700 border-purple-200'
-      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      ? {
+          background: 'var(--violet-50)',
+          color: 'var(--violet-700)',
+          border: '1px solid var(--violet-200)',
+        }
+      : {
+          background: 'var(--emerald-50)',
+          color: 'var(--emerald-700)',
+          border: '1px solid var(--emerald-200)',
+        };
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${palette}`}
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono"
+      style={tone}
     >
       {mode}
     </span>
@@ -370,15 +380,30 @@ function AnchorChipList({
 }
 
 function AnchorChip({ label, kind }: { label: string; kind: 'spec' | 'path' | 'file' }) {
-  const palette: Record<typeof kind, string> = {
-    spec: 'bg-purple-50 text-purple-700 border-purple-200',
-    path: 'bg-blue-50 text-blue-700 border-blue-200',
-    file: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  // §R13: Aurora-token inline-style recipe. `path` was blue; remapped to
+  // violet (Aurora has no first-class blue ramp) — see Spec §R13.
+  const palette: Record<typeof kind, { background: string; color: string; border: string }> = {
+    spec: {
+      background: 'var(--violet-50)',
+      color: 'var(--violet-700)',
+      border: '1px solid var(--violet-200)',
+    },
+    path: {
+      background: 'var(--violet-50)',
+      color: 'var(--violet-700)',
+      border: '1px solid var(--violet-200)',
+    },
+    file: {
+      background: 'var(--emerald-50)',
+      color: 'var(--emerald-700)',
+      border: '1px solid var(--emerald-200)',
+    },
   };
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-mono truncate max-w-[260px] ${palette[kind]}`}
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono truncate max-w-[260px]"
       title={label}
+      style={palette[kind]}
     >
       {label}
     </span>
