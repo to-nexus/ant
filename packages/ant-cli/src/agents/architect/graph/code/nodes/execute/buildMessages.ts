@@ -27,6 +27,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getExecutionLogger } from "../../../../../../core/utils/executionLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+import { detectImageMimeFromBuffer, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
@@ -598,18 +599,21 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             continue;
           }
 
-          const ext = path.extname(abs).toLowerCase();
-          const mediaType =
-            ext === '.png' ? 'image/png' :
-            (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' :
-            ext === '.webp' ? 'image/webp' :
-            ext === '.gif' ? 'image/gif' :
-            ext === '.svg' ? 'image/svg+xml' :
-            null;
-
+          // Anthropic API rejects when the declared `media_type` does not
+          // match the actual base64 content (e.g. a `.png`-named file that
+          // is actually JPEG — sage-orbiting-grain RCA). Sniff magic bytes
+          // off the buffer; only fall back to extension for SVG (text XML,
+          // no binary signature).
+          const buf = fs.readFileSync(abs);
+          let mediaType: AnthropicImageMime | 'image/svg+xml' | null =
+            detectImageMimeFromBuffer(buf);
+          if (!mediaType) {
+            const ext = path.extname(abs).toLowerCase();
+            if (ext === '.svg') mediaType = 'image/svg+xml';
+          }
           if (!mediaType) continue;
 
-          const data = fs.readFileSync(abs).toString('base64');
+          const data = buf.toString('base64');
           totalBytes += stat.size;
 
           uiImageBlocks.push({
