@@ -10,9 +10,9 @@ function SkeletonCard({ delay = 0 }: { delay?: number }) {
   return (
     <Skeleton variant="card" delayMs={delay}>
       <div className="flex items-start gap-2 mb-2">
-        <Skeleton variant="rect" className="h-4 w-12 bg-gray-300 dark:bg-gray-600" delayMs={delay} />
-        <Skeleton variant="rect" className="flex-1 h-4 bg-gray-300 dark:bg-gray-600" delayMs={delay + 60} />
-        <Skeleton variant="rect" className="h-4 w-16 bg-gray-300 dark:bg-gray-600" delayMs={delay + 120} />
+        <Skeleton variant="rect" className="h-4 w-12" delayMs={delay} />
+        <Skeleton variant="rect" className="flex-1 h-4" delayMs={delay + 60} />
+        <Skeleton variant="rect" className="h-4 w-16" delayMs={delay + 120} />
       </div>
       <Skeleton variant="rect" className="h-3 w-3/4" delayMs={delay + 180} />
     </Skeleton>
@@ -25,10 +25,17 @@ function SkeletonCard({ delay = 0 }: { delay?: number }) {
 function ColumnHeader({ icon, title, count }: { icon: string; title: string; count?: string | number }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <h3 className="font-semibold text-sm text-gray-900 dark:text-white">
+      <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
         {icon} {title}
       </h3>
-      <div className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-xs text-gray-700 dark:text-gray-300">
+      <div
+        className="px-2 py-0.5 text-xs"
+        style={{
+          background: 'var(--bg-surface-2)',
+          color: 'var(--text-2)',
+          borderRadius: 'var(--r-pill)',
+        }}
+      >
         {count}
       </div>
     </div>
@@ -61,7 +68,7 @@ export function KanbanEstimatingSkeleton() {
       {/* In Progress column (empty) */}
       <div className="space-y-3">
         <ColumnHeader icon="🔄" title={t('columns.inProgress')} count={0} />
-        <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+        <div className="text-sm text-center py-8" style={{ color: 'var(--text-3)' }}>
           {t('columns.waitingForTasks')}
         </div>
       </div>
@@ -69,7 +76,7 @@ export function KanbanEstimatingSkeleton() {
       {/* Completed column (empty) */}
       <div className="space-y-3">
         <ColumnHeader icon="✅" title={t('columns.completed')} count={0} />
-        <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+        <div className="text-sm text-center py-8" style={{ color: 'var(--text-3)' }}>
           {t('columns.noCompletedTasks')}
         </div>
       </div>

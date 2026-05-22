@@ -13,6 +13,12 @@ import type { BaseTask } from '@ant/shared';
 
 const taskKey = (task: BaseTask): string => task.id || task.name;
 
+/** Returns true when a UnifiedTask's transient `status` field is 'verifying'.
+ *  Verifying tasks live in the to-do bucket from the source-of-truth model
+ *  but render inside the In-Progress lane. */
+const isVerifying = (task: BaseTask): boolean =>
+  (task as { status?: string }).status === 'verifying';
+
 interface KanbanBoardProps {
   kanbanData: KanbanData;  // ✅ App에서 전달받음 (project/feature 단위 SSE)
   workflowState: WorkflowRealtimeState | null;  // ✅ App에서 전달받음 (job 단위 SSE)
@@ -172,8 +178,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         {/* 중단(interruption) 관련 UI 완전 제거. 채팅에서만 노출됨. */}
         
         <KanbanColumns
-          todoTasks={kanbanData.todo || []}
-          inProgressTasks={kanbanData.inProgress || []}
+          todoTasks={(kanbanData.todo || []).filter(t => !isVerifying(t))}
+          inProgressTasks={[
+            ...(kanbanData.inProgress || []),
+            ...((kanbanData.todo || []).filter(isVerifying)),
+          ]}
           completedTasks={kanbanData.completed || []}
           newlyAddedTodoIds={newlyAddedTodoIds}
           newlyCompletedIds={newlyCompletedIds}

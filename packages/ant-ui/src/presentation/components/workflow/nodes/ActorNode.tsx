@@ -8,7 +8,6 @@
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
-import { Settings } from 'lucide-react';
 import { ActorType } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
@@ -30,27 +29,10 @@ interface ActorNodeProps {
   data: ActorNodeData;
 }
 
-// Actor 타입별 색상 (라이트 모드)
-const ACTOR_COLORS_LIGHT: Record<ActorType, string> = {
-  [ActorType.LLM]: 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700',
-  [ActorType.VECTOR_DB]: 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700',
-  [ActorType.LOCAL_STORAGE]: 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700',
-  [ActorType.FILE_SYSTEM]: 'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700',
-  [ActorType.CODE_REPO]: 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-300 dark:border-cyan-700',
-  [ActorType.TOOL]: 'bg-gray-50 dark:bg-gray-900/20 border-gray-300 dark:border-gray-700',
-  [ActorType.EMBEDDING]: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700',
-};
-
-// Actor 타입별 색상 (다크 모드)
-const ACTOR_COLORS_DARK: Record<ActorType, string> = {
-  [ActorType.LLM]: 'dark:bg-purple-900/20 dark:border-purple-700',
-  [ActorType.VECTOR_DB]: 'dark:bg-blue-900/20 dark:border-blue-700',
-  [ActorType.LOCAL_STORAGE]: 'dark:bg-green-900/20 dark:border-green-700',
-  [ActorType.FILE_SYSTEM]: 'dark:bg-orange-900/20 dark:border-orange-700',
-  [ActorType.CODE_REPO]: 'dark:bg-cyan-900/20 dark:border-cyan-700',
-  [ActorType.TOOL]: 'dark:bg-gray-900/20 dark:border-gray-700',
-  [ActorType.EMBEDDING]: 'dark:bg-indigo-900/20 dark:border-indigo-700',
-};
+// Aurora-tokenized surface — actor type differentiation comes from icon + label,
+// not from per-type tints. ActorType is retained on the interface for domain
+// continuity and may be used by future variants.
+void ActorType;
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const { selectedProject, selectedFeature } = useStore();
@@ -104,82 +86,93 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     return baseActorInfo;
   }, [baseActorInfo, data.actorId, selectedProject, selectedFeature, config]);
   
-  const colorClass = `${ACTOR_COLORS_LIGHT[data.actorType]} ${ACTOR_COLORS_DARK[data.actorType]}`;
-  
   // Fixed LR — workflow is full-pane, edges flow left → right.
   const targetPosition = Position.Left;
-  
+
   // LOCAL_STORAGE와 VECTOR_DB는 DB 모양 (실린더)
   const isDatabase = data.actorType === ActorType.LOCAL_STORAGE || data.actorType === ActorType.VECTOR_DB;
-  
+
+  // Aurora running-state borderglow (matches WorkflowNode running signal).
+  const runningGlowShadow =
+    '0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)';
+
+  // Common surface style — auto theme-flips via aurora-tokens.css.
+  const baseSurface: React.CSSProperties = {
+    background: 'var(--bg-surface)',
+    color: 'var(--text-1)',
+  };
+
   // 확장된 상태
   if (isExpanded && actorInfo) {
     // Storage 계열 (DB 모양)은 DB 형태 유지하며 확장
     if (isDatabase) {
+      const expandedDbStyle: React.CSSProperties = {
+        ...baseSurface,
+        width: 280,
+        minHeight: 200,
+        borderRadius: '50% / 10%',
+        borderBottomLeftRadius: '50% / 40%',
+        borderBottomRightRadius: '50% / 40%',
+        border: data.isActive ? '2px solid transparent' : '2px dashed var(--border-1)',
+        boxShadow: data.isActive
+          ? `var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18)), ${runningGlowShadow}`
+          : 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18))',
+        zIndex: 1000,
+      };
+
       return (
         <div
-          className={cn(
-            'actor-node flex flex-col items-center justify-start relative cursor-pointer',
-            'border-2 border-dashed transition-all duration-300 shadow-xl p-4',
-            colorClass
-          )}
-          style={{
-            width: 280,
-            minHeight: 200,
-            borderRadius: '50% / 10%',
-            borderBottomLeftRadius: '50% / 40%',
-            borderBottomRightRadius: '50% / 40%',
-            zIndex: 1000  // 최상위 depth
-          }}
+          className="actor-node flex flex-col items-center justify-start relative cursor-pointer transition-all duration-300 p-4"
+          style={expandedDbStyle}
           onClick={() => setIsExpanded(false)}
         >
-          <Handle type="target" position={Position.Left} className="!bg-gray-400 dark:!bg-gray-600" />
-          <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
-          
+          <Handle type="target" position={Position.Left} style={{ background: 'var(--border-1)' }} />
+          <Handle type="source" position={Position.Right} style={{ background: 'var(--border-1)' }} />
+
           {/* Top ellipse (enlarged) */}
-          <div 
-            className={cn(
-              'absolute top-0 left-0 right-0 border-2 border-dashed',
-              colorClass
-            )}
+          <div
+            className="absolute top-0 left-0 right-0"
             style={{
               height: '30px',
               borderRadius: '50%',
+              border: '2px dashed var(--border-1)',
               borderBottom: 'none',
+              background: 'var(--bg-surface)',
             }}
           />
-          
+
           <div className="space-y-3 pt-8 w-full">
-            {/* Title with Gear Icon */}
+            {/* Title */}
             <div className="text-center">
-              <div className="text-3xl mb-2 relative inline-block">
+              <div className="text-3xl mb-2 inline-block">
                 {actorInfo.icon}
-                {data.isActive && (
-                  <div className="absolute -top-1 -right-1">
-                    <Settings className="w-5 h-5 text-green-500 animate-cog-spin" />
-                  </div>
-                )}
               </div>
-              <div className="font-semibold text-sm text-gray-900 dark:text-white">{actorInfo.displayName}</div>
+              <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+                {actorInfo.displayName}
+              </div>
             </div>
-            
+
             {/* Details */}
-            <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
+            <div className="space-y-2 text-xs" style={{ color: 'var(--text-2)' }}>
               <div>
-                <div className="font-semibold opacity-70 mb-1">{t('workflow.provider')}</div>
-                <div className="opacity-90">
+                <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                  {t('workflow.provider')}
+                </div>
+                <div style={{ color: 'var(--text-2)' }}>
                   {data.actorId === 'llm' && !data.llmInfo ? (
-                    <span className="text-gray-400 dark:text-gray-500 italic">{t('workflow.loadingText')}</span>
+                    <span className="italic" style={{ color: 'var(--text-3)' }}>{t('workflow.loadingText')}</span>
                   ) : (
                     actorInfo.provider
                   )}
                 </div>
               </div>
               <div>
-                <div className="font-semibold opacity-70 mb-1">{t('workflow.modelSystem')}</div>
-                <div className="opacity-90">
+                <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                  {t('workflow.modelSystem')}
+                </div>
+                <div style={{ color: 'var(--text-2)' }}>
                   {data.actorId === 'llm' && !data.llmInfo ? (
-                    <span className="text-gray-400 dark:text-gray-500 italic">{t('workflow.loadingText')}</span>
+                    <span className="italic" style={{ color: 'var(--text-3)' }}>{t('workflow.loadingText')}</span>
                   ) : (
                     actorInfo.model
                   )}
@@ -187,8 +180,10 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
               </div>
               {actorInfo.details && (
                 <div>
-                  <div className="font-semibold opacity-70 mb-1">{t('workflow.details')}</div>
-                  <div className="opacity-90 break-all">{actorInfo.details}</div>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                    {t('workflow.details')}
+                  </div>
+                  <div className="break-all" style={{ color: 'var(--text-2)' }}>{actorInfo.details}</div>
                 </div>
               )}
             </div>
@@ -196,53 +191,59 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
         </div>
       );
     }
-    
+
     // 원형 Actor는 아주 둥근 모서리 사각형으로 확장
+    const expandedCircularStyle: React.CSSProperties = {
+      ...baseSurface,
+      width: 280,
+      borderRadius: '32px',
+      border: data.isActive ? '2px solid transparent' : '2px solid var(--border-1)',
+      boxShadow: data.isActive
+        ? `var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18)), ${runningGlowShadow}`
+        : 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18))',
+      zIndex: 1000,
+    };
+
     return (
       <div
-        className={cn(
-          'actor-node border-2 transition-all duration-300 shadow-xl p-4 relative',
-          colorClass,
-          'cursor-pointer'
-        )}
-        style={{
-          width: 280,
-          borderRadius: '32px',  // 아주 둥근 모서리
-          zIndex: 1000  // 최상위 depth
-        }}
+        className="actor-node transition-all duration-300 p-4 relative cursor-pointer"
+        style={expandedCircularStyle}
         onClick={() => setIsExpanded(false)}
       >
-        <Handle type="target" position={Position.Left} className="!bg-gray-400 dark:!bg-gray-600" />
-        <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
+        <Handle type="target" position={Position.Left} style={{ background: 'var(--border-1)' }} />
+        <Handle type="source" position={Position.Right} style={{ background: 'var(--border-1)' }} />
 
         <div className="space-y-3">
-          {/* Title with Gear Icon */}
+          {/* Title */}
           <div className="text-center">
-            <div className="text-3xl mb-2 relative inline-block">
+            <div className="text-3xl mb-2 inline-block">
               {actorInfo.icon}
-              {data.isActive && (
-                <div className="absolute -top-1 -right-1">
-                  <Settings className="w-5 h-5 text-green-500 animate-cog-spin" />
-                </div>
-              )}
             </div>
-            <div className="font-semibold text-sm text-gray-900 dark:text-white">{actorInfo.displayName}</div>
+            <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+              {actorInfo.displayName}
+            </div>
           </div>
 
           {/* Details */}
-          <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
+          <div className="space-y-2 text-xs" style={{ color: 'var(--text-2)' }}>
             <div>
-              <div className="font-semibold opacity-70 mb-1">{t('workflow.provider')}</div>
-              <div className="opacity-90">{actorInfo.provider}</div>
+              <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                {t('workflow.provider')}
+              </div>
+              <div style={{ color: 'var(--text-2)' }}>{actorInfo.provider}</div>
             </div>
             <div>
-              <div className="font-semibold opacity-70 mb-1">{t('workflow.modelSystem')}</div>
-              <div className="opacity-90">{actorInfo.model}</div>
+              <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                {t('workflow.modelSystem')}
+              </div>
+              <div style={{ color: 'var(--text-2)' }}>{actorInfo.model}</div>
             </div>
             {actorInfo.details && (
               <div>
-                <div className="font-semibold opacity-70 mb-1">{t('workflow.details')}</div>
-                <div className="opacity-90 break-all">{actorInfo.details}</div>
+                <div className="font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
+                  {t('workflow.details')}
+                </div>
+                <div className="break-all" style={{ color: 'var(--text-2)' }}>{actorInfo.details}</div>
               </div>
             )}
           </div>
@@ -250,86 +251,87 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
       </div>
     );
   }
-  
+
   // 접힌 상태 (기본) - DB 모양
   if (isDatabase) {
+    const collapsedDbStyle: React.CSSProperties = {
+      ...baseSurface,
+      width: 120,
+      height: 80,
+      borderRadius: '50% / 10%',
+      borderBottomLeftRadius: '50% / 40%',
+      borderBottomRightRadius: '50% / 40%',
+      border: data.isActive ? '2px solid transparent' : '2px dashed var(--border-1)',
+      boxShadow: data.isActive ? runningGlowShadow : 'none',
+      zIndex: 1,
+    };
+
     return (
       <div
         className={cn(
           'actor-node flex flex-col items-center justify-center relative cursor-pointer',
-          'border-2 border-dashed transition-all duration-200 hover:shadow-lg',
-          colorClass,
-          data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-status-pulse'
+          'transition-all duration-200'
         )}
-        style={{
-          width: 120,
-          height: 80,
-          borderRadius: '50% / 10%',
-          borderBottomLeftRadius: '50% / 40%',
-          borderBottomRightRadius: '50% / 40%',
-          zIndex: 1
-        }}
+        style={collapsedDbStyle}
         onClick={() => setIsExpanded(true)}
       >
-        <Handle type="target" position={targetPosition} className="!bg-gray-400 dark:!bg-gray-600" />
-        <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
-        
+        <Handle type="target" position={targetPosition} style={{ background: 'var(--border-1)' }} />
+        <Handle type="source" position={Position.Right} style={{ background: 'var(--border-1)' }} />
+
         {/* Top ellipse (compact) */}
-        <div 
-          className={cn(
-            'absolute top-0 left-0 right-0 border-2 border-dashed',
-            colorClass
-          )}
+        <div
+          className="absolute top-0 left-0 right-0"
           style={{
             height: '20px',
             borderRadius: '50%',
+            border: '2px dashed var(--border-1)',
             borderBottom: 'none',
+            background: 'var(--bg-surface)',
           }}
         />
-        
-        <div className="text-2xl mb-1 relative inline-block">
+
+        <div className="text-2xl mb-1 inline-block">
           {data.icon || actorInfo?.icon}
-          {data.isActive && (
-            <div className="absolute -top-0.5 -right-0.5">
-              <Settings className="w-4 h-4 text-green-500 animate-cog-spin" />
-            </div>
-          )}
         </div>
-        <div className="text-xs font-medium text-center px-2 leading-tight text-gray-900 dark:text-white">
+        <div
+          className="text-xs font-medium text-center px-2 leading-tight"
+          style={{ color: 'var(--text-1)' }}
+        >
           {data.label}
         </div>
       </div>
     );
   }
-  
+
   // 접힌 상태 (기본) - 원형
+  const collapsedCircularStyle: React.CSSProperties = {
+    ...baseSurface,
+    width: 100,
+    height: 100,
+    border: data.isActive ? '2px solid transparent' : '2px solid var(--border-1)',
+    boxShadow: data.isActive ? runningGlowShadow : 'none',
+    zIndex: 1,
+  };
+
   return (
     <div
       className={cn(
         'actor-node rounded-full flex flex-col items-center justify-center relative',
-        'border-2 transition-all duration-200 cursor-pointer hover:shadow-lg',
-        colorClass,
-        data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-status-pulse'
+        'transition-all duration-200 cursor-pointer'
       )}
-      style={{
-        width: 100,
-        height: 100,
-        zIndex: 1
-      }}
+      style={collapsedCircularStyle}
       onClick={() => setIsExpanded(true)}
     >
-      <Handle type="target" position={targetPosition} className="!bg-gray-400 dark:!bg-gray-600" />
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 dark:!bg-gray-600" />
-      
-      <div className="text-2xl mb-1 relative inline-block">
+      <Handle type="target" position={targetPosition} style={{ background: 'var(--border-1)' }} />
+      <Handle type="source" position={Position.Right} style={{ background: 'var(--border-1)' }} />
+
+      <div className="text-2xl mb-1 inline-block">
         {data.icon || actorInfo?.icon}
-        {data.isActive && (
-          <div className="absolute -top-0.5 -right-0.5">
-            <Settings className="w-4 h-4 text-green-500 animate-cog-spin" />
-          </div>
-        )}
       </div>
-      <div className="text-xs font-medium text-center px-2 leading-tight text-gray-900 dark:text-white">
+      <div
+        className="text-xs font-medium text-center px-2 leading-tight"
+        style={{ color: 'var(--text-1)' }}
+      >
         {data.label}
       </div>
     </div>

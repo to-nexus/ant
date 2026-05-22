@@ -1,6 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Monitor } from 'lucide-react';
 import { Spinner } from '../common/async';
 import { useStore } from '@/domain/store';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
@@ -8,6 +7,16 @@ import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
 import { useDeployManager } from '../FeatureSection/hooks/useDeployManager';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
 import { selectPreviewVM } from '@/domain/store/selectors/previewSelectors';
+import {
+  TwoColLayout,
+  TocNav,
+  useActiveSection,
+  DockedConsole,
+} from '@/presentation/components/ConfigEditor/aurora';
+import type {
+  TocNavItem,
+  DockedConsoleLog,
+} from '@/presentation/components/ConfigEditor/aurora';
 
 import { usePreviewConfig } from './hooks/usePreviewConfig';
 import { useConnectionEditor } from './hooks/useConnectionEditor';
@@ -18,6 +27,14 @@ import { ServiceConnectionsSection } from './sections/ServiceConnectionsSection'
 import { PreviewControlsSection } from './sections/PreviewControlsSection';
 import { StatusConsoleSection } from './sections/StatusConsoleSection';
 import { DeploySection } from './sections/DeploySection';
+
+const SECTION_IDS = [
+  'c3v-live',
+  'c3v-connections',
+  'c3v-profile',
+  'c3v-issues',
+  'c3v-deploy',
+];
 
 export function PreviewConfigEditor() {
   const { t } = useTranslation('explorer');
@@ -67,9 +84,14 @@ export function PreviewConfigEditor() {
 
   // UI-only local state
   const [logsExpanded, setLogsExpanded] = useState(false);
-  const [connectionsExpanded, setConnectionsExpanded] = useState(true);
 
   const isRunning = previewState === 'running';
+
+  // Single scroller for TwoColLayout + DockedConsole
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const activeSection = useActiveSection(SECTION_IDS, scrollerRef);
+
+  const dockedLogs: DockedConsoleLog[] = logs;
 
   const handleOpenPreview = useCallback((targetUrl?: string) => {
     // Resolution order:
@@ -108,98 +130,184 @@ export function PreviewConfigEditor() {
     await startServer();
   }, [stopServer, startServer]);
 
+  const issuesTotal = fatalIssues.length + warningIssues.length;
+  const tocItems = useMemo<TocNavItem[]>(() => [
+    {
+      id: 'c3v-live',
+      label: t('preview.tocLive', '라이브 컨트롤'),
+      icon: 'Play',
+      dirty: phase === 'error',
+    },
+    {
+      id: 'c3v-connections',
+      label: t('preview.tocConnections', '서비스 연결'),
+      icon: 'Package',
+      count: connEditor.localConns.length || undefined,
+    },
+    {
+      id: 'c3v-profile',
+      label: t('preview.tocProfile', '프로젝트 프로파일'),
+      icon: 'Layout',
+    },
+    {
+      id: 'c3v-issues',
+      label: t('preview.tocIssues', '이슈'),
+      icon: 'AlertTriangle',
+      count: issuesTotal || undefined,
+    },
+    {
+      id: 'c3v-deploy',
+      label: t('preview.tocDeploy', '배포'),
+      icon: 'Zap',
+    },
+  ], [t, phase, connEditor.localConns.length, issuesTotal]);
+
+  const handleTocSelect = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // Outer Aurora chrome shared by all states (loading / empty / ready)
+  const outerStyle: React.CSSProperties = {
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    background: 'var(--bg-canvas)',
+    minHeight: 0,
+    overflow: 'hidden',
+  };
+
   // Early returns (after all hooks)
   if (!selectedProject) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-        {t('preview.selectWorkspace', 'Select a workspace to configure preview.')}
+      <div style={outerStyle}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-3)',
+            fontSize: 13,
+          }}
+        >
+          {t('preview.selectWorkspace', 'Select a workspace to configure preview.')}
+        </div>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" tone="muted" />
+      <div style={outerStyle}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Spinner size="lg" tone="muted" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Monitor className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {t('preview.configTitle', 'Preview Config')}
-          </h2>
-        </div>
+    <div style={outerStyle}>
+      <div
+        ref={scrollerRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <TwoColLayout
+          toc={
+            <TocNav
+              items={tocItems}
+              active={activeSection}
+              onSelect={handleTocSelect}
+            />
+          }
+          contentMaxWidth="none"
+        >
+          <div id="c3v-live" />
+          <PreviewControlsSection
+            phase={phase}
+            isRunning={isRunning}
+            isReady={isReady}
+            previewStatus={previewStatus}
+            isPreviewLoading={isPreviewLoading}
+            isJobRunning={isJobRunning}
+            dismissedSet={dismissedSet}
+            onStart={handleStart}
+            onStop={handleStop}
+            onRestart={handleRestart}
+            onOpenPreview={handleOpenPreview}
+            onDismissError={dismissError}
+          />
 
-        <ProjectProfileSection
-          structureType={structureType}
-          projectProfile={projectProfile}
-        />
+          <div id="c3v-connections" />
+          <ServiceConnectionsSection
+            localConns={connEditor.localConns}
+            packageGroups={connEditor.packageGroups}
+            isSinglePackage={connEditor.isSinglePackage}
+            hasUnsavedChanges={connEditor.hasUnsavedChanges}
+            editingConnId={connEditor.editingConnId}
+            setEditingConnId={connEditor.setEditingConnId}
+            addingNew={connEditor.addingNew}
+            setAddingNew={connEditor.setAddingNew}
+            isDetecting={connEditor.isDetecting}
+            onAutoDetect={connEditor.handleAutoDetect}
+            onSaveConnections={connEditor.handleSaveConnections}
+            onUpdateConn={connEditor.handleUpdateConn}
+            onDeleteConn={connEditor.handleDeleteConn}
+            onAddConn={connEditor.handleAddConn}
+            onApplyToChat={handleApplyToChat}
+            onToggleVirtualization={connEditor.handleToggleVirtualization}
+          />
 
-        <ServiceConnectionsSection
-          localConns={connEditor.localConns}
-          packageGroups={connEditor.packageGroups}
-          isSinglePackage={connEditor.isSinglePackage}
-          connectionsExpanded={connectionsExpanded}
-          setConnectionsExpanded={setConnectionsExpanded}
-          hasUnsavedChanges={connEditor.hasUnsavedChanges}
-          editingConnId={connEditor.editingConnId}
-          setEditingConnId={connEditor.setEditingConnId}
-          addingNew={connEditor.addingNew}
-          setAddingNew={connEditor.setAddingNew}
-          isDetecting={connEditor.isDetecting}
-          onAutoDetect={connEditor.handleAutoDetect}
-          onSaveConnections={connEditor.handleSaveConnections}
-          onUpdateConn={connEditor.handleUpdateConn}
-          onDeleteConn={connEditor.handleDeleteConn}
-          onAddConn={connEditor.handleAddConn}
-          onApplyToChat={handleApplyToChat}
-          onToggleVirtualization={connEditor.handleToggleVirtualization}
-        />
+          <div id="c3v-profile" />
+          <ProjectProfileSection
+            structureType={structureType}
+            projectProfile={projectProfile}
+          />
 
-        <PreviewControlsSection
-          phase={phase}
-          isRunning={isRunning}
-          isReady={isReady}
-          previewStatus={previewStatus}
-          isPreviewLoading={isPreviewLoading}
-          isJobRunning={isJobRunning}
-          dismissedSet={dismissedSet}
-          onStart={handleStart}
-          onStop={handleStop}
-          onRestart={handleRestart}
-          onOpenPreview={handleOpenPreview}
-          onDismissError={dismissError}
-        />
+          <div id="c3v-issues" />
+          <StatusConsoleSection
+            issues={issues}
+            fatalIssues={fatalIssues}
+            warningIssues={warningIssues}
+            isRunning={isRunning}
+            isReady={isReady}
+            dismissedSet={dismissedSet}
+            onDismissError={dismissError}
+            onApplyToChat={handleApplyToChat}
+          />
 
-        <StatusConsoleSection
-          issues={issues}
-          logs={logs}
-          fatalIssues={fatalIssues}
-          warningIssues={warningIssues}
-          isRunning={isRunning}
-          isReady={isReady}
-          dismissedSet={dismissedSet}
-          logsExpanded={logsExpanded}
-          setLogsExpanded={setLogsExpanded}
-          onDismissError={dismissError}
-          onApplyToChat={handleApplyToChat}
-        />
+          <div id="c3v-deploy" />
+          <DeploySection
+            deployStatus={deployStatusData}
+            deployLogs={deployLogs}
+            isDeployLoading={isDeployLoading}
+            canDeploy={canDeploy}
+            disabledReason={deployDisabledReason}
+            onDeploy={handleDeploy}
+            onStopDeploy={handleStopDeploy}
+            onOpenDeployUrl={openDeployUrl}
+          />
+        </TwoColLayout>
 
-        <DeploySection
-          deployStatus={deployStatusData}
-          deployLogs={deployLogs}
-          isDeployLoading={isDeployLoading}
-          canDeploy={canDeploy}
-          disabledReason={deployDisabledReason}
-          onDeploy={handleDeploy}
-          onStopDeploy={handleStopDeploy}
-          onOpenDeployUrl={openDeployUrl}
+        <DockedConsole
+          logs={dockedLogs}
+          title={t('preview.consoleTitle', 'PREVIEW CONSOLE')}
+          open={logsExpanded}
+          onToggle={() => setLogsExpanded((v) => !v)}
+          emptyHint={t('preview.consoleEmpty', '프리뷰 서버를 시작하면 로그가 표시됩니다')}
         />
       </div>
     </div>

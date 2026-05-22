@@ -103,8 +103,8 @@ export function MemberPicker({
         className={cn(
           'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border transition-colors',
           selectedUserId
-            ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300'
-            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500',
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-3)] hover:border-gray-400',
           className
         )}
         onClick={handleOpen}
@@ -126,11 +126,11 @@ export function MemberPicker({
       {isOpen && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-[9999] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl animate-in fade-in-0 zoom-in-95 duration-100"
+          className="fixed z-[9999] rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] shadow-xl animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ top: pos.top, left: pos.left, width: pos.width }}
         >
           {/* Search */}
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[color:var(--border-1)]">
             <Search className="w-4 h-4 text-gray-400 shrink-0" />
             <input
               ref={searchInputRef}
@@ -138,14 +138,14 @@ export function MemberPicker({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('memberPicker.searchPlaceholder')}
-              className="flex-1 text-sm bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-400"
+              className="flex-1 text-sm bg-transparent outline-none text-[color:var(--text-1)] placeholder-gray-400"
             />
           </div>
 
           {/* List */}
           <div className="max-h-[200px] overflow-y-auto py-1">
             {filteredMembers.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
+              <p className="text-xs text-[color:var(--text-4)] text-center py-4">
                 {search ? t('label.noSearchResults') : t('label.noMembers')}
               </p>
             ) : (
@@ -155,8 +155,8 @@ export function MemberPicker({
                   className={cn(
                     'flex items-center gap-2 w-full px-3 py-2 text-sm text-left transition-colors',
                     m.userId === selectedUserId
-                      ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)]'
                   )}
                   onClick={() => handleSelect(m.userId)}
                 >

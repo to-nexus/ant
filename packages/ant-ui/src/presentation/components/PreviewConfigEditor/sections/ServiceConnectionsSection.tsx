@@ -1,14 +1,11 @@
+
 import { useTranslation } from 'react-i18next';
-import {
-  ChevronDown,
-  ChevronRight,
-  Search,
-  Save,
-  Plus,
-  Package,
-} from 'lucide-react';
-import { Spinner } from '@/presentation/components/common/async';
+import { Check, Package, Plus, Search, Sparkles } from 'lucide-react';
 import type { ServiceConnection } from '@/infrastructure/http/api';
+import {
+  SectionCard,
+  StatusPill,
+} from '@/presentation/components/ConfigEditor/aurora';
 import { ConnectionRow } from '../components/ConnectionRow';
 import { AddConnectionForm } from '../components/AddConnectionForm';
 
@@ -16,8 +13,6 @@ export function ServiceConnectionsSection({
   localConns,
   packageGroups,
   isSinglePackage,
-  connectionsExpanded,
-  setConnectionsExpanded,
   hasUnsavedChanges,
   editingConnId,
   setEditingConnId,
@@ -35,8 +30,6 @@ export function ServiceConnectionsSection({
   localConns: ServiceConnection[];
   packageGroups: Map<string, ServiceConnection[]>;
   isSinglePackage: boolean;
-  connectionsExpanded: boolean;
-  setConnectionsExpanded: (v: boolean) => void;
   hasUnsavedChanges: boolean;
   editingConnId: string | null;
   setEditingConnId: (id: string | null) => void;
@@ -49,110 +42,216 @@ export function ServiceConnectionsSection({
   onDeleteConn: (id: string) => void;
   onAddConn: (conn: ServiceConnection) => void;
   onApplyToChat: (msg: string) => void;
-  onToggleVirtualization?: (id: string, active: boolean) => void;
+  onToggleVirtualization: (id: string, active: boolean) => void;
 }) {
   const { t } = useTranslation('explorer');
 
-  return (
-    <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-center justify-between mb-1">
+  const hasActive = localConns.some((c) => c.status === 'active');
+  const hasDirty = localConns.some(
+    (c) => c.missingAnnotation || c.userModified,
+  );
+
+  const statusPills = localConns.length > 0 ? (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <StatusPill
+        state="info"
+        label={t('preview.connectionCount', '{{count}}개', {
+          count: localConns.length,
+        })}
+      />
+      {hasActive && (
+        <StatusPill
+          state="connected"
+          label={t('preview.connectionsActive', '활성')}
+        />
+      )}
+      {hasDirty && (
+        <StatusPill
+          state="warning"
+          label={t('preview.connectionsDirty', '변경됨')}
+        />
+      )}
+    </span>
+  ) : undefined;
+
+  const ghostBtnStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    background: 'transparent',
+    border: '1px solid var(--border-2)',
+    borderRadius: 'var(--r-sm)',
+    color: 'var(--text-3)',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '4px 9px',
+    cursor: 'pointer',
+    transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+  };
+
+  const statusActions = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {hasUnsavedChanges && (
         <button
-          onClick={() => setConnectionsExpanded(!connectionsExpanded)}
-          className="flex items-center gap-2 text-left"
+          type="button"
+          onClick={onSaveConnections}
+          style={ghostBtnStyle}
+          title={t('preview.save', 'Save')}
         >
-          {connectionsExpanded ? <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />}
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {t('preview.serviceConnections', 'Service Connections')}
-          </h3>
-          {localConns.length > 0 && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">({localConns.length})</span>
-          )}
+          <Check size={11} strokeWidth={2.2} />
+          {t('preview.save', 'Save')}
         </button>
-        <div className="flex items-center gap-1.5">
-          {hasUnsavedChanges && (
-            <button
-              onClick={onSaveConnections}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                       bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300
-                       hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors"
-            >
-              <Save className="w-3 h-3" />
-              {t('preview.save', 'Save')}
-            </button>
+      )}
+      <button
+        type="button"
+        onClick={onAutoDetect}
+        disabled={isDetecting}
+        style={{
+          ...ghostBtnStyle,
+          opacity: isDetecting ? 0.6 : 1,
+          cursor: isDetecting ? 'wait' : 'pointer',
+        }}
+        title={t('preview.autoDetectTitle', 'Re-detect connections')}
+      >
+        {isDetecting ? (
+          <Sparkles size={11} strokeWidth={2.2} />
+        ) : (
+          <Search size={11} strokeWidth={2.2} />
+        )}
+        {t('preview.autoDetect', 'Auto-Detect')}
+      </button>
+    </span>
+  );
+
+  return (
+    <SectionCard
+      icon="Package"
+      title={t('preview.serviceConnections', '서비스 연결')}
+      description={t(
+        'preview.serviceConnectionsDesc',
+        '앱이 의존하는 외부 서비스. 자동 감지 결과는 카테고리별로 색이 다릅니다.',
+      )}
+      accent="violet-pink"
+      status={statusPills}
+      statusAction={statusActions}
+    >
+      {localConns.length === 0 && !addingNew ? (
+        <div
+          style={{
+            padding: '24px 16px',
+            textAlign: 'center',
+            fontSize: 12,
+            color: 'var(--text-4)',
+            fontStyle: 'italic',
+            border: '1px dashed var(--border-2)',
+            borderRadius: 'var(--r-md)',
+          }}
+        >
+          {t(
+            'preview.noConnections',
+            '감지된 연결이 없습니다. 자동 감지를 실행하거나 직접 추가하세요.',
           )}
-          <button
-            onClick={onAutoDetect}
-            disabled={isDetecting}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                     bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400
-                     hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors
-                     disabled:opacity-50"
-            title={t('preview.autoDetectTitle', 'Re-scan project files for connections')}
-          >
-            {isDetecting ? <Spinner size="sm" tone="inherit" /> : <Search className="w-3 h-3" />}
-            {t('preview.autoDetect', 'Auto Detect')}
-          </button>
         </div>
-      </div>
-
-      {connectionsExpanded && (
-        <div className="mt-3 space-y-4">
-          {localConns.length === 0 && !addingNew ? (
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {t('preview.noConnections', 'No connections detected. Click "Auto Detect" to scan .env.example files.')}
-            </p>
-          ) : (
-            <>
-              {Array.from(packageGroups.entries()).map(([source, conns]) => (
-                <div key={source}>
-                  {!isSinglePackage && (
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Package className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                        {source === '*' ? 'Root' : source}
-                      </span>
-                    </div>
-                  )}
-                  <div className="space-y-1.5">
-                    {conns.map((conn) => (
-                      <ConnectionRow
-                        key={`${conn.source}:${conn.id}`}
-                        conn={conn}
-                        isEditing={editingConnId === conn.id}
-                        onEdit={() => setEditingConnId(editingConnId === conn.id ? null : conn.id)}
-                        onUpdate={(updates) => onUpdateConn(conn.id, updates)}
-                        onDelete={() => onDeleteConn(conn.id)}
-                        onFix={onApplyToChat}
-                        onToggleVirtualization={
-                          onToggleVirtualization
-                            ? (active) => onToggleVirtualization(conn.id, active)
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-
-          {addingNew ? (
-            <AddConnectionForm
-              onAdd={onAddConn}
-              onCancel={() => setAddingNew(false)}
-            />
-          ) : (
-            <button
-              onClick={() => setAddingNew(true)}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                       text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {Array.from(packageGroups.entries()).map(([source, conns]) => (
+            <div
+              key={source}
+              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
             >
-              <Plus className="w-3 h-3" />
-              {t('preview.addConnection', 'Add Connection')}
-            </button>
-          )}
+              {!isSinglePackage && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: 'var(--text-3)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1.4,
+                  }}
+                >
+                  <Package size={10} strokeWidth={2.2} />
+                  <span>{source === '*' ? 'Root' : source}</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      background: 'var(--bg-surface-2)',
+                      color: 'var(--text-3)',
+                      borderRadius: 'var(--r-pill)',
+                      letterSpacing: 0,
+                    }}
+                  >
+                    {conns.length}
+                  </span>
+                </div>
+              )}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                {conns.map((conn) => (
+                  <ConnectionRow
+                    key={`${conn.source}:${conn.id}`}
+                    conn={conn}
+                    isEditing={editingConnId === conn.id}
+                    onEdit={() =>
+                      setEditingConnId(
+                        editingConnId === conn.id ? null : conn.id,
+                      )
+                    }
+                    onUpdate={(updates) => onUpdateConn(conn.id, updates)}
+                    onDelete={() => onDeleteConn(conn.id)}
+                    onFix={onApplyToChat}
+                    onToggleVirtualization={(active) =>
+                      onToggleVirtualization(conn.id, active)
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
-    </section>
+
+      {addingNew ? (
+        <div style={{ marginTop: 12 }}>
+          <AddConnectionForm
+            onAdd={onAddConn}
+            onCancel={() => setAddingNew(false)}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAddingNew(true)}
+          style={{
+            marginTop: 12,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 12px',
+            border: '1px dashed var(--border-2)',
+            borderRadius: 'var(--r-md)',
+            background: 'transparent',
+            color: 'var(--text-3)',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition:
+              'border-color 0.15s ease, color 0.15s ease, background 0.15s ease',
+          }}
+        >
+          <Plus size={11} strokeWidth={2.2} />
+          {t('preview.addConnection', '연결 추가')}
+        </button>
+      )}
+    </SectionCard>
   );
 }

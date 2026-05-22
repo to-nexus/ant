@@ -132,16 +132,16 @@ export function OrganizationOnboardingScreen() {
   }
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-[#f6f8fa] dark:bg-[#0d1117] px-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-8">
+    <div className="h-screen w-screen flex items-center justify-center bg-[color:var(--bg-canvas)] px-4">
+      <div className="w-full max-w-md bg-[color:var(--bg-surface)] border border-gray-200 rounded-lg shadow-lg p-8">
         <div className="flex items-center gap-3 mb-6">
-          <Building2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <Building2 className="w-8 h-8 text-indigo-600" />
+          <h1 className="text-xl font-semibold text-[color:var(--text-1)]">
             {t('onboarding.title')}
           </h1>
         </div>
 
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+        <p className="text-sm text-[color:var(--text-3)] mb-6">
           {t('onboarding.description', { email: userEmail ?? '' })}
         </p>
 
@@ -149,7 +149,7 @@ export function OrganizationOnboardingScreen() {
           <div>
             <label
               htmlFor="organization-name"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              className="block text-sm font-medium text-[color:var(--text-2)] mb-1"
             >
               {t('onboarding.organizationLabel')}
             </label>
@@ -163,9 +163,9 @@ export function OrganizationOnboardingScreen() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={t('onboarding.organizationPlaceholder')}
                 disabled={submitting}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                           placeholder-gray-400 dark:placeholder-gray-500
+                className="w-full px-3 py-2 border border-gray-300 rounded-md
+                           bg-[color:var(--bg-surface)] text-[color:var(--text-1)]
+                           placeholder-gray-400
                            focus:outline-none focus:ring-2 focus:ring-indigo-500
                            disabled:opacity-50 disabled:cursor-not-allowed"
               />
@@ -178,21 +178,21 @@ export function OrganizationOnboardingScreen() {
 
             {/* Autocomplete dropdown */}
             {suggestions.length > 0 && !submitting && (
-              <ul className="mt-2 border border-gray-200 dark:border-gray-700 rounded-md
-                             bg-white dark:bg-gray-800 max-h-48 overflow-y-auto">
+              <ul className="mt-2 border border-[color:var(--border-1)] rounded-md
+                             bg-[color:var(--bg-surface)] max-h-48 overflow-y-auto">
                 {suggestions.map((s) => (
                   <li key={s.id}>
                     <button
                       type="button"
                       onClick={() => handlePickSuggestion(s)}
                       className="w-full text-left px-3 py-2 text-sm flex items-center gap-2
-                                 text-gray-700 dark:text-gray-300
-                                 hover:bg-gray-100 dark:hover:bg-gray-700
+                                 text-[color:var(--text-2)]
+                                 hover:bg-[color:var(--bg-hover)]
                                  transition-colors"
                     >
-                      <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <Users className="w-4 h-4 text-indigo-600 shrink-0" />
                       <span className="font-medium">{s.name}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">({s.id})</span>
+                      <span className="text-xs text-[color:var(--text-3)]">({s.id})</span>
                     </button>
                   </li>
                 ))}
@@ -201,7 +201,7 @@ export function OrganizationOnboardingScreen() {
 
             {/* Hint: join existing vs create new */}
             {input.trim() && !searching && (
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-2 text-xs text-[color:var(--text-3)]">
                 {exactMatch
                   ? t('onboarding.willJoin', { name: exactMatch.name })
                   : t('onboarding.willCreate', { name: input.trim() })}
@@ -210,7 +210,7 @@ export function OrganizationOnboardingScreen() {
           </div>
 
           {error && (
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded">
+            <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">
               {error}
             </div>
           )}
@@ -235,8 +235,8 @@ export function OrganizationOnboardingScreen() {
               type="button"
               onClick={handleSkip}
               disabled={submitting}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300
-                         bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+              className="px-4 py-2 text-sm font-medium text-[color:var(--text-2)]
+                         bg-[color:var(--bg-surface-2)] hover:bg-[color:var(--bg-active)]
                          rounded-md transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -245,7 +245,7 @@ export function OrganizationOnboardingScreen() {
           </div>
         </form>
 
-        <p className="mt-6 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-6 text-xs text-[color:var(--text-3)]">
           {t('onboarding.footerHint')}
         </p>
       </div>

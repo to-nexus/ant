@@ -18,8 +18,8 @@ export function ConnectionBanner({ visible }: ConnectionBannerProps) {
   return (
     <div
       className="fixed top-0 left-0 right-0 z-[9998] flex items-center justify-center gap-2
-                 h-10 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700
-                 text-amber-800 dark:text-amber-200 text-sm font-medium
+                 h-10 bg-amber-50 border-b border-amber-200
+                 text-amber-800 text-sm font-medium
                  animate-fadeIn select-none"
     >
       <Spinner size="md" tone="inherit" />

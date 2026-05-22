@@ -1,13 +1,20 @@
+
 /**
- * WorkingCard - Unified status card for both progress and complete states
- * 
- * Handles state transitions within one component (like TerminalCard, ShimmerCard)
- * - Progress: exploring, retrieving, grepping, reading, indexing, analyzing, storing
- * - Complete: explored, retrieved, grepped, read, indexed, analyzed, stored
+ * WorkingCard - Unified status card for both progress and complete states.
+ *
+ * Aurora re-skin (T7): all surfaces / borders / text use var(--…) tokens
+ * that auto-flip under [data-theme=dark]. Per-variant tinting is
+ * expressed as an OKLCH hue (per a3-cards reference) and rendered via
+ * `oklch(…)` color-space recipes off the bg-surface / bg-surface-2
+ * tokens. No theme-prefix classes, no hex literals, no Tailwind palette
+ * classes (bg-blue-*, text-amber-*, etc.).
  */
 
 import { memo, useState } from 'react';
-import { Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette, Eraser } from 'lucide-react';
+import {
+  Eye, Search, FileSearch, Database, FileCode, Package,
+  ChevronDown, ChevronRight, Download, Palette, Eraser,
+} from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
@@ -15,10 +22,11 @@ import { Spinner } from '@/presentation/components/common/async';
 import { useImagePreview } from './useImagePreview';
 import { ImageLightbox } from './ImageLightbox';
 import { lineToContent } from './cards/lineToContent';
+import { TurnCardShell } from './cards/TurnCardShell';
 
-// Sentinel marker returned by getVariantConfig when the progress state
-// should render a <Spinner> (instead of a specific lucide icon). Used to
-// avoid importing the legacy spinner icon outside the primitives directory.
+// Sentinel marker returned by variantIcon when the progress state should
+// render a <Spinner> (instead of a specific lucide icon). Used to avoid
+// importing the legacy spinner icon outside the primitives directory.
 const SPINNER_MARKER = Symbol.for('working-card.spinner');
 type IconKind = typeof SPINNER_MARKER | React.ComponentType<{ className?: string }>;
 
@@ -28,278 +36,151 @@ const PREVIEW_MAX_H_ASSET = 40;       // downloaded: compact asset thumbnail (px
 interface WorkingCardProps {
   line: ChatStatusLine;
   pending?: PendingCardSnapshot;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned' | 'processing' | 'processed' | 'downloading' | 'downloaded' | 'figma_calling' | 'figma_called';
+  variant:
+    | 'exploring' | 'explored' | 'retrieving' | 'retrieved'
+    | 'grepping' | 'grepped'
+    | 'listing_files' | 'listed_files'
+    | 'searching_code' | 'searched_code'
+    | 'reading' | 'read' | 'reading_source' | 'read_source'
+    | 'indexing' | 'indexed'
+    | 'analyzing' | 'analyzed'
+    | 'loading' | 'loaded'
+    | 'storing' | 'stored'
+    | 'learning' | 'learned'
+    | 'processing' | 'processed'
+    | 'downloading' | 'downloaded'
+    | 'figma_calling' | 'figma_called';
 }
 
-/**
- * Determine if variant is a progress state (~ing) or complete state (~ed)
- */
+/** Progress state (~ing) vs complete state (~ed). */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing', 'learning', 'processing', 'downloading', 'figma_calling'].includes(variant);
+  return [
+    'exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code',
+    'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing',
+    'learning', 'processing', 'downloading', 'figma_calling',
+  ].includes(variant);
 }
 
-/**
- * Get icon and styles based on variant and state. The progress icon may be
- * the `SPINNER_MARKER` sentinel, in which case render <Spinner> instead.
- * `iconClass` never contains a spinner animation directly — any animation
- * below is an ambient domain indicator (`animate-status-pulse`).
- */
-function getVariantConfig(
-  variant: string,
-  isProgress: boolean,
-): {
-  Icon: IconKind;
-  iconClass: string;
-  containerClass: string;
-  iconColorClass: string;
-  textClass: string;
-  detailClass: string;
-} {
-  const baseVariant = variant.replace(/ing$|ed$/, '');
-
-  switch (baseVariant) {
-    case 'explor':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : FileSearch,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-          : 'bg-blue-50/30 dark:bg-blue-900/20 hover:bg-blue-100/50 dark:hover:bg-blue-800/30',
-        iconColorClass: isProgress ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500 dark:text-blue-400',
-        textClass: 'text-blue-800 dark:text-blue-300',
-        detailClass: 'text-blue-600 dark:text-blue-400',
-      };
-    case 'retriev':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Database,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800'
-          : 'bg-indigo-50/30 dark:bg-indigo-900/20 hover:bg-indigo-100/50 dark:hover:bg-indigo-800/30',
-        iconColorClass: isProgress ? 'text-indigo-600 dark:text-indigo-400' : 'text-indigo-500 dark:text-indigo-400',
-        textClass: 'text-indigo-800 dark:text-indigo-300',
-        detailClass: 'text-indigo-600 dark:text-indigo-400',
-      };
-    case 'grepp':
-      return {
-        Icon: Search,
-        iconClass: isProgress ? 'animate-status-pulse' : '',
-        containerClass: isProgress
-          ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800'
-          : 'bg-purple-50/30 dark:bg-purple-900/20 hover:bg-purple-100/50 dark:hover:bg-purple-800/30',
-        iconColorClass: isProgress ? 'text-purple-600 dark:text-purple-400' : 'text-purple-500 dark:text-purple-400',
-        textClass: 'text-purple-800 dark:text-purple-300',
-        detailClass: 'text-purple-600 dark:text-purple-400',
-      };
-    case 'listing_files':
-    case 'listed_files':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : FileSearch,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800'
-          : 'bg-cyan-50/30 dark:bg-cyan-900/20 hover:bg-cyan-100/50 dark:hover:bg-cyan-800/30',
-        iconColorClass: isProgress ? 'text-cyan-600 dark:text-cyan-400' : 'text-cyan-500 dark:text-cyan-400',
-        textClass: 'text-cyan-800 dark:text-cyan-300',
-        detailClass: 'text-cyan-600 dark:text-cyan-400',
-      };
-    case 'searching_code':
-    case 'searched_code':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Search,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800'
-          : 'bg-violet-50/30 dark:bg-violet-900/20 hover:bg-violet-100/50 dark:hover:bg-violet-800/30',
-        iconColorClass: isProgress ? 'text-violet-600 dark:text-violet-400' : 'text-violet-500 dark:text-violet-400',
-        textClass: 'text-violet-800 dark:text-violet-300',
-        detailClass: 'text-violet-600 dark:text-violet-400',
-      };
-    case 'read':
-    case 'reading_source':
-    case 'read_source':
-      return {
-        Icon: Eye,
-        iconClass: isProgress ? 'animate-status-pulse' : '',
-        containerClass: isProgress
-          ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800'
-          : 'bg-indigo-50/30 dark:bg-indigo-900/20 hover:bg-indigo-100/50 dark:hover:bg-indigo-800/30',
-        iconColorClass: isProgress ? 'text-indigo-600 dark:text-indigo-400' : 'text-indigo-500 dark:text-indigo-400',
-        textClass: 'text-indigo-800 dark:text-indigo-300',
-        detailClass: 'text-indigo-600 dark:text-indigo-400',
-      };
-    case 'index':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Database,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800'
-          : 'bg-purple-50/30 dark:bg-purple-900/20 hover:bg-purple-100/50 dark:hover:bg-purple-800/30',
-        iconColorClass: isProgress ? 'text-purple-600 dark:text-purple-400' : 'text-purple-500 dark:text-purple-400',
-        textClass: 'text-purple-800 dark:text-purple-300',
-        detailClass: 'text-purple-600 dark:text-purple-400',
-      };
-    case 'analyz':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : FileCode,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
-          : 'bg-emerald-50/30 dark:bg-emerald-900/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-800/30',
-        iconColorClass: isProgress ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-500 dark:text-emerald-400',
-        textClass: 'text-emerald-800 dark:text-emerald-300',
-        detailClass: 'text-emerald-600 dark:text-emerald-400',
-      };
-    case 'load':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : FileSearch,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800'
-          : 'bg-teal-50/30 dark:bg-teal-900/20 hover:bg-teal-100/50 dark:hover:bg-teal-800/30',
-        iconColorClass: isProgress ? 'text-teal-600 dark:text-teal-400' : 'text-teal-500 dark:text-teal-400',
-        textClass: 'text-teal-800 dark:text-teal-300',
-        detailClass: 'text-teal-600 dark:text-teal-400',
-      };
-    case 'stor':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Package,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'
-          : 'bg-amber-50/30 dark:bg-amber-900/20 hover:bg-amber-100/50 dark:hover:bg-amber-800/30',
-        iconColorClass: isProgress ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500 dark:text-amber-400',
-        textClass: 'text-amber-800 dark:text-amber-300',
-        detailClass: 'text-amber-600 dark:text-amber-400',
-      };
-    case 'learn':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Database,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800'
-          : 'bg-fuchsia-50/30 dark:bg-fuchsia-900/20 hover:bg-fuchsia-100/50 dark:hover:bg-fuchsia-800/30',
-        iconColorClass: isProgress ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-fuchsia-500 dark:text-fuchsia-400',
-        textClass: 'text-fuchsia-800 dark:text-fuchsia-300',
-        detailClass: 'text-fuchsia-600 dark:text-fuchsia-400',
-      };
-    case 'processing':
-    case 'processed':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Eraser,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'
-          : 'bg-rose-50/30 dark:bg-rose-900/20 hover:bg-rose-100/50 dark:hover:bg-rose-800/30',
-        iconColorClass: isProgress ? 'text-rose-600 dark:text-rose-400' : 'text-rose-500 dark:text-rose-400',
-        textClass: 'text-rose-800 dark:text-rose-300',
-        detailClass: 'text-rose-600 dark:text-rose-400',
-      };
-    case 'download':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Download,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
-          : 'bg-orange-50/30 dark:bg-orange-900/20 hover:bg-orange-100/50 dark:hover:bg-orange-800/30',
-        iconColorClass: isProgress ? 'text-orange-600 dark:text-orange-400' : 'text-orange-500 dark:text-orange-400',
-        textClass: 'text-orange-800 dark:text-orange-300',
-        detailClass: 'text-orange-600 dark:text-orange-400',
-      };
-    case 'figma_call':
-      return {
-        Icon: isProgress ? SPINNER_MARKER : Palette,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800'
-          : 'bg-pink-50/30 dark:bg-pink-900/20 hover:bg-pink-100/50 dark:hover:bg-pink-800/30',
-        iconColorClass: isProgress ? 'text-pink-600 dark:text-pink-400' : 'text-pink-500 dark:text-pink-400',
-        textClass: 'text-pink-800 dark:text-pink-300',
-        detailClass: 'text-pink-600 dark:text-pink-400',
-      };
-    default:
-      return {
-        Icon: isProgress ? SPINNER_MARKER : FileSearch,
-        iconClass: '',
-        containerClass: isProgress
-          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-          : 'bg-blue-50/30 dark:bg-blue-900/20 hover:bg-blue-100/50 dark:hover:bg-blue-800/30',
-        iconColorClass: isProgress ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500 dark:text-blue-400',
-        textClass: 'text-blue-800 dark:text-blue-300',
-        detailClass: 'text-blue-600 dark:text-blue-400',
-      };
+/** Per-variant hue (OKLCH). Mirrors a3-cards.jsx VARIANT_CONFIG. */
+function variantHue(variant: string): number {
+  switch (variant) {
+    case 'exploring': case 'explored': return 240;
+    case 'retrieving': case 'retrieved':
+    case 'reading': case 'read':
+    case 'reading_source': case 'read_source': return 270;
+    case 'grepping': case 'grepped':
+    case 'indexing': case 'indexed': return 295;
+    case 'listing_files': case 'listed_files': return 200;
+    case 'searching_code': case 'searched_code': return 290;
+    case 'analyzing': case 'analyzed': return 160;
+    case 'loading': case 'loaded': return 180;
+    case 'storing': case 'stored': return 75;
+    case 'learning': case 'learned': return 320;
+    case 'processing': case 'processed': return 10;
+    case 'downloading': case 'downloaded': return 40;
+    case 'figma_calling': case 'figma_called': return 340;
+    default: return 270;
   }
+}
+
+/** Per-variant icon component (or SPINNER_MARKER for in-flight). */
+function variantIcon(variant: string, isProgress: boolean): { Icon: IconKind; pulse: boolean } {
+  switch (variant) {
+    case 'exploring': case 'explored':   return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
+    case 'retrieving': case 'retrieved': return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
+    case 'grepping': case 'grepped':     return { Icon: Search, pulse: isProgress };
+    case 'listing_files': case 'listed_files':   return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
+    case 'searching_code': case 'searched_code': return { Icon: isProgress ? SPINNER_MARKER : Search,     pulse: false };
+    case 'reading': case 'read':
+    case 'reading_source': case 'read_source':   return { Icon: Eye, pulse: isProgress };
+    case 'indexing': case 'indexed':     return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
+    case 'analyzing': case 'analyzed':   return { Icon: isProgress ? SPINNER_MARKER : FileCode,   pulse: false };
+    case 'loading': case 'loaded':       return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
+    case 'storing': case 'stored':       return { Icon: isProgress ? SPINNER_MARKER : Package,    pulse: false };
+    case 'learning': case 'learned':     return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
+    case 'processing': case 'processed': return { Icon: isProgress ? SPINNER_MARKER : Eraser,     pulse: false };
+    case 'downloading': case 'downloaded':       return { Icon: isProgress ? SPINNER_MARKER : Download,   pulse: false };
+    case 'figma_calling': case 'figma_called':   return { Icon: isProgress ? SPINNER_MARKER : Palette,    pulse: false };
+    default: return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
+  }
+}
+
+/** Tint recipes — composed from oklch() against bg-surface tokens
+ *  so light/dark themes flow through the same hue while perceptual L/C
+ *  remain balanced (see aurora-tokens.css). */
+function tintBg(hue: number, intensity: 'soft' | 'firm'): string {
+  return intensity === 'firm'
+    ? `oklch(from var(--bg-surface-2) calc(l - 0.02) max(c, 0.06) ${hue})`
+    : `oklch(from var(--bg-surface-2) calc(l - 0.01) max(c, 0.025) ${hue})`;
+}
+function tintFg(hue: number): string {
+  return `oklch(56% 0.20 ${hue})`;
+}
+function tintBorder(hue: number): string {
+  return `oklch(72% 0.18 ${hue} / 0.35)`;
 }
 
 /** Renders either the primitive <Spinner> or the custom lucide icon. */
-function WorkingIcon({ icon, iconClass, colorClass }: { icon: IconKind; iconClass: string; colorClass: string }) {
+function WorkingIcon({ icon, pulse, color }: { icon: IconKind; pulse: boolean; color: string }) {
   if (icon === SPINNER_MARKER) {
-    return <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${colorClass}`} />;
+    return (
+      <span className="flex-shrink-0 inline-flex" style={{ color }}>
+        <Spinner size="md" tone="inherit" />
+      </span>
+    );
   }
   const IconComp = icon;
-  return <IconComp className={`w-3.5 h-3.5 ${colorClass} ${iconClass} flex-shrink-0`} />;
+  return (
+    <span className={`flex-shrink-0 inline-flex ${pulse ? 'animate-status-pulse' : ''}`} style={{ color }}>
+      <IconComp className="w-3.5 h-3.5" />
+    </span>
+  );
 }
 
-/**
- * Shared header row used by every chat status card layout in this file
- * (inline strip and expandable card). Keeps the flex chain consistent so
- * `TruncatableText`'s `truncate` span stays inside the row's `min-w-0`
- * budget and never wraps the trailing chevron onto a second line.
- *
- * Structure:
- *   [icon][flex-1 min-w-0: title row + optional detail][optional chevron]
- *
- * Rendered directly as flex children of its parent row — the caller owns
- * the outer container (div / button) and its padding / gap / bg color.
- */
 interface WorkingCardHeaderProps {
   icon: IconKind;
-  iconClass: string;
-  iconColorClass: string;
+  pulse: boolean;
+  iconColor: string;
   title: string;
-  titleClassName: string;
-  titleButtonClassName: string;
+  titleColor: string;
   detail?: string | undefined;
-  detailClassName: string;
+  detailColor: string;
   isExpanded: boolean;
   hasExpandable: boolean;
 }
 
 function WorkingCardHeader({
-  icon,
-  iconClass,
-  iconColorClass,
-  title,
-  titleClassName,
-  titleButtonClassName,
-  detail,
-  detailClassName,
-  isExpanded,
-  hasExpandable,
+  icon, pulse, iconColor,
+  title, titleColor,
+  detail, detailColor,
+  isExpanded, hasExpandable,
 }: WorkingCardHeaderProps) {
   return (
     <>
-      <WorkingIcon icon={icon} iconClass={iconClass} colorClass={iconColorClass} />
-      <div className="flex-1 min-w-0">
+      <WorkingIcon icon={icon} pulse={pulse} color={iconColor} />
+      <div className="flex-1 min-w-0" style={{ color: titleColor }}>
         <div className="flex items-center gap-1 min-w-0">
           <TruncatableText
             text={title}
             maxLength={60}
-            className={`text-[11px] font-medium ${titleClassName}`}
-            buttonClassName={titleButtonClassName}
+            className="text-[11px] font-medium"
+            buttonClassName="opacity-60"
           />
         </div>
         {detail && (
-          <div className={`text-[11px] mt-0.5 ${detailClassName} break-all`}>
+          <div
+            className="text-[11px] mt-0.5 break-all"
+            style={{ color: detailColor }}
+          >
             {detail}
           </div>
         )}
       </div>
       {hasExpandable && (
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0" style={{ color: 'var(--text-3)' }}>
           {isExpanded
-            ? <ChevronDown className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400 opacity-60" />
-            : <ChevronRight className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400 opacity-60" />}
+            ? <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+            : <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
         </div>
       )}
     </>
@@ -311,73 +192,76 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const isProgress = isProgressState(variant);
-  const { Icon, iconClass, containerClass, iconColorClass, textClass, detailClass } = getVariantConfig(variant, isProgress);
+  const hue = variantHue(variant);
+  const { Icon, pulse } = variantIcon(variant, isProgress);
 
   const selectedFile = useStore(state => state.selectedFile);
   const selectFile = useStore(state => state.selectFile);
   const setFileViewMode = useStore(state => state.setFileViewMode);
-  const hasImagePreview = !isProgress && (variant === 'figma_called' || variant === 'downloaded') && !!content.metadata?.imagePath;
+  const hasImagePreview =
+    !isProgress && (variant === 'figma_called' || variant === 'downloaded') && !!content.metadata?.imagePath;
   const previewUrl = useImagePreview(hasImagePreview ? content.metadata!.imagePath : undefined);
-  
+
   // Extract data from metadata (for complete states)
   const filesList = content.metadata?.filesList || [];
   const hasFiles = filesList.length > 0;
-  
+
   // Stats for indexed/analyzed results
   const stats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
   if (content.metadata?.filesIndexed) {
-    stats.push({ 
-      icon: <FileSearch className="w-3 h-3" />, 
-      label: 'Files', 
-      value: content.metadata.filesIndexed 
+    stats.push({
+      icon: <FileSearch className="w-3 h-3" />,
+      label: 'Files',
+      value: content.metadata.filesIndexed,
     });
   }
   if (content.metadata?.chunks) {
-    stats.push({ 
-      icon: <Database className="w-3 h-3" />, 
-      label: 'Chunks', 
-      value: content.metadata.chunks 
+    stats.push({
+      icon: <Database className="w-3 h-3" />,
+      label: 'Chunks',
+      value: content.metadata.chunks,
     });
   }
   if (content.metadata?.tokens) {
     const tokensK = Math.round(content.metadata.tokens / 1000);
-    stats.push({ 
-      icon: <Package className="w-3 h-3" />, 
-      label: 'Tokens', 
-      value: `~${tokensK}K` 
+    stats.push({
+      icon: <Package className="w-3 h-3" />,
+      label: 'Tokens',
+      value: `~${tokensK}K`,
     });
   }
 
   const hasStats = stats.length > 0;
   const hasError = !!(content.metadata as { error?: unknown } | undefined)?.error;
-  // Progress cards become expandable when an aggregator (see
-  // aggregateChatStatuses) has merged multiple slots and attached a
-  // `filesList`. Non-aggregated single progress cards render as the
-  // compact inline strip below. Error slots never expand — the drawer
-  // would hide the failure path, and a chevron suggests interactivity
-  // that the card does not offer.
   const hasExpandable = !hasError && (hasFiles || (!isProgress && hasStats));
 
-  // Shared header props for both layouts. Title / button colours follow
-  // variant config for in-flight cards and a neutral gray for completed
-  // cards (matches the prior design for the expandable variant).
+  const tintedBg = tintBg(hue, isProgress ? 'firm' : 'soft');
+  const tintedFg = tintFg(hue);
+  const tintedBorder = tintBorder(hue);
+  const titleColor = isProgress ? tintedFg : 'var(--text-1)';
+  const detailColor = isProgress ? tintedFg : 'var(--text-3)';
+
   const headerProps: Omit<WorkingCardHeaderProps, 'isExpanded' | 'hasExpandable'> = {
     icon: Icon,
-    iconClass: isProgress ? iconClass : '',
-    iconColorClass,
+    pulse,
+    iconColor: tintedFg,
     title: content.content || '',
-    titleClassName: isProgress ? textClass : 'text-gray-700 dark:text-gray-300',
-    titleButtonClassName: isProgress
-      ? `${textClass} opacity-60`
-      : 'text-gray-600 dark:text-gray-400 opacity-60',
+    titleColor,
     detail: content.metadata?.detail,
-    detailClassName: detailClass,
+    detailColor,
   };
 
-  // Progress state without a file list → compact inline strip (no chevron).
+  // Progress state without a file list → compact inline strip (no chevron, no shell).
   if (isProgress && !hasFiles) {
     return (
-      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ${containerClass}`}>
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1.5"
+        style={{
+          background: tintedBg,
+          border: `1px solid ${tintedBorder}`,
+          borderRadius: 'var(--r-md)',
+        }}
+      >
         <WorkingCardHeader {...headerProps} isExpanded={false} hasExpandable={false} />
       </div>
     );
@@ -402,12 +286,6 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
     }
   };
 
-  // Complete state — or aggregated progress state — expandable card.
-  // The wrapper is intentionally a <div role="button"> rather than <button>:
-  // it nests a TruncatableText chevron control, an image preview <button>,
-  // and other interactive children. A real <button> here would produce
-  // invalid HTML (button-in-button), which the browser silently rewrites
-  // and which can throw off react-virtuoso's row-height measurement.
   const interactive = hasExpandable || isDownloadedAsset;
   const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!interactive) return;
@@ -416,15 +294,15 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
       handleCardClick();
     }
   };
+
   return (
-    <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
+    <TurnCardShell hoverLift={interactive} accent={hasError ? 'error' : 'default'}>
       <div
         role="button"
         tabIndex={interactive ? 0 : -1}
         aria-disabled={!interactive}
-        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors 
-                    ${containerClass}
-                    ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 transition-colors ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
+        style={{ background: tintedBg }}
         onClick={interactive ? handleCardClick : undefined}
         onKeyDown={handleCardKeyDown}
       >
@@ -437,39 +315,56 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
 
       {/* Image preview block — screenshot (figma_called) or asset thumbnail (downloaded) */}
       {previewUrl && (
-        <div className={`border-t border-gray-200/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/20 p-2
-                         flex justify-center`}>
+        <div
+          className="p-2 flex justify-center"
+          style={{
+            borderTop: '1px solid var(--border-1)',
+            background: 'var(--bg-surface-2)',
+          }}
+        >
           <button
             type="button"
             onClick={isDownloadedAsset ? openAssetPreview : () => setLightboxOpen(true)}
-            className={`rounded-md overflow-hidden border border-gray-200/60 dark:border-gray-600/60 hover:border-gray-400 dark:hover:border-gray-400 transition-colors
-                        ${isDownloadedAsset ? 'cursor-pointer' : 'cursor-zoom-in'}`}
+            className={`rounded-md overflow-hidden transition-colors ${isDownloadedAsset ? 'cursor-pointer' : 'cursor-zoom-in'}`}
+            style={{ border: '1px solid var(--border-1)' }}
           >
             <img
               src={previewUrl}
               alt={content.metadata?.toolName || content.metadata?.filename || 'preview'}
-              style={{ maxHeight: isDownloadedAsset ? PREVIEW_MAX_H_ASSET : PREVIEW_MAX_H_SCREENSHOT }}
-              className="w-auto object-contain bg-white/50 dark:bg-gray-800/50"
+              style={{
+                maxHeight: isDownloadedAsset ? PREVIEW_MAX_H_ASSET : PREVIEW_MAX_H_SCREENSHOT,
+                background: 'var(--bg-surface)',
+              }}
+              className="w-auto object-contain"
             />
           </button>
         </div>
       )}
-      
+
       {hasExpandable && isExpanded && (
-        <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
+        <div
+          className="max-h-60 overflow-y-auto scrollbar-thin"
+          style={{
+            borderTop: '1px solid var(--border-1)',
+            background: 'var(--bg-surface-2)',
+          }}
+        >
           {/* Stats Section */}
           {hasStats && (
-            <div className="px-4 py-3 border-b border-gray-200/30 dark:border-gray-700/30">
+            <div
+              className="px-4 py-3"
+              style={{ borderBottom: '1px solid var(--border-1)' }}
+            >
               <div className="grid grid-cols-3 gap-3">
                 {stats.map((stat, idx) => (
                   <div key={idx} className="flex items-center gap-1.5">
-                    <span className="text-gray-500 dark:text-gray-400">
+                    <span style={{ color: 'var(--text-3)' }}>
                       {stat.icon}
                     </span>
-                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>
                       {stat.label}:
                     </span>
-                    <span className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                    <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
                       {stat.value}
                     </span>
                   </div>
@@ -477,7 +372,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
               </div>
             </div>
           )}
-          
+
           {/* Files List Section */}
           {hasFiles && (
             <div className="px-4 py-2 text-xs">
@@ -496,13 +391,16 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
                   return (
                     <div
                       key={idx}
-                      className="flex items-start gap-2 py-1 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                      className="flex items-start gap-2 py-1 transition-colors"
+                      style={{ color: 'var(--text-2)' }}
                     >
-                      <FileCode className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-gray-400 dark:text-gray-500" />
-                      <span className="font-mono break-all">
+                      <span style={{ color: 'var(--text-3)' }} className="flex-shrink-0 mt-0.5 inline-flex">
+                        <FileCode className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="break-all" style={{ fontFamily: 'var(--font-mono)' }}>
                         {filePath}
                         {lineRange && (
-                          <span className="text-gray-500 dark:text-gray-500">{lineRange}</span>
+                          <span style={{ color: 'var(--text-3)' }}>{lineRange}</span>
                         )}
                       </span>
                     </div>
@@ -522,6 +420,6 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
           onClose={() => setLightboxOpen(false)}
         />
       )}
-    </div>
+    </TurnCardShell>
   );
 });

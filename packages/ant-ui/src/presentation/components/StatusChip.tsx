@@ -33,38 +33,38 @@ const VARIANT_STYLES: Record<ChipVariant, {
   pulse?: boolean;
 }> = {
   live: {
-    dotColor: 'bg-green-500',
-    textColor: 'text-green-600 dark:text-green-400',
+    dotColor: 'var(--status-done-fg)',
+    textColor: 'var(--status-done-fg)',
     pulse: true
   },
   session: {
-    dotColor: 'bg-gray-400 dark:bg-gray-500',
-    textColor: 'text-gray-600 dark:text-gray-400'
+    dotColor: 'var(--text-3)',
+    textColor: 'var(--text-3)'
   },
   estimating: {
-    dotColor: 'bg-blue-500',
-    textColor: 'text-blue-600 dark:text-blue-400',
+    dotColor: 'var(--violet-500)',
+    textColor: 'var(--violet-500)',
     pulse: true
   },
   success: {
-    dotColor: 'bg-green-500',
-    textColor: 'text-green-600 dark:text-green-400'
+    dotColor: 'var(--status-done-fg)',
+    textColor: 'var(--status-done-fg)'
   },
   warning: {
-    dotColor: 'bg-orange-500',
-    textColor: 'text-orange-600 dark:text-orange-400'
+    dotColor: 'var(--orange-500)',
+    textColor: 'var(--orange-500)'
   },
   error: {
-    dotColor: 'bg-red-500',
-    textColor: 'text-red-600 dark:text-red-400'
+    dotColor: 'var(--red-500)',
+    textColor: 'var(--red-500)'
   },
   info: {
-    dotColor: 'bg-blue-500',
-    textColor: 'text-blue-600 dark:text-blue-400'
+    dotColor: 'var(--violet-500)',
+    textColor: 'var(--violet-500)'
   },
   neutral: {
-    dotColor: 'bg-gray-400 dark:bg-gray-500',
-    textColor: 'text-gray-600 dark:text-gray-400'
+    dotColor: 'var(--text-3)',
+    textColor: 'var(--text-3)'
   }
 };
 
@@ -82,11 +82,17 @@ export function StatusChip({
   const shouldPulse = pulse !== undefined ? pulse : style.pulse;
 
   return (
-    <div className="flex items-center gap-2 px-2 h-7 rounded-md bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+    <div
+      className="flex items-center gap-2 px-2 h-7 rounded-md"
+      style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-1)',
+      }}
+    >
       <div className={`flex items-center gap-1.5 ${shouldPulse ? 'animate-status-pulse' : ''}`}>
         {icon ? (
           // 커스텀 아이콘 사용
-          <span className={style.textColor}>{icon}</span>
+          <span style={{ color: style.textColor }}>{icon}</span>
         ) : hideDot ? (
           // dot 숨김 (텍스트만)
           null
@@ -94,14 +100,26 @@ export function StatusChip({
           // 기본 도트 표시
           shouldPulse ? (
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${style.dotColor.replace('bg-', 'bg-').replace('-500', '-400')} opacity-75`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${style.dotColor}`}></span>
+              <span
+                className="animate-ping absolute inline-flex h-full w-full rounded-full"
+                style={{ background: style.dotColor, opacity: 0.75 }}
+              ></span>
+              <span
+                className="relative inline-flex rounded-full h-2 w-2"
+                style={{ background: style.dotColor }}
+              ></span>
             </span>
           ) : (
-            <span className={`inline-flex h-2 w-2 rounded-full ${style.dotColor}`}></span>
+            <span
+              className="inline-flex h-2 w-2 rounded-full"
+              style={{ background: style.dotColor }}
+            ></span>
           )
         )}
-        <span className={`text-xs font-medium ${style.textColor} leading-none`}>
+        <span
+          className="text-xs font-medium leading-none"
+          style={{ color: style.textColor }}
+        >
           {label}
         </span>
       </div>

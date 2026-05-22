@@ -1,12 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '@/presentation/components/common/badge';
+import { Badge } from '@/presentation/components/aurora';
 import { TaskTimer } from './TaskTimer';
 import { ChevronDown, ChevronRight, Timer, Coins, Package, FileText, AlertCircle } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
-import { statusColors, badgeColors, cn } from '@/shared/utils/design-system';
+import { cn } from '@/shared/utils/design-system';
 import { formatTokenUsageCompact } from '@/shared/utils/tokenUtils';
+import {
+  TaskGlowPulseLayer,
+  ShimmerSweepOverlay,
+  SparkleOrbits,
+  NewChip,
+  GlowHalo,
+} from './kanban/TaskCardEffects';
 
 interface TaskCardProps {
   task: UnifiedTask;
@@ -14,13 +21,21 @@ interface TaskCardProps {
   index?: number;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  /** When true and status==='todo', show NEW chip + sparkle/glow halo. */
+  newlyAdded?: boolean;
+  /** When true and status==='completed', the completed-chip + sparkle/glow
+   *  are rendered (the outer wrapper in KanbanColumns owns the halo + check
+   *  chip; this flag is forwarded so TaskCard can opt into matching styles). */
+  justCompleted?: boolean;
 }
 
 export function TaskCard({
   task,
   status,
   isExpanded = false,
-  onToggleExpand
+  onToggleExpand,
+  newlyAdded = false,
+  justCompleted = false,
 }: TaskCardProps) {
   const { t } = useTranslation('kanban');
   // Get actual running state from store
@@ -31,15 +46,7 @@ export function TaskCard({
   
   const expanded = onToggleExpand !== undefined ? isExpanded : localExpanded;
   const toggleExpand = onToggleExpand || (() => setLocalExpanded(!localExpanded));
-  
-  // Map status to design system colors
-  const statusMap = {
-    'todo': 'todo',
-    'in-progress': 'progress',
-    'completed': 'completed'
-  } as const;
-  
-  const colors = statusColors[statusMap[status]];
+
   const hasDescription = task.description && task.description.trim() !== '';
   // Show expand button for all statuses if there's description (not just in-progress)
   const showExpandButton = hasDescription;
@@ -58,53 +65,88 @@ export function TaskCard({
   // ✅ Determine display type from task type
   const displayType = task.type;
   
-  // Type badge styling — canonical types from design-system, legacy fallbacks below
-  const typeBadgeMap: Record<string, {color: string, label: string}> = {
-    ...badgeColors,
-    // Legacy/non-canonical fallbacks (LLM may still emit these)
-    documentation:  badgeColors.doc,
-    implementation: { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },
-    testing:        { color: 'bg-amber-500 dark:bg-amber-600 text-white',   label: 'TEST' },
-    review:         { color: 'bg-pink-400 dark:bg-pink-500 text-white',     label: 'REVIEW' },
-    deployment:     { color: 'bg-teal-600 dark:bg-teal-700 text-white',     label: 'DEPLOY' },
-    bugfix:         { color: 'bg-orange-500 dark:bg-orange-600 text-white', label: 'FIX' },
-    refactor:       { color: 'bg-violet-500 dark:bg-violet-600 text-white', label: 'REFACTOR' },
+  // Type badge styling — Aurora-tokenized chips (background + text via inline style).
+  const typeBadgeMap: Record<string, { bg: string; label: string }> = {
+    feature:        { bg: 'var(--violet-500)', label: 'FEAT' },
+    bug:            { bg: 'var(--red-500)',    label: 'BUG' },
+    doc:            { bg: 'var(--teal-500)',   label: 'DOC' },
+    documentation:  { bg: 'var(--teal-500)',   label: 'DOC' },
+    task:           { bg: 'var(--violet-500)', label: 'TASK' },
+    implementation: { bg: 'var(--violet-500)', label: 'IMPL' },
+    testing:        { bg: 'var(--orange-500)', label: 'TEST' },
+    review:         { bg: 'var(--pink-500)',   label: 'REVIEW' },
+    deployment:     { bg: 'var(--teal-500)',   label: 'DEPLOY' },
+    bugfix:         { bg: 'var(--orange-500)', label: 'FIX' },
+    refactor:       { bg: 'var(--violet-500)', label: 'REFACTOR' },
   };
-  
+
   const safeType = displayType || 'task';
-  const typeBadge = typeBadgeMap[safeType.toLowerCase()] || { 
-    color: 'bg-gray-400 dark:bg-gray-600 text-white', 
-    label: safeType.toUpperCase() 
+  const typeBadge = typeBadgeMap[safeType.toLowerCase()] || {
+    bg: 'var(--text-3)',
+    label: safeType.toUpperCase(),
   };
   
   /** Long paths / URLs: break inside long tokens when needed (stricter than word-only wrap). */
   const pathFriendlyText = 'min-w-0 max-w-full [overflow-wrap:anywhere]';
 
+  // Aurora root style — single source of truth for card surface.
+  const rootStyle: React.CSSProperties =
+    status === 'in-progress'
+      ? {
+          background: 'var(--bg-surface)',
+          border: '2px solid transparent',
+          borderRadius: 'var(--r-md)',
+          color: 'var(--text-1)',
+          boxShadow:
+            '0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)',
+        }
+      : {
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 'var(--r-md)',
+          color: 'var(--text-1)',
+        };
+
+  const showTodoNewState = status === 'todo' && newlyAdded;
+  const showCompletedNewState = status === 'completed' && justCompleted;
+
   return (
-    <div 
+    <div
       className={cn(
-        'p-3 rounded-lg border transition-colors relative min-w-0 w-full',
-        status === 'in-progress' ? 'border-2' : '',
-        colors.border,
-        colors.bg
+        'p-3 transition-colors relative min-w-0 w-full',
       )}
+      style={rootStyle}
     >
-      {/* Wave effect for in-progress tasks (behind main content) */}
+      {/* In-progress aurora effects (replaces wave-slide-continuous) */}
       {status === 'in-progress' && (
-        <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-300/50 dark:via-blue-400/40 to-transparent" 
-            style={{
-              backgroundSize: '200% 100%',
-              animation: 'wave-slide-continuous 2s linear infinite'
-            }}
-          />
-        </div>
+        <>
+          <TaskGlowPulseLayer />
+          <ShimmerSweepOverlay variant="in-progress" />
+        </>
       )}
-      
+
+      {/* Newly-added todo: NEW state overlays */}
+      {showTodoNewState && (
+        <>
+          <GlowHalo />
+          <SparkleOrbits />
+        </>
+      )}
+
+      {/* Just-completed: sparkle/glow overlays (TaskCard-local — the
+          KanbanColumns wrapper also renders matching outer overlays). */}
+      {showCompletedNewState && (
+        <>
+          <GlowHalo />
+          <SparkleOrbits />
+        </>
+      )}
+
       <div className="flex min-w-0 items-start gap-2 relative z-10">
         {showExpandButton && (
           <button
-            className="mt-0.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            className="mt-0.5 transition-opacity opacity-70 hover:opacity-100"
+            style={{ color: 'var(--text-3)' }}
             onClick={(e) => {
               e.stopPropagation();
               toggleExpand();
@@ -120,52 +162,61 @@ export function TaskCard({
         
         <div className="flex-1 min-w-0">
           {/* Task Name - Full Width (Clickable to toggle) */}
-          <div 
+          <div
             className={cn(
               'mb-2 min-w-0',
               showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
             )}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
-            <span className={cn('block text-sm font-medium', pathFriendlyText, colors.text.primary)}>
+            <span
+              className={cn('block text-sm font-medium', pathFriendlyText)}
+              style={{ color: 'var(--text-1)' }}
+            >
               {task.name}
             </span>
           </div>
-          
+
           {/* Badges + Timer Row - Wrap automatically (Clickable to toggle) */}
-          <div 
+          <div
             className={cn(
               'flex min-w-0 flex-wrap items-center gap-2',
               showExpandButton ? 'cursor-pointer' : ''
             )}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
+            {/* NEW chip — newly-added todos */}
+            {showTodoNewState && <NewChip />}
+
             {/* Priority Badge - Only for to-do */}
             {status === 'todo' && task.priority !== undefined && (
-              <Badge variant="outline" className={cn(
-                'flex-shrink-0',
-                'bg-blue-100 dark:bg-blue-900',
-                'text-blue-900 dark:text-blue-100',
-                'border-blue-300 dark:border-blue-700'
-              )}>
+              <Badge
+                tone="info"
+                className="flex-shrink-0"
+                style={{
+                  background: 'var(--status-todo-bg)',
+                  color: 'var(--status-todo-fg)',
+                  borderColor: 'var(--border-1)',
+                }}
+              >
                 {`P${task.priority}`}
               </Badge>
             )}
-            
+
             {/* Failed Badge - Resumable failure (call-budget exhausted etc.).
                 Takes precedence over the generic "Paused" badge because failed
                 tasks ARE interrupted at the job level but carry an actionable
                 failure reason. Tooltip surfaces _failureReason verbatim. */}
             {status === 'todo' && task._failed && (
               <Badge
-                variant="outline"
+                tone="error"
                 title={task._failureReason}
-                className={cn(
-                  'flex items-center gap-1 flex-shrink-0',
-                  'bg-red-100 dark:bg-red-950',
-                  'border-red-400 dark:border-red-700',
-                  'text-red-800 dark:text-red-200'
-                )}
+                className="flex items-center gap-1 flex-shrink-0"
+                style={{
+                  background: 'var(--status-error-bg)',
+                  color: 'var(--status-error-fg)',
+                  borderColor: 'var(--border-1)',
+                }}
               >
                 <AlertCircle className="w-3 h-3" />
                 <span className="font-semibold text-xs">{t('task.failed')}</span>
@@ -175,71 +226,99 @@ export function TaskCard({
             {/* Interrupted Badge - Only for to-do tasks that were interrupted
                 but NOT failed (user-stopped / recursion-limit pauses). */}
             {status === 'todo' && task.interrupted && !task._failed && (
-              <Badge variant="outline" className={cn(
-                'flex items-center gap-1 flex-shrink-0',
-                'bg-orange-100 dark:bg-orange-950',
-                'border-orange-400 dark:border-orange-700',
-                'text-orange-800 dark:text-orange-200'
-              )}>
+              <Badge
+                tone="warning"
+                className="flex items-center gap-1 flex-shrink-0"
+                style={{
+                  background: 'var(--status-progress-bg)',
+                  color: 'var(--status-progress-fg)',
+                  borderColor: 'var(--border-1)',
+                }}
+              >
                 <Timer className="w-3 h-3" />
                 <span className="font-semibold text-xs">{t('task.paused')}</span>
               </Badge>
             )}
-            
+
             {/* Type Badge */}
-            <Badge className={cn(typeBadge.color, 'text-xs flex-shrink-0')}>
+            <Badge
+              className="text-xs flex-shrink-0"
+              style={{
+                background: typeBadge.bg,
+                color: 'var(--text-on-brand)',
+                borderColor: 'transparent',
+              }}
+            >
               {typeBadge.label}
             </Badge>
-            
+
             {/* Package Scope */}
             {task.packages && task.packages.length > 0 && (
-              <span className={cn('flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs', colors.text.secondary)}>
+              <span
+                className="flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs"
+                style={{ color: 'var(--text-2)' }}
+              >
                 <Package className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span className={pathFriendlyText}>{task.packages.join(', ')}</span>
               </span>
             )}
-            
+
             {/* Source Files (design job) */}
             {!task.packages && task.sourceFiles && task.sourceFiles.length > 0 && (
-              <span className={cn('flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs', colors.text.secondary)}>
+              <span
+                className="flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs"
+                style={{ color: 'var(--text-2)' }}
+              >
                 <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span className={pathFriendlyText}>{task.sourceFiles.join(', ')}</span>
               </span>
             )}
-            
-            {            /* Timer - Show for in-progress and completed */}
+
+            {/* Timer - Show for in-progress and completed */}
             {status === 'in-progress' && (
-              <span className={cn('font-medium flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
+              <span
+                className="font-medium flex items-center gap-1 text-xs flex-shrink-0"
+                style={{ color: 'var(--text-2)' }}
+              >
                 <Timer className="w-3.5 h-3.5" />
                 <TaskTimer timing={task.timing} isRunning={isTaskRunning} />
               </span>
             )}
             {status === 'completed' && task.timing && task.timing.elapsedTime !== undefined && (
-              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
+              <span
+                className="flex items-center gap-1 text-xs flex-shrink-0"
+                style={{ color: 'var(--text-2)' }}
+              >
                 <Timer className="w-3.5 h-3.5" />
                 <TaskTimer timing={task.timing} />
               </span>
             )}
-            
+
             {/* Token Usage - Show for in-progress (real-time) and completed tasks */}
             {(status === 'in-progress' || status === 'completed') && task.tokenUsage && (
-              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
+              <span
+                className="flex items-center gap-1 text-xs flex-shrink-0"
+                style={{ color: 'var(--text-2)' }}
+              >
                 <Coins className="w-3.5 h-3.5" />
                 {formatTokenUsageCompact(task.tokenUsage)}
               </span>
             )}
           </div>
-          
-          {/* Expanded content - NOT clickable (allows text selection), blocks wave effect */}
+
+          {/* Expanded content - NOT clickable (allows text selection) */}
           {expanded && hasDescription && (
-            <div 
+            <div
               className={cn(
-                'mt-2 min-w-0 p-2 rounded border text-xs select-text relative z-20',
+                'mt-2 min-w-0 p-2 text-xs select-text relative z-20',
                 'whitespace-pre-wrap [overflow-wrap:anywhere]',
-                colors.border,
-                'bg-white dark:bg-gray-900',
-                colors.text.secondary
               )}
+              style={{
+                background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border-1)',
+                borderRadius: 'var(--r-sm)',
+                color: 'var(--text-2)',
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               {task.description}

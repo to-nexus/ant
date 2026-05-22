@@ -50,8 +50,13 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
   return (
     <div
       ref={listRef}
-      className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700
-                 rounded-lg shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto mb-1"
+      className="overflow-hidden z-50 max-h-48 overflow-y-auto mb-1"
+      style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-1)',
+        borderRadius: 'var(--r-md)',
+        boxShadow: 'var(--shadow-lg)',
+      }}
     >
       {suggestions.map((s, idx) => {
         const prevGroup = idx > 0 ? suggestions[idx - 1].group : undefined;
@@ -61,13 +66,16 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
         const cmdMapping = isCommand ? COMMAND_ICON_MAP[s.id] : null;
         const Icon = cmdMapping?.icon || TYPE_ICONS[s.type] || FileText;
         const color = cmdMapping?.color || TYPE_COLORS[s.type] || 'text-gray-500';
+        const isSelected = idx === selectedIndex;
 
         return (
           <Fragment key={`${s.type}-${s.id}-${idx}`}>
             {showGroupHeader && (
               <>
-                {prevGroup && <div className="border-t border-gray-200 dark:border-gray-700" />}
-                <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider select-none">
+                {prevGroup && (
+                  <div style={{ borderTop: '1px solid var(--border-1)' }} />
+                )}
+                <div className="px-3 py-1 text-[10px] font-medium text-[color:var(--text-4)] uppercase tracking-wider select-none">
                   {s.group === 'suggested' ? '★ Suggested' : 'All Files'}
                 </div>
               </>
@@ -75,26 +83,42 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
             <button
               data-suggestion-idx={idx}
               type="button"
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors
-                ${idx === selectedIndex ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}
-              `}
+              className={`relative w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[color:var(--bg-hover)]`}
+              style={
+                isSelected
+                  ? { background: 'oklch(from var(--violet-500) l c h / 0.10)' }
+                  : undefined
+              }
               onMouseEnter={() => onHover(idx)}
               onMouseDown={(e) => {
                 e.preventDefault();
                 onSelect(s);
               }}
             >
+              {isSelected && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    background: 'var(--gradient-aurora)',
+                  }}
+                />
+              )}
               <Icon className={`w-4 h-4 shrink-0 ${color}`} />
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-gray-800 dark:text-gray-200">{s.label}</span>
+                <span className="font-medium text-[color:var(--text-1)]">{s.label}</span>
                 {s.description && s.description !== s.label && (
-                  <span className="ml-2 text-xs text-gray-400 truncate">{s.description}</span>
+                  <span className="ml-2 text-xs text-[color:var(--text-3)] truncate">{s.description}</span>
                 )}
               </div>
               {isCommand ? (
-                <span className="text-[10px] text-gray-400 shrink-0 font-mono">{s.id}</span>
+                <span className="text-[10px] text-[color:var(--text-4)] shrink-0 font-mono">{s.id}</span>
               ) : (
-                <span className="text-[10px] text-gray-400 shrink-0 uppercase">{s.type}</span>
+                <span className="text-[10px] text-[color:var(--text-4)] shrink-0 uppercase">{s.type}</span>
               )}
             </button>
           </Fragment>

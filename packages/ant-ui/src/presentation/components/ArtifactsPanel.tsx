@@ -5,7 +5,7 @@ import { Package, Folder, FolderOpen, ArrowLeftRight, Upload, X, Check, AlertCir
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
-import { Button } from '@/presentation/components/common/button';
+import { Button } from '@/presentation/components/aurora';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
 import { FileIcon } from '@/shared/utils/file-icons';
@@ -14,7 +14,6 @@ import { FileActionMenu } from './FileActionMenu';
 import { isCanonicalDir, isStructuralCanonicalDir, getArtifactDirPolicy, validateFileForDir } from '@/shared/utils/canonical-dirs';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
-import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
@@ -86,7 +85,7 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
           <div>{t('panel.figmaNotConnected')}</div>
           <button
             onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
-            className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-xs font-medium text-blue-600 hover:underline"
           >
             {t('panel.goToAccountSettings')}
           </button>
@@ -143,15 +142,15 @@ interface DirectoryViewProps {
   isSessionSection?: boolean;
   unseenArtifacts?: string[];
   onMarkSeen?: (paths: string[]) => void;
-  isNarrow?: boolean;
-  nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }>;
   fileIndicators?: Record<string, React.ReactNode>;
   sectionPrefix?: string;
+  /** Top-level folder accent color (CSS var) — replaces domain hint chip per spec §5.4. */
+  accentColor?: string;
   /** When returns true, mutation is blocked and a warning was shown — do not open delete confirm. */
   notifyArtifactMutationBlocked?: () => boolean;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators, sectionPrefix, notifyArtifactMutationBlocked }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, fileIndicators, sectionPrefix, accentColor, notifyArtifactMutationBlocked }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['plan', 'architecture', 'visual', 'assets', 'meta']));
   const [sectionCollapsed, setSectionCollapsed] = useState(false);
@@ -350,13 +349,13 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               setNewFileName('');
             }
           }}
-          className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          className="flex-1 px-2 py-1 text-xs border border-[color:var(--border-2)] rounded bg-[color:var(--bg-surface)] text-[color:var(--text-1)]"
           autoFocus
         />
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 w-6 p-0 text-green-600 dark:text-green-400"
+          className="h-6 w-6 p-0 text-green-600"
           onClick={() => {
             if (newFileName.trim()) {
               if (createType === 'directory') {
@@ -374,7 +373,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 w-6 p-0 text-red-600 dark:text-red-400"
+          className="h-6 w-6 p-0 text-red-600"
           onClick={() => {
             setShowCreateForm(null);
             setNewFileName('');
@@ -393,8 +392,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isDirectory = node.type === 'directory';
     const isMenuActive = activeMenuPath === node.path;
     const isUnseen = node.type === 'file' && unseenArtifacts.includes(node.path);
-    const hint = isDirectory && nodeHints ? nodeHints[node.name] : undefined;
     const unseenCount = isDirectory ? getUnseenCount(node.path) : 0;
+    // Apply accent color only to the section's own top-level folder
+    // (matches sectionPrefix). Nested children inherit no accent so the
+    // visual hierarchy stays subtle.
+    const isSectionRoot = isDirectory && sectionPrefix !== undefined && node.path === sectionPrefix;
+    const folderIconColor = isSectionRoot && accentColor ? accentColor : 'var(--violet-500)';
     const isStructural = isDirectory && isStructuralCanonicalDir(node.path);
     const isDragTarget = isDirectory && dragOverPath === node.path;
     const isRenaming = renamingPath === node.path;
@@ -412,16 +415,16 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           className={cn(
             'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
             isSelected 
-              ? 'bg-blue-100 dark:bg-blue-900 border-l-2 border-blue-500 dark:border-blue-400 font-medium text-blue-900 dark:text-blue-100' 
+              ? 'bg-blue-100 border-l-2 border-blue-500 font-medium text-blue-900' 
               : isDragTarget && !isStructural
-                ? 'bg-blue-50 dark:bg-blue-900/30 outline-2 outline-dashed outline-blue-400 dark:outline-blue-500'
+                ? 'bg-blue-50 outline-2 outline-dashed outline-blue-400'
                 : isDirectory && isExpanded
-                  ? 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+                  ? 'bg-[color:var(--bg-canvas)] hover:bg-[color:var(--bg-hover)]'
+                  : 'hover:bg-[color:var(--bg-hover)]',
             isMenuActive && !isDragTarget && (isSelected
-              ? 'ring-1 ring-blue-400 dark:ring-blue-500'
-              : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600'),
-            isHighlighted && 'artifact-highlight ring-1 ring-blue-300 dark:ring-blue-600',
+              ? 'ring-1 ring-blue-400'
+              : 'bg-amber-50 ring-1 ring-amber-300'),
+            isHighlighted && 'artifact-highlight ring-1 ring-blue-300',
             isSpotlighted && 'artifact-spotlight'
           )}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
@@ -443,9 +446,15 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           >
             {node.type === 'directory' ? (
               isExpanded ? (
-                <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <FolderOpen
+                  className="w-4 h-4 flex-shrink-0"
+                  style={{ color: folderIconColor }}
+                />
               ) : (
-                <Folder className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <Folder
+                  className="w-4 h-4 flex-shrink-0"
+                  style={{ color: folderIconColor }}
+                />
               )
             ) : (
               <FileIcon filePath={node.name} size={16} />
@@ -471,21 +480,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   setRenamingPath(null);
                 }}
                 onClick={(e) => e.stopPropagation()}
-                className="flex-1 min-w-0 px-1 py-0 text-sm border border-blue-400 dark:border-blue-500 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none"
+                className="flex-1 min-w-0 px-1 py-0 text-sm border border-blue-400 rounded bg-[color:var(--bg-surface)] text-[color:var(--text-1)] outline-none"
                 autoFocus
               />
             ) : (
               <>
                 <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
-                {hint && (
-                  <HintBadge
-                    label={hint.label}
-                    tooltip={hint.tooltip}
-                    isCompact={isNarrow}
-                    colorScheme={hint.colorScheme}
-                    placement="right"
-                  />
-                )}
                 {!isDirectory && fileIndicators?.[node.name]}
                 {isDirectory && unseenCount > 0 && (
                   <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
@@ -611,12 +611,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
         <button
           type="button"
           onClick={() => setSectionCollapsed(prev => !prev)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md hover:bg-[color:var(--bg-hover)] transition-colors"
         >
           {sectionCollapsed
             ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
             : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-          <span className="font-medium text-sm text-gray-700 dark:text-gray-300">{title}</span>
+          <span className="font-medium text-sm text-[color:var(--text-2)]">{title}</span>
         </button>
         {/* Hidden upload input for the domain-root header menu */}
         {sectionPrefix && onUploadFiles && !rootIsStructural && (
@@ -671,12 +671,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
       </div>
       {sectionCollapsed ? null : <div
         className={cn(
-          'rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide border-2 transition-colors',
+          'rounded-lg p-2 bg-[color:var(--bg-canvas)]/50 max-h-96 overflow-y-auto scrollbar-hide border-2 transition-colors',
           rootIsDragTarget
             ? rootIsStructural
-              ? 'border-dashed border-red-400 dark:border-red-500'
-              : 'border-dashed border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/20'
-            : 'border-transparent ring-1 ring-gray-200 dark:ring-gray-700',
+              ? 'border-dashed border-red-400'
+              : 'border-dashed border-blue-400 bg-blue-50/50'
+            : 'border-transparent ring-1 ring-gray-200',
         )}
         data-drop-dir={rootDropEnabled ? sectionPrefix : undefined}
         data-drop-blocked={rootDropEnabled && rootIsStructural ? '' : undefined}
@@ -1081,12 +1081,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   const sessionsNodes = topLevelByName.get('sessions')?.children || [];
 
-  const dirHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
-    plan: { label: t('panel.dirHint.plan'), tooltip: t('panel.dirHintTooltip.plan'), colorScheme: 'amber' },
-    architecture: { label: t('panel.dirHint.architecture'), tooltip: t('panel.dirHintTooltip.architecture'), colorScheme: 'blue' },
-    visual: { label: t('panel.dirHint.visual'), tooltip: t('panel.dirHintTooltip.visual'), colorScheme: 'blue' },
-    assets: { label: t('panel.dirHint.assets'), tooltip: t('panel.dirHintTooltip.assets'), colorScheme: 'purple' },
-    meta: { label: t('panel.dirHint.meta'), tooltip: t('panel.dirHintTooltip.meta'), colorScheme: 'gray' },
+  // Top-level folder accent color (spec §5.4 / §1.1.6: domain hint chip
+  // removed — top-level folders are distinguished by accent color only).
+  const DOMAIN_ACCENT: Record<string, string> = {
+    plan: 'var(--violet-500)',
+    architecture: 'var(--pink-500)',
+    visual: 'var(--orange-500)',
+    assets: 'var(--teal-500)',
+    meta: 'var(--violet-500)',
+    sessions: 'var(--teal-500)',
   };
 
   return (
@@ -1095,23 +1098,59 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => e.preventDefault()}
     >
-      <h3 className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-white">
+      <h3
+        className="flex items-center justify-between"
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--text-2)',
+        }}
+      >
         <span className="flex items-center gap-2 min-w-0">
-          <Package className="h-4 w-4 shrink-0" />
+          <Package className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />
           <span className="truncate">{t('panel.title')}</span>
         </span>
-        <span className="flex items-center gap-1.5 shrink-0">
+        <span className="flex items-center shrink-0" style={{ position: 'relative' }}>
           <button
-            className="relative inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+            type="button"
             onClick={() => openTransferTab({ subTab: pendingTransferCount > 0 ? 'receive' : 'send' })}
             title={t('panel.transfer')}
+            style={{
+              position: 'relative',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              height: 22,
+              padding: isNarrow ? '0 6px' : '0 8px',
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              textTransform: 'none',
+              color: 'var(--text-2)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border-1)',
+              cursor: 'pointer',
+            }}
           >
-            <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+            <ArrowLeftRight className="h-3 w-3 shrink-0" />
             {!isNarrow && <span>{t('panel.transfer')}</span>}
             {pendingTransferCount > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {pendingTransferCount > 99 ? '99+' : pendingTransferCount}
-              </span>
+              <span
+                aria-label={`${pendingTransferCount} pending`}
+                style={{
+                  position: 'absolute',
+                  top: -3,
+                  right: -3,
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: 'var(--red-500)',
+                  boxShadow: '0 0 0 2px var(--surface-1)',
+                }}
+              />
             )}
           </button>
         </span>
@@ -1174,8 +1213,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               onDelete={handleDelete}
               onSend={handleSend}
               onDownload={handleDownload}
-              isNarrow={isNarrow}
-              nodeHints={dirHints[name] ? { [name]: dirHints[name] } : undefined}
+              accentColor={DOMAIN_ACCENT[name]}
               onDropError={showDropError}
               unseenArtifacts={unseenArtifacts}
               onMarkSeen={markArtifactsSeen}
@@ -1197,6 +1235,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
           onDropError={showDropError}
           isSessionSection={true}
+          accentColor={DOMAIN_ACCENT.sessions}
           notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
         />
 
@@ -1219,8 +1258,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               className={cn(
                 'rounded-xl border shadow-lg p-3 space-y-2 cursor-pointer transition-colors',
                 uploadState.completed
-                  ? 'border-green-200 dark:border-green-700 bg-white dark:bg-gray-900'
-                  : 'border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-900',
+                  ? 'border-green-200 bg-[color:var(--bg-surface)]'
+                  : 'border-blue-200 bg-[color:var(--bg-surface)]',
               )}
               onClick={uploadState.completed ? dismissUpload : undefined}
             >
@@ -1228,8 +1267,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
                 <span className={cn(
                   'flex items-center gap-2 text-xs font-medium truncate',
                   uploadState.completed
-                    ? 'text-green-700 dark:text-green-300'
-                    : 'text-blue-700 dark:text-blue-300',
+                    ? 'text-green-700'
+                    : 'text-blue-700',
                 )}>
                   {uploadState.completed
                     ? <Check className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1242,7 +1281,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleCancelUpload(); }}
-                  className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-[color:var(--bg-active)] text-gray-400 hover:text-gray-600 transition-colors"
                   title={uploadState.completed ? t('upload.dismiss') : t('upload.cancel')}
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1250,18 +1289,18 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               </div>
               <div className={cn(
                 'w-full h-2 rounded-full overflow-hidden',
-                uploadState.completed ? 'bg-green-100 dark:bg-green-900' : 'bg-blue-100 dark:bg-blue-900',
+                uploadState.completed ? 'bg-green-100' : 'bg-blue-100',
               )}>
                 <div
                   className={cn(
                     'h-full rounded-full transition-[width] duration-200',
-                    uploadState.completed ? 'bg-green-500 dark:bg-green-400' : 'bg-blue-500 dark:bg-blue-400',
+                    uploadState.completed ? 'bg-green-500' : 'bg-blue-500',
                   )}
                   style={{ width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%' }}
                 />
               </div>
               {uploadState.total > 0 && !uploadState.completed && (
-                <div className="text-[10px] text-blue-500 dark:text-blue-400 text-right font-medium">
+                <div className="text-[10px] text-blue-500 text-right font-medium">
                   {Math.round((uploadState.loaded / uploadState.total) * 100)}%
                 </div>
               )}
@@ -1269,16 +1308,16 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           )}
           {dropError && (
             <div
-              className="relative rounded-xl border border-red-200 dark:border-red-700 bg-white dark:bg-gray-900 shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
+              className="relative rounded-xl border border-red-200 bg-[color:var(--bg-surface)] shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
               onClick={() => setDropError(null)}
             >
-              <span className="flex items-center gap-2 text-xs font-medium text-red-700 dark:text-red-300">
+              <span className="flex items-center gap-2 text-xs font-medium text-red-700">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                 {dropError}
               </span>
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-100 dark:bg-red-900/50">
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-100">
                 <div
-                  className="h-full bg-red-500 dark:bg-red-400"
+                  className="h-full bg-red-500"
                   style={{ animation: 'shrink-progress 3000ms linear forwards' }}
                 />
               </div>

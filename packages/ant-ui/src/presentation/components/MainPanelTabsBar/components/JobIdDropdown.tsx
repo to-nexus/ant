@@ -46,6 +46,10 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
   const deleteJobId = useStore((s) => s.deleteJobId);
 
   const [open, setOpen] = useState(false);
+  const [chipHover, setChipHover] = useState(false);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [hoveredCopyId, setHoveredCopyId] = useState<string | null>(null);
+  const [hoveredDeleteId, setHoveredDeleteId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { entries, refresh } = useJobHistory();
   // Live kanban for the currently selected jobId — preferred over the
@@ -152,12 +156,17 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
+        onMouseEnter={() => setChipHover(true)}
+        onMouseLeave={() => setChipHover(false)}
         className={cn(
           'ml-0.5 px-1.5 py-0.5 text-[10px] font-mono whitespace-nowrap rounded',
-          'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
-          'hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer',
+          'transition-colors cursor-pointer',
           'inline-flex items-center gap-1',
         )}
+        style={{
+          background: chipHover ? 'var(--bg-hover)' : 'var(--bg-surface)',
+          color: 'var(--text-3)',
+        }}
         title={jobId}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -174,9 +183,13 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
           // they stay on the right edge of the panel while the left group grows.
           className={cn(
             'absolute top-full left-0 mt-1 w-[min(480px,calc(100vw-1.5rem))]',
-            'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700',
-            'rounded-md shadow-lg z-[9999] py-1',
+            'rounded-md z-[9999] py-1',
           )}
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-1)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="max-h-80 overflow-auto px-2">
@@ -198,15 +211,20 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                   (snapshot?.inProgress && snapshot.inProgress.length > 0)
                 );
 
+                const rowHovered = hoveredRowId === entry.jobId;
+                const rowBackground = isCurrent
+                  ? 'var(--bg-surface-2)'
+                  : rowHovered
+                    ? 'var(--bg-hover)'
+                    : 'transparent';
+
                 return (
                   <li
                     key={entry.jobId}
-                    className={cn(
-                      'group flex w-full min-w-0 items-center',
-                      isCurrent
-                        ? 'bg-gray-50 dark:bg-gray-900/40'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-700/60',
-                    )}
+                    className="group flex w-full min-w-0 items-center"
+                    style={{ background: rowBackground }}
+                    onMouseEnter={() => !isCurrent && setHoveredRowId(entry.jobId)}
+                    onMouseLeave={() => setHoveredRowId((prev) => (prev === entry.jobId ? null : prev))}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
                       <button
@@ -215,10 +233,9 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                         className={cn(
                           'flex shrink-0 items-center gap-2 text-left whitespace-nowrap',
                           'text-xs font-mono',
-                          isCurrent
-                            ? 'text-gray-900 dark:text-gray-100 cursor-default'
-                            : 'text-gray-800 dark:text-gray-200 cursor-pointer',
+                          isCurrent ? 'cursor-default' : 'cursor-pointer',
                         )}
+                        style={{ color: isCurrent ? 'var(--text-1)' : 'var(--text-2)' }}
                         title={entry.jobId}
                       >
                         {(() => {
@@ -234,7 +251,8 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           if (isCurrent) {
                             return (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: 'var(--status-done-fg)' }}
                                 aria-hidden
                               />
                             );
@@ -242,7 +260,8 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           if (entry.live) {
                             return (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: 'var(--amber-500)' }}
                                 aria-label={t('tabs.liveJob')}
                                 title={t('tabs.liveJob')}
                               />
@@ -252,7 +271,8 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           if (past === 'failed') {
                             return (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: 'var(--red-500)' }}
                                 aria-label={t('tabs.failedJob', { defaultValue: 'Failed' })}
                                 title={t('tabs.failedJob', { defaultValue: 'Failed' })}
                               />
@@ -261,7 +281,8 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           if (past === 'canceled') {
                             return (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0"
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: 'var(--text-3)' }}
                                 aria-label={t('tabs.canceledJob', { defaultValue: 'Canceled' })}
                                 title={t('tabs.canceledJob', { defaultValue: 'Canceled' })}
                               />
@@ -270,7 +291,8 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           if (past === 'paused') {
                             return (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0"
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ background: 'var(--amber-500)' }}
                                 aria-label={t('tabs.pausedJob', { defaultValue: 'Paused' })}
                                 title={t('tabs.pausedJob', { defaultValue: 'Paused' })}
                               />
@@ -313,11 +335,14 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           e.stopPropagation();
                           copyToClipboard(entry.jobId);
                         }}
-                        className={cn(
-                          'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
-                          'hover:bg-gray-200 dark:hover:bg-gray-600',
-                          'hover:text-gray-700 dark:hover:text-gray-200',
-                        )}
+                        onMouseEnter={() => setHoveredCopyId(entry.jobId)}
+                        onMouseLeave={() => setHoveredCopyId((prev) => (prev === entry.jobId ? null : prev))}
+                        className="flex-shrink-0 p-1 rounded"
+                        style={
+                          hoveredCopyId === entry.jobId
+                            ? { background: 'var(--bg-hover)', color: 'var(--text-1)' }
+                            : { color: 'var(--text-3)' }
+                        }
                         title={t('tabs.copyJobId')}
                         aria-label={t('tabs.copyJobId')}
                       >
@@ -329,13 +354,21 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           e.stopPropagation();
                           handleDelete(entry.jobId, entry.live, isCurrent);
                         }}
+                        onMouseEnter={() => !entry.live && setHoveredDeleteId(entry.jobId)}
+                        onMouseLeave={() => setHoveredDeleteId((prev) => (prev === entry.jobId ? null : prev))}
                         disabled={entry.live}
                         className={cn(
-                          'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
-                          'hover:bg-red-100 dark:hover:bg-red-900/40',
-                          'hover:text-red-600 dark:hover:text-red-400',
-                          'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400',
+                          'flex-shrink-0 p-1 rounded',
+                          'disabled:opacity-30 disabled:cursor-not-allowed',
                         )}
+                        style={
+                          hoveredDeleteId === entry.jobId && !entry.live
+                            ? {
+                                background: 'oklch(from var(--red-500) l c h / 0.16)',
+                                color: 'var(--red-500)',
+                              }
+                            : { color: 'var(--text-3)' }
+                        }
                         title={
                           entry.live
                             ? t('tabs.deleteJobIdBlocked')

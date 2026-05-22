@@ -23,7 +23,7 @@ import {
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle, ChevronRight, ChevronDown } from 'lucide-react';
 import { TransferFileList, guessPathType, countFilesInTree } from './TransferFileList';
-import { Button } from '../common/button';
+import { Button } from '@/presentation/components/aurora';
 import { cn } from '@/shared/utils/design-system';
 
 /** Group key for pending requests from the same sender + source project/feature */
@@ -136,7 +136,7 @@ export function ReceiveSubTab() {
 
   if (filtered.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+      <div className="flex flex-col items-center justify-center h-64 text-[color:var(--text-4)]">
         <MessageCircle className="w-12 h-12 mb-3" />
         <p className="text-sm">{t('receive.empty')}</p>
       </div>
@@ -147,7 +147,7 @@ export function ReceiveSubTab() {
     <div className="p-4 space-y-5">
       {pendingGroups.length > 0 && (
         <section>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <h4 className="text-sm font-medium text-[color:var(--text-2)] mb-2">
             {t('receive.pending')} ({pendingRequests.length})
           </h4>
           <div className="space-y-3">
@@ -165,7 +165,7 @@ export function ReceiveSubTab() {
 
       {completedRequests.length > 0 && (
         <section>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('receive.processed')}</h4>
+          <h4 className="text-sm font-medium text-[color:var(--text-2)] mb-2">{t('receive.processed')}</h4>
           <div className="space-y-1">
             {completedRequests.map(req => (
               <CompletedRequestRow key={req.id} request={req} />
@@ -230,25 +230,25 @@ function PendingGroupCard({ group, isLoading, onResolve }: {
     .reduce((sum, s) => sum + s.size, 0);
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/50 overflow-hidden">
+    <div className="border border-[color:var(--border-1)] rounded-lg bg-[color:var(--bg-surface)]/50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[color:var(--border-1)]/50">
         <Package className="w-4.5 h-4.5 text-blue-500 shrink-0" />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+          <span className="text-sm font-medium text-[color:var(--text-1)]">
             from {group.sender.userId}
           </span>
-          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+          <span className="ml-2 text-xs text-[color:var(--text-3)]">
             {t('send.itemCount', { count: fileCount })}
           </span>
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+        <span className="text-xs text-[color:var(--text-4)] shrink-0">
           {timeAgo} · {t('receive.expired')} {expiresIn}
         </span>
       </div>
 
       {/* Source info */}
-      <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-700/50">
+      <div className="px-3 py-1.5 text-xs text-[color:var(--text-3)] bg-[color:var(--bg-canvas)]/30 border-b border-[color:var(--border-1)]/50">
         {group.source.projectId} / {group.source.featureId}
         {(group.source.projectId !== group.destination.projectId || group.source.featureId !== group.destination.featureId) && (
           <span> → {group.destination.projectId} / {group.destination.featureId}</span>
@@ -256,7 +256,7 @@ function PendingGroupCard({ group, isLoading, onResolve }: {
       </div>
 
       {/* File list — all requests merged into a single borderless list */}
-      <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+      <div className="divide-y divide-gray-100">
         {group.requests.map(req => {
           const pathType = guessPathType(req.source.path);
           const payloadTree = payloadTreeMap.get(req.id);
@@ -283,16 +283,16 @@ function PendingGroupCard({ group, isLoading, onResolve }: {
 
       {/* Excluded count hint */}
       {totalExcluded > 0 && (
-        <div className="px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-t border-gray-100 dark:border-gray-700/50">
+        <div className="px-3 py-1.5 text-xs text-amber-600 bg-amber-50 border-t border-[color:var(--border-1)]/50">
           {totalExcluded}개 파일 제외됨
         </div>
       )}
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/30">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-[color:var(--border-1)]/50 bg-[color:var(--bg-canvas)]/30">
         <Button
           size="sm"
-          variant="default"
+          variant="primary"
           className="flex-1"
           onClick={() => onResolve('approve', excludedPathsMap)}
           disabled={isLoading}
@@ -359,7 +359,7 @@ function CompletedRequestRow({ request }: { request: TransferRequest }) {
   }, [canExpand, expanded, fileTree, request]);
 
   return (
-    <div className="rounded hover:bg-gray-50 dark:hover:bg-gray-800/50">
+    <div className="rounded hover:bg-[color:var(--bg-hover)]">
       <div
         className={cn('flex items-center justify-between text-sm py-2 px-3', canExpand && 'cursor-pointer')}
         onClick={handleToggle}
@@ -371,11 +371,11 @@ function CompletedRequestRow({ request }: { request: TransferRequest }) {
               {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </span>
           )}
-          <span className="text-gray-700 dark:text-gray-300 truncate">
+          <span className="text-[color:var(--text-2)] truncate">
             {request.sender.userId} · {request.source.path}
           </span>
           {request.fileCount != null && request.fileCount > 0 && (
-            <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+            <span className="text-xs text-[color:var(--text-4)] shrink-0">
               ({request.fileCount}개 파일)
             </span>
           )}

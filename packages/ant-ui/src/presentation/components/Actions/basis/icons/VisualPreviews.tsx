@@ -39,7 +39,7 @@ function SurfaceStylePreview({ variant, className, size }: { variant: string; cl
     case 'solid':
       return (
         <div className={`${base} bg-gray-50`}>
-          <div className={`${card} bg-white dark:bg-gray-700`}>
+          <div className={`${card} bg-white`}>
             <div className="h-0.5 w-5 bg-gray-300 rounded-full" />
             <div className="h-0.5 w-3 bg-gray-200 rounded-full" />
           </div>
@@ -92,16 +92,16 @@ function SurfaceStyleFullPreview({ variant, className }: { variant: string; clas
   switch (variant) {
     case 'solid':
       return (
-        <div className={`${base} bg-gray-100 dark:bg-gray-800 p-3 flex flex-col gap-2`}>
-          <div className="h-3 w-1/3 bg-gray-300 dark:bg-gray-600 rounded" />
+        <div className={`${base} bg-[color:var(--bg-surface-2)] p-3 flex flex-col gap-2`}>
+          <div className="h-3 w-1/3 bg-gray-300 rounded" />
           <div className="flex gap-2">
-            <div className="flex-1 rounded-lg bg-white dark:bg-gray-700 p-2">
-              <div className="h-2 w-full bg-gray-200 dark:bg-gray-600 rounded mb-1.5" />
-              <div className="h-1.5 w-3/4 bg-gray-100 dark:bg-gray-600/50 rounded" />
+            <div className="flex-1 rounded-lg bg-white p-2">
+              <div className="h-2 w-full bg-[color:var(--bg-surface-3)] rounded mb-1.5" />
+              <div className="h-1.5 w-3/4 bg-gray-100 rounded" />
             </div>
-            <div className="flex-1 rounded-lg bg-white dark:bg-gray-700 p-2">
-              <div className="h-2 w-full bg-gray-200 dark:bg-gray-600 rounded mb-1.5" />
-              <div className="h-1.5 w-1/2 bg-gray-100 dark:bg-gray-600/50 rounded" />
+            <div className="flex-1 rounded-lg bg-white p-2">
+              <div className="h-2 w-full bg-[color:var(--bg-surface-3)] rounded mb-1.5" />
+              <div className="h-1.5 w-1/2 bg-gray-100 rounded" />
             </div>
           </div>
         </div>

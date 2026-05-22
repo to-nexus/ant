@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { twMerge } from 'tailwind-merge';
 import { Spinner } from './Spinner';
 
@@ -20,24 +21,31 @@ export interface StepIndicatorProps {
 }
 
 const STATE_DOT_CLASS: Record<StepStatus, string> = {
-  pending: 'bg-gray-300 dark:bg-[#30363d] text-gray-500 dark:text-gray-500',
-  active: 'bg-blue-500 dark:bg-blue-400 text-white ring-4 ring-blue-100 dark:ring-blue-900/40',
-  complete: 'bg-emerald-500 dark:bg-emerald-400 text-white',
-  failed: 'bg-rose-500 dark:bg-rose-400 text-white',
+  pending: 'text-[color:var(--text-3)]',
+  active: 'text-white',
+  complete: 'text-[color:var(--status-done-fg)]',
+  failed: 'text-[color:var(--status-error-fg)]',
+};
+
+const STATE_DOT_STYLE: Record<StepStatus, CSSProperties> = {
+  pending: { background: 'var(--bg-surface-3)' },
+  active: { background: 'var(--violet-500)' },
+  complete: { background: 'var(--status-done-bg)' },
+  failed: { background: 'var(--status-error-bg)' },
 };
 
 const STATE_LABEL_CLASS: Record<StepStatus, string> = {
-  pending: 'text-gray-500 dark:text-gray-400',
-  active: 'text-gray-900 dark:text-gray-100 font-medium',
-  complete: 'text-gray-600 dark:text-gray-300',
-  failed: 'text-rose-600 dark:text-rose-400 font-medium',
+  pending: 'text-[color:var(--text-3)]',
+  active: 'text-[color:var(--text-1)] font-medium',
+  complete: 'text-[color:var(--text-2)]',
+  failed: 'text-[color:var(--status-error-fg)] font-medium',
 };
 
-const STATE_CONNECTOR_CLASS: Record<StepStatus, string> = {
-  pending: 'bg-gray-200 dark:bg-[#30363d]',
-  active: 'bg-blue-300 dark:bg-blue-700',
-  complete: 'bg-emerald-400 dark:bg-emerald-500',
-  failed: 'bg-rose-400 dark:bg-rose-500',
+const STATE_CONNECTOR_STYLE: Record<StepStatus, CSSProperties> = {
+  pending: { background: 'var(--border-1)' },
+  active: { background: 'var(--violet-300)' },
+  complete: { background: 'var(--status-done-fg)' },
+  failed: { background: 'var(--status-error-fg)' },
 };
 
 /**
@@ -83,6 +91,7 @@ export function StepIndicator({
                   'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
                   STATE_DOT_CLASS[step.status],
                 )}
+                style={STATE_DOT_STYLE[step.status]}
                 aria-hidden="true"
               >
                 {step.status === 'active' ? (
@@ -97,14 +106,18 @@ export function StepIndicator({
               </span>
               <span className={twMerge('text-sm truncate', STATE_LABEL_CLASS[step.status])}>{step.label}</span>
               {step.trailing && (
-                <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap">
+                <span
+                  className="text-xs tabular-nums whitespace-nowrap"
+                  style={{ color: 'var(--text-4)' }}
+                >
                   {step.trailing}
                 </span>
               )}
             </div>
             {!isLast && !isVertical && (
               <span
-                className={twMerge('flex-1 h-px', STATE_CONNECTOR_CLASS[step.status === 'complete' ? 'complete' : 'pending'])}
+                className="flex-1 h-px"
+                style={STATE_CONNECTOR_STYLE[step.status === 'complete' ? 'complete' : 'pending']}
                 aria-hidden="true"
               />
             )}
