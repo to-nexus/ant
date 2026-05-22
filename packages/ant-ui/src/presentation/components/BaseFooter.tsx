@@ -12,9 +12,13 @@ interface BaseFooterProps {
  */
 export function BaseFooter({ children, className = '', zIndex = 50 }: BaseFooterProps) {
   return (
-    <div 
-      className={`border-t border-gray-200 bg-gray-50 ${className}`}
-      style={{ zIndex }}
+    <div
+      className={className}
+      style={{
+        zIndex,
+        borderTop: '1px solid var(--border-1)',
+        background: 'var(--bg-surface-2)',
+      }}
     >
       {children}
     </div>

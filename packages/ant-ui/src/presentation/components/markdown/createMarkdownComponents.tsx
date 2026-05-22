@@ -60,7 +60,8 @@ export function createMarkdownComponents(
     },
     a: ({ node, children, ...props }) => (
       <a
-        className="text-blue-600 hover:underline break-words"
+        className="hover:underline break-words"
+        style={{ color: 'var(--violet-600)' }}
         target="_blank"
         rel="noopener noreferrer"
         {...props}

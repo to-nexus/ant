@@ -32,3 +32,4 @@ export {
   type WizardStep,
 } from './WizardStepIndicator';
 export { IconOrb, type IconOrbProps, type IconOrbTone } from './IconOrb';
+export { ViewModeButton, type ViewModeButtonProps } from './ViewModeButton';

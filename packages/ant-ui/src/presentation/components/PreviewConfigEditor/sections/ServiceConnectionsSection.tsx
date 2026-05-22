@@ -86,7 +86,6 @@ export function ServiceConnectionsSection({
     fontWeight: 600,
     padding: '4px 9px',
     cursor: 'pointer',
-    transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
   };
 
   const statusActions = (

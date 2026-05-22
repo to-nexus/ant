@@ -120,15 +120,15 @@ export function SessionView({ session }: SessionViewProps) {
                 </div>
                 <div className="flex items-center justify-between p-2 bg-muted rounded">
                   <span className="text-sm">Completed</span>
-                  <span className="text-sm font-semibold text-green-600">{session.metadata.completedTasks ?? 0}</span>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--status-done-fg)' }}>{session.metadata.completedTasks ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between p-2 bg-muted rounded">
                   <span className="text-sm">Failed</span>
-                  <span className="text-sm font-semibold text-red-600">{session.metadata.failedTasks ?? 0}</span>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--status-error-fg)' }}>{session.metadata.failedTasks ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between p-2 bg-muted rounded">
                   <span className="text-sm">Blocked</span>
-                  <span className="text-sm font-semibold text-yellow-600">{session.metadata.blockedTasks ?? 0}</span>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--status-progress-fg, var(--orange-500))' }}>{session.metadata.blockedTasks ?? 0}</span>
                 </div>
               </div>
             </div>

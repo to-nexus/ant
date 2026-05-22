@@ -84,7 +84,7 @@ export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: Crea
           value={itemName}
           onChange={(e) => setItemName(e.target.value)}
           placeholder={placeholder}
-          className="w-full px-3 py-2 pr-10 border border-[color:var(--border-2)] rounded-md bg-[color:var(--bg-surface)] text-[color:var(--text-1)] placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 pr-10 border border-[color:var(--border-2)] rounded-md bg-[color:var(--bg-surface)] text-[color:var(--text-1)] placeholder:text-[color:var(--text-4)] focus:outline-none focus:ring-2 focus:ring-[color:var(--violet-500)]"
           onKeyDown={handleKeyDown}
           disabled={loading}
           autoFocus

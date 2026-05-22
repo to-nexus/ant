@@ -233,7 +233,7 @@ export function ElapsedTimeBadge({
 
       {/* Tasks */}
       {taskCount > 0 && (
-        <div className="pl-2" style={{ borderLeft: '2px solid oklch(64% 0.18 235)' }}>
+        <div className="pl-2" style={{ borderLeft: '2px solid var(--violet-500)' }}>
           <div className="flex justify-between items-center font-semibold">
             <span style={{ color: 'var(--text-1)' }}>{t('header.tasksCount', { count: taskCount })}</span>
             <span className="font-mono" style={{ color: 'var(--text-1)' }}>
@@ -244,10 +244,10 @@ export function ElapsedTimeBadge({
             {/* In-progress tasks (real-time) */}
             {inProgressTasks?.map(task => (
               <div key={task.id} className="flex justify-between items-center text-sm">
-                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'oklch(64% 0.18 235)' }}>
+                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'var(--violet-500)' }}>
                   • {task.name}
                 </span>
-                <span className="font-mono" style={{ color: 'oklch(64% 0.18 235)' }}>
+                <span className="font-mono" style={{ color: 'var(--violet-500)' }}>
                   {task.timing?.startedAt
                     ? <LiveElapsedTime startedAt={task.timing.startedAt} />
                     : '0s'}
@@ -322,14 +322,14 @@ export function ElapsedTimeBadge({
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-1)',
           borderRadius: 'var(--r-sm)',
-          color: 'oklch(64% 0.18 235)',
+          color: 'var(--violet-500)',
         }}
       >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Timer className={iconSize} style={{ color: 'oklch(64% 0.18 235)' }} />
+          <Timer className={iconSize} style={{ color: 'var(--violet-500)' }} />
           <span
             className={cn(textSize, 'font-medium leading-none')}
-            style={{ color: 'oklch(64% 0.18 235)' }}
+            style={{ color: 'var(--violet-500)' }}
           >
             {formattedTime}
           </span>
@@ -544,7 +544,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
                   {/* Tasks (task-queue jobs) */}
                   {taskCount > 0 && (
-                    <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid oklch(64% 0.18 235)' }}>
+                    <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid var(--violet-500)' }}>
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-semibold" style={{ color: 'var(--text-2)' }}>
                           {t('header.tasksCount', { count: taskCount })}

@@ -158,7 +158,7 @@ function PhaseStep({ label, state }: { label: string; state: StepState }) {
         padding: '8px 12px',
         borderRadius: 10,
         background: tone.bg,
-        transition: 'all var(--dur-base) var(--ease-smooth)',
+        transition: 'transform var(--dur-base) var(--ease-smooth), opacity var(--dur-base) var(--ease-smooth), box-shadow var(--dur-base) var(--ease-smooth)',
       }}
     >
       <div

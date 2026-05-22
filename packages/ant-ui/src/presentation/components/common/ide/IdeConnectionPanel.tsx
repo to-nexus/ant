@@ -75,7 +75,7 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] p-6 shadow-sm">
       {header && (
         <h3 className="text-base font-semibold text-[color:var(--text-1)] mb-4">{header}</h3>
       )}
@@ -92,8 +92,14 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
             isFailed={isFailed}
           />
           {isStuck && phase && (
-            <div className="mt-4 flex items-start gap-3 rounded-md border border-rose-200 bg-rose-50 p-3">
-              <p className="text-sm text-rose-700 flex-1">
+            <div
+              className="mt-4 flex items-start gap-3 rounded-md border p-3"
+              style={{
+                borderColor: 'var(--status-error-fg)',
+                background: 'oklch(from var(--status-error-fg) l c h / 0.08)',
+              }}
+            >
+              <p className="text-sm flex-1" style={{ color: 'var(--status-error-fg)' }}>
                 {t('ide.stuck.banner', {
                   step: t(`ide.step.${stepKeyFromPhase(phase)}`),
                   seconds: elapsedSeconds,

@@ -10,11 +10,13 @@ interface StreamingStatusChipProps {
 
 export function StreamingSpinner({ className }: { className?: string }) {
   return (
-    <Spinner
-      size="sm"
-      tone="inherit"
-      className={cn('w-3 h-3 text-amber-600', className)}
-    />
+    <span style={{ color: 'var(--amber-600)', display: 'inline-flex' }}>
+      <Spinner
+        size="sm"
+        tone="inherit"
+        className={cn('w-3 h-3', className)}
+      />
+    </span>
   );
 }
 
@@ -28,11 +30,14 @@ export function StreamingStatusChip({
     return (
       <div
         className={cn(
-          'inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border',
-          'bg-amber-100 border-amber-300 text-amber-800',
-          '',
+          'inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded',
           className,
         )}
+        style={{
+          background: 'var(--amber-50)',
+          border: '1px solid var(--amber-300)',
+          color: 'var(--amber-700)',
+        }}
       >
         <StreamingSpinner className="w-3 h-3" />
         <span>{streamingLabel}</span>
@@ -43,11 +48,14 @@ export function StreamingStatusChip({
   return (
     <div
       className={cn(
-        'inline-flex items-center text-[11px] px-1.5 py-0.5 rounded border',
-        'bg-gray-100 border-gray-200 text-gray-600',
-        '',
+        'inline-flex items-center text-[11px] px-1.5 py-0.5 rounded',
         className,
       )}
+      style={{
+        background: 'var(--bg-surface-2)',
+        border: '1px solid var(--border-1)',
+        color: 'var(--text-3)',
+      }}
     >
       {readyLabel}
     </div>

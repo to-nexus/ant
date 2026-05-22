@@ -71,7 +71,6 @@ export function DesktopStatusIndicator() {
           style={{
             background: 'transparent',
             borderRadius: 'var(--r-md)',
-            transition: 'background var(--dur-fast) var(--ease-smooth)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--bg-hover)';

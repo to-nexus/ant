@@ -143,6 +143,15 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
             type="button"
             onClick={handleOpenWizard}
             disabled={!policy.canCreateFeature}
+            onMouseEnter={(e) => {
+              if (!policy.canCreateFeature) return;
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--pink-600)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-3)';
+            }}
             title={
               !policy.canCreateFeature
                 ? policy.createFeatureDisabledReason || undefined
@@ -156,12 +165,12 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 6,
-              color: '#fff',
-              background: 'var(--gradient-aurora)',
-              boxShadow: 'var(--shadow-glow-aurora)',
+              color: 'var(--text-3)',
+              background: 'transparent',
               border: 'none',
               cursor: policy.canCreateFeature ? 'pointer' : 'not-allowed',
               opacity: policy.canCreateFeature ? 1 : 0.5,
+              transition: 'all var(--dur-fast)',
             }}
           >
             <Plus size={12} />
@@ -171,13 +180,11 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
         {visibleFeatures.length === 0 ? (
           <div
             style={{
-              padding: '12px 8px',
-              fontSize: 12,
+              padding: '14px 8px',
+              fontSize: 11,
+              fontStyle: 'italic',
               color: 'var(--text-3)',
               textAlign: 'center',
-              border: '1px dashed var(--border-1)',
-              borderRadius: 8,
-              background: 'var(--surface-2)',
             }}
           >
             {t('explorer:feature.placeholder', { defaultValue: 'No features yet' })}
@@ -259,7 +266,7 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
                 borderRadius: 6,
                 fontSize: 11,
                 fontWeight: 600,
-                color: '#fff',
+                color: 'var(--text-on-brand)',
                 background: 'var(--gradient-aurora)',
                 boxShadow: 'var(--shadow-glow-aurora)',
                 border: 'none',

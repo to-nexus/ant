@@ -413,7 +413,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       border: 'none',
       cursor: 'pointer',
       boxShadow: active ? 'var(--shadow-xs)' : 'none',
-      transition: 'background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth)',
     });
     return (
       <div

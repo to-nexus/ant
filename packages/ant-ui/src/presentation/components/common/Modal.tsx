@@ -298,7 +298,7 @@ export function Modal({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all var(--dur-fast) var(--ease-smooth)',
+                transition: 'transform var(--dur-fast) var(--ease-smooth), opacity var(--dur-fast) var(--ease-smooth), box-shadow var(--dur-fast) var(--ease-smooth)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--bg-hover)';
