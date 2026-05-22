@@ -29,30 +29,88 @@ export function ExecutionProgress({
         <StepRow key={step.id} label={getStepLabel(step)} status={step.status} error={step.error} />
       ))}
       {gitDecisionPending && (
-        <div className="mt-3 flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-          <div className="flex-1 text-sm text-amber-700 dark:text-amber-300">{t('quickstart.projectWizard.gitErrorMessage')}</div>
+        <div
+          className="mt-3 flex items-center gap-2 p-3"
+          style={{
+            background:
+              'linear-gradient(135deg, oklch(96% 0.04 50 / 0.7), oklch(95% 0.03 30 / 0.55))',
+            border: '1px solid oklch(82% 0.10 50)',
+            borderRadius: 'var(--r-lg)',
+          }}
+        >
+          <AlertTriangle
+            className="w-4 h-4 flex-shrink-0"
+            style={{ color: 'oklch(60% 0.18 50)' }}
+          />
+          <div
+            className="flex-1 text-sm"
+            style={{ color: 'oklch(45% 0.16 50)' }}
+          >
+            {t('quickstart.projectWizard.gitErrorMessage')}
+          </div>
           <div className="flex gap-2">
-            <button onClick={() => onGitDecision('skip')} className="text-xs px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+            <button
+              onClick={() => onGitDecision('skip')}
+              className="text-xs px-2.5 py-1 transition-colors"
+              style={{
+                background: 'var(--bg-surface)',
+                color: 'var(--text-2)',
+                border: '1px solid var(--border-2)',
+                borderRadius: 'var(--r-md, 8px)',
+              }}
+            >
               {t('quickstart.projectWizard.gitErrorSkip')}
             </button>
-            <button onClick={() => onGitDecision('retry')} className="text-xs px-2.5 py-1 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900">
+            <button
+              onClick={() => onGitDecision('retry')}
+              className="text-xs px-2.5 py-1 transition-colors"
+              style={{
+                background: 'oklch(92% 0.08 50)',
+                color: 'oklch(45% 0.16 50)',
+                border: '1px solid oklch(80% 0.12 50)',
+                borderRadius: 'var(--r-md, 8px)',
+                fontWeight: 600,
+              }}
+            >
               {t('quickstart.projectWizard.gitErrorRetry')}
             </button>
-            <button onClick={() => onGitDecision('abort')} className="text-xs px-2.5 py-1 rounded-md bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900">
+            <button
+              onClick={() => onGitDecision('abort')}
+              className="text-xs px-2.5 py-1 transition-colors"
+              style={{
+                background: 'oklch(92% 0.08 25)',
+                color: 'oklch(48% 0.20 25)',
+                border: '1px solid oklch(80% 0.14 25)',
+                borderRadius: 'var(--r-md, 8px)',
+                fontWeight: 600,
+              }}
+            >
               {t('quickstart.projectWizard.gitErrorAbort')}
             </button>
           </div>
         </div>
       )}
       {executionError && !gitDecisionPending && (
-        <div className="mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
-          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+        <div
+          className="mt-4 flex items-start gap-2 p-3"
+          style={{
+            background: 'var(--status-error-bg)',
+            border: '1px solid oklch(82% 0.12 25)',
+            borderRadius: 'var(--r-lg)',
+          }}
+        >
+          <AlertCircle
+            className="w-4 h-4 flex-shrink-0 mt-0.5"
+            style={{ color: 'var(--status-error-fg)' }}
+          />
           <div>
-            <div className="text-sm text-red-700 dark:text-red-300">{executionError}</div>
+            <div className="text-sm" style={{ color: 'var(--status-error-fg)' }}>
+              {executionError}
+            </div>
             <button
               onClick={onRetry}
-              className="mt-2 text-xs text-red-600 dark:text-red-400 underline hover:text-red-800 dark:hover:text-red-300"
+              className="mt-2 text-xs underline hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--status-error-fg)' }}
             >
               {t('quickstart.errorRetry')}
             </button>

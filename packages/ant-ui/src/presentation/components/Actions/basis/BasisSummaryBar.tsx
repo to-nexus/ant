@@ -239,10 +239,10 @@ const TIER_ICON: Record<TierKey, typeof Settings2> = {
 };
 
 const TIER_ICON_COLOR: Record<TierKey, string> = {
-  techTier: 'text-violet-500 dark:text-violet-400',
-  visualTier: 'text-pink-500 dark:text-pink-400',
-  gameArtTier: 'text-amber-500 dark:text-amber-400',
-  gameContentTier: 'text-emerald-500 dark:text-emerald-400',
+  techTier: 'var(--violet-500)',
+  visualTier: 'var(--pink-500)',
+  gameArtTier: 'var(--amber-500)',
+  gameContentTier: 'var(--emerald-500)',
 };
 
 interface BasisSummaryBarProps {
@@ -266,9 +266,12 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
 
   return (
     <div className="flex items-center gap-2">
-      <Icon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
+      <Icon className="w-3.5 h-3.5 shrink-0" style={{ color }} />
       {row.subLabel && (
-        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 shrink-0 w-5">
+        <span
+          className="text-[10px] font-semibold shrink-0 w-5"
+          style={{ color: 'var(--text-3)' }}
+        >
           {row.subLabel}
         </span>
       )}
@@ -282,7 +285,8 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
           <button
             type="button"
             onClick={onReset}
-            className="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            className="p-1 rounded transition-colors hover:bg-[color:var(--bg-surface-2)]"
+            style={{ color: 'var(--text-3)' }}
             aria-label="Reset tier"
             title={(() => {
               switch (row.tierKey) {
@@ -300,7 +304,8 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
           <button
             type="button"
             onClick={onEdit}
-            className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="p-1 rounded transition-colors hover:bg-[color:var(--bg-surface-2)]"
+            style={{ color: 'var(--text-3)' }}
             aria-label="Edit tier"
           >
             <Pencil className="w-3 h-3" />
@@ -329,7 +334,11 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
       <button
         type="button"
         onClick={onEdit}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors"
+        style={{
+          border: '1px dashed var(--border-2)',
+          color: 'var(--text-3)',
+        }}
       >
         <Settings2 className="w-3.5 h-3.5" />
         <span className="text-xs font-medium">
@@ -356,11 +365,14 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
   };
 
   return (
-    <div className={`flex flex-col gap-1.5 rounded-lg px-3 py-2 ${
-      mode === 'inline'
-        ? ''
-        : 'bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50'
-    }`}>
+    <div
+      className="flex flex-col gap-1.5 rounded-lg px-3 py-2"
+      style={
+        mode === 'inline'
+          ? undefined
+          : { background: 'var(--bg-surface-2)', border: '1px solid var(--border-2)' }
+      }
+    >
       {rows.map(row => (
         <TierRow
           key={`${row.tierKey}${row.subLabel ? `-${row.subLabel}` : ''}`}

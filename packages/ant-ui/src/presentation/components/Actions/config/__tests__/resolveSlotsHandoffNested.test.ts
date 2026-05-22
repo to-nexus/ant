@@ -33,39 +33,52 @@ const handoffSlot: SlotDef = {
   ],
 };
 
+const fileMeta = (size: number) => ({
+  size,
+  mtime: 0,
+  isTemplate: false,
+  templateReason: null,
+});
+
 const fileTree: FileNode[] = [
   {
     name: 'visual',
+    path: 'visual',
     type: 'directory',
     children: [
       {
         name: 'ui',
+        path: 'visual/ui',
         type: 'directory',
         children: [
           {
             name: 'handoff',
+            path: 'visual/ui/handoff',
             type: 'directory',
             children: [
-              { name: 'overview.md', type: 'file', meta: { size: 120 } },
+              { name: 'overview.md', path: 'visual/ui/handoff/overview.md', type: 'file', meta: fileMeta(120) },
               {
                 name: 'screens',
+                path: 'visual/ui/handoff/screens',
                 type: 'directory',
                 children: [
                   {
                     name: 'login',
+                    path: 'visual/ui/handoff/screens/login',
                     type: 'directory',
                     children: [
-                      { name: 'spec.md', type: 'file', meta: { size: 200 } },
-                      { name: 'mock.png', type: 'file', meta: { size: 50_000 } },
+                      { name: 'spec.md', path: 'visual/ui/handoff/screens/login/spec.md', type: 'file', meta: fileMeta(200) },
+                      { name: 'mock.png', path: 'visual/ui/handoff/screens/login/mock.png', type: 'file', meta: fileMeta(50_000) },
                     ],
                   },
                 ],
               },
               {
                 name: 'assets',
+                path: 'visual/ui/handoff/assets',
                 type: 'directory',
                 children: [
-                  { name: 'logo.png', type: 'file', meta: { size: 8_000 } },
+                  { name: 'logo.png', path: 'visual/ui/handoff/assets/logo.png', type: 'file', meta: fileMeta(8_000) },
                 ],
               },
             ],
@@ -122,13 +135,15 @@ describe('resolveSlotEntries — handoff nested directories', () => {
     const emptyTree: FileNode[] = [
       {
         name: 'visual',
+        path: 'visual',
         type: 'directory',
         children: [
           {
             name: 'ui',
+            path: 'visual/ui',
             type: 'directory',
             children: [
-              { name: 'handoff', type: 'directory', children: [] },
+              { name: 'handoff', path: 'visual/ui/handoff', type: 'directory', children: [] },
             ],
           },
         ],

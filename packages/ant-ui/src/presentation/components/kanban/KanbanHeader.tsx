@@ -178,23 +178,23 @@ export function ElapsedTimeBadge({
   // Build tooltip content
   const tooltipContent = (
     <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
-      <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
+      <div className="font-semibold pb-1.5" style={{ borderBottom: '1px solid var(--border-1)', color: 'var(--text-1)' }}>
         {t('header.timeBreakdown')}
       </div>
-      
+
       {/* Total */}
       <div className="flex justify-between items-center">
-        <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('header.total')}</span>
-        <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
+        <span className="font-semibold" style={{ color: 'var(--text-1)' }}>{t('header.total')}</span>
+        <span className="font-mono font-semibold text-lg" style={{ color: 'var(--text-1)' }}>
           {formattedTime}
         </span>
       </div>
-      
+
       {/* Estimating Phase */}
-      <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
+      <div className="pl-2" style={{ borderLeft: '2px solid var(--violet-500)' }}>
         <div className="flex justify-between items-center font-semibold">
-          <span className="text-gray-800 dark:text-gray-100">{t('header.estimatingPhase')}</span>
-          <span className="font-mono text-gray-800 dark:text-gray-100">
+          <span style={{ color: 'var(--text-1)' }}>{t('header.estimatingPhase')}</span>
+          <span className="font-mono" style={{ color: 'var(--text-1)' }}>
             {isEstimatingFinalized
               ? formatElapsedTime(estimatingTime, true)
               : estimatingActivity?.startedAt
@@ -208,8 +208,8 @@ export function ElapsedTimeBadge({
           <div className="pl-2 space-y-0.5 mt-1">
             {Object.entries(jobTiming.phaseBreakdown).map(([phase, ms]) => (
               <div key={phase} className="flex justify-between items-center text-xs">
-                <span className="text-gray-600 dark:text-gray-400 capitalize">• {phase}</span>
-                <span className="font-mono text-gray-600 dark:text-gray-400">
+                <span className="capitalize" style={{ color: 'var(--text-3)' }}>• {phase}</span>
+                <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                   {formatElapsedTime(ms, true)}
                 </span>
               </div>
@@ -220,23 +220,23 @@ export function ElapsedTimeBadge({
         {!isEstimatingFinalized && estimatingActivity && (
           <div className="pl-2 mt-1">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-purple-600 dark:text-purple-400">
+              <span style={{ color: 'var(--violet-500)' }}>
                 • {estimatingActivity.label}
               </span>
-              <span className="font-mono text-purple-600 dark:text-purple-400">
+              <span className="font-mono" style={{ color: 'var(--violet-500)' }}>
                 <LiveElapsedTime startedAt={estimatingActivity.startedAt} />
               </span>
             </div>
           </div>
         )}
       </div>
-      
+
       {/* Tasks */}
       {taskCount > 0 && (
-        <div className="pl-2 border-l-2 border-blue-400 dark:border-blue-500">
+        <div className="pl-2" style={{ borderLeft: '2px solid oklch(64% 0.18 235)' }}>
           <div className="flex justify-between items-center font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">{t('header.tasksCount', { count: taskCount })}</span>
-            <span className="font-mono text-gray-800 dark:text-gray-100">
+            <span style={{ color: 'var(--text-1)' }}>{t('header.tasksCount', { count: taskCount })}</span>
+            <span className="font-mono" style={{ color: 'var(--text-1)' }}>
               {formatElapsedTime(tasksTotal, true)}
             </span>
           </div>
@@ -244,10 +244,10 @@ export function ElapsedTimeBadge({
             {/* In-progress tasks (real-time) */}
             {inProgressTasks?.map(task => (
               <div key={task.id} className="flex justify-between items-center text-sm">
-                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px]" title={task.name}>
+                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'oklch(64% 0.18 235)' }}>
                   • {task.name}
                 </span>
-                <span className="font-mono text-blue-600 dark:text-blue-400">
+                <span className="font-mono" style={{ color: 'oklch(64% 0.18 235)' }}>
                   {task.timing?.startedAt
                     ? <LiveElapsedTime startedAt={task.timing.startedAt} />
                     : '0s'}
@@ -260,10 +260,10 @@ export function ElapsedTimeBadge({
                 key={task.id}
                 className="flex justify-between items-center text-sm"
               >
-                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={task.name}>
+                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'var(--text-2)' }}>
                   • {task.name}
                 </span>
-                <span className="font-mono text-gray-700 dark:text-gray-300">
+                <span className="font-mono" style={{ color: 'var(--text-2)' }}>
                   {task.timing?.elapsedTime
                     ? formatElapsedTime(task.timing.elapsedTime, true)
                     : '0s'}
@@ -272,20 +272,20 @@ export function ElapsedTimeBadge({
             ))}
             {/* Parallel execution breakdown */}
             {parallelSaved > 1000 && (
-              <div className="space-y-0.5 pt-1 mt-1 border-t border-blue-200 dark:border-blue-800">
+              <div className="space-y-0.5 pt-1 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-gray-600 dark:text-gray-400">
+                  <span style={{ color: 'var(--text-3)' }}>
                     {t('header.parallelTotal')}
                   </span>
-                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                     {formatElapsedTime(tasksSequentialSum, true)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="font-semibold" style={{ color: 'var(--status-done-fg)' }}>
                     {t('header.parallelSaved')}
                   </span>
-                  <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="font-mono font-semibold" style={{ color: 'var(--status-done-fg)' }}>
                     -{formatElapsedTime(parallelSaved, true)}
                   </span>
                 </div>
@@ -294,13 +294,13 @@ export function ElapsedTimeBadge({
           </div>
         </div>
       )}
-      
+
       {/* Paused Duration */}
       {jobTiming.totalPausedDuration > 0 && (
-        <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs">
+        <div className="pt-1.5 mt-1.5 text-xs" style={{ borderTop: '1px solid var(--border-1)' }}>
           <div className="flex justify-between">
-            <span className="text-gray-700 dark:text-gray-300">{t('header.paused')}</span>
-            <span className="font-mono text-gray-700 dark:text-gray-300">{formatElapsedTime(jobTiming.totalPausedDuration, true)}</span>
+            <span style={{ color: 'var(--text-2)' }}>{t('header.paused')}</span>
+            <span className="font-mono" style={{ color: 'var(--text-2)' }}>{formatElapsedTime(jobTiming.totalPausedDuration, true)}</span>
           </div>
         </div>
       )}
@@ -316,13 +316,21 @@ export function ElapsedTimeBadge({
 
   return (
     <Tooltip content={tooltipContent} placement="bottom">
-      <div className={cn(
-        sizeClass,
-        'rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 cursor-pointer',
-      )}>
+      <div
+        className={cn(sizeClass, 'cursor-pointer')}
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 'var(--r-sm)',
+          color: 'oklch(64% 0.18 235)',
+        }}
+      >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Timer className={cn(iconSize, 'text-blue-600 dark:text-blue-400')} />
-          <span className={cn(textSize, 'text-blue-700 dark:text-blue-300 font-medium leading-none')}>
+          <Timer className={iconSize} style={{ color: 'oklch(64% 0.18 235)' }} />
+          <span
+            className={cn(textSize, 'font-medium leading-none')}
+            style={{ color: 'oklch(64% 0.18 235)' }}
+          >
             {formattedTime}
           </span>
         </div>
@@ -404,7 +412,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
   const tooltipContent = (
     <div className="space-y-2 w-[480px] max-h-[80vh] overflow-y-auto">
-      <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
+      <div className="font-semibold pb-1.5" style={{ borderBottom: '1px solid var(--border-1)', color: 'var(--text-1)' }}>
         {t('header.tokenUsage')}
       </div>
 
@@ -413,18 +421,18 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
           {/* ━━ Section 1: Billing (input + output) ━━ */}
           <div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">
-                {t('tokenStats.input')} <span className="text-xs text-gray-500 dark:text-gray-500 font-normal italic">{t('tokenStats.inputDescription')}</span>
+              <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                {t('tokenStats.input')} <span className="text-xs font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.inputDescription')}</span>
               </span>
-              <span className="font-mono font-semibold text-gray-900 dark:text-white">
+              <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
                 {formatTokenCount(effective.billableInputTokens)}
               </span>
             </div>
             <div className="flex justify-between items-center mt-1">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">
-                {t('tokenStats.output')} <span className="text-xs text-gray-500 dark:text-gray-500 font-normal italic">{t('tokenStats.outputDescription')}</span>
+              <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                {t('tokenStats.output')} <span className="text-xs font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.outputDescription')}</span>
               </span>
-              <span className="font-mono font-semibold text-gray-900 dark:text-white">
+              <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
                 {formatTokenCount(effective.outputTokens)}
               </span>
             </div>
@@ -432,39 +440,39 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
           {/* ━━ Section 2: Cache Efficiency (only when cache active) ━━ */}
           {effective.hasCache && (
-            <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
-              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.cacheEfficiency')}</div>
+            <div className="pt-1.5 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
+              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-1)' }}>{t('tokenStats.cacheEfficiency')}</div>
               <div className="pl-2 text-xs space-y-0.5">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.totalProcessed')}</span>
-                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                  <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.totalProcessed')}</span>
+                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                     {formatTokenCount(effective.totalInputProcessed)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.newCacheMiss')}</span>
-                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                  <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.newCacheMiss')}</span>
+                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                     {formatTokenCount(effective.newInputTokens)}
                   </span>
                 </div>
                 {effective.cacheReadTokens > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.cacheHit')}</span>
-                    <span className="font-mono text-gray-600 dark:text-gray-400">
+                    <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.cacheHit')}</span>
+                    <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                       {formatTokenCount(effective.cacheReadTokens)}
                     </span>
                   </div>
                 )}
                 {effective.cacheCreationTokens > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.cacheCreated')}</span>
-                    <span className="font-mono text-gray-600 dark:text-gray-400">
+                    <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.cacheCreated')}</span>
+                    <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                       {formatTokenCount(effective.cacheCreationTokens)}
                     </span>
                   </div>
                 )}
                 {effective.cacheHitRate > 0 && (
-                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 pt-0.5">
+                  <div className="flex justify-between pt-0.5" style={{ color: 'var(--status-done-fg)' }}>
                     <span className="font-semibold">{t('tokenStats.cacheHitRate')}</span>
                     <span className="font-mono font-semibold">
                       {formatPercent(effective.cacheHitRate)}
@@ -472,7 +480,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
                   </div>
                 )}
                 {effective.inputSavingsPercent > 0 && (
-                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                  <div className="flex justify-between" style={{ color: 'var(--status-done-fg)' }}>
                     <span className="font-semibold">{t('tokenStats.savings')}</span>
                     <span className="font-mono font-semibold">
                       ~{formatPercent(effective.inputSavingsPercent)}
@@ -485,20 +493,20 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
           {/* ━━ Section 3: Phase Breakdown ━━ */}
           {(tokenUsage || taskCount > 0 || (phaseTokenUsages && phaseTokenUsages.length > 0)) && (
-            <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
-              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.byPhase')}</div>
+            <div className="pt-1.5 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
+              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-1)' }}>{t('tokenStats.byPhase')}</div>
 
               {/* Phase-based breakdown (visual/plan jobs) */}
               {phaseTokenUsages && phaseTokenUsages.length > 0 ? (
-                <div className="pl-2 space-y-0.5 border-l-2 border-purple-400 dark:border-purple-500">
+                <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid var(--violet-500)' }}>
                   {phaseTokenUsages.map((p) => {
                     const m = getTokenUsageMetrics(p.tokenUsage);
                     return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
                       <div key={p.phase} className="flex justify-between items-center text-xs">
-                        <span className="text-gray-700 dark:text-gray-200 capitalize truncate max-w-[260px]" title={p.label || p.phase}>
+                        <span className="capitalize truncate max-w-[260px]" title={p.label || p.phase} style={{ color: 'var(--text-2)' }}>
                           {p.label || p.phase}
                         </span>
-                        <span className="font-mono text-gray-600 dark:text-gray-400">
+                        <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                           {formatTokenCount(m.billableInputTokens)} in · {formatTokenCount(m.outputTokens)} out
                         </span>
                       </div>
@@ -512,8 +520,8 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
                     const overheadOut = Math.max(0, effective.outputTokens - phaseSumMetrics.outputTokens);
                     return (overheadIn > 100 || overheadOut > 100) ? (
                       <div className="flex justify-between items-center text-xs opacity-60">
-                        <span className="text-gray-500 dark:text-gray-500 italic">{t('tokenStats.overhead', 'Overhead')}</span>
-                        <span className="font-mono text-gray-500 dark:text-gray-500">
+                        <span className="italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.overhead', 'Overhead')}</span>
+                        <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                           {formatTokenCount(overheadIn)} in · {formatTokenCount(overheadOut)} out
                         </span>
                       </div>
@@ -524,10 +532,10 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
                 <>
                   {/* Planning Phase (task-queue jobs) */}
                   {tokenUsage && (
-                    <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
+                    <div className="pl-2 mb-1" style={{ borderLeft: '2px solid var(--violet-500)' }}>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-700 dark:text-gray-200 font-semibold">{t('tokenStats.estimating')}</span>
-                        <span className="font-mono text-gray-700 dark:text-gray-200">
+                        <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{t('tokenStats.estimating')}</span>
+                        <span className="font-mono" style={{ color: 'var(--text-2)' }}>
                           {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
                         </span>
                       </div>
@@ -536,12 +544,12 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
                   {/* Tasks (task-queue jobs) */}
                   {taskCount > 0 && (
-                    <div className="pl-2 space-y-0.5 border-l-2 border-blue-400 dark:border-blue-500">
+                    <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid oklch(64% 0.18 235)' }}>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                        <span className="font-semibold" style={{ color: 'var(--text-2)' }}>
                           {t('header.tasksCount', { count: taskCount })}
                         </span>
-                        <span className="font-mono text-gray-700 dark:text-gray-200">
+                        <span className="font-mono" style={{ color: 'var(--text-2)' }}>
                           {formatTokenCount(tasks.billableInputTokens)} in · {formatTokenCount(tasks.outputTokens)} out
                         </span>
                       </div>
@@ -550,10 +558,10 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
                           const m = getTokenUsageMetrics(task.tokenUsage!);
                           return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
                             <div key={task.id} className="flex justify-between items-center text-xs">
-                              <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
+                              <span className="truncate max-w-[300px]" title={task.name} style={{ color: 'var(--text-3)' }}>
                                 • {task.name}
                               </span>
-                              <span className="font-mono text-gray-600 dark:text-gray-400">
+                              <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                                 {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
                               </span>
                             </div>
@@ -563,10 +571,10 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
                           const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
                           return (
                             <div key={task.id} className="flex justify-between items-center text-xs">
-                              <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
+                              <span className="truncate max-w-[300px]" title={task.name} style={{ color: 'var(--text-3)' }}>
                                 • {task.name}
                               </span>
-                              <span className="font-mono text-gray-600 dark:text-gray-400">
+                              <span className="font-mono" style={{ color: 'var(--text-3)' }}>
                                 {m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
                               </span>
                             </div>
@@ -581,7 +589,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
           )}
         </>
       ) : (
-        <div className="text-gray-600 dark:text-gray-400 text-sm italic">
+        <div className="text-sm italic" style={{ color: 'var(--text-3)' }}>
           {t('tokenStats.noTokenData')}
         </div>
       )}
@@ -597,15 +605,22 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
 
   return (
     <Tooltip content={tooltipContent} placement="bottom">
-      <div className={cn(
-        sizeClass,
-        'rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 cursor-pointer',
-      )}>
+      <div
+        className={cn(sizeClass, 'cursor-pointer')}
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 'var(--r-sm)',
+        }}
+      >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Coins className={cn(iconSize, 'text-amber-600 dark:text-amber-400')} />
-          <span className={cn(textSize, 'text-amber-700 dark:text-amber-300 font-medium leading-none whitespace-nowrap')}>
+          <Coins className={iconSize} style={{ color: 'var(--orange-500)' }} />
+          <span
+            className={cn(textSize, 'font-mono font-medium leading-none whitespace-nowrap')}
+            style={{ color: 'var(--orange-500)' }}
+          >
             {hasTokenData
-              ? `${formatTokenCount(effective.billableInputTokens)} in · ${formatTokenCount(effective.outputTokens)} out`
+              ? `${formatTokenCount(effective.billableInputTokens)}↑·${formatTokenCount(effective.outputTokens)}↓`
               : '0'}
           </span>
         </div>
@@ -640,27 +655,40 @@ export function GaugesGroup({
   return (
     <>
       {/* Recursion Limit Gauge */}
-      <div className="relative h-7 min-h-7 max-h-7 px-3 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800 min-w-[120px] overflow-hidden">
-        <div className="absolute inset-0 rounded-md">
-          <div 
-            className="h-full bg-purple-300 dark:bg-purple-800/50 transition-all duration-500 ease-out"
-            style={{ 
-              width: `${recursionLimit 
-                ? Math.min(((recursionCount || 0) / recursionLimit) * 100, 100) 
-                : 0}%` 
+      <div
+        className="relative h-7 min-h-7 max-h-7 px-3 min-w-[120px] overflow-hidden"
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 'var(--r-sm)',
+        }}
+      >
+        <div className="absolute inset-0" style={{ borderRadius: 'var(--r-sm)' }}>
+          <div
+            className="h-full transition-all duration-500 ease-out"
+            style={{
+              background: 'var(--violet-500)',
+              opacity: 0.35,
+              width: `${recursionLimit
+                ? Math.min(((recursionCount || 0) / recursionLimit) * 100, 100)
+                : 0}%`,
             }}
           />
         </div>
         <div className="relative z-10 flex items-center justify-center h-7 gap-1.5">
           {recursionTaskName && (
             <span
-              className="text-[10px] text-purple-500 dark:text-purple-400 font-medium leading-none truncate max-w-[90px] opacity-80"
+              className="text-[10px] font-medium leading-none truncate max-w-[90px] opacity-80"
+              style={{ color: 'var(--violet-500)' }}
               title={recursionTaskName}
             >
               {truncateText(recursionTaskName, 13)}
             </span>
           )}
-          <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none whitespace-nowrap">
+          <span
+            className="text-xs font-medium leading-none whitespace-nowrap"
+            style={{ color: 'var(--violet-500)' }}
+          >
             {recursionCount}/{recursionLimit}
           </span>
         </div>

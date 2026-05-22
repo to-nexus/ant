@@ -7,7 +7,6 @@
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { cn } from '@/shared/utils/design-system';
 import { SendSubTab } from './SendSubTab';
 import { ReceiveSubTab } from './ReceiveSubTab';
 
@@ -28,41 +27,57 @@ export function TransferTab() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#161b22]">
+    <div
+      className="flex flex-col h-full"
+      style={{ background: 'var(--surface-1)' }}
+    >
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+      <div
+        className="flex items-center gap-1 px-4 pt-3 pb-2"
+        style={{ borderBottom: '1px solid var(--border-1)' }}
+      >
         <div className="flex items-center gap-1 flex-1">
         <button
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+          style={
             activeSubTab === 'send'
-              ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          )}
+              ? { background: 'var(--bg-hover)', color: 'var(--text-1)' }
+              : { background: 'transparent', color: 'var(--text-3)' }
+          }
           onClick={() => setSubTab('send')}
         >
           <ArrowUpRight className="w-4 h-4" />
           보내기
         </button>
         <button
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+          className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+          style={
             activeSubTab === 'receive'
-              ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          )}
+              ? { background: 'var(--bg-hover)', color: 'var(--text-1)' }
+              : { background: 'transparent', color: 'var(--text-3)' }
+          }
           onClick={() => setSubTab('receive')}
         >
           <ArrowDownLeft className="w-4 h-4" />
           받기
           {pendingCount > 0 && (
-            <span className="ml-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">
-              {pendingCount > 99 ? '99+' : pendingCount}
-            </span>
+            <span
+              aria-label="pending"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: 'var(--red-500)',
+                marginLeft: 4,
+              }}
+            />
           )}
         </button>
         </div>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+        <span
+          className="text-[11px] whitespace-nowrap"
+          style={{ color: 'var(--text-3)' }}
+        >
           Share artifacts across projects
         </span>
       </div>

@@ -295,11 +295,7 @@ function isRealUnpinnedTab(tab: EditorTab): boolean {
 // Apply theme to document
 const applyTheme = (theme: 'light' | 'dark') => {
   if (typeof document !== 'undefined') {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.dataset.theme = theme;
   }
 };
 

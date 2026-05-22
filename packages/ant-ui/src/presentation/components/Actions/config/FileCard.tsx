@@ -36,19 +36,19 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
 
   const borderClass = isEmpty
     ? isAmber
-      ? 'border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10'
-      : 'border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/20 opacity-50'
+      ? 'border-dashed border-amber-300 bg-amber-50/50'
+      : 'border-dashed border-gray-300 bg-gray-50/50 opacity-50'
     : hasWarnings || isDisabled
-      ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60'
+      ? 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60'
       : locked
-        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+        ? 'bg-emerald-50 border-emerald-200'
         : selected
-          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-          : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60';
+          ? 'bg-emerald-50 border-emerald-200'
+          : 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60';
 
   const nameClass = isEmpty && isAmber
-    ? 'text-sm truncate block text-amber-700 dark:text-amber-300 font-medium'
-    : `text-sm truncate block ${hasWarnings ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200'}`;
+    ? 'text-sm truncate block text-amber-700 font-medium'
+    : `text-sm truncate block ${hasWarnings ? 'text-[color:var(--text-4)]' : 'text-[color:var(--text-1)]'}`;
 
   const canToggle = !isDisabled && !locked && !!onToggle;
 
@@ -75,7 +75,7 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
         </span>
         <span className="min-w-0 text-left">
           <span className={nameClass}>{name}</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 truncate block">{path}</span>
+          <span className="text-xs text-[color:var(--text-4)] truncate block">{path}</span>
         </span>
       </button>
       <div className="flex items-center gap-1.5 shrink-0">
@@ -119,7 +119,7 @@ function WarningIcon({ warning, onViewFile, lang }: {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onViewFile(); }}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-xs font-medium text-blue-600 hover:underline"
               >
                 {viewLabel}
               </button>
@@ -128,7 +128,7 @@ function WarningIcon({ warning, onViewFile, lang }: {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); warning.onFix!(); }}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-xs font-medium text-blue-600 hover:underline"
               >
                 {warning.fixLabel[lang] || warning.fixLabel.en}
               </button>
@@ -138,7 +138,7 @@ function WarningIcon({ warning, onViewFile, lang }: {
       }
       placement="top"
     >
-      <span className={`inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg ${iconColor} cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+      <span className={`inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg ${iconColor} cursor-pointer hover:bg-[color:var(--bg-hover)] transition-colors`}>
         <Icon className="w-4.5 h-4.5" />
       </span>
     </Tooltip>
@@ -152,7 +152,7 @@ function InfoIcon({ description, lang }: { description: { en: string; ko: string
       className="max-w-sm !px-5 !py-4 !text-base !rounded-xl"
       placement="top"
     >
-      <span className="inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg text-gray-400 dark:text-gray-500 cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+      <span className="inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg text-[color:var(--text-4)] cursor-pointer hover:text-blue-500 hover:bg-[color:var(--bg-hover)] transition-colors">
         <Info className="w-4.5 h-4.5" />
       </span>
     </Tooltip>
@@ -166,8 +166,8 @@ function SpotlightToggle({ active, onClick, title }: { active: boolean; onClick:
       onClick={onClick}
       className={`shrink-0 p-2 rounded-lg transition-colors ${
         active
-          ? 'bg-amber-200 dark:bg-amber-700/50 text-amber-700 dark:text-amber-300'
-          : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50'
+          ? 'bg-amber-200 text-amber-700'
+          : 'bg-[color:var(--bg-surface-2)]/50 text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)]'
       }`}
       title={title}
     >

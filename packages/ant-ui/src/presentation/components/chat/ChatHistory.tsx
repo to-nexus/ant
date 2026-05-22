@@ -395,9 +395,9 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
     return (
       <div className="flex items-center justify-center h-full p-8 text-center">
         <div className="max-w-md">
-          <div className="text-gray-400 dark:text-gray-500 text-sm">
-            <p className="mb-2">💬 No messages yet</p>
-            <p className="text-xs text-gray-500 dark:text-gray-600">
+          <div className="text-sm" style={{ color: 'var(--text-3)' }}>
+            <p className="mb-2 text-gradient">✨ No messages yet</p>
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>
               Start a conversation with the AI assistant
             </p>
           </div>

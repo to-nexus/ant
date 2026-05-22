@@ -1,7 +1,71 @@
+import { useState, type CSSProperties } from 'react';
 import { KeyRound } from 'lucide-react';
-import { cn } from '@/shared/utils/design-system';
+import { Toggle } from '@/presentation/components/aurora';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
 import type { GitSnapshot } from '@ant/shared';
+
+// ─── shared style helpers (Aurora tokens) ──────────────────────────────
+
+const inputBaseStyle = (
+  disabled: boolean,
+  hasError: boolean,
+  focused: boolean,
+): CSSProperties => {
+  const borderColor = disabled
+    ? 'var(--border-1)'
+    : hasError
+      ? 'var(--red-500, oklch(70% 0.18 25))'
+      : focused
+        ? 'var(--violet-500)'
+        : 'var(--border-2)';
+  return {
+    background: disabled ? 'var(--bg-surface-2)' : 'var(--bg-surface)',
+    color: disabled ? 'var(--text-3)' : 'var(--text-1)',
+    border: `1.5px solid ${borderColor}`,
+    borderRadius: 'var(--r-lg, 10px)',
+    boxShadow: focused && !disabled && !hasError ? '0 0 0 3px oklch(64% 0.20 290 / 0.18)' : 'none',
+    cursor: disabled ? 'not-allowed' : 'text',
+    outline: 'none',
+    transition: 'all 150ms var(--ease-smooth)',
+  };
+};
+
+function TokenInput({
+  value,
+  onChange,
+  disabled,
+  readOnly,
+  placeholder,
+  hasError = false,
+  onKeyDown,
+  type = 'text',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
+  placeholder?: string;
+  hasError?: boolean;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  type?: 'text' | 'password';
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onKeyDown={onKeyDown}
+      className="w-full px-3 py-2 text-sm"
+      style={inputBaseStyle(!!disabled, hasError, focused)}
+    />
+  );
+}
 
 interface StepGitIntegrationProps {
   t: (key: string, opts?: Record<string, unknown>) => string;
@@ -62,44 +126,60 @@ export function StepGitIntegration({
       {/* Git toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
             {t('quickstart.projectWizard.gitEnable')}
           </label>
           {badgeState === 'not-connected' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 font-medium">
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                background: 'var(--bg-surface-2)',
+                color: 'var(--text-3)',
+                border: '1px solid var(--border-2)',
+              }}
+            >
               {t('quickstart.projectWizard.gitNotConnected')}
             </span>
           )}
           {badgeState === 'connected' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-medium">
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                background: 'var(--status-done-bg)',
+                color: 'var(--status-done-fg)',
+                border: '1px solid oklch(80% 0.10 155)',
+              }}
+            >
               {t('quickstart.projectWizard.gitConnected')}
             </span>
           )}
           {badgeState === 'error' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                background: 'var(--status-error-bg)',
+                color: 'var(--status-error-fg)',
+                border: '1px solid oklch(82% 0.12 25)',
+              }}
+            >
               {t('quickstart.projectWizard.gitError')}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => !readOnly && onGitEnabledChange(!gitEnabled)}
+        <Toggle
+          checked={gitEnabled}
+          onChange={(next) => onGitEnabledChange(next)}
           disabled={readOnly}
-          className={cn(
-            'relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200',
-            readOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-            gitEnabled ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-gray-200 dark:bg-gray-600',
-          )}
-        >
-          <span className={cn(
-            'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200',
-            gitEnabled ? 'translate-x-4' : 'translate-x-0',
-          )} />
-        </button>
+          size="sm"
+          aria-label={t('quickstart.projectWizard.gitEnable')}
+        />
       </div>
 
       {!gitEnabled ? (
-        <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+        <p
+          className="text-xs italic"
+          style={{ color: 'var(--text-4)' }}
+        >
           {t('quickstart.projectWizard.gitSkipHint')}
         </p>
       ) : (
@@ -107,36 +187,60 @@ export function StepGitIntegration({
           {/* PAT section */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">GitHub PAT</span>
+              <KeyRound className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>GitHub PAT</span>
               {patStatus?.configured && patStatus.username && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={{
+                    background: 'var(--status-done-bg)',
+                    color: 'var(--status-done-fg)',
+                    border: '1px solid oklch(80% 0.10 155)',
+                  }}
+                >
                   {t('quickstart.projectWizard.patConnected', { username: patStatus.username })}
                 </span>
               )}
             </div>
 
             {!readOnly && !patStatus?.configured && (
-              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+              <div
+                className="p-3"
+                style={{
+                  background: 'oklch(96% 0.05 75 / 0.6)',
+                  border: '1px solid oklch(82% 0.10 75)',
+                  borderRadius: 'var(--r-lg, 10px)',
+                }}
+              >
+                <p
+                  className="text-xs mb-2"
+                  style={{ color: 'oklch(45% 0.16 65)' }}
+                >
                   {t('quickstart.projectWizard.patRequired')}
                 </p>
                 {showPatInput ? (
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <input
+                      <TokenInput
                         type="password"
                         value={patInput}
-                        onChange={(e) => onPatInputChange(e.target.value)}
+                        onChange={onPatInputChange}
                         placeholder={t('quickstart.projectWizard.patPlaceholder')}
-                        className="w-full px-3 py-1.5 text-sm border-2 border-amber-300 dark:border-amber-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-amber-500"
                         onKeyDown={(e) => e.key === 'Enter' && onSavePat()}
                       />
                     </div>
                     <button
                       onClick={onSavePat}
                       disabled={patSaving || !patInput.trim()}
-                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, oklch(75% 0.16 75), oklch(65% 0.18 50))',
+                        color: 'white',
+                        borderRadius: 'var(--r-md, 8px)',
+                        border: 'none',
+                        boxShadow: '0 4px 12px -2px oklch(65% 0.18 60 / 0.35)',
+                      }}
                     >
                       {patSaving ? t('quickstart.projectWizard.patSaving') : t('quickstart.projectWizard.patSave')}
                     </button>
@@ -144,13 +248,17 @@ export function StepGitIntegration({
                 ) : (
                   <button
                     onClick={onShowPatInput}
-                    className="text-xs text-amber-600 dark:text-amber-400 underline hover:text-amber-700 dark:hover:text-amber-300"
+                    className="text-xs underline transition-opacity hover:opacity-80"
+                    style={{ color: 'oklch(50% 0.16 65)' }}
                   >
                     {t('quickstart.projectWizard.patRequiredHint')}
                   </button>
                 )}
                 {patError && (
-                  <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+                  <p
+                    className="mt-1.5 text-xs"
+                    style={{ color: 'var(--status-error-fg)' }}
+                  >
                     {t('quickstart.projectWizard.patError', { error: patError })}
                   </p>
                 )}
@@ -160,25 +268,24 @@ export function StepGitIntegration({
 
           {/* Repository name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label
+              className="block text-sm font-medium mb-1.5"
+              style={{ color: 'var(--text-2)' }}
+            >
               {t('quickstart.projectWizard.repositoryName')}
             </label>
-            <input
-              type="text"
+            <TokenInput
               value={repositoryName}
-              onChange={(e) => { onRepositoryNameChange(e.target.value); onRepoManualEdit(); }}
+              onChange={(v) => { onRepositoryNameChange(v); onRepoManualEdit(); }}
               disabled={fieldDisabled}
               readOnly={readOnly}
-              className={cn(
-                'w-full px-3 py-2 text-sm border-2 rounded-lg outline-none transition-colors',
-                fieldDisabled
-                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500',
-              )}
               placeholder="my-project"
             />
             {!readOnly && (
-              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+              <p
+                className="mt-1 text-[11px]"
+                style={{ color: 'var(--text-4)' }}
+              >
                 {t('quickstart.projectWizard.repositoryNameHint')}
               </p>
             )}
@@ -186,10 +293,16 @@ export function StepGitIntegration({
 
           {/* Git URL + owner quick-fill */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label
+              className="block text-sm font-medium mb-1.5"
+              style={{ color: 'var(--text-2)' }}
+            >
               {t('quickstart.projectWizard.gitUrl')}
               {gitUrlFromConfig && (
-                <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
+                <span
+                  className="ml-2 text-xs font-normal"
+                  style={{ color: 'var(--text-4)' }}
+                >
                   {t('quickstart.projectWizard.gitUrlFromConfig')}
                 </span>
               )}
@@ -197,47 +310,30 @@ export function StepGitIntegration({
             {!readOnly && patStatus?.configured && (ownerInfo.orgOwner || ownerInfo.personalOwner) && (
               <div className="flex items-center gap-2 mb-2">
                 {ownerInfo.orgOwner && (
-                  <button
-                    type="button"
+                  <OwnerPill
+                    active={activeOwner === 'org'}
+                    tone="violet"
                     onClick={() => onApplyOwner(ownerInfo.orgOwner!)}
-                    className={cn(
-                      'text-xs px-2.5 py-1 rounded-md border transition-colors',
-                      activeOwner === 'org'
-                        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 font-medium'
-                        : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                    )}
                   >
                     Organization: {ownerInfo.orgOwner}
-                  </button>
+                  </OwnerPill>
                 )}
                 {ownerInfo.personalOwner && (
-                  <button
-                    type="button"
+                  <OwnerPill
+                    active={activeOwner === 'personal'}
+                    tone="emerald"
                     onClick={() => onApplyOwner(ownerInfo.personalOwner!)}
-                    className={cn(
-                      'text-xs px-2.5 py-1 rounded-md border transition-colors',
-                      activeOwner === 'personal'
-                        ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 font-medium'
-                        : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                    )}
                   >
                     Personal: {ownerInfo.personalOwner}
-                  </button>
+                  </OwnerPill>
                 )}
               </div>
             )}
-            <input
-              type="text"
+            <TokenInput
               value={gitUrl}
-              onChange={(e) => onGitUrlChange(e.target.value)}
+              onChange={onGitUrlChange}
               disabled={fieldDisabled}
               readOnly={readOnly}
-              className={cn(
-                'w-full px-3 py-2 text-sm border-2 rounded-lg outline-none transition-colors',
-                fieldDisabled
-                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500',
-              )}
               placeholder="https://github.com/owner/repo"
             />
           </div>
@@ -245,45 +341,147 @@ export function StepGitIntegration({
           {/* Clone / Init radio — hidden when readOnly */}
           {!readOnly && gitUrl.trim() && patStatus?.configured && (
             <div className="space-y-2">
-              <label
-                className={cn(
-                  'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                  gitAction === 'clone'
-                    ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50',
-                )}
-              >
-                <input type="radio" name="gitAction" checked={gitAction === 'clone'} onChange={() => onGitActionChange('clone')} className="mt-0.5" />
-                <div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('quickstart.projectWizard.gitActionClone')}</div>
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{t('quickstart.projectWizard.gitActionCloneHint')}</div>
-                </div>
-              </label>
-              <label
-                className={cn(
-                  'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                  gitAction === 'init'
-                    ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50',
-                )}
-              >
-                <input type="radio" name="gitAction" checked={gitAction === 'init'} onChange={() => onGitActionChange('init')} className="mt-0.5" />
-                <div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('quickstart.projectWizard.gitActionInit')}</div>
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{t('quickstart.projectWizard.gitActionInitHint')}</div>
-                </div>
-              </label>
+              <ActionRadio
+                selected={gitAction === 'clone'}
+                onSelect={() => onGitActionChange('clone')}
+                title={t('quickstart.projectWizard.gitActionClone')}
+                hint={t('quickstart.projectWizard.gitActionCloneHint')}
+                name="gitAction"
+              />
+              <ActionRadio
+                selected={gitAction === 'init'}
+                onSelect={() => onGitActionChange('init')}
+                title={t('quickstart.projectWizard.gitActionInit')}
+                hint={t('quickstart.projectWizard.gitActionInitHint')}
+                name="gitAction"
+              />
             </div>
           )}
 
           {/* Read-only hint */}
           {readOnly && (
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+            <p
+              className="text-[11px] italic"
+              style={{ color: 'var(--text-4)' }}
+            >
               {t('quickstart.projectWizard.gitReadOnlyHint')}
             </p>
           )}
         </>
       )}
     </>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────
+
+function OwnerPill({
+  active,
+  tone,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  tone: 'violet' | 'emerald';
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const activeStyle: CSSProperties = tone === 'violet'
+    ? {
+        background: 'oklch(96% 0.04 285)',
+        color: 'var(--violet-700)',
+        border: '1px solid oklch(80% 0.10 285)',
+        fontWeight: 600,
+      }
+    : {
+        background: 'oklch(94% 0.06 155)',
+        color: 'oklch(45% 0.12 155)',
+        border: '1px solid oklch(80% 0.10 155)',
+        fontWeight: 600,
+      };
+
+  const inactiveStyle: CSSProperties = {
+    background: hover ? 'var(--bg-hover)' : 'var(--bg-surface)',
+    color: 'var(--text-3)',
+    border: `1px solid ${hover ? 'var(--border-3)' : 'var(--border-2)'}`,
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="text-xs px-2.5 py-1 transition-colors"
+      style={{
+        borderRadius: 'var(--r-md, 8px)',
+        ...(active ? activeStyle : inactiveStyle),
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ActionRadio({
+  selected,
+  onSelect,
+  title,
+  hint,
+  name,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  hint: string;
+  name: string;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const style: CSSProperties = selected
+    ? {
+        border: '1.5px solid var(--violet-500)',
+        background: 'oklch(96% 0.04 285)',
+      }
+    : {
+        border: '1.5px solid var(--border-2)',
+        background: hover ? 'var(--bg-hover)' : 'transparent',
+      };
+
+  return (
+    <label
+      className="flex items-start gap-3 p-3 cursor-pointer transition-colors"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        borderRadius: 'var(--r-lg, 10px)',
+        ...style,
+      }}
+    >
+      <input
+        type="radio"
+        name={name}
+        checked={selected}
+        onChange={onSelect}
+        className="mt-0.5"
+        style={{ accentColor: 'var(--violet-500)' }}
+      />
+      <div>
+        <div
+          className="text-sm font-medium"
+          style={{ color: selected ? 'var(--violet-700)' : 'var(--text-2)' }}
+        >
+          {title}
+        </div>
+        <div
+          className="text-[11px]"
+          style={{ color: 'var(--text-3)' }}
+        >
+          {hint}
+        </div>
+      </div>
+    </label>
   );
 }

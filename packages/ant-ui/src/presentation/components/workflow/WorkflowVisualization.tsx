@@ -96,6 +96,19 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     }
   }, [selectedProject]);
   
+  // Background dot color — resolve --border-1 at runtime against :root computed
+  // style so the value works as an SVG `fill` attribute (ReactFlow renders the
+  // dot grid with inline `fill={color}` which does not reliably accept
+  // `var(--...)` references). Re-resolves on theme flip.
+  const backgroundDotColor = React.useMemo(() => {
+    if (typeof window === 'undefined') return 'transparent';
+    const resolved = getComputedStyle(document.documentElement)
+      .getPropertyValue('--border-1')
+      .trim();
+    return resolved || 'transparent';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme]);
+
   // 1. 정적 그래프 메타데이터 로드 (Hooks는 항상 호출되어야 함)
   const { metadata, loading, error } = useGraphMetadata(selectedAgent, selectedJobType);
   
@@ -262,11 +275,11 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center max-w-md">
-          <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">🔄</div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          <div className="text-6xl mb-4" style={{ color: 'var(--text-4)' }}>🔄</div>
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-1)' }}>
             {t('workflow.noSelection')}
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
             {t('workflow.selectWorkspaceFeature')}
           </p>
         </div>
@@ -282,7 +295,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           <div className="flex items-center justify-center h-12 mb-4">
             <Spinner size="lg" tone="accent" />
           </div>
-          <p className="text-gray-600 dark:text-gray-400">{t('workflow.loading')}</p>
+          <p style={{ color: 'var(--text-2)' }}>{t('workflow.loading')}</p>
         </div>
       </div>
     );
@@ -293,11 +306,11 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center max-w-md">
-          <div className="text-red-500 dark:text-red-400 text-4xl mb-4">⚠️</div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          <div className="text-4xl mb-4" style={{ color: 'var(--red-500)' }}>⚠️</div>
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-1)' }}>
             {t('workflow.failedToLoad')}
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
             {error.message}
           </p>
         </div>
@@ -310,11 +323,11 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center max-w-md">
-          <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">🔄</div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          <div className="text-6xl mb-4" style={{ color: 'var(--text-4)' }}>🔄</div>
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-1)' }}>
             {t('workflow.noWorkflowAvailable')}
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
             {t('workflow.selectAgentJob')}
           </p>
         </div>
@@ -323,7 +336,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   }
   
   return (
-    <div className="workflow-visualization h-full w-full bg-gray-50 dark:bg-gray-900">
+    <div className="workflow-visualization h-full w-full" style={{ background: 'var(--bg-canvas)' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -345,7 +358,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           variant={BackgroundVariant.Dots}
           gap={16}
           size={1}
-          color={theme === 'dark' ? '#374151' : '#cbd5e1'}
+          color={backgroundDotColor}
         />
         <Controls 
           showInteractive={false}

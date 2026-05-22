@@ -6,6 +6,7 @@
 import { memo } from 'react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { lineToContent } from './cards/lineToContent';
+import { TurnCardShell } from './cards/TurnCardShell';
 
 interface ToolActionCardProps {
   line: ChatStatusLine;
@@ -18,10 +19,14 @@ export const ToolActionCard = memo(function ToolActionCard({ line, pending }: To
   const toolContent = content.content;
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-gray-600 dark:text-gray-400 
-                    bg-gray-50/30 dark:bg-gray-800/20 rounded border border-gray-200/50 dark:border-gray-700/50">
-      <span>{icon}</span>
-      <span className="font-medium">{toolContent}</span>
-    </div>
+    <TurnCardShell nested hoverLift={false}>
+      <div
+        className="flex items-center gap-2 px-2 py-1.5 text-xs"
+        style={{ color: 'var(--text-2)' }}
+      >
+        <span>{icon}</span>
+        <span className="font-medium">{toolContent}</span>
+      </div>
+    </TurnCardShell>
   );
 });

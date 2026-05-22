@@ -22,8 +22,8 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
   const baseClass =
     'inline-flex items-center px-3 py-1.5 text-sm rounded-md transition-colors';
   const tone = emphasized
-    ? 'bg-rose-600 text-white hover:bg-rose-500 dark:bg-rose-500 dark:hover:bg-rose-400'
-    : 'border border-gray-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#161b22]';
+    ? 'bg-rose-600 text-white hover:bg-rose-500'
+    : 'border border-gray-300 bg-white text-[color:var(--text-2)] hover:bg-gray-50';
 
   return (
     <>
@@ -41,11 +41,11 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
           aria-modal="true"
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
         >
-          <div className="bg-white dark:bg-[#161b22] rounded-xl shadow-xl border border-gray-200 dark:border-[#30363d] p-6 max-w-md w-full mx-4">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-6 max-w-md w-full mx-4">
+            <h3 className="text-base font-semibold text-[color:var(--text-1)] mb-2">
               {t('ide.forceResetConfirm.title')}
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
+            <p className="text-sm text-[color:var(--text-3)] mb-5">
               {t('ide.forceResetConfirm.body')}
             </p>
             <div className="flex justify-end gap-2">
@@ -53,7 +53,7 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={busy}
-                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#161b22] transition-colors disabled:opacity-50"
+                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-[color:var(--text-2)] hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 {t('ide.forceResetConfirm.cancel')}
               </button>
@@ -70,7 +70,7 @@ export function IdeForceResetButton({ onConfirm, emphasized = false, className }
                   }
                 }}
                 disabled={busy}
-                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md bg-rose-600 text-white hover:bg-rose-500 dark:bg-rose-500 dark:hover:bg-rose-400 transition-colors disabled:opacity-50"
+                className="inline-flex items-center px-3 py-1.5 text-sm rounded-md bg-rose-600 text-white hover:bg-rose-500 transition-colors disabled:opacity-50"
               >
                 {t('ide.forceResetConfirm.confirm')}
               </button>

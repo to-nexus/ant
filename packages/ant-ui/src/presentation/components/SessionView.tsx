@@ -1,7 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { Session } from '@/domain/models/session';
-import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
-import { Badge } from '@/presentation/components/common/badge';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Badge,
+  type BadgeTone,
+} from '@/presentation/components/aurora';
 
 interface SessionViewProps {
   session: Session | undefined;
@@ -19,18 +25,18 @@ function formatTimestamp(isoString: string): string {
   });
 }
 
-function getStatusVariant(status: Session['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
+function getStatusTone(status: Session['status']): BadgeTone {
   switch (status) {
     case 'active':
-      return 'default';
+      return 'brand';
     case 'paused':
-      return 'secondary';
+      return 'neutral';
     case 'completed':
-      return 'outline';
+      return 'success';
     case 'cancelled':
-      return 'destructive';
+      return 'error';
     default:
-      return 'outline';
+      return 'neutral';
   }
 }
 
@@ -57,7 +63,7 @@ export function SessionView({ session }: SessionViewProps) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Session Details</CardTitle>
-          <Badge variant={getStatusVariant(session.status)}>
+          <Badge tone={getStatusTone(session.status)}>
             {session.status}
           </Badge>
         </div>

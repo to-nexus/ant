@@ -16,7 +16,7 @@ export function EmptyFallback({ title, description, icon, action }: EmptyFallbac
   const { t } = useTranslation('async');
   return (
     <div className="h-full w-full flex items-center justify-center p-6">
-      <div className="text-center max-w-sm text-gray-500 dark:text-gray-400">
+      <div className="text-center max-w-sm text-[color:var(--text-3)]">
         {icon && <div className="mb-3 flex justify-center">{icon}</div>}
         <div className="text-sm">{description ?? title ?? t('empty.default')}</div>
         {action && <div className="mt-3">{action}</div>}

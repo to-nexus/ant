@@ -236,7 +236,10 @@ export function ActionsPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#161b22]">
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      style={{ background: 'var(--bg-app)' }}
+    >
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <PageTransition pageKey={step} direction={stepDirRef.current} className="h-full">
           {renderStep()}

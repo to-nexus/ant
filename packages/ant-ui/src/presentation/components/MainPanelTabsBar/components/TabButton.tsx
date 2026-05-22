@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
@@ -59,18 +59,41 @@ export function TabButton({
   // icon. Force-suppress the X button here regardless of the prop value so
   // no caller can re-introduce a tab-level reset.
   const showCloseButtonEffective = showCloseButton && !isJobTab;
+
+  const [rootHover, setRootHover] = useState(false);
+  const [closeHover, setCloseHover] = useState(false);
+
+  const rootStyle: React.CSSProperties = isActive
+    ? {
+        position: 'relative',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-1)',
+        boxShadow: 'inset 0 0 0 1px var(--violet-500)',
+      }
+    : {
+        position: 'relative',
+        background: rootHover ? 'var(--bg-hover)' : 'var(--bg-surface-2)',
+        color: 'var(--text-3)',
+      };
+
+  const closeStyle: React.CSSProperties = closeHover
+    ? { background: 'var(--bg-hover)', color: 'var(--text-1)' }
+    : { color: 'var(--text-3)' };
+
   return (
     <div
       className={cn(
-        'flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
+        'relative flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
         showText ? 'px-3' : 'px-2 min-w-[36px] min-h-[36px] justify-center',
         truncateLabel && showText && 'max-w-[300px] min-w-0',
-        isActive
-          ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
-          : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128] cursor-pointer'
+        !isActive && 'cursor-pointer',
       )}
+      style={rootStyle}
+      data-state={isActive ? 'active' : 'idle'}
       title={title}
       onClick={onClick}
+      onMouseEnter={() => !isActive && setRootHover(true)}
+      onMouseLeave={() => setRootHover(false)}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Icon className="w-4 h-4 flex-shrink-0" />
@@ -96,14 +119,31 @@ export function TabButton({
             e.stopPropagation();
             onClose?.();
           }}
+          onMouseEnter={() => setCloseHover(true)}
+          onMouseLeave={() => setCloseHover(false)}
           className={cn(
-            'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-            !showText && 'hidden'
+            'p-0.5 rounded',
+            !showText && 'hidden',
           )}
+          style={closeStyle}
           title={t('tabs.closeTab', { label: label.toLowerCase() })}
         >
           <X className="w-3.5 h-3.5" />
         </button>
+      )}
+      {isActive && (
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '2px',
+            background: 'var(--gradient-aurora)',
+            borderRadius: '2px',
+          }}
+        />
       )}
     </div>
   );

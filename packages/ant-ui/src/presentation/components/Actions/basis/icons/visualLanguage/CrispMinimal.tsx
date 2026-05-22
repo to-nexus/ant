@@ -5,7 +5,7 @@ export function CrispMinimalPreview({ className = '' }: { className?: string }) 
       <div className="h-1 w-6 bg-gray-800 rounded-sm" />
       <div className="h-0.5 w-4 bg-gray-200 rounded-full" />
       <div className="flex-1 flex items-end">
-        <div className="h-1.5 w-3 bg-teal-500 rounded-sm" />
+        <div className="h-1.5 w-3 bg-aurora-teal-500 rounded-sm" />
       </div>
     </div>
   );
@@ -32,7 +32,7 @@ export function CrispMinimalFullPreview({ className = '' }: { className?: string
             <div className="h-1.5 w-8 bg-gray-200 rounded" />
           </div>
           <div className="flex-1 rounded border border-gray-200 p-2">
-            <div className="h-1.5 w-2 bg-teal-500 rounded" />
+            <div className="h-1.5 w-2 bg-aurora-teal-500 rounded" />
           </div>
         </div>
       </div>

@@ -8,11 +8,11 @@
 
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
-import { BreadcrumbTimeline } from './feature-log/BreadcrumbTimeline';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
@@ -21,9 +21,7 @@ import { ActionChipGrid } from '../Actions';
 import { useStore } from '@/domain/store';
 import { selectFileStats } from '@/domain/store/selectors/chat';
 import type { IntentGroup } from '@ant/shared';
-import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
-
-type ChatPanelTab = 'chat' | 'timeline';
+import { Zap, ChevronRight } from 'lucide-react';
 
 interface ChatPanelProps {
   projectId: string | null;
@@ -118,8 +116,6 @@ export function ChatPanel({
   // Session-redesign SSOT: load feature.jsonl breadcrumbs on feature switch.
   useFeatureLogSync(_projectId, _featureName);
 
-  const [activeTab, setActiveTab] = useState<ChatPanelTab>('chat');
-
   // Track which user message to pin (Cursor-style dynamic pinning)
   const [pinnedQuery, setPinnedQuery] = useState<PinnedQueryData | null>(null);
 
@@ -142,24 +138,21 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Tab bar: Chat (live / choice cards) | Timeline (feature.jsonl breadcrumbs) */}
-      <ChatPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
+      {/* Aurora header bar: eraser (sweep) + trash (reset) icon buttons */}
+      <ChatHeaderBar
+        selectedProject={_projectId}
+        selectedFeature={_featureName}
+      />
 
-      {activeTab === 'timeline' && (
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <BreadcrumbTimeline />
-        </div>
-      )}
-
-      {activeTab === 'chat' && (
-      /* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */
+      {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
         {historyWatermarkStyle && (
           <div
-            className="absolute inset-0 pointer-events-none opacity-[0.08] dark:opacity-[0.1]"
+            className="absolute inset-0 pointer-events-none"
             style={{
               ...historyWatermarkStyle,
               backgroundSize: '360px 360px',
+              opacity: 0.09,
             }}
             aria-hidden="true"
           />
@@ -178,7 +171,7 @@ export function ChatPanel({
                 className="mx-auto mb-4"
                 fallback={<div className="text-4xl mb-4">💬</div>}
               />
-              <p className="text-sm text-gray-600 dark:text-gray-300 shimmer-text">
+              <p className="text-sm shimmer-text" style={{ color: 'var(--text-2)' }}>
                 {chatPolicy.emptyStateMessage}
               </p>
             </div>
@@ -187,8 +180,8 @@ export function ChatPanel({
 
         {/* Empty State - Ready: Action Chip Grid (hidden when actions tab is open) */}
         {turnCount === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
-          <div className="flex-1 min-h-0 flex items-center justify-center p-6 overflow-y-auto">
-            {mainPanelActiveTab === 'actions' ? (
+          mainPanelActiveTab === 'actions' ? (
+            <div className="flex-1 min-h-0 flex items-center justify-center p-6 overflow-y-auto">
               <div className="text-center max-w-sm">
                 <WatermarkIcon
                   src={emptyStateWatermarkSrc}
@@ -196,17 +189,36 @@ export function ChatPanel({
                   className="mx-auto mb-4 watermark-empty-icon"
                   fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>}
                 />
-                <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
+                <p
+                  className="text-sm font-medium mb-2 shimmer-text"
+                  style={{ color: 'var(--text-1)' }}
+                >
                   {t('policy.readyToStart')}
                 </p>
-                <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
+                <p
+                  className="text-xs shimmer-text"
+                  style={{ color: 'var(--text-2)' }}
+                >
                   {chatPolicy.readyEmptyStateMessage}
                 </p>
               </div>
-            ) : (
+            </div>
+          ) : (
+            /* spec §5.5: natural flow, no justifyContent:center / no min-h-full; child flexShrink:0 */
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
               <ChatActionCards />
-            )}
-          </div>
+            </div>
+          )
         )}
 
         {/* Empty State Fallback - job-running / job-interrupted with no messages yet */}
@@ -219,7 +231,7 @@ export function ChatPanel({
                 className="mx-auto mb-4 watermark-empty-icon opacity-60"
                 fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon opacity-60">✨</div>}
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400 shimmer-text">
+              <p className="text-xs shimmer-text" style={{ color: 'var(--text-3)' }}>
                 {chatPolicy.inputPlaceholder}
               </p>
             </div>
@@ -236,10 +248,12 @@ export function ChatPanel({
           </div>
         )}
       </div>
-      )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div
+        className="flex-shrink-0"
+        style={{ borderTop: '1px solid var(--border-2)' }}
+      >
         {/* Actions CTA - show when turns exist + no active job */}
         {turnCount > 0 && chatPolicy.reason === 'ready' && (
           <ActionsCTA />
@@ -260,58 +274,55 @@ function ChatActionCards() {
   const { t } = useTranslation('actions');
   const readiness = useActionReadiness();
   const openActionsPanel = useStore(s => s.openActionsPanel);
+  // Agent picker JSX/state removed per §5.5 — `selectedAgent` is sourced
+  // from the auth slice only to render the agent watermark; it never gates
+  // the visible action set (filtering is now permanent to current agent).
   const selectedAgent = useStore(s => s.selectedAgent);
-  const [showAll, setShowAll] = useState(false);
 
   const handleSelect = (actionId: IntentGroup) => {
     openActionsPanel(actionId);
   };
 
   const BASE = import.meta.env.BASE_URL;
-  const agentWatermark = selectedAgent && !showAll
+  const agentWatermark = selectedAgent
     ? `${BASE}watermarks/${selectedAgent}-color.png`
     : undefined;
 
   return (
-    <div className="flex flex-col items-center max-w-md w-full">
-      {/* Agent character (only in agent-filtered view) */}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: '28rem',
+      }}
+    >
+      {/* Agent character watermark — always shown when an agent is selected. */}
       {agentWatermark && (
-        <img src={agentWatermark} alt="" className="w-20 h-20 mb-4 opacity-80 watermark-empty-icon" />
+        <img
+          src={agentWatermark}
+          alt=""
+          className="w-20 h-20 mb-4 opacity-80 watermark-empty-icon"
+          style={{ flexShrink: 0 }}
+        />
       )}
 
-      {/* Title row: back button (in showAll) + title + forward button (in agent view) */}
-      <div className="flex items-center gap-2 mb-5">
-        {showAll && (
-          <button
-            type="button"
-            onClick={() => setShowAll(false)}
-            className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            aria-label="Back"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-        )}
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{t('title')}</h2>
+      <h2
+        className="text-lg font-semibold mb-5"
+        style={{ color: 'var(--text-1)', flexShrink: 0 }}
+      >
+        {t('title')}
+      </h2>
+
+      <div style={{ width: '100%', flexShrink: 0 }}>
+        <ActionChipGrid
+          readiness={readiness}
+          variant="compact"
+          onSelect={handleSelect}
+          agentFilter={selectedAgent || undefined}
+        />
       </div>
-
-      <ActionChipGrid
-        readiness={readiness}
-        variant="compact"
-        onSelect={handleSelect}
-        agentFilter={showAll ? undefined : (selectedAgent || undefined)}
-      />
-
-      {/* "All actions" link (only in agent-filtered view) */}
-      {!showAll && (
-        <button
-          type="button"
-          onClick={() => setShowAll(true)}
-          className="mt-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
-        >
-          {t('showAll')}
-          <ChevronRight className="w-3 h-3" />
-        </button>
-      )}
     </div>
   );
 }
@@ -319,17 +330,47 @@ function ChatActionCards() {
 function ActionsCTA() {
   const { t } = useTranslation('actions');
   const openActionsPanel = useStore(s => s.openActionsPanel);
+  const [hover, setHover] = useState(false);
 
   return (
     <button
       type="button"
       onClick={() => openActionsPanel()}
-      className="mx-4 mt-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 flex items-center gap-2 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors text-sm w-[calc(100%-2rem)]"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="mx-4 mt-2 px-3 py-2 flex items-center gap-2 text-sm w-[calc(100%-2rem)]"
+      style={{
+        background: 'var(--gradient-aurora-soft)',
+        backgroundSize: '180% 180%',
+        backgroundPosition: hover ? '100% 100%' : '0% 0%',
+        border: '1px solid oklch(88% 0.06 50)',
+        borderRadius: 'var(--r-lg)',
+        boxShadow: hover
+          ? '0 6px 14px -6px oklch(70% 0.18 60 / 0.35)'
+          : 'var(--shadow-xs)',
+        color: 'var(--text-1)',
+        cursor: 'pointer',
+        transition:
+          'background-position 360ms var(--ease-smooth), box-shadow 220ms var(--ease-smooth)',
+      }}
     >
-      <Zap className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
-      <span className="font-medium text-amber-700 dark:text-amber-300">{t('ctaButton')}</span>
-      <span className="text-amber-500/70 dark:text-amber-400/50 truncate hidden sm:inline">— {t('title')}</span>
-      <ChevronRight className="w-3 h-3 text-amber-400 dark:text-amber-500 ml-auto flex-shrink-0" />
+      <Zap
+        className="w-4 h-4 flex-shrink-0"
+        style={{ color: 'var(--amber-500)' }}
+      />
+      <span className="font-medium" style={{ color: 'var(--text-1)' }}>
+        {t('ctaButton')}
+      </span>
+      <span
+        className="truncate hidden sm:inline"
+        style={{ color: 'var(--text-3)' }}
+      >
+        — {t('title')}
+      </span>
+      <ChevronRight
+        className="w-3 h-3 ml-auto flex-shrink-0"
+        style={{ color: 'var(--text-3)' }}
+      />
     </button>
   );
 }
@@ -337,45 +378,4 @@ function ActionsCTA() {
 // Export hook for parent to use (delegates to Application Hook)
 export function useChatData(_projectId: string | null, _featureName: string | null, _enabled: boolean) {
   return useChat();
-}
-
-function ChatPanelTabBar({
-  activeTab,
-  onChange,
-}: {
-  activeTab: ChatPanelTab;
-  onChange: (tab: ChatPanelTab) => void;
-}) {
-  const { t } = useTranslation('chat');
-  const tabs: Array<{ id: ChatPanelTab; label: string }> = [
-    { id: 'chat', label: t('panelTabs.chat', { defaultValue: 'Chat' }) },
-    { id: 'timeline', label: t('panelTabs.timeline', { defaultValue: 'Timeline' }) },
-  ];
-
-  return (
-    <div
-      role="tablist"
-      className="flex-shrink-0 flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#161b22] px-2 pt-1.5"
-    >
-      {tabs.map(tab => {
-        const isActive = activeTab === tab.id;
-        return (
-          <button
-            key={tab.id}
-            role="tab"
-            type="button"
-            aria-selected={isActive}
-            onClick={() => onChange(tab.id)}
-            className={`text-xs px-2.5 py-1.5 rounded-t-md border border-b-0 transition-colors ${
-              isActive
-                ? 'bg-white dark:bg-[#0d1117] border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 font-medium -mb-px'
-                : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
 }

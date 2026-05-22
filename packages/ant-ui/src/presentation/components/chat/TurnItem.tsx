@@ -98,14 +98,24 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
 
 const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }) {
   return (
-    <div className="w-full bg-blue-50 dark:bg-blue-900/20">
-      <div className="px-4 py-3 rounded-lg">
-        {user.actionMetadata && Object.keys(user.actionMetadata).length > 0 && (
-          <ActionMetadataBadges metadata={user.actionMetadata} readOnly />
-        )}
-        <div className="text-sm text-gray-900 dark:text-gray-100 select-text whitespace-pre-wrap">
-          {user.text}
-        </div>
+    <div
+      className="w-full px-4 py-3"
+      style={{
+        background: 'oklch(from var(--violet-300) l c h / 0.12)',
+        borderLeft: '1px solid',
+        borderImage: 'var(--gradient-aurora) 1',
+        boxShadow: 'var(--shadow-xs)',
+        borderRadius: 'var(--r-md)',
+      }}
+    >
+      {user.actionMetadata && Object.keys(user.actionMetadata).length > 0 && (
+        <ActionMetadataBadges metadata={user.actionMetadata} readOnly />
+      )}
+      <div
+        className="text-sm select-text whitespace-pre-wrap"
+        style={{ color: 'var(--text-1)' }}
+      >
+        {user.text}
       </div>
     </div>
   );
@@ -166,7 +176,7 @@ const SectionStack = memo(function SectionStack({
   return (
     <div className="space-y-2">
       {sectionHeader && (
-        <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 px-1 pt-1">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-4)] px-1 pt-1">
           {sectionHeader}
         </div>
       )}
@@ -603,7 +613,7 @@ const AssistantTextBlock = memo(function AssistantTextBlock({
   return (
     <div className="px-1 py-2 w-full select-text" ref={scrollContainerRef}>
       <div
-        className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
+        className="prose prose-sm max-w-none w-full select-text"
         style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
       >
         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>

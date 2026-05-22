@@ -1,3 +1,4 @@
+
 /**
  * ChoiceCard shared infrastructure.
  *
@@ -5,7 +6,7 @@
  * ChoiceCardShell     — layout wrapper (header + resolved badge / action area)
  * TwoButtonLayout     — standard two-button row
  * VerticalChoiceLayout — three-button vertical stack
- * THEMES              — theme color tokens
+ * THEMES              — token-driven recipe per theme color
  */
 
 import { useState, useCallback } from 'react';
@@ -20,6 +21,7 @@ import type {
   ChatChoicePresentedLine,
   ChatChoiceResolvedLine,
 } from '@ant/shared';
+import { TurnCardShell, type TurnCardAccent } from '../cards/TurnCardShell';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Types
@@ -81,12 +83,6 @@ export function useChoiceCardState({ presented, resolved }: UseChoiceCardStatePa
   const resolvedLabel = resolved?.resolvedLabel || localResolvedLabel;
   const isSelected = !!selectedChoice;
 
-  /**
-   * Resolve the choice via the unified `/chat/choice-resolved`
-   * endpoint. The card's `presented.cardId` targets the original
-   * presentation event. SSE delivers the durable `choice_resolved`
-   * line back, which the projector folds onto this card.
-   */
   const persistToBackend = useCallback(async (
     choiceAction: string,
     label: string,
@@ -122,54 +118,48 @@ export function useChoiceCardState({ presented, resolved }: UseChoiceCardStatePa
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Theme system
+// Theme system (token-driven)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export type ThemeColor = 'blue' | 'orange' | 'emerald' | 'violet' | 'teal';
 
-interface ThemeConfig {
-  bg: string;
-  border: string;
-  iconBg: string;
+export interface ThemeConfig {
+  accent: TurnCardAccent;
   iconColor: string;
-  buttonBg: string;
+  iconBg: string;
+  gradient: string;
 }
 
 export const THEMES: Record<ThemeColor, ThemeConfig> = {
   blue: {
-    bg: 'from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900',
-    border: 'border-blue-200 dark:border-gray-700',
-    iconBg: 'bg-blue-100 dark:bg-blue-900/30',
-    iconColor: 'text-blue-600 dark:text-blue-400',
-    buttonBg: 'bg-blue-500 hover:bg-blue-600',
+    accent: 'info',
+    iconColor: 'var(--violet-500)',
+    iconBg: 'oklch(from var(--violet-500) 94% 0.05 270 / 0.5)',
+    gradient: 'var(--gradient-cool)',
   },
   orange: {
-    bg: 'from-orange-50 to-amber-50 dark:from-gray-800 dark:to-gray-900',
-    border: 'border-orange-200 dark:border-orange-800/50',
-    iconBg: 'bg-orange-100 dark:bg-orange-900/30',
-    iconColor: 'text-orange-600 dark:text-orange-400',
-    buttonBg: 'bg-orange-500 hover:bg-orange-600',
+    accent: 'warning',
+    iconColor: 'var(--orange-500)',
+    iconBg: 'oklch(from var(--orange-500) 94% 0.05 50 / 0.5)',
+    gradient: 'var(--gradient-pink-orange)',
   },
   emerald: {
-    bg: 'from-emerald-50 to-teal-50 dark:from-gray-800 dark:to-gray-900',
-    border: 'border-emerald-200 dark:border-emerald-800/50',
-    iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
-    buttonBg: 'bg-emerald-500 hover:bg-emerald-600',
+    accent: 'success',
+    iconColor: 'var(--status-done-fg)',
+    iconBg: 'var(--status-done-bg)',
+    gradient: 'linear-gradient(135deg, var(--status-done-fg) 0%, var(--teal-500) 100%)',
   },
   violet: {
-    bg: 'from-violet-50 to-purple-50 dark:from-gray-800 dark:to-gray-900',
-    border: 'border-violet-200 dark:border-violet-800/50',
-    iconBg: 'bg-violet-100 dark:bg-violet-900/30',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-    buttonBg: 'bg-violet-500 hover:bg-violet-600',
+    accent: 'info',
+    iconColor: 'var(--violet-500)',
+    iconBg: 'oklch(from var(--violet-500) 94% 0.05 290 / 0.5)',
+    gradient: 'var(--gradient-aurora)',
   },
   teal: {
-    bg: 'from-teal-50 to-cyan-50 dark:from-gray-800 dark:to-gray-900',
-    border: 'border-teal-200 dark:border-teal-800/50',
-    iconBg: 'bg-teal-100 dark:bg-teal-900/30',
-    iconColor: 'text-teal-600 dark:text-teal-400',
-    buttonBg: 'bg-teal-500 hover:bg-teal-600',
+    accent: 'info',
+    iconColor: 'var(--teal-500)',
+    iconBg: 'oklch(from var(--teal-500) 94% 0.04 195 / 0.5)',
+    gradient: 'var(--gradient-cool)',
   },
 };
 
@@ -181,9 +171,15 @@ export type ResolvedIcon = 'dismiss' | 'resume' | null;
 
 function ResolvedBadge({ label, icon }: { label: string; icon?: ResolvedIcon }) {
   return (
-    <div className="pt-3 border-t border-gray-200 dark:border-gray-600">
-      <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-700">
+    <div className="pt-3" style={{ borderTop: '1px solid var(--border-1)' }}>
+      <div
+        className="flex items-center justify-center gap-2 text-sm"
+        style={{ color: 'var(--text-3)' }}
+      >
+        <span
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+          style={{ background: 'var(--bg-surface-2)' }}
+        >
           {icon === 'dismiss' && <XCircle className="w-3.5 h-3.5" />}
           {icon === 'resume' && <Play className="w-3.5 h-3.5" />}
           {label}
@@ -216,31 +212,42 @@ export function ChoiceCardShell({
   const t = THEMES[theme];
 
   return (
-    <div className={`choice-card bg-gradient-to-br ${t.bg} rounded-xl p-4 border ${t.border} shadow-sm`}>
-      <div className="flex items-start gap-3 mb-4">
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full ${t.iconBg} flex items-center justify-center`}>
-          <span className={t.iconColor}>{icon}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={TITLE_MARKDOWN_COMPONENTS}>
-              {title}
-            </ReactMarkdown>
+    <TurnCardShell accent={t.accent} hoverLift={false} className="choice-card">
+      <div style={{ padding: 16 }}>
+        <div className="flex items-start gap-3 mb-4">
+          <div
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: t.iconBg, color: t.iconColor }}
+          >
+            <span>{icon}</span>
           </div>
-          {subtitle && (
-            <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 whitespace-pre-line">
-              {subtitle}
+          <div className="flex-1 min-w-0">
+            <div
+              className="text-sm font-medium prose prose-sm max-w-none"
+              style={{ color: 'var(--text-1)' }}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={TITLE_MARKDOWN_COMPONENTS}>
+                {title}
+              </ReactMarkdown>
             </div>
-          )}
+            {subtitle && (
+              <div
+                className="text-xs mt-0.5 whitespace-pre-line"
+                style={{ color: 'var(--text-2)' }}
+              >
+                {subtitle}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {isSelected && resolvedLabel ? (
-        <ResolvedBadge label={resolvedLabel} icon={resolvedIcon} />
-      ) : (
-        children
-      )}
-    </div>
+        {isSelected && resolvedLabel ? (
+          <ResolvedBadge label={resolvedLabel} icon={resolvedIcon} />
+        ) : (
+          children
+        )}
+      </div>
+    </TurnCardShell>
   );
 }
 
@@ -270,13 +277,15 @@ export function TwoButtonLayout({
   theme: ThemeColor;
 }) {
   const t = THEMES[theme];
+  const positiveDisabled = isLoading || disablePositive;
   return (
     <div className="flex gap-3">
       <button
         type="button"
         onClick={onPositive}
-        disabled={isLoading || disablePositive}
-        className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${t.buttonBg} text-white ${isLoading || disablePositive ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+        disabled={positiveDisabled}
+        className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${positiveDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{ background: t.gradient, color: 'var(--text-on-brand)' }}
       >
         {isLoading ? (
           <span className="flex items-center justify-center gap-2">
@@ -294,7 +303,8 @@ export function TwoButtonLayout({
         type="button"
         onClick={onNegative}
         disabled={isLoading}
-        className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+        className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{ background: 'var(--bg-surface-2)', color: 'var(--text-1)' }}
       >
         {negativeLabel}
       </button>
@@ -331,7 +341,8 @@ export function VerticalChoiceLayout({
         type="button"
         onClick={onPositive}
         disabled={disabled}
-        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${t.buttonBg} text-white ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{ background: t.gradient, color: 'var(--text-on-brand)' }}
       >
         {isLoading && loadingAction === 'positive' ? (
           <span className="flex items-center justify-center gap-2">
@@ -346,7 +357,8 @@ export function VerticalChoiceLayout({
         type="button"
         onClick={onNeutral}
         disabled={disabled}
-        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 border ${t.border} text-gray-700 dark:text-gray-200 bg-transparent ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:shadow-sm'}`}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{ background: 'transparent', color: 'var(--text-1)', border: '1px solid var(--border-1)' }}
       >
         {isLoading && loadingAction === 'neutral' ? (
           <span className="flex items-center justify-center gap-2">
@@ -361,7 +373,8 @@ export function VerticalChoiceLayout({
         type="button"
         onClick={onNegative}
         disabled={disabled}
-        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}`}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{ background: 'var(--bg-surface-2)', color: 'var(--text-1)' }}
       >
         {negativeLabel}
       </button>
