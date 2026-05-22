@@ -137,9 +137,9 @@ export const TerminalCard = memo(function TerminalCard({ line, pending }: Termin
         tabIndex={canToggleOutput ? 0 : undefined}
         onClick={() => canToggleOutput && setIsCollapsed(!isCollapsed)}
         onKeyDown={(e) => { if (canToggleOutput && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setIsCollapsed(!isCollapsed); } }}
-        className={`w-full ${config.headerBg} px-3 py-2.5 ${canToggleOutput ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors select-none`}
+        className={`w-full ${config.headerBg} px-2.5 py-1.5 ${canToggleOutput ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors select-none`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Status Icon */}
           {isActive ? (
             <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
@@ -148,12 +148,12 @@ export const TerminalCard = memo(function TerminalCard({ line, pending }: Termin
           ) : (
             <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
           )}
-          
+
           {/* Command text + expand toggle for long commands */}
           <TruncatableText
             text={command || ''}
             maxLength={60}
-            className={`text-xs font-mono ${config.textColor}`}
+            className={`text-[11px] font-mono ${config.textColor}`}
             buttonClassName={`${config.textColor} opacity-60`}
           />
           
@@ -174,9 +174,9 @@ export const TerminalCard = memo(function TerminalCard({ line, pending }: Termin
           {/* Output expand/collapse icon */}
           {canToggleOutput && (
             <div className="flex-shrink-0">
-              {isCollapsed ? 
-                <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
-                <ChevronDown className={`w-4 h-4 ${config.textColor} opacity-60`} />
+              {isCollapsed ?
+                <ChevronRight className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} /> :
+                <ChevronDown className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} />
               }
             </div>
           )}
