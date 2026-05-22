@@ -219,15 +219,6 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
     if (!isCompleted || isFailed || isCancelled) return [] as Array<{ text: string; className: string }>;
 
     if ((operation === 'edit' || isOverwriteCreate) && (lineStats.added > 0 || lineStats.removed > 0)) {
-      if (operation === 'edit') {
-        const modifiedTotal = lineStats.added + lineStats.removed;
-        return [
-          { text: `~${modifiedTotal}`, className: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' },
-          { text: `+${lineStats.added}`, className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' },
-          { text: `-${lineStats.removed}`, className: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },
-        ];
-      }
-
       return [
         { text: `+${lineStats.added}`, className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' },
         { text: `-${lineStats.removed}`, className: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },

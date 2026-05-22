@@ -486,12 +486,12 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
                   const filePath = typeof file === 'string' ? file : file.path;
                   // Aggregated read / read_source slots carry a per-file
                   // line range so the drawer matches the single-card header
-                  // format (`Read: src/foo.ts (L42-L50 of 200)`). Other
+                  // format (`Read: src/foo.ts (L42-L50)`). Other
                   // families (list / grep / explore) send plain strings, so
                   // this branch falls through to no label.
                   const lineRange =
                     typeof file === 'object' && file?.startLine
-                      ? ` (L${file.startLine}-L${file.endLine ?? '?'}${file.totalLines ? ` of ${file.totalLines}` : ''})`
+                      ? ` (L${file.startLine}-L${file.endLine ?? '?'})`
                       : '';
                   return (
                     <div

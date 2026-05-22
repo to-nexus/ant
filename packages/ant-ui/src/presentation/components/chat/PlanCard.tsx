@@ -75,18 +75,18 @@ export const PlanCard = memo(function PlanCard({ line, pending }: PlanCardProps)
       <button
         onClick={() => hasContent && isCompleted && setIsCollapsed(!isCollapsed)}
         disabled={!hasContent || !isCompleted}
-        className={`w-full bg-indigo-50/50 dark:bg-indigo-900/20 px-3 py-2.5 ${
+        className={`w-full bg-indigo-50/50 dark:bg-indigo-900/20 px-2.5 py-1.5 ${
           hasContent && isCompleted ? 'hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 cursor-pointer' : 'cursor-default'
         } transition-colors`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {isGenerating ? (
             <Spinner size="md" tone="inherit" className="flex-shrink-0 text-indigo-500 dark:text-indigo-400" />
           ) : (
             <ClipboardList className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
           )}
 
-          <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300 truncate flex-1 text-left">
+          <span className="text-[11px] font-medium text-indigo-700 dark:text-indigo-300 truncate flex-1 text-left">
             {taskName ? `Plan: ${taskName}` : 'Plan'}
           </span>
 
@@ -102,8 +102,8 @@ export const PlanCard = memo(function PlanCard({ line, pending }: PlanCardProps)
           {isCompleted && hasContent && (
             <div className="flex-shrink-0">
               {isCollapsed ?
-                <ChevronRight className="w-4 h-4 text-indigo-700 dark:text-indigo-300 opacity-60" /> :
-                <ChevronDown className="w-4 h-4 text-indigo-700 dark:text-indigo-300 opacity-60" />
+                <ChevronRight className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 opacity-60" /> :
+                <ChevronDown className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-300 opacity-60" />
               }
             </div>
           )}
