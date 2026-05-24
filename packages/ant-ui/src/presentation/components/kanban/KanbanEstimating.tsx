@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/presentation/components/common/async';
+import { KanbanColumnShell, COLUMN_TOKENS } from './KanbanColumnShell';
 
 /**
  * SkeletonCard - Placeholder card during decompose/revise.
@@ -20,66 +21,57 @@ function SkeletonCard({ delay = 0 }: { delay?: number }) {
 }
 
 /**
- * Column header component
- */
-function ColumnHeader({ icon, title, count }: { icon: string; title: string; count?: string | number }) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-        {icon} {title}
-      </h3>
-      <div
-        className="px-2 py-0.5 text-xs"
-        style={{
-          background: 'var(--bg-surface-2)',
-          color: 'var(--text-2)',
-          borderRadius: 'var(--r-pill)',
-        }}
-      >
-        {count}
-      </div>
-    </div>
-  );
-}
-
-/**
  * KanbanEstimatingSkeleton - Skeleton card layout for decompose/revise phases.
  * Shows 3-column Kanban layout with placeholder cards in "To Do" column,
  * indicating that tasks are about to be generated.
- * 
+ *
  * This is shown BELOW the NodeActivityBanner when the current node
  * is decompose or revise (task generation nodes).
+ *
+ * Uses the shared `KanbanColumnShell` so the estimating preview and the
+ * live kanban board share the exact same column chrome (accent bar, color
+ * dot, label, counter pill).
  */
 export function KanbanEstimatingSkeleton() {
   const { t } = useTranslation('kanban');
   return (
     <div className="grid grid-cols-3 gap-4 pt-4">
       {/* To Do column with skeleton cards */}
-      <div className="space-y-3">
-        <ColumnHeader icon="📝" title={t('columns.todo')} count="···" />
-        <div className="space-y-2">
-          {/* Staggered animation: 0ms, 200ms, 400ms delays */}
-          <SkeletonCard delay={0} />
-          <SkeletonCard delay={200} />
-          <SkeletonCard delay={400} />
-        </div>
-      </div>
-      
+      <KanbanColumnShell
+        accent={COLUMN_TOKENS.todo}
+        label={t('columns.todo')}
+        count="···"
+        isHorizontalSplit={false}
+      >
+        {/* Staggered animation: 0ms, 200ms, 400ms delays */}
+        <SkeletonCard delay={0} />
+        <SkeletonCard delay={200} />
+        <SkeletonCard delay={400} />
+      </KanbanColumnShell>
+
       {/* In Progress column (empty) */}
-      <div className="space-y-3">
-        <ColumnHeader icon="🔄" title={t('columns.inProgress')} count={0} />
+      <KanbanColumnShell
+        accent={COLUMN_TOKENS.inProgress}
+        label={t('columns.inProgress')}
+        count={0}
+        isHorizontalSplit={false}
+      >
         <div className="text-sm text-center py-8" style={{ color: 'var(--text-3)' }}>
           {t('columns.waitingForTasks')}
         </div>
-      </div>
-      
+      </KanbanColumnShell>
+
       {/* Completed column (empty) */}
-      <div className="space-y-3">
-        <ColumnHeader icon="✅" title={t('columns.completed')} count={0} />
+      <KanbanColumnShell
+        accent={COLUMN_TOKENS.completed}
+        label={t('columns.completed')}
+        count={0}
+        isHorizontalSplit={false}
+      >
         <div className="text-sm text-center py-8" style={{ color: 'var(--text-3)' }}>
           {t('columns.noCompletedTasks')}
         </div>
-      </div>
+      </KanbanColumnShell>
     </div>
   );
 }

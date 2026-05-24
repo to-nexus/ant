@@ -24,8 +24,14 @@ export function createMarkdownComponents(
   return {
     pre: ({ node, className, children, ...props }) => (
       <pre
-        className="my-2 px-4 py-3 rounded-lg bg-[color:var(--bg-canvas)] text-sm font-mono whitespace-pre-wrap break-words"
-        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+        className="my-2 px-4 py-3 rounded-lg text-sm font-mono whitespace-pre-wrap break-words"
+        style={{
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          background: 'var(--bg-surface-2)',
+          color: 'var(--text-1)',
+          border: '1px solid var(--border-1)',
+        }}
         {...props}
       >
         {children}
@@ -43,7 +49,7 @@ export function createMarkdownComponents(
 
       if (hasLanguage || isMultiLine) {
         return (
-          <code className={className} {...props}>
+          <code className={className} style={{ color: 'inherit' }} {...props}>
             {children}
           </code>
         );
@@ -51,7 +57,12 @@ export function createMarkdownComponents(
 
       return (
         <code
-          className="px-1.5 py-0.5 rounded bg-[color:var(--bg-surface-2)] text-sm font-mono break-words"
+          className="px-1.5 py-0.5 rounded text-sm font-mono break-words"
+          style={{
+            background: 'var(--bg-surface-3)',
+            color: 'var(--text-1)',
+            border: '1px solid var(--border-1)',
+          }}
           {...props}
         >
           {children}
@@ -71,14 +82,15 @@ export function createMarkdownComponents(
     ),
     table: ({ node, children, ...props }) => (
       <div className="overflow-x-auto my-4">
-        <table className="min-w-full divide-y divide-gray-200" {...props}>
+        <table className="min-w-full divide-y divide-[color:var(--border-1)]" {...props}>
           {children}
         </table>
       </div>
     ),
     th: ({ node, children, ...props }) => (
       <th
-        className="px-4 py-2 bg-[color:var(--bg-canvas)] text-left text-xs font-semibold break-words"
+        className="px-4 py-2 text-left text-xs font-semibold break-words"
+        style={{ background: 'var(--bg-surface-2)', color: 'var(--text-1)' }}
         {...props}
       >
         {children}
@@ -87,6 +99,7 @@ export function createMarkdownComponents(
     td: ({ node, children, ...props }) => (
       <td
         className="px-4 py-2 border-t border-[color:var(--border-1)] text-sm break-words"
+        style={{ color: 'var(--text-1)' }}
         {...props}
       >
         {children}

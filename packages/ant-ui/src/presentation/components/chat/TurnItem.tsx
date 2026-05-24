@@ -613,7 +613,7 @@ const AssistantTextBlock = memo(function AssistantTextBlock({
   return (
     <div className="px-1 py-2 w-full select-text" ref={scrollContainerRef}>
       <div
-        className="prose prose-sm max-w-none w-full select-text"
+        className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
         style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
       >
         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>

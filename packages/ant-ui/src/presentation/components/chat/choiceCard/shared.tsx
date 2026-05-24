@@ -223,7 +223,7 @@ export function ChoiceCardShell({
           </div>
           <div className="flex-1 min-w-0">
             <div
-              className="text-sm font-medium prose prose-sm max-w-none"
+              className="text-sm font-medium prose prose-sm dark:prose-invert max-w-none"
               style={{ color: 'var(--text-1)' }}
             >
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={TITLE_MARKDOWN_COMPONENTS}>
