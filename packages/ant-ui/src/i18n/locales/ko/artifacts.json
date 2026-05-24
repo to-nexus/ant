@@ -9,6 +9,7 @@
     "sessions": "세션",
     "transfer": "전송",
     "emptyDir": "비어있는 디렉토리",
+    "emptySection": "{{title}}에 파일이 없습니다",
     "dirHint": {
       "plan": "기획 문서",
       "architecture": "시스템 / 스펙 설계",

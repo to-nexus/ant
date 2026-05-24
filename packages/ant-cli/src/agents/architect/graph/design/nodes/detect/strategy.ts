@@ -200,6 +200,26 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       }
     }
 
+    // Resolve refs for design-spec refactor (marble-barking-grass).
+    // `rev-spec` carries `target: { kind: 'revise' }` + `refsSingleSelect: true`
+    // — the single selected ref IS the target file. The infer pipeline has
+    // no LLM-visible spec inventory, so we resolve here from the pre-RAC
+    // workspace fact `specDocNames` (populated by triage's workspaceAnalyzer).
+    //   0 specs   → error before RAC (no surface to revise)
+    //   1 spec    → auto-pick
+    //   ≥2 specs  → directive substring match; if not unique → spec-pick clarify
+    if (parsed.intentGroup === 'design-spec' && parsed.jobMode === 'refactor') {
+      const specPickResult = await resolveSpecPick(state);
+      if (specPickResult.kind === 'error') {
+        return specPickResult.result;
+      }
+      if (specPickResult.kind === 'clarify') {
+        return specPickResult.result;
+      }
+      inferred.refs = [`${ARTIFACT_PREFIX.SPEC}${specPickResult.picked}`];
+      console.log(`✅ [Design:Detect] rev-spec auto-picked: ${specPickResult.picked}`);
+    }
+
     console.log(`\n✅ Mode: ${parsed.jobMode}`);
     console.log(`✅ IntentId: ${inferred.intentId}`);
 
@@ -261,8 +281,32 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
 
 async function handleClarifyResume(state: DesignGraphState): Promise<DetectResult<DesignGraphState>> {
   console.log(`🔄 [Design:Detect] Clarify resume — parsing user choice`);
+  const directive = state.overrideDirective!;
+
+  // Spec-pick clarify resume (marble-barking-grass): if the directive
+  // matches one of the workspace's spec basenames, the user is choosing
+  // which spec to revise — short-circuit to rev-spec with that ref. Try
+  // this BEFORE the spec-vs-system parser so a spec named e.g.
+  // `spec-rewrite.md` doesn't get misclassified as "new spec / generate".
+  const pickedSpec = matchSpecPick(directive, state.workspaceState?.specDocNames ?? []);
+  if (pickedSpec) {
+    console.log(`✅ User picked spec to revise: ${pickedSpec}`);
+    const inferred: InferredAction = {
+      intentId: 'rev-spec',
+      refs: [`${ARTIFACT_PREFIX.SPEC}${pickedSpec}`],
+      reasoning: {
+        intent: `User picked ${pickedSpec} from spec-pick clarify.`,
+      },
+      sourceJob: 'design',
+    };
+    return {
+      inferred,
+      stateUpdates: { awaitingDetectClarify: false } as Partial<DesignGraphState>,
+    };
+  }
+
   const hasSystemDocs = (state.workspaceState?.systemDesignFileNames?.length ?? 0) > 0;
-  const choice = parseDetectClarifyChoice(state.overrideDirective!, hasSystemDocs);
+  const choice = parseDetectClarifyChoice(directive, hasSystemDocs);
   console.log(`✅ User chose: intentGroup=${choice.intentGroup}, mode=${choice.jobMode}`);
 
   const intentId = mapToIntentId(choice.intentGroup, choice.jobMode, {
@@ -284,6 +328,108 @@ async function handleClarifyResume(state: DesignGraphState): Promise<DetectResul
     inferred,
     stateUpdates: { awaitingDetectClarify: false } as Partial<DesignGraphState>,
   };
+}
+
+/**
+ * Spec-pick resolver — used both at fresh detect (auto-pick / clarify
+ * emission) and at clarify resume (user choice → ref).
+ *
+ * Disambiguates a chat-driven `rev-spec` against the workspace's known
+ * spec files (`state.workspaceState.specDocNames`). Returns the matched
+ * basename if exactly one matches; null otherwise. The match runs a
+ * lowercase substring scan with the `.md` suffix trimmed — covers both
+ * "review explorer-panel-mismatch" directives and clarify-card click
+ * payloads (which echo the basename verbatim).
+ */
+function matchSpecPick(directive: string, specDocNames: string[]): string | null {
+  if (!directive || specDocNames.length === 0) return null;
+  const lower = directive.trim().toLowerCase();
+
+  // Exact basename match wins over substring — covers the clarify-resume
+  // case where the directive equals the option label verbatim AND avoids
+  // ambiguity when one basename is a substring of another (e.g.
+  // `explorer.md` vs `explorer-panel.md`).
+  const exact = specDocNames.find(name => name.replace(/\.md$/, '').toLowerCase() === lower);
+  if (exact) return exact;
+
+  // Substring fallback — fresh-detect directive like "review the
+  // explorer-panel-mismatch spec". Returns only when uniquely identifiable.
+  const hits = specDocNames.filter(name => {
+    const basename = name.replace(/\.md$/, '').toLowerCase();
+    return lower.includes(basename);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+type SpecPickResult =
+  | { kind: 'picked'; picked: string }
+  | { kind: 'error'; result: DetectResult<DesignGraphState> }
+  | { kind: 'clarify'; result: DetectResult<DesignGraphState> };
+
+/**
+ * Fresh-detect spec resolver — applies the 0 / 1 / N branches:
+ *
+ *   - 0 specs → return an error result (no surface to revise).
+ *   - 1 spec → auto-pick.
+ *   - 2+ specs: try directive substring match; if exactly one hits,
+ *     auto-pick. Otherwise emit a spec-pick clarify card and return a
+ *     skipRACCreation result so the graph pauses at detect.
+ */
+async function resolveSpecPick(state: DesignGraphState): Promise<SpecPickResult> {
+  const specDocNames = state.workspaceState?.specDocNames ?? [];
+
+  if (specDocNames.length === 0) {
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient.js');
+    const chatAPI = getChatAPIClient();
+    const errorText = `❌ **수정할 스펙 문서가 없습니다.** \`architecture/spec/\` 디렉토리에 스펙 문서를 먼저 생성해주세요.`;
+    await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
+    await chatAPI.finalizeMessage();
+    return {
+      kind: 'error',
+      result: {
+        skipRACCreation: true,
+        stateUpdates: {
+          designError: { type: 'missing_documents', message: 'No spec documents to revise' },
+          tokenUsage: state.tokenUsage,
+        } as Partial<DesignGraphState>,
+      },
+    };
+  }
+
+  if (specDocNames.length === 1) {
+    return { kind: 'picked', picked: specDocNames[0] };
+  }
+
+  const directive = state.overrideDirective || state.directive || '';
+  const matched = matchSpecPick(directive, specDocNames);
+  if (matched) {
+    return { kind: 'picked', picked: matched };
+  }
+
+  console.log(`\n💬 [Design:Detect] rev-spec ambiguous — ${specDocNames.length} candidate specs, asking user`);
+  await sendSpecPickCard(specDocNames);
+  await saveDetectClarifyToSession(state);
+  if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+    state.deps.kanbanUpdate.clearEstimatingActivity();
+  }
+  return {
+    kind: 'clarify',
+    result: {
+      skipRACCreation: true,
+      stateUpdates: {
+        awaitingDetectClarify: true,
+        tokenUsage: state.tokenUsage,
+      } as Partial<DesignGraphState>,
+    },
+  };
+}
+
+async function sendSpecPickCard(specDocNames: string[]): Promise<void> {
+  const { sendClarify } = await import('../../../../../common/clarify');
+  await sendClarify([{
+    question: '어떤 스펙 문서를 수정할까요?',
+    options: specDocNames.map(name => name.replace(/\.md$/, '')),
+  }]);
 }
 
 function mapToIntentId(

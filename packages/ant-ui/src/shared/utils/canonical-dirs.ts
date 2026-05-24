@@ -9,6 +9,49 @@ export { getArtifactDirPolicy, validateFileForDir, isCanonicalDir } from '@ant/s
 export type { ArtifactDirPolicy } from '@ant/shared';
 
 import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
+import {
+  ACCENT_VAR,
+  type SectionAccent,
+} from '@/presentation/components/layout/Explorer/SectionShell';
+
+export type { SectionAccent };
+
+/**
+ * Single source of truth for domain → SectionShell accent mapping.
+ *
+ * Consumed by both:
+ *   - SectionShell's `accent` prop (palette: violet/pink/orange/cool)
+ *   - The folder-icon CSS variable tint at the top-level domain row
+ *     (derived via {@link getDomainAccentColor}).
+ *
+ * Adding a new domain requires editing this record ONLY — the icon
+ * tint follows automatically through ACCENT_VAR. See spec §5 T4 / G4.
+ */
+export const DOMAIN_ACCENT_MAP: Record<string, SectionAccent> = {
+  plan: 'violet',
+  system: 'pink',
+  spec: 'orange',
+  ui: 'pink',
+  'game-art': 'orange',
+  data: 'cool',
+  assets: 'cool',
+  meta: 'violet',
+  sessions: 'cool',
+  architecture: 'pink',
+  visual: 'orange',
+};
+
+/**
+ * Resolves a top-level domain key to its folder-icon CSS variable
+ * string (e.g. `'var(--violet-500)'`).
+ *
+ * Returns `undefined` for unknown domain keys — matches the legacy
+ * behavior of indexing into the prior `DOMAIN_ACCENT` lookup table.
+ */
+export function getDomainAccentColor(domain: string): string | undefined {
+  const accent = DOMAIN_ACCENT_MAP[domain];
+  return accent ? ACCENT_VAR[accent] : undefined;
+}
 
 const CANONICAL_FEATURE_DIRS_SET = new Set(CANONICAL_FEATURE_DIRS);
 
