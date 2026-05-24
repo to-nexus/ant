@@ -26,8 +26,11 @@ interface FileCardProps {
 }
 
 // Token-driven operation accents.
-const RED_WASH = 'oklch(from var(--red-500) 96% 0.04 25 / 0.45)';
-const GREEN_WASH = 'oklch(from var(--status-done-fg) 96% 0.05 155 / 0.45)';
+// Base on status-*-bg tokens which auto-flip lightness (light 94% / dark 28%)
+// per handoff tokens.css. Alpha 0.6 calibrates wash strength over --bg-surface
+// so dark-theme diff lines remain readable instead of glaring near-white.
+const RED_WASH = 'oklch(from var(--status-error-bg) l c h / 0.6)';
+const GREEN_WASH = 'oklch(from var(--status-done-bg) l c h / 0.6)';
 
 export const FileCard = memo(function FileCard({ line, pending, operation }: FileCardProps) {
   const content = lineToContent(line, pending);

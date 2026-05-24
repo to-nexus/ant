@@ -28,6 +28,7 @@ interface ChatPanelProps {
   featureName: string | null;
   enabled: boolean;
   selectedAgent?: string | null;
+  onCollapse?: () => void;
 }
 
 type WatermarkVariant = 'color' | 'mono';
@@ -99,6 +100,7 @@ export function ChatPanel({
   featureName: _featureName,
   enabled: _enabled,
   selectedAgent = null,
+  onCollapse,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
 
@@ -138,10 +140,12 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Aurora header bar: eraser (sweep) + trash (reset) icon buttons */}
+      {/* Aurora header bar: eraser (sweep) + trash (reset) + collapse icon buttons */}
       <ChatHeaderBar
         selectedProject={_projectId}
         selectedFeature={_featureName}
+        selectedAgent={selectedAgent}
+        onCollapse={onCollapse ?? (() => {})}
       />
 
       {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}

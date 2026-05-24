@@ -127,7 +127,7 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending }
             style={{ overflowAnchor: 'none' }}
             onScroll={handleScroll}
           >
-            <div className="prose prose-sm max-w-none w-full select-text"
+            <div className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
                  style={{ wordBreak: 'break-word', overflowWrap: 'break-word', color: 'var(--text-1)' }}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

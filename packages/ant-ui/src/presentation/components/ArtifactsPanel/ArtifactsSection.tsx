@@ -17,8 +17,10 @@ import {
   validateFileForDir,
   DOMAIN_ACCENT_MAP,
   getDomainAccentColor,
+  type SectionAccent,
 } from '@/shared/utils/canonical-dirs';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+import type { ArtifactPermissions } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -42,8 +44,31 @@ export interface ArtifactsSectionProps {
   sectionPrefix?: string;
   collapsedLabel?: string;
   collapsedAction?: React.ReactNode;
+  /**
+   * Optional node rendered in the SectionShell header's right-aligned
+   * `action` slot when the section is expanded — i.e. on the SAME line
+   * as the eyebrow title. Used to host the Transfer toolbar inline with
+   * the Artifacts header (directive: 헤더와 Transfer 버튼 동일 라인).
+   */
+  headerAction?: React.ReactNode;
   /** When returns true, mutation is blocked and a warning was shown — do not open delete confirm. */
   notifyArtifactMutationBlocked?: () => boolean;
+  /**
+   * Optional explicit accent for the SectionShell header. When omitted,
+   * falls back to `DOMAIN_ACCENT_MAP[sectionPrefix]` (legacy per-domain
+   * mount) or `'violet'`. The unified Artifacts mount in ArtifactsPanel
+   * passes `accent="orange"` to match the handoff B3 chip color.
+   */
+  accent?: SectionAccent;
+  /**
+   * Resolves per-row mutation permissions in unified-tree mode. The
+   * row's top-level path segment identifies the owning domain; the
+   * returned ArtifactPermissions gates each FileActionMenu trigger
+   * (create/upload/rename/delete/send/download) — `false` collapses
+   * the corresponding menu entry just like the panel-level pre-gating
+   * used to.
+   */
+  getNodePermissions?: (path: string) => ArtifactPermissions | undefined;
 }
 
 /**
@@ -74,7 +99,10 @@ export function ArtifactsSection({
   sectionPrefix,
   collapsedLabel,
   collapsedAction,
+  headerAction,
   notifyArtifactMutationBlocked,
+  accent,
+  getNodePermissions,
 }: ArtifactsSectionProps) {
   const { t } = useTranslation('artifacts');
   // Initial expanded set is empty; the spotlight effect below runs on mount
@@ -332,12 +360,23 @@ export function ArtifactsSection({
     const isClearable = isDirectory && isCanonicalDir(node.path);
     const uploadInputId = isDirectory && onUploadFiles ? `upload-${node.path}` : undefined;
 
+    // Per-row permission gating (unified-tree mode). When
+    // `getNodePermissions` is not supplied (legacy per-domain mount),
+    // every gate defaults to `true` so behavior is unchanged.
+    const rowPerms = getNodePermissions?.(node.path);
+    const allowCreate = rowPerms?.create !== false;
+    const allowUpload = rowPerms?.upload !== false;
+    const allowRename = rowPerms?.rename !== false;
+    const allowSend = rowPerms?.send !== false;
+    const allowDelete = rowPerms?.delete !== false;
+    const allowDownload = rowPerms?.download !== false;
+
     const menuProps = {
       isSessionPath: isSession,
       isClearableDir: isClearable,
       isProtectedDir: false,
-      onSend,
-      onDownload,
+      onSend: allowSend ? onSend : undefined,
+      onDownload: allowDownload ? onDownload : undefined,
       onMarkAllSeen:
         isDirectory && unseenCount > 0 && onMarkSeen
           ? () => {
@@ -350,7 +389,7 @@ export function ArtifactsSection({
             }
           : undefined,
       onCreateFile:
-        isDirectory && onCreateFile && !isStructural
+        isDirectory && onCreateFile && !isStructural && allowCreate
           ? () => {
               setCreateType('file');
               setShowCreateForm(isCreatingInThisDir ? null : node.path);
@@ -361,6 +400,7 @@ export function ArtifactsSection({
         isDirectory &&
         onCreateDirectory &&
         !isStructural &&
+        allowCreate &&
         getArtifactDirPolicy(node.path)?.allowSubdirs !== false
           ? () => {
               setCreateType('directory');
@@ -369,18 +409,18 @@ export function ArtifactsSection({
             }
           : undefined,
       onUpload:
-        isDirectory && onUploadFiles && !isStructural
+        isDirectory && onUploadFiles && !isStructural && allowUpload
           ? () => document.getElementById(`upload-${node.path}`)?.click()
           : undefined,
       onRename:
-        onRename && !isClearable
+        onRename && !isClearable && allowRename
           ? () => {
               setRenamingPath(node.path);
               setRenameValue(node.name);
             }
           : undefined,
       onDelete:
-        onDelete && !isClearable
+        onDelete && !isClearable && allowDelete
           ? () => {
               if (notifyArtifactMutationBlocked?.()) return;
               showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
@@ -393,7 +433,7 @@ export function ArtifactsSection({
             }
           : undefined,
       onClearContents:
-        isClearable && onDelete
+        isClearable && onDelete && allowDelete
           ? () => {
               if (notifyArtifactMutationBlocked?.()) return;
               showConfirm(t('confirm.clearContentsDetail', { name: node.name }), {
@@ -522,11 +562,12 @@ export function ArtifactsSection({
     <SectionShell
       key={`section-${sectionPrefix ?? 'root'}-${String(belongsToSpotlight)}`}
       eyebrow={title}
-      accent={DOMAIN_ACCENT_MAP[sectionPrefix ?? ''] ?? 'violet'}
+      accent={accent ?? DOMAIN_ACCENT_MAP[sectionPrefix ?? ''] ?? 'violet'}
       count={null}
       expanded={belongsToSpotlight}
       collapsedLabel={collapsedLabel}
       collapsedAction={collapsedAction}
+      action={headerAction}
     >
       <div
         style={dropWrapperStyle}

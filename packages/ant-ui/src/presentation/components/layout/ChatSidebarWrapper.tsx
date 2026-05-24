@@ -1,5 +1,4 @@
-import { ChevronRight, WifiOff } from 'lucide-react';
-import { Bar } from '../Bar';
+import { ChevronRight } from 'lucide-react';
 import { ChatPanel } from '../chat/ChatPanel';
 import { useTranslation } from 'react-i18next';
 
@@ -62,43 +61,13 @@ export function ChatSidebarWrapper({
         onMouseDown={onResizeStart}
       />
 
-      {/* Chat Bar */}
-      {Bar.render({
-        left: (
-          <>
-            {!selectedAgent ? (
-              <>
-                <WifiOff className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
-                <span className="font-medium" style={{ color: 'var(--text-1)' }}>{t('sidebar.offline')}</span>
-              </>
-            ) : (
-              <>
-                <span className="text-2xl">💬</span>
-                <span className="font-medium" style={{ color: 'var(--text-1)' }}>
-                  {t('sidebar.chatWith', { agent: selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1) })}
-                </span>
-              </>
-            )}
-          </>
-        ),
-        right: (
-          <button
-            onClick={onCollapse}
-            className="transition-colors flex items-center justify-center w-10 h-10 -mr-4 -my-4 hover:bg-[color:var(--bg-hover)]"
-            style={{ color: 'var(--text-3)' }}
-            title={t('sidebar.collapse')}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        )
-      })}
-      
       <div className="flex-1 overflow-hidden">
         <ChatPanel
           projectId={selectedProject}
           featureName={selectedFeature}
           enabled={!isCollapsed}
           selectedAgent={selectedAgent}
+          onCollapse={onCollapse}
         />
       </div>
     </aside>
