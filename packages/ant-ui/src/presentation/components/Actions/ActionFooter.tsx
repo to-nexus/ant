@@ -228,7 +228,7 @@ function WizardVariant({
           variant="primary"
           size="sm"
           glow
-          iconLeft={isAllComplete ? 'check' : undefined}
+          iconLeft={isAllComplete ? 'check-circle' : undefined}
           iconRight={!isAllComplete ? 'arrow-right' : undefined}
           onClick={onNext}
           disabled={!nextEnabled}

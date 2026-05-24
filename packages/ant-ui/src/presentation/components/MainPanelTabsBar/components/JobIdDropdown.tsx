@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Trash2, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
@@ -50,28 +51,75 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [hoveredCopyId, setHoveredCopyId] = useState<string | null>(null);
   const [hoveredDeleteId, setHoveredDeleteId] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
   const { entries, refresh } = useJobHistory();
   // Live kanban for the currently selected jobId — preferred over the
   // persisted snapshot (which may lag the live SSE stream by a few seconds).
   const currentKanban = useStore((s) => s.kanban);
 
+  // Compute fixed-position coordinates for the portaled panel so it sits
+  // directly under the chip. Right-edge overflow flips to right-align; the
+  // left edge is clamped to keep the panel on-screen.
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const GAP = 4;
+    const MARGIN = 8;
+    const MENU_WIDTH = Math.min(480, window.innerWidth - 24);
+    let left = rect.left;
+    if (left + MENU_WIDTH > window.innerWidth - MARGIN) {
+      left = rect.right - MENU_WIDTH;
+    }
+    if (left < MARGIN) left = MARGIN;
+    setMenuPos({
+      top: rect.bottom + GAP,
+      left,
+      width: MENU_WIDTH,
+    });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onClickOutside = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Both refs must miss — portal child is NOT under triggerRef tree, so
+      // a single-container check would close the menu on every click inside it.
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
+    const onScroll = (e: Event) => {
+      // Close on ancestor scroll; ignore scrolls inside the menu itself.
+      const target = e.target as Node;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      setOpen(false);
+    };
+    const onResize = () => setOpen(false);
+
     document.addEventListener('mousedown', onClickOutside);
     document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    const rafId = requestAnimationFrame(() => {
+      document.addEventListener('scroll', onScroll, true);
+    });
     return () => {
+      cancelAnimationFrame(rafId);
       document.removeEventListener('mousedown', onClickOutside);
       document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
     };
   }, [open]);
 
@@ -149,11 +197,13 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          if (!open) updatePosition();
           setOpen((v) => !v);
         }}
         onMouseEnter={() => setChipHover(true)}
@@ -175,17 +225,23 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
         <ChevronDown className="w-3 h-3 opacity-60" />
       </button>
 
-      {open && (
+      {open && createPortal(
+        // Rendered via React Portal so backdrop-filter on the active TabButton
+        // (which creates its own stacking context) cannot trap the dropdown
+        // behind sibling kanban surfaces (sticky header z-10, swimlane backdrop).
         <div
+          ref={menuRef}
           role="menu"
           // Rows: job + time + token share one flex with uniform `gap-2` (no
           // fixed-width badge columns). Copy/delete sit in a shrink-0 sibling so
           // they stay on the right edge of the panel while the left group grows.
           className={cn(
-            'absolute top-full left-0 mt-1 w-[min(480px,calc(100vw-1.5rem))]',
-            'rounded-md z-[9999] py-1',
+            'fixed rounded-md z-[9999] py-1',
           )}
           style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-1)',
             boxShadow: 'var(--shadow-lg)',
@@ -384,8 +440,9 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
               })}
             </ul>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }

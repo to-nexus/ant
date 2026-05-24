@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ChevronRight, Eraser, MessageSquare, Trash2, WifiOff } from 'lucide-react';
+import { Eraser, Menu, MessageCircle, Trash2, WifiOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -203,11 +203,12 @@ export function ChatHeaderBar({
     color: 'var(--red-600)',
   } as const;
 
+  // handoff 명세(L932-942): confirm 상태는 idle headerBtn(true) 위에 background·borderColor·boxShadow
+  // 세 속성만 overlay 한다. color는 idle red-600을 그대로 유지 — 별도로 red-500을 spread 하지 않는다.
   const trashConfirmStyle = {
-    ...baseBtnStyle,
+    ...trashIdleStyle,
     background: 'oklch(from var(--red-400) l c h / 0.25)',
     border: '1px solid var(--red-500)',
-    color: 'var(--red-500)',
     boxShadow: '0 0 10px oklch(70% 0.20 25 / 0.4)',
   } as const;
 
@@ -217,10 +218,11 @@ export function ChatHeaderBar({
     <div
       className="relative flex items-center flex-shrink-0"
       style={{
-        padding: '8px 12px',
+        height: 40,
+        padding: '0 16px',
         gap: 10,
         borderBottom: '1px solid var(--border-1)',
-        background: 'oklch(from var(--bg-app) l c h / 0.7)',
+        background: 'var(--bg-surface-2)',
       }}
     >
       {/* 2px Aurora gradient top accent strip (handoff: gradient-flow animation, opacity 0.85) */}
@@ -237,11 +239,13 @@ export function ChatHeaderBar({
 
       {/* Title slot — branches on selectedAgent presence:
           • offline (no agent): WifiOff icon + sidebar.offline label
-          • online  (agent set): MessageSquare icon + 'Chat' label */}
+          • online  (agent set): speech-bubble (MessageCircle) + 'Chat' label
+                                 (handoff a3-chat.jsx L947 — Icon name="chat" size=13, violet-600) */}
       {selectedAgent ? (
         <>
-          <MessageSquare
+          <MessageCircle
             size={13}
+            strokeWidth={2.2}
             style={{ color: 'var(--violet-600)', flexShrink: 0 }}
             aria-hidden="true"
           />
@@ -322,7 +326,7 @@ export function ChatHeaderBar({
         title={t('sidebar.collapse')}
         aria-label={t('sidebar.collapse')}
       >
-        <ChevronRight size={13} strokeWidth={2.2} />
+        <Menu size={14} strokeWidth={2.2} />
       </button>
     </div>
   );

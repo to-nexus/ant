@@ -132,9 +132,9 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
         <span
           className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors"
           style={{
-            background: 'oklch(from var(--violet-300) l c h / 0.12)',
+            background: 'var(--status-todo-bg)',
             borderColor: 'var(--border-1)',
-            color: 'var(--violet-700)',
+            color: 'var(--status-todo-fg)',
           }}
         >
           <Zap className="w-3 h-3 shrink-0" />
@@ -162,7 +162,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           icon={Target}
           label="intent"
           value={intentLabel}
-          color="bg-[color:oklch(from_var(--violet-300)_l_c_h_/_0.12)] border-[color:var(--border-1)] text-[color:var(--violet-700)]"
+          color="bg-[color:var(--status-todo-bg)] border-[color:var(--border-1)] text-[color:var(--status-todo-fg)]"
           onRemove={readOnly ? undefined : handleRemoveIntent}
         />
       ),
@@ -177,7 +177,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           icon={Crosshair}
           label="target"
           value={describePath(tgt).display}
-          color="bg-[color:oklch(from_var(--orange-300)_l_c_h_/_0.12)] border-[color:var(--border-1)] text-[color:var(--orange-600)]"
+          color="bg-[color:var(--status-progress-bg)] border-[color:var(--border-1)] text-[color:var(--status-progress-fg)]"
         />
       ),
     });

@@ -30,7 +30,7 @@ export function IdeConnectionPanel({ projectId, featureName }: IdeConnectionPane
   const overlayMode = useStore(selectIdeOverlayMode);
   if (overlayMode === 'hidden') return null;
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/95 backdrop-blur-sm">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[oklch(from_var(--bg-canvas)_l_c_h_/_0.95)] backdrop-blur-sm">
       <div className="max-w-3xl w-full mx-6">
         <PanelBody projectId={projectId} featureName={featureName} />
       </div>

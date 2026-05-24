@@ -118,13 +118,14 @@ export function AppNavBar({}: AppNavBarProps) {
     <header
       className="fixed top-0 left-0 right-0 z-50"
       style={{
+        height: 56,
         background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border-1)',
+        borderBottom: '1px solid var(--border-2)',
         boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <div className="px-2 sm:px-4 py-2 sm:py-3">
-        <div className="flex items-center justify-between gap-2">
+      <div className="px-2 sm:px-4 h-full flex items-center">
+        <div className="flex items-center justify-between gap-2 w-full">
           <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
             <a href="/" className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
               <img
