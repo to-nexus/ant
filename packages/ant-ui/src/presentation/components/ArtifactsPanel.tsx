@@ -30,9 +30,10 @@ import {
 } from '@/shared/utils/upload-utils';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
-  UI_VISIBLE_FILES,
   pruneFileTreeForWorkspaceDomain,
+  type ArtifactPermissions,
 } from '@ant/shared';
+import type { FileNode } from '@/infrastructure/http/api';
 import { ArtifactsSection } from './ArtifactsPanel/ArtifactsSection';
 import { TransferToolbar } from './ArtifactsPanel/TransferToolbar';
 import { FigmaStatusIndicator, TemplateStatusIndicator } from './ArtifactsPanel/Indicators';
@@ -388,115 +389,107 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Domain-grouped top-level sections — one ArtifactsSection per
-  // visible top-level domain, plus a fixed `sessions/` section.
+  // Unified Artifacts tree — a single <ArtifactsSection> wraps the
+  // canonical 'Artifacts' SectionShell header (handoff B3). The
+  // domain roots (plan/architecture/visual/assets/meta/sessions) are
+  // rendered as folder rows inside that single section, NOT as their
+  // own uppercase eyebrow headers.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const topLevelByName = new Map(prunedFileTree?.map((n) => [n.name, n]) ?? []);
-  const visibleTopLevelDirs = UI_PANEL_TOP_LEVEL_DIRS;
 
   const planNode = topLevelByName.get('plan');
   const planTemplateFiles =
     planNode?.children?.filter((n) => n.type === 'file' && n.meta?.isTemplate) || [];
 
-  return (
-    <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
-      <TransferToolbar
-        isNarrow={isNarrow}
-        onOpenTransfer={(subTab) => openTransferTab({ subTab })}
-        pendingTransferCount={pendingTransferCount}
+  // Build domain-root nodes for the unified tree. Each entry in the
+  // canonical UI_PANEL_TOP_LEVEL_DIRS becomes one top-level folder row.
+  // Missing domains (filetree hasn't materialized them yet) are
+  // rendered as synthetic empty-directory placeholders so the row is
+  // visible regardless — matches the handoff b3-explorer FileTree UX.
+  const visibleTopLevelDirNodes: FileNode[] = UI_PANEL_TOP_LEVEL_DIRS.map(({ name }) => {
+    const existing = topLevelByName.get(name);
+    if (existing) return existing;
+    return {
+      name,
+      path: name,
+      type: 'directory',
+      children: [],
+    } as FileNode;
+  });
+
+  // Per-row permission resolver — maps a node path to its owning
+  // domain's ArtifactPermissions via the path's top-level segment.
+  const permissionsByDomain = new Map<string, ArtifactPermissions | undefined>(
+    UI_PANEL_TOP_LEVEL_DIRS.map((d) => [d.name, d.permissions]),
+  );
+  const getNodePermissions = (path: string): ArtifactPermissions | undefined => {
+    const top = path.split('/')[0];
+    return permissionsByDomain.get(top);
+  };
+
+  // Merge indicator dictionaries across all domains. Keys are file
+  // basenames as before — ArtifactsSection reads `fileIndicators[node.name]`
+  // for file rows so the key namespace is unchanged.
+  const mergedIndicators: Record<string, React.ReactNode> = {
+    ...Object.fromEntries(
+      planTemplateFiles.map((n) => [
+        n.name,
+        <TemplateStatusIndicator
+          key={`tpl-${n.name}`}
+          reason={n.meta?.templateReason ?? undefined}
+          contentLength={n.meta?.templateContentLength}
+          threshold={n.meta?.templateThreshold}
+          t={t}
+        />,
+      ]),
+    ),
+    'figma.json': (
+      <FigmaStatusIndicator
+        isPopulated={figmaPopulated}
+        bridgeConnected={bridgeConnected === true}
+        figmaDesktopReachable={figmaDesktopReachable}
+        onOpenSettings={() => {
+          openMainPanelTab('accountConfig');
+          setAccountConfigScrollTarget('figma');
+        }}
         t={t}
       />
+    ),
+  };
 
+  return (
+    <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
       <div className="space-y-1">
-        {visibleTopLevelDirs.map(({ name, permissions }) => {
-          const dirNode = topLevelByName.get(name);
-          const childNodes = dirNode?.children || [];
-          const visibleFilesUnderRoot = childNodes.filter(
-            (c) => c.type === 'directory' || UI_VISIBLE_FILES.includes(c.name),
-          );
-
-          const collapsedLabel =
-            selectedFile && (selectedFile === name || selectedFile.startsWith(name + '/'))
-              ? selectedFile.split('/').pop()
-              : undefined;
-
-          const fileIndicators =
-            name === 'plan'
-              ? Object.fromEntries(
-                  planTemplateFiles.map((n) => [
-                    n.name,
-                    <TemplateStatusIndicator
-                      key={n.name}
-                      reason={n.meta?.templateReason ?? undefined}
-                      contentLength={n.meta?.templateContentLength}
-                      threshold={n.meta?.templateThreshold}
-                      t={t}
-                    />,
-                  ]),
-                )
-              : name === 'visual'
-                ? {
-                    'figma.json': (
-                      <FigmaStatusIndicator
-                        isPopulated={figmaPopulated}
-                        bridgeConnected={bridgeConnected === true}
-                        figmaDesktopReachable={figmaDesktopReachable}
-                        onOpenSettings={() => {
-                          openMainPanelTab('accountConfig');
-                          setAccountConfigScrollTarget('figma');
-                        }}
-                        t={t}
-                      />
-                    ),
-                  }
-                : undefined;
-
-          // Per-section permission gating. `undefined` field on `permissions`
-          // (or absent `permissions`) means "allowed by default" — only an
-          // explicit `false` collapses the corresponding handler to undefined,
-          // which hides the affordance in ArtifactsSection / FileActionMenu.
-          const onCreateFileForSection =
-            permissions?.create === false ? undefined : handleCreateFile;
-          const onCreateDirectoryForSection =
-            permissions?.create === false ? undefined : handleCreateDirectory;
-          const onUploadFilesForSection =
-            permissions?.upload === false ? undefined : handleUploadFiles;
-          const onDropFilesForSection =
-            permissions?.upload === false ? undefined : handleDropFiles;
-          const onRenameForSection =
-            permissions?.rename === false ? undefined : handleRename;
-          const onSendForSection =
-            permissions?.send === false ? undefined : handleSend;
-          const onDeleteForSection =
-            permissions?.delete === false ? undefined : handleDelete;
-          const onDownloadForSection =
-            permissions?.download === false ? undefined : handleDownload;
-
-          return (
-            <ArtifactsSection
-              key={name}
-              title={t(`panel.${name}`, name)}
-              nodes={visibleFilesUnderRoot}
-              sectionPrefix={name}
-              onFileSelect={handleFileSelect}
-              selectedFile={selectedFile}
-              onCreateFile={onCreateFileForSection}
-              onCreateDirectory={onCreateDirectoryForSection}
-              onUploadFiles={onUploadFilesForSection}
-              onDropFiles={onDropFilesForSection}
-              onRename={onRenameForSection}
-              onDelete={onDeleteForSection}
-              onSend={onSendForSection}
-              onDownload={onDownloadForSection}
-              onDropError={showDropError}
-              unseenArtifacts={unseenArtifacts}
-              onMarkSeen={markArtifactsSeen}
-              notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
-              fileIndicators={fileIndicators}
-              collapsedLabel={collapsedLabel}
+        <ArtifactsSection
+          title={t('panel.title', 'Artifacts')}
+          accent="orange"
+          headerAction={
+            <TransferToolbar
+              isNarrow={isNarrow}
+              onOpenTransfer={(subTab) => openTransferTab({ subTab })}
+              pendingTransferCount={pendingTransferCount}
+              t={t}
             />
-          );
-        })}
+          }
+          nodes={visibleTopLevelDirNodes}
+          sectionPrefix={undefined}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
+          onCreateFile={handleCreateFile}
+          onCreateDirectory={handleCreateDirectory}
+          onUploadFiles={handleUploadFiles}
+          onDropFiles={handleDropFiles}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onSend={handleSend}
+          onDownload={handleDownload}
+          onDropError={showDropError}
+          unseenArtifacts={unseenArtifacts}
+          onMarkSeen={markArtifactsSeen}
+          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
+          fileIndicators={mergedIndicators}
+          getNodePermissions={getNodePermissions}
+        />
       </div>
 
       {/* Upload conflict modal */}

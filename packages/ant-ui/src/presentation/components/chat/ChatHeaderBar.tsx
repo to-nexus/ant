@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Eraser, MessageSquare, Trash2 } from 'lucide-react';
+import { ChevronRight, Eraser, MessageSquare, Trash2, WifiOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -28,11 +28,15 @@ import { Spinner } from '@/presentation/components/common/async';
 interface ChatHeaderBarProps {
   selectedProject: string | null;
   selectedFeature: string | null;
+  selectedAgent: string | null;
+  onCollapse: () => void;
 }
 
 export function ChatHeaderBar({
   selectedProject,
   selectedFeature,
+  selectedAgent,
+  onCollapse,
 }: ChatHeaderBarProps) {
   const { t } = useTranslation('chat');
 
@@ -231,21 +235,44 @@ export function ChatHeaderBar({
         }}
       />
 
-      {/* Title slot (handoff: chat icon + 'Chat' label) */}
-      <MessageSquare
-        size={13}
-        style={{ color: 'var(--violet-600)', flexShrink: 0 }}
-        aria-hidden="true"
-      />
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: 'var(--text-1)',
-        }}
-      >
-        {t('header.title', { defaultValue: 'Chat' })}
-      </span>
+      {/* Title slot — branches on selectedAgent presence:
+          • offline (no agent): WifiOff icon + sidebar.offline label
+          • online  (agent set): MessageSquare icon + 'Chat' label */}
+      {selectedAgent ? (
+        <>
+          <MessageSquare
+            size={13}
+            style={{ color: 'var(--violet-600)', flexShrink: 0 }}
+            aria-hidden="true"
+          />
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: 'var(--text-1)',
+            }}
+          >
+            {t('header.title', { defaultValue: 'Chat' })}
+          </span>
+        </>
+      ) : (
+        <>
+          <WifiOff
+            size={13}
+            style={{ color: 'var(--text-3)', flexShrink: 0 }}
+            aria-hidden="true"
+          />
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: 'var(--text-1)',
+            }}
+          >
+            {t('sidebar.offline')}
+          </span>
+        </>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -285,6 +312,17 @@ export function ChatHeaderBar({
         ) : (
           <Trash2 size={13} strokeWidth={2.2} />
         )}
+      </button>
+
+      {/* Collapse : hide chat sidebar (entry point for re-expand lives in ChatSidebarWrapper collapsed state) */}
+      <button
+        type="button"
+        onClick={onCollapse}
+        style={baseBtnStyle}
+        title={t('sidebar.collapse')}
+        aria-label={t('sidebar.collapse')}
+      >
+        <ChevronRight size={13} strokeWidth={2.2} />
       </button>
     </div>
   );

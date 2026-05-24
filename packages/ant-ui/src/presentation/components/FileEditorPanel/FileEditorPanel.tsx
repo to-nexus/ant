@@ -618,7 +618,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           </div>
         ) : viewMode === 'preview' && isMarkdownFile ? (
           <div
-            className="flex-1 overflow-y-auto prose prose-sm max-w-none p-4"
+            className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4"
             style={previewSurface}
           >
             <ReactMarkdown

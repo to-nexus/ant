@@ -83,7 +83,7 @@ export function TransferToolbar({
         alignItems: 'center',
         gap: 4,
         justifyContent: 'flex-end',
-        padding: '2px 10px 4px',
+        padding: 0,
       }}
     >
       <TransferTinyButton
