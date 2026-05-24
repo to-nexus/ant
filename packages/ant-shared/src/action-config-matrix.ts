@@ -1101,7 +1101,11 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  *
  *   - `kind: 'generate'` + outputs → `[`${dir}/${formatOutputSpec(o)}`]`
  *   - `kind: 'generate'` + no outputs → `[dir]`
- *   - any other kind (revise / codebase / chat-only) → `undefined`
+ *   - `kind: 'revise'` + `opts.refs?.length === 1` → `opts.refs`
+ *     (the single selected ref IS the target — every `revise` intent
+ *     carries `refsSingleSelect: true`, so refs.length > 1 is invalid
+ *     and we return undefined to defer to the caller's error path)
+ *   - any other kind / shape → `undefined`
  *
  * dusk-mounding-pilot regression — the explicit branch of `detect/index.ts`
  * previously trusted `metadata.target` verbatim and produced an empty
@@ -1109,14 +1113,29 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  * prompt's "Target Path" section and let the LLM hallucinate a non-canonical
  * target. Routing the explicit branch through this helper restores parity
  * with the infer branch and the FE.
+ *
+ * marble-barking-grass regression — chat-driven `rev-spec` (or any
+ * `target.kind === 'revise'` intent) without ActionConfigView-supplied
+ * `metadata.target` crashed mid-decompose with "requires exactly one
+ * target file, got 0" because `kind !== 'generate'` returned undefined
+ * unconditionally. The `revise` branch closes that loop by promoting the
+ * single-selected ref to target, matching the matrix's "selected ref IS
+ * the target" semantics.
  */
 export function getDefaultTargetPaths(
   intent: IntentId,
   domain?: Domain,
+  opts?: { refs?: string[] },
 ): string[] | undefined {
   const slots = getConfigSlots(intent);
   const target = slots?.target;
-  if (!target || target.kind !== 'generate') return undefined;
+  if (!target) return undefined;
+
+  if (target.kind === 'revise') {
+    return opts?.refs?.length === 1 ? opts.refs : undefined;
+  }
+
+  if (target.kind !== 'generate') return undefined;
   if (target.outputs.length === 0) return [target.dir];
 
   // Plan job is domain-aware: `MATRIX['gen-plan'].target.outputs` lists

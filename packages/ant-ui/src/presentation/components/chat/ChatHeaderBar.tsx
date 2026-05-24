@@ -174,10 +174,10 @@ export function ChatHeaderBar({
   };
 
   // ── Styles ────────────────────────────────────────────────────────────
-  // §4 Layer C: transition 목록에서 background/color 제거 — transform/opacity/box-shadow만 보존.
-  // hover 시 background/color는 onMouseEnter/onMouseLeave 핸들러에서 즉시 교체된다.
-  // handoff a3-chat.jsx ChatHeaderBar 명세에 맞춰 26×26 icon-button + var(--r-sm) 둥근 모서리,
-  // 기본/위험 톤별로 background·border 토큰을 분기한다.
+  // handoff a3-chat.jsx ChatHeaderBar 명세(L916-932 `headerBtn`)에 맞춰 26×26 icon-button +
+  // var(--r-sm) 둥근 모서리, 기본/위험 톤별로 background·border 토큰을 분기한다.
+  // transition은 명세의 `transition: all var(--dur-fast)`를 따라 'all'로 통일 — hover swap 제거에
+  // 따른 변경. idle↔confirm 톤 전환 시 background/border/box-shadow가 한 번에 보간된다.
   const baseBtnStyle = {
     width: 26,
     height: 26,
@@ -189,7 +189,7 @@ export function ChatHeaderBar({
     border: '1px solid var(--border-2)',
     color: 'var(--text-2)',
     borderRadius: 'var(--r-sm)',
-    transition: 'transform var(--dur-fast) var(--ease-smooth), opacity var(--dur-fast) var(--ease-smooth), box-shadow var(--dur-fast) var(--ease-smooth)',
+    transition: 'all var(--dur-fast) var(--ease-smooth)',
   } as const;
 
   const trashIdleStyle = {
@@ -204,8 +204,7 @@ export function ChatHeaderBar({
     background: 'oklch(from var(--red-400) l c h / 0.25)',
     border: '1px solid var(--red-500)',
     color: 'var(--red-500)',
-    boxShadow:
-      '0 0 0 2px oklch(from var(--red-500) l c h / 0.35), 0 0 12px oklch(from var(--red-500) l c h / 0.4)',
+    boxShadow: '0 0 10px oklch(70% 0.20 25 / 0.4)',
   } as const;
 
   const sweepDisabled = !canSweep || isSweeping || !selectedProject || !selectedFeature;
@@ -257,15 +256,6 @@ export function ChatHeaderBar({
         disabled={sweepDisabled}
         className="disabled:opacity-40 disabled:cursor-not-allowed"
         style={baseBtnStyle}
-        onMouseEnter={(e) => {
-          if (sweepDisabled) return;
-          e.currentTarget.style.background = 'var(--bg-hover)';
-          e.currentTarget.style.color = 'var(--violet-600)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'var(--bg-surface)';
-          e.currentTarget.style.color = 'var(--text-2)';
-        }}
         title={t('sidebar.sweepTooltip')}
         aria-label={t('sidebar.sweepTooltip')}
       >
@@ -283,16 +273,6 @@ export function ChatHeaderBar({
         disabled={resetDisabled}
         className="disabled:opacity-40 disabled:cursor-not-allowed"
         style={confirming ? trashConfirmStyle : trashIdleStyle}
-        onMouseEnter={(e) => {
-          if (confirming || resetDisabled) return;
-          e.currentTarget.style.background = 'oklch(from var(--red-400) l c h / 0.2)';
-          e.currentTarget.style.color = 'var(--red-500)';
-        }}
-        onMouseLeave={(e) => {
-          if (confirming) return;
-          e.currentTarget.style.background = 'oklch(from var(--red-300) l c h / 0.12)';
-          e.currentTarget.style.color = 'var(--red-600)';
-        }}
         title={
           confirming
             ? t('context.resetConfirmAction')

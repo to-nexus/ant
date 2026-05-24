@@ -10,7 +10,7 @@ interface RowListProps {
 }
 
 /**
- * Scroll container for explorer rows (replaces legacy item dropdown).
+ * Scroll container for explorer rows.
  *
  * Spec contract (§5.4 / §6.2 T8):
  *  • Rows live INSIDE this container (scrollable, maxHeight: 240px).

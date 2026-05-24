@@ -9,6 +9,7 @@
     "sessions": "Sessions",
     "transfer": "Transfer",
     "emptyDir": "Empty directory",
+    "emptySection": "No files in {{title}}",
     "dirHint": {
       "plan": "Planning Docs",
       "architecture": "System & Spec Design",

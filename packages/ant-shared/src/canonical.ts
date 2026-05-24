@@ -28,9 +28,32 @@ type Visibility =
   | 'ui:meta'
   | 'internal';
 
+/**
+ * Per-section mutation permissions for a top-level domain row in the
+ * ArtifactsPanel SSOT loop (`UI_PANEL_TOP_LEVEL_DIRS`). Undefined fields
+ * mean "allowed by default" — the SSOT loop in `ArtifactsPanel.tsx`
+ * threads each handler unconditionally unless `permissions?.<op>` is
+ * explicitly `false`, which collapses the prop to `undefined` and hides
+ * the corresponding affordance.
+ *
+ * Today this gates the sessions row (`create/upload/rename/send: false`,
+ * `delete/download: true`). New domains that need analogous gating can
+ * attach `permissions` to their `CanonicalDirDef` entry rather than
+ * re-introducing a hand-written second <ArtifactsSection> invocation.
+ */
+export interface ArtifactPermissions {
+  readonly create?: boolean;
+  readonly upload?: boolean;
+  readonly rename?: boolean;
+  readonly send?: boolean;
+  readonly delete?: boolean;
+  readonly download?: boolean;
+}
+
 interface CanonicalDirDef {
   readonly path: string;
   readonly visibility: Visibility;
+  readonly permissions?: ArtifactPermissions;
 }
 
 interface CanonicalFileDef {
@@ -97,8 +120,22 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'meta/evals/system-design',          visibility: 'internal' },
   { path: 'meta/evals/code',                   visibility: 'internal' },
 
-  // sessions (unchanged)
-  { path: 'sessions',                          visibility: 'internal' },
+  // sessions — surfaced in ArtifactsPanel via UI_PANEL_TOP_LEVEL_DIRS with
+  // restricted permissions (delete + download only). Stays `internal` so
+  // artifact-only surfaces (e.g. Transfer/SendSubTab via
+  // UI_VISIBLE_TOP_LEVEL_DIRS) remain sessions-free.
+  {
+    path: 'sessions',
+    visibility: 'internal',
+    permissions: {
+      create: false,
+      upload: false,
+      rename: false,
+      send: false,
+      delete: true,
+      download: true,
+    },
+  },
   { path: 'sessions/architect',                visibility: 'internal' },
   { path: 'sessions/architect/debug',          visibility: 'internal' },
   { path: 'sessions/architect/debug/prompts',  visibility: 'internal' },
@@ -161,6 +198,28 @@ export const UI_VISIBLE_TOP_LEVEL_DIRS: ReadonlyArray<{ name: string; visibility
     .filter(d => d.visibility.startsWith('ui:'))
     .filter(d => !d.path.includes('/'))
     .map(d => ({ name: d.path, visibility: d.visibility }));
+
+/**
+ * Top-level dirs shown in **ArtifactsPanel only** (SSOT for that surface).
+ *
+ * Differs from {@link UI_VISIBLE_TOP_LEVEL_DIRS} by including the
+ * `sessions` row alongside the `ui:*` domains, gated by per-row
+ * {@link ArtifactPermissions}. The order preserves `CANONICAL_DIR_DEFS`
+ * source order, so `sessions` lands at the bottom of the panel.
+ *
+ * Do NOT use this list for transfer / artifact-only surfaces — those
+ * MUST stay sessions-free and consume `UI_VISIBLE_TOP_LEVEL_DIRS`
+ * (see `Transfer/SendSubTab.tsx`'s `ALLOWED_TOP_LEVEL`).
+ */
+export const UI_PANEL_TOP_LEVEL_DIRS: ReadonlyArray<{
+  name: string;
+  visibility: Visibility;
+  permissions?: ArtifactPermissions;
+}> =
+  CANONICAL_DIR_DEFS
+    .filter(d => !d.path.includes('/'))
+    .filter(d => d.visibility.startsWith('ui:') || d.path === 'sessions')
+    .map(d => ({ name: d.path, visibility: d.visibility, permissions: d.permissions }));
 
 /**
  * Top-level file names shown in ArtifactsPanel.

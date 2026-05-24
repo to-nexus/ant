@@ -22,7 +22,7 @@ interface SectionShellProps {
   children: ReactNode;
 }
 
-const ACCENT_VAR: Record<SectionAccent, string> = {
+export const ACCENT_VAR: Record<SectionAccent, string> = {
   violet: 'var(--violet-500)',
   pink: 'var(--pink-500)',
   orange: 'var(--orange-500)',
