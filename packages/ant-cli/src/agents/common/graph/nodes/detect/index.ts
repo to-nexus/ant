@@ -130,9 +130,16 @@ export function createDetectNode<T extends DetectableState>(
         // the infer branch's `target: targets ?? ['plan/prd.md']`
         // behaviour through the matrix-defined SSOT instead of an
         // intent-specific hardcode.
+        //
+        // marble-barking-grass regression — for `target.kind === 'revise'`
+        // intents (rev-spec, rev-sys, …), pass `metadata.refs` so the
+        // helper can promote the single selected ref to target. Without
+        // this, `getDefaultTargetPaths` returned undefined for the revise
+        // family and decompose crashed with "requires exactly one target
+        // file, got 0".
         const explicitTarget = metadata.target?.length
           ? metadata.target
-          : getDefaultTargetPaths(intentId as IntentId, metadata.domain);
+          : getDefaultTargetPaths(intentId as IntentId, metadata.domain, { refs: metadata.refs });
         if (!metadata.target?.length && explicitTarget?.length) {
           console.log(`⚡ [detect] Explicit: target missing → matrix default ${JSON.stringify(explicitTarget)}`);
         }
@@ -175,8 +182,23 @@ export function createDetectNode<T extends DetectableState>(
         // Merge with metadata supplements
         const merged = mergeWithMetadata(inferred, state.actionMetadata);
         intentId = merged.intentId;
+
+        // marble-barking-grass regression — for `target.kind === 'revise'`
+        // intents (rev-spec, rev-sys, …), the infer pipeline rarely fills
+        // `inferred.target` (the design strategy only populates it for
+        // `design-system`; `design-spec` leaves it undefined). Route the
+        // merged refs through the matrix SSOT so the single-ref → target
+        // promotion stays in one place — same helper, same opts shape as
+        // the explicit branch above.
+        const mergedTarget = merged.target?.length
+          ? merged.target
+          : getDefaultTargetPaths(merged.intentId as IntentId, merged.domain, { refs: merged.refs });
+        if (!merged.target?.length && mergedTarget?.length) {
+          console.log(`📋 [detect] Infer: target missing → matrix default ${JSON.stringify(mergedTarget)}`);
+        }
+
         slots = {
-          target: merged.target,
+          target: mergedTarget,
           refs: merged.refs,
           context: merged.context,
           domain: merged.domain,
