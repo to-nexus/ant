@@ -402,7 +402,7 @@ export function SendSubTab() {
                 className={cn(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'self'
-                    ? 'bg-white text-[color:var(--text-1)] shadow-sm'
+                    ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-1)] shadow-sm'
                     : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('self'); }}
@@ -413,7 +413,7 @@ export function SendSubTab() {
                 className={cn(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'other'
-                    ? 'bg-white text-[color:var(--text-1)] shadow-sm'
+                    ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-1)] shadow-sm'
                     : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('other'); setMode('copy'); }}

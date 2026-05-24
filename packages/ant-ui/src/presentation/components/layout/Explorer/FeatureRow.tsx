@@ -260,7 +260,7 @@ export function FeatureRow({
               }}
             >
               <Monitor size={12} />
-              에디터
+              Preview
             </button>
           )}
           {onClear && (

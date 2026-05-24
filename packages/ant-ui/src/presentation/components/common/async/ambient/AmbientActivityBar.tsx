@@ -8,8 +8,10 @@ import { useAmbientSources } from './useAmbientSources';
  * Layout contract: absolute position inside AppNavBar's own stacking
  * context. Do NOT wrap in a fixed container (would re-compute zIndex).
  *
- * Aurora visual: gradient inner strip driven by the `gradient-shift`
- * keyframe in `src/styles/aurora-tokens.css`.
+ * Aurora visual: gradient strip that sweeps left→right via the
+ * `ambient-progress` keyframe defined in `src/styles/aurora-tokens.css`.
+ * The strip stays visible for the entire duration that any ambient
+ * source is active (running task, disconnected SSE, refreshing config).
  */
 export function AmbientActivityBar({ className = '' }: { className?: string }) {
   const { active } = useAmbientSources();
@@ -22,12 +24,12 @@ export function AmbientActivityBar({ className = '' }: { className?: string }) {
       style={{ height: 2, overflow: 'hidden' }}
     >
       <div
-        className="gradient-flow"
         style={{
           width: '40%',
           height: '100%',
           background: 'var(--gradient-aurora)',
           backgroundSize: '200% 200%',
+          animation: 'ambient-progress 1.2s ease-in-out infinite',
         }}
       />
     </div>
