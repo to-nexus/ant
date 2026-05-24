@@ -64,6 +64,16 @@ const STATUS_DEFAULTS: Record<
   completed: { color: 'var(--teal-500)', gradient: 'var(--gradient-cool)' },
 };
 
+/**
+ * Maximum height (px) of the expanded description area. Content longer than
+ * this scrolls vertically within the area rather than growing the card.
+ * Sized to comfortably show ~10–12 lines of description text at the current
+ * font-size / line-height (11.5px / 1.55).
+ */
+const DESCRIPTION_EXPANDED_MAX_HEIGHT = 240;
+/** Collapsed-state height (px) — one line clamp. Mirrors the previous inline value. */
+const DESCRIPTION_COLLAPSED_MAX_HEIGHT = 24;
+
 export function TaskCard({
   task,
   status,
@@ -286,7 +296,9 @@ export function TaskCard({
         </div>
 
         {/* Description — always rendered when present. Clamp to 1 line when
-            collapsed; wrap fully when expanded. */}
+            collapsed; wrap fully when expanded. Expanded state caps the area
+            height and scrolls overflowing content vertically inside the area,
+            so the card itself never grows beyond the cap. */}
         {hasDescription && (
           <div
             className="mb-2 min-w-0"
@@ -294,19 +306,39 @@ export function TaskCard({
               fontSize: 11.5,
               lineHeight: 1.55,
               color: 'var(--text-3)',
-              overflow: 'hidden',
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
+              // Collapsed: hide overflow for one-line clamp.
+              // Expanded: vertical scroll inside the capped area.
+              overflowY: expanded ? 'auto' : 'hidden',
+              overflowX: 'hidden',
+              // Line clamp applies only when collapsed; expanded wraps freely.
+              display: expanded ? 'block' : '-webkit-box',
+              WebkitBoxOrient: expanded ? undefined : 'vertical',
               WebkitLineClamp: expanded ? 'unset' : 1,
-              textOverflow: 'ellipsis',
-              maxHeight: expanded ? 1000 : 24,
+              textOverflow: expanded ? 'clip' : 'ellipsis',
+              maxHeight: expanded
+                ? DESCRIPTION_EXPANDED_MAX_HEIGHT
+                : DESCRIPTION_COLLAPSED_MAX_HEIGHT,
               whiteSpace: expanded ? 'pre-wrap' : 'normal',
               overflowWrap: 'anywhere',
               transition: 'max-height 300ms var(--ease-smooth)',
+              // Prevent the browser from chaining the scroll up to the kanban
+              // board when the description reaches its own scroll boundary.
+              overscrollBehavior: 'contain',
             }}
             onClick={(e) => {
               // Allow text selection within the expanded description.
               if (expanded) e.stopPropagation();
+            }}
+            onWheel={(e) => {
+              // Block wheel propagation to the kanban board / card root only
+              // when the expanded area is actually scrollable. This keeps the
+              // wheel gesture local to the description and avoids scrolling
+              // the parent board behind it.
+              if (!expanded) return;
+              const el = e.currentTarget;
+              if (el.scrollHeight > el.clientHeight) {
+                e.stopPropagation();
+              }
             }}
           >
             {task.description}

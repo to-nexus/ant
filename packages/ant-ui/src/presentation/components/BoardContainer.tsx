@@ -1,7 +1,13 @@
 import { ReactNode } from 'react';
 
 interface BoardContainerProps {
-  title: string;
+  /**
+   * Optional board title. When omitted (or empty), the title `<h3>` is not
+   * rendered — used by views where the surrounding chrome (e.g. the
+   * MainPanel view-mode toggle) already names the current board, so a
+   * second heading would be redundant.
+   */
+  title?: string;
   titleActions?: ReactNode;  // 타이틀 바로 옆에 위치할 요소
   headerActions?: ReactNode; // 우측 정렬될 요소
   children: ReactNode;
@@ -39,12 +45,14 @@ export function BoardContainer({
       >
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h3
-              className="text-sm font-semibold whitespace-nowrap"
-              style={{ color: 'var(--text-1)' }}
-            >
-              {title}
-            </h3>
+            {title ? (
+              <h3
+                className="text-sm font-semibold whitespace-nowrap"
+                style={{ color: 'var(--text-1)' }}
+              >
+                {title}
+              </h3>
+            ) : null}
             {titleActions && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 {titleActions}

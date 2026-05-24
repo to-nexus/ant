@@ -336,44 +336,46 @@ function ActionsCTA() {
   const openActionsPanel = useStore(s => s.openActionsPanel);
   const [hover, setHover] = useState(false);
 
+  // Aurora orange-tinted action CTA — handoff a3-chat.jsx L532-560.
+  // Aurora concept preserved (orange-tinted glass surface), readability
+  // restored in dark mode by switching the foreground from alpha-faded
+  // amber to a saturated orange ramp that holds AA contrast against
+  // BOTH the light orange-300/14% and dark orange-300/14% surfaces.
+  // Tailwind dark: utility classes provide theme-aware color without
+  // redefining global tokens.
   return (
     <button
       type="button"
       onClick={() => openActionsPanel()}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="mx-4 mt-2 px-3 py-2 flex items-center gap-2 text-sm w-[calc(100%-2rem)]"
+      className="mx-4 mt-2 px-3 py-2 flex items-center gap-2 w-[calc(100%-2rem)]"
       style={{
-        background: 'var(--gradient-aurora-soft)',
-        backgroundSize: '180% 180%',
-        backgroundPosition: hover ? '100% 100%' : '0% 0%',
-        border: '1px solid oklch(88% 0.06 50)',
-        borderRadius: 'var(--r-lg)',
-        boxShadow: hover
-          ? '0 6px 14px -6px oklch(70% 0.18 60 / 0.35)'
-          : 'var(--shadow-xs)',
-        color: 'var(--text-1)',
+        background: hover
+          ? 'oklch(from var(--orange-300) l c h / 0.22)'
+          : 'oklch(from var(--orange-300) l c h / 0.14)',
+        border: '1px solid oklch(from var(--orange-400) l c h / 0.35)',
+        borderRadius: 'var(--r-sm)',
         cursor: 'pointer',
-        transition:
-          'background-position 360ms var(--ease-smooth), box-shadow 220ms var(--ease-smooth)',
+        transition: 'background var(--dur-fast) var(--ease-smooth)',
       }}
     >
       <Zap
-        className="w-4 h-4 flex-shrink-0"
-        style={{ color: 'var(--amber-500)' }}
+        className="w-4 h-4 flex-shrink-0 text-orange-600 dark:text-orange-300"
       />
-      <span className="font-medium" style={{ color: 'var(--text-1)' }}>
+      <span
+        className="font-bold text-xs text-orange-700 dark:text-orange-200"
+      >
         {t('ctaButton')}
       </span>
       <span
-        className="truncate hidden sm:inline"
-        style={{ color: 'var(--text-3)' }}
+        className="truncate hidden sm:inline text-[11px] text-orange-700/80 dark:text-orange-200/85"
       >
         — {t('title')}
       </span>
       <ChevronRight
-        className="w-3 h-3 ml-auto flex-shrink-0"
-        style={{ color: 'var(--text-3)' }}
+        className="w-3 h-3 ml-auto flex-shrink-0 text-orange-500 dark:text-orange-300"
+        strokeWidth={2.5}
       />
     </button>
   );

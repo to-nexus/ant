@@ -33,3 +33,8 @@ export {
 } from './WizardStepIndicator';
 export { IconOrb, type IconOrbProps, type IconOrbTone } from './IconOrb';
 export { ViewModeButton, type ViewModeButtonProps } from './ViewModeButton';
+export {
+  BoardViewModeToggle,
+  type BoardViewModeToggleProps,
+  type BoardViewModeToggleOption,
+} from './BoardViewModeToggle';

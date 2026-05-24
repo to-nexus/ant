@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Timer, Coins } from 'lucide-react';
+import { CircleDot, Zap } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage, PhaseTokenUsage } from '@/domain/models/types';
@@ -326,7 +326,7 @@ export function ElapsedTimeBadge({
         }}
       >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Timer className={iconSize} style={{ color: 'var(--violet-500)' }} />
+          <CircleDot className={iconSize} style={{ color: 'var(--violet-500)' }} />
           <span
             className={cn(textSize, 'font-medium leading-none')}
             style={{ color: 'var(--violet-500)' }}
@@ -614,7 +614,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
         }}
       >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Coins className={iconSize} style={{ color: 'var(--orange-500)' }} />
+          <Zap className={iconSize} style={{ color: 'var(--orange-500)' }} />
           <span
             className={cn(textSize, 'font-mono font-medium leading-none whitespace-nowrap')}
             style={{ color: 'var(--orange-500)' }}

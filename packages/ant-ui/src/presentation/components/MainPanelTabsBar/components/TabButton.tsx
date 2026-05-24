@@ -3,6 +3,21 @@ import { useTranslation } from 'react-i18next';
 import { X, LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 
+export type TabAccent =
+  | 'aurora'
+  | 'violet-pink'
+  | 'pink-orange'
+  | 'cool'
+  | 'sunset';
+
+const ACCENT_GRADIENTS: Record<TabAccent, string> = {
+  aurora: 'var(--gradient-aurora)',
+  'violet-pink': 'var(--gradient-violet-pink)',
+  'pink-orange': 'var(--gradient-pink-orange)',
+  cool: 'var(--gradient-cool)',
+  sunset: 'var(--gradient-sunset)',
+};
+
 interface TabButtonProps {
   icon: LucideIcon;
   label: string;
@@ -22,6 +37,11 @@ interface TabButtonProps {
   showTrailingWhenCollapsed?: boolean;
   showCloseButton?: boolean;
   title?: string;
+  /**
+   * Accent gradient applied to the active-tab bottom indicator. Defaults to
+   * `'aurora'` when omitted. Unknown values fall back to `'aurora'`.
+   */
+  accent?: TabAccent;
   onClick: () => void;
   onClose?: () => void;
 }
@@ -44,6 +64,7 @@ export function TabButton({
   showTrailingWhenCollapsed = false,
   showCloseButton = false,
   title,
+  accent = 'aurora',
   onClick,
   onClose,
 }: TabButtonProps) {
@@ -63,31 +84,53 @@ export function TabButton({
   const [rootHover, setRootHover] = useState(false);
   const [closeHover, setCloseHover] = useState(false);
 
+  const accentGradient =
+    ACCENT_GRADIENTS[accent] ?? ACCENT_GRADIENTS.aurora;
+
+  const baseRootStyle: React.CSSProperties = {
+    position: 'relative',
+    border: '1px solid transparent',
+    borderRadius: 'var(--r-sm)',
+    padding: showText ? '6px 12px' : undefined,
+    fontSize: '12.5px',
+    fontWeight: 600,
+  };
+
   const rootStyle: React.CSSProperties = isActive
     ? {
-        position: 'relative',
-        background: 'var(--bg-surface)',
+        ...baseRootStyle,
+        background: 'oklch(from var(--bg-surface) l c h / 0.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         color: 'var(--violet-700)',
-        border: '1px solid var(--violet-200)',
-        boxShadow: 'var(--shadow-xs)',
-        borderRadius: 'var(--r-sm) var(--r-sm) 0 0',
+        boxShadow: 'none',
       }
     : {
-        position: 'relative',
+        ...baseRootStyle,
         background: rootHover ? 'var(--bg-hover)' : 'transparent',
         color: 'var(--text-3)',
-        border: '1px solid transparent',
       };
 
-  const closeStyle: React.CSSProperties = closeHover
-    ? { background: 'var(--bg-hover)', color: 'var(--text-1)' }
-    : { color: 'var(--text-3)' };
+  const closeStyle: React.CSSProperties = {
+    background: 'transparent',
+    color: 'inherit',
+    border: 'none',
+    borderRadius: 4,
+    width: 16,
+    height: 16,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: closeHover ? 1 : 0.6,
+    transition: 'opacity 120ms ease',
+    cursor: 'pointer',
+  };
 
   return (
     <div
       className={cn(
-        'relative flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
-        showText ? 'px-3' : 'px-2 min-w-[36px] min-h-[36px] justify-center',
+        'relative flex items-center py-1.5',
+        !showText && 'px-2 min-w-[36px] min-h-[36px] justify-center',
         truncateLabel && showText && 'max-w-[300px] min-w-0',
         !isActive && 'cursor-pointer',
       )}
@@ -98,8 +141,11 @@ export function TabButton({
       onMouseEnter={() => !isActive && setRootHover(true)}
       onMouseLeave={() => setRootHover(false)}
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Icon className="w-4 h-4 flex-shrink-0" />
+      <div
+        className="flex items-center flex-1 min-w-0"
+        style={{ gap: 6 }}
+      >
+        <Icon className="w-[13px] h-[13px] flex-shrink-0" />
         {showText && (
           <span
             className={cn(
@@ -124,26 +170,28 @@ export function TabButton({
           }}
           onMouseEnter={() => setCloseHover(true)}
           onMouseLeave={() => setCloseHover(false)}
-          className={cn(
-            'p-0.5 rounded',
-            !showText && 'hidden',
-          )}
+          className={cn(!showText && 'hidden')}
           style={closeStyle}
           title={t('tabs.closeTab', { label: label.toLowerCase() })}
         >
-          <X className="w-3.5 h-3.5" />
+          <X
+            className="w-[11px] h-[11px]"
+            strokeWidth={2.5}
+          />
         </button>
       )}
       {isActive && (
         <span
           aria-hidden
+          className="gradient-flow"
           style={{
             position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: '1px',
-            background: 'var(--violet-500)',
+            left: 10,
+            right: 10,
+            bottom: -7,
+            height: 2.5,
+            borderRadius: 2,
+            background: accentGradient,
           }}
         />
       )}

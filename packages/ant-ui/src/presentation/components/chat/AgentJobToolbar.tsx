@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Send, ChevronDown, Square, Bot, Briefcase } from 'lucide-react';
+import { Send, ChevronDown, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
@@ -161,9 +161,21 @@ export function AgentJobToolbar({
 
   const handleStop = () => stopJob();
 
-  const agentLabel = currentAgent?.displayLabel || '🤖 Agent';
+  // Labels carry their own emoji prefix (e.g. "🤖 Architect", "💻 Code")
+  // composed in useAgentJobOptions — that emoji IS the visual cue. No
+  // adjacent lucide icon is rendered, otherwise two icons would stack.
+  // In compact mode we surface only the first whitespace-delimited token
+  // of the label (the emoji) so the button stays icon-sized without
+  // losing the agent/job affordance.
+  const agentLabel =
+    currentAgent?.displayLabel ||
+    t('input.agentPlaceholder', { defaultValue: 'Agent' });
   const jobLabel =
-    chatPolicy.reason === 'no-job' ? '🎯 Job' : currentJob?.label || '🎯 Job';
+    chatPolicy.reason === 'no-job'
+      ? t('input.jobPlaceholder', { defaultValue: 'Job' })
+      : currentJob?.label || t('input.jobPlaceholder', { defaultValue: 'Job' });
+  const agentCompactToken = agentLabel.split(' ')[0];
+  const jobCompactToken = jobLabel.split(' ')[0];
 
   return (
     <div
@@ -176,34 +188,43 @@ export function AgentJobToolbar({
       className="flex items-center justify-between gap-2 px-2 py-1.5"
     >
       <div className="flex items-center gap-1 flex-shrink-0">
-        {/* Agent Selector */}
+        {/* Agent Selector — handoff a3-cards.jsx L1366-1378.
+            Layout: [emoji-from-label] [text-after-emoji?] <ChevronDown>.
+            Compact mode collapses to emoji + chevron; the emoji is sourced
+            from the label itself (displayLabel = "🤖 Architect") so there
+            is no separate lucide icon to stack on top. Active dropdown
+            applies violet-tint background overlay. */}
         <div className="relative" ref={agentMenuRef}>
           <button
             onClick={() => setShowAgentMenu(!showAgentMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className={`flex items-center gap-1 text-xs
-                       bg-[color:var(--bg-surface)]
-                       border border-[color:var(--border-1)]
-                       text-[color:var(--text-2)]
-                       rounded hover:bg-[color:var(--bg-hover)]
-                       transition-colors
+            className={`flex items-center gap-1 text-xs font-semibold
+                       border border-[color:var(--border-2)]
+                       text-[color:var(--text-1)]
+                       hover:bg-[color:var(--bg-hover)]
+                       transition-all
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
-            title={compact ? agentLabel : undefined}
-            aria-label={compact ? agentLabel : undefined}
+                       px-2 py-1`}
+            style={{
+              background: showAgentMenu
+                ? 'oklch(from var(--violet-300) l c h / 0.18)'
+                : 'var(--bg-surface)',
+              borderRadius: 'var(--r-sm)',
+            }}
+            title={agentLabel}
+            aria-label={agentLabel}
           >
             {compact ? (
-              <Bot className="w-3.5 h-3.5" />
+              <span className="flex-shrink-0">{agentCompactToken}</span>
             ) : (
-              <>
-                <span className="truncate max-w-[120px]">{agentLabel}</span>
-                <ChevronDown
-                  className={`w-3 h-3 text-[color:var(--text-3)] transition-transform ${
-                    showAgentMenu ? 'rotate-180' : ''
-                  }`}
-                />
-              </>
+              <span className="truncate max-w-[120px]">{agentLabel}</span>
             )}
+            <ChevronDown
+              className={`w-2.5 h-2.5 text-[color:var(--text-3)] transition-transform flex-shrink-0 ${
+                showAgentMenu ? 'rotate-180' : ''
+              }`}
+              strokeWidth={2.5}
+            />
           </button>
 
           {showAgentMenu && agentsWithMetadata.length > 0 && (
@@ -251,34 +272,43 @@ export function AgentJobToolbar({
           )}
         </div>
 
-        {/* Job Selector */}
+        {/* Job Selector — handoff a3-cards.jsx L1381-1392.
+            Layout: [emoji-from-label] [text-after-emoji?] <ChevronDown>.
+            Compact mode collapses to emoji + chevron; the emoji is sourced
+            from the label itself (label = "💻 Code") so there is no
+            separate lucide icon to stack on top. Active dropdown applies
+            violet-tint background overlay (same as agent). */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowJobMenu(!showJobMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className={`flex items-center gap-1 text-xs
-                       bg-[color:var(--bg-surface)]
-                       border border-[color:var(--border-1)]
-                       text-[color:var(--text-2)]
-                       rounded hover:bg-[color:var(--bg-hover)]
-                       transition-colors
+            className={`flex items-center gap-1 text-xs font-semibold
+                       border border-[color:var(--border-2)]
+                       text-[color:var(--text-1)]
+                       hover:bg-[color:var(--bg-hover)]
+                       transition-all
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
-            title={compact ? jobLabel : undefined}
-            aria-label={compact ? jobLabel : undefined}
+                       px-2 py-1`}
+            style={{
+              background: showJobMenu
+                ? 'oklch(from var(--violet-300) l c h / 0.18)'
+                : 'var(--bg-surface)',
+              borderRadius: 'var(--r-sm)',
+            }}
+            title={jobLabel}
+            aria-label={jobLabel}
           >
             {compact ? (
-              <Briefcase className="w-3.5 h-3.5" />
+              <span className="flex-shrink-0">{jobCompactToken}</span>
             ) : (
-              <>
-                <span className="truncate max-w-[120px]">{jobLabel}</span>
-                <ChevronDown
-                  className={`w-3 h-3 text-[color:var(--text-3)] transition-transform ${
-                    showJobMenu ? 'rotate-180' : ''
-                  }`}
-                />
-              </>
+              <span className="truncate max-w-[120px]">{jobLabel}</span>
             )}
+            <ChevronDown
+              className={`w-2.5 h-2.5 text-[color:var(--text-3)] transition-transform flex-shrink-0 ${
+                showJobMenu ? 'rotate-180' : ''
+              }`}
+              strokeWidth={2.5}
+            />
           </button>
 
           {showJobMenu && jobsWithMetadata.length > 0 && (

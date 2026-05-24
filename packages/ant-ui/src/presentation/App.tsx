@@ -577,7 +577,7 @@ function AppShell() {
 
         {/* IDE View */}
         <div
-          className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}
+          className={`flex-1 pt-14 transition-opacity duration-350 ${viewOpacity}`}
           style={{ display: mainView === 'codeIde' ? 'block' : 'none' }}
         >
           <div className="relative w-full h-full">
@@ -599,7 +599,7 @@ function AppShell() {
 
         {/* Agents View */}
         <div
-          className={`flex-1 gap-0 overflow-hidden pt-16 transition-opacity duration-350 ${viewOpacity}`}
+          className={`flex-1 gap-0 overflow-hidden pt-14 transition-opacity duration-350 ${viewOpacity}`}
           style={{ display: mainView !== 'codeIde' ? 'flex' : 'none' }}
         >
           {/* Explorer Panel */}
