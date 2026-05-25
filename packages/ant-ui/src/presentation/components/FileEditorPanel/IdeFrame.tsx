@@ -74,6 +74,20 @@ export function IdeFrame({
     void startIdeSession(projectId, featureName);
   };
 
+  // Mount the live iframe as soon as the session has a usable baseUrl,
+  // even while the lifecycle is still 'connecting' (kind === 'frameLoading'
+  // or 'reconnecting'). Without this, the iframe never mounts during
+  // frameLoading, so its `onLoad` never fires, so `iframeLoaded()` is
+  // never called, so the session is stuck in 'frameLoading' forever.
+  // The sibling overlay (IdeConnectionPanel, overlayMode='frameLoading')
+  // continues to render the StepRail 'frame-load' label on top of the
+  // iframe until onLoad transitions the session to 'connected'.
+  const shouldMountIframe =
+    !!ideBaseUrl &&
+    (session.kind === 'connected' ||
+      session.kind === 'frameLoading' ||
+      session.kind === 'reconnecting');
+
   switch (lifecycle) {
     case 'idle':
       return (
@@ -84,6 +98,17 @@ export function IdeFrame({
         />
       );
     case 'connecting':
+      if (shouldMountIframe) {
+        return (
+          <RunningState
+            ideBaseUrl={ideBaseUrl!}
+            ideWorkspacePath={ideWorkspacePath}
+            ideReloadTimestamp={ideReloadTimestamp}
+            projectId={projectId}
+            featureName={featureName}
+          />
+        );
+      }
       return <ConnectingState currentStep={stepIdFromSession(session)} />;
     case 'running':
       // The 'connected' branch wraps the live iframe. Without baseUrl we
