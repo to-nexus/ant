@@ -99,7 +99,7 @@ export function AccountConfigEditor({
 
   // Scroll wiring
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const activeSection = useActiveSection(
+  const [activeSection, setActiveSection] = useActiveSection(
     SECTION_IDS as unknown as string[],
     scrollerRef,
   );
@@ -321,11 +321,12 @@ export function AccountConfigEditor({
         },
       ]}
       active={activeSection}
-      onSelect={(id) =>
+      onSelect={(id) => {
+        setActiveSection(id);
         document
           .getElementById(id)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }}
     />
   );
 

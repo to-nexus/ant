@@ -89,7 +89,7 @@ export function PreviewConfigEditor() {
 
   // Single scroller for TwoColLayout + DockedConsole
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const activeSection = useActiveSection(SECTION_IDS, scrollerRef);
+  const [activeSection, setActiveSection] = useActiveSection(SECTION_IDS, scrollerRef);
 
   const dockedLogs: DockedConsoleLog[] = logs;
 
@@ -163,8 +163,9 @@ export function PreviewConfigEditor() {
   ], [t, phase, connEditor.localConns.length, issuesTotal]);
 
   const handleTocSelect = useCallback((id: string) => {
+    setActiveSection(id);
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+  }, [setActiveSection]);
 
   // Outer Aurora chrome shared by all states (loading / empty / ready)
   const outerStyle: React.CSSProperties = {

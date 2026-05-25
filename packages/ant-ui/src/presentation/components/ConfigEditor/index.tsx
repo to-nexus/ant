@@ -60,7 +60,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const activeSection = useActiveSection([...SECTION_IDS], scrollerRef);
+  const [activeSection, setActiveSection] = useActiveSection([...SECTION_IDS], scrollerRef);
 
   // Git snapshot (determines if branchBase is editable)
   const snapshot = useGitSnapshot();
@@ -372,6 +372,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       ]}
       active={activeSection}
       onSelect={(id) => {
+        setActiveSection(id);
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }}
     />
