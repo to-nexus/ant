@@ -44,26 +44,16 @@ function routeAfterPlannerResolve(state: PlanGraphState): string {
 }
 
 /**
- * Phase D — route after detect for planner-plan.
- * `proceed` continues to `generate` (plan job uses detect as its tier
- * entry; there is no decompose node). `blocked` / `redirect-suggested`
- * → __end__ so the FE renders the choice card detect already emitted.
+ * Routes after detect for planner-plan. `state.resolvedAction` is the
+ * proceed signal — detect populates it on success and leaves it unset on
+ * blocked / redirect-suggested (displayMessage already streamed to chat).
  */
 function routeAfterPlannerDetect(state: PlanGraphState): string {
-  const detect = (state as any).detect as { status?: string } | undefined;
-  if (!detect) {
-    if (state.resolvedAction) {
-      console.log('[PlannerDetectRouter] No detect channel but resolvedAction present → generate');
-      return 'generate';
-    }
-    console.log('[PlannerDetectRouter] No detect channel → __end__');
-    return '__end__';
-  }
-  if (detect.status === 'proceed') {
-    console.log('[PlannerDetectRouter] status=proceed → generate');
+  if (state.resolvedAction) {
+    console.log('[PlannerDetectRouter] resolvedAction present → generate');
     return 'generate';
   }
-  console.log(`[PlannerDetectRouter] status=${detect.status} → __end__`);
+  console.log('[PlannerDetectRouter] no resolvedAction → __end__');
   return '__end__';
 }
 

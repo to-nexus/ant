@@ -27,8 +27,6 @@ export const PlanAnnotation = Annotation.Root({
   awaitingClarify: Annotation<any>,
   featureContext: Annotation<any>,
   turnId: Annotation<any>,
-  // Phase D — Detect channel for escalation reuse and progressibility surfacing.
-  detect: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {

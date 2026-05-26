@@ -650,8 +650,6 @@ export const CodeGraphChannels = {
       analysis: Annotation<any>,
       directHints: Annotation<any>,
       featureContext: Annotation<any>,
-      // Phase C — escalation reuse cache for detect (`state.detect`).
-      detect: Annotation<any>,
       specClarify: Annotation<any>,
       needsEscalation: Annotation<any>,
       _promotedThisJob: Annotation<any>({
