@@ -131,40 +131,40 @@
    THEME — LIGHT
    ============================================================================ */
 [data-theme="light"] {
-  --bg-canvas: oklch(97.5% 0.022 320);     /* warm lavender-peach */
-  --bg-app: oklch(98.2% 0.018 315);
-  --bg-surface: oklch(99% 0.012 320);       /* tinted white */
-  --bg-surface-2: oklch(96.5% 0.028 305);   /* lavender wash */
-  --bg-surface-3: oklch(93.5% 0.045 300);
-  --bg-hover: oklch(94.5% 0.04 305);
-  --bg-active: oklch(91% 0.06 295);
-  --bg-inverted: oklch(16% 0.06 290);
+  --bg-canvas:    oklch(93.6% 0.045 308);   /* tinted lavender-cream (was 97.5/0.022) */
+  --bg-app:       oklch(95.2% 0.035 312);
+  --bg-surface:   oklch(99% 0.01 320);      /* near-white — cards LIFT off canvas */
+  --bg-surface-2: oklch(91% 0.055 300);     /* deeper recess (gutters, inputs) */
+  --bg-surface-3: oklch(86.5% 0.075 295);   /* deepest tinted recess */
+  --bg-hover:     oklch(95.5% 0.04 305);    /* subtle hover on white surfaces */
+  --bg-active:    oklch(91% 0.07 295);
+  --bg-inverted:  oklch(16% 0.06 290);
 
-  --text-1: oklch(20% 0.05 290);
-  --text-2: oklch(40% 0.06 290);
-  --text-3: oklch(55% 0.06 290);
-  --text-4: oklch(68% 0.04 295);
+  --text-1: oklch(19% 0.06 290);
+  --text-2: oklch(37% 0.07 290);
+  --text-3: oklch(52% 0.07 290);
+  --text-4: oklch(64% 0.05 295);
   --text-on-brand: #ffffff;
   --text-inverted: oklch(98% 0.012 290);
 
-  --border-1: oklch(91% 0.028 295);
-  --border-2: oklch(86% 0.042 295);
-  --border-3: oklch(78% 0.06 290);
-  --border-brand: var(--violet-300);
+  --border-1: oklch(85% 0.05 295);          /* visible card edge on tinted canvas */
+  --border-2: oklch(78% 0.07 295);
+  --border-3: oklch(68% 0.10 290);
+  --border-brand: var(--violet-400);
 
-  --shadow-xs: 0 1px 2px oklch(40% 0.18 290 / 0.08);
-  --shadow-sm: 0 4px 12px oklch(45% 0.20 305 / 0.10), 0 1px 3px oklch(45% 0.18 290 / 0.06);
-  --shadow-md: 0 12px 32px oklch(50% 0.22 320 / 0.16), 0 4px 8px oklch(50% 0.18 290 / 0.10);
-  --shadow-lg: 0 24px 56px oklch(50% 0.24 320 / 0.22), 0 8px 16px oklch(50% 0.20 290 / 0.10);
-  --shadow-xl: 0 36px 80px oklch(50% 0.26 320 / 0.30);
-  --shadow-glow-violet: 0 0 40px oklch(64% 0.26 290 / 0.55);
-  --shadow-glow-pink:   0 0 40px oklch(66% 0.28 340 / 0.55);
-  --shadow-glow-aurora: 0 12px 40px oklch(58% 0.24 320 / 0.40), 0 4px 14px oklch(60% 0.22 290 / 0.30);
+  --shadow-xs: 0 1px 2px   oklch(40% 0.20 295 / 0.12);
+  --shadow-sm: 0 4px 14px  oklch(45% 0.22 305 / 0.16), 0 1px 3px oklch(45% 0.18 290 / 0.10);
+  --shadow-md: 0 14px 36px oklch(50% 0.24 315 / 0.22), 0 4px 10px oklch(50% 0.20 290 / 0.14);
+  --shadow-lg: 0 28px 64px oklch(50% 0.26 320 / 0.30), 0 8px 20px oklch(50% 0.22 290 / 0.18);
+  --shadow-xl: 0 40px 96px oklch(50% 0.28 320 / 0.40);
+  --shadow-glow-violet: 0 0 44px oklch(64% 0.26 290 / 0.65);
+  --shadow-glow-pink:   0 0 44px oklch(66% 0.28 340 / 0.65);
+  --shadow-glow-aurora: 0 14px 44px oklch(58% 0.26 320 / 0.50), 0 5px 16px oklch(60% 0.22 290 / 0.36);
 
-  --mesh-1: oklch(72% 0.26 290 / 0.50);     /* violet (strong) */
-  --mesh-2: oklch(72% 0.26 340 / 0.45);     /* pink */
-  --mesh-3: oklch(78% 0.20 50  / 0.40);     /* orange */
-  --mesh-4: oklch(72% 0.18 195 / 0.32);     /* teal */
+  --mesh-1: oklch(70% 0.30 290 / 0.68);     /* violet — punchy ambient */
+  --mesh-2: oklch(72% 0.30 340 / 0.62);     /* pink */
+  --mesh-3: oklch(78% 0.22 50  / 0.55);     /* orange */
+  --mesh-4: oklch(72% 0.20 195 / 0.45);     /* teal */
 
   --status-todo-fg: var(--violet-700);
   --status-todo-bg: var(--violet-100);
