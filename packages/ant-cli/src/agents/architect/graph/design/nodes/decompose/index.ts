@@ -222,9 +222,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
 async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphState> {
   const phaseStart = Date.now();
 
+  // Defense-in-depth invariant. routeAfterDetect (design/routing.ts) must
+  // end the graph when resolvedAction is unset (detect emitted blocked /
+  // redirect-suggested without writing it). Reaching decompose without an
+  // RAC means routing regressed — throw loudly instead of falling through
+  // to the system-design branch (the silver-boiling-grape symptom).
+  if (!state.resolvedAction) {
+    throw new Error(
+      '[Design Decompose] Invariant violation: state.resolvedAction is unset. ' +
+      'Detect must populate resolvedAction before routing here — see design/routing.ts:routeAfterDetect.',
+    );
+  }
+
   console.log('\n📋 ══════════════════════════ DESIGN DECOMPOSE PHASE ══════════════════════════');
-  console.log(`   Intent group: ${state.resolvedAction?.intentGroup || 'unknown'}`);
-  console.log(`   Job mode: ${state.resolvedAction?.mode || 'unknown'}`);
+  console.log(`   Intent group: ${state.resolvedAction.intentGroup || 'unknown'}`);
+  console.log(`   Job mode: ${state.resolvedAction.mode || 'unknown'}`);
   console.log('═══════════════════════════════════════════════════════════════════════════════\n');
 
   // Activity banner
