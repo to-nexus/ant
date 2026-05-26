@@ -31,7 +31,8 @@ interface MainPanelProps {
 export function MainPanel({ children, headerBar, footer, className = '' }: MainPanelProps) {
   return (
     <main 
-      className={`flex-1 bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden transition-colors ${className}`}
+      className={`flex-1 flex flex-col overflow-hidden transition-colors ${className}`}
+      style={{ background: 'var(--bg-base)' }}
       data-main-panel
     >
       {/* Header Bar (Status/Context + Layout Controls) */}

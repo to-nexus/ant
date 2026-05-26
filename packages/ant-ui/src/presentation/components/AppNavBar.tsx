@@ -115,9 +115,17 @@ export function AppNavBar({}: AppNavBarProps) {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-gray-50 dark:bg-[#0d1117] border-b border-gray-300 dark:border-[#30363d] shadow-md transition-colors">
-      <div className="px-2 sm:px-4 py-2 sm:py-3">
-        <div className="flex items-center justify-between gap-2">
+    <header
+      className="fixed top-0 left-0 right-0 z-50"
+      style={{
+        height: 56,
+        background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-2)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      <div className="px-2 sm:px-4 h-full flex items-center">
+        <div className="flex items-center justify-between gap-2 w-full">
           <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
             <a href="/" className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
               <img
@@ -125,7 +133,20 @@ export function AppNavBar({}: AppNavBarProps) {
                 alt={t('brand.logoAlt')}
                 className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0"
               />
-              <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">Ant</h1>
+              <h1
+                className="hidden md:block text-xl font-display font-bold tracking-tight whitespace-nowrap gradient-flow"
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 800,
+                  background: 'var(--gradient-aurora)',
+                  backgroundSize: '200% 200%',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                }}
+              >
+                ANT
+              </h1>
             </a>
 
             {/* No separate mode badge — the user surface already conveys
@@ -133,17 +154,33 @@ export function AppNavBar({}: AppNavBarProps) {
                 shows Sign In or the signed-in user dropdown. */}
 
             {/* View Mode Selector */}
-            <div className="view-mode-selector flex items-center gap-1 ml-2 sm:ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg relative">
+            <div
+              className="view-mode-selector flex items-center gap-1 ml-2 sm:ml-4 p-1 relative"
+              style={{
+                background: 'var(--bg-surface-2)',
+                borderRadius: 'var(--r-md)',
+              }}
+            >
               {/* Agents Button */}
               <button
                 onClick={() => setMainView('agents')}
-                className={`
-                  px-1.5 sm:px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
-                  ${mainView === 'agents'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
-                  }
-                `}
+                className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
+                style={
+                  mainView === 'agents'
+                    ? {
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--violet-200)',
+                        color: 'var(--violet-700)',
+                        boxShadow: 'var(--shadow-xs)',
+                        borderRadius: 'var(--r-sm)',
+                      }
+                    : {
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        color: 'var(--text-3)',
+                        borderRadius: 'var(--r-sm)',
+                      }
+                }
               >
                 <Bot className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
@@ -152,13 +189,23 @@ export function AppNavBar({}: AppNavBarProps) {
               {/* Editor Button */}
               <button
                 onClick={handleCodeIdeViewSwitch}
-                className={`
-                  px-1.5 sm:px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border
-                  ${mainView === 'codeIde'
-                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-white shadow-md border-blue-200 dark:border-transparent'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
-                  }
-                `}
+                className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
+                style={
+                  mainView === 'codeIde'
+                    ? {
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--violet-200)',
+                        color: 'var(--violet-700)',
+                        boxShadow: 'var(--shadow-xs)',
+                        borderRadius: 'var(--r-sm)',
+                      }
+                    : {
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        color: 'var(--text-3)',
+                        borderRadius: 'var(--r-sm)',
+                      }
+                }
                 title={selectedProject ? t('viewMode.openEditor') : t('viewMode.selectProjectFirst')}
               >
                 <Code2 className="w-3.5 h-3.5" />
@@ -167,9 +214,20 @@ export function AppNavBar({}: AppNavBarProps) {
 
               {/* Tooltip for Editor button */}
               {editorTooltip && (
-                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-gray-900 dark:bg-gray-700 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-50">
+                <div
+                  className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 text-xs px-3 py-2 whitespace-nowrap z-50"
+                  style={{
+                    background: 'var(--bg-inverted)',
+                    color: 'var(--text-inverted)',
+                    boxShadow: 'var(--shadow-md)',
+                    borderRadius: 'var(--r-sm)',
+                  }}
+                >
                   {editorTooltip}
-                  <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                  <div
+                    className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-2 h-2 rotate-45"
+                    style={{ background: 'var(--bg-inverted)' }}
+                  ></div>
                 </div>
               )}
             </div>
@@ -180,36 +238,66 @@ export function AppNavBar({}: AppNavBarProps) {
             <div className="relative" ref={langMenuRef}>
               <button
                 onClick={() => setShowLangMenu(!showLangMenu)}
-                className="inline-flex items-center gap-1.5 px-1.5 sm:px-2.5 py-1.5 text-xs font-medium rounded-md
-                         bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300
-                         hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700
-                         transition-colors"
+                className="inline-flex items-center gap-1.5 px-1.5 sm:px-2.5 py-1.5 text-xs font-medium"
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-2)',
+                  color: 'var(--text-2)',
+                  borderRadius: 'var(--r-sm)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-surface-2)';
+                }}
                 title={t('language.label')}
               >
                 <Globe className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{LANGUAGE_LABELS[language]}</span>
               </button>
               {showLangMenu && (
-                <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800
-                              rounded-md shadow-lg border border-gray-200 dark:border-gray-700
-                              py-1 z-50">
-                  {SUPPORTED_LANGUAGES.map((lang) => (
-                    <button
-                      key={lang}
-                      onClick={() => {
-                        setLanguage(lang);
-                        setShowLangMenu(false);
-                      }}
-                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors flex items-center justify-between
-                        ${language === lang
-                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300'
-                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                    >
-                      {LANGUAGE_LABELS[lang]}
-                      {language === lang && <span className="text-blue-500">✓</span>}
-                    </button>
-                  ))}
+                <div
+                  className="absolute top-full right-0 mt-1 w-32 py-1 z-50"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-2)',
+                    borderRadius: 'var(--r-md)',
+                    boxShadow: 'var(--shadow-md)',
+                  }}
+                >
+                  {SUPPORTED_LANGUAGES.map((lang) => {
+                    const selected = language === lang;
+                    return (
+                      <button
+                        key={lang}
+                        onClick={() => {
+                          setLanguage(lang);
+                          setShowLangMenu(false);
+                        }}
+                        className="w-full px-3 py-1.5 text-left text-sm flex items-center justify-between"
+                        style={{
+                          background: selected ? 'var(--bg-active)' : 'transparent',
+                          color: selected ? 'var(--violet-700)' : 'var(--text-2)',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!selected) {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!selected) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
+                      >
+                        {LANGUAGE_LABELS[lang]}
+                        {selected && (
+                          <span style={{ color: 'var(--violet-500)' }}>✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -217,38 +305,63 @@ export function AppNavBar({}: AppNavBarProps) {
             {/* Theme Toggle — icon button on small, sliding toggle on sm+ */}
             <button
               onClick={toggleTheme}
-              className="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-full
-                       bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600
-                       transition-colors focus:outline-none flex-shrink-0"
+              className="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-full focus:outline-none flex-shrink-0"
+              style={{
+                background: 'var(--bg-surface-2)',
+                color: 'var(--text-2)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--bg-surface-2)';
+              }}
               aria-label={t('theme.toggle')}
               title={t('theme.switchTo', { mode: theme === 'light' ? 'dark' : 'light' })}
             >
               {theme === 'light' ? (
-                <Sun className="w-4 h-4 text-gray-700" />
+                <Sun className="w-4 h-4" style={{ color: 'var(--orange-500)' }} />
               ) : (
-                <Moon className="w-4 h-4 text-blue-400" />
+                <Moon className="w-4 h-4" style={{ color: 'var(--violet-400)' }} />
               )}
             </button>
             <button
               onClick={toggleTheme}
-              className="hidden sm:relative sm:inline-flex items-center h-8 rounded-full w-16 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 bg-gray-300 dark:bg-gray-600 flex-shrink-0"
+              className="hidden sm:inline-flex relative items-center focus:outline-none flex-shrink-0"
+              style={{
+                width: 56,
+                height: 30,
+                borderRadius: 999,
+                background: 'var(--bg-surface-3)',
+                border: '1px solid var(--border-2)',
+                padding: 0,
+              }}
               aria-label={t('theme.toggle')}
               title={t('theme.switchTo', { mode: theme === 'light' ? 'dark' : 'light' })}
             >
               <span
-                className={`${
-                  theme === 'dark' ? 'translate-x-8' : 'translate-x-1'
-                } inline-flex items-center justify-center h-7 w-7 transform rounded-full bg-white dark:bg-gray-800 shadow-lg transition-transform duration-200 ease-in-out`}
+                className="inline-flex items-center justify-center"
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  left: theme === 'dark' ? 28 : 2,
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: 'var(--bg-surface)',
+                  boxShadow: 'var(--shadow-sm)',
+                  transition: 'left var(--dur-base) var(--ease-spring)',
+                }}
               >
                 {theme === 'light' ? (
-                  <Sun className="w-4 h-4 text-gray-900" />
+                  <Sun className="w-3.5 h-3.5" style={{ color: 'var(--orange-500)' }} />
                 ) : (
-                  <Moon className="w-4 h-4 text-blue-400" />
+                  <Moon className="w-3.5 h-3.5" style={{ color: 'var(--violet-400)' }} />
                 )}
               </span>
             </button>
 
-            <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
+            <div className="w-px h-6" style={{ background: 'var(--border-1)' }}></div>
 
             <DesktopStatusIndicator />
 
@@ -256,34 +369,47 @@ export function AppNavBar({}: AppNavBarProps) {
                 LocalUserBadge surfaces Account Configuration only. */}
             {serverMode === 'local' && (
               <>
-                <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
+                <div className="w-px h-6" style={{ background: 'var(--border-1)' }}></div>
                 <LocalUserBadge />
               </>
             )}
 
             {serverMode === 'cloud' && (
               <>
-                <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
+                <div className="w-px h-6" style={{ background: 'var(--border-1)' }}></div>
 
                 {!isSignedIn ? (
                   // Not signed in - Show Sign Up / Sign In buttons
                   <div className="flex items-center gap-1 sm:gap-2">
                     <button
                       onClick={handleSignUpClick}
-                      className="hidden sm:block px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300
-                               hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                      className="hidden sm:block px-3 py-1.5 text-sm font-medium"
+                      style={{
+                        color: 'var(--text-2)',
+                        background: 'transparent',
+                        borderRadius: 'var(--r-md)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
                     >
                       {t('auth.signUp')}
                     </button>
                     <button
                       onClick={handleSignInClick}
-                      className="px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white
-                               bg-gradient-to-r from-emerald-500 to-teal-600
-                               hover:from-emerald-600 hover:to-teal-700
-                               dark:from-emerald-400 dark:to-teal-500
-                               dark:hover:from-emerald-500 dark:hover:to-teal-600
-                               rounded-md shadow-md hover:shadow-lg
-                               transition-all duration-200"
+                      className="gradient-flow px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold"
+                      style={{
+                        color: 'var(--text-on-brand)',
+                        background: 'var(--gradient-aurora)',
+                        backgroundSize: '200% 200%',
+                        boxShadow: 'var(--shadow-glow-aurora)',
+                        borderRadius: 'var(--r-md)',
+                        border: 'none',
+                        transition: 'transform var(--dur-fast) var(--ease-smooth)',
+                      }}
                     >
                       {t('auth.signIn')}
                     </button>
@@ -293,12 +419,23 @@ export function AppNavBar({}: AppNavBarProps) {
                   <div className="relative">
                     <button
                       onClick={() => setShowUserMenu(!showUserMenu)}
-                      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md
-                               bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
-                               transition-colors"
+                      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5"
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        borderRadius: 'var(--r-md)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-surface-2)';
+                      }}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span className="hidden md:inline text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <span
+                          className="hidden md:inline text-xs font-medium"
+                          style={{ color: 'var(--text-3)' }}
+                        >
                           {userOrganization}
                         </span>
                         {userPicture ? (
@@ -312,9 +449,12 @@ export function AppNavBar({}: AppNavBarProps) {
                             }}
                           />
                         ) : (
-                          <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                          <User className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
                         )}
-                        <span className="hidden sm:inline text-xs font-semibold text-gray-900 dark:text-white">
+                        <span
+                          className="hidden sm:inline text-xs font-semibold"
+                          style={{ color: 'var(--text-1)' }}
+                        >
                           {userEmail?.split('@')[0]}
                         </span>
                       </div>
@@ -322,9 +462,15 @@ export function AppNavBar({}: AppNavBarProps) {
 
                     {/* User Menu Dropdown */}
                     {showUserMenu && (
-                      <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-gray-800
-                                    rounded-md shadow-lg border border-gray-200 dark:border-gray-700
-                                    py-1 z-50">
+                      <div
+                        className="absolute top-full right-0 mt-2 w-56 py-1 z-50"
+                        style={{
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-2)',
+                          borderRadius: 'var(--r-md)',
+                          boxShadow: 'var(--shadow-md)',
+                        }}
+                      >
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);
@@ -332,19 +478,36 @@ export function AppNavBar({}: AppNavBarProps) {
                             openMainPanelTab('accountConfig');
                             setShowUserMenu(false);
                           }}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300
-                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2
-                                   transition-colors"
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{
+                            color: 'var(--text-2)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
                         >
                           <User className="w-4 h-4" />
                           {t('auth.accountConfig')}
                         </button>
-                        <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                        <div
+                          className="my-1"
+                          style={{ height: 1, background: 'var(--border-1)' }}
+                        ></div>
                         <button
                           onClick={handleSignOut}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300
-                                   hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2
-                                   transition-colors"
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{
+                            color: 'var(--text-2)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
                         >
                           <LogOut className="w-4 h-4" />
                           {t('auth.signOut')}

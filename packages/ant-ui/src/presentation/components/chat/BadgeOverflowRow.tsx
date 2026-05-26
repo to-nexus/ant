@@ -109,10 +109,18 @@ export function BadgeOverflowRow({ pinned, overflowable, className = '' }: Badge
             ref={triggerRef}
             type="button"
             onClick={() => setPopoverOpen(v => !v)}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors
-              bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600
-              text-gray-700 dark:text-gray-200
-              hover:bg-gray-200 dark:hover:bg-gray-600"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-surface-2)';
+            }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors"
+            style={{
+              background: 'var(--bg-surface-2)',
+              border: '1px solid var(--border-1)',
+              color: 'var(--text-2)',
+            }}
             aria-label={`Show ${hiddenCount} more`}
           >
             <MoreHorizontal className="w-3 h-3" />
@@ -252,11 +260,10 @@ function OverflowPopover({ anchorRef, items, onClose }: OverflowPopoverProps) {
         maxHeight: geom?.maxHeight ?? 'min(420px, calc(100vh - 16px))',
         maxWidth: geom?.maxWidth ?? 'min(420px, calc(100vw - 16px))',
         zIndex: 9999,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-1)',
       }}
-      className="rounded-lg shadow-xl
-        bg-white dark:bg-gray-800
-        border border-gray-200 dark:border-gray-700
-        flex flex-col overflow-hidden"
+      className="rounded-lg shadow-xl flex flex-col overflow-hidden"
       role="dialog"
       data-placement={geom?.placement}
     >

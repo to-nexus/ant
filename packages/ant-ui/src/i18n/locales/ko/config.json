@@ -168,7 +168,12 @@
     "resetting": "초기화 중...",
     "resetStepDeleting": "프로젝트 및 세션 삭제",
     "resetStepClearing": "로컬 캐시 정리",
-    "resetStepDone": "완료, 새로고침 중..."
+    "resetStepDone": "완료, 새로고침 중...",
+    "tocIdentity": "GitHub 신원",
+    "tocOwners": "소유자",
+    "tocFigma": "Figma Bridge",
+    "tocDanger": "위험 영역",
+    "ownersDescription": "새 프로젝트의 GitHub URL에 기본으로 사용되는 소유자입니다."
   },
   "git": {
     "repoSetupRequired": "GitHub 리포지토리 설정이 필요합니다",

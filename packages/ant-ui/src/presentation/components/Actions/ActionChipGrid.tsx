@@ -40,26 +40,32 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
       return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
     });
   }, [agentFilter, currentDomain]);
-  const gap = variant === 'large' ? 'gap-4' : 'gap-3';
   const isSingle = defs.length === 1;
+  const gapStyle: React.CSSProperties = { gap: variant === 'large' ? 14 : 10 };
 
   return (
     <div className="@container flex flex-col items-center w-full">
       {title && (
-        <h2 className={`font-semibold text-gray-800 dark:text-gray-200 mb-5 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}>
+        <h2
+          className={`font-semibold mb-5 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}
+          style={{ color: 'var(--text-1)' }}
+        >
           {title}
         </h2>
       )}
       {subtitle && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{subtitle}</p>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
       )}
 
-      <div className={`
-        w-full
-        flex flex-wrap justify-center ${gap}
-        @xs:grid @xs:grid-cols-1 @xs:max-w-[15rem] @xs:mx-auto
-        ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
-      `}>
+      <div
+        className={`
+          w-full
+          flex flex-wrap justify-center
+          @xs:grid @xs:grid-cols-1 @xs:max-w-[15rem] @xs:mx-auto
+          ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
+        `}
+        style={gapStyle}
+      >
         {defs.map((def, idx) => (
           <div key={def.id} className="w-full">
             <ActionChip
@@ -103,20 +109,23 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
   return (
     <div className="@container flex flex-col items-center w-full">
       {title && (
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-1)' }}>
           {title}
         </h2>
       )}
       {subtitle && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{subtitle}</p>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
       )}
 
-      <div className={`
-        w-full
-        grid grid-cols-1 gap-3
-        max-w-[15rem] mx-auto
-        ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
-      `}>
+      <div
+        className={`
+          w-full
+          grid grid-cols-1
+          max-w-[15rem] mx-auto
+          ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
+        `}
+        style={{ gap: 14 }}
+      >
         {items.map((item, idx) => (
           <div key={item.id} className="w-full">
             <ActionChip

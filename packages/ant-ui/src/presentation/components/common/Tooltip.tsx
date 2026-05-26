@@ -230,9 +230,9 @@ export const Tooltip: React.FC<TooltipProps> = ({
       onMouseEnter={isHover ? openHover : undefined}
       onMouseLeave={isHover ? scheduleHoverClose : undefined}
       className={`fixed z-[9999] px-3 py-2 text-sm rounded-lg shadow-2xl transition-opacity duration-200 whitespace-normal ${className}
-        bg-amber-50 dark:bg-slate-900
-        text-gray-900 dark:text-gray-100
-        border-2 border-amber-300 dark:border-slate-600`}
+        bg-[color:var(--status-progress-bg)]
+        text-[color:var(--text-1)]
+        border-2 border-[color:var(--border-2)]`}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -241,8 +241,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
       {content}
       <div
         className={`absolute w-2 h-2 transform rotate-45 ${getArrowPositionClass(placement)}
-          bg-amber-50 dark:bg-slate-900 
-          border-amber-300 dark:border-slate-600`}
+          bg-[color:var(--status-progress-bg)]
+          border-[color:var(--border-2)]`}
         style={getArrowBorderStyle(placement)}
       />
     </div>

@@ -6,20 +6,20 @@ type ColorScheme = 'gray' | 'purple' | 'amber' | 'blue';
 
 const colorStyles: Record<ColorScheme, { badge: string; icon: string }> = {
   gray: {
-    badge: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400',
-    icon: 'text-gray-400 dark:text-gray-500',
+    badge: 'bg-[color:var(--bg-surface-2)] text-[color:var(--text-3)]',
+    icon: 'text-[color:var(--text-4)]',
   },
   purple: {
-    badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300',
-    icon: 'text-purple-400 dark:text-purple-400',
+    badge: 'bg-purple-100 text-purple-600',
+    icon: 'text-purple-400',
   },
   amber: {
-    badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-    icon: 'text-amber-500 dark:text-amber-400',
+    badge: 'bg-amber-100 text-amber-700',
+    icon: 'text-amber-500',
   },
   blue: {
-    badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
-    icon: 'text-blue-400 dark:text-blue-400',
+    badge: 'bg-blue-100 text-blue-600',
+    icon: 'text-blue-400',
   },
 };
 

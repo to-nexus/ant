@@ -142,23 +142,36 @@ function StepRow({
     >
       <div className="shrink-0 w-5 h-5 flex items-center justify-center">
         {status === 'done' ? (
-          <div className="w-5 h-5 rounded-full bg-emerald-500 dark:bg-emerald-400 flex items-center justify-center">
-            <Check className="w-3 h-3 text-white dark:text-gray-900" strokeWidth={3} />
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center"
+            style={{
+              background: 'var(--status-done-bg, oklch(70% 0.16 160))',
+              color: 'var(--text-on-brand)',
+            }}
+          >
+            <Check className="w-3 h-3" strokeWidth={3} style={{ color: 'var(--text-on-brand)' }} />
           </div>
         ) : status === 'active' ? (
-          <Spinner size="lg" className="text-emerald-500 dark:text-emerald-400" />
+          <Spinner size="lg" style={{ color: 'var(--violet-500)' }} />
         ) : (
-          <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600" />
+          <div
+            className="w-5 h-5 rounded-full"
+            style={{ border: '2px solid var(--border-2)' }}
+          />
         )}
       </div>
       <span
         className={`text-sm transition-colors duration-300 ${
-          status === 'active'
-            ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-            : status === 'done'
-              ? 'text-gray-500 dark:text-gray-400'
-              : 'text-gray-400 dark:text-gray-500'
+          status === 'active' ? 'font-medium' : ''
         }`}
+        style={{
+          color:
+            status === 'active'
+              ? 'var(--violet-600)'
+              : status === 'done'
+                ? 'var(--text-2)'
+                : 'var(--text-3)',
+        }}
       >
         {label}
       </span>
@@ -332,13 +345,25 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   return (
     <>
     <div
-      className={`min-h-screen bg-gradient-to-br from-gray-50 via-white to-indigo-50/30 dark:from-[#0d1117] dark:via-[#0d1117] dark:to-[#110d20] pt-16 flex flex-col relative overflow-hidden
+      className={`min-h-screen pt-16 flex flex-col relative overflow-hidden
         transition-opacity duration-300 ${isExiting ? 'opacity-0' : 'opacity-100'}`}
+      style={{ background: 'var(--bg-app)' }}
     >
       {/* === Background layers === */}
+      {/* Aurora mesh underlay (lowest z) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: 'var(--gradient-mesh-bg)',
+          opacity: 0.6,
+          pointerEvents: 'none',
+        }}
+      />
       {/* Dot grid */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.05]"
+        className="absolute inset-0 pointer-events-none opacity-[0.04]"
         style={{
           backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
           backgroundSize: '32px 32px',
@@ -348,27 +373,27 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       {/* Floating orbs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
-          className="absolute w-[450px] h-[450px] rounded-full blur-[90px] opacity-20 dark:opacity-15"
+          className="absolute w-[450px] h-[450px] rounded-full blur-[90px] opacity-25"
           style={{
-            background: 'radial-gradient(circle, rgba(99,102,241,0.5) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, var(--mesh-1) 0%, transparent 70%)',
             top: '20%',
             left: '10%',
             animation: 'qsOrbFloat1 22s ease-in-out infinite',
           }}
         />
         <div
-          className="absolute w-[500px] h-[500px] rounded-full blur-[100px] opacity-20 dark:opacity-12"
+          className="absolute w-[500px] h-[500px] rounded-full blur-[100px] opacity-25"
           style={{
-            background: 'radial-gradient(circle, rgba(168,85,247,0.4) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, var(--mesh-2) 0%, transparent 70%)',
             top: '15%',
             right: '5%',
             animation: 'qsOrbFloat2 26s ease-in-out infinite',
           }}
         />
         <div
-          className="absolute w-[350px] h-[350px] rounded-full blur-[70px] opacity-15 dark:opacity-10"
+          className="absolute w-[350px] h-[350px] rounded-full blur-[70px] opacity-20"
           style={{
-            background: 'radial-gradient(circle, rgba(20,184,166,0.4) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, var(--mesh-3) 0%, transparent 70%)',
             bottom: '20%',
             right: '25%',
             animation: 'qsOrbFloat3 19s ease-in-out infinite',
@@ -419,10 +444,16 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           style={{ animation: 'qsFadeInUp 0.7s ease-out both' }}
         >
           <BrandHero logoSize={72} className="justify-center mb-6" />
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-3">
+          <h2
+            className="text-3xl sm:text-4xl font-bold mb-3"
+            style={{ color: 'var(--text-1)' }}
+          >
             {t('quickstart.prompt')}
           </h2>
-          <p className="text-base sm:text-lg text-gray-500 dark:text-gray-400">
+          <p
+            className="text-base sm:text-lg"
+            style={{ color: 'var(--text-2)' }}
+          >
             {t('quickstart.promptSub')}
           </p>
         </div>
@@ -447,7 +478,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   left: '50%',
                   width: '200%',
                   aspectRatio: '1',
-                  background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6, transparent 50%, transparent)',
+                  background: 'conic-gradient(from 0deg, oklch(60% 0.26 285), oklch(64% 0.28 340), oklch(72% 0.22 50), oklch(72% 0.18 195), oklch(64% 0.22 270), transparent 50%, transparent)',
                   animation: 'glowSpin 4s linear infinite',
                 }}
               />
@@ -460,7 +491,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   width: '200%',
                   aspectRatio: '1',
                   transform: 'translate(-50%, -50%)',
-                  background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6, #6366f1)',
+                  background: 'conic-gradient(from 0deg, oklch(60% 0.26 285), oklch(64% 0.28 340), oklch(72% 0.22 50), oklch(72% 0.18 195), oklch(64% 0.22 270), oklch(60% 0.26 285))',
                   opacity: 0.12,
                 }}
               />
@@ -472,22 +503,25 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                 input.trim() ? (isSubmitting ? 'opacity-50' : 'opacity-100') : 'opacity-0'
               }`}
               style={{
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6)',
+                background: 'var(--gradient-aurora)',
               }}
             />
 
             {/* Outer glow halo */}
             <div
               className={`absolute inset-0 rounded-2xl blur-xl pointer-events-none transition-opacity duration-700 ${
-                input.trim() ? 'opacity-50 dark:opacity-40' : 'opacity-30'
+                input.trim() ? 'opacity-50' : 'opacity-30'
               }`}
               style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.4), rgba(139,92,246,0.4), rgba(16,185,129,0.4))',
+                background: 'var(--gradient-aurora)',
               }}
             />
 
             {/* Inner card */}
-            <div className="relative rounded-[14px] bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-sm p-4">
+            <div
+              className="relative rounded-[14px] p-4"
+              style={{ background: 'var(--bg-surface)', backdropFilter: 'blur(8px)' }}
+            >
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -496,16 +530,16 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                 placeholder={t('quickstart.placeholder')}
                 disabled={isSubmitting}
                 rows={3}
-                className="w-full bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500
-                         text-base leading-relaxed resize-none outline-none
+                className="w-full bg-transparent text-base leading-relaxed resize-none outline-none
                          disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ color: 'var(--text-1)' }}
               />
 
               {/* Bottom bar: error + submit button */}
               <div className="flex items-center justify-between mt-2">
                 <div className="flex-1">
                   {error && (
-                    <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--red-500)' }}>
                       <AlertCircle className="w-4 h-4 shrink-0" />
                       <span>{error}</span>
                       <button
@@ -513,7 +547,8 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                           setError(null);
                           handleSubmit();
                         }}
-                        className="ml-1 underline underline-offset-2 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                        className="ml-1 underline underline-offset-2 transition-colors"
+                        style={{ color: 'var(--red-500)' }}
                       >
                         {t('quickstart.errorRetry')}
                       </button>
@@ -521,19 +556,22 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   )}
                 </div>
 
-                {/* Submit button */}
+                {/* Submit button — Aurora aurora gradient CTA */}
                 <button
                   onClick={handleSubmit}
                   disabled={!input.trim() || isSubmitting || hasNameConflict || projectName.trim().length < 3 || featureName.trim().length < 3}
-                  className="relative inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white
-                           bg-gradient-to-r from-emerald-500 to-teal-600
-                           hover:from-emerald-600 hover:to-teal-700
-                           dark:from-emerald-400 dark:to-teal-500
-                           dark:hover:from-emerald-500 dark:hover:to-teal-600
-                           rounded-xl shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30
-                           disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-md
+                  className="gradient-flow relative inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold
+                           disabled:opacity-40 disabled:cursor-not-allowed
                            transform hover:scale-[1.02] active:scale-[0.98]
                            transition-all duration-200 overflow-hidden group"
+                  style={{
+                    background: 'var(--gradient-aurora)',
+                    backgroundSize: '200% 200%',
+                    boxShadow: 'var(--shadow-glow-aurora)',
+                    animation: 'gradient-shift 5s ease-in-out infinite',
+                    color: 'var(--text-on-brand)',
+                    borderRadius: 12,
+                  }}
                 >
                   {/* Shine sweep on hover */}
                   <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
@@ -560,36 +598,36 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               <button
                 onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'design', ...(existingProjectId ? { existingProjectId } : {}) })}
                 className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
-                  border border-indigo-200/60 dark:border-indigo-800/40
-                  bg-white/60 dark:bg-white/5 backdrop-blur-sm
-                  hover:bg-indigo-50/80 dark:hover:bg-indigo-950/20
-                  hover:border-indigo-300 dark:hover:border-indigo-700
+                  border border-indigo-200/60
+                  bg-white/60 backdrop-blur-sm
+                  hover:bg-indigo-50/80
+                  hover:border-indigo-300
                   transition-all duration-200 group"
               >
-                <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                  <Compass className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <Compass className="w-3.5 h-3.5 text-indigo-500" />
                 </div>
-                <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                <span className="text-sm text-[color:var(--text-3)] group-hover:text-indigo-700 transition-colors">
                   {t('quickstart.altDesign')}
                 </span>
-                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 dark:text-gray-600 group-hover:text-indigo-400 dark:group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
               </button>
               <button
                 onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code', ...(existingProjectId ? { existingProjectId } : {}) })}
                 className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
-                  border border-amber-200/60 dark:border-amber-800/40
-                  bg-white/60 dark:bg-white/5 backdrop-blur-sm
-                  hover:bg-amber-50/80 dark:hover:bg-amber-950/20
-                  hover:border-amber-300 dark:hover:border-amber-700
+                  border border-amber-200/60
+                  bg-white/60 backdrop-blur-sm
+                  hover:bg-amber-50/80
+                  hover:border-amber-300
                   transition-all duration-200 group"
               >
-                <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                  <Code2 className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <Code2 className="w-3.5 h-3.5 text-amber-500" />
                 </div>
-                <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors">
+                <span className="text-sm text-[color:var(--text-3)] group-hover:text-amber-700 transition-colors">
                   {t('quickstart.altCode')}
                 </span>
-                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 dark:text-gray-600 group-hover:text-amber-400 dark:group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all" />
+                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
               </button>
             </div>
           )}
@@ -599,8 +637,13 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           {isSubmitting && activeStep !== 'idle' && (
             <div className="mt-6 flex justify-center">
               <div
-                className="space-y-3 bg-white/60 dark:bg-white/5 backdrop-blur-md rounded-xl px-6 py-4 border border-gray-200/50 dark:border-gray-700/30"
-                style={{ animation: 'qsFadeInUp 0.4s ease-out both' }}
+                className="space-y-3 rounded-xl px-6 py-4"
+                style={{
+                  animation: 'qsFadeInUp 0.4s ease-out both',
+                  background: 'var(--bg-surface)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid var(--border-2)',
+                }}
               >
                 {stepKeys.map((step) => (
                   <StepRow
@@ -620,13 +663,16 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         <button
           onClick={onSkip}
           className="fixed bottom-6 right-6 z-20 flex items-center gap-2 px-4 py-2.5
-                     text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300
-                     bg-white/70 dark:bg-white/5 backdrop-blur-sm
-                     border border-gray-200 dark:border-gray-700 rounded-xl
-                     shadow-sm hover:shadow-md
+                     text-sm rounded-xl shadow-sm hover:shadow-md
                      transition-all duration-200 hover:translate-x-0.5
                      group"
-          style={{ animation: 'qsFadeInUp 0.5s ease-out 0.5s both' }}
+          style={{
+            animation: 'qsFadeInUp 0.5s ease-out 0.5s both',
+            color: 'var(--text-2)',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-2)',
+            backdropFilter: 'blur(8px)',
+          }}
         >
           <span>{t('quickstart.skipToWorkspace')}</span>
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
@@ -644,7 +690,13 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         <div className="flex flex-col items-end sm:items-start sm:flex-row gap-1 sm:gap-4">
           {/* Project name */}
           <div className="flex items-start gap-1.5">
-            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40">
+            <span
+              className="text-[11px] font-medium whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full"
+              style={{
+                background: 'var(--gradient-violet-pink)',
+                color: 'var(--text-on-brand)',
+              }}
+            >
               {t('quickstart.projectNameLabel')}
             </span>
             <div>
@@ -655,41 +707,48 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   onChange={(e) => setProjectName(e.target.value)}
                   disabled={!!existingProjectId}
                   readOnly={!!existingProjectId}
-                  style={{ width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch` }}
+                  style={{
+                    width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch`,
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-1)',
+                    borderColor: projectNameError
+                      ? 'var(--red-500)'
+                      : 'var(--border-2)',
+                    backdropFilter: 'blur(8px)',
+                  }}
                   className={cn(
                     'min-w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
-                    'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
-                    'text-gray-900 dark:text-white',
-                    'placeholder-gray-400 dark:placeholder-gray-500',
                     'focus:outline-none',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                     'transition-colors',
-                    existingProjectId && 'bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed',
-                    projectNameError
-                      ? 'border-red-300 dark:border-red-700 focus:border-red-500'
-                      : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500',
                   )}
                   placeholder="project-1"
                 />
                 {!existingProjectId && projectName.trim() && (
                   <span className="absolute right-2 top-1/2 -translate-y-1/2">
                     {projectNameError
-                      ? <X className="w-3.5 h-3.5 text-red-500" />
-                      : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                      ? <X className="w-3.5 h-3.5" style={{ color: 'var(--red-500)' }} />
+                      : <Check className="w-3.5 h-3.5" style={{ color: 'var(--status-done-fg, oklch(60% 0.18 160))' }} />}
                   </span>
                 )}
               </div>
               {projectNameExists && (
-                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameExists')}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameExists')}</p>
               )}
               {projectNameInvalid && (
-                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameInvalid')}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameInvalid')}</p>
               )}
             </div>
           </div>
           {/* Feature name */}
           <div className="flex items-start gap-1.5">
-            <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400 whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-800/40">
+            <span
+              className="text-[11px] font-medium whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full"
+              style={{
+                background: 'var(--gradient-cool)',
+                color: 'var(--text-on-brand)',
+              }}
+            >
               {t('quickstart.featureNameLabel')}
             </span>
             <div>
@@ -698,34 +757,36 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   type="text"
                   value={featureName}
                   onChange={(e) => setFeatureName(e.target.value)}
-                  style={{ width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch` }}
+                  style={{
+                    width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch`,
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-1)',
+                    borderColor: featureNameError
+                      ? 'var(--red-500)'
+                      : 'var(--border-2)',
+                    backdropFilter: 'blur(8px)',
+                  }}
                   className={cn(
                     'min-w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
-                    'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
-                    'text-gray-900 dark:text-white',
-                    'placeholder-gray-400 dark:placeholder-gray-500',
                     'focus:outline-none',
                     'transition-colors',
-                    featureNameError
-                      ? 'border-red-300 dark:border-red-700 focus:border-red-500'
-                      : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500',
                   )}
                   placeholder="ant-1"
                 />
                 {featureName.trim() && (
                   <span className="absolute right-2 top-1/2 -translate-y-1/2">
                     {featureNameError
-                      ? <X className="w-3.5 h-3.5 text-red-500" />
-                      : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                      ? <X className="w-3.5 h-3.5" style={{ color: 'var(--red-500)' }} />
+                      : <Check className="w-3.5 h-3.5" style={{ color: 'var(--status-done-fg, oklch(60% 0.18 160))' }} />}
                   </span>
                 )}
               </div>
               {featureNameExists ? (
-                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameExists')}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameExists')}</p>
               ) : featureNameInvalid ? (
-                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameInvalid')}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameInvalid')}</p>
               ) : (
-                <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
                   {t('quickstart.gitBranchHint', { name: featureName || '...' })}
                 </p>
               )}

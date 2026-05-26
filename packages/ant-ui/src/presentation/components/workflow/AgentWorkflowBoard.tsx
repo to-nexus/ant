@@ -29,7 +29,6 @@ export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
 
   return (
     <BoardContainer
-      title={t('workflow.title')}
       titleActions={
         <div className="flex items-center gap-2">
           {/* Always show selected agent */}

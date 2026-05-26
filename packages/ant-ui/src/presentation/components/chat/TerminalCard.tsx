@@ -11,9 +11,10 @@ import Convert from 'ansi-to-html';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 import { lineToContent } from './cards/lineToContent';
+import { TurnCardShell, type TurnCardAccent } from './cards/TurnCardShell';
 
 const ansiConverter = new Convert({
-  fg: '#d4d4d4',
+  fg: 'currentColor',
   bg: 'transparent',
   newline: false,
   escapeXML: true,
@@ -70,134 +71,121 @@ export const TerminalCard = memo(function TerminalCard({ line, pending }: Termin
   const isSuccess = !isPolicyRejection && exitCode === 0;
   const isSkipped = isPolicyRejection && typeof output === 'string' && output.includes('SKIPPED:');
 
-  let statusConfig: {
-    bgColor: string;
-    borderColor: string;
-    textColor: string;
-    iconColor: string;
-    headerBg: string;
-    hoverBg: string;
-    label: string;
-  };
+  let iconColorVar: string;
+  let labelColorVar: string;
+  let label: string;
+  let accent: TurnCardAccent;
   if (isPolicyRejection) {
-    statusConfig = {
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-amber-500 dark:text-amber-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-      label: isSkipped ? t('card.skipped') : t('card.rejected')
-    };
+    iconColorVar = 'var(--amber-500)';
+    labelColorVar = 'var(--amber-500)';
+    label = isSkipped ? t('card.skipped') : t('card.rejected');
+    accent = 'warning';
   } else if (isSuccess) {
-    statusConfig = {
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-green-500 dark:text-green-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-      label: t('card.completed')
-    };
+    iconColorVar = 'var(--status-done-fg)';
+    labelColorVar = 'var(--status-done-fg)';
+    label = t('card.completed');
+    accent = 'success';
+  } else if (isCompleted) {
+    iconColorVar = 'var(--red-500)';
+    labelColorVar = 'var(--red-500)';
+    label = t('card.failed');
+    accent = 'error';
   } else {
-    statusConfig = {
-      bgColor: 'bg-white dark:bg-gray-800/50',
-      borderColor: 'border-gray-200 dark:border-gray-700',
-      textColor: 'text-gray-700 dark:text-gray-300',
-      iconColor: 'text-red-500 dark:text-red-400',
-      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-      label: t('card.failed')
-    };
+    iconColorVar = 'var(--violet-500)';
+    labelColorVar = 'var(--text-1)';
+    label = t('card.running');
+    accent = 'default';
   }
-  
-  const activeConfig = {
-    bgColor: 'bg-white dark:bg-gray-800/50',
-    borderColor: 'border-gray-200 dark:border-gray-700',
-    textColor: 'text-gray-700 dark:text-gray-300',
-    iconColor: 'text-blue-500 dark:text-blue-400',
-    headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-    hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-    label: t('card.running')
-  };
-  
-  const config = isActive ? activeConfig : statusConfig;
+
   const outputHtml = useMemo(
     () => output ? ansiConverter.toHtml(output) : '',
     [output],
   );
   const hasOutput = output && output.trim().length > 0;
   const canToggleOutput = hasOutput && isCompleted;
-  
+
   return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
+    <TurnCardShell accent={accent} hoverLift={!!canToggleOutput}>
       {/* Header */}
       <div
         role="button"
         tabIndex={canToggleOutput ? 0 : undefined}
         onClick={() => canToggleOutput && setIsCollapsed(!isCollapsed)}
         onKeyDown={(e) => { if (canToggleOutput && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setIsCollapsed(!isCollapsed); } }}
-        className={`w-full ${config.headerBg} px-2.5 py-1.5 ${canToggleOutput ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors select-none`}
+        className={`w-full px-2.5 py-1.5 ${canToggleOutput ? 'cursor-pointer' : 'cursor-default'} transition-colors select-none`}
+        style={{ background: 'transparent' }}
       >
-        <div className="flex items-center gap-1.5">
+        <div
+          className="flex items-center gap-1.5"
+          style={{ color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}
+        >
           {/* Status Icon */}
           {isActive ? (
-            <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
+            <span className="flex-shrink-0 inline-flex" style={{ color: iconColorVar }}>
+              <Spinner size="md" tone="inherit" />
+            </span>
           ) : isPolicyRejection ? (
-            <ShieldAlert className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
+            <ShieldAlert className="w-4 h-4 flex-shrink-0" style={{ color: iconColorVar }} />
           ) : (
-            <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
+            <Terminal className="w-4 h-4 flex-shrink-0" style={{ color: iconColorVar }} />
           )}
 
           {/* Command text + expand toggle for long commands */}
           <TruncatableText
             text={command || ''}
             maxLength={60}
-            className={`text-[11px] font-mono ${config.textColor}`}
-            buttonClassName={`${config.textColor} opacity-60`}
+            className="text-[11px]"
+            buttonClassName="opacity-60"
           />
-          
+
           {/* Status indicator — numeric exit code for real executions,
               label for Policy rejections (where "-1" would mislead users). */}
           {isCompleted && exitCode !== undefined && (
             isPolicyRejection ? (
-              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex-shrink-0 font-medium">
-                {config.label}
+              <span
+                className="text-[10px] flex-shrink-0 font-medium"
+                style={{ color: labelColorVar, fontFamily: 'var(--font-mono)' }}
+              >
+                {label}
               </span>
             ) : (
-              <span className={`text-[10px] font-mono ${isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex-shrink-0 font-medium`}>
+              <span
+                className="text-[10px] flex-shrink-0 font-medium"
+                style={{ color: labelColorVar, fontFamily: 'var(--font-mono)' }}
+              >
                 {isSuccess ? '✓' : `✗ ${exitCode}`}
               </span>
             )
           )}
-          
+
           {/* Output expand/collapse icon */}
           {canToggleOutput && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0" style={{ color: 'var(--text-3)' }}>
               {isCollapsed ?
-                <ChevronRight className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} /> :
-                <ChevronDown className={`w-3.5 h-3.5 ${config.textColor} opacity-60`} />
+                <ChevronRight className="w-3.5 h-3.5 opacity-60" /> :
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
               }
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Output (auto-expand during streaming, collapsible when complete) */}
       {shouldShowOutput && (
-        <div className="border-t border-gray-200 dark:border-gray-700">
-          <div 
+        <div style={{ borderTop: '1px solid var(--border-1)' }}>
+          <div
             ref={outputRef}
-            className="max-h-[300px] overflow-y-auto scrollbar-thin bg-gray-50 dark:bg-gray-900/50 px-4 py-3"
-            style={{ overflowAnchor: 'none' }}
+            className="max-h-[300px] overflow-y-auto scrollbar-thin px-4 py-3"
+            style={{ overflowAnchor: 'none', background: 'var(--bg-surface-2)' }}
           >
             <pre
-              className="text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+              className="text-xs whitespace-pre-wrap break-words"
+              style={{ color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}
               dangerouslySetInnerHTML={{ __html: outputHtml }}
             />
           </div>
         </div>
       )}
-    </div>
+    </TurnCardShell>
   );
 });

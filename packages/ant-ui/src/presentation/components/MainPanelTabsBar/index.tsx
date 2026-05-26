@@ -1,12 +1,22 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } from 'lucide-react';
-import { TabButton } from './components/TabButton';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, Workflow } from 'lucide-react';
+import { TabButton, type TabAccent } from './components/TabButton';
+
+const TAB_ACCENTS = {
+  job: 'aurora',
+  actions: 'sunset',
+  projectConfig: 'cool',
+  accountConfig: 'violet-pink',
+  transfer: 'pink-orange',
+  previewConfig: 'cool',
+  fileEdit: 'pink-orange',
+} as const satisfies Record<string, TabAccent>;
 import { JobIdDropdown } from './components/JobIdDropdown';
-import { JobControls } from './components/JobControls';
 import { EditorTabActions } from './components/EditorTabActions';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { useTranslation } from 'react-i18next';
+import { BoardViewModeToggle } from '../aurora/BoardViewModeToggle';
 
 /**
  * MainPanelTabsBar - Tab navigation for Main Panel
@@ -33,6 +43,8 @@ export function MainPanelTabsBar() {
   const pinEditorTab = useStore((state) => state.pinEditorTab);
   const unpinEditorTab = useStore((state) => state.unpinEditorTab);
   const closeEditorTab = useStore((state) => state.closeEditorTab);
+  const taskViewMode = useStore((state) => state.taskViewMode);
+  const setTaskViewMode = useStore((state) => state.setTaskViewMode);
 
   const getJobTabLabel = () => t('tabs.job');
 
@@ -59,6 +71,7 @@ export function MainPanelTabsBar() {
         isActive={activeTab === tabKey}
         showText={activeTab === tabKey}
         showCloseButton={true}
+        accent={TAB_ACCENTS[tabKey] ?? 'aurora'}
         onClick={() => selectMainPanelTab(tabKey)}
         onClose={() => closeMainPanelTab(tabKey)}
       />
@@ -80,6 +93,7 @@ export function MainPanelTabsBar() {
         showTrailingWhenCollapsed={tab.status === 'streaming'}
         showCloseButton={false}
         title={tab.path || tab.title}
+        accent={TAB_ACCENTS.fileEdit}
         trailing={(
           <EditorTabActions
             tab={tab}
@@ -108,6 +122,7 @@ export function MainPanelTabsBar() {
           isJobTab={true}
           showText={activeTab === 'job'}
           title={currentJobId ? `Job ID: ${currentJobId}` : t('tabs.job')}
+          accent={TAB_ACCENTS.job}
           trailing={currentJobId ? <JobIdDropdown jobId={currentJobId} /> : undefined}
           onClick={() => selectMainPanelTab('job')}
         />
@@ -121,13 +136,19 @@ export function MainPanelTabsBar() {
       </div>
     ),
     right: (
-      activeTab === 'job' ? (
-        <div className="flex items-center gap-3">
-          <JobControls />
-        </div>
-      ) : null
+      <div className="flex items-center px-2">
+        <BoardViewModeToggle
+          value={taskViewMode === 'workflow' ? 'workflow' : 'kanban'}
+          onChange={(v) => setTaskViewMode(v)}
+          options={[
+            { id: 'kanban', label: t('tabs.kanban', 'Kanban'), icon: LayoutGrid },
+            { id: 'workflow', label: t('tabs.workflow', 'Workflow'), icon: Workflow },
+          ]}
+          ariaLabel={t('tabs.viewMode', 'View mode')}
+        />
+      </div>
     ),
-    className: 'border-b border-gray-200 dark:border-[#30363d]'
+    className: undefined,
   });
   
   return (

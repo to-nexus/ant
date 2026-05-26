@@ -35,12 +35,29 @@ export function NodeActivityBanner({ label, startedAt }: NodeActivityBannerProps
   }, [startedAt]);
 
   return (
-    <div className="mb-3 flex items-center gap-2.5 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800">
-      <Spinner size="md" tone="inherit" className="text-purple-500 dark:text-purple-400 flex-shrink-0" />
-      <span className="text-sm font-medium text-purple-800 dark:text-purple-200 truncate">
+    <div
+      className="mb-3 flex items-center gap-2.5 px-3 py-2 rounded-lg"
+      style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-1)',
+      }}
+    >
+      <Spinner
+        size="md"
+        tone="inherit"
+        className="flex-shrink-0"
+        style={{ color: 'var(--violet-500)' }}
+      />
+      <span
+        className="text-sm font-medium truncate"
+        style={{ color: 'var(--text-1)' }}
+      >
         {label}
       </span>
-      <span className="ml-auto flex items-center gap-1 text-xs font-mono text-purple-600 dark:text-purple-400 whitespace-nowrap">
+      <span
+        className="ml-auto flex items-center gap-1 text-xs font-mono whitespace-nowrap"
+        style={{ color: 'var(--violet-500)' }}
+      >
         <Timer className="w-3 h-3" />
         {elapsed}
       </span>

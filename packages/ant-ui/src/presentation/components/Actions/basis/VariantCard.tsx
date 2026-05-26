@@ -41,25 +41,33 @@ function VisualTierCard({ option, isSelected, onClick, index, lang, layerKey }: 
         relative w-full text-left rounded-xl overflow-hidden transition-all duration-150
         border-2 cursor-pointer flex flex-col
         ${isSelected
-          ? `border-current ${accent.text} ring-2 ring-offset-2 ${accent.ring} ring-offset-white dark:ring-offset-[#161b22]`
-          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-lg'
+          ? `border-current ${accent.text} ring-2 ring-offset-2 ${accent.ring}`
+          : 'hover:shadow-lg'
         }
       `}
+      style={{
+        borderColor: isSelected ? undefined : 'var(--border-2)',
+        ['--tw-ring-offset-color' as never]: 'var(--bg-app)',
+      } as React.CSSProperties}
     >
       {isSelected && (
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          className={`absolute top-2 right-2 z-10 w-5 h-5 rounded-full flex items-center justify-center ${accent.text} bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm`}
+          className={`absolute top-2 right-2 z-10 w-5 h-5 rounded-full flex items-center justify-center ${accent.text} backdrop-blur-sm`}
+          style={{ background: 'color-mix(in oklch, var(--bg-surface) 80%, transparent)' }}
         >
           <Check className="w-3.5 h-3.5" strokeWidth={3} />
         </motion.div>
       )}
 
-      <div className="relative w-full bg-gray-100 dark:bg-gray-800">
+      <div className="relative w-full" style={{ background: 'var(--bg-surface-2)' }}>
         {isAuto ? (
-          <div className="w-full aspect-[2/1] flex items-center justify-center bg-gray-50 dark:bg-gray-800/80">
-            <AutoDetectIcon className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+          <div
+            className="w-full aspect-[2/1] flex items-center justify-center"
+            style={{ background: 'var(--bg-surface-2)' }}
+          >
+            <AutoDetectIcon className="w-10 h-10" style={{ color: 'var(--text-3)' }} />
           </div>
         ) : (
           <VisualPreview
@@ -80,16 +88,21 @@ function VisualTierCard({ option, isSelected, onClick, index, lang, layerKey }: 
         )}
       </div>
 
-      <div className={`px-3 py-2.5 ${isSelected ? accent.bg : 'bg-white dark:bg-gray-800/50'}`}>
-        <p className={`text-sm font-semibold ${
-          isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'
-        }`}>
+      <div
+        className={`px-3 py-2.5 ${isSelected ? accent.bg : ''}`}
+        style={isSelected ? undefined : { background: 'var(--bg-surface)' }}
+      >
+        <p
+          className="text-sm font-semibold"
+          style={{ color: isSelected ? 'var(--text-1)' : 'var(--text-2)' }}
+        >
           {option.label[lang] ?? option.label.en}
         </p>
         {option.description && (
-          <p className={`text-[11px] mt-0.5 line-clamp-1 ${
-            isSelected ? 'text-gray-600 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'
-          }`}>
+          <p
+            className="text-[11px] mt-0.5 line-clamp-1"
+            style={{ color: isSelected ? 'var(--text-2)' : 'var(--text-3)' }}
+          >
             {option.description[lang] ?? option.description.en}
           </p>
         )}
@@ -117,7 +130,7 @@ export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, in
 
   const renderIcon = () => {
     if (isAuto) {
-      return <AutoDetectIcon className="w-6 h-6 text-gray-400 dark:text-gray-500" />;
+      return <AutoDetectIcon className="w-6 h-6" style={{ color: 'var(--text-3)' }} />;
     }
 
     if (layerKey === 'stack') {
@@ -144,8 +157,8 @@ export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, in
         relative w-full text-left rounded-xl p-4 transition-all duration-150
         border-2 cursor-pointer
         ${isSelected
-          ? `${accent.bg} border-current ${accent.text} ring-2 ring-offset-2 ${accent.ring} ring-offset-white dark:ring-offset-[#161b22]`
-          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800/50 hover:shadow-md'
+          ? `${accent.bg} border-current ${accent.text} ring-2 ring-offset-2 ${accent.ring} ring-offset-[color:var(--bg-canvas)]`
+          : 'border-[color:var(--border-2)] hover:border-[color:var(--border-3)] bg-[color:var(--bg-surface)] hover:shadow-md'
         }
       `}
     >
@@ -164,19 +177,17 @@ export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, in
           {renderIcon()}
         </div>
         <div className="min-w-0">
-          <p className={`text-sm font-semibold ${
-            isSelected
-              ? 'text-gray-900 dark:text-white'
-              : 'text-gray-700 dark:text-gray-300'
-          }`}>
+          <p
+            className="text-sm font-semibold"
+            style={{ color: isSelected ? 'var(--text-1)' : 'var(--text-2)' }}
+          >
             {option.label[lang] ?? option.label.en}
           </p>
           {option.description && (
-            <p className={`text-xs mt-0.5 line-clamp-2 ${
-              isSelected
-                ? 'text-gray-600 dark:text-gray-300'
-                : 'text-gray-500 dark:text-gray-400'
-            }`}>
+            <p
+              className="text-xs mt-0.5 line-clamp-2"
+              style={{ color: isSelected ? 'var(--text-2)' : 'var(--text-3)' }}
+            >
               {option.description[lang] ?? option.description.en}
             </p>
           )}

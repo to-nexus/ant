@@ -1,86 +1,154 @@
+import { useState, type CSSProperties } from 'react';
 import { Sparkles, Compass, Code2 } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 
-interface QuickStartCTAProps {
+/**
+ * QuickStartCTA — Aurora-tokenized onboarding shortcut card.
+ *
+ * Public API preserved for ExplorerPanel and FeatureSection call sites:
+ *   variant: 'plan' (primary aurora CTA) | 'design' | 'code'
+ *
+ * Visual is driven by CSS variables from `styles/aurora-tokens.css`
+ * (--gradient-aurora, --shadow-glow-aurora, --gradient-violet-pink,
+ *  --gradient-pink-orange, --text-on-brand, --dur-base, --ease-spring,
+ *  --ease-smooth, --shadow-md) plus the `.gradient-flow` keyframe class
+ *  and the `gradient-shift` keyframe.
+ *
+ * No Tailwind dark-mode utilities and no emerald/teal palette — those
+ * are forbidden by spec §7 (F1/F2).
+ */
+
+export type QuickStartCTAVariant = 'plan' | 'design' | 'code';
+
+export interface QuickStartCTAProps {
+  variant?: QuickStartCTAVariant;
   title: string;
-  hint: string;
+  hint?: string;
   onClick: () => void;
-  variant?: 'plan' | 'design' | 'code';
   className?: string;
 }
 
-const variantStyles = {
-  plan: {
-    button: cn(
-      'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30',
-      'border border-emerald-200 dark:border-emerald-800/50 rounded-xl',
-      'text-sm text-emerald-700 dark:text-emerald-300',
-      'hover:from-emerald-100 hover:to-teal-100 dark:hover:from-emerald-950/50 dark:hover:to-teal-950/50',
-    ),
-    iconWrapper: 'bg-emerald-100 dark:bg-emerald-900/40',
-    icon: 'text-emerald-600 dark:text-emerald-400',
-    hint: 'text-emerald-600/70 dark:text-emerald-400/70',
-    Icon: Sparkles,
-  },
-  design: {
-    button: cn(
-      'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30',
-      'border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl',
-      'text-sm text-indigo-700 dark:text-indigo-300',
-      'hover:border-indigo-300 dark:hover:border-indigo-700',
-    ),
-    iconWrapper: 'bg-indigo-100 dark:bg-indigo-900/40',
-    icon: 'text-indigo-500 dark:text-indigo-400',
-    hint: 'text-indigo-500/70 dark:text-indigo-400/60',
-    Icon: Compass,
-  },
-  code: {
-    button: cn(
-      'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
-      'border border-amber-200/60 dark:border-amber-800/40 rounded-xl',
-      'text-sm text-amber-700 dark:text-amber-300',
-      'hover:border-amber-300 dark:hover:border-amber-700',
-    ),
-    iconWrapper: 'bg-amber-100 dark:bg-amber-900/40',
-    icon: 'text-amber-500 dark:text-amber-400',
-    hint: 'text-amber-500/70 dark:text-amber-400/60',
-    Icon: Code2,
-  },
-} as const;
+interface VariantVisual {
+  background: string;
+  boxShadow: string;
+  Icon: typeof Sparkles;
+  animated: boolean;
+}
+
+function getVariantVisual(variant: QuickStartCTAVariant): VariantVisual {
+  switch (variant) {
+    case 'design':
+      return {
+        background: 'var(--gradient-violet-pink)',
+        boxShadow: 'var(--shadow-md)',
+        Icon: Compass,
+        animated: false,
+      };
+    case 'code':
+      return {
+        background: 'var(--gradient-pink-orange)',
+        boxShadow: 'var(--shadow-md)',
+        Icon: Code2,
+        animated: false,
+      };
+    case 'plan':
+    default:
+      return {
+        background: 'var(--gradient-aurora)',
+        boxShadow: 'var(--shadow-glow-aurora)',
+        Icon: Sparkles,
+        animated: true,
+      };
+  }
+}
 
 export function QuickStartCTA({
+  variant = 'plan',
   title,
   hint,
   onClick,
-  variant = 'plan',
   className,
 }: QuickStartCTAProps) {
-  const styles = variantStyles[variant];
-  const IconComponent = styles.Icon;
+  const visual = getVariantVisual(variant);
+  const Icon = visual.Icon;
+  const [isHover, setIsHover] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
+
+  const transform = isPressed
+    ? 'scale(0.985)'
+    : isHover
+      ? 'scale(1.02)'
+      : 'scale(1)';
+
+  const containerStyle: CSSProperties = {
+    background: visual.background,
+    backgroundSize: '200% 200%',
+    boxShadow: visual.boxShadow,
+    color: 'var(--text-on-brand)',
+    transform,
+    transition:
+      'transform var(--dur-base) var(--ease-spring), box-shadow var(--dur-base) var(--ease-smooth)',
+    ...(visual.animated
+      ? { animation: 'gradient-shift 5s ease-in-out infinite' }
+      : {}),
+  };
 
   return (
     <button
+      type="button"
       onClick={onClick}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => {
+        setIsHover(false);
+        setIsPressed(false);
+      }}
+      onMouseDown={() => setIsPressed(true)}
+      onMouseUp={() => setIsPressed(false)}
+      onFocus={() => setIsHover(true)}
+      onBlur={() => {
+        setIsHover(false);
+        setIsPressed(false);
+      }}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-3 text-left',
-        'hover:shadow-sm transition-all duration-200 group',
-        styles.button,
+        'group relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+        visual.animated && 'gradient-flow',
         className,
       )}
+      style={containerStyle}
     >
-      <div className={cn(
-        'flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0',
-        'group-hover:scale-105 transition-transform',
-        styles.iconWrapper,
-      )}>
-        <IconComponent className={cn('w-4 h-4', styles.icon)} />
-      </div>
-      <div className="flex-1 min-w-0 text-left">
-        <div className="font-medium">{title}</div>
-        <div className={cn('text-xs mt-0.5 leading-snug', styles.hint)}>
-          {hint}
-        </div>
-      </div>
+      <span
+        aria-hidden="true"
+        className="shrink-0 inline-flex items-center justify-center"
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: 'color-mix(in srgb, var(--text-on-brand) 22%, transparent)',
+        }}
+      >
+        <Icon
+          className="w-4 h-4"
+          strokeWidth={2.25}
+          style={{ color: 'var(--text-on-brand)' }}
+        />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span
+          className="block text-sm font-semibold leading-tight truncate"
+          style={{ color: 'var(--text-on-brand)' }}
+        >
+          {title}
+        </span>
+        {hint && (
+          <span
+            className="block text-xs mt-0.5 leading-snug truncate"
+            style={{ color: 'color-mix(in srgb, var(--text-on-brand) 85%, transparent)' }}
+          >
+            {hint}
+          </span>
+        )}
+      </span>
     </button>
   );
 }

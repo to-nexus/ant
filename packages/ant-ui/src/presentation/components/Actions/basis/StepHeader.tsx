@@ -8,10 +8,10 @@ interface StepHeaderProps {
 export function StepHeader({ step, lang }: StepHeaderProps) {
   return (
     <div className="mb-4">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+      <h3 className="text-lg font-bold" style={{ color: 'var(--text-1)' }}>
         {step.title[lang] ?? step.title.en}
       </h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+      <p className="text-sm mt-0.5" style={{ color: 'var(--text-3)' }}>
         {step.description[lang] ?? step.description.en}
       </p>
     </div>

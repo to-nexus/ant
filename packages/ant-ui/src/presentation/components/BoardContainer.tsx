@@ -1,7 +1,13 @@
 import { ReactNode } from 'react';
 
 interface BoardContainerProps {
-  title: string;
+  /**
+   * Optional board title. When omitted (or empty), the title `<h3>` is not
+   * rendered — used by views where the surrounding chrome (e.g. the
+   * MainPanel view-mode toggle) already names the current board, so a
+   * second heading would be redundant.
+   */
+  title?: string;
   titleActions?: ReactNode;  // 타이틀 바로 옆에 위치할 요소
   headerActions?: ReactNode; // 우측 정렬될 요소
   children: ReactNode;
@@ -30,12 +36,23 @@ export function BoardContainer({
   return (
     <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {/* Compact Sticky Header - pinned at top when scrolling */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-[#161b22] border-b border-gray-200 dark:border-[#30363d] shrink-0 px-4 py-2">
+      <div
+        className="sticky top-0 z-10 shrink-0 px-4 py-2"
+        style={{
+          background: 'var(--bg-surface)',
+          borderBottom: '1px solid var(--border-1)',
+        }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {title}
-            </h3>
+            {title ? (
+              <h3
+                className="text-sm font-semibold whitespace-nowrap"
+                style={{ color: 'var(--text-1)' }}
+              >
+                {title}
+              </h3>
+            ) : null}
             {titleActions && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 {titleActions}
@@ -51,11 +68,14 @@ export function BoardContainer({
       </div>
       
       {/* Content Area - board-level scroll in horizontal split, no scroll in vertical split */}
-      <div className={`flex-1 overflow-hidden bg-white dark:bg-[#161b22] p-4 ${
-        className.includes('kanban-board') && className.includes('horizontal') 
-          ? 'overflow-y-auto scrollbar-hide' 
-          : ''
-      }`}>
+      <div
+        className={`flex-1 overflow-hidden p-4 ${
+          className.includes('kanban-board') && className.includes('horizontal')
+            ? 'overflow-y-auto scrollbar-hide'
+            : ''
+        }`}
+        style={{ background: 'var(--bg-surface)' }}
+      >
         {children}
       </div>
     </div>

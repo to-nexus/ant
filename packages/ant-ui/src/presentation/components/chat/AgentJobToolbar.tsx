@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Send, ChevronDown, Square, Bot, Briefcase } from 'lucide-react';
+import { Send, ChevronDown, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
@@ -161,135 +161,200 @@ export function AgentJobToolbar({
 
   const handleStop = () => stopJob();
 
-  const agentLabel = currentAgent?.displayLabel || '🤖 Agent';
+  // Labels carry their own emoji prefix (e.g. "🤖 Architect", "💻 Code")
+  // composed in useAgentJobOptions — that emoji IS the visual cue. No
+  // adjacent lucide icon is rendered, otherwise two icons would stack.
+  // In compact mode we surface only the first whitespace-delimited token
+  // of the label (the emoji) so the button stays icon-sized without
+  // losing the agent/job affordance.
+  const agentLabel =
+    currentAgent?.displayLabel ||
+    t('input.agentPlaceholder', { defaultValue: 'Agent' });
   const jobLabel =
-    chatPolicy.reason === 'no-job' ? '🎯 Job' : currentJob?.label || '🎯 Job';
+    chatPolicy.reason === 'no-job'
+      ? t('input.jobPlaceholder', { defaultValue: 'Job' })
+      : currentJob?.label || t('input.jobPlaceholder', { defaultValue: 'Job' });
+  const agentCompactToken = agentLabel.split(' ')[0];
+  const jobCompactToken = jobLabel.split(' ')[0];
 
   return (
     <div
       ref={toolbarRef}
-      style={{ minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px` }}
-      className="flex items-center justify-between gap-2 px-2 py-1.5
-                 border-t border-gray-200 dark:border-gray-700
-                 bg-gray-50 dark:bg-gray-800/50"
+      style={{
+        minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px`,
+        borderTop: '1px solid var(--border-1)',
+        background: 'var(--bg-surface-2)',
+      }}
+      className="flex items-center justify-between gap-2 px-2 py-1.5"
     >
       <div className="flex items-center gap-1 flex-shrink-0">
-        {/* Agent Selector */}
+        {/* Agent Selector — handoff a3-cards.jsx L1366-1378.
+            Layout: [emoji-from-label] [text-after-emoji?] <ChevronDown>.
+            Compact mode collapses to emoji + chevron; the emoji is sourced
+            from the label itself (displayLabel = "🤖 Architect") so there
+            is no separate lucide icon to stack on top. Active dropdown
+            applies violet-tint background overlay. */}
         <div className="relative" ref={agentMenuRef}>
           <button
             onClick={() => setShowAgentMenu(!showAgentMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className={`flex items-center gap-1 text-xs
-                       bg-white dark:bg-gray-700
-                       border border-gray-300 dark:border-gray-600
-                       text-gray-700 dark:text-gray-200
-                       rounded hover:bg-gray-100 dark:hover:bg-gray-600
-                       transition-colors
+            className={`flex items-center gap-1 text-xs font-semibold
+                       border border-[color:var(--border-2)]
+                       text-[color:var(--text-1)]
+                       hover:bg-[color:var(--bg-hover)]
+                       transition-all
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
-            title={compact ? agentLabel : undefined}
-            aria-label={compact ? agentLabel : undefined}
+                       px-2 py-1`}
+            style={{
+              background: showAgentMenu
+                ? 'oklch(from var(--violet-300) l c h / 0.18)'
+                : 'var(--bg-surface)',
+              borderRadius: 'var(--r-sm)',
+            }}
+            title={agentLabel}
+            aria-label={agentLabel}
           >
             {compact ? (
-              <Bot className="w-3.5 h-3.5" />
+              <span className="flex-shrink-0">{agentCompactToken}</span>
             ) : (
-              <>
-                <span className="truncate max-w-[120px]">{agentLabel}</span>
-                <ChevronDown
-                  className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${
-                    showAgentMenu ? 'rotate-180' : ''
-                  }`}
-                />
-              </>
+              <span className="truncate max-w-[120px]">{agentLabel}</span>
             )}
+            <ChevronDown
+              className={`w-2.5 h-2.5 text-[color:var(--text-3)] transition-transform flex-shrink-0 ${
+                showAgentMenu ? 'rotate-180' : ''
+              }`}
+              strokeWidth={2.5}
+            />
           </button>
 
           {showAgentMenu && agentsWithMetadata.length > 0 && (
-            <div className="absolute bottom-full left-0 mb-1 w-56
-                            bg-white dark:bg-gray-800 
-                            border border-gray-300 dark:border-gray-600 
-                            rounded-lg shadow-lg z-50 overflow-hidden">
-              {agentsWithMetadata.map((agent) => (
-                <button
-                  key={agent.value}
-                  onClick={() => agent.enabled && handleAgentSelect(agent.value)}
-                  disabled={!agent.enabled}
-                  className={`w-full px-2.5 py-1.5 text-left text-xs 
-                             hover:bg-gray-100 dark:hover:bg-gray-700 
-                             transition-colors flex flex-col gap-0.5
-                             text-gray-900 dark:text-gray-100 ${
-                    !agent.enabled
-                      ? 'opacity-50 cursor-not-allowed'
-                      : agent.value === selectedAgent 
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
-                      : ''
-                  }`}
-                >
-                  <span className="font-medium">{agent.displayLabel}</span>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">{agent.description}</span>
-                </button>
-              ))}
+            <div
+              className="absolute bottom-full left-0 mb-1 w-56 overflow-hidden z-50"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-1)',
+                borderRadius: 'var(--r-md)',
+                boxShadow: 'var(--shadow-lg)',
+              }}
+            >
+              {agentsWithMetadata.map((agent) => {
+                const isSelected = agent.enabled && agent.value === selectedAgent;
+                return (
+                  <button
+                    key={agent.value}
+                    onClick={() => agent.enabled && handleAgentSelect(agent.value)}
+                    disabled={!agent.enabled}
+                    className={`w-full px-2.5 py-1.5 text-left text-xs 
+                               hover:bg-[color:var(--bg-hover)]
+                               transition-colors flex flex-col gap-0.5 ${
+                      !agent.enabled
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isSelected
+                        ? 'border-l-2'
+                        : ''
+                    }`}
+                    style={{
+                      color: 'var(--text-1)',
+                      ...(isSelected
+                        ? {
+                            background: 'oklch(from var(--violet-500) l c h / 0.10)',
+                            borderLeftColor: 'var(--violet-500)',
+                          }
+                        : {}),
+                    }}
+                  >
+                    <span className="font-medium">{agent.displayLabel}</span>
+                    <span className="text-[10px] text-[color:var(--text-3)]">{agent.description}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Job Selector */}
+        {/* Job Selector — handoff a3-cards.jsx L1381-1392.
+            Layout: [emoji-from-label] [text-after-emoji?] <ChevronDown>.
+            Compact mode collapses to emoji + chevron; the emoji is sourced
+            from the label itself (label = "💻 Code") so there is no
+            separate lucide icon to stack on top. Active dropdown applies
+            violet-tint background overlay (same as agent). */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowJobMenu(!showJobMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className={`flex items-center gap-1 text-xs
-                       bg-white dark:bg-gray-700
-                       border border-gray-300 dark:border-gray-600
-                       text-gray-700 dark:text-gray-200
-                       rounded hover:bg-gray-100 dark:hover:bg-gray-600
-                       transition-colors
+            className={`flex items-center gap-1 text-xs font-semibold
+                       border border-[color:var(--border-2)]
+                       text-[color:var(--text-1)]
+                       hover:bg-[color:var(--bg-hover)]
+                       transition-all
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
-            title={compact ? jobLabel : undefined}
-            aria-label={compact ? jobLabel : undefined}
+                       px-2 py-1`}
+            style={{
+              background: showJobMenu
+                ? 'oklch(from var(--violet-300) l c h / 0.18)'
+                : 'var(--bg-surface)',
+              borderRadius: 'var(--r-sm)',
+            }}
+            title={jobLabel}
+            aria-label={jobLabel}
           >
             {compact ? (
-              <Briefcase className="w-3.5 h-3.5" />
+              <span className="flex-shrink-0">{jobCompactToken}</span>
             ) : (
-              <>
-                <span className="truncate max-w-[120px]">{jobLabel}</span>
-                <ChevronDown
-                  className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${
-                    showJobMenu ? 'rotate-180' : ''
-                  }`}
-                />
-              </>
+              <span className="truncate max-w-[120px]">{jobLabel}</span>
             )}
+            <ChevronDown
+              className={`w-2.5 h-2.5 text-[color:var(--text-3)] transition-transform flex-shrink-0 ${
+                showJobMenu ? 'rotate-180' : ''
+              }`}
+              strokeWidth={2.5}
+            />
           </button>
 
           {showJobMenu && jobsWithMetadata.length > 0 && (
-            <div className="absolute bottom-full left-0 mb-1 w-48 
-                            bg-white dark:bg-gray-800 
-                            border border-gray-300 dark:border-gray-600 
-                            rounded-lg shadow-lg z-50 overflow-hidden">
-              {jobsWithMetadata.map((job) => (
-                <button
-                  key={job.value}
-                  onClick={() => handleJobSelect(job.value)}
-                  className={`w-full px-2.5 py-1.5 text-left text-xs 
-                             hover:bg-gray-100 dark:hover:bg-gray-700 
-                             transition-colors flex flex-col gap-0.5
-                             text-gray-900 dark:text-gray-100 ${
-                    job.value === selectedJobType 
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 dark:border-blue-400' 
-                      : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">{job.label}</span>
-                    {activeJobs[job.value] && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-status-pulse flex-shrink-0" />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
-                </button>
-              ))}
+            <div
+              className="absolute bottom-full left-0 mb-1 w-48 overflow-hidden z-50"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-1)',
+                borderRadius: 'var(--r-md)',
+                boxShadow: 'var(--shadow-lg)',
+              }}
+            >
+              {jobsWithMetadata.map((job) => {
+                const isSelected = job.value === selectedJobType;
+                return (
+                  <button
+                    key={job.value}
+                    onClick={() => handleJobSelect(job.value)}
+                    className={`w-full px-2.5 py-1.5 text-left text-xs 
+                               hover:bg-[color:var(--bg-hover)]
+                               transition-colors flex flex-col gap-0.5 ${
+                      isSelected ? 'border-l-2' : ''
+                    }`}
+                    style={{
+                      color: 'var(--text-1)',
+                      ...(isSelected
+                        ? {
+                            background: 'oklch(from var(--violet-500) l c h / 0.10)',
+                            borderLeftColor: 'var(--violet-500)',
+                          }
+                        : {}),
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">{job.label}</span>
+                      {activeJobs[job.value] && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full animate-status-pulse flex-shrink-0"
+                          style={{ background: 'var(--emerald-500)' }}
+                        />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-[color:var(--text-3)]">{job.description}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -305,12 +370,15 @@ export function AgentJobToolbar({
             onClick={handleStop}
             disabled={isStopping}
             className={`flex items-center gap-1 text-xs rounded
-                       bg-red-500 hover:bg-red-600
-                       text-white
-                       border border-red-600 dark:border-red-500
+                       text-[color:var(--text-on-brand)]
+                       hover:bg-[color:var(--red-600)]
                        transition-colors
                        disabled:opacity-50 disabled:cursor-not-allowed
                        ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2.5 py-1'}`}
+            style={{
+              background: 'var(--red-500)',
+              border: '1px solid var(--red-600)',
+            }}
             title={isStopping ? t('input.stopping') : t('input.stopJob')}
             aria-label={isStopping ? t('input.stopping') : t('input.stop')}
           >
@@ -321,15 +389,20 @@ export function AgentJobToolbar({
           <button
             onClick={onSubmit}
             disabled={!canSubmit}
-            className={`flex items-center gap-1 text-xs rounded
-                       bg-blue-500 hover:bg-blue-600
-                       text-white
-                       border border-blue-600 dark:border-blue-500
-                       transition-colors
-                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-200
-                       disabled:dark:bg-gray-700 disabled:text-gray-400 disabled:dark:text-gray-500
-                       disabled:border-gray-300 disabled:dark:border-gray-600
+            className={`flex items-center gap-1 text-xs
+                       text-[color:var(--text-on-brand)]
+                       transition-all
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       disabled:!bg-[color:var(--bg-surface-2)]
+                       disabled:!text-[color:var(--text-4)]
+                       disabled:!shadow-none
                        ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2.5 py-1'}`}
+            style={{
+              background: 'var(--gradient-aurora)',
+              boxShadow: 'var(--shadow-glow-aurora)',
+              border: 'none',
+              borderRadius: 'var(--r-sm)',
+            }}
             title={chatPolicy.canSendMessage ? t('input.sendMessage') : t('input.completeSelection')}
             aria-label={t('input.send')}
           >

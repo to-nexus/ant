@@ -12,6 +12,24 @@ import { File, Folder, FolderOpen, X, ChevronRight, ChevronDown, Undo2 } from 'l
 import { cn } from '@/shared/utils/design-system';
 import type { FileNode } from '@/infrastructure/http/api';
 
+/**
+ * Extension-based file icon accent colors per Aurora handoff
+ * (b3-explorer.jsx FileIcon mapping):
+ *   md   → violet
+ *   json → orange
+ *   ts/tsx/js/jsx → teal
+ *   image (png/jpg/jpeg/gif/svg/webp) → pink
+ *   default → text-3
+ */
+function fileAccentColor(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'md' || ext === 'mdx') return 'var(--violet-500)';
+  if (ext === 'json') return 'var(--orange-500)';
+  if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') return 'var(--teal-500)';
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'var(--pink-500)';
+  return 'var(--text-3)';
+}
+
 export interface TransferFileItem {
   path: string;
   type: 'file' | 'directory';
@@ -58,10 +76,13 @@ export function TransferFileList({
   const tree = payloadTree ?? fileTree;
 
   return (
-    <div className={cn(
-      'divide-y divide-gray-100 dark:divide-gray-700/50',
-      borderless ? '' : 'rounded-lg border border-gray-200 dark:border-gray-700',
-    )}>
+    <div
+      className={cn('divide-y', borderless ? '' : 'rounded-lg')}
+      style={{
+        borderColor: 'var(--border-1)',
+        ...(borderless ? {} : { border: '1px solid var(--border-1)' }),
+      }}
+    >
       {items.map(item => {
         const dirFileCount = item.type === 'directory'
           ? (item.fileCount ?? (tree ? countFilesUnderPath(tree, item.path) : 0))
@@ -77,7 +98,10 @@ export function TransferFileList({
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 group">
               {item.type === 'directory' && tree ? (
                 <button
-                  className="shrink-0 p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/50 text-gray-400"
+                  className="shrink-0 p-0.5 rounded transition-colors"
+                  style={{ color: 'var(--text-3)', background: 'transparent' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   onClick={() => toggleExpand(item.path)}
                 >
                   {isExpanded
@@ -89,27 +113,36 @@ export function TransferFileList({
               )}
               {item.type === 'directory'
                 ? (isExpanded
-                  ? <FolderOpen className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  : <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />)
-                : <File className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
+                  ? <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />
+                  : <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />)
+                : <File className="w-3.5 h-3.5 shrink-0" style={{ color: fileAccentColor(item.path) }} />}
               <span
                 className={cn(
                   'text-sm truncate flex-1',
                   item.type === 'directory' && tree ? 'cursor-pointer' : '',
-                  'text-gray-700 dark:text-gray-300',
                 )}
+                style={{ color: 'var(--text-1)' }}
                 onClick={() => item.type === 'directory' && tree && toggleExpand(item.path)}
               >
                 {item.path}
                 {item.type === 'directory' && dirFileCount > 0 && !isExpanded && (
-                  <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">
+                  <span className="ml-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
                     ({dirFileCount}개 파일)
                   </span>
                 )}
               </span>
               {onRemove && (
                 <button
-                  className="shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-all"
+                  className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-all"
+                  style={{ color: 'var(--text-3)', background: 'transparent' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--red-500)';
+                    e.currentTarget.style.background = 'color-mix(in srgb, var(--red-500) 12%, transparent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--text-3)';
+                    e.currentTarget.style.background = 'transparent';
+                  }}
                   onClick={() => onRemove(item.path)}
                 >
                   <X className="w-3.5 h-3.5" />
@@ -119,7 +152,7 @@ export function TransferFileList({
 
             {/* Expanded children */}
             {childNodes && childNodes.length > 0 && (
-              <div className="bg-gray-50/50 dark:bg-gray-800/30">
+              <div style={{ background: 'var(--surface-2)' }}>
                 {renderTreeNodes(
                   t, childNodes, 1, expandedPaths, toggleExpand,
                   onExcludeFile, onRestoreFile, excludedPaths,
@@ -163,7 +196,10 @@ function renderTreeNodes(
         >
           {isDir ? (
             <button
-              className="shrink-0 p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/50 text-gray-400"
+              className="shrink-0 p-0.5 rounded transition-colors"
+              style={{ color: 'var(--text-3)', background: 'transparent' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               onClick={() => toggleExpand(node.path)}
             >
               {isExpanded
@@ -175,17 +211,16 @@ function renderTreeNodes(
           )}
           {isDir
             ? (isExpanded
-              ? <FolderOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              : <Folder className="w-3.5 h-3.5 text-blue-400 shrink-0" />)
-            : <File className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />}
+              ? <FolderOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />
+              : <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--violet-500)' }} />)
+            : <File className="w-3.5 h-3.5 shrink-0" style={{ color: fileAccentColor(node.name) }} />}
           <span
             className={cn(
               'text-xs truncate flex-1',
-              isExcluded
-                ? 'line-through text-gray-400 dark:text-gray-600'
-                : 'text-gray-600 dark:text-gray-400',
+              isExcluded ? 'line-through' : '',
               isDir ? 'cursor-pointer font-medium' : '',
             )}
+            style={{ color: isExcluded ? 'var(--text-3)' : 'var(--text-2)' }}
             onClick={() => isDir && toggleExpand(node.path)}
           >
             {node.name}
@@ -193,7 +228,16 @@ function renderTreeNodes(
 
           {onExcludeFile && !isExcluded && (
             <button
-              className="shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-all"
+              className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-all"
+              style={{ color: 'var(--text-3)', background: 'transparent' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--red-500)';
+                e.currentTarget.style.background = 'color-mix(in srgb, var(--red-500) 12%, transparent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-3)';
+                e.currentTarget.style.background = 'transparent';
+              }}
               onClick={() => onExcludeFile(node.path)}
               title={t('action.exclude')}
             >
@@ -202,7 +246,16 @@ function renderTreeNodes(
           )}
           {onRestoreFile && isExcluded && (
             <button
-              className="shrink-0 p-0.5 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 opacity-100 transition-all"
+              className="shrink-0 p-0.5 rounded transition-all"
+              style={{ color: 'var(--text-3)', background: 'transparent' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--violet-500)';
+                e.currentTarget.style.background = 'color-mix(in srgb, var(--violet-500) 12%, transparent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-3)';
+                e.currentTarget.style.background = 'transparent';
+              }}
               onClick={() => onRestoreFile(node.path)}
               title={t('action.restore')}
             >

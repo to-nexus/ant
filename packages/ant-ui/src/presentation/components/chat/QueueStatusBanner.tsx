@@ -16,14 +16,23 @@ export function QueueStatusBanner() {
   }
 
   return (
-    <div className="mx-4 mb-3 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+    <div
+      className="mx-4 mb-3 px-4 py-2 flex items-center gap-3"
+      style={{
+        background: 'oklch(from var(--orange-500) l c h / 0.10)',
+        border: '1px solid oklch(from var(--orange-500) l c h / 0.30)',
+        borderRadius: 'var(--r-sm)',
+      }}
+    >
       {/* Spinner */}
-      <Spinner size="md" className="text-amber-500" />
-      
+      <span style={{ color: 'var(--orange-500)', display: 'inline-flex' }}>
+        <Spinner size="md" />
+      </span>
+
       {/* Text */}
-      <span className="text-sm text-amber-600 dark:text-amber-400">
+      <span className="text-sm" style={{ color: 'var(--orange-600)' }}>
         Waiting in queue: <strong>#{queuePosition.position}</strong>
-        <span className="text-amber-500/70 ml-1">
+        <span style={{ color: 'var(--orange-500)', opacity: 0.7, marginLeft: '0.25rem' }}>
           ({queuePosition.totalWaiting} total)
         </span>
       </span>

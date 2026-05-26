@@ -31,7 +31,7 @@ export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSp
     case 'revise': {
       if (selectedRefs.size === 0) {
         return (
-          <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+          <p className="text-xs text-[color:var(--text-3)] italic px-1">
             {t('target.reviseHint')}
           </p>
         );
@@ -74,7 +74,7 @@ export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSp
             <button
               type="button"
               onClick={onOpenIde}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
+              className="p-2 rounded-lg bg-[color:var(--bg-surface-2)]/50 text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)] transition-colors"
               title={t('target.viewInIde')}
             >
               <Eye className="w-4.5 h-4.5" />
@@ -136,7 +136,7 @@ export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSp
 
     case 'chat-only':
       return (
-        <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+        <p className="text-xs text-[color:var(--text-3)] italic px-1">
           {target.hint[lang] || target.hint.en}
         </p>
       );

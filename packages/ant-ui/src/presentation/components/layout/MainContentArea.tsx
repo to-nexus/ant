@@ -76,15 +76,23 @@ export function MainContentArea({
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <div className="text-6xl mb-4">🔐</div>
-            <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <h2 className="text-2xl font-semibold text-[color:var(--text-2)] mb-2">
               {t('panel.signInRequired')}
             </h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
+            <p className="text-[color:var(--text-3)] mb-4">
               {t('panel.signInHint')}
             </p>
             <a
               href={getSignInUrl({ oauthBase: OAUTH_BASE(), returnTo: '/app/' })}
-              className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 transition-colors"
+              className="inline-block px-4 py-2 rounded-md text-sm font-medium"
+              style={{
+                background: 'var(--gradient-aurora)',
+                color: 'var(--text-on-brand, #fff)',
+                boxShadow: 'var(--shadow-glow-aurora)',
+                transition: 'filter var(--dur-fast, 150ms) var(--ease-smooth, ease)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
             >
               {tAuth('signIn.button')}
             </a>
@@ -94,23 +102,26 @@ export function MainContentArea({
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <div className="text-6xl mb-4">🔌</div>
-            <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <h2 className="text-2xl font-semibold text-[color:var(--text-2)] mb-2">
               {connectionStatus === 'error' ? t('connection.failed') : t('connection.connecting')}
             </h2>
-            <p className="text-gray-500 dark:text-gray-400">
+            <p className="text-[color:var(--text-3)]">
               {connectionStatus === 'error'
                 ? t('connection.failedDesc')
                 : t('connection.connectingDesc')}
             </p>
             {connectionStatus === 'error' && (
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+              <p className="text-sm text-[color:var(--text-4)] mt-4">
                 {t('connection.startServerPlain')}
               </p>
             )}
           </div>
         </div>
       ) : activeTab === 'projectConfig' && openTabs.projectConfig ? (
-        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <AsyncBoundary
             surface="panel"
             resource={projectConfigResource}
@@ -127,13 +138,19 @@ export function MainContentArea({
           </AsyncBoundary>
         </div>
       ) : activeTab === 'accountConfig' && openTabs.accountConfig ? (
-        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <AccountConfigEditor
             onClose={() => useStore.getState().closeMainPanelTab('accountConfig')}
           />
         </div>
       ) : (activeTab === 'fileEdit' || isEditorTabId(activeTab)) && openTabs.fileEdit ? (
-        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22] flex flex-col">
+        <div
+          className="flex-1 h-full overflow-hidden flex flex-col"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <div className="flex-1 h-full overflow-hidden">
             {activeEditorTab ? (
               activeEditorTab.kind === 'virtual' || shouldRenderStreamingPreView ? (
@@ -155,11 +172,17 @@ export function MainContentArea({
           <TransferTab />
         </div>
       ) : activeTab === 'previewConfig' && openTabs.previewConfig ? (
-        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <PreviewConfigEditor />
         </div>
       ) : activeTab === 'actions' && openTabs.actions ? (
-        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <ActionsPanel />
         </div>
       ) : (

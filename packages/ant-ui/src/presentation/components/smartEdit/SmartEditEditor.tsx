@@ -53,8 +53,9 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
   const isFilled = value.trim().length > 0;
 
   return (
-    <div className={`group flex items-start gap-0 border-b border-gray-200 dark:border-gray-700 last:border-b-0
-      ${isFilled ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}
+    <div
+      className={`group flex items-start gap-0 border-b border-[color:var(--border-1)] last:border-b-0`}
+      style={isFilled ? { background: 'oklch(from var(--status-done-fg) l c h / 0.12)' } : undefined}
     >
       {/* Wrapping textarea */}
       <textarea
@@ -66,12 +67,12 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
         disabled={disabled}
         rows={1}
         className={`flex-1 py-2.5 px-5 text-sm border-0 resize-none overflow-hidden
-          placeholder:text-gray-400 dark:placeholder:text-gray-500
-          focus:outline-none focus:bg-blue-50/50 dark:focus:bg-blue-900/10
+          placeholder:text-[color:var(--text-4)]
+          focus:outline-none focus:bg-[color:var(--bg-hover)]
           disabled:opacity-50 disabled:cursor-not-allowed
           ${isFilled
-            ? 'bg-transparent font-mono text-emerald-800 dark:text-emerald-300'
-            : 'bg-transparent text-gray-900 dark:text-white'
+            ? 'bg-transparent font-mono text-[color:var(--status-done-fg)]'
+            : 'bg-transparent text-[color:var(--text-1)]'
           }`}
         style={{ wordBreak: 'break-all' }}
         spellCheck={false}
@@ -83,9 +84,9 @@ function ValueRow({ value, placeholder, onChange, onRemove, onKeyDown, inputRef,
         onClick={onRemove}
         disabled={disabled}
         className="flex-shrink-0 w-8 mt-2 h-8 flex items-center justify-center
-          text-gray-300 dark:text-gray-600
+          text-[color:var(--text-4)]
           opacity-0 group-hover:opacity-100 focus:opacity-100
-          hover:text-red-500 dark:hover:text-red-400
+          hover:text-[color:var(--status-error-fg)]
           transition-all disabled:hidden"
         tabIndex={-1}
       >
@@ -174,12 +175,12 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {label && (
-        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide px-1">
+        <div className="text-xs font-medium text-[color:var(--text-3)] mb-1.5 uppercase tracking-wide px-1">
           {label}
         </div>
       )}
 
-      <div className="flex-1 border rounded-lg overflow-auto bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
+      <div className="flex-1 border rounded-lg overflow-auto bg-[color:var(--bg-surface)] border-[color:var(--border-2)]">
         {/* Existing value rows */}
         {group.values.map((val, i) => (
           <ValueRow
@@ -198,9 +199,9 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
 
         {/* New entry row (hidden when maxValues reached) */}
         {!(group.maxValues && group.values.length >= group.maxValues) && (
-          <div className="flex items-center gap-0 bg-gray-50/50 dark:bg-gray-900/30">
+          <div className="flex items-center gap-0 bg-[color:var(--bg-surface-2)]">
             <div className="flex-shrink-0 w-10 py-2.5 flex items-center justify-center">
-              <Plus className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+              <Plus className="w-3.5 h-3.5 text-[color:var(--text-4)]" />
             </div>
             <input
               ref={newRowRef}
@@ -215,8 +216,8 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
               placeholder={resolvedPlaceholder}
               disabled={disabled}
               className="flex-1 py-2.5 px-3 text-sm bg-transparent border-0
-                text-gray-900 dark:text-white
-                placeholder:text-gray-400 dark:placeholder:text-gray-500
+                text-[color:var(--text-1)]
+                placeholder:text-[color:var(--text-4)]
                 focus:outline-none
                 disabled:opacity-50 disabled:cursor-not-allowed"
               spellCheck={false}

@@ -19,28 +19,28 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
   const indentStyle = { marginLeft: '12px' };
 
   if (value === null) {
-    return <span className="text-gray-500 dark:text-gray-400 italic">null</span>;
+    return <span className="text-[color:var(--text-3)] italic">null</span>;
   }
 
   if (value === undefined) {
-    return <span className="text-gray-500 dark:text-gray-400 italic">undefined</span>;
+    return <span className="text-[color:var(--text-3)] italic">undefined</span>;
   }
 
   if (typeof value === 'boolean') {
     return (
-      <span className="text-purple-600 dark:text-purple-400 font-medium">
+      <span style={{ color: 'var(--code-token-boolean)', fontWeight: 500 }}>
         {value ? 'true' : 'false'}
       </span>
     );
   }
 
   if (typeof value === 'number') {
-    return <span className="text-blue-600 dark:text-blue-400">{value}</span>;
+    return <span style={{ color: 'var(--code-token-number)' }}>{value}</span>;
   }
 
   if (typeof value === 'string') {
     return (
-      <span className="text-green-600 dark:text-green-400">
+      <span style={{ color: 'var(--code-token-string)' }}>
         "{value}"
       </span>
     );
@@ -48,20 +48,23 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <span className="text-gray-600 dark:text-gray-400">[]</span>;
+      return <span className="text-[color:var(--text-3)]">[]</span>;
     }
 
     return (
       <span>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          className="inline-flex items-center"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-2)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         </button>
-        <span className="text-gray-600 dark:text-gray-400">[</span>
+        <span className="text-[color:var(--text-3)]">[</span>
         {!expanded && (
-          <span className="text-gray-400 dark:text-gray-500 text-xs ml-1">
+          <span className="text-[color:var(--text-4)] text-xs ml-1">
             {value.length} items...
           </span>
         )}
@@ -69,13 +72,13 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
           <div>
             {value.map((item, idx) => (
               <div key={idx} style={indentStyle}>
-                <span className="text-gray-400 dark:text-gray-500 mr-1 select-none">{idx}:</span>
+                <span className="text-[color:var(--text-4)] mr-1 select-none">{idx}:</span>
                 <RenderValue value={item} indent={indent + 1} />
               </div>
             ))}
           </div>
         )}
-        <span className="text-gray-600 dark:text-gray-400">]</span>
+        <span className="text-[color:var(--text-3)]">]</span>
       </span>
     );
   }
@@ -83,20 +86,23 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);
     if (entries.length === 0) {
-      return <span className="text-gray-600 dark:text-gray-400">{'{}'}</span>;
+      return <span className="text-[color:var(--text-3)]">{'{}'}</span>;
     }
 
     return (
       <span>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          className="inline-flex items-center"
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-2)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         </button>
-        <span className="text-gray-600 dark:text-gray-400">{'{'}</span>
+        <span className="text-[color:var(--text-3)]">{'{'}</span>
         {!expanded && (
-          <span className="text-gray-400 dark:text-gray-500 text-xs ml-1">
+          <span className="text-[color:var(--text-4)] text-xs ml-1">
             {entries.length} keys...
           </span>
         )}
@@ -104,19 +110,19 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
           <div>
             {entries.map(([key, val]) => (
               <div key={key} style={indentStyle}>
-                <span className="text-rose-600 dark:text-rose-400 font-medium mr-1">"{key}"</span>
-                <span className="text-gray-500 dark:text-gray-400 mr-1">:</span>
+                <span style={{ color: 'var(--code-token-property)', fontWeight: 500, marginRight: 4 }}>"{key}"</span>
+                <span className="text-[color:var(--text-3)] mr-1">:</span>
                 <RenderValue value={val} indent={indent + 1} />
               </div>
             ))}
           </div>
         )}
-        <span className="text-gray-600 dark:text-gray-400">{'}'}</span>
+        <span className="text-[color:var(--text-3)]">{'}'}</span>
       </span>
     );
   }
 
-  return <span className="text-gray-600 dark:text-gray-400">{String(value)}</span>;
+  return <span className="text-[color:var(--text-3)]">{String(value)}</span>;
 }
 
 interface JsonlLine {
@@ -143,7 +149,7 @@ function JsonlPreview({ content, t }: { content: string; t: (key: string) => str
 
   if (lines.length === 0) {
     return (
-      <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">
+      <div className="p-4 text-[color:var(--text-3)] text-sm">
         Empty file
       </div>
     );
@@ -152,15 +158,15 @@ function JsonlPreview({ content, t }: { content: string; t: (key: string) => str
   return (
     <div className="p-4 font-mono text-sm leading-relaxed space-y-2">
       {lines.map(({ index, parsed, error, raw }) => (
-        <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
-          <div className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-xs text-gray-400 dark:text-gray-500 select-none">
+        <div key={index} className="border border-[color:var(--border-1)] rounded-md overflow-hidden">
+          <div className="px-2 py-1 bg-[color:var(--bg-surface-2)] text-xs text-[color:var(--text-4)] select-none">
             Line {index + 1}
           </div>
           <div className="p-2">
             {error ? (
               <>
-                <div className="text-red-500 dark:text-red-400 text-xs mb-1">⚠️ Parse Error: {error}</div>
-                <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{raw}</pre>
+                <div className="text-xs mb-1" style={{ color: 'var(--status-error-fg)' }}>⚠️ Parse Error: {error}</div>
+                <pre className="text-xs text-[color:var(--text-3)] whitespace-pre-wrap">{raw}</pre>
               </>
             ) : (
               <RenderValue value={parsed} indent={1} />
@@ -198,16 +204,24 @@ export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
   if (error) {
     return (
       <div className="p-4">
-        <div className="text-red-500 dark:text-red-400 font-medium mb-2">
+        <div className="mb-2" style={{ color: 'var(--status-error-fg)', fontWeight: 500 }}>
           ⚠️ {fileType.toUpperCase()} Parse Error
         </div>
-        <pre className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-md overflow-x-auto">
+        <pre
+          className="text-sm overflow-x-auto"
+          style={{
+            color: 'var(--status-error-fg)',
+            background: 'oklch(from var(--red-500) l c h / 0.08)',
+            padding: 12,
+            borderRadius: 'var(--r-md)',
+          }}
+        >
           {error}
         </pre>
-        <div className="mt-4 text-gray-500 dark:text-gray-400 text-sm">
+        <div className="mt-4 text-[color:var(--text-3)] text-sm">
           Raw content:
         </div>
-        <pre className="mt-2 text-sm font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+        <pre className="mt-2 text-sm font-mono text-[color:var(--text-2)] whitespace-pre-wrap">
           {content}
         </pre>
       </div>
@@ -216,7 +230,7 @@ export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
 
   if (parsed === null && !content.trim()) {
     return (
-      <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">
+      <div className="p-4 text-[color:var(--text-3)] text-sm">
         Empty file
       </div>
     );

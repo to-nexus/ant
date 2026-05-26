@@ -1,17 +1,116 @@
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Rocket,
-  Globe,
   AlertCircle,
   Square,
-  ExternalLink,
+  ArrowRight,
   Moon,
-  AlertTriangle,
+  Box,
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
 import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
-import { ansiConverter } from '../utils';
+import {
+  SectionCard,
+  SignalRing,
+} from '@/presentation/components/ConfigEditor/aurora';
+import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
+
+interface DeployAccent {
+  color: string;
+  label: string;
+  ring: SignalRingState;
+}
+
+function c3vDeployAccent(
+  phase: string | undefined,
+  t: TFunction,
+): DeployAccent {
+  switch (phase) {
+    case 'running':
+      return {
+        color: 'oklch(45% 0.16 155)',
+        label: t('preview.deploy.running', 'Deployed'),
+        ring: 'running',
+      };
+    case 'building':
+      return {
+        color: 'var(--violet-700)',
+        label: t('preview.deploy.building', 'Building...'),
+        ring: 'starting',
+      };
+    case 'deploying':
+      return {
+        color: 'oklch(50% 0.20 320)',
+        label: t('preview.deploy.deploying', 'Deploying...'),
+        ring: 'starting',
+      };
+    case 'starting':
+      return {
+        color: 'oklch(50% 0.22 270)',
+        label: t('preview.deploy.starting', 'Waking up...'),
+        ring: 'starting',
+      };
+    case 'hibernated':
+      return {
+        color: 'var(--text-3)',
+        label: t('preview.deploy.hibernated', 'Hibernated'),
+        ring: 'hibernated',
+      };
+    case 'unavailable':
+      return {
+        color: 'oklch(50% 0.16 50)',
+        label: t('preview.deploy.unavailable', 'Artifact missing'),
+        ring: 'warning',
+      };
+    case 'error':
+      return {
+        color: 'var(--status-error-fg)',
+        label: t('preview.deploy.error', 'Deploy Failed'),
+        ring: 'error',
+      };
+    default:
+      return {
+        color: 'var(--text-4)',
+        label: t('preview.deploy.idle', 'Not deployed'),
+        ring: 'idle',
+      };
+  }
+}
+
+function bigBtn({
+  bg,
+  fg,
+  glow,
+  border,
+  disabled,
+}: {
+  bg: string;
+  fg: string;
+  glow?: string;
+  border?: string;
+  disabled?: boolean;
+}): React.CSSProperties {
+  return {
+    height: 36,
+    padding: '0 14px',
+    borderRadius: 'var(--r-md)',
+    fontSize: 12.5,
+    fontWeight: 700,
+    border: border ?? 'none',
+    background: bg,
+    color: fg,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
+    boxShadow: glow ?? 'none',
+    letterSpacing: '-0.005em',
+  };
+}
 
 export function DeploySection({
   deployStatus,
@@ -55,86 +154,10 @@ export function DeploySection({
   const isError = phase === 'error';
   const isDeployActive = isRunning || isWorking;
 
-  const statusBadge = (() => {
-    if (isRunning) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <Globe className="w-4 h-4 text-green-500" />
-          <span className="text-sm font-medium text-green-700 dark:text-green-300">
-            {t('preview.deploy.running', 'Deployed')}
-          </span>
-        </div>
-      );
-    }
-    if (phase === 'building') {
-      return (
-        <div className="flex items-center gap-1.5">
-          <Spinner size="md" className="text-blue-500" />
-          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-            {t('preview.deploy.building', 'Building...')}
-          </span>
-        </div>
-      );
-    }
-    if (phase === 'deploying') {
-      return (
-        <div className="flex items-center gap-1.5">
-          <Spinner size="md" className="text-blue-500" />
-          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-            {t('preview.deploy.deploying', 'Deploying...')}
-          </span>
-        </div>
-      );
-    }
-    if (phase === 'starting') {
-      return (
-        <div className="flex items-center gap-1.5">
-          <Spinner size="md" className="text-indigo-500" />
-          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-            {t('preview.deploy.starting', 'Waking up...')}
-          </span>
-        </div>
-      );
-    }
-    if (isHibernated) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <Moon className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            {t('preview.deploy.hibernated', 'Hibernated')}
-          </span>
-        </div>
-      );
-    }
-    if (isUnavailable) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <AlertTriangle className="w-4 h-4 text-amber-500" />
-          <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
-            {t('preview.deploy.unavailable', 'Artifact missing')}
-          </span>
-        </div>
-      );
-    }
-    if (isError) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <AlertCircle className="w-4 h-4 text-red-500" />
-          <span className="text-sm font-medium text-red-700 dark:text-red-300">
-            {t('preview.deploy.error', 'Deploy Failed')}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <div className="flex items-center gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-gray-400" />
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          {t('preview.deploy.idle', 'Not deployed')}
-        </span>
-      </div>
-    );
-  })();
+  // deployLogs reserved for a future Aurora deploy console; not rendered here.
+  void deployLogs;
+
+  const accent = c3vDeployAccent(phase, t);
 
   const primaryButtonLabel = isUnavailable
     ? t('preview.deploy.redeploy', 'Re-deploy')
@@ -148,128 +171,314 @@ export function DeploySection({
     if (disabledReason === 'code-job-active') {
       return t(
         'preview.deploy.disabled.codeJobActive',
-        'A code job is running on this feature. Deploy is available once it completes.'
+        'A code job is running on this feature. Deploy is available once it completes.',
       );
     }
     return undefined;
   })();
 
+  const statusSlot = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <SignalRing state={accent.ring} size={8} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: accent.color }}>
+        {accent.label}
+      </span>
+    </span>
+  );
+
+  const openable = (deployStatus?.packages || []).filter((p) => !!p.url);
+  const singleOpenUrl =
+    openable.length <= 1
+      ? deployStatus?.url ?? openable[0]?.url ?? null
+      : null;
+  const showSingleOpen =
+    (isRunning || isHibernated) && openable.length <= 1 && !!singleOpenUrl;
+  const showMultiOpen =
+    (isRunning || isHibernated) && openable.length > 1;
+
   return (
-    <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Rocket className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          {t('preview.deploy.title', 'Deploy')}
-        </h3>
-      </div>
-
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-        {t('preview.deploy.description', 'Build and serve a production-optimized static version of your project.')}
-      </p>
-
-      <div className="flex items-center gap-2 mb-3">{statusBadge}</div>
-
-      <div className="flex items-center gap-2 flex-wrap">
+    <SectionCard
+      icon="Zap"
+      title={t('preview.deploy.title', 'Deploy')}
+      description={t(
+        'preview.deploy.description',
+        'Build and serve a production-optimized static version of your project.',
+      )}
+      accent="aurora"
+      status={statusSlot}
+    >
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
         {!isDeployActive ? (
           <button
+            type="button"
             onClick={onDeploy}
             disabled={isDeployLoading || !canDeploy}
             title={disabledTooltip}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                     bg-indigo-600 text-white hover:bg-indigo-700
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors"
+            style={
+              isDeployLoading || !canDeploy
+                ? bigBtn({
+                    bg: 'var(--bg-surface-2)',
+                    fg: 'var(--text-4)',
+                    border: '1px solid var(--border-2)',
+                    disabled: true,
+                  })
+                : bigBtn({
+                    bg: 'var(--gradient-aurora)',
+                    fg: 'white',
+                    glow: '0 6px 18px -6px oklch(55% 0.20 290 / 0.5)',
+                  })
+            }
           >
             {isDeployLoading ? (
               <Spinner size="sm" tone="inherit" />
             ) : (
-              <Rocket className="w-3.5 h-3.5" />
+              <Rocket size={14} strokeWidth={2} />
             )}
             {primaryButtonLabel}
           </button>
         ) : (
           <button
+            type="button"
             onClick={onStopDeploy}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                     bg-red-600 text-white hover:bg-red-700
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors"
+            style={bigBtn({
+              bg: 'linear-gradient(135deg, oklch(60% 0.20 25), oklch(58% 0.22 15))',
+              fg: 'white',
+              glow: '0 6px 18px -6px oklch(55% 0.20 25 / 0.55)',
+            })}
           >
-            <Square className="w-3.5 h-3.5" />
+            <Square size={14} strokeWidth={2} />
             {t('preview.deploy.stop', 'Stop')}
           </button>
         )}
-        {/* Open button(s): available while running OR hibernated (click
-            triggers auto-wake on the proxy). Multi-package deploys
-            replace the single representative button with one button per
-            package — there is no "primary" deploy. */}
-        {(isRunning || isHibernated) && (() => {
-          const openable = (deployStatus?.packages || []).filter(p => !!p.url);
-          // Single-package back-compat: prefer top-level url. If null but
-          // packages has exactly one entry, fall back to that one URL.
-          if (openable.length <= 1) {
-            const singleUrl = deployStatus?.url ?? openable[0]?.url ?? null;
-            if (!singleUrl) return null;
-            return (
-              <button
-                onClick={() => onOpenDeployUrl(singleUrl)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                         bg-blue-600 text-white hover:bg-blue-700
-                         transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                {isHibernated
-                  ? t('preview.deploy.wake', 'Wake up')
-                  : t('preview.deploy.open', 'Open')}
-              </button>
-            );
-          }
-          // Multi-package: render one button per deployed frontend.
-          return openable.map((pkg) => (
-            <button
-              key={pkg.slug || pkg.name}
-              onClick={() => onOpenDeployUrl(pkg.url || undefined)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
-                       bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              title={t('preview.openPackage', { name: pkg.name })}
-            >
-              <ExternalLink className="w-3 h-3" />
-              <span className="truncate max-w-[16ch]">{pkg.name}</span>
-              {isHibernated && (
-                <Moon className="w-3 h-3 opacity-70" />
-              )}
-            </button>
-          ));
-        })()}
       </div>
 
-      {isError && deployStatus?.error && (
-        <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md">
-          <p className="text-sm text-red-700 dark:text-red-300">{deployStatus.error}</p>
+      {!canDeploy && disabledTooltip && (
+        <p
+          style={{
+            margin: '8px 0 0',
+            fontSize: 11,
+            color: 'var(--text-4)',
+            fontStyle: 'italic',
+          }}
+        >
+          ⓘ {disabledTooltip}
+        </p>
+      )}
+
+      {/* Single Open chip */}
+      {showSingleOpen && singleOpenUrl && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border-1)',
+          }}
+        >
+          <DeployUrlChip
+            label={
+              isHibernated
+                ? t('preview.deploy.wake', 'Wake up')
+                : t('preview.deploy.open', 'Open')
+            }
+            url={singleOpenUrl}
+            onOpen={() => onOpenDeployUrl(singleOpenUrl)}
+            hibernated={isHibernated}
+            big
+          />
         </div>
       )}
 
-      {isUnavailable && (
-        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
-          <p className="text-sm text-amber-700 dark:text-amber-300">
-            {deployStatus?.error || t('preview.deploy.unavailable', 'Artifact missing')}
-          </p>
-        </div>
-      )}
-
-      {deployLogs.length > 0 && (
-        <div className="mt-3 max-h-48 overflow-y-auto bg-gray-900 dark:bg-gray-950 rounded-md p-3">
-          {deployLogs.slice(-50).map((log, idx) => (
-            <div
-              key={`${log.timestamp}-${idx}`}
-              className={`text-xs font-mono leading-relaxed ${
-                log.type === 'stderr' ? 'text-red-400' : 'text-gray-300'
-              }`}
-              dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(log.message) }}
+      {/* Multi-package chip grid */}
+      {showMultiOpen && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border-1)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {openable.map((pkg) => (
+            <DeployUrlChip
+              key={pkg.slug || pkg.name}
+              label={pkg.name}
+              url={pkg.url as string}
+              onOpen={() => onOpenDeployUrl(pkg.url || undefined)}
+              hibernated={isHibernated}
             />
           ))}
         </div>
       )}
-    </section>
+
+      {isError && deployStatus?.error && (
+        <div
+          style={{
+            marginTop: 12,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: 10,
+            background: 'var(--status-error-bg)',
+            border: '1px solid oklch(82% 0.12 25)',
+            borderRadius: 'var(--r-md)',
+            color: 'var(--status-error-fg)',
+          }}
+        >
+          <AlertCircle size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              lineHeight: 1.5,
+              wordBreak: 'break-word',
+            }}
+          >
+            {deployStatus.error}
+          </p>
+        </div>
+      )}
+
+      {isUnavailable && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 10,
+            background: 'oklch(94% 0.06 50 / 0.6)',
+            border: '1px solid oklch(82% 0.10 50)',
+            borderRadius: 'var(--r-md)',
+            color: 'oklch(50% 0.16 50)',
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              lineHeight: 1.5,
+              wordBreak: 'break-word',
+            }}
+          >
+            {deployStatus?.error || t('preview.deploy.unavailable', 'Artifact missing')}
+          </p>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function DeployUrlChip({
+  label,
+  url,
+  onOpen,
+  hibernated,
+  big = false,
+}: {
+  label: string;
+  url: string;
+  onOpen: () => void;
+  hibernated: boolean;
+  big?: boolean;
+}) {
+  const grad = hibernated
+    ? 'var(--gradient-cool)'
+    : 'var(--gradient-aurora)';
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 10,
+        width: '100%',
+        padding: big ? '12px 14px' : '10px 12px',
+        background: 'var(--bg-surface)',
+        border: '1.5px solid var(--violet-300)',
+        borderRadius: 'var(--r-md)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+        boxShadow: '0 2px 6px -3px oklch(55% 0.18 290 / 0.18)',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: 'relative',
+          width: 26,
+          height: 26,
+          borderRadius: 'var(--r-sm)',
+          background: grad,
+          color: 'white',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Box size={12} strokeWidth={2.5} />
+        {hibernated && (
+          <Moon
+            size={10}
+            strokeWidth={2.2}
+            style={{
+              position: 'absolute',
+              right: -3,
+              bottom: -3,
+              background: 'var(--bg-surface)',
+              color: 'var(--text-3)',
+              borderRadius: '50%',
+              padding: 1,
+            }}
+          />
+        )}
+      </span>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--text-1)',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10.5,
+            color: 'var(--text-3)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={url}
+        >
+          {url}
+        </span>
+      </span>
+      <ArrowRight
+        size={14}
+        strokeWidth={2}
+        style={{ color: 'var(--text-3)', flexShrink: 0 }}
+      />
+    </button>
   );
 }

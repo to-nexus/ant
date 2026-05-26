@@ -1,51 +1,46 @@
 /**
  * WorkflowNode Component
- * 
- * 범용 워크플로우 노드 컴포넌트
- * NodeType과 NodeImportance에 따라 스타일 적용
+ *
+ * Aurora-tokenized workflow node.
+ *
+ * State signals (NO palette tints):
+ *  - running (data.isActive=true)              → violet borderglow
+ *  - todo    (isActive=false, not yet visited) → opacity 0.45
+ *  - done    (visited && !isActive)            → opacity 0.9
+ *
+ * Worker chip stack is gated on plan/execute phase nodes only.
  */
 
-import { memo, useEffect } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
-import { Settings } from 'lucide-react';
 import { NodeType, NodeImportance, ActiveWorkerNode } from '@/domain/models/workflow';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfoList } from '@/shared/utils/actor-utils';
 
 interface NodeData {
+  id?: string;                  // Optional node id (used for phase gating of worker chips)
   label: string;
   description?: string;
   importance: NodeImportance;
   isActive?: boolean;
-  workers?: ActiveWorkerNode[];  // Workers currently active on this node
+  visitedBefore?: boolean;      // True once the node has been entered at least once
+  workers?: ActiveWorkerNode[]; // Workers currently active on this node
   nodeType: NodeType;
-  actors?: string[];  // Actor IDs
-  isExpanded?: boolean;  // 확장 상태
-  llmInfo?: { provider: string; model: string };  // ✅ 백엔드에서 받은 실제 LLM 정보
+  actors?: string[];            // Actor IDs
+  isExpanded?: boolean;
+  llmInfo?: { provider: string; model: string };
 }
 
 interface WorkflowNodeProps {
   data: NodeData;
 }
 
-// 노드 타입별 색상 (라이트 모드)
-const NODE_COLORS_LIGHT: Record<NodeType, string> = {
-  [NodeType.ENTRY]: 'bg-green-100 border-green-500 text-green-900',
-  [NodeType.PROCESS]: 'bg-blue-100 border-blue-500 text-blue-900',
-  [NodeType.DECISION]: 'bg-yellow-100 border-yellow-500 text-yellow-900',
-  [NodeType.CHECKPOINT]: 'bg-purple-100 border-purple-500 text-purple-900',
-  [NodeType.END]: 'bg-red-100 border-red-500 text-red-900'
-};
-
-// 노드 타입별 색상 (다크 모드)
-const NODE_COLORS_DARK: Record<NodeType, string> = {
-  [NodeType.ENTRY]: 'dark:bg-green-900 dark:border-green-400 dark:text-green-100',
-  [NodeType.PROCESS]: 'dark:bg-blue-900 dark:border-blue-400 dark:text-blue-100',
-  [NodeType.DECISION]: 'dark:bg-yellow-900 dark:border-yellow-400 dark:text-yellow-100',
-  [NodeType.CHECKPOINT]: 'dark:bg-purple-900 dark:border-purple-400 dark:text-purple-100',
-  [NodeType.END]: 'dark:bg-red-900 dark:border-red-400 dark:text-red-100'
-};
+// Worker chips are only meaningful for plan / execute phase nodes.
+function isWorkerChipPhase(identifier: string | undefined): boolean {
+  const normalized = (identifier ?? '').toLowerCase().trim();
+  return normalized === 'plan' || normalized === 'execute';
+}
 
 // 노드 크기
 const NODE_SIZE = {
@@ -69,79 +64,94 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   const { t } = useTranslation('kanban');
   const isExpanded = data.isExpanded || false;
   const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
-  const colorClass = `${NODE_COLORS_LIGHT[data.nodeType]} ${NODE_COLORS_DARK[data.nodeType]}`;
 
   const actorInfoList = getActorInfoList(data.actors || [], data.llmInfo);
-
-  // ✅ Track isActive changes
-  useEffect(() => {
-    if (data.isActive) {
-      // console.log('[WorkflowNode] ⭐ NODE ACTIVE:', data.label); // ✅ Too verbose
-    }
-  }, [data.isActive, data.label]);
 
   // Fixed LR layout — workflow is a full-pane view, edges flow left → right.
   const targetPosition = Position.Left;
   const sourcePosition = Position.Right;
-  
+
+  // State-signal opacity derivation: running > done > todo.
+  const isRunning = data.isActive === true;
+  const isDone = !isRunning && data.visitedBefore === true;
+  const stateOpacity = isRunning ? 1 : (isDone ? 0.9 : 0.45);
+
+  // Phase gate for worker chip stack.
+  const showWorkerChips =
+    isWorkerChipPhase(data.id ?? data.label) &&
+    isRunning &&
+    !!data.workers &&
+    data.workers.length > 0;
+
   if (isExpanded) {
     // 확장된 상태
+    const expandedStyle: React.CSSProperties = {
+      width: size.width,
+      borderWidth: size.borderWidth,
+      borderStyle: 'solid',
+      borderColor: isRunning ? 'transparent' : 'var(--border-1)',
+      background: 'var(--bg-surface)',
+      color: 'var(--text-1)',
+      borderRadius: 'var(--r-md, 12px)',
+      opacity: stateOpacity,
+      boxShadow: isRunning
+        ? 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18)), 0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)'
+        : 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18))',
+      zIndex: 1000
+    };
+
     return (
       <div
-        className={cn(
-          'workflow-node rounded-lg border transition-all duration-300 relative',
-          colorClass,
-          'shadow-xl',
-          data.isActive && 'ring-4 ring-green-500 ring-opacity-50'
-        )}
-        style={{
-          width: size.width,
-          borderWidth: size.borderWidth,
-          zIndex: 1000  // 최상위 depth
-        }}
+        className="workflow-node rounded-lg transition-all duration-300 relative"
+        style={expandedStyle}
       >
-        <Handle 
-          type="target" 
+        <Handle
+          type="target"
           position={targetPosition}
-          className="!bg-gray-400 dark:!bg-gray-600"
+          style={{ background: 'var(--border-1)' }}
         />
-        
+
         {/* Expanded Content */}
         <div className="p-4 space-y-3">
           {/* Title */}
           <div className="text-center">
-            <div 
+            <div
               className="font-semibold"
-              style={{ fontSize: size.fontSize }}
+              style={{ fontSize: size.fontSize, color: 'var(--text-1)' }}
             >
               {data.label}
             </div>
-            {data.isActive && (
-              <div className="mt-2 flex items-center gap-2">
-                <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-cog-spin" />
-                <span className="text-xs text-green-600 dark:text-green-400 font-bold">
-                  {t('workflow.active')}
-                </span>
-              </div>
-            )}
           </div>
-          
+
           {/* Description */}
           {data.description && (
-            <div className="text-xs opacity-80 leading-relaxed">
+            <div
+              className="text-xs leading-relaxed"
+              style={{ color: 'var(--text-2)' }}
+            >
               {data.description}
             </div>
           )}
-          
+
           {/* Linked Actors */}
           {actorInfoList.length > 0 && (
             <div className="space-y-2">
-              <div className="text-xs font-semibold opacity-70">{t('workflow.linkedActors')}</div>
+              <div
+                className="text-xs font-semibold"
+                style={{ color: 'var(--text-3)' }}
+              >
+                {t('workflow.linkedActors')}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {actorInfoList.map((actor) => (
-                  <div 
+                  <div
                     key={actor.id}
-                    className="text-xs px-2 py-1 rounded bg-black/5 dark:bg-white/5 flex items-center gap-1.5"
+                    className="text-xs px-2 py-1 rounded font-mono flex items-center gap-1.5"
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      color: 'var(--text-1)',
+                      border: '1px solid var(--border-1)'
+                    }}
                   >
                     <span>{actor.icon}</span>
                     <span className="font-medium">{actor.displayName}</span>
@@ -151,76 +161,84 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
             </div>
           )}
         </div>
-        
-        <Handle 
-          type="source" 
+
+        <Handle
+          type="source"
           position={sourcePosition}
-          className="!bg-gray-400 dark:!bg-gray-600"
+          style={{ background: 'var(--border-1)' }}
         />
       </div>
     );
   }
-  
+
   // 접힌 상태 (기본)
+  const collapsedStyle: React.CSSProperties = {
+    width: size.width,
+    height: size.height,
+    background: 'var(--bg-surface)',
+    color: 'var(--text-1)',
+    borderRadius: 'var(--r-md, 12px)',
+    borderStyle: 'solid',
+    borderWidth: isRunning ? 2 : 1,
+    borderColor: isRunning ? 'transparent' : 'var(--border-1)',
+    boxShadow: isRunning
+      ? '0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)'
+      : 'none',
+    opacity: stateOpacity,
+    zIndex: 1
+  };
+
   return (
     <div
       className={cn(
-        'workflow-node rounded-lg flex flex-col items-center justify-center relative',
-        'border transition-all duration-200 cursor-pointer hover:shadow-lg',
-        colorClass,
-        data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50'
+        'workflow-node flex flex-col items-center justify-center relative',
+        'transition-all duration-200 cursor-pointer'
       )}
-      style={{
-        width: size.width,
-        height: size.height,
-        borderWidth: data.isActive ? 3 : size.borderWidth,
-        zIndex: 1  // 기본 z-index, 확장 시 1000으로 변경
-      }}
+      style={collapsedStyle}
     >
-      <Handle 
-        type="target" 
+      <Handle
+        type="target"
         position={targetPosition}
-        className="!bg-gray-400 dark:!bg-gray-600"
+        style={{ background: 'var(--border-1)' }}
       />
-      
+
       <div className="text-center px-2 w-full">
-        <div 
-          className="truncate" 
-          style={{ 
-            fontSize: size.fontSize, 
-            fontWeight: size.fontWeight 
+        <div
+          className="truncate"
+          style={{
+            fontSize: size.fontSize,
+            fontWeight: size.fontWeight,
+            color: 'var(--text-1)'
           }}
           title={data.label}
         >
           {data.label}
         </div>
-        
-        {data.isActive && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-cog-spin" />
-            <span className="text-xs text-green-600 dark:text-green-400 font-bold">
-              {t('workflow.active')}
-            </span>
-          </div>
-        )}
       </div>
-      
-      {/* Task label badges for parallel workers — column layout for readability */}
-      {data.isActive && data.workers && data.workers.length > 0 && (
+
+      {/* Worker chip stack — plan/execute phases only, taskName only */}
+      {showWorkerChips && (
         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full flex flex-col items-center gap-0.5">
-          {data.workers.map((w) => (
-            <span key={w.workerId}
-              className="text-[10px] bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1.5 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+          {data.workers!.map((w) => (
+            <span
+              key={w.workerId}
+              className="font-mono text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-1)',
+                color: 'var(--text-1)'
+              }}
+            >
               {w.taskName}
             </span>
           ))}
         </div>
       )}
-      
-      <Handle 
-        type="source" 
+
+      <Handle
+        type="source"
         position={sourcePosition}
-        className="!bg-gray-400 dark:!bg-gray-600"
+        style={{ background: 'var(--border-1)' }}
       />
     </div>
   );
