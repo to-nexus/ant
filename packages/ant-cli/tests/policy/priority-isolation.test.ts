@@ -39,7 +39,6 @@ const PHASE_DIRS = [
   'src/agents/architect/graph/code/nodes/plan',
   'src/agents/architect/graph/code/nodes/execute',
   'src/agents/architect/graph/code/nodes/checkTaskStatus',
-  'src/agents/architect/graph/code/nodes/detect',
   'src/agents/architect/graph/code/nodes/resolve',
   'src/agents/architect/graph/code/nodes/direct',
   'src/agents/architect/graph/code/nodes/learn',

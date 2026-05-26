@@ -60,9 +60,9 @@ export async function decomposeGameArtDesign(
   const {
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
-    decomposeWithToolLoop,
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
+  const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
   const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
   const pool = new ArtifactPoolView(state.artifacts || []);
@@ -154,14 +154,14 @@ export async function decomposeGameArtDesign(
     // contract; mirrors the ui / system / code-decompose pattern.
     const streamingHook = createDesignTaskStreamingHook(state);
 
-    // Both tool-mode (RAG) and inline-mode go through `decomposeWithToolLoop`
+    // Both tool-mode (RAG) and inline-mode go through `callLLMWithToolLoop`
     // — tools is empty in inline-mode so the loop terminates after a single
     // streamed round. The shared path guarantees the streaming Kanban hook
     // fires regardless of source size; the previous `invokeWithUsage` inline
     // branch never gave `XMLStreamParser` any text to scan, so the todo
     // column landed in one burst at stream end.
     const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
-    const { response: streamedResponse, usage } = await decomposeWithToolLoop(
+    const { response: streamedResponse, usage } = await callLLMWithToolLoop(
       llmToUse,
       [{ role: 'user', content: artDecomposePrompt }],
       tools,

@@ -79,25 +79,16 @@ export type { PendingCardSnapshot, TurnBufferSnapshot };
 // ============================================
 
 /**
- * Triage result stored in Redis for pending choices
- * Simplified version for Redis storage
- * Mirrors TriageResult from agents/common/graph/nodes/triage/types.ts
+ * Choice envelope stored in Redis for pending choice cards.
+ * Mirrors `ChoiceEnvelope` from infrastructure/choice/types.ts.
  */
-export interface PendingChoiceTriageResult {
-  intent: string;
-  inScope?: boolean;
-  workStatus?: 'proceed' | 'blocked' | 'redirect';
-  suggestedAgent?: string;
-  suggestedJob?: string;
-  redirectReason?: string;
-  missingPrerequisites?: {
-    required?: string[];
-    recommended?: string[];
-  };
-  canProceed?: boolean;
-  blockedMessage?: string;
+export interface PendingChoiceEnvelope {
+  resolvedIntentId?: string;
+  group: 'ask' | 'work';
+  mode?: string;
+  domain?: string;
   displayMessage?: string;
-  needsChoice?: boolean;
+  suggestedJob?: string;
   choiceOptions?: {
     positive?: { label: string; action: string };
     negative?: { label: string; action: string };
@@ -113,7 +104,7 @@ export interface PendingChoiceData {
   jobId: string;
   projectId: string;
   featureName: string;
-  triageResult: PendingChoiceTriageResult;
+  envelope: PendingChoiceEnvelope;
   originalDirective?: string;
   createdAt: number;
   expiresAt: number;

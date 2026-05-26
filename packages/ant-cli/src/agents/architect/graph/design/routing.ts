@@ -55,6 +55,9 @@ export function routeAfterResolve(s: DesignGraphState): string {
 }
 
 export function routeAfterDetect(s: DesignGraphState): string {
+  const detect = (s as any).detect as { status?: string } | undefined;
+  // Figma augment may stuff a designError into stateUpdates → routes to learn
+  // for cleanup (matches legacy behaviour).
   if (s.designError) {
     console.log(`❌ [Graph] Design error detected → routing to learn for cleanup`);
     return 'learn';
@@ -63,6 +66,11 @@ export function routeAfterDetect(s: DesignGraphState): string {
     console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
     return '__end__';
   }
+  if (detect && detect.status && detect.status !== 'proceed') {
+    console.log(`🚫 [Graph] detect.status=${detect.status} → __end__ (FE renders choice card)`);
+    return '__end__';
+  }
+  // Proceed (or legacy escalation reuse with no fresh detect channel).
   if (isFigmaPipeline(s.resolvedAction?.intent, isFigmaDataPopulated(s.figmaConfig))) {
     console.log(`🎨 [Graph] Figma pipeline (intent=${s.resolvedAction?.intent}) → figmaExplore`);
     return 'figmaExplore';

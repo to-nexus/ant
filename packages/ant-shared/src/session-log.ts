@@ -18,7 +18,8 @@
  */
 
 import type { JobType } from './job';
-import type { Mode } from './detection';
+import type { Mode, Domain } from './detection';
+import type { IntentId } from './actions';
 
 /**
  * 5-tier execution strategy identifier (SSOT).
@@ -95,16 +96,39 @@ export interface FeatureUserTurnLine extends LineBase {
 }
 
 /**
- * user_turn_meta — execution-tier classification patch line
+ * user_turn_meta — patch line that progressively annotates the owning
+ * user_turn as the pipeline classifies it.
  *
- * 기록 시점: Tier Entry Node(code/design: Decompose, plan/visual: Detect)
- * 완료 후 learn(또는 동등 phase) 종료 시 append. resolve가 로드 시
- * user_turn과 turnId 기준 병합.
+ * 기록 시점은 두 갈래:
+ *   1. Triage (intent inference 완료 직후) → `actionMetadata` 채움
+ *      (executionTier 는 미정 — Decompose 가 결정).
+ *   2. Tier Entry Node (code/design: Decompose, plan/visual: Detect)
+ *      완료 시 → `executionTier` 채움.
+ *
+ * `mergeFeatureContext` 가 같은 `turnId` 의 두 patch line 을 차례로 머지
+ * 하므로 두 필드 모두 optional. Idempotent — 동일 patch 가 재발행되면
+ * reader 가 최신 값을 keep 한다.
  */
 export interface FeatureUserTurnMetaLine extends LineBase {
   type: 'user_turn_meta';
-  /** 5-tier execution strategy selected by the Tier Entry Node LLM. */
-  executionTier: ExecutionTierId;
+  /**
+   * 5-tier execution strategy selected by the Tier Entry Node LLM.
+   * Optional because Triage emits its meta patch before Decompose has run.
+   */
+  executionTier?: ExecutionTierId;
+  /**
+   * Triage 출력 메타 — 다음 turn 의 `hydrateFeatureContext` 가
+   * `featureContext.userTurns[-1].actionMetadata.intent` 로 직전 intent 를
+   * 읽어 후속 발화 추론 ("그거 업데이트해줘" → `rev-*`) 에 사용.
+   *
+   * 모두 optional 이지만 적어도 `intent` 는 Triage 가 채워야 다음 turn 이
+   * continuation 인지 결정할 수 있다.
+   */
+  actionMetadata?: {
+    intent?: IntentId;
+    mode?: Mode;
+    domain?: Domain;
+  };
 }
 
 /**

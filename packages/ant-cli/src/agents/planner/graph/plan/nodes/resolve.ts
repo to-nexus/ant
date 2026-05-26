@@ -22,7 +22,7 @@ import * as path from 'path';
 import { PlanGraphState } from '../state';
 import type { ConversationEntry } from '../../../../../core/types/session';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations';
-import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
+import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { resolveResumeActionSlots } from '../../../../common/graph/resumeActionMetadata';
@@ -243,6 +243,21 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     await chatAPI.showContextLoaded(contextItems);
   }
 
+  // Feature Context (cross-job SSOT) — load feature.jsonl, recover turnId.
+  // Plan job runs at fixed Tier 4 (Plan) so compactFeatureContext skips the
+  // LLM call (per tier facade); fallback path is conservative.
+  const { featureContext, turnId } = await hydrateFeatureContext(
+    {
+      session: state.deps?.session,
+      llm: state.deps?.llm,
+      promptPort: state.deps?.promptBuilder,
+    },
+    {
+      jobId: (state as any).jobId,
+      logPrefix: 'Planner:Resolve',
+    },
+  );
+
   return {
     evalReport,
     rubricContent,
@@ -255,6 +270,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     },
     isConversationContinuation,
     resolvedArtifacts: documents.length > 0 ? documents : undefined,
-    sessionDigest: buildSessionDigest(sessionMain),
+    featureContext,
+    ...(turnId ? { turnId } : {}),
   } as Partial<PlanGraphState>;
 }

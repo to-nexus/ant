@@ -59,6 +59,12 @@ export interface DesignGraphState extends TriageableState {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   resolvedAction?: ResolvedActionContext;
 
+  /**
+   * Phase C — Detect node output cache for escalation reuse. See
+   * `code/state.ts` `detect` JSDoc for the cross-job rationale.
+   */
+  detect?: import('../../../common/graph/nodes/detect/types').DetectResult<DesignGraphState>;
+
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;
   /** Set by design graph (parallel mode) for MECE sibling-task context in docGen */

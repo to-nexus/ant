@@ -1,14 +1,15 @@
 /**
- * Choice Service
- * 
- * Triage 결과에 따른 사용자 선택 관리
- * - Pending choice 저장/조회 (Redis)
- * - 선택 처리 및 라우팅
+ * Choice Service — pending choice card lifecycle.
+ *
+ * Pending choice envelopes are stored in Redis (cross-pod) with a local
+ * cache for hot reads. Producers (detect node on `blocked` /
+ * `redirect-suggested`) register; the user's pick is routed through
+ * `handleChoice` and translated into a `ChoiceResponse` the orchestrator
+ * can act on.
  */
 
-import { ChoiceRequest, ChoiceResponse, PendingChoice } from './types';
-import { TriageResult, ChoiceAction } from '../../agents/common/graph/nodes/triage/types';
-import { StateStorePort, PendingChoiceData, PendingChoiceTriageResult } from '../../core/ports/stateStore';
+import { ChoiceEnvelope, ChoiceRequest, ChoiceResponse, PendingChoice } from './types';
+import { StateStorePort, PendingChoiceData, PendingChoiceEnvelope } from '../../core/ports/stateStore';
 
 // 기본 만료 시간: 30분
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000;
@@ -39,33 +40,22 @@ export class ChoiceService {
     return `${projectId}:${featureName}`;
   }
   
-  /**
-   * Convert TriageResult to Redis-storable format
-   */
-  private toRedisTriageResult(triageResult: TriageResult): PendingChoiceTriageResult {
+  private toRedis(envelope: ChoiceEnvelope): PendingChoiceEnvelope {
     return {
-      intent: triageResult.intent,
-      inScope: triageResult.inScope,
-      workStatus: triageResult.workStatus,
-      suggestedAgent: triageResult.suggestedAgent,
-      suggestedJob: triageResult.suggestedJob,
-      redirectReason: triageResult.redirectReason,
-      missingPrerequisites: triageResult.missingPrerequisites,
-      canProceed: triageResult.canProceed,
-      blockedMessage: triageResult.blockedMessage,
-      displayMessage: triageResult.displayMessage,
-      needsChoice: triageResult.needsChoice,
-      choiceOptions: triageResult.choiceOptions
+      resolvedIntentId: envelope.resolvedIntentId,
+      group: envelope.group,
+      mode: envelope.mode,
+      domain: envelope.domain,
+      displayMessage: envelope.displayMessage,
+      suggestedJob: envelope.suggestedJob,
+      choiceOptions: envelope.choiceOptions,
     };
   }
-  
-  /**
-   * Convert Redis format back to TriageResult
-   */
-  private fromRedisTriageResult(data: PendingChoiceTriageResult): TriageResult {
-    return data as TriageResult;
+
+  private fromRedis(data: PendingChoiceEnvelope): ChoiceEnvelope {
+    return data as ChoiceEnvelope;
   }
-  
+
   /**
    * Register a pending choice (saves to Redis + local cache)
    */
@@ -73,41 +63,41 @@ export class ChoiceService {
     jobId: string,
     projectId: string,
     featureName: string,
-    triageResult: TriageResult,
+    envelope: ChoiceEnvelope,
     originalDirective?: string
   ): Promise<void> {
     const key = this.getKey(projectId, featureName);
     const now = Date.now();
     const expiresAt = now + DEFAULT_EXPIRY_MS;
-    
+
     const pendingChoice: PendingChoice = {
       jobId,
       projectId,
       featureName,
-      triageResult,
+      envelope,
       originalDirective,
       createdAt: now,
       expiresAt
     };
-    
+
     // Save to local cache for immediate access
     this.pendingChoices.set(key, pendingChoice);
-    
+
     // Save to Redis for cross-Pod consistency
     const redisData: PendingChoiceData = {
       jobId,
       projectId,
       featureName,
-      triageResult: this.toRedisTriageResult(triageResult),
+      envelope: this.toRedis(envelope),
       originalDirective,
       createdAt: now,
       expiresAt
     };
     await this.stateStore.setPendingChoice(key, redisData);
-    
+
     console.log(`[ChoiceService] Registered pending choice for ${key} (directive: ${originalDirective ? 'yes' : 'no'})`);
   }
-  
+
   /**
    * Sync version — schedules async operation without awaiting
    */
@@ -115,21 +105,19 @@ export class ChoiceService {
     jobId: string,
     projectId: string,
     featureName: string,
-    triageResult: TriageResult,
+    envelope: ChoiceEnvelope,
     originalDirective?: string
   ): void {
-    // Fire and forget - async operation runs in background
-    this.registerPendingChoiceAsync(jobId, projectId, featureName, triageResult, originalDirective)
+    this.registerPendingChoiceAsync(jobId, projectId, featureName, envelope, originalDirective)
       .catch(err => console.error(`[ChoiceService] Background save failed:`, err));
   }
-  
+
   /**
    * Get pending choice from Redis (with local cache fallback for hot path)
    */
   async getPendingChoiceAsync(projectId: string, featureName: string): Promise<PendingChoice | undefined> {
     const key = this.getKey(projectId, featureName);
-    
-    // Try Redis first (source of truth)
+
     try {
       const redisData = await this.stateStore.getPendingChoice(key);
       if (redisData) {
@@ -137,7 +125,7 @@ export class ChoiceService {
           jobId: redisData.jobId,
           projectId: redisData.projectId,
           featureName: redisData.featureName,
-          triageResult: this.fromRedisTriageResult(redisData.triageResult),
+          envelope: this.fromRedis(redisData.envelope),
           originalDirective: redisData.originalDirective,
           createdAt: redisData.createdAt,
           expiresAt: redisData.expiresAt
@@ -148,7 +136,7 @@ export class ChoiceService {
     } catch (error) {
       console.error(`[ChoiceService] Failed to load from Redis, trying local cache:`, error);
     }
-    
+
     // Fallback to local cache (hot path optimization)
     const pending = this.pendingChoices.get(key);
     if (!pending) return undefined;
@@ -219,127 +207,47 @@ export class ChoiceService {
     }
     
     console.log(`[ChoiceService] Found pending choice for ${request.projectId}:${request.featureName}, processing...`);
-    
-    const { triageResult } = pending;
+
+    const { envelope } = pending;
     const { choice } = request;
-    
+
     await this.clearPendingChoiceAsync(request.projectId, request.featureName);
-    
-    // Handle based on choice
+
     switch (choice) {
       case 'guide':
-        return this.handleGuide(triageResult);
-        
+        return {
+          type: 'guide',
+          message: envelope.choiceOptions?.fallbackGuide || envelope.displayMessage || '무엇을 도와드릴까요?',
+        };
+
       case 'proceed':
-        return this.handleProceed(triageResult, pending.originalDirective);
-        
       case 'proceedAnyway':
-        return this.handleProceedAnyway(triageResult, pending.originalDirective);
-        
+        return {
+          type: 'continue',
+          action: choice,
+          directive: pending.originalDirective,
+        };
+
       case 'redirect':
-        return this.handleRedirect(triageResult, pending.originalDirective);
-      
+        return {
+          type: 'continue',
+          action: 'redirect',
+          suggestedJob: envelope.suggestedJob,
+          directive: pending.originalDirective,
+        };
+
       case 'dismiss':
-        return this.handleDismiss();
-        
+        return {
+          type: 'dismiss',
+          message: '작업이 취소되었습니다. 새 작업을 요청해주세요.',
+        };
+
       default:
         return {
           type: 'guide',
-          message: '알 수 없는 선택입니다.'
+          message: '알 수 없는 선택입니다.',
         };
     }
-  }
-  
-  /**
-   * Handle guide choice (negative)
-   */
-  private handleGuide(triageResult: TriageResult): ChoiceResponse {
-    const message = triageResult.choiceOptions?.fallbackGuide || this.generateDefaultGuide(triageResult);
-    
-    return {
-      type: 'guide',
-      message
-    };
-  }
-  
-  /**
-   * Handle proceed choice (continue with current agent/job despite redirect suggestion)
-   */
-  private handleProceed(triageResult: TriageResult, originalDirective?: string): ChoiceResponse {
-    return {
-      type: 'continue',
-      action: 'proceed',
-      directive: originalDirective
-    };
-  }
-  
-  /**
-   * Handle proceed anyway choice (for blocked with canProceed)
-   */
-  private handleProceedAnyway(triageResult: TriageResult, originalDirective?: string): ChoiceResponse {
-    return {
-      type: 'continue',
-      action: 'proceedAnyway',
-      directive: originalDirective
-    };
-  }
-  
-  /**
-   * Handle redirect choice
-   */
-  private handleRedirect(triageResult: TriageResult, originalDirective?: string): ChoiceResponse {
-    return {
-      type: 'continue',
-      action: 'redirect',
-      suggestedAgent: triageResult.suggestedAgent,  // ✅ Include target agent (cross-agent redirect)
-      suggestedJob: triageResult.suggestedJob,       // ✅ Include target job
-      directive: originalDirective                    // ✅ Include original directive
-    };
-  }
-  
-  /**
-   * Handle dismiss choice (cancel task)
-   */
-  private handleDismiss(): ChoiceResponse {
-    return {
-      type: 'dismiss',
-      message: '작업이 취소되었습니다. 새 작업을 요청해주세요.'
-    };
-  }
-  
-  /**
-   * Generate default guide message
-   */
-  private generateDefaultGuide(triageResult: TriageResult): string {
-    const lines: string[] = [];
-    
-    // Based on workStatus
-    if (triageResult.workStatus === 'blocked') {
-      lines.push('필요한 준비물을 추가한 후 다시 시도해주세요.');
-      
-      if (triageResult.missingPrerequisites?.required?.length) {
-        lines.push('');
-        lines.push('**필수:**');
-        triageResult.missingPrerequisites.required.forEach(item => {
-          lines.push(`- ${item}`);
-        });
-      }
-      
-      if (triageResult.missingPrerequisites?.recommended?.length) {
-        lines.push('');
-        lines.push('**권장:**');
-        triageResult.missingPrerequisites.recommended.forEach(item => {
-          lines.push(`- ${item}`);
-        });
-      }
-    } else if (triageResult.workStatus === 'redirect') {
-      lines.push(`현재 job에서 가능한 작업:`);
-      lines.push('- 작업 범위에 맞는 요청을 입력해주세요.');
-    } else {
-      lines.push('무엇을 도와드릴까요?');
-    }
-    
-    return lines.join('\n');
   }
   
   /**

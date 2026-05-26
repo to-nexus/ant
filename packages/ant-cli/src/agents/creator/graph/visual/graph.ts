@@ -37,8 +37,11 @@ import { triage } from '../../../common/graph/nodes/triage/index.js';
 import { withPhaseTracking } from '../../../common/graph/llmHelpers.js';
 
 /**
- * Router after triage for visual job.
- * Proceeds to 'detect' on work:proceed, ends on ask/redirect/blocked.
+ * Phase D — router after triage for visual job. Single SSOT is
+ * `triageResult.group`: `'ask'` ends so the FE dispatches the ask graph
+ * externally; `'work'` continues to detect. Progressibility (redirect /
+ * blocked) lives on the DetectResult channel and is handled by
+ * `routeAfterDetect` downstream.
  */
 function routeAfterVisualTriage(state: VisualGraphState): string {
   const result = state.triageResult;
@@ -48,22 +51,12 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
     return 'detect';
   }
 
-  if (result.intent === 'ask') {
-    console.log('[VisualTriageRouter] ask → __end__');
+  if (result.group === 'ask') {
+    console.log('[VisualTriageRouter] group=ask → __end__ (ask externalised)');
     return '__end__';
   }
 
-  if (result.workStatus === 'redirect') {
-    console.log('[VisualTriageRouter] redirect → __end__');
-    return '__end__';
-  }
-
-  if (result.workStatus === 'blocked') {
-    console.log('[VisualTriageRouter] blocked → __end__');
-    return '__end__';
-  }
-
-  console.log('[VisualTriageRouter] proceed → detect');
+  console.log('[VisualTriageRouter] group=work → detect');
   return 'detect';
 }
 

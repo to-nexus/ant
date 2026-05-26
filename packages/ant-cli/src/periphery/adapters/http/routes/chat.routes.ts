@@ -187,7 +187,7 @@ export function createChatRoutes(deps: {
     if (pending) {
       res.json({
         hasPending: true,
-        triageResult: pending.triageResult,
+        envelope: pending.envelope,
         createdAt: pending.createdAt,
         expiresAt: pending.expiresAt,
       });

@@ -21,6 +21,7 @@ import type {
   Basis,
 } from '@ant/shared';
 import type { Mode } from '@ant/shared';
+import type { FeatureContext } from '../../context/featureContextBuilder';
 
 // ============================================
 // PromptBuildConfig
@@ -70,6 +71,15 @@ export interface PromptBuildConfig {
 
   /** Role-labeled artifacts for prompt content. */
   artifacts?: ResolvedArtifact[];
+
+  /**
+   * Cross-job feature context (T2 user_turn + T3 breadcrumb + boundary).
+   * Universal channel — when present, PromptBuilder.enrichFeatureContextVars
+   * exposes `featureContext.{breadcrumbs, userTurns, summary, wasCompacted}`
+   * as template vars so every node prompt can reference prior turns/anchors
+   * without each caller manually wiring the field.
+   */
+  featureContext?: FeatureContext;
 }
 
 // ============================================

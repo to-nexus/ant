@@ -19,6 +19,7 @@ import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { Conversations } from '../../../common/graph/conversations.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
+import type { FeatureContext } from '../../../../core/context/featureContextBuilder.js';
 import type { Mode, ExecutionTierId } from '@ant/shared';
 
 
@@ -175,6 +176,21 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
    * only.
    */
   executionTier?: ExecutionTierId;
+
+  /**
+   * Cross-job feature context loaded from feature.jsonl (T2 user_turn +
+   * T3 breadcrumb + boundary). Populated by `resolve` via
+   * `hydrateFeatureContext` and re-hydrated by `triage` on every turn
+   * (skipCompaction). Consumed via PromptBuilder.enrichFeatureContextVars
+   * universal channel.
+   */
+  featureContext?: FeatureContext;
+
+  /**
+   * Current user turn id recovered by `hydrateFeatureContext` (matches on
+   * `jobId`). Consumed by downstream nodes that attribute trace events.
+   */
+  turnId?: string;
 }
 
 export const VisualGraphAnnotation = Annotation.Root({
@@ -207,6 +223,8 @@ export const VisualGraphAnnotation = Annotation.Root({
   phaseTokenUsages: Annotation<any>,
   pendingToolCalls: Annotation<any>,
   executionTier: Annotation<any>,
+  featureContext: Annotation<any>,
+  turnId: Annotation<any>,
 } as const);
 
 /**
