@@ -15,9 +15,17 @@ when the surface needed by the intent does not exist.
 ## MATRIX SLOTS
 
 The matrix defines the following slots for this intent. Each slot points at a
-directory (`type=dir`) or a specific file (`type=file`). Required slots
-**must** be filled — if no candidate exists, emit a `<missingPrereq>` tag
-instead of `<slots>`.
+directory (`type=dir`) or a specific file (`type=file`).
+
+{{#if chatRequiresRefs}}
+Required slots **must** be filled — if no candidate exists, emit a
+`<missingPrereq>` tag instead of `<slots>`.
+{{else}}
+This intent is **directive-capable** — the user's directive alone is
+sufficient input. Fill `refs` / `context` from the whitelist when relevant
+candidates exist, but DO NOT emit `<missingPrereq>` when refs are absent.
+Empty `<slots>` with no refs is valid output for directive-only runs.
+{{/if}}
 
 {{#if slotSummaries.length}}
 | Role | Path | Label | Required | Kind |
