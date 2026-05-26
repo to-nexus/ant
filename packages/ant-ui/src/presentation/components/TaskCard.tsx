@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/presentation/components/aurora';
 import { TaskTimer } from './TaskTimer';
-import { ChevronRight, AlertCircle, Timer } from 'lucide-react';
+import { ChevronRight, AlertCircle, Timer, Check } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
@@ -184,6 +184,46 @@ export function TaskCard({
       {showTodoNewState && (
         <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 5 }}>
           <NewChip accent={accent} />
+        </div>
+      )}
+
+      {/* Newly-completed: completion overlays (column-accent driven).
+          Mirrors the showTodoNewState pattern so the effect stack lives
+          inside the card and does NOT alter outer width. */}
+      {showCompletedNewState && (
+        <>
+          <GlowHalo accent={accent} />
+          <ShimmerSweepOverlay variant="completed-slow" accent={accent} />
+          <SparkleOrbits />
+        </>
+      )}
+
+      {/* Completed check pill — absolute top-right, sparkle-pop entry.
+          22×22 gradient-cool circle per handoff SSOT
+          (visual/ui/handoff/project/a2-workspace.jsx L621–L647). */}
+      {showCompletedNewState && (
+        <div
+          aria-hidden
+          className="gradient-flow"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 5,
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            background: accent.gradient,
+            backgroundSize: '200% 200%',
+            color: 'var(--text-on-brand)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: `0 0 16px oklch(from ${accent.color} l c h / 0.7)`,
+            animation: 'sparkle-pop 520ms var(--ease-spring) both',
+          }}
+        >
+          <Check style={{ width: 12, height: 12 }} strokeWidth={3.5} />
         </div>
       )}
 

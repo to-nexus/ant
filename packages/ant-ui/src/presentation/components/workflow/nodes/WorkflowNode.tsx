@@ -14,6 +14,8 @@
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
+import { Sparkles } from 'lucide-react';
+import { useReducedMotion } from 'framer-motion';
 import { NodeType, NodeImportance, ActiveWorkerNode } from '@/domain/models/workflow';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfoList } from '@/shared/utils/actor-utils';
@@ -60,6 +62,95 @@ const NODE_SIZE = {
   }
 };
 
+/**
+ * Running-state aurora overlay.
+ *
+ * Absolute-positioned child rendered inside the (already `relative`) workflow
+ * node root. The overlay paints an aurora-gradient ring that visually replaces
+ * the previous static violet box-shadow ring. Shared by collapsed and expanded
+ * branches to avoid drift.
+ *
+ * Tokens are owned by `styles/aurora-tokens.css`:
+ *   - `--gradient-aurora`     (gradient definition)
+ *   - `.gradient-flow`        (background-size 200% + gradient-shift keyframe)
+ *   - `--shadow-glow-aurora`  (applied via box-shadow on the node itself)
+ */
+function RunningAuroraOverlay() {
+  return (
+    <div
+      aria-hidden="true"
+      className="gradient-flow"
+      style={{
+        position: 'absolute',
+        inset: -2,
+        borderRadius: 'inherit',
+        background: 'var(--gradient-aurora)',
+        backgroundSize: '200% 200%',
+        zIndex: -1,
+        pointerEvents: 'none'
+      }}
+    />
+  );
+}
+
+/**
+ * 활성 상태(running) 노드용 3-layer 모션 스택.
+ *
+ * 칸반 in-progress 카드(TaskCardEffects.tsx)의 ShimmerSweepOverlay +
+ * TaskGlowPulseLayer 조합과 동등한 시각 강도를 워크플로 노드에 적용하기 위한
+ * colocation 헬퍼다. SparkleOrbits는 노드 크기(160×64) 대비 시각 잡음이 과해
+ * 의도적으로 제외했다.
+ *
+ * 레이어 z-index 순서:
+ *   - RunningAuroraOverlay : zIndex -1 (외곽 aurora ring, 노드 바깥)
+ *   - soft glow pulse      : zIndex  1 (task-glow-pulse 2.6s)
+ *   - diagonal shimmer band: zIndex  2 (task-shimmer-sweep 1.6s)
+ *
+ * 키프레임(task-glow-pulse, task-shimmer-sweep)은 styles/aurora-tokens.css의
+ * 기존 자산만 재사용한다 — 신규 토큰/키프레임 정의 금지.
+ *
+ * prefers-reduced-motion: reduce 환경에서는 헬퍼 전체가 null을 반환하여
+ * 두 신규 오버레이를 비활성화한다. 외곽 RunningAuroraOverlay도 함께 사라지지만,
+ * border-color/box-shadow 등 비-애니메이션 active 시각 신호는 노드 root에서
+ * 유지되므로 active 상태 식별에는 영향이 없다.
+ */
+function WorkflowNodeRunningEffects({ rounded }: { rounded: string }) {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return null;
+  return (
+    <>
+      {/* 1) Outer aurora ring — 기존 RunningAuroraOverlay 재사용 */}
+      <RunningAuroraOverlay />
+      {/* 2) Soft pulsing glow — task-glow-pulse 2.6s infinite */}
+      <div
+        aria-hidden
+        className={`absolute inset-0 pointer-events-none ${rounded}`}
+        style={{
+          ['--task-glow' as string]: 'var(--violet-500)',
+          animation: 'task-glow-pulse 2.6s var(--ease-smooth) infinite',
+          zIndex: 1,
+        }}
+      />
+      {/* 3) Diagonal shimmer band — task-shimmer-sweep 1.6s infinite */}
+      <div
+        aria-hidden
+        className={`absolute inset-0 pointer-events-none overflow-hidden ${rounded}`}
+        style={{ zIndex: 2 }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(110deg, transparent 0%, oklch(from var(--violet-300) l c h / 0.55) 40%, oklch(from var(--pink-300) l c h / 0.75) 50%, oklch(from var(--violet-300) l c h / 0.55) 60%, transparent 100%)',
+            animation: 'task-shimmer-sweep 1.6s var(--ease-smooth) infinite',
+            filter: 'blur(1px)',
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
 export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
   const { t } = useTranslation('kanban');
   const isExpanded = data.isExpanded || false;
@@ -87,7 +178,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
     // 확장된 상태
     const expandedStyle: React.CSSProperties = {
       width: size.width,
-      borderWidth: size.borderWidth,
+      borderWidth: isRunning ? 1.5 : size.borderWidth,
       borderStyle: 'solid',
       borderColor: isRunning ? 'transparent' : 'var(--border-1)',
       background: 'var(--bg-surface)',
@@ -95,7 +186,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
       borderRadius: 'var(--r-md, 12px)',
       opacity: stateOpacity,
       boxShadow: isRunning
-        ? 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18)), 0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)'
+        ? 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18)), var(--shadow-glow-aurora)'
         : 'var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18))',
       zIndex: 1000
     };
@@ -105,6 +196,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
         className="workflow-node rounded-lg transition-all duration-300 relative"
         style={expandedStyle}
       >
+        {isRunning && <WorkflowNodeRunningEffects rounded="rounded-lg" />}
         <Handle
           type="target"
           position={targetPosition}
@@ -179,10 +271,10 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
     color: 'var(--text-1)',
     borderRadius: 'var(--r-md, 12px)',
     borderStyle: 'solid',
-    borderWidth: isRunning ? 2 : 1,
+    borderWidth: isRunning ? 1.5 : 1,
     borderColor: isRunning ? 'transparent' : 'var(--border-1)',
     boxShadow: isRunning
-      ? '0 0 0 2px var(--violet-500), 0 0 24px var(--shadow-glow-aurora)'
+      ? 'var(--shadow-glow-aurora)'
       : 'none',
     opacity: stateOpacity,
     zIndex: 1
@@ -196,6 +288,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
       )}
       style={collapsedStyle}
     >
+      {isRunning && <WorkflowNodeRunningEffects rounded="rounded-lg" />}
       <Handle
         type="target"
         position={targetPosition}
@@ -222,14 +315,18 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
           {data.workers!.map((w) => (
             <span
               key={w.workerId}
-              className="font-mono text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap"
+              className="gradient-flow font-mono text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap inline-flex items-center gap-1"
               style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-1)',
-                color: 'var(--text-1)'
+                background: 'var(--gradient-aurora)',
+                backgroundSize: '200% 200%',
+                color: 'white',
+                border: 'none',
+                boxShadow: '0 0 10px oklch(60% 0.25 320 / 0.45)'
               }}
+              title={w.taskName}
             >
-              {w.taskName}
+              <Sparkles className="w-2.5 h-2.5" strokeWidth={3} />
+              <span className="truncate max-w-[140px]">{w.taskName}</span>
             </span>
           ))}
         </div>

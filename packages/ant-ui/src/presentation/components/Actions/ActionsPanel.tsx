@@ -1,5 +1,6 @@
 import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
+import { useGitSnapshot } from '@/domain/git-world';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import {
   useActiveTiers,
@@ -71,6 +72,7 @@ export function ActionsPanel() {
   }, [selectedActionId, selectAction]);
 
   const actionMetadata = useStore(s => s.actionMetadata);
+  const gitSnapshot = useGitSnapshot();
   // Phase 2 (D22/D28): domain gate applies to pick-intent's ScrollableTabNav too.
   // When workspace.domain === 'service', design-game-art tab disappears, and
   // when workspace.domain === 'game', design-ui tab disappears, so the user
@@ -87,8 +89,18 @@ export function ActionsPanel() {
     // Routing on the static count alone would mount a `BasisWizard` whose
     // `availableTiers === []` triggers its `!currentStep → return null`
     // defensive guard, leaving the panel completely blank.
-    setActionsStep(decideActionsStepAfterIntent(slots?.basis, actionMetadata));
-  }, [selectIntent, setActionsStep, actionMetadata]);
+    // `hasCodebase` activates the techTier runtime suppressor
+    // (RUNTIME_SUPPRESSORS.techTier in `@ant/shared/tier-matrix.ts`), so
+    // when the workspace already contains a codebase the techTier wizard
+    // step is skipped and routing collapses to `'config'`.
+    setActionsStep(
+      decideActionsStepAfterIntent(
+        slots?.basis,
+        actionMetadata,
+        gitSnapshot?.hasCodebase ?? false,
+      ),
+    );
+  }, [selectIntent, setActionsStep, actionMetadata, gitSnapshot?.hasCodebase]);
 
   const handleBack = useCallback(() => {
     if (step === 'basis-edit') {

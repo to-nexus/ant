@@ -1,6 +1,7 @@
+import { useState } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Github } from 'lucide-react';
-import { Button } from '@/presentation/components/aurora';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 interface MenuTriggerButtonProps {
@@ -10,6 +11,23 @@ interface MenuTriggerButtonProps {
   onToggle: () => void;
   disabled: boolean;
 }
+
+// 26x26 surface-bordered icon button per handoff b3-explorer.jsx git menu trigger.
+const BASE_TRIGGER_STYLE: CSSProperties = {
+  width: 26,
+  height: 26,
+  padding: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'var(--surface-1)',
+  border: '1px solid var(--border-2)',
+  borderRadius: 'var(--r-sm)',
+  color: 'var(--text-2)',
+  flexShrink: 0,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+};
 
 /**
  * The GitHub-icon toggle button. Two visual variants, picked by whether
@@ -26,7 +44,17 @@ export function MenuTriggerButton({
 }: MenuTriggerButtonProps) {
   const { t } = useTranslation('explorer');
 
+  const [hovered, setHovered] = useState(false);
+  const handleEnter = (_e: MouseEvent<HTMLButtonElement>) => setHovered(true);
+  const handleLeave = (_e: MouseEvent<HTMLButtonElement>) => setHovered(false);
+
   if (!githubRepo) {
+    const style: CSSProperties = {
+      ...BASE_TRIGGER_STYLE,
+      opacity: 0.6,
+      cursor: 'pointer',
+      background: hovered ? 'var(--bg-hover)' : BASE_TRIGGER_STYLE.background,
+    };
     return (
       <Tooltip
         content={
@@ -47,27 +75,36 @@ export function MenuTriggerButton({
         }
         placement="bottom"
       >
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center justify-center w-[26px] h-[26px] p-0 flex-shrink-0 opacity-50 cursor-pointer"
+        <button
+          type="button"
+          style={style}
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
         >
-          <Github className="w-3.5 h-3.5" />
-        </Button>
+          <Github width={13} height={13} />
+        </button>
       </Tooltip>
     );
   }
 
+  const style: CSSProperties = {
+    ...BASE_TRIGGER_STYLE,
+    opacity: disabled ? 0.5 : 1,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    background: hovered && !disabled ? 'var(--bg-hover)' : BASE_TRIGGER_STYLE.background,
+  };
+
   return (
-    <Button
-      onClick={onToggle}
-      variant="outline"
-      size="sm"
-      className="flex items-center justify-center w-[26px] h-[26px] p-0 flex-shrink-0"
+    <button
+      type="button"
+      onClick={disabled ? undefined : onToggle}
       disabled={disabled}
+      style={style}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
       title={t('config:git.management')}
     >
-      <Github className="w-3.5 h-3.5" />
-    </Button>
+      <Github width={13} height={13} />
+    </button>
   );
 }

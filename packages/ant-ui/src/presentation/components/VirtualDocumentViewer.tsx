@@ -16,8 +16,13 @@ interface VirtualDocumentViewerProps {
   tab: EditorTab;
 }
 
+// Body surface intentionally has NO solid background — the file-editor slot
+// wrapper in MainContentArea owns the canvas tone (var(--bg-canvas)). Painting
+// a solid var(--bg-surface-2) here caused a visual fragmentation between the
+// streaming view (purple solid) and the post-streaming FileEditorPanel view
+// (transparent over canvas). Keep the border + radius for the document framing.
 const PREVIEW_SURFACE: React.CSSProperties = {
-  background: 'var(--bg-surface-2)',
+  background: 'transparent',
   border: '1px solid var(--border-1)',
   borderRadius: 'var(--r-lg)',
 };
@@ -41,10 +46,7 @@ export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
   const sourceForChip: EditorSource = (tab.source as EditorSource | undefined) ?? 'code';
 
   return (
-    <div
-      className="w-full h-full px-3 pt-1.5 pb-3 flex flex-col relative"
-      style={{ background: 'var(--bg-canvas)' }}
-    >
+    <div className="w-full h-full px-3 pt-1.5 pb-3 flex flex-col relative">
       {/* Streaming shimmer banner — 2px aurora strip at the top of the panel */}
       {isStreaming && (
         <div
@@ -97,7 +99,7 @@ export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
       <div className="flex-1 min-h-0 pt-3">
         {isLikelyMarkdown ? (
           <div
-            className="h-full overflow-y-auto prose prose-sm max-w-none p-4"
+            className="h-full overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4"
             style={PREVIEW_SURFACE}
           >
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>

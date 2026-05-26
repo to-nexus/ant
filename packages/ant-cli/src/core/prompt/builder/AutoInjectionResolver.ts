@@ -245,6 +245,31 @@ export class AutoInjectionResolver {
     // RAC-driven injections
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (resolvedAction) {
+      // Normalize `resolvedAction.documents` entries so the `action-context`
+      // partial — which references `{label, path, content}` inside an
+      // `{{#each resolvedAction.documents}}` block — does not trip the
+      // FilePromptAdapter `missingVars` validator. The validator checks
+      // template variables against top-level `vars` membership and is
+      // unaware of `#each` block scopes, so absent keys on document entries
+      // surface as spurious "missing variables" warnings.
+      //
+      // When `documents` is undefined the partial's outer
+      // `{{#if resolvedAction.documents}}` short-circuits and no warning
+      // fires — so we only normalize when the array exists. Mutating
+      // in-place keeps callers' references stable; filling with empty
+      // strings is safe because the partial's inner conditionals
+      // (`{{#if (eq role "ref")}}` etc.) treat them as falsy.
+      const docs = (resolvedAction as { documents?: Array<Record<string, unknown>> }).documents;
+      if (Array.isArray(docs)) {
+        for (const entry of docs) {
+          if (entry && typeof entry === 'object') {
+            if (entry.label === undefined || entry.label === null) entry.label = '';
+            if (entry.path === undefined || entry.path === null) entry.path = '';
+            if (entry.content === undefined || entry.content === null) entry.content = '';
+          }
+        }
+      }
+
       injections.push('jobs/shared/injections/action-context');
       if (resolvedAction.mode === 'refactor') {
         injections.push('jobs/shared/injections/refactor-guidance');

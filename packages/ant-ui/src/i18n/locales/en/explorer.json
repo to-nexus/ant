@@ -99,6 +99,8 @@
     "publishNewBranch": "Publish Branch",
     "publishNewBranchDesc": "Push this branch to remote for the first time",
     "changes": "Changes",
+    "expandChanges": "Show changes",
+    "collapseChanges": "Hide changes",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "commitFirstToPull": "Commit changes before pulling"
