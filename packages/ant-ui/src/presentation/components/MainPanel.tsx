@@ -32,7 +32,10 @@ export function MainPanel({ children, headerBar, footer, className = '' }: MainP
   return (
     <main 
       className={`flex-1 flex flex-col overflow-hidden transition-colors ${className}`}
-      style={{ background: 'var(--bg-base)' }}
+      // 페이지 전역 aurora mesh(상위 레이어)가 main 영역까지 비치도록
+      // 투명 처리. 각 보드의 BoardContainer가 자체 surface 배경을
+      // 유지하므로(워크플로우 보드 등) 보드별 시각 언어는 보존된다.
+      style={{ background: 'transparent' }}
       data-main-panel
     >
       {/* Header Bar (Status/Context + Layout Controls) */}

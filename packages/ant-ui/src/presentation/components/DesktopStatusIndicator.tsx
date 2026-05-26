@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
 import { DesktopConnectModal } from './DesktopConnectModal';
 import { useStore } from '@/domain/store';
-import { AntDesktopIcon } from './common/AntDesktopIcon';
 import { Icon } from './aurora/Icon';
 
 const STATUS_CONFIG = {
@@ -64,33 +63,50 @@ export function DesktopStatusIndicator() {
   return (
     <>
       <div className="relative" ref={dropdownRef}>
-        {/* Always-visible indicator button */}
+        {/* Always-visible indicator button — compact pill chip (handoff: shared.jsx DesktopStatusIndicator) */}
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="relative inline-flex items-center gap-1.5 px-1.5 sm:px-2 py-1.5"
           style={{
-            background: 'transparent',
-            borderRadius: 'var(--r-md)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 10px',
+            borderRadius: 999,
+            background: 'var(--bg-surface-2)',
+            border: '1px solid var(--border-2)',
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-2)',
+            cursor: 'pointer',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--bg-hover)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.background = 'var(--bg-surface-2)';
           }}
           title={t(`desktop.${desktopStatus}`)}
         >
-          <AntDesktopIcon
-            className="w-4 h-4"
-            muted={desktopStatus === 'offline'}
-            style={desktopStatus === 'offline' ? { color: 'var(--text-4)' } : undefined}
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: config.dotBg,
+              animation:
+                desktopStatus === 'connected'
+                  ? 'pulse-soft 2.4s ease-in-out infinite'
+                  : 'none',
+              flexShrink: 0,
+            }}
           />
           <span
-            className="hidden sm:inline text-xs font-medium"
-            style={{ color: config.textColor }}
+            className="hidden sm:inline"
+            style={{ fontSize: 11, fontWeight: 500, color: config.textColor }}
           >
             {t(`desktop.${desktopStatus}`)}
           </span>
+          <Icon name="cube" size={11} style={{ color: 'var(--text-3)' }} />
         </button>
 
         {/* Dropdown popover */}
