@@ -173,43 +173,39 @@ export async function architectAgent(
       
       const l = await runLearnGraph(lInitial);
       
-      // ✅ Return appropriate message based on triage result
-      const learnTriageResult = l.triageResult;
-      
-      if (learnTriageResult) {
-        // Ask intent: question was answered
-        if (learnTriageResult.intent === 'ask') {
-          return {
-            success: true,
-            job: 'learn',
-            message: learnTriageResult.displayMessage || 'Question answered.'
-          };
-        }
-        
-        // Redirect: suggested different job
-        if (learnTriageResult.workStatus === 'redirect') {
-          return {
-            success: true,
-            job: 'learn',
-            message: learnTriageResult.displayMessage || `Suggested action: ${learnTriageResult.suggestedJob || 'different job'}`
-          };
-        }
-        
-        // Blocked: prerequisites not met
-        if (learnTriageResult.workStatus === 'blocked') {
-          return {
-            success: false,
-            status: 'paused',
-            job: 'learn',
-            interruption: {
-              reason: 'api_error' as InterruptionReason,
-              message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.',
-              timestamp: new Date().toISOString(),
-              canResume: false,
-            },
-            message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.',
-          };
-        }
+      // Phase D — triage owns only `group` (ask/work); progressibility
+      // (blocked / redirect-suggested) lives on the detect channel.
+      const learnTriage = l.triageResult;
+      const learnDetect = (l as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
+
+      if (learnTriage?.group === 'ask') {
+        return {
+          success: true,
+          job: 'learn',
+          message: 'Question answered.',
+        };
+      }
+      if (learnDetect?.status === 'redirect-suggested') {
+        const alt = learnDetect.suggestedAlternatives?.[0]?.intentId || 'different job';
+        return {
+          success: true,
+          job: 'learn',
+          message: learnDetect.displayMessage || `Suggested action: ${alt}`,
+        };
+      }
+      if (learnDetect?.status === 'blocked') {
+        return {
+          success: false,
+          status: 'paused',
+          job: 'learn',
+          interruption: {
+            reason: 'api_error' as InterruptionReason,
+            message: learnDetect.displayMessage || 'Prerequisites not met for this operation.',
+            timestamp: new Date().toISOString(),
+            canResume: false,
+          },
+          message: learnDetect.displayMessage || 'Prerequisites not met for this operation.',
+        };
       }
       
       return {
@@ -260,43 +256,39 @@ export async function architectAgent(
       
       const d = await runDesignGraph(dInitial);
       
-      // ✅ Return appropriate message based on triage result
-      const triageResult = d.triageResult;
-      
-      if (triageResult) {
-        // Ask intent: question was answered
-        if (triageResult.intent === 'ask') {
-          return {
-            success: true,
-            job: 'design',
-            message: triageResult.displayMessage || 'Question answered.'
-          };
-        }
-        
-        // Redirect: suggested different job
-        if (triageResult.workStatus === 'redirect') {
-          return {
-            success: true,
-            job: 'design',
-            message: triageResult.displayMessage || `Suggested action: ${triageResult.suggestedJob || 'different job'}`
-          };
-        }
-        
-        // Blocked: prerequisites not met
-        if (triageResult.workStatus === 'blocked') {
-          return {
-            success: false,
-            status: 'paused',
-            job: 'design',
-            interruption: {
-              reason: 'api_error' as InterruptionReason,
-              message: triageResult.displayMessage || 'Prerequisites not met for this operation.',
-              timestamp: new Date().toISOString(),
-              canResume: false,
-            },
-            message: triageResult.displayMessage || 'Prerequisites not met for this operation.',
-          };
-        }
+      // Phase D — triage owns only `group` (ask/work); progressibility
+      // (blocked / redirect-suggested) lives on the detect channel.
+      const designTriage = d.triageResult;
+      const designDetect = (d as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
+
+      if (designTriage?.group === 'ask') {
+        return {
+          success: true,
+          job: 'design',
+          message: 'Question answered.',
+        };
+      }
+      if (designDetect?.status === 'redirect-suggested') {
+        const alt = designDetect.suggestedAlternatives?.[0]?.intentId || 'different job';
+        return {
+          success: true,
+          job: 'design',
+          message: designDetect.displayMessage || `Suggested action: ${alt}`,
+        };
+      }
+      if (designDetect?.status === 'blocked') {
+        return {
+          success: false,
+          status: 'paused',
+          job: 'design',
+          interruption: {
+            reason: 'api_error' as InterruptionReason,
+            message: designDetect.displayMessage || 'Prerequisites not met for this operation.',
+            timestamp: new Date().toISOString(),
+            canResume: false,
+          },
+          message: designDetect.displayMessage || 'Prerequisites not met for this operation.',
+        };
       }
       
       // ✅ Check for design error (e.g., Figma rate limit, window not open)
@@ -428,43 +420,39 @@ export async function architectAgent(
         };
         const result = await runCodeGraph(initial);
         
-        // ✅ Check triage result first (ask/redirect/blocked handling)
-        const codeTriageResult = result.triageResult;
-        
-        if (codeTriageResult) {
-          // Ask intent: question was answered
-          if (codeTriageResult.intent === 'ask') {
-            return {
-              success: true,
-              job: 'code',
-              message: codeTriageResult.displayMessage || 'Question answered.'
-            };
-          }
-          
-          // Redirect: suggested different job
-          if (codeTriageResult.workStatus === 'redirect') {
-            return {
-              success: true,
-              job: 'code',
-              message: codeTriageResult.displayMessage || `Suggested action: ${codeTriageResult.suggestedJob || 'different job'}`
-            };
-          }
-          
-          // Blocked: prerequisites not met
-          if (codeTriageResult.workStatus === 'blocked') {
-            return {
-              success: false,
-              status: 'paused',
-              job: 'code',
-              interruption: {
-                reason: 'api_error' as InterruptionReason,
-                message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.',
-                timestamp: new Date().toISOString(),
-                canResume: false,
-              },
-              message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.',
-            };
-          }
+        // Phase D — triage owns only `group` (ask/work); progressibility
+        // (blocked / redirect-suggested) lives on the detect channel.
+        const codeTriage = result.triageResult;
+        const codeDetect = (result as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
+
+        if (codeTriage?.group === 'ask') {
+          return {
+            success: true,
+            job: 'code',
+            message: 'Question answered.',
+          };
+        }
+        if (codeDetect?.status === 'redirect-suggested') {
+          const alt = codeDetect.suggestedAlternatives?.[0]?.intentId || 'different job';
+          return {
+            success: true,
+            job: 'code',
+            message: codeDetect.displayMessage || `Suggested action: ${alt}`,
+          };
+        }
+        if (codeDetect?.status === 'blocked') {
+          return {
+            success: false,
+            status: 'paused',
+            job: 'code',
+            interruption: {
+              reason: 'api_error' as InterruptionReason,
+              message: codeDetect.displayMessage || 'Prerequisites not met for this operation.',
+              timestamp: new Date().toISOString(),
+              canResume: false,
+            },
+            message: codeDetect.displayMessage || 'Prerequisites not met for this operation.',
+          };
         }
         
         // ✅ Determine status based on execution result (using unified interruption)

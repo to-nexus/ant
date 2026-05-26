@@ -658,69 +658,9 @@ describe('applyDomainDefaultsToBasis — lockedStack invariants', () => {
   });
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// Explicit > infer LLM skip (Phase 1 H-1)
-// detect template gates the domain instruction on `{{#unless explicitDomain}}`.
-// ════════════════════════════════════════════════════════════════════════════
-
-describe('plan/detect rules — explicit domain suppression', () => {
-  it('emits domain instruction when explicitDomain is undefined', () => {
-    const out = renderTemplate('jobs/plan/nodes/detect/variants/default/rules', {
-      directive: '',
-      hasExistingTarget: false,
-      refs: [],
-      explicitDomain: undefined,
-    });
-    expect(out).toContain('<domain>game|service</domain>');
-    expect(out).toContain('Domain Classification');
-  });
-
-  it('suppresses domain instruction when explicitDomain is set', () => {
-    const out = renderTemplate('jobs/plan/nodes/detect/variants/default/rules', {
-      directive: '',
-      hasExistingTarget: false,
-      refs: [],
-      explicitDomain: 'game',
-    });
-    expect(out).not.toContain('<domain>game|service</domain>');
-    expect(out).not.toContain('## Domain Classification');
-    expect(out).toContain('Domain is already committed (`game`)');
-  });
-});
-
-describe('design/detect base — explicit domain suppression', () => {
-  const baseVars = {
-    directive: '',
-    hasReferences: false,
-    hasAssets: false,
-    hasUiDocs: false,
-    hasUiTokens: false,
-    hasUiAssets: false,
-    hasUiSpec: false,
-    hasSystemDocs: false,
-    hasSystemDesign: false,
-    hasApiContract: false,
-    hasFeSystemDesign: false,
-    hasBeSystemDesign: false,
-    systemDesignFiles: [],
-  };
-
-  it('mentions domain in the instruction list when explicitDomain is undefined', () => {
-    const out = renderTemplate('jobs/design/nodes/detect/variants/default/base', {
-      ...baseVars,
-      explicitDomain: undefined,
-    });
-    expect(out).toContain('### Domain Classification');
-    expect(out).toMatch(/3\.\s*\*\*domain\*\*/);
-  });
-
-  it('omits the domain instruction when explicitDomain is set', () => {
-    const out = renderTemplate('jobs/design/nodes/detect/variants/default/base', {
-      ...baseVars,
-      explicitDomain: 'service',
-    });
-    expect(out).not.toContain('### Domain Classification');
-    expect(out).toContain('Domain is already committed (`service`)');
-    expect(out).not.toMatch(/"domain":\s*"game"\s*\|\s*"service"/);
-  });
-});
+// Phase D — the per-job plan/detect and design/detect templates were
+// replaced by `jobs/shared/nodes/detect/variants/default/{base,rules}`
+// and `explicitDomain` is no longer a template-level switch (domain is
+// derived inside `inferRacWithTools` from triage + actionMetadata). The
+// suppression describe blocks that lived here checked the old templates
+// and have been removed alongside them.

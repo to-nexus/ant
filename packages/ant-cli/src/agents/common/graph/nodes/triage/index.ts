@@ -1,371 +1,376 @@
 /**
- * Triage Node
- * 
- * Analyzes user input to determine appropriate processing path
- * - Intent classification (ask / work)
- * - Work status determination (proceed / redirect / blocked)
- * 
- * KEY PRINCIPLE: LLM makes all classification decisions.
- * This node provides data, LLM decides.
+ * Triage Node — Phase B v2 (Intent Lookup Single Site)
+ *
+ * SSOT: triage performs ONE responsibility — resolve the user directive
+ * to a single IntentId from the matrix. All other fields (group / mode /
+ * domain / continuationType) are derived by the matrix; nothing is judged
+ * about progressibility (workStatus / missing prerequisites / choices) —
+ * that lives in `detect` from Phase C onward.
+ *
+ * LLM output schema: `<intentId>X</intentId>`  (single tag).
  */
 
 import * as fs from 'fs';
-import * as fsp from 'fs/promises';
 import * as path from 'path';
-import Handlebars from 'handlebars';
 import { TriageableState, TriageResult, WorkspaceState } from './types.js';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
-import { parseTriageResponse } from './parser.js';
+import { parseIntentIdTag, extractIntentIdRaw } from './parser.js';
+import {
+  deriveTriageGroup,
+  deriveTriageMode,
+  deriveTriageDomain,
+  deriveContinuationType,
+  validateIntentId,
+} from './derive.js';
 import { AgentRegistry } from './AgentRegistry.js';
-import { runEstimatingLLM, applyEstimatingUsage } from '../../llmHelpers.js';
-import { runAskGraph } from '../../../../architect/graph/ask/runner.js';
-import { ChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
-import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver.js';
+import { runEstimatingLLM } from '../../llmHelpers.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 import { getSessionDebugDir } from '../../../../../core/utils/sessionPaths.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
-import { resolveToRAC } from '@ant/shared';
-import type { ResolvedActionContext, IntentId } from '@ant/shared';
+import type { PromptPort } from '../../../../../core/ports/prompt.js';
+import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder.js';
+import { recordUserTurnMeta } from '../../../../../core/executionTier/recordUserTurnMeta.js';
+import {
+  INTENT_DEFINITIONS,
+  type IntentId,
+  type JobType,
+} from '@ant/shared';
 
-// Cache for loaded templates
-let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
-let triageRulesContent: string | null = null;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Intent catalog cache
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const TRIAGE_BASE_TEMPLATE = 'jobs/shared/nodes/triage/variants/default/base';
+const TRIAGE_RULES_TEMPLATE = 'jobs/shared/nodes/triage/variants/default/rules';
+
+let intentCatalogCache: string | null = null;
 
 /**
- * Load triage templates from disk
+ * Render the 34-row intent catalog (id + group + label + description) so
+ * the LLM sees every option in one place. Cached after first build —
+ * INTENT_DEFINITIONS is `as const`, so the table never changes at runtime.
  */
-function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: string } {
-  if (triageBaseTemplate && triageRulesContent) {
-    return { base: triageBaseTemplate, rules: triageRulesContent };
-  }
-  
-  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'jobs/shared/nodes/triage/variants/default');
-  
-  const basePath = path.join(templateDir, 'base.md');
-  const rulesPath = path.join(templateDir, 'rules.md');
-  
-  const baseContent = fs.readFileSync(basePath, 'utf-8');
-  triageRulesContent = fs.readFileSync(rulesPath, 'utf-8');
-  triageBaseTemplate = Handlebars.compile(baseContent);
-  
-  return { base: triageBaseTemplate, rules: triageRulesContent };
+function renderIntentCatalog(): string {
+  if (intentCatalogCache) return intentCatalogCache;
+  const rows = INTENT_DEFINITIONS.map((d) => {
+    const label = d.label.en || '';
+    const desc = d.description.en || '';
+    return `| ${d.id} | ${d.intentGroup} | ${label} | ${desc} |`;
+  }).join('\n');
+  intentCatalogCache = [
+    '| id | group | label | description |',
+    '|---|---|---|---|',
+    rows,
+  ].join('\n');
+  return intentCatalogCache;
 }
 
-/**
- * Check whether the workspace has input materials for the target job.
- *
- * SSOT: delegates to the AgentRegistry which loads per-mode prerequisites from
- * `core/data/triage/jobs/*.yaml`. The detected mode is used so that mode-specific
- * required prerequisites (e.g. `spec` mode of design only needs has_directive)
- * are respected instead of a hardcoded union.
- *
- * Caller must ensure `AgentRegistry.initialize()` has been awaited.
- */
-export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
-  const job = AgentRegistry.getJob(targetJob);
-  if (!job) return true;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Job-type derivation (for recordUserTurnMeta)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const modeId = AgentRegistry.detectMode(targetJob, ws);
-  if (!modeId) return true;
+const KNOWN_JOB_TYPES: ReadonlyArray<JobType> = [
+  'code', 'design', 'learn', 'ask', 'plan', 'inline-ask', 'visual',
+];
 
-  const status = AgentRegistry.checkPrerequisites(targetJob, modeId, ws);
-  return status.allRequiredMet;
+function coerceJobType(s: string | undefined): JobType | undefined {
+  if (!s) return undefined;
+  return (KNOWN_JOB_TYPES as ReadonlyArray<string>).includes(s)
+    ? (s as JobType)
+    : undefined;
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Triage node
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 /**
- * Triage Node
- * 
- * Entry point for analyzing user input and determining the correct path
+ * Triage — single-tag intent lookup. Pre-step: per-turn featureContext
+ * re-hydrate (skipCompaction). Post-step: emit user_turn_meta with the
+ * resolved actionMetadata so next turn's hydrate sees it.
  */
 export async function triage<T extends TriageableState>(state: T): Promise<Partial<T>> {
   const phaseStart = Date.now();
-  
+
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🏥 TRIAGE');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  // ✅ Node activity banner (only when kanbanUpdate is available — learn job has none)
+
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     const locale = (state._uiLocale ?? 'en') as UILocale;
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('triage', locale), 'triage');
   }
-  
-  // ✅ Skip triage if explicitly requested or intent is already determined
-  if (state.skipTriage || state.actionMetadata?.intent) {
-    const reason = state.skipTriage ? 'skipTriage=true' : `actionMetadata.intent=${state.actionMetadata!.intent}`;
-    console.log(`⏭️  Triage skipped (${reason})\n`);
-    return {} as Partial<T>;
-  }
-  
-  // ✅ Initialize AgentRegistry (loads YAML data)
+
   await AgentRegistry.initialize();
-  
-  // ✅ LLM is required
-  const llm = state.deps?.llm;
-  if (!llm) {
-    throw new Error('LLM is required for triage');
-  }
-  
-  // ✅ Workflow instrumentation: Enter node
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage', 0, undefined, extractLLMInfo(llm));
-  }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 1: Analyze Workspace State
+  // Step 1: Workspace state (cheap; always run, used by domain hint + logs)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  console.log('📋 Analyzing workspace state...');
-  
-  // featurePath: use state-level featurePath (simple string channel, reliable in LangGraph)
   const featurePath = state.featurePath || state.context?.featurePath || '';
-  
   const workspaceState = await analyzeWorkspace(featurePath, {
     memory: state.deps?.memory,
     projectId: state.context?.project,
   });
-  
-  // Check if chat input provides directive
-  if (state.overrideDirective) {
-    workspaceState.hasMetaDirectives = true;
-  }
-  
+  if (state.overrideDirective) workspaceState.hasMetaDirectives = true;
   console.log(formatWorkspaceState(workspaceState));
   console.log('');
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 2: Build Prompt with Job Capabilities
+  // Step 1.5: Per-turn featureContext re-hydrate (Phase A — skipCompaction)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  
+  const { featureContext: rehydratedContext, turnId: rehydratedTurnId } =
+    await hydrateFeatureContext(
+      {
+        session: state.deps?.session,
+        llm: state.deps?.llm,
+        promptPort: state.deps?.promptBuilder,
+      },
+      {
+        jobId: (state as any).jobId,
+        logPrefix: 'Triage',
+        skipCompaction: true,
+      },
+    );
+  if (rehydratedContext) (state as any).featureContext = rehydratedContext;
+  if (rehydratedTurnId) (state as any).turnId = rehydratedTurnId;
+
+  const turnId: string | undefined = rehydratedTurnId || (state as any).turnId;
+  const jobId: string | undefined = (state as any).jobId || state._httpJobId;
+  const jobType = coerceJobType(state.currentJob);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 2: Skip path — skipTriage flag or explicit actionMetadata.intent
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.skipTriage || state.actionMetadata?.intent) {
+    const prevIntent = pickPrevIntent(rehydratedContext);
+    const reason = state.skipTriage
+      ? 'skipTriage=true'
+      : `actionMetadata.intent=${state.actionMetadata!.intent}`;
+    console.log(`⏭️  Triage LLM skipped (${reason})\n`);
+
+    if (state.skipTriage && !state.actionMetadata?.intent) {
+      // skipTriage with no explicit intent — nothing to assemble. Older
+      // graphs route to detect on `!triageResult`.
+      return {
+        workspaceState,
+        ...(rehydratedContext ? { featureContext: rehydratedContext } : {}),
+        ...(rehydratedTurnId ? { turnId: rehydratedTurnId } : {}),
+      } as unknown as Partial<T>;
+    }
+
+    const intentId = state.actionMetadata!.intent as IntentId;
+    const triageResult = buildTriageResult(intentId, state, workspaceState, prevIntent);
+    await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
+    logTriageResult(triageResult);
+
+    const _phaseTimings = { ...(state._phaseTimings || {}), triage: Date.now() - phaseStart };
+    return {
+      triageResult,
+      workspaceState,
+      _phaseTimings,
+      ...(rehydratedContext ? { featureContext: rehydratedContext } : {}),
+      ...(rehydratedTurnId ? { turnId: rehydratedTurnId } : {}),
+    } as unknown as Partial<T>;
+  }
+
+  const llm = state.deps?.llm;
+  if (!llm) throw new Error('LLM is required for triage');
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage', 0, undefined, extractLLMInfo(llm));
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 3: Build prompt and call LLM (single-tag output expected)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const userInput = state.overrideDirective || state.directive || '';
   const currentJob = state.currentJob || 'unknown';
   const currentAgent = state.currentAgent || 'architect';
-  
-  // Detect language from user input (for LLM to respond in same language)
-  const language = AgentRegistry.detectLanguage(userInput);
-  console.log(`🌐 Detected language: ${language}`);
-  
-  // Get job capabilities from YAML data
-  const jobCapabilities = AgentRegistry.generatePromptContext();
-  
-  const { system: systemPrompt, user: userPrompt } = buildTriagePrompt({
+
+  const promptPort = state.deps?.promptBuilder;
+  if (!promptPort) throw new Error('promptBuilder is required for triage');
+  const { system: systemPrompt, user: userPrompt } = await buildTriagePrompt({
     userInput,
     currentJob,
     currentAgent,
     workspaceState,
-    jobCapabilities,
-    sessionDigest: state.sessionDigest,
+    featureContext: rehydratedContext,
+    promptPort,
   });
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 3: Call LLM (system = classification rules, user = data to analyze)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  console.log('🤖 Calling LLM for triage...');
-  
+
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
 
-  let responseText: string;
-  if (llm.invokeWithUsage) {
-    const { content } = await runEstimatingLLM(
-      state as any,
-      'triage',
-      () => llm.invokeWithUsage!(messages),
-      { promptChars: systemPrompt.length + userPrompt.length },
-    );
-    responseText = content;
-  } else {
-    responseText = await llm.invoke(messages);
-  }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 3.5: Log triage prompt/response for debugging
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  logTriagePromptAndResponse({
+  const intentId = await invokeAndParseWithRetry(state, llm, messages, {
+    systemLen: systemPrompt.length,
+    userLen: userPrompt.length,
     featurePath,
     currentAgent,
     jobId: state._httpJobId || 'unknown',
-    systemPromptLength: systemPrompt.length,
-    userPromptLength: userPrompt.length,
-    responseText,
   });
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 4: Parse Response
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  let triageResult = parseTriageResponse(responseText, currentJob, currentAgent, workspaceState);
-  
-  if (!triageResult) {
-    console.error('❌ [Triage] Failed to parse LLM response:');
-    console.error('   Response (first 500 chars):', responseText.substring(0, 500));
-    throw new Error('Failed to parse triage response from LLM. Expected <triage> block not found.');
-  }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 4.5: Programmatic guard — redirect prerequisite check
-  // Redirect is only valid when the target job's input materials exist.
-  // Directive is excluded (always present when user types anything).
-  // Applies to ALL redirects (inbound and outbound).
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (triageResult.workStatus === 'redirect'
-      && triageResult.suggestedJob) {
-    const targetJob = triageResult.suggestedJob;
-
-    if (!hasTargetJobPrerequisites(targetJob, workspaceState)) {
-      console.log(`🛡️ [Triage] Guard: ${currentJob}→${targetJob} redirect blocked — target job prerequisites not satisfied (per ${targetJob}.yaml)`);
-      triageResult.workStatus = 'proceed';
-      triageResult.suggestedJob = undefined;
-      triageResult.suggestedAgent = undefined;
-      triageResult.needsChoice = undefined;
-      triageResult.choiceOptions = undefined;
-      triageResult.redirectReason = undefined;
-      triageResult.displayMessage = undefined;
-
-      triageResult._guardMessage = `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
-    }
-  }
+  const prevIntent = pickPrevIntent(rehydratedContext);
+  const triageResult = buildTriageResult(intentId, state, workspaceState, prevIntent);
+  await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
 
   logTriageResult(triageResult);
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 5: Handle Ask Intent with Agentic Ask System
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (triageResult.intent === 'ask' && triageResult.inScope) {
-    const askIntent = triageResult.askSubType === 'evaluate' ? 'ask-evaluate'
-      : triageResult.askSubType === 'ant' ? 'ask-ant'
-      : 'ask-general';
-    const askRAC = resolveToRAC(askIntent as IntentId);
-    console.log(`📋 [Triage] Ask RAC created: intent=${askRAC.intent}, askSubType=${triageResult.askSubType || 'general'}`);
-
-    // Run Agentic Ask Graph (explores Ant source code to answer)
-    const askResult = await runAskGraph({
-      question: userInput,
-      language,
-      workspaceState: {
-        ...workspaceState,
-        featurePath: state.context?.featurePath,
-      },
-      currentJob,
-      currentAgent,
-      deps: { llm },
-      _httpJobId: state._httpJobId,
-      resolvedAction: askRAC,
-    });
-
-    if (askResult.tokenUsage) {
-      applyEstimatingUsage(state as any, 'triage', askResult.tokenUsage, { subNode: 'ask' });
-    }
-    
-    triageResult = {
-      ...triageResult,
-      askResponse: askResult.response,
-      displayMessage: askResult.response,
-    };
-  }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 5.5: Send guard message if redirect was blocked by prerequisite check
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (triageResult._guardMessage) {
-    try {
-      console.log('📤 [Triage] Sending guard message to Chat UI...');
-      const chatAPI = new ChatAPIClient();
-      await chatAPI.startMessage();
-      await chatAPI.sendLLMEvent({ type: 'text', text: triageResult._guardMessage });
-      await chatAPI.finalizeMessage();
-      console.log('✅ [Triage] Guard message sent');
-    } catch (chatError) {
-      console.error('❌ [Triage] Failed to send guard message:', chatError);
-    }
-  }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 6: Send Response to Chat UI (for non-proceed, non-ask cases)
+  // Step 4: Clear estimating banner when the turn will terminate
+  // (ask/work routing is the host graph's responsibility; we just
+  // signal whether tasks are about to spawn.)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const shouldSendToChat = 
-    (triageResult.intent === 'ask' && !triageResult.inScope) ||
-    triageResult.workStatus === 'redirect' ||
-    triageResult.workStatus === 'blocked';
-  
-  if (shouldSendToChat && triageResult.displayMessage) {
-    try {
-      console.log('📤 [Triage] Sending response to Chat UI...');
-      const chatAPI = new ChatAPIClient();
-      
-      console.log('📤 [Triage] Starting message...');
-      await chatAPI.startMessage();
-      
-      if (triageResult.needsChoice && triageResult.choiceOptions) {
-        // Send triage_choice message with choice options
-        console.log('📤 [Triage] Sending triage choice...');
-        await chatAPI.sendTriageChoice(
-          triageResult.displayMessage,
-          state._httpJobId || 'unknown',
-          triageResult.choiceOptions,
-          triageResult,  // ✅ Pass full triageResult for pending choice registration
-          userInput  // ✅ Pass original directive for redirect
-        );
-      } else {
-        // Send simple text message (not streamed - these are short system messages)
-        console.log('📤 [Triage] Sending text message...');
-        await chatAPI.sendLLMEvent({ type: 'text', text: triageResult.displayMessage });
-      }
-      
-      console.log('📤 [Triage] Finalizing message...');
-      await chatAPI.finalizeMessage();
-      console.log('✅ [Triage] Response sent to Chat UI');
-    } catch (chatError) {
-      console.error('❌ [Triage] Failed to send response to Chat UI:', chatError);
-      // Don't re-throw - triage can still succeed without chat notification
-    }
-  }
-  
-  // ✅ Clear estimating activity when triage won't proceed to generate
-  // (ask, redirect, blocked all route to __end__ — no tasks will be created)
-  const willTerminate = 
-    triageResult.intent === 'ask' ||
-    triageResult.workStatus === 'redirect' ||
-    triageResult.workStatus === 'blocked';
-  
+  const willTerminate = triageResult.group === 'ask';
   if (willTerminate && state.deps?.kanbanUpdate?.clearEstimatingActivity) {
     state.deps.kanbanUpdate.clearEstimatingActivity();
   }
-  
-  // ✅ Record phase timing
+
   const _phaseTimings = { ...(state._phaseTimings || {}), triage: Date.now() - phaseStart };
-  
-  // ✅ Workflow instrumentation: Exit node
+
   if (state.deps?.workflowUpdate && state._httpJobId) {
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'triage', 0);
   }
-  
+
   return {
     triageResult,
     workspaceState,
     tokenUsage: state.tokenUsage,
     _phaseTimings,
+    ...(rehydratedContext ? { featureContext: rehydratedContext } : {}),
+    ...(rehydratedTurnId ? { turnId: rehydratedTurnId } : {}),
   } as unknown as Partial<T>;
 }
 
-export function buildTriagePrompt(params: {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helpers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function pickPrevIntent(featureContext: unknown): IntentId | undefined {
+  if (!featureContext || typeof featureContext !== 'object') return undefined;
+  const userTurns = (featureContext as any).userTurns;
+  if (!Array.isArray(userTurns) || userTurns.length === 0) return undefined;
+  const last = userTurns[userTurns.length - 1];
+  return last?.actionMetadata?.intent as IntentId | undefined;
+}
+
+function buildTriageResult(
+  intentId: IntentId,
+  state: TriageableState,
+  workspaceState: WorkspaceState,
+  prevIntent: IntentId | undefined,
+): TriageResult {
+  validateIntentId(intentId);
+  const group = deriveTriageGroup(intentId);
+  const mode = deriveTriageMode(intentId);
+  const domain = deriveTriageDomain(intentId, workspaceState, state.actionMetadata);
+  const continuationType = deriveContinuationType(prevIntent, intentId);
+  return {
+    resolvedIntentId: intentId,
+    group,
+    mode,
+    domain,
+    ...(continuationType ? { continuationType } : {}),
+  };
+}
+
+async function emitUserTurnMeta(args: {
+  state: TriageableState;
+  turnId: string | undefined;
+  jobId: string | undefined;
+  jobType: JobType | undefined;
+  triageResult: TriageResult;
+}): Promise<void> {
+  const { state, turnId, jobId, jobType, triageResult } = args;
+  if (!jobType) {
+    console.warn(`⚠️  [Triage] recordUserTurnMeta skipped: unknown jobType (currentJob=${state.currentJob})`);
+    return;
+  }
+  await recordUserTurnMeta({
+    session: state.deps?.session,
+    turnId,
+    jobId,
+    jobType,
+    actionMetadata: {
+      intent: triageResult.resolvedIntentId,
+      mode: triageResult.mode,
+      domain: triageResult.domain,
+    },
+    nodeLabel: 'Triage',
+  });
+}
+
+async function invokeAndParseWithRetry(
+  state: TriageableState,
+  llm: any,
+  messages: Array<{ role: string; content: string }>,
+  meta: {
+    systemLen: number;
+    userLen: number;
+    featurePath: string;
+    currentAgent: string;
+    jobId: string;
+  },
+): Promise<IntentId> {
+  const attempt = async (): Promise<{ raw: string; intent: IntentId | null }> => {
+    let raw: string;
+    if (llm.invokeWithUsage) {
+      const { content } = await runEstimatingLLM(
+        state as any,
+        'triage',
+        () => llm.invokeWithUsage(messages),
+        { promptChars: meta.systemLen + meta.userLen },
+      );
+      raw = content;
+    } else {
+      raw = await llm.invoke(messages);
+    }
+    logTriagePromptAndResponse({
+      featurePath: meta.featurePath,
+      currentAgent: meta.currentAgent,
+      jobId: meta.jobId,
+      systemPromptLength: meta.systemLen,
+      userPromptLength: meta.userLen,
+      responseText: raw,
+    });
+    const intent = parseIntentIdTag(raw);
+    return { raw, intent };
+  };
+
+  const first = await attempt();
+  if (first.intent) return first.intent;
+  console.warn(
+    `[Triage] Single-tag parse failed — retrying once. Raw="${extractIntentIdRaw(first.raw) ?? '<missing>'}"`,
+  );
+  const retry = await attempt();
+  if (retry.intent) return retry.intent;
+  throw new Error(
+    'Triage LLM did not emit a valid <intentId> tag after retry. ' +
+      'See prompt log for the raw response.',
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Prompt builder
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export async function buildTriagePrompt(params: {
   userInput: string;
   currentJob: string;
   currentAgent: string;
   workspaceState: WorkspaceState;
-  jobCapabilities: string;
-  existingTaskSummary?: string;
-  sessionDigest?: string;
-}): { system: string; user: string } {
-  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary, sessionDigest } = params;
+  featureContext?: unknown;
+  promptPort: PromptPort;
+}): Promise<{ system: string; user: string }> {
+  const { userInput, currentJob, currentAgent, workspaceState, featureContext, promptPort } = params;
 
-  const { base, rules } = loadTriageTemplates();
-
-  const user = base({
+  const vars = {
     currentAgent,
     currentJob,
     userInput,
-    jobCapabilities,
+    intentCatalog: renderIntentCatalog(),
+    featureContext: featureContext ?? undefined,
     hasPlan: workspaceState.hasPlan,
     planPath: workspaceState.planPath || 'available',
     hasMetaDirectives: workspaceState.hasMetaDirectives,
@@ -379,103 +384,79 @@ export function buildTriagePrompt(params: {
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,
-    hasExistingTasks: !!existingTaskSummary,
-    existingTaskSummary,
-    hasSessionDigest: !!sessionDigest,
-    sessionDigest,
-  });
+  };
 
-  return { system: rules, user };
+  const [user, system] = await Promise.all([
+    promptPort.render(TRIAGE_BASE_TEMPLATE, vars),
+    promptPort.render(TRIAGE_RULES_TEMPLATE, {}),
+  ]);
+  return { system, user };
 }
 
-/**
- * Log triage result
- */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Logging
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function logTriageResult(result: TriageResult): void {
   console.log('📊 Triage Result:');
-  console.log(`   Intent: ${result.intent}`);
-  
-  if (result.intent === 'ask') {
-    console.log(`   In-scope: ${result.inScope}`);
-  } else {
-    console.log(`   Work Status: ${result.workStatus}`);
-    if (result.workStatus === 'redirect') {
-      if (result.suggestedAgent) {
-        console.log(`   Suggested Agent: ${result.suggestedAgent}`);
-      }
-      console.log(`   Suggested Job: ${result.suggestedJob}`);
-    }
-    if (result.workStatus === 'blocked') {
-      console.log(`   Can Proceed: ${result.canProceed}`);
-      if (result.missingPrerequisites) {
-        console.log(`   Missing Required: ${result.missingPrerequisites.required.join(', ') || 'none'}`);
-        console.log(`   Missing Recommended: ${result.missingPrerequisites.recommended.join(', ') || 'none'}`);
-      }
-    }
+  console.log(`   Intent: ${result.resolvedIntentId}`);
+  console.log(`   Group:  ${result.group}`);
+  console.log(`   Mode:   ${result.mode}`);
+  console.log(`   Domain: ${result.domain}`);
+  if (result.continuationType) {
+    console.log(`   Continuation: ${result.continuationType}`);
   }
-  
-  console.log(`   Display: ${result.displayMessage}`);
   console.log('');
 }
 
 /**
- * Router function for conditional edges
+ * Route after triage — Phase B v2 (group based, ask externalised).
+ *
+ *   - missing result (LLM failure or no-intent skip path) → fall through
+ *     to detect when there is no resume queue; revise on resume.
+ *   - group === 'ask' → __end__ (ask graph dispatches separately at the
+ *     host-graph level when Phase D wires routeToAskGraph; for now we
+ *     end the triage subgraph and let the outer runner decide).
+ *   - group === 'work' → detect (or revise on resume).
  */
 export function routeAfterTriage<T extends TriageableState>(state: T): string {
   const result = state.triageResult;
   const isResume = state.isResume === true;
   const taskQueue = (state as any).taskQueue;
   const hasTaskQueue = taskQueue && !taskQueue.isEmpty();
-  
+
   if (!result) {
     if (isResume && hasTaskQueue) {
-      console.log('[TriageRouter] No triage result (resume with tasks) → revise');
+      console.log('[TriageRouter] no result + resume queue → revise');
       return 'revise';
     }
-    console.log('[TriageRouter] No triage result, proceeding to detect');
-    return 'detect';
-  }
-  
-  if (result.intent === 'ask') {
-    console.log('[TriageRouter] ask intent → __end__');
-    return '__end__';
-  }
-  
-  if (result.workStatus === 'proceed') {
-    if (isResume && hasTaskQueue) {
-      console.log('[TriageRouter] work:proceed (resume with tasks) → revise');
-      return 'revise';
+    // Intentional skip path: skipTriage flag or explicit actionMetadata.intent.
+    // The triage node returned early without populating triageResult, but
+    // detect can still run from actionMetadata directly.
+    if (state.skipTriage || state.actionMetadata?.intent) {
+      console.log('[TriageRouter] no result (skip/explicit) → detect');
+      return 'detect';
     }
-    console.log('[TriageRouter] work:proceed → detect');
-    return 'detect';
-  }
-  
-  if (result.workStatus === 'redirect') {
-    console.log('[TriageRouter] work:redirect → __end__ (await choice)');
+    // LLM failure or unhandled state — terminate so the graph doesn't
+    // wander into detect with no intent to act on.
+    console.log('[TriageRouter] no result (unexpected) → __end__');
     return '__end__';
   }
-  
-  if (result.workStatus === 'blocked') {
-    if (result.canProceed && result.needsChoice) {
-      console.log('[TriageRouter] work:blocked (canProceed) → __end__ (await choice)');
-      return '__end__';
-    }
-    console.log('[TriageRouter] work:blocked (cannot proceed) → __end__');
+
+  if (result.group === 'ask') {
+    console.log('[TriageRouter] group=ask → __end__ (ask externalised)');
     return '__end__';
   }
-  
+
+  // group === 'work'
   if (isResume && hasTaskQueue) {
-    console.log('[TriageRouter] default (resume with tasks) → revise');
+    console.log('[TriageRouter] group=work + resume queue → revise');
     return 'revise';
   }
-  console.log('[TriageRouter] default → detect');
+  console.log('[TriageRouter] group=work → detect');
   return 'detect';
 }
 
-/**
- * Log triage prompt structure and LLM raw response to debug file.
- * Appends a triage section to the existing prompt log file.
- */
 function logTriagePromptAndResponse(params: {
   featurePath: string;
   currentAgent: string;
@@ -486,11 +467,11 @@ function logTriagePromptAndResponse(params: {
 }): void {
   const { featurePath, currentAgent, jobId, systemPromptLength, userPromptLength, responseText } = params;
   if (!featurePath) return;
-  
+
   const agent = currentAgent === 'planner' ? 'planner' : 'architect';
   const logDir = getSessionDebugDir(featurePath, agent, 'prompts');
   const logFile = path.join(logDir, `prompt-${jobId}.md`);
-  
+
   const tokenEst = Math.ceil((systemPromptLength + userPromptLength) / 3.5);
   const content = `## Node: triage
 
@@ -511,7 +492,6 @@ ${responseText}
 
   try {
     fs.mkdirSync(logDir, { recursive: true });
-    
     if (fs.existsSync(logFile)) {
       const existing = fs.readFileSync(logFile, 'utf-8');
       fs.writeFileSync(logFile, content + existing);
@@ -529,4 +509,11 @@ ${responseText}
 export * from './types.js';
 export { AgentRegistry } from './AgentRegistry.js';
 export { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
-export { parseTriageResponse } from './parser.js';
+export { parseIntentIdTag } from './parser.js';
+export {
+  deriveTriageGroup,
+  deriveTriageMode,
+  deriveTriageDomain,
+  deriveContinuationType,
+  validateIntentId,
+} from './derive.js';

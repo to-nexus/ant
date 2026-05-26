@@ -7,8 +7,7 @@ import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
 import { createResolveNode } from "../../../common/graph/nodes/resolve";
 import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";  // ✅ Triage System
-import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
-import { codeDetectStrategy } from './nodes/detect/strategy.js';
+import { createInferDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { decompose } from "./nodes/decompose";
 import { direct } from "./nodes/direct";
 import { plan } from "./nodes/plan";
@@ -651,6 +650,8 @@ export const CodeGraphChannels = {
       analysis: Annotation<any>,
       directHints: Annotation<any>,
       featureContext: Annotation<any>,
+      // Phase C — escalation reuse cache for detect (`state.detect`).
+      detect: Annotation<any>,
       specClarify: Annotation<any>,
       needsEscalation: Annotation<any>,
       _promotedThisJob: Annotation<any>({
@@ -690,7 +691,7 @@ export function buildCodeGraph() {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addNode("resolve", createResolveNode(codeResolveStrategy) as any);
   graph.addNode("triage", triage as any);
-  graph.addNode('detect', createDetectNode(codeDetectStrategy) as any);
+  graph.addNode('detect', createInferDetectNode() as any);
   graph.addNode("decompose", decompose as any);
   graph.addNode("direct", withPhaseTracking('directCode', direct) as any);  // ✅ oneshot / exploratory ReAct loop
   graph.addNode("revise", withPhaseTracking('revise', revise) as any);  // ✅ Task queue revision (continue/modify)
@@ -720,7 +721,7 @@ export function buildCodeGraph() {
   );
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Triage → detect or end
+  // Triage → detect or end (ask externalised, blocked/redirect handled by detect)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "triage" as any,
@@ -731,8 +732,15 @@ export function buildCodeGraph() {
       __end__: "__end__"
     } as any
   );
-  
-  graph.addEdge("detect" as any, "decompose" as any);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Detect → decompose (proceed) or end (blocked / redirect-suggested)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  graph.addConditionalEdges(
+    "detect" as any,
+    routing.routeAfterDetect as any,
+    { decompose: "decompose", __end__: "__end__" } as any
+  );
   
   // ✅ Decompose → conditional: clarify/spec-clarify pause, direct (oneshot|exploratory),
   //                              parallelOrchestrator or plan (todo)

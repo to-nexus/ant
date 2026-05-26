@@ -12,6 +12,7 @@ import type { TriageableState, WorkspaceState } from '../../../common/graph/node
 import type { PromptPort } from '../../../../core/ports/prompt';
 import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata, ExecutionTierId } from '@ant/shared';
 import type { Conversations } from '../../../common/graph/conversations';
+import type { FeatureContext } from '../../../../core/context/featureContextBuilder';
 
 export const PlanAnnotation = Annotation.Root({
   ...DetectableFields,
@@ -24,6 +25,10 @@ export const PlanAnnotation = Annotation.Root({
   phaseTokenUsages: Annotation<any>,
   executionTier: Annotation<any>,
   awaitingClarify: Annotation<any>,
+  featureContext: Annotation<any>,
+  turnId: Annotation<any>,
+  // Phase D — Detect channel for escalation reuse and progressibility surfacing.
+  detect: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -74,6 +79,34 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * answer to NODE_GENERATE before the LLM call. Cleared by the helper.
    */
   awaitingClarify?: boolean;
+
+  /**
+   * Cross-job feature context loaded from feature.jsonl (T2 user_turn +
+   * T3 breadcrumb + boundary). Populated by `resolve` via
+   * `hydrateFeatureContext` and re-hydrated by `triage` on every turn
+   * (skipCompaction) so multi-turn intent inference inside the same job
+   * can see the prior `actionMetadata` of the previous turn.
+   *
+   * SSOT lives in `core/context/featureContextBuilder.ts`. Consumers read
+   * via PromptBuilder.enrichFeatureContextVars (universal channel).
+   */
+  featureContext?: FeatureContext;
+
+  /**
+   * Current user turn id recovered by `hydrateFeatureContext` (matches on
+   * `jobId`). Consumed by downstream nodes that attribute trace events and
+   * breadcrumb/boundary lines to the originating user request.
+   */
+  turnId?: string;
+
+  /**
+   * Phase D — DetectResult channel populated by `createInferDetectNode`.
+   * Carries `status` (proceed / blocked / redirect-suggested) plus the
+   * SSOT-side `resolvedAction` / `artifacts` / `missingPrerequisites` /
+   * `suggestedAlternatives` / `displayMessage` / `choiceOptions`.
+   * `routeAfterPlannerDetect` reads `status` to decide generate vs __end__.
+   */
+  detect?: import('../../../common/graph/nodes/detect/types').DetectResult<PlanGraphState>;
 }
 
 /** Helper to read planMode from resolvedAction */

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { decomposeWithToolLoop } from '../../src/agents/architect/graph/design/nodes/docGen/sourceSelector';
+import { callLLMWithToolLoop } from '../../src/agents/common/llm/callLLMWithToolLoop';
 import type { LLMClient, LLMStreamEvent } from '../../src/core/ports/llm';
 
 /**
  * Tool-use (RAG) path coverage for the per-`<task>` streaming hook.
  *
- * `decomposeWithToolLoop` runs in code-job decompose whenever any tool
+ * `callLLMWithToolLoop` runs in code-job decompose whenever any tool
  * is passed (which is always — read_file/list_files/clarify are mandatory). Without
  * the streaming hook wired here, decompose runs would only deliver the
  * Kanban broadcast at end-of-stream because the tool-loop never fed
@@ -42,7 +42,7 @@ const toolUseEvent = (id: string, name: string, input: Record<string, any>): LLM
   toolUse: { id, name, input },
 });
 
-describe('decomposeWithToolLoop — per-<task> streaming hook', () => {
+describe('callLLMWithToolLoop — per-<task> streaming hook', () => {
   it('forwards every <task> element to onTaskParsed in single-round flow', async () => {
     // Single round: LLM emits the final response with <tasks> directly.
     const finalText =
@@ -57,7 +57,7 @@ describe('decomposeWithToolLoop — per-<task> streaming hook', () => {
     ]);
 
     const observed: string[] = [];
-    const result = await decomposeWithToolLoop(
+    const result = await callLLMWithToolLoop(
       llm,
       [{ role: 'user', content: 'go' }],
       [{ name: 'noop', description: 'noop', input_schema: { type: 'object', properties: {}, required: [] } }],
@@ -89,7 +89,7 @@ describe('decomposeWithToolLoop — per-<task> streaming hook', () => {
     ]);
 
     const observed: string[] = [];
-    await decomposeWithToolLoop(
+    await callLLMWithToolLoop(
       llm,
       [{ role: 'user', content: 'go' }],
       [{ name: 'noop', description: 'noop', input_schema: { type: 'object', properties: {}, required: [] } }],
@@ -125,7 +125,7 @@ describe('decomposeWithToolLoop — per-<task> streaming hook', () => {
     ]);
 
     const observed: string[] = [];
-    await decomposeWithToolLoop(
+    await callLLMWithToolLoop(
       llm,
       [{ role: 'user', content: 'go' }],
       [{ name: 'noop', description: 'noop', input_schema: { type: 'object', properties: {}, required: [] } }],
@@ -153,7 +153,7 @@ describe('decomposeWithToolLoop — per-<task> streaming hook', () => {
     const finalText = '<tasks><task>{"id":"a","name":"A","type":"feature","priority":300}</task></tasks>';
     const llm = makeStubLLM([[textEvent(finalText)]]);
 
-    const result = await decomposeWithToolLoop(
+    const result = await callLLMWithToolLoop(
       llm,
       [{ role: 'user', content: 'go' }],
       [{ name: 'noop', description: 'noop', input_schema: { type: 'object', properties: {}, required: [] } }],

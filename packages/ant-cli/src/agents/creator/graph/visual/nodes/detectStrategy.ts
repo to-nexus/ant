@@ -7,7 +7,6 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../common/graph/nodes/detect/types.js';
 import type { VisualGraphState } from '../types.js';
-import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import type { InferredAction } from '@ant/shared';
 import { runEstimatingLLM, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
@@ -53,17 +52,13 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
     const llm = state.deps.llm;
     const pb = state.deps.promptBuilder;
 
-    const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
-    const conversationContext = sessionMain
-      .slice(-10)
-      .map(entry => `[${entry.role}] ${entry.content}`)
-      .join('\n');
-
+    // featureContext is auto-enriched by PromptBuilder.enrichFeatureContextVars,
+    // so the Handlebars template can iterate `featureContext.userTurns` directly.
+    const featureContext = (state as any).featureContext;
     const currentDirective = state.overrideDirective || state.directive || '';
 
     try {
       const classifyPrompt = await pb.render('jobs/visual/nodes/direct/variants/default/classify', {
-        conversationContext: conversationContext || '(no previous conversation)',
         currentDirective,
       });
 
@@ -92,7 +87,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         try {
           await logPrompt(state.featurePath, state._httpJobId, 'visual', 'detect', classifyPrompt.length, {
             templatePath: 'jobs/visual/nodes/direct/variants/default/classify',
-            injectedVariables: { currentDirective, conversationEntries: sessionMain.length },
+            injectedVariables: { currentDirective, conversationEntries: featureContext?.userTurns?.length ?? 0 },
             hardcodedContent: rawContent,
           });
         } catch { /* non-critical */ }

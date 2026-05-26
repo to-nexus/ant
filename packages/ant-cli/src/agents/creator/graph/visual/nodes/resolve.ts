@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
-import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest.js';
+import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 import { resolveResumedActionContext } from '../../../../common/graph/resumeActionMetadata.js';
@@ -172,9 +172,25 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
     console.log(`📋 [Visual:Resolve] RAC created (explicit): intent=${state.actionMetadata.intent}, mode=${resolvedAction.mode}`);
   }
 
+  // Feature Context (cross-job SSOT) — load feature.jsonl, recover turnId.
+  // Visual is a lightweight job; LLM compaction runs only when llm/promptPort
+  // are wired (deps.llm / deps.promptBuilder).
+  const { featureContext, turnId } = await hydrateFeatureContext(
+    {
+      session: state.deps?.session,
+      llm: state.deps?.llm,
+      promptPort: state.deps?.promptBuilder,
+    },
+    {
+      jobId: (state as any).jobId,
+      logPrefix: 'Visual:Resolve',
+    },
+  );
+
   const result: Partial<VisualGraphState> = {
     conversations: { [CONV_KEYS.SESSION_MAIN]: conversation },
-    sessionDigest: buildSessionDigest(conversation),
+    featureContext,
+    ...(turnId ? { turnId } : {}),
     isResume,
     lastEngineeredPrompt,
     lastOutputPath,

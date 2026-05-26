@@ -29,7 +29,13 @@ Classify the visual asset type and job mode for the current request.
 ## Input
 
 ### Conversation History
-{{{conversationContext}}}
+{{#if featureContext.userTurns.length}}
+{{#each featureContext.userTurns}}
+- [intent={{this.actionMetadata.intent}}] {{this.directive}}
+{{/each}}
+{{else}}
+(no previous conversation)
+{{/if}}
 
 ### Current Request
 {{{currentDirective}}}

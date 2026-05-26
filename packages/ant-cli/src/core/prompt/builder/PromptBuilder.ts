@@ -61,6 +61,27 @@ export class PromptBuilder implements PromptPort {
   }
 
   /**
+   * Feature Context Universal Channel — surface FeatureContext (T2 user_turn
+   * + T3 breadcrumb + optional summary) as template vars. Idempotent:
+   * caller-provided `vars.featureContext` wins so tests/explicit overrides
+   * are preserved. No-op when neither caller nor config supplies a context
+   * (zero allocation hot path for greenfield / non-loadable workspaces).
+   *
+   * Templates access via `{{#if featureContext.userTurns.length}}` etc.
+   * Degrade-safe — missing FeatureContext just means the conditional
+   * blocks render empty.
+   */
+  private enrichFeatureContextVars(
+    vars: Record<string, any>,
+    opts: { featureContext?: import('../../context/featureContextBuilder').FeatureContext },
+  ): Record<string, any> {
+    if (!vars) return vars;
+    if (vars['featureContext']) return vars;
+    if (!opts.featureContext) return vars;
+    return { ...vars, featureContext: opts.featureContext };
+  }
+
+  /**
    * Codebase Channel SSOT — derive `codebaseRole` from intent + hasCodebase
    * and surface `codebaseEntryPoints` from `workspaceState`. Idempotent —
    * caller-provided values win, so an explicit override (e.g. tests) is
@@ -173,6 +194,15 @@ export class PromptBuilder implements PromptPort {
       vars = { ...vars, intent: config.intent };
     }
     vars = this.enrichCodebaseVars(vars);
+
+    // Feature Context Universal Channel — auto-inject {breadcrumbs,
+    // userTurns, summary, wasCompacted} so every template (triage / detect /
+    // plan / execute / direct / ...) can reference prior turns / artifact
+    // anchors without each caller wiring it manually. Caller-provided
+    // `vars.featureContext` wins (test overrides). Order matters: stable
+    // (codebase) before mutable (featureContext) keeps Anthropic prompt
+    // cache hits high.
+    vars = this.enrichFeatureContextVars(vars, { featureContext: config.featureContext });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 3: Render all sections

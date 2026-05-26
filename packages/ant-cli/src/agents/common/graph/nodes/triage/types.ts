@@ -1,31 +1,14 @@
 /**
- * Triage System Types
- * 
- * 사용자 입력을 분석하여 적절한 처리 경로로 안내하는 시스템
- * 의료 Triage 개념 차용: 분류 → 적절한 경로로 라우팅
+ * Triage System Types — SSOT (single-tag intent lookup).
+ *
+ * Triage LLM emits only `<intentId>X</intentId>`. Everything else
+ * (group / mode / domain / continuationType) is derived from the matrix.
+ * Progressibility (status / missingPrerequisites / choiceOptions /
+ * suggestedAlternatives / displayMessage) lives on `DetectResult`.
  */
 
 import type { ResolvableState } from '../resolve/types.js';
-import type { ActionMetadata } from '@ant/shared';
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Intent & Status
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * Intent: 사용자 의도 분류 (1단계)
- * - ask: 질문/도움 요청, 또는 의도 파악 실패 시 확인 요청
- * - work: 명확한 작업 요청
- */
-export type Intent = 'ask' | 'work';
-
-/**
- * WorkStatus: work일 때 실행 가능 여부 (2단계)
- * - proceed: 정상 진행 가능
- * - redirect: 다른 job이 더 적합
- * - blocked: 준비물 부족
- */
-export type WorkStatus = 'proceed' | 'redirect' | 'blocked';
+import type { ActionMetadata, IntentId, Mode, Domain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Choice System
@@ -65,47 +48,33 @@ export interface ChoiceOptions {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * TriageResult: Triage 분석 결과
+ * ContinuationType — new semantics (Plan v2 §B):
+ *   - `'proceed'` — same intent group as prev turn (same job).
+ *   - `'switch'`  — different intent group (job boundary crossed).
+ *
+ * Replaces the legacy `'supplement' | 'newScope'` set, which was an LLM
+ * signal; the new value is derived from intent identity.
  */
-export type ContinuationType = 'supplement' | 'newScope';
+export type ContinuationType = 'proceed' | 'switch';
 
-export type AskSubType = 'evaluate' | 'ant' | 'general';
-
+/**
+ * TriageResult — SSOT (single-tag intent lookup).
+ *
+ * `triage()` populates these five fields and nothing else; progressibility
+ * (status / missingPrerequisites / displayMessage / choiceOptions) is on
+ * `DetectResult`.
+ */
 export interface TriageResult {
-  intent: Intent;
-  
-  // ask 관련
-  inScope?: boolean;           // guardrails 통과 여부
-  askResponse?: string;        // 응답 (in-scope일 때)
-  askSubType?: AskSubType;     // ask 하위 분류
-  
-  // work 관련
-  workStatus?: WorkStatus;
+  /** Single LLM-emitted intent id, validated against INTENT_DEFINITIONS. */
+  resolvedIntentId: IntentId;
+  /** Derived from matrix — `'ask'` ⇔ intentGroup === 'ask'. */
+  group: 'ask' | 'work';
+  /** Derived from matrix — universal Mode (generate / refactor / explain). */
+  mode: Mode;
+  /** Derived: actionMetadata.domain ?? workspaceState hint ?? 'service'. */
+  domain: Domain;
+  /** Derived from prev intent (same job → proceed, cross-job → switch). */
   continuationType?: ContinuationType;
-  
-  // work → redirect
-  suggestedAgent?: string;
-  suggestedJob?: string;
-  redirectReason?: string;
-  
-  // work → blocked
-  missingPrerequisites?: {
-    required: string[];
-    recommended: string[];
-  };
-  canProceed?: boolean;        // recommended만 부족하면 true
-  blockedMessage?: string;
-  proceedAnywayOption?: string;
-  
-  // 사용자에게 보여줄 메시지
-  displayMessage?: string;
-  
-  // 선택 필요 여부
-  needsChoice?: boolean;
-  choiceOptions?: ChoiceOptions;
-  
-  // Programmatic guard message (sent to Chat UI when redirect is blocked by prerequisite check)
-  _guardMessage?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -263,8 +232,6 @@ export interface TriageableState extends ResolvableState {
   skipTriage?: boolean;
   triageResult?: TriageResult;
   workspaceState?: WorkspaceState;
-  /** Compact digest of recent session turns — injected into triage prompt for context */
-  sessionDigest?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -731,15 +731,20 @@ describe('Template Smoke Tests', () => {
     expect(generalOutput).toContain('Routing Decision');
   });
 
-  it('visual/nodes/direct/classify renders with conversation context, directive, and jobMode', async () => {
+  it('visual/nodes/direct/classify renders with featureContext.userTurns, directive, and jobMode', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render('jobs/visual/nodes/direct/variants/default/classify', {
-      conversationContext: '[user] I need a logo for my SaaS',
+      featureContext: {
+        userTurns: [
+          { directive: 'I need a logo for my SaaS', actionMetadata: { intent: 'gen-visual-logo' } },
+        ],
+      },
       currentDirective: 'Create a clean logo',
     });
 
-    expect(output).toContain('[user] I need a logo for my SaaS');
+    expect(output).toContain('I need a logo for my SaaS');
+    expect(output).toContain('intent=gen-visual-logo');
     expect(output).toContain('Create a clean logo');
     expect(output).toContain('<classify>');
     expect(output).toContain('assetType');
