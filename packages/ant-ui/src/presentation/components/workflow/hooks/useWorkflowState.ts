@@ -27,6 +27,18 @@ interface WorkflowStateWithQueue {
   displayedState: WorkflowRealtimeState | null;
 }
 
+/**
+ * Minimum time (ms) a non-empty activeNodes snapshot must remain on screen
+ * before an empty-activeNodes cleanup is allowed to blank it. Set to a
+ * perceptual threshold so short-lived nodes (e.g. checkTaskStatus, triage,
+ * detect, resolve) visibly enter the active state instead of being collapsed
+ * to nothing by the snapshot queue.
+ *
+ * NOT a race-protection knob — race protection is handled separately by the
+ * cancel-pending-cleanup branch later in this file.
+ */
+export const NODE_MIN_DISPLAY_MS = 350;
+
 // ✅ 글로벌 단일 큐: activeNodes 스냅샷 기반
 interface QueuedSnapshot {
   activeNodes: ActiveWorkerNode[];
@@ -292,11 +304,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
             globalCleanupTimer = null;
           }
           
-          // Use setTimeout(0) so a following non-empty snapshot can cancel cleanup
+          // Debounce by NODE_MIN_DISPLAY_MS so short-lived nodes remain visible and a
+          // following non-empty snapshot can cancel this cleanup (see cancel branch below).
           globalCleanupTimer = setTimeout(() => {
             setDisplayedState(null);
             globalCleanupTimer = null;
-          }, 0);
+          }, NODE_MIN_DISPLAY_MS);
           
           return;
         }
@@ -324,10 +337,13 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
             globalCleanupTimer = null;
           }
           
+          // Debounce by NODE_MIN_DISPLAY_MS — share the same perceptual threshold
+          // as the empty-activeNodes cleanup above so the final visible node state
+          // is not collapsed instantly when a job ends.
           globalCleanupTimer = setTimeout(() => {
             setDisplayedState(null);
             globalCleanupTimer = null;
-          }, 0);
+          }, NODE_MIN_DISPLAY_MS);
         }
       } finally {
         globalProcessing = false;

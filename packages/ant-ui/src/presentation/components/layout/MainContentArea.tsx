@@ -147,9 +147,19 @@ export function MainContentArea({
           />
         </div>
       ) : (activeTab === 'fileEdit' || isEditorTabId(activeTab)) && openTabs.fileEdit ? (
+        // Background SSOT for the file editor slot lives HERE — on the
+        // MainContentArea wrapper that owns the file-edit tab area. Inner
+        // panels (FileEditorPanel / VirtualDocumentViewer) are rendered
+        // mutually-exclusively into this slot and MUST NOT paint their own
+        // `--bg-canvas`; they inherit it via this wrapper. Centralising the
+        // background here prevents visual drift between the two viewers
+        // when one is restyled in isolation. The streaming-routing condition
+        // below (`shouldRenderStreamingPreView`) is the single source of
+        // truth — FileEditorPanel no longer carries a parallel
+        // `isStreamingPreviewTab` branch.
         <div
           className="flex-1 h-full overflow-hidden flex flex-col"
-          style={{ background: 'var(--bg-surface)' }}
+          style={{ background: 'var(--bg-canvas)' }}
         >
           <div className="flex-1 h-full overflow-hidden">
             {activeEditorTab ? (
@@ -188,7 +198,7 @@ export function MainContentArea({
       ) : (
         <div className="flex-1 h-full">
           {taskViewMode === 'workflow' ? (
-            <AgentWorkflowBoard workflowState={workflowState} />
+            <AgentWorkflowBoard workflowState={workflowState} kanbanData={kanbanData} />
           ) : (
             <div className="h-full overflow-y-auto">
               <KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />

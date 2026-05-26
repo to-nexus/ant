@@ -103,7 +103,7 @@
       "designDocs": "설계 문서",
       "designDocsTooltip": "Ant 형식의 문서만 인식됩니다",
       "designDocsAntFormat": "Ant 형식",
-      "designDocsPattern": "api-contract-*.md, fe-system-*.md, be-system-*.md, spec-*.md, ui-tokens.json",
+      "designDocsPattern": "api-contract-*.md, fe-system-*.md, be-system-*.md, spec 문서 (architecture/spec/), ui-tokens.json",
       "designDocsInvalid": "이름 불일치",
       "designDocsSkipWarning": "{{total}}개 중 {{skipped}}개 파일이 제외됩니다 (Ant 형식과 이름 불일치)",
       "directive": "작업 지시",

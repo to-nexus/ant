@@ -121,3 +121,64 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
     });
   });
 });
+
+describe('existing codebase short-circuits techTier AND visualTier (D27 SSOT runtime suppressor)', () => {
+  // Pin spec §4.1 / §4.2 — when `gitSnapshot.hasCodebase === true`, the
+  // RUNTIME_SUPPRESSORS for BOTH `techTier` AND `visualTier` fire:
+  //   - techTier: an existing codebase implicitly locks the stack.
+  //   - visualTier: an existing codebase implicitly locks visual identity
+  //     (CSS / design tokens / component library are already chosen by
+  //     the code on disk); re-prompting via BasisWizard would overwrite
+  //     the user's existing visual choices.
+  //
+  // For service-domain code intents whose static tiers are
+  // ['techTier','visualTier','gameArtTier','gameContentTier']
+  // (gen-code-sys / gen-code-spec / gen-code-directive), the service
+  // matrix already closes gameArtTier + gameContentTier, and hasCodebase
+  // now closes techTier + visualTier — so zero tiers stay active and the
+  // chip MUST route to `config`. Pinning all three intents prevents a
+  // future revert of the visualTier suppressor from silently re-introducing
+  // the wizard hop for any of them.
+
+  it('gen-code-sys + service + empty basis + hasCodebase=true → config (both techTier and visualTier suppressed)', () => {
+    const slot = getConfigSlots('gen-code-sys')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-code-spec + service + empty basis + hasCodebase=true → config', () => {
+    const slot = getConfigSlots('gen-code-spec')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-code-directive + service + empty basis + hasCodebase=true → config', () => {
+    const slot = getConfigSlots('gen-code-directive')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-sys-fe + service + hasCodebase=true → config', () => {
+    const slot = getConfigSlots('gen-sys-fe')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-code-sys + game + hasCodebase=true → basis-edit (gameArtTier/gameContentTier remain active)', () => {
+    const slot = getConfigSlots('gen-code-sys')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'game' }), true),
+    ).toBe('basis-edit');
+  });
+
+  it('gen-code-sys + service + hasCodebase=false → basis-edit (greenfield unaffected)', () => {
+    const slot = getConfigSlots('gen-code-sys')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), false),
+    ).toBe('basis-edit');
+  });
+});
