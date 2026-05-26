@@ -54,11 +54,18 @@ export function KanbanColumnShell({
     <div
       className={isHorizontalSplit ? 'flex flex-col' : 'flex flex-col min-h-0'}
       style={{
-        background: 'oklch(from var(--bg-surface) l c h / 0.78)',
+        // Outline-only frame: 12% surface 반투명 배경으로 aurora mesh가
+        // 컬럼 영역에서도 은은하게 비치게 한다. backdrop blur는 유지하여
+        // 카드 가독성을 확보한다.
+        background: 'color-mix(in oklab, var(--bg-surface) 12%, transparent)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
         borderRadius: 'var(--r-xl)',
-        border: '1px solid var(--border-1)',
+        // 컬럼별 액센트색 1.5px 외곽선 — 상단 2px 액센트 바와 함께
+        // 컬럼 정체성을 이중 강화한다 (todo=violet / inProgress=pink /
+        // completed=teal). color-mix로 55% 농도를 적용해 라이트/다크
+        // 양쪽에서 자연스러운 톤을 유지한다.
+        border: `1.5px solid color-mix(in oklab, ${accent.color} 55%, transparent)`,
         overflow: 'hidden',
         boxShadow: 'var(--shadow-sm)',
       }}

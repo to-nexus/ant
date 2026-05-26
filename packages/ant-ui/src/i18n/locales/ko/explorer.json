@@ -99,6 +99,8 @@
     "publishNewBranch": "브랜치 게시",
     "publishNewBranchDesc": "이 브랜치를 원격에 처음으로 Push합니다",
     "changes": "변경사항",
+    "expandChanges": "변경사항 펼치기",
+    "collapseChanges": "변경사항 접기",
     "selectAll": "전체 선택",
     "deselectAll": "전체 해제",
     "commitFirstToPull": "Pull 전에 변경사항을 커밋하세요"
