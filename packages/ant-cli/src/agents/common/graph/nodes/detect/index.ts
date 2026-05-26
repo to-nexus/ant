@@ -24,7 +24,9 @@ import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 import { appendOrUpdatePool } from '../../../../../core/prompt/builder/ArtifactPipeline.js';
-import { emitDetectOutcome } from '../../../../../core/streaming/emitDetectOutcome.js';
+import { emitDetectOutcome, type DetectPathsCompressed } from '../../../../../core/streaming/emitDetectOutcome.js';
+import { compressPathsByFolder } from '../../../../../core/context/compressPathsByFolder.js';
+import type { FileSystemPort } from '../../../../../core/ports/filesystem.js';
 import { inferRacWithTools } from './inferRacWithTools.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult, type DetectAugment } from './types.js';
@@ -88,7 +90,7 @@ export function createDetectNode<T extends DetectableState>(
           ? appendOrUpdatePool((state as any).artifacts, resumeArtifacts || [])
           : undefined;
 
-        emitRACSummary(state.resolvedAction, undefined, state._uiLocale);
+        emitRACSummary(state.resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
 
         return {
           resolvedAction: state.resolvedAction,
@@ -241,7 +243,7 @@ export function createDetectNode<T extends DetectableState>(
       // Unified chat emission — explicit / infer both go through the single
       // SpecialTagTransformer entry. `reasoning` is included when present
       // (infer path); absence only omits the reasoning subsection.
-      emitRACSummary(resolvedAction, reasoning, state._uiLocale);
+      emitRACSummary(resolvedAction, reasoning, state._uiLocale, state.deps?.fileSystem);
 
       // Pool writer — single SSOT for `state.artifacts` filling. RAC-resolved
       // artifacts merge into any existing pool entries (intra-job self-output
@@ -342,13 +344,37 @@ function applyDomainDefaultsToBasis(
  * Fire-and-forget chat emission for the detect phase. Never awaited so graph
  * execution stays non-blocking; rendering failures surface via emitDetectOutcome's
  * own warn logging (no silent swallow — see AGENTS.md Canonical Tag Rendering SSOT).
+ *
+ * When `fileSystem` is provided, the helper compresses RAC slot paths
+ * (target / refs / context) into folder entries where every file in a
+ * directory was selected — produces `pathsCompressed` for the chat
+ * `<detect>` renderer. fileSystem absence (e.g. tests) degrades to the
+ * legacy un-compressed emission.
  */
 function emitRACSummary(
   rac: ResolvedActionContext,
   reasoning: InferredAction['reasoning'] | undefined,
   locale: string | undefined,
+  fileSystem: FileSystemPort | undefined,
 ): void {
-  void emitDetectOutcome(rac, { reasoning, locale, phase: 'detect' });
+  void (async () => {
+    const pathsCompressed = await buildPathsCompressed(rac, fileSystem);
+    await emitDetectOutcome(rac, { reasoning, locale, phase: 'detect', pathsCompressed });
+  })();
+}
+
+async function buildPathsCompressed(
+  rac: ResolvedActionContext,
+  fileSystem: FileSystemPort | undefined,
+): Promise<DetectPathsCompressed | undefined> {
+  if (!fileSystem) return undefined;
+  const [target, refs, context] = await Promise.all([
+    rac.target?.length ? compressPathsByFolder(rac.target, fileSystem) : Promise.resolve(undefined),
+    rac.refs?.length ? compressPathsByFolder(rac.refs, fileSystem) : Promise.resolve(undefined),
+    rac.context?.length ? compressPathsByFolder(rac.context, fileSystem) : Promise.resolve(undefined),
+  ]);
+  if (!target && !refs && !context) return undefined;
+  return { target, refs, context };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -406,7 +432,7 @@ export function createInferDetectNode<T extends DetectableState>(
         const resumeUpdatedArtifacts = (state as any).artifacts
           ? appendOrUpdatePool((state as any).artifacts, resumeArtifacts || [])
           : undefined;
-        emitRACSummary(state.resolvedAction, undefined, state._uiLocale);
+        emitRACSummary(state.resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
         return {
           resolvedAction: state.resolvedAction,
           resolvedArtifacts: resumeArtifacts,
@@ -511,7 +537,7 @@ export function createInferDetectNode<T extends DetectableState>(
       if (detectResult.status === 'proceed' && detectResult.resolvedAction) {
         const resolvedAction = detectResult.resolvedAction;
         const resolvedArtifacts = detectResult.artifacts ?? [];
-        emitRACSummary(resolvedAction, undefined, state._uiLocale);
+        emitRACSummary(resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
         const updatedArtifacts = (state as any).artifacts
           ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts)
           : undefined;
