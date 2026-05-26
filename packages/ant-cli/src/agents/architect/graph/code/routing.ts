@@ -51,31 +51,17 @@ export function routeAfterResolve(state: ArchitectGraphState): string {
 }
 
 /**
- * Phase D — single SSOT for routing after detect. Proceeds to decompose
- * when `state.detect.status === 'proceed'` (the unified factory writes
- * the channel); otherwise ends the graph so the FE renders the
- * blocked / redirect-suggested message that detect already streamed
- * through the chat adapter.
- *
- * Legacy escalation reuse (resume with existing `resolvedAction` but no
- * fresh `state.detect` channel) is treated as `proceed` so direct →
- * decompose re-entry keeps working without re-running the LLM.
+ * Routes after detect. `state.resolvedAction` is the proceed signal:
+ * detect populates it on success and leaves it unset on blocked /
+ * redirect-suggested, where the node has already streamed displayMessage
+ * + choiceOptions to chat so the FE renders the card on __end__.
  */
 export function routeAfterDetect(state: ArchitectGraphState): string {
-  const detect = (state as any).detect as { status?: string } | undefined;
-  if (!detect) {
-    if (state.resolvedAction) {
-      console.log('[RouteAfterDetect] No detect channel but resolvedAction present → decompose (escalation reuse)');
-      return 'decompose';
-    }
-    console.log('[RouteAfterDetect] No detect channel → __end__');
-    return '__end__';
-  }
-  if (detect.status === 'proceed') {
-    console.log('[RouteAfterDetect] status=proceed → decompose');
+  if (state.resolvedAction) {
+    console.log('[RouteAfterDetect] resolvedAction present → decompose');
     return 'decompose';
   }
-  console.log(`[RouteAfterDetect] status=${detect.status} → __end__`);
+  console.log('[RouteAfterDetect] no resolvedAction → __end__ (blocked / redirect / failure)');
   return '__end__';
 }
 

@@ -755,8 +755,6 @@ export const DesignGraphChannels = {
   _figmaConnectionLost: Annotation<any>,
   boundary: Annotation<any>,
   featureContext: Annotation<any>,
-  // Phase C — escalation reuse cache for detect (`state.detect`).
-  detect: Annotation<any>,
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,
   executionTier: Annotation<any>,

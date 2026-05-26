@@ -195,12 +195,12 @@ export type CodeTask =
   | ExplainCodeTask;
 
 /**
- * Design-specific Task — every design-job task currently has `type: 'doc'`,
- * but this declaration narrows the design surface explicitly so the union
- * shape is consistent with CodeTask. If a future design intent ships a new
- * task type, add a variant here and `decompose` will route accordingly.
+ * Design-specific Task — `doc` is the persisted-artifact variant; `explain`
+ * is the chat-only variant produced by `createExplainTask` (no `targetFile`,
+ * no file write). Adding a new design-job task type means extending this
+ * union and teaching `decompose` to route it.
  */
-export type DesignTask = DocTask & {
+export type DesignTask = (DocTask | ExplainTask) & {
   targetFile?: string;             // Which design document (e.g., "be-system-main.md", "wallet-login.md")
   targetDir?: string;              // Optional output directory override. When set, callers (docGen) use it
                                    // instead of designDirOf(targetFile). Used by spec tasks whose filenames

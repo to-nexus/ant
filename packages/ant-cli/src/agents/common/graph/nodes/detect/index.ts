@@ -526,8 +526,9 @@ export function createInferDetectNode<T extends DetectableState>(
       }
 
       // ── Phase 4: Commit ──
+      // No `state.detect` channel — would shadow the `detect` node name; the
+      // outcome lives on `state.resolvedAction` (DetectableFields SSOT).
       const baseReturn: Record<string, any> = {
-        detect: detectResult,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },

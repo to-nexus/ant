@@ -32,10 +32,15 @@ workspace state.
 5. **New scope.** A directive unrelated to any prior turn or anchor is a
    `gen-*` choice in the intent group matching the requested output shape.
 
-6. **Ask vs Work.** If the directive asks about Ant itself or requests
-   rubric/eval scoring → an `ask-*` intent. Questions about the user's
-   project codebase / artifacts that produce an explanation (not a new
-   artifact) → the corresponding `explain-*` intent (still `work`).
+6. **Ask vs Work; Explain vs persisted analysis.** If the directive
+   asks about Ant itself or requests rubric/eval scoring → an `ask-*`
+   intent. Within `work`, `explain-*` claims the output is a chat-only
+   answer about the user's project — no persisted artifact. When the
+   directive implies the answer must be captured as a written analysis
+   that the user (or a downstream job) will read later, pick
+   `gen-spec` or `rev-spec` instead. Interrogative verbs alone
+   ("why", "how", "what") do not select `explain-*` — Principle 1's
+   output-shape test dominates.
 
 7. **Invalid / accidental input.** If the directive is unintelligible,
    incomplete, or has no actionable content → `ask-general`.

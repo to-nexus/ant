@@ -2,11 +2,10 @@
  * Shared helper — append a `user_turn_meta` patch line recording the
  * execution tier decision for the current user turn.
  *
- * Called from every Tier Entry Node (code/design Decompose, plan/visual
- * Detect) and from fixed-tier paths (design explain / design default
- * fallback). The call is side-effect only: missing `session` / `turnId`
- * / `jobId` silently skip, and write failures are logged and swallowed
- * so a broken session log never interrupts a job.
+ * Called from triage and from every job's Decompose / Detect entry. The
+ * call is side-effect only: missing `session` / `turnId` / `jobId`
+ * silently skip, and write failures are logged and swallowed so a
+ * broken session log never interrupts a job.
  *
  * Idempotency: if Decompose re-runs (e.g. after `proceed_without_spec`),
  * a fresh meta line is appended. The reader merges by `turnId` and
