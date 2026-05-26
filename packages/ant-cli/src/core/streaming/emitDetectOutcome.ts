@@ -16,12 +16,30 @@
  * output remains non-blocking.
  */
 
-import type { ResolvedActionContext, InferredAction, ExecutionTierId } from '@ant/shared';
+import type {
+  ResolvedActionContext,
+  InferredAction,
+  ExecutionTierId,
+  PathOrFolder,
+} from '@ant/shared';
 import { SpecialTagTransformer } from './transformers/SpecialTagTransformer';
 import { getChatAPIClient } from '../adapters/ChatAPIClient';
 import type { UserLanguage } from '../utils/languageDetector';
 
 export type DetectPhase = 'detect' | 'decompose-final';
+
+/**
+ * Folder-compressed view of the RAC slot paths. Produced by
+ * `compressPathsByFolder` (BE FS check) — full-folder selections collapse
+ * into a single `folder` entry, partial selections stay as files. The
+ * chat <detect> renderer (`formatRACForChat`) reads this when present and
+ * falls back to `rac.target` string[] otherwise.
+ */
+export interface DetectPathsCompressed {
+  target?: ReadonlyArray<PathOrFolder>;
+  refs?: ReadonlyArray<PathOrFolder>;
+  context?: ReadonlyArray<PathOrFolder>;
+}
 
 export interface EmitDetectOutcomeOptions {
   /** Transient reasoning (infer path only). Optional. */
@@ -37,16 +55,22 @@ export interface EmitDetectOutcomeOptions {
    * pipeline) — previously the tier was visible only in server logs.
    */
   executionTier?: ExecutionTierId;
+  /**
+   * Folder-compressed RAC slots. Detect node fills this via
+   * `compressPathsByFolder`; the chat renderer prefers this over
+   * `rac.target` string[] for the chat <detect> output.
+   */
+  pathsCompressed?: DetectPathsCompressed;
 }
 
 export async function emitDetectOutcome(
   rac: ResolvedActionContext,
   opts: EmitDetectOutcomeOptions = {},
 ): Promise<void> {
-  const { reasoning, locale, phase = 'detect', executionTier } = opts;
+  const { reasoning, locale, phase = 'detect', executionTier, pathsCompressed } = opts;
 
   try {
-    const payload = buildCanonicalDetectPayload(rac, reasoning, phase, executionTier);
+    const payload = buildCanonicalDetectPayload(rac, reasoning, phase, executionTier, pathsCompressed);
     const transformer = new SpecialTagTransformer(normalizeLocale(locale));
     const raw = `<detect>${JSON.stringify(payload)}</detect>`;
     const result = transformer.transform(raw);
@@ -73,6 +97,7 @@ function buildCanonicalDetectPayload(
   reasoning: InferredAction['reasoning'] | undefined,
   phase: DetectPhase,
   executionTier: ExecutionTierId | undefined,
+  pathsCompressed: DetectPathsCompressed | undefined,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     phase,
@@ -84,6 +109,8 @@ function buildCanonicalDetectPayload(
 
   if (rac.domain) payload.domain = rac.domain;
   if (rac.target?.length) payload.target = rac.target;
+  if (rac.refs?.length) payload.refs = rac.refs;
+  if (rac.context?.length) payload.context = rac.context;
   if (rac.basis?.techTier) payload.techTier = rac.basis.techTier;
   if (rac.basis?.visualTier) payload.visualTier = rac.basis.visualTier;
   // Phase 2 (D12-revised) — surface gameArtTier and gameContentTier so the
@@ -101,6 +128,16 @@ function buildCanonicalDetectPayload(
       ...(reasoning.intent ? { intent: reasoning.intent } : {}),
       ...(reasoning.domain ? { domain: reasoning.domain } : {}),
     };
+  }
+
+  if (pathsCompressed) {
+    const trimmed: DetectPathsCompressed = {};
+    if (pathsCompressed.target?.length) trimmed.target = pathsCompressed.target;
+    if (pathsCompressed.refs?.length) trimmed.refs = pathsCompressed.refs;
+    if (pathsCompressed.context?.length) trimmed.context = pathsCompressed.context;
+    if (trimmed.target || trimmed.refs || trimmed.context) {
+      payload.pathsCompressed = trimmed;
+    }
   }
 
   return payload;

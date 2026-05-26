@@ -16,6 +16,8 @@
 import * as crypto from "crypto";
 import type { LogJobType, FeatureUserTurnLine, Mode } from "@ant/shared";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
+import { enrichActionMetadataWithFolders } from "../core/context/enrichActionMetadataWithFolders";
+import type { FileSystemPort } from "../core/ports/filesystem";
 
 export interface RecordUserTurnParams {
   featurePath: string;
@@ -36,6 +38,15 @@ export interface RecordUserTurnParams {
   featureName?: string;
   /** Structured context from the Actions panel. Persisted to chat.jsonl so mention badges survive page refresh. */
   actionMetadata?: import('@ant/shared').ActionMetadata;
+  /**
+   * Optional FileSystem handle. When provided (or auto-derived from
+   * `featurePath`), the helper folds
+   * `actionMetadata.{target,refs,context}` into `foldersCompressed`
+   * before persistence — full-folder selections render as one `📂`
+   * badge instead of N file badges. Omitted in test paths where
+   * actionMetadata is either empty or already enriched.
+   */
+  fileSystem?: FileSystemPort;
 }
 
 /**
@@ -60,6 +71,16 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
 
   const session = params.session
     ?? new FileSessionAdapter(featurePath, agent, projectId, featureName);
+
+  // Best-effort folder compression — keeps the FE badge logic identical
+  // for explicit (chat user-message) and inferred (detect node) flows.
+  // Failure / missing FS degrades to raw paths via the helper's own guards.
+  const fileSystemForEnrich =
+    params.fileSystem ?? deriveFileSystem(featurePath, actionMetadata);
+  const enrichedActionMetadata = await enrichActionMetadataWithFolders(
+    actionMetadata,
+    fileSystemForEnrich,
+  );
 
   if (isResume) {
     // Resume = no new user turn. We MUST reuse the existing turnId already in
@@ -94,13 +115,38 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
     mode,
   };
 
-  await session.appendUserTurn(line, { skipFeature, actionMetadata });
+  await session.appendUserTurn(line, { skipFeature, actionMetadata: enrichedActionMetadata });
 
   // Let the worker's LLMResponseService know which turnId to tag emitted
   // chat.jsonl lines with. Fire-and-forget; failures are logged and ignored.
   await propagateTurnIdToLLMResponseService(turnId);
 
   return turnId;
+}
+
+/**
+ * Build a featurePath-scoped FileSystemPort *only when needed* — i.e. the
+ * caller didn't pre-provide one and the actionMetadata actually has paths
+ * to compress. Avoids the AdapterFactory call on every empty-metadata
+ * (ask / inline-ask) recordUserTurn.
+ */
+function deriveFileSystem(
+  featurePath: string,
+  meta: import('@ant/shared').ActionMetadata | undefined,
+): FileSystemPort | undefined {
+  if (!meta) return undefined;
+  if (!(meta.target?.length || meta.refs?.length || meta.context?.length)) return undefined;
+  try {
+    // Lazy require to avoid a top-level circular import (AdapterFactory
+    // pulls in HTTP/Redis adapters that don't belong in this helper's
+    // dependency graph at module load).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { AdapterFactory } = require('../infrastructure/adapters/AdapterFactory');
+    return AdapterFactory.createFileSystemAdapterWithPath(featurePath);
+  } catch (err) {
+    console.warn('[recordUserTurn] failed to build FileSystem for actionMetadata enrichment:', err);
+    return undefined;
+  }
 }
 
 /**
