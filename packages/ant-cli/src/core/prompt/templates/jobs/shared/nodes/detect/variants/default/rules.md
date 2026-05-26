@@ -41,9 +41,12 @@ the intent id. Your responsibility is narrow:
 
 ## Failure modes
 
-- If the LLM cannot fill a required slot AND the whitelist contains no
-  candidate, emit `<missingPrereq required="…"/>`. The orchestrator will
-  surface a redirect card.
-- If the whitelist has zero candidates AND no alternative intent is
-  applicable, the orchestrator surfaces a blocked message — your only
-  signal is the same `<missingPrereq>` tag.
+- **Directive-capable intents never emit `<missingPrereq>`.** When the
+  MATRIX SLOTS preamble marks this intent directive-capable, the user's
+  directive alone is the input — emit `<slots>` with whatever paths the
+  whitelist offers (or none) and let the downstream pipeline run
+  directive-only. Missing refs are NOT a blocker here.
+- For all other intents: if a required slot has no whitelist candidate,
+  emit `<missingPrereq required="…"/>`. The orchestrator will surface a
+  redirect card or a blocked message depending on whether an alternative
+  intent is applicable.
