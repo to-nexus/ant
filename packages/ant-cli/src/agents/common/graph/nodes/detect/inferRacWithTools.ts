@@ -103,6 +103,10 @@ export async function inferRacWithTools(
     whitelistPaths: whitelist.paths,
     workspaceState: input.workspaceState,
     featureContext: input.featureContext,
+    // Mirror of the BE bypass below — keeps the LLM from hunting for a
+    // missing-prereq surface it cannot block on. The matrix is SSOT;
+    // default to required (true) when the slot config omits the flag.
+    chatRequiresRefs: slots.chatRequiresRefs ?? true,
   };
   const systemPrompt = await promptBuilder.render(
     'jobs/shared/nodes/detect/variants/default/rules',
@@ -156,6 +160,20 @@ export async function inferRacWithTools(
     if (isEmptyDetectResponse(parsedResp)) {
       throw new Error('[detect:inferRacWithTools] LLM produced no parseable <slots> or <missingPrereq>');
     }
+  }
+
+  // SSOT: directive-capable intents (matrix `chatRequiresRefs: false`)
+  // cannot be blocked on missing refs when invoked via infer — the user's
+  // directive itself is the input. `inferRacWithTools` only runs on the
+  // infer path (explicit takes a separate branch in `createInferDetectNode`
+  // that builds RAC directly), so we do not need an explicit/infer source
+  // check here. The matrix is authoritative — never hard-code intent ids.
+  if (parsedResp.missingPrereq && slots.chatRequiresRefs === false) {
+    console.log(
+      `[detect:inferRacWithTools] LLM emitted <missingPrereq> for ${intentId} ` +
+        `but slots.chatRequiresRefs === false — bypassing block, proceeding directive-only`,
+    );
+    parsedResp.missingPrereq = undefined;
   }
 
   // ── 5. missingPrereq → blocked / redirect-suggested ──
