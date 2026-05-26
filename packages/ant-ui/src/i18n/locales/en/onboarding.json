@@ -103,7 +103,7 @@
       "designDocs": "Design Docs",
       "designDocsTooltip": "Only Ant-formatted documents are recognized",
       "designDocsAntFormat": "Ant format",
-      "designDocsPattern": "api-contract-*.md, fe-system-*.md, be-system-*.md, spec-*.md, ui-tokens.json",
+      "designDocsPattern": "api-contract-*.md, fe-system-*.md, be-system-*.md, spec docs (architecture/spec/), ui-tokens.json",
       "designDocsInvalid": "Name mismatch",
       "designDocsSkipWarning": "{{skipped}} of {{total}} files will be skipped (name doesn't match Ant format)",
       "directive": "Instructions",

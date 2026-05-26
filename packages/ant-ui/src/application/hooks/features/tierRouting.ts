@@ -21,14 +21,23 @@ import {
  * Build the `TierRuntimeContext` consumed by `listActiveTiers` /
  * `isTierActive` from any `ActionMetadata` snapshot. Pure — call from
  * either render code or callbacks.
+ *
+ * `hasCodebase` 인자: 워크스페이스에 codebase가 이미 존재하면(true)
+ * techTier는 RUNTIME_SUPPRESSORS에 의해 active 목록에서 제거되어
+ * BasisWizard의 techTier 단계가 스킵된다. 기본값 false는 기존 호출자가
+ * 컴파일 오류 없이 동작하도록 보존한다.
  */
-export function actionMetadataToTierRuntime(metadata: ActionMetadata): TierRuntimeContext {
+export function actionMetadataToTierRuntime(
+  metadata: ActionMetadata,
+  hasCodebase: boolean = false,
+): TierRuntimeContext {
   return {
     techTier: metadata.basis?.techTier,
     hasUiDoc: pathsContainUiDoc([
       ...(metadata.refs ?? []),
       ...(metadata.context ?? []),
     ]),
+    hasCodebase,
   };
 }
 
@@ -45,11 +54,21 @@ export function actionMetadataToTierRuntime(metadata: ActionMetadata): TierRunti
  * funnel through this; drift between them was the original bug
  * (handler routed to `basis-edit` while the wizard rendered `null`,
  * leaving the panel completely blank).
+ *
+ * `hasCodebase` 인자: 워크스페이스에 codebase가 이미 존재하면(true)
+ * techTier는 RUNTIME_SUPPRESSORS에 의해 active 목록에서 제거되어
+ * BasisWizard의 techTier 단계가 스킵된다. 기본값 false는 기존 호출자가
+ * 컴파일 오류 없이 동작하도록 보존한다.
  */
 export function decideActionsStepAfterIntent(
   slot: BasisSlotConfig | undefined,
   metadata: ActionMetadata,
+  hasCodebase: boolean = false,
 ): 'basis-edit' | 'config' {
-  const tiers = listActiveTiers(slot, metadata.domain, actionMetadataToTierRuntime(metadata));
+  const tiers = listActiveTiers(
+    slot,
+    metadata.domain,
+    actionMetadataToTierRuntime(metadata, hasCodebase),
+  );
   return tiers.length > 0 && !metadata.basis ? 'basis-edit' : 'config';
 }

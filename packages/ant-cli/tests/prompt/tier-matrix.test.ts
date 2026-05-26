@@ -77,6 +77,16 @@ describe('isTierActive — slot/domain/runtime composition', () => {
     expect(isTierActive('visualTier', slot, 'service', { hasUiDoc: true })).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { hasUiDoc: false })).toBe(true);
   });
+
+  // Regression guard for Task 1 SSOT predicate extension (intent-tier-skip §4.1):
+  // `hasCodebase` is an additional disjunct on the visualTier suppressor —
+  // when a codebase already exists, the visualTier wizard step is suppressed
+  // because the existing UI implementation is the authority, not the wizard.
+  it('visualTier suppressor: hasCodebase closes the gate', () => {
+    const slot: BasisSlotConfig = { tiers: ['visualTier'] };
+    expect(isTierActive('visualTier', slot, 'service', { hasCodebase: true })).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { hasCodebase: false })).toBe(true);
+  });
 });
 
 describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {

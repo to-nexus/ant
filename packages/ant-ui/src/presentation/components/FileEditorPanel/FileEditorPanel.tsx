@@ -28,8 +28,6 @@ import { isFigmaDataPopulated } from '@ant/shared';
 import { splitPathForEditorHeader } from '@/shared/utils/path-utils';
 import { getSmartEditConfig } from '../smartEdit/config';
 import { SmartEditEditor } from '../smartEdit/SmartEditEditor';
-import { selectActiveEditorTab } from '@/domain/store/selectors/editorTabs';
-import { StreamingStatusChip } from '@/presentation/components/streaming/StreamingStatusChip';
 import { LineNumberedEditor } from './LineNumberedEditor';
 import { EditorLangChip } from './EditorLangChip';
 
@@ -116,9 +114,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
-  const mainPanelActiveTab = useStore((state) => state.mainPanelActiveTab);
-  const editorTabs = useStore((state) => state.editorTabs);
-  const activeEditorTabId = useStore((state) => state.activeEditorTabId);
   const viewModeByPath = useStore((state) => state.viewModeByPath);
   const setFileViewMode = useStore((state) => state.setFileViewMode);
 
@@ -142,18 +137,11 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
 
-  const activeEditorTab = useMemo(
-    () =>
-      selectActiveEditorTab({
-        mainPanelActiveTab,
-        activeEditorTabId,
-        editorTabs,
-      }),
-    [activeEditorTabId, editorTabs, mainPanelActiveTab],
-  );
-  const isStreamingPreviewTab =
-    activeEditorTab?.status === 'streaming' &&
-    (activeEditorTab.source === 'design' || activeEditorTab.source === 'plan');
+  // NOTE: Streaming preview routing is owned by MainContentArea
+  // (`shouldRenderStreamingPreView` → renders <VirtualDocumentViewer/>).
+  // FileEditorPanel therefore never receives a streaming tab; the
+  // previously-duplicated `isStreamingPreviewTab` branch was dead code
+  // and has been removed. StreamingStatusChip lives in VirtualDocumentViewer.
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
@@ -217,7 +205,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const isJsonFile = /\.json$/.test(lowerSelectedFile);
   const isJsonlFile = /\.jsonl$/.test(lowerSelectedFile);
   const isYamlFile = /\.(yaml|yml)$/.test(lowerSelectedFile);
-  const showViewModeToggle = canToggleViewMode(selectedFile) && !isStreamingPreviewTab;
+  const showViewModeToggle = canToggleViewMode(selectedFile);
 
   const editorHeaderPathParts = useMemo(
     () => (selectedFile ? splitPathForEditorHeader(selectedFile) : null),
@@ -451,10 +439,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   };
 
   return (
-    <div
-      className="w-full px-3 pt-1.5 pb-3 flex flex-col h-full"
-      style={{ background: 'var(--bg-canvas)' }}
-    >
+    <div className="w-full px-3 pt-1.5 pb-3 flex flex-col h-full">
       {/* Header */}
       <div
         className="pb-1.5 flex-shrink-0"
@@ -488,7 +473,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             <span className="min-w-0 flex-1" />
           )}
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {isStreamingPreviewTab && <StreamingStatusChip isStreaming={true} />}
             {hasChanges && (
               <span
                 className="text-[10px] leading-none"

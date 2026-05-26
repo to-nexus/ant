@@ -2,13 +2,18 @@ const DESIGN_DOC_PATTERNS = [
   /^api-contract-.+\.md$/,
   /^fe-system-.+\.md$/,
   /^be-system-.+\.md$/,
-  /^spec-.+\.md$/,
   /^ui-tokens\.json$/,
   /^ui-assets\.json$/,
   /^ui-spec\.json$/,
 ];
 
-export function isCanonicalDesignDoc(filename: string): boolean {
+const SPEC_PATH_RE = /(^|\/)architecture\/spec\/[^/]+\.md$/;
+const LEGACY_SPEC_NAME_RE = /^spec-.+\.md$/;
+
+export function isCanonicalDesignDoc(filenameOrPath: string): boolean {
+  const filename = filenameOrPath.split('/').pop() ?? filenameOrPath;
+  if (SPEC_PATH_RE.test(filenameOrPath)) return true;
+  if (LEGACY_SPEC_NAME_RE.test(filename)) return true;
   return DESIGN_DOC_PATTERNS.some((p) => p.test(filename));
 }
 

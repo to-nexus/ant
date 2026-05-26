@@ -56,12 +56,21 @@ export function useGraphLayout(
     // Helper: get workers active on a specific node
     const getNodeWorkers = (nodeId: string) =>
       realtimeState?.activeNodes?.filter(w => w.nodeId === nodeId) ?? [];
-    
+
+    // Helper: nodeHistory 에 한 번이라도 진입한 적이 있으면 true.
+    // WorkflowNode 의 isDone 분기(`!isRunning && data.visitedBefore === true`)
+    // 가 도달 가능해지도록 어댑터 단에서 채워준다 (spec §5 T1).
+    const wasVisited = (nodeId: string) =>
+      realtimeState?.nodeHistory?.some(h => h.nodeId === nodeId) ?? false;
+
     // 1. Workflow 노드를 ReactFlow 노드로 변환
     const workflowNodes: Node[] = metadata.nodes.map(node => {
       const isActive = isNodeActive(node.id);
       const workers = getNodeWorkers(node.id);
-      
+      // 활성 노드도 visited 로 간주 — 활성이 빠진 직후 history 반영 지연 갭에서
+      // 깜빡임을 막기 위한 보수적 OR (spec §5 T1).
+      const visitedBefore = wasVisited(node.id) || isActive;
+
       return {
         id: node.id,
         type: node.type,
@@ -70,6 +79,7 @@ export function useGraphLayout(
           description: node.description,
           importance: node.importance,
           isActive,
+          visitedBefore,
           workers,  // Pass worker info for task label badges
           actors: node.interactsWithActors,
           nodeType: node.type,
@@ -110,8 +120,15 @@ export function useGraphLayout(
         target: edge.target,
         type: edge.type === 'conditional' || edge.type === 'loop' ? 'smoothstep' : 'default',
         label: edge.label,
-        animated: isActive,
-        style: edgeStyle,
+        // Active edge 시각은 ReactFlow 기본 animated dash 대신 aurora-tokens 의
+        // `flow-dash` 키프레임을 사용하는 흐르는 점선으로 표현 (spec §5 T3).
+        // 키프레임 자체는 workflow-controls.css 의 `.workflow-edge--active`
+        // 셀렉터에서 부착되며, 여기서는 dasharray 패턴만 부여한다.
+        className: isActive ? 'workflow-edge--active' : undefined,
+        style: {
+          ...edgeStyle,
+          ...(isActive ? { strokeDasharray: '8 6' } : {}),
+        },
         labelStyle: getEdgeLabelStyle(),
         labelBgStyle: {
           fill: 'var(--bg-surface)',

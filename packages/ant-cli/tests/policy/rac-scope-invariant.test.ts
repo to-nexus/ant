@@ -131,10 +131,11 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
     expect(fe?.content).toContain('Auth SDK');
   });
 
-  it('directory slot — `architecture/spec/` walks into spec-*.md only when listed', () => {
+  it('directory slot — `architecture/spec/` walks into spec documents only when listed', () => {
     // Directory slot semantics: `loadResolvedArtifacts` walks the directory,
     // so design-spec intents that put the `spec/` dir into `refs` get every
-    // spec file recursively. Directive intents (no spec slot) must not.
+    // spec file recursively (canonical `{slug}.md` or legacy `spec-{slug}.md`).
+    // Directive intents (no spec slot) must not.
     const directiveOnly = loadResolvedArtifacts(
       rac('gen-code-directive', [], ['plan/prd.md']),
       featurePath,
