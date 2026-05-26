@@ -33,13 +33,19 @@ workspace state.
    `gen-*` choice in the intent group matching the requested output shape.
 
 6. **Ask vs Work; Explain vs persisted analysis.** If the directive
-   asks about Ant itself or requests rubric/eval scoring → an `ask-*`
-   intent. Within `work`, `explain-*` claims the output is a chat-only
-   answer about the user's project — no persisted artifact. When the
-   directive implies the answer must be captured as a written analysis
-   that the user (or a downstream job) will read later, pick
-   `gen-spec` or `rev-spec` instead. Interrogative verbs alone
-   ("why", "how", "what") do not select `explain-*` — Principle 1's
+   asks about Ant itself or requests rubric/eval scoring → `ask-*`.
+   Within `work`, the explain/spec line is drawn by **what the directive
+   asks about**:
+
+   - About **the artifact itself** (what it currently contains, how it
+     is structured) → `explain-*`. Output is a chat-only readout of
+     present state.
+   - About **a problem or its remediation** → NOT explain. Output is
+     reasoning that downstream work consumes. Pick `gen-spec` (new
+     scope) or `rev-spec` (extends an existing spec). These intents own
+     context understanding, not just description.
+
+   Interrogative verbs alone do not select `explain-*` — Principle 1's
    output-shape test dominates.
 
 7. **Invalid / accidental input.** If the directive is unintelligible,
