@@ -171,13 +171,13 @@ async function decomposeSpecSections(
   ].join('\n');
 
   try {
-    // Stream through `decomposeWithToolLoop` (no tools, single round) so
+    // Stream through `callLLMWithToolLoop` (no tools, single round) so
     // the new contract's `<task>` wrappers surface `task_added` actions
     // and the streaming Kanban hook fills task-by-task during spec
     // decompose too. Previously `invokeWithUsage` was single-shot and
     // gave `XMLStreamParser` nothing to scan mid-stream.
-    const { decomposeWithToolLoop } = await import('../docGen/sourceSelector');
-    const { response, usage } = await decomposeWithToolLoop(
+    const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
+    const { response, usage } = await callLLMWithToolLoop(
       llm,
       [{ role: 'user', content: prompt }],
       [],

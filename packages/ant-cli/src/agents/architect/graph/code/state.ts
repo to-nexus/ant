@@ -161,6 +161,17 @@ export interface ArchitectGraphState extends TriageableState {
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
 
+  /**
+   * Phase C — Detect node output cache for escalation reuse.
+   *
+   * Direct → escalation → decompose re-entry uses this so `inferRacWithTools`
+   * does not re-run when the same intent / metadata is in flight. Populated
+   * by the unified detect factory; consumed by the same factory's resume
+   * fast-path on subsequent passes. Optional because non-escalation flows
+   * do not seed it.
+   */
+  detect?: import('../../../common/graph/nodes/detect/types').DetectResult<ArchitectGraphState>;
+
   // Decompose clarify: LLM needs user clarification before completing decomposition
   awaitingDecomposeClarify?: boolean;
 

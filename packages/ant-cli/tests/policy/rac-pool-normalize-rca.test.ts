@@ -199,8 +199,8 @@ function readSrc(rel: string): string {
 }
 
 describe('rac-pool-normalize — SSOT discipline source-text guards', () => {
-  it('sourceSelector emits chat-status with normalizeToCodebasePath result, not raw tc.input', () => {
-    const src = readSrc('agents/architect/graph/design/nodes/docGen/sourceSelector.ts');
+  it('callLLMWithToolLoop emits chat-status with normalizeToCodebasePath result, not raw tc.input', () => {
+    const src = readSrc('agents/common/llm/callLLMWithToolLoop.ts');
     expect(src).toContain('normalizeToCodebasePath');
     // The fixed path uses `displayPath` (the normalized form) — assert
     // both addReadingFile and addReadComplete bind it.

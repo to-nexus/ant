@@ -540,9 +540,9 @@ export async function decomposeSystemDesign(
   const {
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
-    decomposeWithToolLoop,
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
+  const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
   const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
   const pool = new ArtifactPoolView(state.artifacts || []);
@@ -646,7 +646,7 @@ export async function decomposeSystemDesign(
   /**
    * Call LLM to get raw text response.
    *
-   * Both tool-mode (RAG) and inline-mode go through `decomposeWithToolLoop`.
+   * Both tool-mode (RAG) and inline-mode go through `callLLMWithToolLoop`.
    * In inline-mode the tool list is empty so the loop terminates after a
    * single streamed round. The shared path guarantees the streaming Kanban
    * hook fires regardless of source size — previously the inline branch
@@ -656,7 +656,7 @@ export async function decomposeSystemDesign(
    */
   async function callLLM(): Promise<string> {
     const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
-    const { response, usage } = await decomposeWithToolLoop(
+    const { response, usage } = await callLLMWithToolLoop(
       llmToUse,
       [{ role: 'user', content: prompt }],
       tools,
@@ -732,7 +732,7 @@ export async function decomposeSystemDesign(
 
   /**
    * Repair call: send raw response + error feedback back to LLM for
-   * contract correction. Streams through `decomposeWithToolLoop` (no
+   * contract correction. Streams through `callLLMWithToolLoop` (no
    * tools) so the Kanban hook fills task-by-task during the repaired
    * pass too.
    */
@@ -756,7 +756,7 @@ export async function decomposeSystemDesign(
       },
     ];
 
-    const { response, usage } = await decomposeWithToolLoop(
+    const { response, usage } = await callLLMWithToolLoop(
       llmToUse,
       repairMessages,
       [],
