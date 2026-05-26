@@ -19,7 +19,8 @@ export function ActionStepHeader({ actionId, title, subtitle, onBack }: ActionSt
       <button
         type="button"
         onClick={onBack}
-        className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
+        className="p-1 rounded-md transition-colors shrink-0"
+        style={{ color: 'var(--text-3)' }}
         aria-label="Back"
       >
         <ChevronLeft className="w-5 h-5" />
@@ -28,11 +29,11 @@ export function ActionStepHeader({ actionId, title, subtitle, onBack }: ActionSt
         <Icon className={`w-3.5 h-3.5 ${visual.text}`} />
       </div>
       <div className="min-w-0">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">
+        <h2 className="text-base font-semibold truncate" style={{ color: 'var(--text-1)' }}>
           {title}
         </h2>
         {subtitle && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
             {subtitle}
           </p>
         )}

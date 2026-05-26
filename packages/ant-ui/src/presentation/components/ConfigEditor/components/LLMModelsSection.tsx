@@ -1,10 +1,11 @@
-import { useState } from 'react';
+
 import { useTranslation } from 'react-i18next';
-import { ChevronRight } from 'lucide-react';
 import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
 import { AvailableModel } from '../hooks/useAvailableModels';
-import { StatusChip } from '../../StatusChip';
 import { ModelSelectChip } from './ModelSelectChip';
+import { SectionCard, type SectionAccent } from '../aurora';
+import * as LucideIcons from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface LLMModelsSectionProps {
   editedConfig: ProjectConfig;
@@ -13,163 +14,428 @@ interface LLMModelsSectionProps {
   onModelChange: (job: string, nodeType: string, modelId: string) => void;
 }
 
-interface NodeConfig {
-  key: keyof JobLLMConfig;
-  label: string;
-  description: string;
-}
+type JobKey = 'plan' | 'design' | 'code' | 'learn' | 'visual';
+type NodeKey = keyof JobLLMConfig;
 
-interface JobSectionConfig {
-  jobKey: 'design' | 'code' | 'learn' | 'plan' | 'visual';
+interface JobDef {
+  jobKey: JobKey;
   jobLabel: string;
   agentLabel: string;
-  nodes: NodeConfig[];
+  accent: SectionAccent;
+  icon: string;
+  /** Map of node-column → i18n description key. `default` always present. */
+  nodes: Partial<Record<NodeKey, string>>;
 }
 
-const DESIGN_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'llmModels.defaultDesignDesc' },
-  { key: 'decompose', label: 'Decompose', description: 'llmModels.decomposeDesc' },
-  { key: 'docGen', label: 'Doc Generation', description: 'llmModels.docGenDesc' },
-  { key: 'plan', label: 'Plan', description: 'llmModels.planDesc' },
+const JOB_DEFS: JobDef[] = [
+  {
+    jobKey: 'plan',
+    jobLabel: 'Plan',
+    agentLabel: 'Planner',
+    accent: 'cool',
+    icon: 'Compass',
+    nodes: { default: 'llmModels.defaultPlanDesc' },
+  },
+  {
+    jobKey: 'design',
+    jobLabel: 'Design',
+    agentLabel: 'Architect',
+    accent: 'violet-pink',
+    icon: 'Beaker',
+    nodes: {
+      default: 'llmModels.defaultDesignDesc',
+      decompose: 'llmModels.decomposeDesc',
+      docGen: 'llmModels.docGenDesc',
+      plan: 'llmModels.planDesc',
+    },
+  },
+  {
+    jobKey: 'code',
+    jobLabel: 'Code',
+    agentLabel: 'Architect',
+    accent: 'pink-orange',
+    icon: 'Terminal',
+    nodes: {
+      default: 'llmModels.defaultCodeDesc',
+      decompose: 'llmModels.decomposeDesc',
+      execute: 'llmModels.codeExecuteDesc',
+      plan: 'llmModels.planDesc',
+    },
+  },
+  {
+    jobKey: 'learn',
+    jobLabel: 'Learn',
+    agentLabel: 'Architect',
+    accent: 'aurora',
+    icon: 'Book',
+    nodes: { default: 'llmModels.defaultLearnDesc' },
+  },
+  {
+    jobKey: 'visual',
+    jobLabel: 'Visual',
+    agentLabel: 'Creator',
+    accent: 'sunset',
+    icon: 'Palette',
+    nodes: {
+      default: 'llmModels.defaultVisualDesc',
+      direct: 'llmModels.directDesc',
+      sketch: 'llmModels.sketchDesc',
+      render: 'llmModels.renderDesc',
+      engrave: 'llmModels.engraveDesc',
+    },
+  },
 ];
 
-const CODE_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'llmModels.defaultCodeDesc' },
-  { key: 'decompose', label: 'Decompose', description: 'llmModels.decomposeDesc' },
-  { key: 'execute', label: 'Execute', description: 'llmModels.codeExecuteDesc' },
-  { key: 'plan', label: 'Plan', description: 'llmModels.planDesc' },
+const NODE_COLUMNS: NodeKey[] = [
+  'decompose',
+  'docGen',
+  'plan',
+  'execute',
+  'direct',
+  'sketch',
+  'render',
+  'engrave',
 ];
 
-const LEARN_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'llmModels.defaultLearnDesc' },
-];
+const NODE_LABEL: Record<NodeKey, string> = {
+  default: 'Default',
+  decompose: 'Decompose',
+  docGen: 'Doc Gen',
+  plan: 'Plan',
+  execute: 'Execute',
+  direct: 'Direct',
+  sketch: 'Sketch',
+  render: 'Render',
+  engrave: 'Engrave',
+  tool: 'Tool',
+  validate: 'Validate',
+  learn: 'Learn',
+  detect: 'Detect',
+};
 
-const PLAN_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'llmModels.defaultPlanDesc' },
-];
+const ACCENT_GRAD: Record<SectionAccent, string> = {
+  aurora: 'var(--gradient-aurora)',
+  cool: 'var(--gradient-cool)',
+  'violet-pink': 'var(--gradient-violet-pink)',
+  'pink-orange': 'var(--gradient-pink-orange)',
+  sunset: 'var(--gradient-sunset)',
+};
 
-const VISUAL_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'llmModels.defaultVisualDesc' },
-  { key: 'direct', label: 'Direct', description: 'llmModels.directDesc' },
-  { key: 'sketch', label: 'Sketch', description: 'llmModels.sketchDesc' },
-  { key: 'render', label: 'Render', description: 'llmModels.renderDesc' },
-  { key: 'engrave', label: 'Engrave', description: 'llmModels.engraveDesc' },
-];
+const HEAD_CELL: React.CSSProperties = {
+  padding: '10px 12px',
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: 'var(--text-3)',
+  background: 'oklch(from var(--bg-surface-2) l c h / 0.4)',
+  borderBottom: '1px solid var(--border-1)',
+};
 
-const JOB_SECTIONS: JobSectionConfig[] = [
-  { jobKey: 'plan', jobLabel: 'Plan', agentLabel: 'Planner', nodes: PLAN_NODES },
-  { jobKey: 'design', jobLabel: 'Design', agentLabel: 'Architect', nodes: DESIGN_NODES },
-  { jobKey: 'code', jobLabel: 'Code', agentLabel: 'Architect', nodes: CODE_NODES },
-  { jobKey: 'learn', jobLabel: 'Learn', agentLabel: 'Architect', nodes: LEARN_NODES },
-  { jobKey: 'visual', jobLabel: 'Visual', agentLabel: 'Creator', nodes: VISUAL_NODES },
-];
+const BODY_CELL: React.CSSProperties = {
+  padding: '10px 12px',
+  borderBottom: '1px solid var(--border-1)',
+  display: 'flex',
+  alignItems: 'center',
+  minWidth: 0,
+};
+
+function resolveIcon(name: string): LucideIcon | null {
+  const registry = LucideIcons as unknown as Record<string, LucideIcon>;
+  const icon = registry[name];
+  return typeof icon === 'function' || (icon && typeof icon === 'object') ? icon : null;
+}
 
 export function LLMModelsSection({
   editedConfig,
   availableModels,
   isLoadingModels,
-  onModelChange
+  onModelChange,
 }: LLMModelsSectionProps) {
   const { t } = useTranslation('config');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-  const toggleSection = (jobKey: string) => {
-    setExpandedSections(prev => ({ ...prev, [jobKey]: !prev[jobKey] }));
-  };
-
-  const getInheritedModel = (jobConfig: JobLLMConfig | undefined) => {
-    if (!jobConfig?.default) return undefined;
-    const model = availableModels.find(m => m.id === jobConfig.default);
-    if (!model) return undefined;
-    return { id: model.id, displayName: model.displayName, provider: model.provider };
-  };
-
-  const renderJobSection = (section: JobSectionConfig) => {
-    const { jobKey, jobLabel, agentLabel, nodes } = section;
-    const jobConfig = editedConfig.llmModels?.[jobKey];
-    const defaultNode = nodes.find(n => n.key === 'default')!;
-    const overrideNodes = nodes.filter(n => n.key !== 'default');
-    const isExpanded = !!expandedSections[jobKey];
-    const inheritedModel = getInheritedModel(jobConfig);
-    const hasCustomOverrides = overrideNodes.some(node => !!jobConfig?.[node.key]);
-
-    return (
-      <div key={jobKey} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
-        {/* Header: Agent + Job chips + default model selector */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <StatusChip variant="info" label={`Agent: ${agentLabel}`} hideDot />
-          <StatusChip variant="success" label={`Job: ${jobLabel}`} hideDot />
-          <span className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">
-            {t(defaultNode.description)}
-          </span>
-          <div className="ml-auto">
-            <ModelSelectChip
-              value={jobConfig?.[defaultNode.key] || ''}
-              models={availableModels}
-              onChange={(modelId) => onModelChange(jobKey, defaultNode.key, modelId)}
-              placeholder={t('projectEditor.selectModel')}
-              showAsCustom={hasCustomOverrides}
-            />
-          </div>
-        </div>
-
-        {/* Accordion for node overrides */}
-        {overrideNodes.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => toggleSection(jobKey)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 
-                hover:text-gray-700 dark:hover:text-gray-300 transition-colors py-1"
-            >
-              <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-              <span>{t('llmModels.nodeOverrides')} ({overrideNodes.length})</span>
-            </button>
-
-            {isExpanded && (
-              <div className="mt-2 border border-gray-100 dark:border-gray-700/50 rounded-md divide-y divide-gray-100 dark:divide-gray-700/50">
-                {overrideNodes.map(node => (
-                  <div key={node.key} className="flex items-center gap-3 px-3 py-2.5 flex-wrap">
-                    <div className="flex items-baseline gap-2 min-w-0 flex-1">
-                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400 shrink-0">
-                        {node.label}
-                      </span>
-                      <span className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight truncate">
-                        {t(node.description)}
-                      </span>
-                    </div>
-                    <ModelSelectChip
-                      value={jobConfig?.[node.key] || ''}
-                      models={availableModels}
-                      onChange={(modelId) => onModelChange(jobKey, node.key, modelId)}
-                      inheritedModel={inheritedModel}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const gridTemplate = `200px 150px ${NODE_COLUMNS.map(() => 'minmax(130px, 1fr)').join(' ')}`;
 
   return (
-    <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t('llmModels.title')}</h4>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {t('projectEditor.llmDescription')}
-        </p>
+    <SectionCard
+      id="c3p-llm"
+      icon="Brain"
+      title={t('llmModels.title')}
+      description={t('projectEditor.llmDescription')}
+      accent="aurora"
+      padded={false}
+    >
+      {isLoadingModels ? (
+        <div style={{ padding: '14px 18px', fontSize: 12, color: 'var(--text-3)' }}>
+          {t('llmModels.loading')}
+        </div>
+      ) : (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <div
+              style={{
+                minWidth: 720,
+                display: 'grid',
+                gridTemplateColumns: gridTemplate,
+                fontFamily: 'var(--font-display)',
+              }}
+            >
+              {/* Header row */}
+              <div style={HEAD_CELL}>Job</div>
+              <div
+                style={{
+                  ...HEAD_CELL,
+                  color: 'var(--violet-700)',
+                }}
+              >
+                Default · Job 전체
+              </div>
+              {NODE_COLUMNS.map((col) => (
+                <div key={col} style={HEAD_CELL}>
+                  {NODE_LABEL[col] || col}
+                </div>
+              ))}
+
+              {/* Body rows */}
+              {JOB_DEFS.map((job) => {
+                const jobConfig = editedConfig.llmModels?.[job.jobKey];
+                const inheritedDefault = (() => {
+                  const id = jobConfig?.default;
+                  if (!id) return undefined;
+                  const m = availableModels.find((x) => x.id === id);
+                  return m
+                    ? { id: m.id, displayName: m.displayName, provider: m.provider }
+                    : undefined;
+                })();
+                const Icon = resolveIcon(job.icon);
+
+                return (
+                  <JobRow
+                    key={job.jobKey}
+                    job={job}
+                    Icon={Icon}
+                    jobConfig={jobConfig}
+                    inheritedDefault={inheritedDefault}
+                    availableModels={availableModels}
+                    onModelChange={onModelChange}
+                    t={t}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Legend strip */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              flexWrap: 'wrap',
+              padding: '8px 18px',
+              borderTop: '1px solid var(--border-1)',
+              background: 'oklch(from var(--bg-surface-2) l c h / 0.45)',
+              fontSize: 10.5,
+              color: 'var(--text-4)',
+              fontFamily: 'var(--font-display)',
+            }}
+          >
+            <LegendDot
+              label="Default"
+              color="var(--violet-700)"
+              dotBg="oklch(94% 0.06 290 / 0.8)"
+              dotBorder="oklch(72% 0.16 290)"
+            />
+            <LegendDot
+              label="inherited"
+              color="var(--text-3)"
+              dotBg="transparent"
+              dotBorder="var(--border-2)"
+              dashed
+            />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span
+                aria-hidden
+                style={{
+                  display: 'inline-block',
+                  fontSize: 11,
+                  color: 'var(--text-4)',
+                  fontWeight: 700,
+                }}
+              >
+                —
+              </span>
+              <span>not applicable</span>
+            </span>
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+}
+
+interface JobRowProps {
+  job: JobDef;
+  Icon: LucideIcon | null;
+  jobConfig: JobLLMConfig | undefined;
+  inheritedDefault: { id: string; displayName: string; provider: string } | undefined;
+  availableModels: AvailableModel[];
+  onModelChange: (job: string, nodeType: string, modelId: string) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+function JobRow({
+  job,
+  Icon,
+  jobConfig,
+  inheritedDefault,
+  availableModels,
+  onModelChange,
+  t,
+}: JobRowProps) {
+  return (
+    <>
+      {/* Job header cell */}
+      <div
+        style={{
+          ...BODY_CELL,
+          position: 'relative',
+          paddingLeft: 18,
+          background: 'oklch(from var(--bg-surface-2) l c h / 0.25)',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            background: ACCENT_GRAD[job.accent],
+            opacity: 0.7,
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 'var(--r-md)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-1)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-2)',
+              flexShrink: 0,
+            }}
+          >
+            {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
+            <span
+              style={{
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: 'var(--text-1)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {job.jobLabel}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-4)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {job.agentLabel}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {isLoadingModels ? (
-        <div className="text-sm text-gray-500 dark:text-gray-400">{t('llmModels.loading')}</div>
-      ) : (
-        <div className="space-y-4">
-          {JOB_SECTIONS.map(section => renderJobSection(section))}
-        </div>
-      )}
-    </div>
+      {/* Default cell */}
+      <div
+        style={{
+          ...BODY_CELL,
+          background: 'oklch(94% 0.06 290 / 0.15)',
+        }}
+      >
+        <ModelSelectChip
+          value={jobConfig?.default || ''}
+          models={availableModels}
+          onChange={(id) => onModelChange(job.jobKey, 'default', id)}
+          placeholder={t('projectEditor.selectModel')}
+          fill
+          compact
+        />
+      </div>
+
+      {/* Override cells */}
+      {NODE_COLUMNS.map((col) => {
+        const applicable = !!job.nodes[col];
+        if (!applicable) {
+          return (
+            <div
+              key={col}
+              style={{
+                ...BODY_CELL,
+                justifyContent: 'center',
+                color: 'var(--text-4)',
+                fontWeight: 700,
+              }}
+            >
+              —
+            </div>
+          );
+        }
+        return (
+          <div key={col} style={BODY_CELL}>
+            <ModelSelectChip
+              value={jobConfig?.[col] || ''}
+              models={availableModels}
+              onChange={(id) => onModelChange(job.jobKey, col, id)}
+              inheritedModel={inheritedDefault}
+              placeholder={t('projectEditor.useJobDefault')}
+              fill
+              compact
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+interface LegendDotProps {
+  label: string;
+  color: string;
+  dotBg: string;
+  dotBorder: string;
+  dashed?: boolean;
+}
+
+function LegendDot({ label, color, dotBg, dotBorder, dashed = false }: LegendDotProps) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span
+        aria-hidden
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: '50%',
+          background: dotBg,
+          border: `${dashed ? '1px dashed' : '1.5px solid'} ${dotBorder}`,
+        }}
+      />
+      <span style={{ color }}>{label}</span>
+    </span>
   );
 }

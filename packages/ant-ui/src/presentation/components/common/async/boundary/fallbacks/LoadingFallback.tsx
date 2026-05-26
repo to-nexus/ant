@@ -27,7 +27,7 @@ export function LoadingFallback({ shape, longWait, label }: LoadingFallbackProps
 
     case 'spinner-center':
       return (
-        <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
+        <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-[color:var(--text-3)]">
           <Spinner size="lg" tone="muted" label={message} />
           {longWait && <div className="text-xs">{message}</div>}
         </div>
@@ -41,7 +41,7 @@ export function LoadingFallback({ shape, longWait, label }: LoadingFallbackProps
           <Skeleton variant="text" className="w-5/6" delayMs={160} />
           <Skeleton variant="rect" className="w-full h-32 mt-4" delayMs={240} />
           {longWait && (
-            <div className="pt-2 text-xs text-gray-500 dark:text-gray-400">{message}</div>
+            <div className="pt-2 text-xs text-[color:var(--text-3)]">{message}</div>
           )}
         </div>
       );
@@ -64,7 +64,7 @@ export function LoadingFallback({ shape, longWait, label }: LoadingFallbackProps
             <Skeleton variant="text" className="w-5/6" delayMs={160} />
             <Skeleton variant="rect" className="w-full h-40 mt-4" delayMs={240} />
             {longWait && (
-              <div className="pt-2 text-sm text-gray-500 dark:text-gray-400">{message}</div>
+              <div className="pt-2 text-sm text-[color:var(--text-3)]">{message}</div>
             )}
           </div>
         </div>

@@ -47,7 +47,11 @@ function BaseLightbox({ onClose, children }: BaseLightboxProps) {
       <div className="relative flex items-center justify-center w-full h-full p-8">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
+          className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10"
+          style={{
+            background: 'oklch(from var(--text-on-brand) l c h / 0.1)',
+            color: 'var(--text-on-brand)',
+          }}
           aria-label={t('draftSelection.close')}
         >
           <X className="w-5 h-5" />
@@ -123,7 +127,11 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
       {hasPrev && (
         <button
           onClick={() => setCurrentIndex(images[safePos - 1].index)}
-          className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors"
+          style={{
+            background: 'oklch(from var(--text-on-brand) l c h / 0.1)',
+            color: 'var(--text-on-brand)',
+          }}
           aria-label={t('draftSelection.previousDraft')}
         >
           <ChevronLeft className="w-6 h-6" />
@@ -138,14 +146,21 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
         />
 
         <div className="flex items-center gap-4">
-          <span className="text-white/70 text-sm font-medium">
+          <span
+            className="text-sm font-medium"
+            style={{ color: 'oklch(from var(--text-on-brand) l c h / 0.7)' }}
+          >
             {safePos + 1} / {images.length}
           </span>
           {!disabled && (
             <button
               onClick={() => onSelect(current.index)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200
-                bg-teal-500 hover:bg-teal-600 text-white shadow-lg hover:shadow-xl"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200"
+              style={{
+                background: 'var(--gradient-aurora)',
+                color: 'var(--text-on-brand)',
+                boxShadow: 'var(--shadow-lg)',
+              }}
             >
               <Check className="w-4 h-4" />
               {t('draftSelection.selectDraft', { number: current.index + 1 })}
@@ -157,7 +172,11 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
       {hasNext && (
         <button
           onClick={() => setCurrentIndex(images[safePos + 1].index)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors"
+          style={{
+            background: 'oklch(from var(--text-on-brand) l c h / 0.1)',
+            color: 'var(--text-on-brand)',
+          }}
           aria-label={t('draftSelection.nextDraft')}
         >
           <ChevronRight className="w-6 h-6" />

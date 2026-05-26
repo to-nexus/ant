@@ -38,8 +38,8 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     description: { en: 'Stack, language, framework, and game engine', ko: '스택, 언어, 프레임워크, 게임 엔진' },
     isConfigured: (slot) => Boolean(slot.tiers?.includes('techTier')),
     icon: Settings2,
-    iconBg: 'bg-violet-50 dark:bg-violet-950/30',
-    iconColor: 'text-violet-500 dark:text-violet-400',
+    iconBg: 'bg-[color:var(--bg-surface-2)]',
+    iconColor: 'text-[color:var(--violet-500)]',
   },
   {
     id: 'visualTier',
@@ -47,8 +47,8 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     description: { en: 'Design language and surface style', ko: '디자인 언어와 서피스 스타일' },
     isConfigured: (slot) => Boolean(slot.tiers?.includes('visualTier')),
     icon: Palette,
-    iconBg: 'bg-pink-50 dark:bg-pink-950/30',
-    iconColor: 'text-pink-500 dark:text-pink-400',
+    iconBg: 'bg-[color:var(--bg-surface-2)]',
+    iconColor: 'text-[color:var(--pink-500)]',
   },
   {
     id: 'gameArtTier',
@@ -56,8 +56,8 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     description: { en: 'Engine-internal art (concept, perspective, motion, sfx) — game domain only', ko: '엔진 내부 아트 (컨셉, 시점, 모션, SFX) — 게임 도메인 전용' },
     isConfigured: (slot) => Boolean(slot.tiers?.includes('gameArtTier')),
     icon: Brush,
-    iconBg: 'bg-amber-50 dark:bg-amber-950/30',
-    iconColor: 'text-amber-500 dark:text-amber-400',
+    iconBg: 'bg-[color:var(--bg-surface-2)]',
+    iconColor: 'text-[color:var(--amber-500)]',
   },
   {
     id: 'gameContentTier',
@@ -65,8 +65,8 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     description: { en: 'Genre and core loop pattern', ko: '장르와 코어 루프 패턴' },
     isConfigured: (slot) => Boolean(slot.tiers?.includes('gameContentTier')),
     icon: Gamepad2,
-    iconBg: 'bg-emerald-50 dark:bg-emerald-950/30',
-    iconColor: 'text-emerald-500 dark:text-emerald-400',
+    iconBg: 'bg-[color:var(--bg-surface-2)]',
+    iconColor: 'text-[color:var(--emerald-500)]',
   },
 ];
 
@@ -190,19 +190,23 @@ export const AUTO_DETECT_OPTION = {
   accentColor: 'gray',
 };
 
+// Aurora token-driven palette. Hues without exact Aurora token map to the
+// nearest available hue (purple→violet, sky→blue, indigo→blue, teal→emerald,
+// green→emerald, slate→gray, orange→amber, red→pink). Keys are preserved so
+// every existing accent lookup in VariantCard / VariantCardGrid resolves.
 export const ACCENT_COLORS: Record<string, { ring: string; bg: string; text: string }> = {
-  blue: { ring: 'ring-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-600 dark:text-blue-400' },
-  emerald: { ring: 'ring-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-600 dark:text-emerald-400' },
-  violet: { ring: 'ring-violet-400', bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-600 dark:text-violet-400' },
-  cyan: { ring: 'ring-cyan-400', bg: 'bg-cyan-50 dark:bg-cyan-950/30', text: 'text-cyan-600 dark:text-cyan-400' },
-  gray: { ring: 'ring-gray-400', bg: 'bg-gray-50 dark:bg-gray-800/50', text: 'text-gray-600 dark:text-gray-400' },
-  red: { ring: 'ring-red-400', bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-600 dark:text-red-400' },
-  amber: { ring: 'ring-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-600 dark:text-amber-400' },
-  green: { ring: 'ring-green-400', bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-600 dark:text-green-400' },
-  slate: { ring: 'ring-slate-400', bg: 'bg-slate-50 dark:bg-slate-800/50', text: 'text-slate-600 dark:text-slate-400' },
-  indigo: { ring: 'ring-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-950/30', text: 'text-indigo-600 dark:text-indigo-400' },
-  sky: { ring: 'ring-sky-400', bg: 'bg-sky-50 dark:bg-sky-950/30', text: 'text-sky-600 dark:text-sky-400' },
-  orange: { ring: 'ring-orange-400', bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-600 dark:text-orange-400' },
-  teal: { ring: 'ring-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/30', text: 'text-teal-600 dark:text-teal-400' },
-  purple: { ring: 'ring-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-600 dark:text-purple-400' },
+  blue:    { ring: 'ring-[color:var(--blue-400)]',    bg: 'bg-[color:var(--blue-50)]',    text: 'text-[color:var(--blue-600)]' },
+  emerald: { ring: 'ring-[color:var(--emerald-400)]', bg: 'bg-[color:var(--emerald-50)]', text: 'text-[color:var(--emerald-600)]' },
+  violet:  { ring: 'ring-[color:var(--violet-400)]',  bg: 'bg-[color:var(--violet-50)]',  text: 'text-[color:var(--violet-600)]' },
+  cyan:    { ring: 'ring-[color:var(--cyan-400)]',    bg: 'bg-[color:var(--cyan-50)]',    text: 'text-[color:var(--cyan-600)]' },
+  gray:    { ring: 'ring-[color:var(--border-3)]',    bg: 'bg-[color:var(--bg-surface-2)]', text: 'text-[color:var(--text-2)]' },
+  red:     { ring: 'ring-[color:var(--pink-400)]',    bg: 'bg-[color:var(--pink-50)]',    text: 'text-[color:var(--pink-600)]' },
+  amber:   { ring: 'ring-[color:var(--amber-400)]',   bg: 'bg-[color:var(--amber-50)]',   text: 'text-[color:var(--amber-600)]' },
+  green:   { ring: 'ring-[color:var(--emerald-400)]', bg: 'bg-[color:var(--emerald-50)]', text: 'text-[color:var(--emerald-600)]' },
+  slate:   { ring: 'ring-[color:var(--border-3)]',    bg: 'bg-[color:var(--bg-surface-2)]', text: 'text-[color:var(--text-2)]' },
+  indigo:  { ring: 'ring-[color:var(--blue-400)]',    bg: 'bg-[color:var(--blue-50)]',    text: 'text-[color:var(--blue-600)]' },
+  sky:     { ring: 'ring-[color:var(--blue-400)]',    bg: 'bg-[color:var(--blue-50)]',    text: 'text-[color:var(--blue-600)]' },
+  orange:  { ring: 'ring-[color:var(--amber-400)]',   bg: 'bg-[color:var(--amber-50)]',   text: 'text-[color:var(--amber-600)]' },
+  teal:    { ring: 'ring-[color:var(--emerald-400)]', bg: 'bg-[color:var(--emerald-50)]', text: 'text-[color:var(--emerald-600)]' },
+  purple:  { ring: 'ring-[color:var(--violet-400)]',  bg: 'bg-[color:var(--violet-50)]',  text: 'text-[color:var(--violet-600)]' },
 };

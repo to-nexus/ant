@@ -3,89 +3,180 @@ import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
+  CheckCircle,
   MessageSquare,
   X,
 } from 'lucide-react';
-import { ansiConverter } from '../utils';
+import {
+  SectionCard,
+  StatusPill,
+} from '@/presentation/components/ConfigEditor/aurora';
 
-type Issue = { reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string };
-type LogEntry = { timestamp: string; type: 'stdout' | 'stderr'; message: string };
+type Issue = {
+  reasoning: string;
+  severity: 'fatal' | 'warning';
+  reason: string;
+  suggestedFix?: string;
+};
 
 export function StatusConsoleSection({
   issues,
-  logs,
   fatalIssues,
   warningIssues,
   isRunning,
   isReady,
   dismissedSet,
-  logsExpanded,
-  setLogsExpanded,
   onDismissError,
   onApplyToChat,
 }: {
   issues: Issue[];
-  logs: LogEntry[];
   fatalIssues: Issue[];
   warningIssues: Issue[];
   isRunning: boolean;
   isReady: boolean;
   dismissedSet: Set<string>;
-  logsExpanded: boolean;
-  setLogsExpanded: (v: boolean) => void;
   onDismissError: (key: string) => void;
   onApplyToChat: (msg: string) => void;
 }) {
   const { t } = useTranslation('explorer');
 
   const visibleFatal = useMemo(
-    () => fatalIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)),
+    () => fatalIssues.filter((i) => !dismissedSet.has(`issue:${i.reason}`)),
     [fatalIssues, dismissedSet],
   );
   const visibleWarnings = useMemo(
-    () => warningIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)),
+    () => warningIssues.filter((i) => !dismissedSet.has(`issue:${i.reason}`)),
     [warningIssues, dismissedSet],
   );
 
-  return (
-    <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-        {t('preview.statusConsole', 'Status Console')}
-      </h3>
+  const statusPills =
+    visibleFatal.length > 0 || visibleWarnings.length > 0 ? (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {visibleFatal.length > 0 && (
+          <StatusPill
+            state="error"
+            label={t('preview.issueCountFatal', '치명 {{n}}', {
+              n: visibleFatal.length,
+            })}
+          />
+        )}
+        {visibleWarnings.length > 0 && (
+          <StatusPill
+            state="warning"
+            label={t('preview.issueCountWarn', '경고 {{n}}', {
+              n: visibleWarnings.length,
+            })}
+          />
+        )}
+      </span>
+    ) : undefined;
 
+  const fixChipStyle = (
+    bg: string,
+    fg: string,
+    border: string,
+  ): React.CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '3px 8px',
+    fontSize: 10,
+    fontWeight: 700,
+    background: bg,
+    color: fg,
+    border: `1px solid ${border}`,
+    borderRadius: 'var(--r-sm)',
+    cursor: 'pointer',
+    letterSpacing: '0.02em',
+  });
+
+  return (
+    <SectionCard
+      icon="AlertTriangle"
+      title={t('preview.statusConsole', '이슈')}
+      description={t(
+        'preview.statusConsoleDesc',
+        '감지된 구성 문제. Fix 버튼으로 대화에 자동 수정을 요청할 수 있습니다.',
+      )}
+      accent="pink-orange"
+      status={statusPills}
+    >
       {/* Fatal issues */}
       {visibleFatal.length > 0 && (
-        <div className="space-y-2 mb-3">
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginBottom: visibleWarnings.length > 0 ? 10 : 0,
+          }}
+        >
           {visibleFatal.map((issue) => (
-            <div key={issue.reason} className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-red-700 dark:text-red-300">{issue.reason}</p>
-                  {issue.suggestedFix && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <button
-                        onClick={() => onApplyToChat(issue.suggestedFix!)}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                                 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300
-                                 hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        Fix
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => onDismissError(`issue:${issue.reason}`)}
-                  className="p-0.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors flex-shrink-0"
-                  title="Dismiss"
+            <div
+              key={issue.reason}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                padding: 10,
+                background: 'var(--status-error-bg)',
+                border: '1px solid oklch(82% 0.12 25)',
+                borderRadius: 'var(--r-md)',
+                color: 'var(--status-error-fg)',
+              }}
+            >
+              <AlertCircle
+                size={13}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: 1.5,
+                    wordBreak: 'break-word',
+                  }}
                 >
-                  <X className="w-3 h-3" />
-                </button>
+                  {issue.reason}
+                </p>
+                {issue.suggestedFix && (
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => onApplyToChat(issue.suggestedFix!)}
+                      style={fixChipStyle(
+                        'oklch(92% 0.08 25)',
+                        'var(--status-error-fg)',
+                        'oklch(82% 0.12 25)',
+                      )}
+                    >
+                      <MessageSquare size={10} strokeWidth={2.2} />
+                      Fix
+                    </button>
+                  </div>
+                )}
               </div>
+              <button
+                type="button"
+                onClick={() => onDismissError(`issue:${issue.reason}`)}
+                title={t('preview.dismiss', 'Dismiss')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--status-error-fg)',
+                  cursor: 'pointer',
+                  opacity: 0.7,
+                  padding: 2,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={12} />
+              </button>
             </div>
           ))}
         </div>
@@ -93,77 +184,110 @@ export function StatusConsoleSection({
 
       {/* Warning issues */}
       {visibleWarnings.length > 0 && (
-        <div className="space-y-2 mb-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visibleWarnings.map((issue) => (
-            <div key={issue.reason} className="p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-yellow-700 dark:text-yellow-300">{issue.reason}</p>
-                  {issue.suggestedFix && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <button
-                        onClick={() => onApplyToChat(issue.suggestedFix!)}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
-                                 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300
-                                 hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        Fix
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => onDismissError(`issue:${issue.reason}`)}
-                  className="p-0.5 text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300 transition-colors flex-shrink-0"
-                  title="Dismiss"
+            <div
+              key={issue.reason}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                padding: 10,
+                background: 'oklch(96% 0.04 50 / 0.6)',
+                border: '1px solid oklch(82% 0.10 50)',
+                borderRadius: 'var(--r-md)',
+                color: 'oklch(48% 0.16 50)',
+              }}
+            >
+              <AlertTriangle
+                size={13}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: 1.5,
+                    wordBreak: 'break-word',
+                  }}
                 >
-                  <X className="w-3 h-3" />
-                </button>
+                  {issue.reason}
+                </p>
+                {issue.suggestedFix && (
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => onApplyToChat(issue.suggestedFix!)}
+                      style={fixChipStyle(
+                        'oklch(92% 0.08 50)',
+                        'oklch(48% 0.16 50)',
+                        'oklch(82% 0.10 50)',
+                      )}
+                    >
+                      <MessageSquare size={10} strokeWidth={2.2} />
+                      Fix
+                    </button>
+                  </div>
+                )}
               </div>
+              <button
+                type="button"
+                onClick={() => onDismissError(`issue:${issue.reason}`)}
+                title={t('preview.dismiss', 'Dismiss')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'oklch(48% 0.16 50)',
+                  cursor: 'pointer',
+                  opacity: 0.7,
+                  padding: 2,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={12} />
+              </button>
             </div>
           ))}
         </div>
       )}
 
       {issues.length === 0 && !isRunning && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          {t('preview.noIssues', 'No issues. Start the preview server to see status.')}
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--text-4)',
+            fontStyle: 'italic',
+            fontSize: 12,
+          }}
+        >
+          {t(
+            'preview.noIssues',
+            'No issues. Start the preview server to see status.',
+          )}
         </p>
       )}
 
       {issues.length === 0 && isRunning && isReady && (
-        <p className="text-xs text-green-500 dark:text-green-400">
+        <p
+          style={{
+            margin: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            color: 'oklch(45% 0.16 155)',
+            fontWeight: 700,
+            fontSize: 12,
+          }}
+        >
+          <CheckCircle size={12} strokeWidth={2.2} />
           {t('preview.allChecksPassed', 'All checks passed.')}
         </p>
       )}
-
-      {/* Logs (collapsible) */}
-      {logs.length > 0 && (
-        <div className="mt-3">
-          <button
-            onClick={() => setLogsExpanded(!logsExpanded)}
-            className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          >
-            {logsExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            {t('preview.logsCount', 'Logs ({{count}})', { count: logs.length })}
-          </button>
-          {logsExpanded && (
-            <div className="mt-2 max-h-60 overflow-y-auto bg-gray-900 dark:bg-gray-950 rounded-md p-3">
-              {logs.slice(-50).map((log, idx) => (
-                <div
-                  key={`${log.timestamp}-${idx}`}
-                  className={`text-xs font-mono leading-relaxed ${
-                    log.type === 'stderr' ? 'text-red-400' : 'text-gray-300'
-                  }`}
-                  dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(log.message) }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
+    </SectionCard>
   );
 }

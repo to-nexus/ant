@@ -38,12 +38,12 @@ function FallbackCodeBlock({ code, errorMessage }: { code: string; errorMessage?
   return (
     <div className="space-y-2">
       {errorMessage && (
-        <div className="text-xs text-red-600 dark:text-red-400">
+        <div className="text-xs" style={{ color: 'var(--status-error-fg)' }}>
           Mermaid rendering failed: {errorMessage}
         </div>
       )}
       <pre
-        className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
+        className="my-2 px-4 py-3 rounded-lg bg-[color:var(--bg-canvas)] text-sm font-mono whitespace-pre-wrap break-words"
         style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
       >
         <code className="language-mermaid">{code}</code>
@@ -100,7 +100,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   if (state.status === 'rendered') {
     return (
       <div
-        className="my-3 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2"
+        className="my-3 overflow-x-auto rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] p-2"
         dangerouslySetInnerHTML={{ __html: state.svg }}
       />
     );
@@ -112,7 +112,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-gray-500 dark:text-gray-400">Rendering Mermaid diagram...</div>
+      <div className="text-xs text-[color:var(--text-3)]">Rendering Mermaid diagram...</div>
       <FallbackCodeBlock code={code} />
     </div>
   );

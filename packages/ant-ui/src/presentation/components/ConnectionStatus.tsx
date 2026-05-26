@@ -13,25 +13,25 @@ export function ConnectionStatus({ status }: ConnectionStatusProps) {
         return {
           emoji: '🟢',
           text: t('status.connected'),
-          className: 'text-green-600'
+          className: 'text-[color:var(--status-done-fg)]'
         };
       case 'disconnected':
         return {
           emoji: '🔴',
           text: t('status.disconnected'),
-          className: 'text-red-600'
+          className: 'text-[color:var(--status-error-fg)]'
         };
       case 'error':
         return {
           emoji: '🟡',
           text: t('status.connectionError'),
-          className: 'text-yellow-600'
+          className: 'text-[color:var(--status-progress-fg,var(--orange-500))]'
         };
       default:
         return {
           emoji: '⚪',
           text: t('status.unknown'),
-          className: 'text-gray-600'
+          className: 'text-[color:var(--text-3)]'
         };
     }
   };

@@ -75,7 +75,7 @@ export function TruncatableText({
           tabIndex={0}
           onClick={handleToggle}
           onKeyDown={handleChevronKeyDown}
-          className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer inline-flex items-center justify-center`}
+          className={`flex-shrink-0 p-0.5 rounded hover:bg-[color:var(--bg-active)] transition-colors cursor-pointer inline-flex items-center justify-center`}
         >
           {isExpanded
             ? <ChevronUp className={`w-3 h-3 ${buttonClassName}`} />

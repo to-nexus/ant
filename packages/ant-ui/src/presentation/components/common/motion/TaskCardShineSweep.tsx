@@ -17,7 +17,7 @@ const VARIANTS: Record<ShineSweepVariant, VariantStyle> = {
   // Golden — preserves the previous completed-column visual.
   completed: {
     glowClassName:
-      'bg-gradient-to-r from-yellow-200/60 via-yellow-100/80 to-yellow-200/60 dark:from-yellow-600/40 dark:via-yellow-400/60 dark:to-yellow-600/40 blur-sm',
+      'bg-gradient-to-r from-yellow-200/60 via-yellow-100/80 to-yellow-200/60 blur-sm',
     sweepGradient:
       'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 20%, rgba(255,255,200,0.95) 40%, rgba(255,255,255,1) 50%, rgba(255,255,200,0.95) 60%, rgba(255,255,255,0.3) 80%, transparent 100%)',
     sweepBoxShadow:
@@ -26,7 +26,7 @@ const VARIANTS: Record<ShineSweepVariant, VariantStyle> = {
   // Cyan/blue — matches the existing PopAppear ring tone for newly-added todos.
   todo: {
     glowClassName:
-      'bg-gradient-to-r from-sky-200/50 via-cyan-100/70 to-sky-200/50 dark:from-sky-500/30 dark:via-cyan-300/45 dark:to-sky-500/30 blur-sm',
+      'bg-gradient-to-r from-sky-200/50 via-cyan-100/70 to-sky-200/50 blur-sm',
     sweepGradient:
       'linear-gradient(90deg, transparent 0%, rgba(186,230,253,0.35) 20%, rgba(207,250,254,0.9) 40%, rgba(255,255,255,1) 50%, rgba(207,250,254,0.9) 60%, rgba(186,230,253,0.35) 80%, transparent 100%)',
     sweepBoxShadow:

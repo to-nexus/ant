@@ -21,6 +21,7 @@ import type {
   PendingCardSnapshot,
   RefineImpactMetadata,
 } from '@ant/shared';
+import { TurnCardShell } from './cards/TurnCardShell';
 
 interface RefineImpactCardProps {
   line: ChatStatusLine;
@@ -48,13 +49,16 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
   const sourceLabel = (meta.diffSources ?? []).join(' + ') || 'no diff source';
 
   return (
-    <div
-      className="flex flex-col gap-2 px-3 py-2.5 rounded-lg
-                 bg-amber-50/60 dark:bg-amber-900/15 border border-amber-200/60 dark:border-amber-800/40"
-    >
+    <TurnCardShell accent="warning" hoverLift={false}>
+      <div
+        className="flex flex-col gap-2 px-3 py-2.5"
+        style={{
+          background: 'oklch(from var(--amber-500) 96% 0.06 85 / 0.45)',
+        }}
+      >
       <div className="flex items-center gap-2">
-        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-        <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--amber-500)' }} />
+        <span className="text-xs font-semibold" style={{ color: 'var(--status-progress-fg)' }}>
           {meta.updatedDoc} refined — {affected.length} downstream design task(s) may be stale
         </span>
       </div>
@@ -64,19 +68,22 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
           sections.map((section, idx) => (
             <span
               key={idx}
-              className="inline-flex items-center px-1.5 py-0.5 rounded
-                         bg-amber-100/80 dark:bg-amber-800/30 text-[11px]
-                         font-mono text-amber-900 dark:text-amber-100"
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px]"
+              style={{
+                background: 'var(--status-progress-bg)',
+                color: 'var(--status-progress-fg)',
+                fontFamily: 'var(--font-mono)',
+              }}
             >
               {section}
             </span>
           ))
         ) : (
-          <span className="text-[11px] italic text-amber-700/80 dark:text-amber-400/80">
+          <span className="text-[11px] italic" style={{ color: 'var(--text-3)' }}>
             no identifiable sections in diff
           </span>
         )}
-        <span className="text-[10px] text-amber-700/60 dark:text-amber-400/60 self-center">
+        <span className="text-[10px] self-center" style={{ color: 'var(--text-3)' }}>
           ({sourceLabel})
         </span>
       </div>
@@ -86,8 +93,8 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
           {affected.map(item => (
             <div
               key={item.taskId}
-              className="flex items-start gap-1.5 text-[11px]
-                         text-amber-800/90 dark:text-amber-200/90"
+              className="flex items-start gap-1.5 text-[11px]"
+              style={{ color: 'var(--status-progress-fg)' }}
             >
               <FileText className="w-3 h-3 flex-shrink-0 mt-0.5 opacity-70" />
               <div className="flex flex-wrap items-center gap-1.5 min-w-0">
@@ -99,8 +106,11 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
                 {item.matchedSections.map((m, idx) => (
                   <span
                     key={idx}
-                    className="font-mono text-[10px] px-1 py-0.5 rounded
-                               bg-amber-200/40 dark:bg-amber-800/40"
+                    className="text-[10px] px-1 py-0.5 rounded"
+                    style={{
+                      background: 'oklch(from var(--amber-500) 70% 0.10 85 / 0.30)',
+                      fontFamily: 'var(--font-mono)',
+                    }}
                   >
                     {m}
                   </span>
@@ -113,9 +123,8 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
 
       {unscannable.length > 0 && (
         <div
-          className="flex items-center gap-1.5 pl-6 pt-1 mt-1
-                     border-t border-amber-300/40 dark:border-amber-700/40
-                     text-[10.5px] text-amber-700/80 dark:text-amber-400/80"
+          className="flex items-center gap-1.5 pl-6 pt-1 mt-1 text-[10.5px]"
+          style={{ borderTop: '1px solid var(--border-1)', color: 'var(--text-3)' }}
         >
           <AlertTriangle className="w-3 h-3 flex-shrink-0 opacity-60" />
           <span>
@@ -124,6 +133,7 @@ export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: 
           </span>
         </div>
       )}
-    </div>
+      </div>
+    </TurnCardShell>
   );
 });

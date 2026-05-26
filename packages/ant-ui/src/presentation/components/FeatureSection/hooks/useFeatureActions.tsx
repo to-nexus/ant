@@ -23,7 +23,7 @@ export function useFeatureActions(
     await createFeature(selectedProject, featureName, language);
 
     addFeatureOptimistic(featureName);
-    fetchFeatures(selectedProject);
+    await fetchFeatures(selectedProject);
     await refreshFileTree();
 
     console.log(`[useFeatureActions] ✅ Feature created, auto-selecting: ${featureName}`);
