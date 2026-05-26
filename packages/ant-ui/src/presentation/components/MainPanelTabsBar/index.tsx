@@ -135,7 +135,7 @@ export function MainPanelTabsBar() {
         ))}
       </div>
     ),
-    right: (
+    right: activeTab === 'job' ? (
       <div className="flex items-center px-2">
         <BoardViewModeToggle
           value={taskViewMode === 'workflow' ? 'workflow' : 'kanban'}
@@ -147,7 +147,7 @@ export function MainPanelTabsBar() {
           ariaLabel={t('tabs.viewMode', 'View mode')}
         />
       </div>
-    ),
+    ) : null,
     className: undefined,
   });
   

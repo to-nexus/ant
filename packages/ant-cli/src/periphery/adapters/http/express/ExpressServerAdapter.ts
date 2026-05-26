@@ -15,6 +15,7 @@ import { WorkspaceServicePort } from '../../../../core/ports/workspace';
 import { logger } from '../../../../utils/logger';
 import { createIDEWebSocketHandler } from '../middleware/ideProxy';
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
+import { initializeRateLimiters } from '../middleware/rateLimiter';
 
 // Configuration and Types
 import { ServerConfig, ServerDependencies } from './types';
@@ -235,6 +236,14 @@ export class ExpressServerAdapter implements
   // =====================================
   
   async start(port: number): Promise<void> {
+    // Bootstrap-time init of every rate limiter — MUST run before the
+    // server starts accepting connections so that limiter middleware
+    // mounted on routes (auth, job, chat, organizations) delegates to
+    // the real `rateLimit({...})` handler instead of the no-op
+    // passthrough proxy. InfrastructureFactory is initialized by the
+    // process entry point before `ExpressServerAdapter.start()` runs.
+    initializeRateLimiters();
+
     // Run stale job recovery BEFORE accepting connections so that Redis
     // state is clean by the time the Realtime server (or any client) reads it.
     try {

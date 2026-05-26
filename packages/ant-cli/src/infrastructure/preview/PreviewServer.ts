@@ -28,7 +28,7 @@ import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/midd
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
-import { previewRateLimiter } from '../../periphery/adapters/http/middleware/rateLimiter';
+import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createJwtServiceFromEnv } from '../auth/JwtService';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
@@ -362,6 +362,11 @@ export class PreviewServer {
     }
 
     // 8. Rate limiting for management API (after auth)
+    // Bootstrap-time init of every rate limiter — MUST run before the
+    // limiter middleware is mounted onto the router, otherwise the
+    // no-op proxy logs a passthrough warning. InfrastructureFactory is
+    // already initialized at this point (see `initialize()` above).
+    initializeRateLimiters();
     this.app.use('/projects/', previewRateLimiter);
 
     // ==========================================

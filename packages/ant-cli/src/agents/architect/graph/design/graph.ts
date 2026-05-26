@@ -432,7 +432,24 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     console.log(`[Design ParallelOrchestrator] No tasks in queue, skipping`);
     return {};
   }
-  
+
+  // ✅ Workflow instrumentation: Enter node
+  // Mirrors the signature used by workerCheckTaskStatus (parallel/workerGraph.ts):
+  //   enterNode(httpJobId, nodeName, workerId, taskInfo?, llmInfo?, recursionCount?, recursionLimit?)
+  // workerId=0 because this is an orchestrator-level (non-worker) node.
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId,
+      'parallelOrchestrator',
+      0,
+      undefined,
+      undefined,
+      state.recursionCount,
+      state.recursionLimit,
+    );
+  }
+
+  try {
   // ✅ Log parallel_start to debug/logs/
   if (state.context?.featurePath && state._httpJobId) {
     try {
@@ -683,6 +700,12 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       },
     } : undefined,
   } as any;
+  } finally {
+    // ✅ Workflow instrumentation: Exit node (single exit for all paths)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'parallelOrchestrator', 0);
+    }
+  }
 }
 
 /**

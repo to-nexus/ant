@@ -23,6 +23,7 @@
 
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
+import { useGitSnapshot } from '@/domain/git-world';
 import {
   listActiveTiers,
   pathsContainUiDoc,
@@ -40,11 +41,18 @@ export function useActiveTiers(slot: BasisSlotConfig | undefined): TierKey[] {
   const techTier = useStore(s => s.actionMetadata.basis?.techTier);
   const refs = useStore(s => s.actionMetadata.refs);
   const ctx = useStore(s => s.actionMetadata.context);
+  // D27 runtime suppressor input: when the workspace already has a codebase,
+  // techTier is implicit from the existing code and RUNTIME_SUPPRESSORS.techTier
+  // collapses it out of the active set. Falls back to `false` while the
+  // snapshot is still loading so greenfield behaviour is preserved.
+  const snapshot = useGitSnapshot();
+  const hasCodebase = snapshot?.hasCodebase ?? false;
   return useMemo(
     () => listActiveTiers(slot, domain, {
       techTier,
       hasUiDoc: pathsContainUiDoc([...(refs ?? []), ...(ctx ?? [])]),
+      hasCodebase,
     }),
-    [slot, domain, techTier, refs, ctx],
+    [slot, domain, techTier, refs, ctx, hasCodebase],
   );
 }

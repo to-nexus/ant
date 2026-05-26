@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Undo2, FileEdit, FilePlus, FileX, FileSymlink } from 'lucide-react';
 import type { FileChange } from '@ant/shared';
 
 interface GitChangesPanelProps {
@@ -9,40 +9,68 @@ interface GitChangesPanelProps {
   untracked: ReadonlyArray<FileChange>;
   selectedFiles: string[];
   onSelectedFilesChange: (files: string[]) => void;
-  onDiscardFiles: (files: string[]) => void;
-  isDiscarding: boolean;
 }
 
-const STATUS_ICON: Record<FileChange['status'], typeof FileEdit> = {
-  modified: FileEdit,
-  new: FilePlus,
-  deleted: FileX,
-  renamed: FileSymlink,
+type RowState = 'S' | 'M' | 'U';
+
+interface PanelRow {
+  path: string;
+  state: RowState;
+}
+
+interface StateTone {
+  bg: string;
+  fg: string;
+}
+
+// Theme-aware S/M/U letter badge tones. The underlying CSS tokens already
+// resolve to the correct light/dark values via the project's token system,
+// so no `document.documentElement.dataset.theme` branching is needed here
+// (handoff used inline oklch() switching; ours rides on the token layer).
+const STATE_TONES: Record<RowState, StateTone> = {
+  S: {
+    bg: 'var(--status-done-bg)',
+    fg: 'var(--status-done-fg)',
+  },
+  M: {
+    bg: 'color-mix(in srgb, var(--orange-500) 14%, transparent)',
+    fg: 'var(--orange-600)',
+  },
+  U: {
+    bg: 'color-mix(in srgb, var(--violet-500) 14%, transparent)',
+    fg: 'var(--violet-700)',
+  },
 };
 
-const STATUS_COLOR: Record<FileChange['status'], string> = {
-  modified: 'var(--orange-500)',
-  new: 'var(--status-done-fg, var(--teal-500))',
-  deleted: 'var(--red-500)',
-  renamed: 'var(--violet-500)',
-};
-
+/**
+ * Compact S/M/U changes list per handoff b3-explorer.jsx.
+ *
+ *   S → staged
+ *   M → unstaged (modified working-tree)
+ *   U → untracked
+ *
+ * Each row is a check-able label with a 14x14 letter badge and a
+ * monospace path rendered RTL so the file's tail stays visible when
+ * truncated. Discard is owned by the panel-level button in
+ * `GitStatusButton`; there is no per-row discard affordance.
+ */
 export function GitChangesPanel({
   staged,
   unstaged,
   untracked,
   selectedFiles,
   onSelectedFilesChange,
-  onDiscardFiles,
-  isDiscarding,
 }: GitChangesPanelProps) {
   const { t } = useTranslation('explorer');
-  const [isExpanded, setIsExpanded] = useState(false);
 
-  const allFiles: FileChange[] = [...staged, ...unstaged, ...untracked];
+  const rows: PanelRow[] = [
+    ...staged.map<PanelRow>((f) => ({ path: f.path, state: 'S' })),
+    ...unstaged.map<PanelRow>((f) => ({ path: f.path, state: 'M' })),
+    ...untracked.map<PanelRow>((f) => ({ path: f.path, state: 'U' })),
+  ];
 
-  const allPaths = allFiles.map(f => f.path);
-  const allSelected = allPaths.length > 0 && allPaths.every(p => selectedFiles.includes(p));
+  const allPaths = rows.map((r) => r.path);
+  const allSelected = allPaths.length > 0 && allPaths.every((p) => selectedFiles.includes(p));
   const someSelected = selectedFiles.length > 0 && !allSelected;
   const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +80,7 @@ export function GitChangesPanel({
     }
   }, [someSelected]);
 
-  if (allFiles.length === 0) return null;
+  if (rows.length === 0) return null;
 
   const handleToggleAll = () => {
     if (allSelected) {
@@ -64,89 +92,113 @@ export function GitChangesPanel({
 
   const handleToggleFile = (filePath: string) => {
     if (selectedFiles.includes(filePath)) {
-      onSelectedFilesChange(selectedFiles.filter(f => f !== filePath));
+      onSelectedFilesChange(selectedFiles.filter((f) => f !== filePath));
     } else {
       onSelectedFilesChange([...selectedFiles, filePath]);
     }
   };
 
+  const visibleRows = rows.slice(0, 20);
+
   return (
-    <div className="mt-1">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] transition-colors"
-        style={{ color: 'var(--text-3)', background: 'transparent' }}
+    <div
+      style={{
+        background: 'var(--surface-1)',
+        border: '1px solid var(--border-1)',
+        borderRadius: 'var(--r-sm)',
+        padding: 4,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        maxHeight: 144,
+        overflowY: 'auto',
+      }}
+    >
+      {/* select-all row */}
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '2px 4px',
+          borderRadius: 4,
+          cursor: 'pointer',
+          userSelect: 'none',
+          fontSize: 10,
+        }}
       >
-        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <span>{t('git.changes')} ({allFiles.length})</span>
-      </button>
+        <input
+          ref={selectAllRef}
+          type="checkbox"
+          checked={allSelected}
+          onChange={handleToggleAll}
+          style={{ accentColor: 'var(--violet-500)', width: 11, height: 11 }}
+        />
+        <span style={{ width: 14, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, color: 'var(--text-3)' }}>
+          {allSelected ? t('git.deselectAll') : t('git.selectAll')}
+        </span>
+      </label>
 
-      {isExpanded && (
-        <div
-          className="ml-1 pl-2 space-y-0.5 max-h-[200px] overflow-y-auto"
-          style={{ borderLeft: '1px solid var(--border-1)' }}
-        >
-          <div className="flex items-center gap-1.5 px-1 py-0.5">
+      {visibleRows.map((row, i) => {
+        const tone = STATE_TONES[row.state];
+        const checked = selectedFiles.includes(row.path);
+        return (
+          <label
+            key={row.path + i}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '2px 4px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              userSelect: 'none',
+              fontSize: 10,
+            }}
+          >
             <input
-              ref={selectAllRef}
               type="checkbox"
-              checked={allSelected}
-              onChange={handleToggleAll}
-              className="w-3 h-3 rounded cursor-pointer"
-              style={{ accentColor: 'var(--violet-500)' }}
+              checked={checked}
+              onChange={() => handleToggleFile(row.path)}
+              style={{ accentColor: 'var(--violet-500)', width: 11, height: 11 }}
             />
-            <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-              {allSelected ? t('git.deselectAll') : t('git.selectAll')}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 14,
+                height: 14,
+                borderRadius: 3,
+                background: tone.bg,
+                color: tone.fg,
+                fontSize: 8,
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+                flexShrink: 0,
+              }}
+            >
+              {row.state}
             </span>
-          </div>
-
-          {allFiles.map((file) => {
-            const Icon = STATUS_ICON[file.status];
-            const colorVar = STATUS_COLOR[file.status];
-            const isChecked = selectedFiles.includes(file.path);
-            const fileName = file.path.split('/').pop() || file.path;
-            const dirPath = file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/')) : '';
-
-            return (
-              <div
-                key={file.path}
-                className="group flex items-center gap-1.5 px-1 py-0.5 rounded transition-colors"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-hover)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => handleToggleFile(file.path)}
-                  className="w-3 h-3 rounded cursor-pointer flex-shrink-0"
-                  style={{ accentColor: 'var(--violet-500)' }}
-                />
-                <Icon className="w-3 h-3 flex-shrink-0" style={{ color: colorVar }} />
-                <span
-                  className="text-[11px] truncate flex-1 min-w-0"
-                  style={{ color: 'var(--text-2)' }}
-                  title={file.path}
-                >
-                  {dirPath && <span style={{ color: 'var(--text-3)' }}>{dirPath}/</span>}
-                  {fileName}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDiscardFiles([file.path]);
-                  }}
-                  disabled={isDiscarding}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-opacity"
-                  style={{ background: 'transparent' }}
-                  title={t('git.discardFile')}
-                >
-                  <Undo2 className="w-3 h-3" style={{ color: 'var(--red-500)' }} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+            <span
+              title={row.path}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-2)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                direction: 'rtl',
+              }}
+            >
+              {row.path}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }
