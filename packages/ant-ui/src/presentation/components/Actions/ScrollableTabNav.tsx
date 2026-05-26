@@ -60,7 +60,8 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
       <button
         type="button"
         onClick={onBack}
-        className="p-2 mt-0.5 -ml-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
+        className="p-2 mt-0.5 -ml-1 rounded-lg transition-colors shrink-0"
+        style={{ color: 'var(--text-3)' }}
         aria-label="Back"
       >
         <ChevronLeft className="w-6 h-6" />
@@ -85,42 +86,47 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
                   ref={isSelected ? selectedRef : undefined}
                   type="button"
                   onClick={() => !isSelected && onSelect(item.id)}
-                  className={`
-                    shrink-0 px-3 py-1.5 rounded-lg text-left transition-all duration-200
-                    ${isSelected
-                      ? 'bg-gray-100 dark:bg-gray-800'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer'}
-                  `}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-left transition-all duration-200"
+                  style={{
+                    background: isSelected ? 'var(--bg-surface)' : 'transparent',
+                    color: isSelected ? 'var(--violet-700)' : 'var(--text-3)',
+                    border: isSelected
+                      ? '1px solid var(--violet-200)'
+                      : '1px solid transparent',
+                    boxShadow: isSelected ? 'var(--shadow-xs)' : undefined,
+                    cursor: isSelected ? 'default' : 'pointer',
+                  }}
                 >
                   <span className="flex items-center gap-1.5">
                     {hasIcons && ItemIcon && (
                       <span className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
                         isSelected ? (item.iconBg || '') : ''
                       }`}>
-                        <ItemIcon className={`w-3 h-3 transition-colors duration-200 ${
-                          isSelected
-                            ? (item.iconColor || 'text-gray-600 dark:text-gray-300')
-                            : 'text-gray-300 dark:text-gray-600'
-                        }`} />
+                        <ItemIcon
+                          className={`w-3 h-3 transition-colors duration-200 ${
+                            isSelected ? (item.iconColor || '') : ''
+                          }`}
+                        />
                       </span>
                     )}
                     <span
-                      className={`text-sm whitespace-nowrap transition-colors duration-200 ${
-                        isSelected
-                          ? 'font-semibold text-gray-900 dark:text-white'
-                          : 'font-normal text-gray-400 dark:text-gray-500'
-                      }`}
+                      className="text-sm whitespace-nowrap transition-colors duration-200"
+                      style={{
+                        color: isSelected ? 'inherit' : 'var(--text-3)',
+                        fontWeight: isSelected ? 600 : 400,
+                      }}
                     >
                       {item.label}
                     </span>
                   </span>
-                  <span className={`block text-xs mt-0.5 whitespace-nowrap ${
-                    isSelected
-                      ? 'text-gray-500 dark:text-gray-400'
-                      : 'hidden'
-                  }`}>
-                    {item.description}
-                  </span>
+                  {isSelected && (
+                    <span
+                      className="block text-xs mt-0.5 whitespace-nowrap"
+                      style={{ color: 'var(--text-3)' }}
+                    >
+                      {item.description}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -146,10 +152,10 @@ function SingleTab({ item }: { item: TabItem }) {
         </div>
       )}
       <div className="min-w-0">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">
+        <h2 className="text-base font-semibold truncate" style={{ color: 'var(--text-1)' }}>
           {item.label}
         </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+        <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
           {item.description}
         </p>
       </div>
@@ -186,13 +192,19 @@ function FadeEdges({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | 
     <>
       <div
         ref={leftRef}
-        className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-white dark:from-[#161b22] to-transparent transition-opacity duration-150"
-        style={{ opacity: 0 }}
+        className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 transition-opacity duration-150"
+        style={{
+          opacity: 0,
+          background: 'linear-gradient(to right, var(--bg-app), transparent)',
+        }}
       />
       <div
         ref={rightRef}
-        className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white dark:from-[#161b22] to-transparent transition-opacity duration-150"
-        style={{ opacity: 0 }}
+        className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 transition-opacity duration-150"
+        style={{
+          opacity: 0,
+          background: 'linear-gradient(to left, var(--bg-app), transparent)',
+        }}
       />
     </>
   );

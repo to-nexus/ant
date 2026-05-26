@@ -1,6 +1,5 @@
 import { useStore } from '@/domain/store';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { BoardContainer } from '../BoardContainer';
@@ -12,6 +11,12 @@ import { useNewlyAdded } from '../common/motion';
 import type { BaseTask } from '@ant/shared';
 
 const taskKey = (task: BaseTask): string => task.id || task.name;
+
+/** Returns true when a UnifiedTask's transient `status` field is 'verifying'.
+ *  Verifying tasks live in the to-do bucket from the source-of-truth model
+ *  but render inside the In-Progress lane. */
+const isVerifying = (task: BaseTask): boolean =>
+  (task as { status?: string }).status === 'verifying';
 
 interface KanbanBoardProps {
   kanbanData: KanbanData;  // ✅ App에서 전달받음 (project/feature 단위 SSE)
@@ -27,7 +32,6 @@ interface KanbanBoardProps {
  * - 애니메이션과 UI 로직만 관리 (Single Responsibility)
  */
 export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
-  const { t } = useTranslation('kanban');
   const splitLayout = useStore((state) => state.splitLayout);
   const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
@@ -62,7 +66,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   if (kanbanData.isEstimating) {
     return (
       <BoardContainer 
-        title={t('board.title')}
         titleActions={
           <>
             <ElapsedTimeBadge
@@ -122,7 +125,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   // ✅ Main Kanban Board UI
   return (
     <BoardContainer 
-      title={t('board.title')}
       titleActions={
         <>
           <ElapsedTimeBadge
@@ -172,8 +174,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         {/* 중단(interruption) 관련 UI 완전 제거. 채팅에서만 노출됨. */}
         
         <KanbanColumns
-          todoTasks={kanbanData.todo || []}
-          inProgressTasks={kanbanData.inProgress || []}
+          todoTasks={(kanbanData.todo || []).filter(t => !isVerifying(t))}
+          inProgressTasks={[
+            ...(kanbanData.inProgress || []),
+            ...((kanbanData.todo || []).filter(isVerifying)),
+          ]}
           completedTasks={kanbanData.completed || []}
           newlyAddedTodoIds={newlyAddedTodoIds}
           newlyCompletedIds={newlyCompletedIds}

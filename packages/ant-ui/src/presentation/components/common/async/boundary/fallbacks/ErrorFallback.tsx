@@ -16,10 +16,10 @@ export function ErrorFallback({ error, retry, compact }: ErrorFallbackProps) {
   return (
     <div className={`h-full w-full flex items-center justify-center ${compact ? 'p-3' : 'p-6'}`}>
       <div className="text-center max-w-md">
-        <div className="text-sm font-medium text-red-600 dark:text-red-400">
+        <div className="text-sm font-medium text-red-600">
           {t('error.default')}
         </div>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 break-words">
+        <div className="mt-1 text-xs text-[color:var(--text-3)] break-words">
           {error.message || t('error.default')}
         </div>
         {retry && (
@@ -27,8 +27,8 @@ export function ErrorFallback({ error, retry, compact }: ErrorFallbackProps) {
             type="button"
             onClick={retry}
             className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
-                       bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200
-                       hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700
+                       bg-[color:var(--bg-surface-2)] text-[color:var(--text-2)]
+                       hover:bg-[color:var(--bg-active)] border border-[color:var(--border-1)]
                        transition-colors"
           >
             {t('error.retry')}

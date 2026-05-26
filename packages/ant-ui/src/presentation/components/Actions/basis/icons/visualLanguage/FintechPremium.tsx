@@ -5,7 +5,7 @@ export function FintechPremiumPreview({ className = '' }: { className?: string }
       <div className="h-0.5 w-6 bg-amber-400/60 rounded-full" />
       <div className="h-1 w-4 bg-slate-700 rounded" />
       <div className="flex-1 flex items-end gap-0.5">
-        <div className="h-2 w-3 rounded bg-emerald-500/40 border border-emerald-400/30" />
+        <div className="h-2 w-3 rounded bg-aurora-emerald-500/40 border border-aurora-emerald-400/30" />
         <div className="h-1.5 w-3 rounded bg-amber-500/30" />
       </div>
     </div>
@@ -19,7 +19,7 @@ export function FintechPremiumFullPreview({ className = '' }: { className?: stri
       <div className="flex items-center px-3 py-2">
         <div className="h-2 w-14 bg-amber-400/50 rounded-full" />
         <div className="ml-auto flex gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-emerald-500/40 border border-emerald-400/30" />
+          <div className="w-2 h-2 rounded-full bg-aurora-emerald-500/40 border border-aurora-emerald-400/30" />
           <div className="h-1.5 w-6 bg-slate-700 rounded" />
         </div>
       </div>
@@ -37,7 +37,7 @@ export function FintechPremiumFullPreview({ className = '' }: { className?: stri
       </div>
       <div className="px-3 pt-2 flex items-end gap-0.5 h-8">
         {[3, 5, 4, 7, 6, 8, 5, 7].map((h, i) => (
-          <div key={i} className="flex-1 rounded-t-sm bg-emerald-500/30 border-t border-emerald-400/40" style={{ height: `${h * 3}px` }} />
+          <div key={i} className="flex-1 rounded-t-sm bg-aurora-emerald-500/30 border-t border-aurora-emerald-400/40" style={{ height: `${h * 3}px` }} />
         ))}
       </div>
     </div>

@@ -168,7 +168,12 @@
     "resetting": "Resetting...",
     "resetStepDeleting": "Deleting projects and sessions",
     "resetStepClearing": "Clearing local cache",
-    "resetStepDone": "Done, reloading..."
+    "resetStepDone": "Done, reloading...",
+    "tocIdentity": "GitHub Identity",
+    "tocOwners": "Owners",
+    "tocFigma": "Figma Bridge",
+    "tocDanger": "Danger Zone",
+    "ownersDescription": "The default owner used in GitHub URLs for new projects."
   },
   "git": {
     "repoSetupRequired": "GitHub repository setup required",

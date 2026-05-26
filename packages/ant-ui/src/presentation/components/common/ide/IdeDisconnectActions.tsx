@@ -29,7 +29,7 @@ export function IdeDisconnectActions({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-3)] mb-3">
           {t('ide.disconnected.canDo.heading')}
         </h4>
         <ul className="space-y-3">
@@ -50,7 +50,7 @@ export function IdeDisconnectActions({
           <li className="pt-1">
             <div className="flex items-start gap-3">
               <IdeForceResetButton onConfirm={onForceReset} emphasized />
-              <p className="text-xs text-gray-500 dark:text-gray-400 flex-1 mt-1">
+              <p className="text-xs text-[color:var(--text-3)] flex-1 mt-1">
                 {t('ide.disconnected.canDo.forceReset.desc')}
               </p>
             </div>
@@ -67,10 +67,10 @@ export function IdeDisconnectActions({
       </div>
 
       <div>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-3)] mb-3">
           {t('ide.disconnected.cannotDo.heading')}
         </h4>
-        <ul className="space-y-3 text-sm text-gray-500 dark:text-gray-400">
+        <ul className="space-y-3 text-sm text-[color:var(--text-3)]">
           <CannotDoRow>{t('ide.disconnected.cannotDo.vscodeReconnect')}</CannotDoRow>
           <CannotDoRow>{t('ide.disconnected.cannotDo.unsavedBuffer')}</CannotDoRow>
           <CannotDoRow>{t('ide.disconnected.cannotDo.directKubectl')}</CannotDoRow>
@@ -98,13 +98,13 @@ function ActionRow({
         onClick={() => void onClick()}
         className={
           tone === 'muted'
-            ? 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md text-gray-700 dark:text-gray-200 border border-transparent hover:bg-gray-100 dark:hover:bg-[#161b22] transition-colors'
-            : 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#161b22] transition-colors'
+            ? 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md text-[color:var(--text-2)] border border-transparent hover:bg-[color:var(--bg-hover)] transition-colors'
+            : 'inline-flex items-center shrink-0 px-3 py-1.5 text-sm rounded-md border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors'
         }
       >
         {label}
       </button>
-      <p className="text-xs text-gray-500 dark:text-gray-400 flex-1 mt-1">{desc}</p>
+      <p className="text-xs text-[color:var(--text-3)] flex-1 mt-1">{desc}</p>
     </div>
   );
 }
@@ -112,7 +112,7 @@ function ActionRow({
 function CannotDoRow({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2">
-      <span aria-hidden="true" className="text-gray-400 dark:text-gray-500 shrink-0">ⓘ</span>
+      <span aria-hidden="true" className="text-[color:var(--text-4)] shrink-0">ⓘ</span>
       <span>{children}</span>
     </li>
   );

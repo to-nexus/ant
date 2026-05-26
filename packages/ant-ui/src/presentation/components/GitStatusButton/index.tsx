@@ -11,7 +11,7 @@ import { PlaceholderButton } from './components/PlaceholderButton';
 import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 import { GitChangesPanel } from './components/GitChangesPanel';
-import { Button } from '../common/button';
+import { Button } from '@/presentation/components/aurora';
 import { useStore } from '@/domain/store';
 
 /**
@@ -101,7 +101,7 @@ export function GitStatusButton() {
 
   return (
     <>
-      <div className="flex-1 min-w-0 flex gap-1.5 items-center">
+      <div className="w-full flex gap-1.5 items-center">
         <ActionButton
           isCommitting={isCommitting}
           isPushing={isPushing}
@@ -118,20 +118,20 @@ export function GitStatusButton() {
           onClick={() => handleDiscard(selectedFiles.length < totalChanges ? selectedFiles : undefined)}
           variant="outline"
           size="sm"
-          className="px-2 py-1.5 text-xs
-                     bg-red-500/5 dark:bg-red-500/5
-                     border-red-500/20 dark:border-red-500/20
-                     hover:bg-red-500/10 dark:hover:bg-red-500/10
-                     text-red-500 dark:text-red-400
-                     transition-colors"
+          className="flex items-center justify-center w-[26px] h-[26px] p-0 flex-shrink-0 transition-colors"
+          style={{
+            background: 'color-mix(in srgb, var(--red-500) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--red-500) 28%, transparent)',
+            color: 'var(--red-500)',
+          }}
           disabled={totalChanges === 0 || isDiscarding}
           title={t('git.discardAll')}
         >
-          <Undo2 className="w-3.5 h-3.5" />
+          <Undo2 className="w-3 h-3" />
         </Button>
       </div>
       {totalChanges > 0 && (
-        <div className="w-full order-last">
+        <div className="w-full">
           <GitChangesPanel
             staged={snapshot.staged}
             unstaged={snapshot.unstaged}

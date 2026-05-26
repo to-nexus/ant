@@ -40,7 +40,8 @@
   },
   "task": {
     "paused": "일시정지",
-    "failed": "실패"
+    "failed": "실패",
+    "new": "NEW"
   },
   "activeNode": {
     "node": "노드:",

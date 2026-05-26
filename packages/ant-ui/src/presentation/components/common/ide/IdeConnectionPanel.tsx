@@ -30,7 +30,7 @@ export function IdeConnectionPanel({ projectId, featureName }: IdeConnectionPane
   const overlayMode = useStore(selectIdeOverlayMode);
   if (overlayMode === 'hidden') return null;
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-sm">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[oklch(from_var(--bg-canvas)_l_c_h_/_0.95)] backdrop-blur-sm">
       <div className="max-w-3xl w-full mx-6">
         <PanelBody projectId={projectId} featureName={featureName} />
       </div>
@@ -75,9 +75,9 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
+    <div className="rounded-xl border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] p-6 shadow-sm">
       {header && (
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">{header}</h3>
+        <h3 className="text-base font-semibold text-[color:var(--text-1)] mb-4">{header}</h3>
       )}
 
       {(overlayMode === 'starting' ||
@@ -92,8 +92,14 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
             isFailed={isFailed}
           />
           {isStuck && phase && (
-            <div className="mt-4 flex items-start gap-3 rounded-md border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3">
-              <p className="text-sm text-rose-700 dark:text-rose-300 flex-1">
+            <div
+              className="mt-4 flex items-start gap-3 rounded-md border p-3"
+              style={{
+                borderColor: 'var(--status-error-fg)',
+                background: 'oklch(from var(--status-error-fg) l c h / 0.08)',
+              }}
+            >
+              <p className="text-sm flex-1" style={{ color: 'var(--status-error-fg)' }}>
                 {t('ide.stuck.banner', {
                   step: t(`ide.step.${stepKeyFromPhase(phase)}`),
                   seconds: elapsedSeconds,
@@ -111,7 +117,7 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
       {overlayMode === 'disconnectedSoft' && (
         <div className="flex items-center gap-3 py-2">
           <Spinner size="sm" tone="muted" />
-          <span className="text-sm text-gray-600 dark:text-gray-300">
+          <span className="text-sm text-[color:var(--text-3)]">
             {t('ide.disconnected.softProbing')}
           </span>
         </div>
@@ -120,7 +126,7 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
       {overlayMode === 'reconnecting' && (
         <div className="flex items-center gap-3 py-2">
           <Spinner size="sm" tone="accent" />
-          <span className="text-sm text-gray-600 dark:text-gray-300">
+          <span className="text-sm text-[color:var(--text-3)]">
             {t('ide.disconnected.reconnecting')}
           </span>
         </div>
@@ -129,7 +135,7 @@ function PanelBody({ projectId, featureName }: IdeConnectionPanelProps) {
       {(overlayMode === 'disconnectedHard' || overlayMode === 'failed') && (
         <>
           {overlayMode === 'disconnectedHard' && elapsedSeconds > 0 && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <p className="text-sm text-[color:var(--text-3)] mb-4">
               {t('ide.disconnected.since', { seconds: elapsedSeconds })}
             </p>
           )}

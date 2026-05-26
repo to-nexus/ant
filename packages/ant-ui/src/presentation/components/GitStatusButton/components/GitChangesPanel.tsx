@@ -21,10 +21,10 @@ const STATUS_ICON: Record<FileChange['status'], typeof FileEdit> = {
 };
 
 const STATUS_COLOR: Record<FileChange['status'], string> = {
-  modified: 'text-yellow-500 dark:text-yellow-400',
-  new: 'text-green-500 dark:text-green-400',
-  deleted: 'text-red-500 dark:text-red-400',
-  renamed: 'text-blue-500 dark:text-blue-400',
+  modified: 'var(--orange-500)',
+  new: 'var(--status-done-fg, var(--teal-500))',
+  deleted: 'var(--red-500)',
+  renamed: 'var(--violet-500)',
 };
 
 export function GitChangesPanel({
@@ -74,30 +74,35 @@ export function GitChangesPanel({
     <div className="mt-1">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] transition-colors"
+        style={{ color: 'var(--text-3)', background: 'transparent' }}
       >
         {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         <span>{t('git.changes')} ({allFiles.length})</span>
       </button>
 
       {isExpanded && (
-        <div className="ml-1 border-l border-gray-200 dark:border-gray-700 pl-2 space-y-0.5 max-h-[200px] overflow-y-auto">
+        <div
+          className="ml-1 pl-2 space-y-0.5 max-h-[200px] overflow-y-auto"
+          style={{ borderLeft: '1px solid var(--border-1)' }}
+        >
           <div className="flex items-center gap-1.5 px-1 py-0.5">
             <input
               ref={selectAllRef}
               type="checkbox"
               checked={allSelected}
               onChange={handleToggleAll}
-              className="w-3 h-3 rounded border-gray-300 dark:border-gray-600 cursor-pointer accent-emerald-500"
+              className="w-3 h-3 rounded cursor-pointer"
+              style={{ accentColor: 'var(--violet-500)' }}
             />
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
               {allSelected ? t('git.deselectAll') : t('git.selectAll')}
             </span>
           </div>
 
           {allFiles.map((file) => {
             const Icon = STATUS_ICON[file.status];
-            const colorClass = STATUS_COLOR[file.status];
+            const colorVar = STATUS_COLOR[file.status];
             const isChecked = selectedFiles.includes(file.path);
             const fileName = file.path.split('/').pop() || file.path;
             const dirPath = file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/')) : '';
@@ -105,17 +110,24 @@ export function GitChangesPanel({
             return (
               <div
                 key={file.path}
-                className="group flex items-center gap-1.5 px-1 py-0.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded"
+                className="group flex items-center gap-1.5 px-1 py-0.5 rounded transition-colors"
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
               >
                 <input
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => handleToggleFile(file.path)}
-                  className="w-3 h-3 rounded border-gray-300 dark:border-gray-600 cursor-pointer accent-emerald-500 flex-shrink-0"
+                  className="w-3 h-3 rounded cursor-pointer flex-shrink-0"
+                  style={{ accentColor: 'var(--violet-500)' }}
                 />
-                <Icon className={`w-3 h-3 flex-shrink-0 ${colorClass}`} />
-                <span className="text-[11px] text-gray-700 dark:text-gray-300 truncate flex-1 min-w-0" title={file.path}>
-                  {dirPath && <span className="text-gray-400 dark:text-gray-500">{dirPath}/</span>}
+                <Icon className="w-3 h-3 flex-shrink-0" style={{ color: colorVar }} />
+                <span
+                  className="text-[11px] truncate flex-1 min-w-0"
+                  style={{ color: 'var(--text-2)' }}
+                  title={file.path}
+                >
+                  {dirPath && <span style={{ color: 'var(--text-3)' }}>{dirPath}/</span>}
                   {fileName}
                 </span>
                 <button
@@ -124,10 +136,11 @@ export function GitChangesPanel({
                     onDiscardFiles([file.path]);
                   }}
                   disabled={isDiscarding}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-opacity"
+                  style={{ background: 'transparent' }}
                   title={t('git.discardFile')}
                 >
-                  <Undo2 className="w-3 h-3 text-red-500 dark:text-red-400" />
+                  <Undo2 className="w-3 h-3" style={{ color: 'var(--red-500)' }} />
                 </button>
               </div>
             );

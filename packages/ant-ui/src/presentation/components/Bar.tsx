@@ -51,18 +51,19 @@ export const Bar = {
    */
   render({ left, right, className = '' }: BarRenderProps) {
     return (
-      <div 
+      <div
         className={cn(
           // Layout
           'flex items-center justify-between shrink-0',
           // Spacing
           'h-10 px-4',
-          // Background & Border (더 짙은 회색)
-          'bg-gray-200 dark:bg-[#0d1117]',
-          'border-b border-gray-300 dark:border-[#30363d]',
           // Additional classes
           className
         )}
+        style={{
+          background: 'var(--bg-surface-2)',
+          borderBottom: '1px solid var(--border-1)',
+        }}
       >
         {/* Left content area */}
         <div className="flex items-center gap-3 text-sm">

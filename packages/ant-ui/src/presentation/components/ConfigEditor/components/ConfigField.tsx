@@ -1,13 +1,15 @@
+
 import { useTranslation } from 'react-i18next';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
 import type { GitSnapshot } from '@ant/shared';
+import { FieldLabel, AuroraInput, AuroraSelect } from '../aurora';
 
 export interface GitHubOwnerInfo {
-  orgOwner?: string;      // Organization-level GitHub owner
-  personalOwner?: string; // Personal GitHub username (from PAT)
+  orgOwner?: string;
+  personalOwner?: string;
 }
 
 interface ConfigFieldProps {
@@ -18,13 +20,21 @@ interface ConfigFieldProps {
   isRepoTypeDisabled: boolean;
   showLocalPath: boolean;
   onChange: (key: keyof ProjectConfig, value: any) => void;
-  /** GitHub owner info for githubRepo quick-fill */
   githubOwnerInfo?: GitHubOwnerInfo;
-  /** Project name for building default URL */
   projectName?: string;
-  /** git-world snapshot for the connection badge. `null` means loading. */
   gitSnapshot?: GitSnapshot | null;
 }
+
+const PILL_BASE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '2px 8px',
+  borderRadius: 'var(--r-pill)',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.02em',
+};
 
 export function ConfigField({
   field,
@@ -39,19 +49,16 @@ export function ConfigField({
   gitSnapshot,
 }: ConfigFieldProps) {
   const { t } = useTranslation('config');
-  // Cloud 모드에서 localPath, repoType 필드 숨김
+
   if (!showLocalPath && (field.key === 'localPath' || field.key === 'repoType')) {
     return null;
   }
 
-  // githubRepo 필드: Owner 토글 버튼 추가
   const isGithubRepoField = field.key === 'githubRepo';
   const orgOwner = githubOwnerInfo?.orgOwner;
   const personalOwner = githubOwnerInfo?.personalOwner;
-  const hasOwners = isGithubRepoField && (orgOwner || personalOwner);
+  const hasOwners = !!(isGithubRepoField && (orgOwner || personalOwner));
 
-  // Git connection status for githubRepo field (3-state: not-connected / connected / error)
-  // gitSnapshot === null means still loading; skip badge to avoid flicker.
   const configUrl = typeof value === 'string' ? value : '';
   const hasGitRepo = isGithubRepoField && !!configUrl;
   const gitLoaded = hasGitRepo && gitSnapshot != null;
@@ -70,7 +77,6 @@ export function ConfigField({
     onChange(field.key, `https://github.com/${owner}/${repoName}`);
   };
 
-  // Detect which owner is currently active
   const currentValue = typeof value === 'string' ? value : '';
   const activeOwner = orgOwner && currentValue.includes(`github.com/${orgOwner}/`)
     ? 'org'
@@ -78,160 +84,201 @@ export function ConfigField({
       ? 'personal'
       : null;
 
+  // Build status badge node (passed to FieldLabel's `action`)
+  let badgeNode: React.ReactNode = null;
+  if (isNotConnected) {
+    badgeNode = (
+      <Tooltip content={t('projectEditor.repoNotConnectedHint')} placement="bottom">
+        <span
+          style={{
+            ...PILL_BASE,
+            background: 'var(--bg-surface-2)',
+            color: 'var(--text-3)',
+            border: '1px solid var(--border-1)',
+            cursor: 'help',
+          }}
+        >
+          {t('projectEditor.repoNotConnected')}
+        </span>
+      </Tooltip>
+    );
+  } else if (isConnected) {
+    badgeNode = (
+      <span
+        style={{
+          ...PILL_BASE,
+          background: 'oklch(94% 0.05 155 / 0.6)',
+          color: 'oklch(45% 0.16 155)',
+          border: '1px solid oklch(72% 0.14 155)',
+        }}
+      >
+        {t('projectEditor.repoConnected')}
+      </span>
+    );
+  } else if (isError) {
+    badgeNode = (
+      <Tooltip
+        content={hasRemote && !isUrlMatch
+          ? t('projectEditor.repoErrorUrlMismatch')
+          : t('projectEditor.repoErrorNoRemote')}
+        placement="bottom"
+      >
+        <span
+          style={{
+            ...PILL_BASE,
+            background: 'oklch(94% 0.05 25 / 0.6)',
+            color: 'var(--status-error-fg)',
+            border: '1px solid oklch(72% 0.16 25)',
+            cursor: 'help',
+          }}
+        >
+          {t('projectEditor.repoError')}
+        </span>
+      </Tooltip>
+    );
+  }
+
+  const placeholderText =
+    field.key === 'localPath'
+      ? t('projectEditor.localPathPlaceholder')
+      : field.key === 'githubRepo'
+        ? t('projectEditor.githubRepoPlaceholder')
+        : t(field.label);
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t(field.label)}
-            {field.required && <span className="text-red-500 ml-1">*</span>}
-          </label>
-          {isNotConnected && (
-            <Tooltip content={t('projectEditor.repoNotConnectedHint')} placement="bottom">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 cursor-help">
-                {t('projectEditor.repoNotConnected')}
-              </span>
-            </Tooltip>
-          )}
-          {isConnected && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
-              {t('projectEditor.repoConnected')}
-            </span>
-          )}
-          {isError && (
-            <Tooltip
-              content={hasRemote && !isUrlMatch
-                ? t('projectEditor.repoErrorUrlMismatch')
-                : t('projectEditor.repoErrorNoRemote')}
-              placement="bottom"
-            >
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 cursor-help">
-                {t('projectEditor.repoError')}
-              </span>
-            </Tooltip>
-          )}
-        </div>
-        {!field.required && !hasOwners && (
-          <span className="text-xs text-gray-400 dark:text-gray-500">{t('field.optional')}</span>
-        )}
-      </div>
-      
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <FieldLabel
+        required={field.required}
+        optional={!field.required && !hasOwners}
+        action={badgeNode}
+      >
+        {t(field.label)}
+      </FieldLabel>
+
       {field.description && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--text-4)' }}>
           {t(field.description)}
           {isRepoTypeDisabled && field.key === 'repoType' && ` ${t('projectEditor.fixedInCloudMode')}`}
         </p>
       )}
       {isError && hasRemote && !isUrlMatch && (
-        <p className="text-xs text-red-600 dark:text-red-400">
+        <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--status-error-fg)' }}>
           {t('projectEditor.repoErrorUrlMismatch')}
         </p>
       )}
       {isError && !hasRemote && (
-        <p className="text-xs text-red-600 dark:text-red-400">
+        <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--status-error-fg)' }}>
           {t('projectEditor.repoErrorNoRemote')}
         </p>
       )}
 
-      {/* Owner quick-fill buttons for githubRepo */}
       {hasOwners && (
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {orgOwner && (
-            <button
-              type="button"
+            <OwnerPill
+              active={activeOwner === 'org'}
+              accentFg="oklch(45% 0.18 250)"
+              accentBg="oklch(94% 0.06 250 / 0.6)"
+              accentRing="oklch(72% 0.14 250)"
               onClick={() => applyOwner(orgOwner)}
-              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                activeOwner === 'org'
-                  ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 font-medium'
-                  : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
             >
               {t('projectEditor.organization', { name: orgOwner })}
-            </button>
+            </OwnerPill>
           )}
           {personalOwner && (
-            <button
-              type="button"
+            <OwnerPill
+              active={activeOwner === 'personal'}
+              accentFg="oklch(45% 0.16 155)"
+              accentBg="oklch(94% 0.05 155 / 0.6)"
+              accentRing="oklch(72% 0.14 155)"
               onClick={() => applyOwner(personalOwner)}
-              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                activeOwner === 'personal'
-                  ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 font-medium'
-                  : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
             >
               {t('projectEditor.personal', { name: personalOwner })}
-            </button>
+            </OwnerPill>
           )}
         </div>
       )}
-      
+
       {field.type === 'text' && (
-        <input
-          type="text"
-          value={value as string || ''}
-          onChange={(e) => onChange(field.key, e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md text-sm 
-            bg-white dark:bg-gray-800 
-            text-gray-900 dark:text-white
-            ${
-              hasError 
-                ? 'border-red-500 dark:border-red-400' 
-                : 'border-gray-300 dark:border-gray-600'
-            } 
-            focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-            placeholder:text-gray-400 dark:placeholder:text-gray-500`}
-          placeholder={
-            field.key === 'localPath' 
-              ? t('projectEditor.localPathPlaceholder') 
-              : field.key === 'githubRepo'
-                ? t('projectEditor.githubRepoPlaceholder')
-                : t(field.label)
-          }
+        <AuroraInput
+          value={(value as string) || ''}
+          onChange={(v) => onChange(field.key, v)}
+          placeholder={placeholderText}
+          hasError={hasError}
+          mono={field.key === 'githubRepo' || field.key === 'localPath'}
         />
       )}
-      
+
       {field.type === 'select' && (
-        <select
-          value={value as string || ''}
-          onChange={(e) => onChange(field.key, e.target.value || undefined)}
+        <AuroraSelect
+          value={(value as string) || ''}
+          onChange={(v) => onChange(field.key, v || undefined)}
           disabled={isRepoTypeDisabled}
-          className={`w-full px-3 py-2 border rounded-md text-sm 
-            bg-white dark:bg-gray-800 
-            text-gray-900 dark:text-white
-            ${
-              hasError 
-                ? 'border-red-500 dark:border-red-400' 
-                : 'border-gray-300 dark:border-gray-600'
-            } 
-            ${isRepoTypeDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-            focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400`}
-        >
-          {!isRepoTypeDisabled && <option value="">{t('projectEditor.selectOption')}</option>}
-          {field.options?.map(option => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          hasError={hasError}
+          options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
+          placeholder={!isRepoTypeDisabled ? t('projectEditor.selectOption') : undefined}
+        />
       )}
-      
+
       {field.type === 'boolean' && (
-        <label className="flex items-center gap-2 cursor-pointer">
+        <label
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            cursor: 'pointer',
+            fontSize: 13,
+            color: 'var(--text-2)',
+          }}
+        >
           <input
             type="checkbox"
-            checked={value as boolean || false}
+            checked={(value as boolean) || false}
             onChange={(e) => onChange(field.key, e.target.checked)}
-            className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400 dark:bg-gray-700"
+            style={{
+              width: 16,
+              height: 16,
+              accentColor: 'var(--violet-500)',
+              cursor: 'pointer',
+            }}
           />
-          <span className="text-sm text-gray-600 dark:text-gray-300">
-            {t('projectEditor.enabled')}
-          </span>
+          <span>{t('projectEditor.enabled')}</span>
         </label>
       )}
-      
-      {hasError && (
-        <p className="text-xs text-red-500">{errorMessage}</p>
+
+      {hasError && errorMessage && (
+        <p style={{ margin: 0, fontSize: 11, color: 'var(--status-error-fg)' }}>{errorMessage}</p>
       )}
     </div>
+  );
+}
+
+interface OwnerPillProps {
+  active: boolean;
+  accentFg: string;
+  accentBg: string;
+  accentRing: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function OwnerPill({ active, accentFg, accentBg, accentRing, onClick, children }: OwnerPillProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 11,
+        fontWeight: active ? 700 : 600,
+        padding: '4px 10px',
+        borderRadius: 'var(--r-md)',
+        background: active ? accentBg : 'var(--bg-surface-2)',
+        color: active ? accentFg : 'var(--text-3)',
+        border: active ? `1px solid ${accentRing}` : '1px solid var(--border-1)',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
   );
 }

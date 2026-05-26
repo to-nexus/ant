@@ -292,15 +292,27 @@ function isRealUnpinnedTab(tab: EditorTab): boolean {
   return tab.kind === 'real' && tab.pinned === false;
 }
 
-// Apply theme to document
+// Apply theme to document.
+//
+// Sets a transient `data-theme-switching` attribute on <html> before flipping
+// `data-theme`. The Layer-B suppression CSS in aurora-tokens.css disables all
+// transitions/animations while the attribute is present so the cascade of
+// CSS-variable changes (every token resolves to a new value) paints in a
+// single frame instead of animating across hundreds of elements.
+//
+// Two RAFs are required: a single RAF runs before the browser commits the new
+// layout. The second RAF guarantees the new colours have painted before
+// transitions re-enable for subsequent interactions.
 const applyTheme = (theme: 'light' | 'dark') => {
-  if (typeof document !== 'undefined') {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.setAttribute('data-theme-switching', '');
+  root.dataset.theme = theme;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      root.removeAttribute('data-theme-switching');
+    });
+  });
 };
 
 /**

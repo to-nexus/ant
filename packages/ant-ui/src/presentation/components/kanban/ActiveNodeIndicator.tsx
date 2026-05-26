@@ -37,25 +37,40 @@ function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorPro
   };
   
   return (
-    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+    <div
+      className="mt-2 pt-2"
+      style={{ borderTop: '1px solid var(--border-1)' }}
+    >
       <div className="flex flex-col gap-1.5">
         {/* Active Nodes (one per worker) */}
         {displayedState.activeNodes.map(node => (
           <div key={node.workerId} className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                <span
+                  className="animate-ping absolute inline-flex h-full w-full rounded-full"
+                  style={{ background: 'var(--violet-500)', opacity: 0.75 }}
+                ></span>
+                <span
+                  className="relative inline-flex rounded-full h-2 w-2"
+                  style={{ background: 'var(--violet-500)' }}
+                ></span>
               </div>
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              <span
+                className="text-xs font-medium"
+                style={{ color: 'var(--text-2)' }}
+              >
                 {t('activeNode.node')}
               </span>
             </div>
-            <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">
+            <span
+              className="text-xs font-semibold"
+              style={{ color: 'var(--violet-500)' }}
+            >
               {formatNodeName(node.nodeId)}
             </span>
             {node.taskName && node.taskName !== 'unknown' && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
                 ({node.taskName})
               </span>
             )}
@@ -67,14 +82,26 @@ function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorPro
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                <span
+                  className="animate-ping absolute inline-flex h-full w-full rounded-full"
+                  style={{ background: 'var(--pink-500)', opacity: 0.75 }}
+                ></span>
+                <span
+                  className="relative inline-flex rounded-full h-2 w-2"
+                  style={{ background: 'var(--pink-500)' }}
+                ></span>
               </div>
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              <span
+                className="text-xs font-medium"
+                style={{ color: 'var(--text-2)' }}
+              >
                 {t('activeNode.actors')}
               </span>
             </div>
-            <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">
+            <span
+              className="text-xs font-semibold"
+              style={{ color: 'var(--pink-500)' }}
+            >
               {displayedState.activeActors.map(formatNodeName).join(', ')}
             </span>
           </div>

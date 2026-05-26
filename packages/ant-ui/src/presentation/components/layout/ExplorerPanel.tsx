@@ -1,4 +1,4 @@
-import { ChevronLeft, LogIn } from 'lucide-react';
+import { Lock, AlertTriangle, Menu } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ProjectSection } from '../ProjectSection';
 import { FeatureSection } from '../FeatureSection';
@@ -36,35 +36,89 @@ export function ExplorerPanel({
   if (isCollapsed) return null;
 
   return (
-    <aside 
-      className="bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-[#30363d] flex flex-col overflow-hidden transition-colors shrink-0 relative shadow-sm"
-      style={{ width: `${width}px` }}
+    <aside
+      className="flex flex-col overflow-hidden shrink-0 relative"
+      style={{
+        width: `${width}px`,
+        background: 'var(--surface-1)',
+        borderRight: '1px solid var(--border-1)',
+        boxShadow: 'var(--shadow-1)',
+      }}
     >
-      {/* Explorer Bar */}
+      {/* Explorer Bar — handoff B3 ExplorerPanel header layout */}
       {Bar.render({
         left: (
           <>
-            <button
-              onClick={onCollapse}
-              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -ml-4 -my-4"
-              title={t('panel.collapse')}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-gray-700 dark:text-gray-200 font-medium">📁 {t('panel.title')}</span>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>📁</span>
+            <span style={{ fontWeight: 700, color: 'var(--text-1)' }}>{t('panel.title')}</span>
           </>
         ),
-        right: undefined
+        right: (
+          <button
+            type="button"
+            onClick={onCollapse}
+            title={t('panel.collapse')}
+            aria-label={t('panel.collapse')}
+            style={{
+              width: 28,
+              height: 28,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              color: 'var(--text-3)',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            <Menu size={14} />
+          </button>
+        ),
       })}
-      
-      <div className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
+
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '10px 8px',
+          minHeight: 0,
+          background: 'var(--surface-1)',
+        }}
+      >
         {!isAuthenticated ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 mt-8">
-            <div className="text-4xl mb-2">
-              <LogIn className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600" />
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: '40px 20px',
+              gap: 10,
+              color: 'var(--text-3)',
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: 'var(--gradient-aurora-soft)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--violet-700)',
+              }}
+            >
+              <Lock size={22} />
             </div>
-            <div className="text-sm font-medium mb-1">{t('panel.signInRequired')}</div>
-            <div className="text-xs text-gray-400 dark:text-gray-600">
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>
+              {t('panel.signInRequired')}
+            </div>
+            <div style={{ fontSize: 11, maxWidth: 220, color: 'var(--text-3)' }}>
               {t('panel.signInHint')}
             </div>
           </div>
@@ -100,9 +154,34 @@ export function ExplorerPanel({
             )}
           </>
         ) : (
-          <div className="text-center text-gray-400 dark:text-gray-500 mt-8">
-            <div className="text-4xl mb-2">🔌</div>
-            <div className="text-sm">
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: '40px 20px',
+              gap: 10,
+              color: 'var(--text-3)',
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: 'color-mix(in srgb, var(--orange-500) 14%, transparent)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--orange-600)',
+              }}
+            >
+              <AlertTriangle size={22} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>
               {connectionStatus === 'error' ? t('connection.error') : t('connection.disconnected')}
             </div>
           </div>
@@ -111,7 +190,10 @@ export function ExplorerPanel({
 
       {/* Resize Handle */}
       <div
-        className="absolute top-0 right-0 w-1 h-full cursor-ew-resize hover:bg-blue-500 hover:opacity-50 transition-opacity z-10"
+        className="absolute top-0 right-0 w-1 h-full cursor-ew-resize z-10"
+        style={{ background: 'transparent' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--violet-500)'; (e.currentTarget as HTMLDivElement).style.opacity = '0.5'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
         onMouseDown={onResizeStart}
       />
     </aside>

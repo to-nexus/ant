@@ -22,7 +22,7 @@ function Badge({ icon: Icon, label, value, color, onRemove }: BadgeProps) {
         <button
           type="button"
           onClick={onRemove}
-          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="ml-0.5 p-0.5 rounded-full hover:bg-[color:var(--bg-hover)] transition-colors"
           aria-label={`Remove ${label}`}
         >
           <X className="w-3 h-3" />
@@ -129,15 +129,21 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
     pinned.push({
       key: 'explicit',
       node: (
-        <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors
-          bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+        <span
+          className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors"
+          style={{
+            background: 'var(--status-todo-bg)',
+            borderColor: 'var(--border-1)',
+            color: 'var(--status-todo-fg)',
+          }}
+        >
           <Zap className="w-3 h-3 shrink-0" />
           <span>Explicit</span>
           {!readOnly && (
             <button
               type="button"
               onClick={handleRemoveExplicit}
-              className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              className="ml-0.5 p-0.5 rounded-full hover:bg-[color:var(--bg-hover)] transition-colors"
               aria-label="Remove explicit"
             >
               <X className="w-3 h-3" />
@@ -156,7 +162,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           icon={Target}
           label="intent"
           value={intentLabel}
-          color="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+          color="bg-[color:var(--status-todo-bg)] border-[color:var(--border-1)] text-[color:var(--status-todo-fg)]"
           onRemove={readOnly ? undefined : handleRemoveIntent}
         />
       ),
@@ -171,7 +177,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           icon={Crosshair}
           label="target"
           value={describePath(tgt).display}
-          color="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300"
+          color="bg-[color:var(--status-progress-bg)] border-[color:var(--border-1)] text-[color:var(--status-progress-fg)]"
         />
       ),
     });
@@ -186,7 +192,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
         icon={icon}
         label="ref"
         value={display}
-        color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+        color="bg-[color:var(--status-done-bg)] border-[color:var(--border-1)] text-[color:var(--status-done-fg)]"
         onRemove={readOnly || locked ? undefined : () => handleRemoveRef(ref)}
       />
     );
@@ -204,7 +210,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
         icon={icon}
         label="ctx"
         value={display}
-        color="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+        color="bg-[color:var(--bg-surface-2)] border-[color:var(--border-1)] text-[color:var(--text-3)]"
         onRemove={readOnly || locked ? undefined : () => handleRemoveContext(ctx)}
       />
     );

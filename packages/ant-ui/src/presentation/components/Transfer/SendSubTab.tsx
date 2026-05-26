@@ -34,7 +34,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { Clock, CheckCircle, XCircle, Ban, Timer, ArrowRight, Plus, ChevronDown, AlertTriangle, X } from 'lucide-react';
 import { TransferFileList, countFilesUnderPath } from './TransferFileList';
-import { Button } from '../common/button';
+import { Button } from '@/presentation/components/aurora';
 import { cn } from '@/shared/utils/design-system';
 import { normalizePaths } from '@/shared/utils/path-utils';
 
@@ -325,14 +325,14 @@ export function SendSubTab() {
     <div className="p-4 space-y-4">
       {/* ── 1. Source ── */}
       <section>
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.title')}</h4>
+        <h4 className="text-sm font-medium text-[color:var(--text-2)] mb-2">{t('send.title')}</h4>
         {/* Project / Feature — fixed (determined by current selection) */}
-        <div className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
-          <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-medium truncate max-w-[200px]" title={srcProjectId}>
+        <div className="flex items-center gap-1.5 text-sm text-[color:var(--text-2)]">
+          <span className="px-2 py-1 rounded bg-[color:var(--bg-surface-2)] font-medium truncate max-w-[200px]" title={srcProjectId}>
             {srcProjectId || '—'}
           </span>
-          <span className="text-gray-400 dark:text-gray-500">/</span>
-          <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-medium truncate max-w-[200px]" title={srcFeatureId}>
+          <span className="text-[color:var(--text-4)]">/</span>
+          <span className="px-2 py-1 rounded bg-[color:var(--bg-surface-2)] font-medium truncate max-w-[200px]" title={srcFeatureId}>
             {srcFeatureId || '—'}
           </span>
         </div>
@@ -341,15 +341,15 @@ export function SendSubTab() {
         {srcProjectId && srcFeatureId && (
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-[color:var(--text-3)]">
                 {t('send.itemCount', { count: srcPaths.length })}
               </span>
               <button
                 className={cn(
                   'inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors',
                   isAddingPath
-                    ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-                    : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                    ? 'bg-[color:var(--violet-100)] text-[color:var(--violet-700)]'
+                    : 'text-[color:var(--violet-600)] hover:bg-[color:var(--bg-hover)]'
                 )}
                 onClick={() => setIsAddingPath(!isAddingPath)}
               >
@@ -379,7 +379,7 @@ export function SendSubTab() {
             />
 
             {srcPaths.length === 0 && !isAddingPath && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+              <p className="text-xs text-[color:var(--text-4)] py-3 text-center border border-dashed border-[color:var(--border-1)] rounded-lg">
                 {t('send.emptyHint')}
               </p>
             )}
@@ -389,7 +389,7 @@ export function SendSubTab() {
 
       {/* ── 2. Destination ── */}
       <section>
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.destination')}</h4>
+        <h4 className="text-sm font-medium text-[color:var(--text-2)] mb-2">{t('send.destination')}</h4>
 
         {/* Target toggle — only meaningful when the BE has organization
             members (cloud mode). Local mode has a single fixed tenant
@@ -397,13 +397,13 @@ export function SendSubTab() {
             self-transfer. */}
         {!isLocalMode && (
           <div className="flex items-center gap-2 mb-3">
-            <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            <div className="inline-flex rounded-lg bg-[color:var(--bg-surface-2)] p-0.5">
               <button
                 className={cn(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'self'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-1)] shadow-sm'
+                    : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('self'); }}
               >
@@ -413,8 +413,8 @@ export function SendSubTab() {
                 className={cn(
                   'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
                   sendTarget === 'other'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'bg-[color:var(--bg-surface)] text-[color:var(--text-1)] shadow-sm'
+                    : 'text-[color:var(--text-3)] hover:text-[color:var(--text-2)]'
                 )}
                 onClick={() => { setSendTarget('other'); setMode('copy'); }}
               >
@@ -487,8 +487,8 @@ export function SendSubTab() {
       {/* ── 3. Transfer summary + [mode toggle] [button] ── */}
       <section className="space-y-2">
         {srcPaths.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
-            <span className="font-medium text-gray-700 dark:text-gray-300">
+          <div className="flex items-center gap-2 text-xs text-[color:var(--text-3)] bg-[color:var(--bg-canvas)]/50 rounded-lg px-3 py-2">
+            <span className="font-medium text-[color:var(--text-2)]">
               {t('send.itemCount', { count: srcPaths.length })}
             </span>
             <ArrowRight className="w-3 h-3 shrink-0" />
@@ -499,7 +499,7 @@ export function SendSubTab() {
                     ? `${targetUserId}/${otherProjectId || '…'}/${otherFeatureId || '…'}/`
                     : t('send.destinationNotSelected'))
               }
-              <span className="text-gray-400 dark:text-gray-500">{t('send.samePath')}</span>
+              <span className="text-[color:var(--text-4)]">{t('send.samePath')}</span>
             </span>
           </div>
         )}
@@ -519,7 +519,7 @@ export function SendSubTab() {
             itemCount={srcPaths.length}
             modeLocked={sendTarget === 'other'}
           />
-          <span className="text-xs text-gray-400 dark:text-gray-500">
+          <span className="text-xs text-[color:var(--text-4)]">
             {sendTarget === 'self'
               ? t('confirm.selfTransferHint')
               : t('confirm.otherTransferHint')}
@@ -532,7 +532,7 @@ export function SendSubTab() {
         r.source.projectId === srcProjectId && r.source.featureId === srcFeatureId
       ).length > 0 && (
         <section>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.history')}</h4>
+          <h4 className="text-sm font-medium text-[color:var(--text-2)] mb-2">{t('send.history')}</h4>
           <div className="space-y-2">
             {sentRequests
               .filter(r => r.source.projectId === srcProjectId && r.source.featureId === srcFeatureId)
@@ -570,7 +570,7 @@ function InlineProjectFeature({
         onChange={(e) => onProjectChange(e.target.value)}
         disabled={disableProject || projectOptions.length === 0}
         className={cn(
-          'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white',
+          'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-1)]',
           (disableProject || projectOptions.length === 0) && 'opacity-50 cursor-not-allowed'
         )}
       >
@@ -579,13 +579,13 @@ function InlineProjectFeature({
         </option>
         {projectOptions.map(id => <option key={id} value={id}>{id}</option>)}
       </select>
-      <span className="text-gray-400 dark:text-gray-500 text-sm">/</span>
+      <span className="text-[color:var(--text-4)] text-sm">/</span>
       <select
         value={featureValue}
         onChange={(e) => onFeatureChange(e.target.value)}
         disabled={disableFeature || featureOptions.length === 0}
         className={cn(
-          'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white',
+          'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-1)]',
           (disableFeature || featureOptions.length === 0) && 'opacity-50 cursor-not-allowed'
         )}
       >
@@ -606,42 +606,42 @@ function SentRequestCard({ request, onCancel, onDelete }: {
 }) {
   const { t } = useTranslation('transfer');
   const statusIcons: Record<string, React.ReactNode> = {
-    pending: <Clock className="w-4 h-4 text-yellow-500" />,
-    approved: <CheckCircle className="w-4 h-4 text-green-500" />,
-    rejected: <XCircle className="w-4 h-4 text-red-500" />,
-    cancelled: <Ban className="w-4 h-4 text-gray-400" />,
-    expired: <Timer className="w-4 h-4 text-gray-400" />,
+    pending: <Clock className="w-4 h-4 text-[color:var(--status-progress-fg,var(--orange-500))]" />,
+    approved: <CheckCircle className="w-4 h-4 text-[color:var(--status-done-fg)]" />,
+    rejected: <XCircle className="w-4 h-4 text-[color:var(--status-error-fg)]" />,
+    cancelled: <Ban className="w-4 h-4 text-[color:var(--text-4)]" />,
+    expired: <Timer className="w-4 h-4 text-[color:var(--text-4)]" />,
   };
   const timeAgo = getTimeAgo(request.createdAt, t);
   const isCompleted = request.status !== 'pending';
 
   return (
-    <div className="group flex items-center justify-between text-sm py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+    <div className="group flex items-center justify-between text-sm py-2 px-3 bg-[color:var(--bg-canvas)]/50 rounded-lg">
       <div className="flex items-center gap-2 min-w-0">
         {statusIcons[request.status] || null}
         <div className="flex flex-col min-w-0">
-          <span className="text-gray-700 dark:text-gray-300 truncate">
+          <span className="text-[color:var(--text-2)] truncate">
             {request.source.path}
             {request.fileCount != null && request.fileCount > 0 && (
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">
+              <span className="ml-1.5 text-xs text-[color:var(--text-4)]">
                 ({request.fileCount}개 파일)
               </span>
             )}
           </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
+          <span className="text-xs text-[color:var(--text-4)] truncate">
             → {request.recipient.userId} / {request.destination.path}
           </span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs text-gray-400">{timeAgo}</span>
+        <span className="text-xs text-[color:var(--text-4)]">{timeAgo}</span>
         {request.status === 'pending' && (
-          <button className="text-xs text-red-500 hover:text-red-600 hover:underline"
+          <button className="text-xs text-[color:var(--status-error-fg)] hover:brightness-110 hover:underline"
             onClick={() => onCancel(request.id)}>{t('action.cancel')}</button>
         )}
         {isCompleted && (
           <button
-            className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-0.5 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)] opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onDelete(request.id)}
             title={t('send.removeFromHistory')}
           >
@@ -737,7 +737,7 @@ function SplitTransferButton({
       {isDropdownOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-[9999] w-[200px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+          className="fixed z-[9999] w-[200px] rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] shadow-xl py-1 animate-in fade-in-0 zoom-in-95 duration-100"
           style={{ top: pos.top, left: pos.left }}
         >
           {options.map(opt => (
@@ -746,21 +746,21 @@ function SplitTransferButton({
               className={cn(
                 'flex flex-col w-full px-3 py-2 text-left transition-colors',
                 mode === opt.value
-                  ? 'bg-blue-50 dark:bg-blue-950/50'
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  ? 'bg-[color:var(--violet-50)]'
+                  : 'hover:bg-[color:var(--bg-hover)]'
               )}
               onClick={() => { onModeChange(opt.value); setIsDropdownOpen(false); }}
             >
               <span className={cn(
                 'text-sm font-medium',
                 mode === opt.value
-                  ? 'text-blue-700 dark:text-blue-300'
-                  : 'text-gray-700 dark:text-gray-300'
+                  ? 'text-[color:var(--violet-700)]'
+                  : 'text-[color:var(--text-2)]'
               )}>
                 {opt.label}
-                {mode === opt.value && <span className="ml-1.5 text-xs text-blue-500">✓</span>}
+                {mode === opt.value && <span className="ml-1.5 text-xs text-[color:var(--violet-500)]">✓</span>}
               </span>
-              <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{opt.desc}</span>
+              <span className="text-xs text-[color:var(--text-4)] mt-0.5">{opt.desc}</span>
             </button>
           ))}
         </div>,
@@ -782,9 +782,15 @@ function getTimeAgo(dateStr: string, t: (key: string, opts?: Record<string, unkn
 // ─── Inline Warning Banner ───
 function InlineWarning({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
-      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-      <span className="text-xs text-amber-700 dark:text-amber-400">{message}</span>
+    <div
+      className="flex items-start gap-2 px-3 py-2 rounded-lg border"
+      style={{
+        background: 'oklch(from var(--orange-500) l c h / 0.12)',
+        borderColor: 'oklch(from var(--orange-500) l c h / 0.3)',
+      }}
+    >
+      <AlertTriangle className="w-4 h-4 text-[color:var(--orange-500)] shrink-0 mt-0.5" />
+      <span className="text-xs" style={{ color: 'oklch(from var(--orange-500) calc(l - 0.2) c h)' }}>{message}</span>
     </div>
   );
 }

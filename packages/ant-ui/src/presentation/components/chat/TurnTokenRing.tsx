@@ -58,7 +58,7 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
           r={RADIUS}
           fill="none"
           strokeWidth={STROKE_WIDTH}
-          className="stroke-gray-300 dark:stroke-gray-600"
+          style={{ stroke: 'var(--text-4)' }}
         />
         {/* Progress arcs — rotate -90deg so drawing starts at 12 o'clock */}
         <g transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}>
@@ -71,7 +71,11 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               strokeWidth={STROKE_WIDTH}
               strokeLinecap="butt"
               strokeDasharray={`${freshLen} ${CIRCUMFERENCE - freshLen}`}
-              className={`${view.freshStroke} ${view.provisional ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
+              style={{
+                stroke: view.freshStroke,
+                opacity: view.provisional ? 0.6 : 1,
+                transition: 'stroke-dasharray 300ms ease-out',
+              }}
             />
           )}
           {cachedLen > 0 && (
@@ -84,7 +88,10 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               strokeLinecap="butt"
               strokeDasharray={`${cachedLen} ${CIRCUMFERENCE - cachedLen}`}
               strokeDashoffset={-freshLen}
-              className={`${view.cachedStroke} transition-[stroke-dasharray] duration-300 ease-out`}
+              style={{
+                stroke: view.cachedStroke,
+                transition: 'stroke-dasharray 300ms ease-out',
+              }}
             />
           )}
         </g>
@@ -175,25 +182,25 @@ function buildView(
   const zone: 'ok' | 'warn' | 'danger' =
     totalPct >= 95 ? 'danger' : totalPct >= 80 ? 'warn' : 'ok';
 
-  // OK zone: theme-adaptive neutral (white on dark, slate on light). The
-  // "fresh" segment (uncached input + cache writes — what's billable as
-  // new this turn) is solid, the "cached" segment (cache reads carried
-  // forward) is a lighter variant so the two remain distinguishable within
-  // a single 14px ring. Warn/danger zones keep amber/red to preserve the
-  // "context filling up" signal across themes.
+  // Aurora token-driven strokes (theme-adaptive via CSS vars). The "fresh"
+  // segment (uncached input + cache writes — billable as new this turn) is
+  // solid; the "cached" segment (cache reads carried forward) is a 50%-alpha
+  // variant so the two remain distinguishable within a single 14px ring.
+  // Warn/danger zones use amber/red tokens to preserve the "context filling
+  // up" signal across themes.
   const freshStroke =
     zone === 'danger'
-      ? 'stroke-red-500'
+      ? 'var(--red-500)'
       : zone === 'warn'
-      ? 'stroke-amber-500'
-      : 'stroke-slate-700 dark:stroke-white';
+      ? 'var(--amber-500)'
+      : 'var(--text-1)';
 
   const cachedStroke =
     zone === 'danger'
-      ? 'stroke-red-300'
+      ? 'oklch(from var(--red-500) l c h / 0.5)'
       : zone === 'warn'
-      ? 'stroke-amber-300'
-      : 'stroke-slate-400 dark:stroke-white/50';
+      ? 'oklch(from var(--amber-500) l c h / 0.5)'
+      : 'oklch(from var(--text-4) l c h / 0.5)';
 
   const fmt = (n: number) => n.toLocaleString();
   const fmtPct = (p: number) => (p < 1 ? '<1%' : `${Math.round(p)}%`);
@@ -203,7 +210,7 @@ function buildView(
   const tooltip = (
     <div className="flex flex-col gap-1 text-xs min-w-[180px]">
       {headerTitle && (
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 max-w-[220px] break-words">
+        <div className="text-[11px] max-w-[220px] break-words" style={{ color: 'var(--text-3)' }}>
           {headerTitle}
         </div>
       )}
@@ -211,10 +218,10 @@ function buildView(
         <span>{t('turnTokenGauge.context')}</span>
         <span className="tabular-nums">{fmtPct(totalPct)}</span>
       </div>
-      <div className="text-[11px] tabular-nums text-gray-600 dark:text-gray-300">
+      <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-2)' }}>
         {fmt(prompt)} / {fmt(max)}
       </div>
-      <div className="h-px my-0.5 bg-gray-200 dark:bg-gray-700" />
+      <div className="h-px my-0.5" style={{ background: 'var(--border-1)' }} />
       <div className="flex items-center justify-between gap-3 tabular-nums">
         <span>{t('turnTokenGauge.input')}</span>
         <span>{fmt(input)}</span>
@@ -231,17 +238,17 @@ function buildView(
           <span>{fmt(cacheRead)}</span>
         </div>
       )}
-      <div className="flex items-center justify-between gap-3 tabular-nums text-gray-500 dark:text-gray-400">
+      <div className="flex items-center justify-between gap-3 tabular-nums" style={{ color: 'var(--text-3)' }}>
         <span>{t('turnTokenGauge.output')}</span>
         <span>{fmt(output)}</span>
       </div>
       {estimating && (
-        <div className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400 italic">
+        <div className="mt-1 text-[10px] leading-snug italic" style={{ color: 'var(--text-3)' }}>
           {t('turnTokenGauge.estimatingNote')}
         </div>
       )}
       {baseline && (
-        <div className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400 italic">
+        <div className="mt-1 text-[10px] leading-snug italic" style={{ color: 'var(--text-3)' }}>
           {t('turnTokenGauge.baselineNote', {
             defaultValue: 'Predicted next call (no LLM activity yet). Real measurement replaces this once the job starts.',
           })}

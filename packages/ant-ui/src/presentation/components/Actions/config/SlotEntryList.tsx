@@ -139,7 +139,7 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
       {entries.map(entry => {
         const slotLabel = showSlotLabels ? (
           <div key={`label-${entry.def.path || entry.def.label.en}`} className="flex items-center gap-1.5 pt-1.5 first:pt-0">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            <span className="text-xs font-medium text-[color:var(--text-3)]">
               {entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en}
             </span>
           </div>
@@ -215,7 +215,7 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
                     <button
                       type="button"
                       onClick={() => onCreateIntent(entry.def.createIntent!)}
-                      className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
+                      className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
                       title={t('emptySlot.create')}
                     >
                       <Plus className="w-4.5 h-4.5" />
@@ -225,7 +225,7 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
                     <button
                       type="button"
                       onClick={() => onUploadDir ? onUploadDir(entry.def.path) : onHighlightDir(entry.def.path)}
-                      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
+                      className="p-2 rounded-lg bg-[color:var(--bg-surface-2)]/50 text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)] transition-colors"
                       title={t('emptySlot.upload')}
                     >
                       <Upload className="w-4.5 h-4.5" />
@@ -277,7 +277,7 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
                     <button
                       type="button"
                       onClick={() => onCreateIntent(entry.def.createIntent!)}
-                      className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
+                      className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
                       title={t('emptySlot.create')}
                     >
                       <Plus className="w-4.5 h-4.5" />
@@ -286,7 +286,7 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
                   <button
                     type="button"
                     onClick={() => onUploadDir ? onUploadDir(entry.def.path) : onHighlightDir(entry.def.path)}
-                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
+                    className="p-2 rounded-lg bg-[color:var(--bg-surface-2)]/50 text-[color:var(--text-3)] hover:bg-[color:var(--bg-active)] transition-colors"
                     title={t('emptySlot.upload')}
                   >
                     <Upload className="w-4.5 h-4.5" />

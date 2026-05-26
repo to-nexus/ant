@@ -40,6 +40,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [message, setMessage] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isAuthenticated = serverMode === 'local' || !!userEmail;
@@ -86,57 +87,66 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   if (!isAuthenticated) {
     return (
       <div className="p-3 relative">
-        <div className="bg-white dark:bg-gray-800 
-                        border border-gray-200 dark:border-gray-700 
-                        rounded-lg shadow-sm overflow-hidden">
+        <div
+          className="overflow-hidden"
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-1)',
+            borderRadius: 'var(--r-md)',
+            boxShadow: 'var(--shadow-xs)',
+          }}
+        >
           <textarea
-            className="w-full px-3 py-2.5 
-                       bg-gray-50 dark:bg-gray-900/50
-                       text-gray-400 dark:text-gray-500
-                       text-sm leading-relaxed 
+            className="w-full px-3 py-2.5 text-sm leading-relaxed
+                       text-[color:var(--text-4)]
                        focus:outline-none
                        resize-none border-none
                        cursor-not-allowed"
+            style={{ background: 'var(--bg-surface-2)' }}
             placeholder={t('input.placeholder')}
             rows={3}
             disabled
             readOnly
           />
-          
-          <div className="flex items-center justify-between px-2 py-1.5 
-                          border-t border-gray-200 dark:border-gray-700
-                          bg-gray-50 dark:bg-gray-800/50">
+
+          <div
+            className="flex items-center justify-between px-2 py-1.5"
+            style={{
+              borderTop: '1px solid var(--border-1)',
+              background: 'var(--bg-surface-2)',
+            }}
+          >
             <div className="flex items-center gap-2">
               <button
                 disabled
                 className="flex items-center gap-1 px-2 py-1 text-xs
-                           bg-gray-100 dark:bg-gray-700 
-                           border border-gray-300 dark:border-gray-600
-                           text-gray-400 dark:text-gray-500
+                           bg-[color:var(--bg-surface-2)]
+                           border border-[color:var(--border-1)]
+                           text-[color:var(--text-4)]
                            rounded cursor-not-allowed opacity-50"
               >
                 <span>🤖 Agent</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
-              
+
               <button
                 disabled
                 className="flex items-center gap-1 px-2 py-1 text-xs
-                           bg-gray-100 dark:bg-gray-700 
-                           border border-gray-300 dark:border-gray-600
-                           text-gray-400 dark:text-gray-500
+                           bg-[color:var(--bg-surface-2)]
+                           border border-[color:var(--border-1)]
+                           text-[color:var(--text-4)]
                            rounded cursor-not-allowed opacity-50"
               >
                 <span>🎯 Job</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
             </div>
-            
+
             <button
               disabled
-              className="flex items-center gap-1.5 px-2.5 py-1.5 
-                         bg-gray-300 dark:bg-gray-700 
-                         text-gray-400 dark:text-gray-500
+              className="flex items-center gap-1.5 px-2.5 py-1.5
+                         bg-[color:var(--bg-surface-2)]
+                         text-[color:var(--text-4)]
                          text-xs font-medium rounded-lg
                          cursor-not-allowed opacity-50"
             >
@@ -179,76 +189,94 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         />
       )}
 
-      {/* Unified Frame */}
+      {/* Aurora gradient padding ring (focus-state aware) */}
       <div
-        style={{ minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px` }}
-        className="relative border border-gray-300 dark:border-gray-600 rounded-lg
-                      bg-white dark:bg-gray-800"
+        style={{
+          minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px`,
+          padding: '1.5px',
+          borderRadius: 'var(--r-md)',
+          background: isFocused ? 'var(--gradient-aurora)' : 'var(--border-2)',
+          transition: 'background var(--dur-fast) var(--ease-smooth)',
+        }}
       >
-        {/* Resize Handle */}
         <div
-          className="absolute top-0 left-0 right-0 cursor-ns-resize hover:bg-blue-500/20 
-                     transition-colors group"
-          style={{ 
-            height: '8px',
-            marginTop: '-4px',
-            zIndex: 999,
-            pointerEvents: 'auto'
+          className="relative"
+          style={{
+            background: 'var(--bg-surface)',
+            borderRadius: 'calc(var(--r-md) - 1.5px)',
           }}
-          onMouseDown={handleResizeStart}
-          title="Drag to resize (always available)"
         >
-          <div className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-12 h-1 
-                         bg-gray-300 dark:bg-gray-600 rounded-full
-                         group-hover:bg-blue-500 transition-colors" />
-        </div>
-        
-        {/* Action Metadata Badges */}
-        <ActionMetadataBadges />
+          {/* Resize Handle */}
+          <div
+            className="absolute top-0 left-0 right-0 cursor-ns-resize
+                       hover:bg-[color:oklch(from_var(--violet-500)_l_c_h_/_0.20)]
+                       transition-colors group"
+            style={{
+              height: '8px',
+              marginTop: '-4px',
+              zIndex: 999,
+              pointerEvents: 'auto',
+            }}
+            onMouseDown={handleResizeStart}
+            title="Drag to resize (always available)"
+          >
+            <div
+              className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-12 h-1
+                         rounded-full transition-colors
+                         bg-[color:var(--border-2)]
+                         group-hover:bg-[color:var(--violet-500)]"
+            />
+          </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          data-chat-input
-          style={{ height: `${textareaHeight}px` }}
-          className="w-full px-3 py-2.5 text-sm
-                     bg-transparent text-gray-900 dark:text-gray-100
-                     placeholder-gray-400 dark:placeholder-gray-500
-                     focus:outline-none
-                     resize-none border-none
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-          placeholder={chatPolicy.inputPlaceholder}
-          value={message}
-          onChange={(e) => {
-            setMessage(e.target.value);
-            setCursorPos(e.target.selectionStart || 0);
-          }}
-          onSelect={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart || 0)}
-          onKeyDown={(e) => {
-            const mentionResult = mention.handleKeyDown(e);
-            if (mentionResult !== false) {
-              setMessage(mentionResult.newMessage);
-              requestAnimationFrame(() => {
-                textareaRef.current?.setSelectionRange(mentionResult.newCursorPos, mentionResult.newCursorPos);
-              });
-              return;
-            }
-            if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
-              e.preventDefault();
-              if (isRunning) {
-                stopJob();
-              } else {
-                handleSubmit();
+          {/* Action Metadata Badges */}
+          <ActionMetadataBadges />
+
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            data-chat-input
+            style={{ height: `${textareaHeight}px` }}
+            className="w-full px-3 py-2.5 text-sm
+                       bg-transparent
+                       text-[color:var(--text-1)]
+                       placeholder-[color:var(--text-4)]
+                       focus:outline-none
+                       resize-none border-none
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+            placeholder={chatPolicy.inputPlaceholder}
+            value={message}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            onChange={(e) => {
+              setMessage(e.target.value);
+              setCursorPos(e.target.selectionStart || 0);
+            }}
+            onSelect={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart || 0)}
+            onKeyDown={(e) => {
+              const mentionResult = mention.handleKeyDown(e);
+              if (mentionResult !== false) {
+                setMessage(mentionResult.newMessage);
+                requestAnimationFrame(() => {
+                  textareaRef.current?.setSelectionRange(mentionResult.newCursorPos, mentionResult.newCursorPos);
+                });
+                return;
               }
-            }
-          }}
-          onCompositionStart={() => setIsComposing(true)}
-          onCompositionEnd={() => setIsComposing(false)}
-          disabled={disabled || isRunning}
-        />
-        
-        {/* Bottom Toolbar */}
-        <AgentJobToolbar
+              if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+                e.preventDefault();
+                if (isRunning) {
+                  stopJob();
+                } else {
+                  handleSubmit();
+                }
+              }
+            }}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
+            disabled={disabled || isRunning}
+          />
+
+          {/* Bottom Toolbar */}
+          <AgentJobToolbar
           agents={agents}
           agentsWithMetadata={agentsWithMetadata}
           currentAgent={currentAgent}
@@ -258,6 +286,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           canSubmit={chatPolicy.canSendMessage && (!!message.trim() || hasPendingClarify)}
           onSubmit={handleSubmit}
         />
+        </div>
       </div>
     </div>
   );
