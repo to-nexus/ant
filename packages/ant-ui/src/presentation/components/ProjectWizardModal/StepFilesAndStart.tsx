@@ -28,7 +28,7 @@ export function StepFilesAndStart({
   showDirective, onShowDirectiveToggle,
   canSubmit,
 }: StepFilesAndStartProps) {
-  const validDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name));
+  const validDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.webkitRelativePath || f.name));
 
   return (
     <>

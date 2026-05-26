@@ -99,6 +99,25 @@ export interface TierRuntimeContext {
    * suppressed to avoid conflicting parallel injection.
    */
   hasUiDoc?: boolean;
+  /**
+   * Whether the workspace already contains a codebase (see
+   * `GitSnapshot.hasCodebase` — true when `codebase/` is populated or the
+   * memory-index sentinel is present). When true, BOTH techTier AND
+   * visualTier are fixed implicitly by the existing code: the BasisWizard
+   * MUST NOT prompt the user to re-pick them, and the corresponding
+   * runtime suppressors (below) collapse those tiers out of
+   * `listActiveTiers` so downstream routing
+   * (`decideActionsStepAfterIntent`, `BasisSummaryBar`) reflects the
+   * implicit lock. The rationale for visualTier mirrors techTier — an
+   * existing codebase carries its own visual identity (CSS / design
+   * tokens / component library) that the BasisWizard re-prompt would
+   * conflict with.
+   *
+   * Optional + compared with `=== true` in the suppressor, so existing
+   * callers that omit the field (e.g. BE prompt-build) keep their prior
+   * behavior unchanged.
+   */
+  hasCodebase?: boolean;
 }
 
 type RuntimeSuppressor = (ctx: TierRuntimeContext) => boolean;
@@ -108,21 +127,45 @@ type RuntimeSuppressor = (ctx: TierRuntimeContext) => boolean;
  * gates only to be vetoed by these runtime checks. Returning `true` means
  * "suppress this tier".
  *
- * Inherits the three suppressors that previously lived inside
+ * Inherits the suppressors that previously lived inside
  * `isVisualTierActive` (deleted — D9):
  *   - slot opt-in (handled by `slot.tiers?.includes(tier)`)
  *   - backend-only stack
  *   - hasUiDoc=true
+ *   - hasCodebase=true — existing codebase implicitly fixes the visual
+ *     identity (CSS / design tokens / component library), so re-prompting
+ *     via the BasisWizard would conflict with the established choices.
  *
  * D28 note — visualTier is gated to `['service']` at the matrix layer, so
  * these suppressors only ever run on service-domain RACs. The hasUiDoc
  * branch keeps its meaning (a service workspace with a finalized UI doc
  * gets the tier suppressed because the artifact IS the visual authority).
+ *
+ * techTier SSOT — when the workspace already contains a codebase
+ * (`ctx.hasCodebase === true`), the techTier is implicitly fixed by the
+ * existing code. The suppressor collapses the tier out of
+ * `listActiveTiers` so the BasisWizard does not re-prompt and downstream
+ * routing (`decideActionsStepAfterIntent`, `BasisSummaryBar`) reflects the
+ * implicit lock. Greenfield workspaces (`hasCodebase` falsy) keep prior
+ * behavior — the tier remains active and the wizard runs as before.
+ *
+ * visualTier SSOT (D27) — the same `hasCodebase === true` signal
+ * additionally suppresses visualTier. Service-domain workspaces with an
+ * existing codebase have an implicit visual identity baked into their
+ * stylesheets / token files / component library, so the wizard MUST NOT
+ * re-derive it. All FE/BE call surfaces funnel through `isTierActive`, so
+ * this single predicate change propagates automatically to
+ * `useActiveTiers`, `decideActionsStepAfterIntent`, `BasisSummaryBar`,
+ * the ActionConfigView Edit gate, and the BE PromptBuilder visualTier
+ * dispatch.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RUNTIME_SUPPRESSORS: Partial<Record<TierKey, RuntimeSuppressor>> = {
   visualTier: (ctx) =>
-    ctx.techTier?.stack === 'backend' || ctx.hasUiDoc === true,
+    ctx.techTier?.stack === 'backend' ||
+    ctx.hasUiDoc === true ||
+    ctx.hasCodebase === true,
+  techTier: (ctx) => ctx.hasCodebase === true,
 };
 
 // ============================================

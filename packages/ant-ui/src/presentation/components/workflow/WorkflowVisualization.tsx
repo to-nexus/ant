@@ -336,7 +336,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   }
   
   return (
-    <div className="workflow-visualization h-full w-full" style={{ background: 'var(--bg-canvas)' }}>
+    <div className="workflow-visualization h-full w-full">
         <ReactFlow
           nodes={nodes}
           edges={edges}

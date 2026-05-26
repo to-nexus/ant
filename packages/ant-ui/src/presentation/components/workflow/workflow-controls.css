@@ -59,3 +59,11 @@
   transform: none !important;
 }
 
+/* Active workflow edge — flowing dash. Keyframe `flow-dash` lives in
+   aurora-tokens.css (line ~411) and is shared with the handoff
+   WorkflowPlaceholder. The dasharray pattern (8 6) is attached at the
+   edge style level in useGraphLayout (spec §5 T3). */
+.react-flow__edge.workflow-edge--active .react-flow__edge-path {
+  animation: flow-dash 1s linear infinite;
+}
+

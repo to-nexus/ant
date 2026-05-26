@@ -119,7 +119,9 @@ export function AppNavBar({}: AppNavBarProps) {
       className="fixed top-0 left-0 right-0 z-50"
       style={{
         height: 56,
-        background: 'var(--bg-surface)',
+        background: 'oklch(from var(--bg-app) l c h / 0.92)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         borderBottom: '1px solid var(--border-2)',
         boxShadow: 'var(--shadow-sm)',
       }}

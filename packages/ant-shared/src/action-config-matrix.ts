@@ -392,7 +392,7 @@ const L = {
   gameArtTokens: { en: 'game-art-tokens.json', ko: 'game-art-tokens.json' },
   gameArtAssets: { en: 'game-art-assets.json', ko: 'game-art-assets.json' },
   gameArtSpec: { en: 'game-art-spec.json', ko: 'game-art-spec.json' },
-  spec: { en: 'spec-*.md', ko: 'spec-*.md' },
+  spec: { en: 'spec document', ko: 'spec 문서' },
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd.md', ko: 'prd.md' },
   gdd: { en: 'gdd.md', ko: 'gdd.md' },
@@ -483,7 +483,7 @@ const GAME_ART_OUTPUTS: OutputSpec[] = [
   output('game-art-assets', '.json', L.gameArtAssets, false),
   output('game-art-spec', '.json', L.gameArtSpec, false),
 ];
-const SPEC_OUTPUTS: OutputSpec[] = [output('spec-', '.md', L.spec)];
+const SPEC_OUTPUTS: OutputSpec[] = [output('', '.md', L.spec, false)];
 
 /**
  * Plan job output candidates. Service domain emits `prd.md`; game domain

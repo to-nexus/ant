@@ -1,6 +1,8 @@
+
+import { useState } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitCommit, Upload, Download, RefreshCw, Check, Globe } from 'lucide-react';
-import { Button } from '@/presentation/components/aurora';
+import { Upload, Download, RefreshCw, Check, Globe, CheckCircle2 } from 'lucide-react';
 import { Spinner } from '../../common/async';
 import {
   useGitCta,
@@ -28,7 +30,103 @@ const CONTAINER_QUERY_STYLE = `
 }
 `;
 
-const CONTAINER_STYLE = { containerType: 'inline-size' as const, containerName: 'action-btn' };
+const CONTAINER_STYLE: CSSProperties = {
+  containerType: 'inline-size',
+  containerName: 'action-btn',
+};
+
+// Filled aurora-emerald gradient CTA per handoff b3-explorer.jsx GitStatusButton.
+const FILLED_BUTTON_STYLE: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  height: 26,
+  padding: '0 10px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  background: 'linear-gradient(135deg, var(--emerald-500), oklch(64% 0.18 155))',
+  color: 'white',
+  border: 'none',
+  borderRadius: 'var(--r-sm)',
+  fontSize: 11,
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  boxShadow: 'var(--shadow-xs)',
+  transition: 'transform var(--dur-fast) var(--ease-spring)',
+  overflow: 'hidden',
+};
+
+// Neutral fallback for loading/noChanges (matches handoff disabled look).
+const NEUTRAL_BUTTON_STYLE: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  height: 26,
+  padding: '0 10px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  background: 'var(--surface-2)',
+  color: 'var(--text-3)',
+  border: '1px solid var(--border-1)',
+  borderRadius: 'var(--r-sm)',
+  fontSize: 11,
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  cursor: 'not-allowed',
+  opacity: 0.6,
+};
+
+// White/25 inline count pill on the gradient background.
+const COUNT_BADGE_STYLE: CSSProperties = {
+  background: 'rgba(255,255,255,0.25)',
+  padding: '1px 6px',
+  borderRadius: 999,
+  fontSize: 10,
+  fontFamily: 'var(--font-mono)',
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 3,
+};
+
+interface FilledCtaProps {
+  onClick: () => void;
+  disabled: boolean;
+  title?: string;
+  children: React.ReactNode;
+}
+
+function FilledCta({ onClick, disabled, title, children }: FilledCtaProps) {
+  const [hovered, setHovered] = useState(false);
+  const handleEnter = (_e: MouseEvent<HTMLButtonElement>) => {
+    if (!disabled) setHovered(true);
+  };
+  const handleLeave = (_e: MouseEvent<HTMLButtonElement>) => setHovered(false);
+
+  const style: CSSProperties = {
+    ...FILLED_BUTTON_STYLE,
+    opacity: disabled ? 0.6 : 1,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={title}
+      style={style}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * Primary Git CTA. All branching lives in `useGitCta` (pure selector over
@@ -36,6 +134,9 @@ const CONTAINER_STYLE = { containerType: 'inline-size' as const, containerName: 
  * single discriminated-union result. ProjectSection's dropdown uses the
  * sister selector `useGitMenu` off the same snapshot — the two UIs agree
  * by construction.
+ *
+ * Visuals follow handoff/b3-explorer.jsx: filled aurora-emerald gradient
+ * with white/25 count pills and 26px height, hover translateY(-1px).
  */
 export function ActionButton({
   isCommitting,
@@ -53,73 +154,69 @@ export function ActionButton({
   const cta = useGitCta();
   const isFetchBlockingCta = useGitSnapshotRefreshing();
 
-  // Aurora "done" tone — semantic success color via design tokens.
-  // (spec §1.1.6: emerald is the status=done semantic, but ONLY through tokens.)
-  const actionButtonClass =
-    'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden transition-colors';
-  const actionButtonStyle: React.CSSProperties = {
-    background: 'var(--status-done-bg)',
-    border: '1px solid color-mix(in srgb, var(--emerald-500) 30%, transparent)',
-    color: 'var(--status-done-fg)',
-  };
-
   if (cta.kind === 'commit') {
     const commitCount = selectedFiles ? selectedFiles.length : cta.count;
+    const disabled =
+      isCommitting ||
+      isFetchBlockingCta ||
+      (selectedFiles !== undefined && selectedFiles.length === 0);
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
-        <Button
+        <FilledCta
           onClick={() => onCommit(selectedFiles)}
-          variant="outline"
-          size="sm"
-          className={actionButtonClass}
-          style={actionButtonStyle}
-          disabled={isCommitting || isFetchBlockingCta || (selectedFiles !== undefined && selectedFiles.length === 0)}
+          disabled={disabled}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
-          <GitCommit className="w-3.5 h-3.5 flex-shrink-0" />
           {isCommitting ? (
-            <span className="action-label truncate">{t('git.committing')}</span>
+            <>
+              <Spinner size="sm" tone="inherit" />
+              <span className="action-label truncate">{t('git.committing')}</span>
+            </>
           ) : (
             <>
-              <span className="action-label truncate">{t('git.commitAction')}</span>
-              <span className="flex-shrink-0 tabular-nums">{commitCount}</span>
+              <CheckCircle2 width={11} height={11} style={{ flexShrink: 0 }} />
+              <span className="action-label truncate" style={{ flex: 1, textAlign: 'left' }}>
+                {t('git.commitAction')}
+              </span>
+              {commitCount > 0 && <span style={COUNT_BADGE_STYLE}>{commitCount}</span>}
             </>
           )}
-        </Button>
+        </FilledCta>
       </div>
     );
   }
 
   if (cta.kind === 'publish') {
-    // Dispatch split by selector-derived variant — no re-inspection of
-    // snapshot.remoteUrl downstream:
-    //   noRemoteWithFeatures → create GitHub repo then push (onPublishRepo)
-    //   noUpstream           → plain push; BE auto-sets -u
     const handler = cta.variant === 'noRemoteWithFeatures' ? onPublishRepo : onPush;
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
-        <Button
+        <FilledCta
           onClick={handler}
-          variant="outline"
-          size="sm"
-          className={actionButtonClass}
-          style={actionButtonStyle}
           disabled={isPushing || isFetchBlockingCta}
-          title={cta.variant === 'noRemoteWithFeatures'
-            ? t('config:git.publishToGitHubDesc')
-            : t('git.publishNewBranchDesc')}
+          title={
+            cta.variant === 'noRemoteWithFeatures'
+              ? t('config:git.publishToGitHubDesc')
+              : t('git.publishNewBranchDesc')
+          }
         >
-          <Globe className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="action-label truncate">
-            {isPushing
-              ? t('git.publishing')
-              : cta.variant === 'noRemoteWithFeatures'
-                ? t('config:git.publish')
-                : t('git.publishNewBranch')}
-          </span>
-        </Button>
+          {isPushing ? (
+            <>
+              <Spinner size="sm" tone="inherit" />
+              <span className="action-label truncate">{t('git.publishing')}</span>
+            </>
+          ) : (
+            <>
+              <Globe width={11} height={11} style={{ flexShrink: 0 }} />
+              <span className="action-label truncate" style={{ flex: 1, textAlign: 'left' }}>
+                {cta.variant === 'noRemoteWithFeatures'
+                  ? t('config:git.publish')
+                  : t('git.publishNewBranch')}
+              </span>
+            </>
+          )}
+        </FilledCta>
       </div>
     );
   }
@@ -128,36 +225,33 @@ export function ActionButton({
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
-        <Button
+        <FilledCta
           onClick={onSync}
-          variant="outline"
-          size="sm"
-          className={actionButtonClass}
-          style={actionButtonStyle}
           disabled={isSyncing || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
           {isSyncing ? (
-            <Spinner size="sm" tone="inherit" className="flex-shrink-0" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
-          )}
-          {isSyncing ? (
-            <span className="action-label truncate">{t('git.syncingFromRemote')}</span>
+            <>
+              <Spinner size="sm" tone="inherit" />
+              <span className="action-label truncate">{t('git.syncingFromRemote')}</span>
+            </>
           ) : (
             <>
-              <span className="action-label truncate">{t('git.sync')}</span>
-              <span className="flex-shrink-0 flex items-center gap-1">
-                <Upload className="w-3 h-3" />
+              <RefreshCw width={11} height={11} style={{ flexShrink: 0 }} />
+              <span className="action-label truncate" style={{ flex: 1, textAlign: 'left' }}>
+                {t('git.sync')}
+              </span>
+              <span style={COUNT_BADGE_STYLE}>
+                <Upload width={11} height={11} />
                 {cta.ahead}
               </span>
-              <span className="flex-shrink-0 flex items-center gap-1">
-                <Download className="w-3 h-3" />
+              <span style={COUNT_BADGE_STYLE}>
+                <Download width={11} height={11} />
                 {cta.behind}
               </span>
             </>
           )}
-        </Button>
+        </FilledCta>
       </div>
     );
   }
@@ -166,25 +260,26 @@ export function ActionButton({
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
-        <Button
+        <FilledCta
           onClick={onPush}
-          variant="outline"
-          size="sm"
-          className={actionButtonClass}
-          style={actionButtonStyle}
           disabled={isPushing || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
-          <Upload className="w-3.5 h-3.5 flex-shrink-0" />
           {isPushing ? (
-            <span className="action-label truncate">{t('git.pushing')}</span>
+            <>
+              <Spinner size="sm" tone="inherit" />
+              <span className="action-label truncate">{t('git.pushing')}</span>
+            </>
           ) : (
             <>
-              <span className="action-label truncate">{t('config:git.push')}</span>
-              <span className="flex-shrink-0 tabular-nums">{cta.ahead}</span>
+              <Upload width={11} height={11} style={{ flexShrink: 0 }} />
+              <span className="action-label truncate" style={{ flex: 1, textAlign: 'left' }}>
+                {t('config:git.push')}
+              </span>
+              <span style={COUNT_BADGE_STYLE}>{cta.ahead}</span>
             </>
           )}
-        </Button>
+        </FilledCta>
       </div>
     );
   }
@@ -193,48 +288,38 @@ export function ActionButton({
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
-        <Button
+        <FilledCta
           onClick={onPull}
-          variant="outline"
-          size="sm"
-          className={actionButtonClass}
-          style={actionButtonStyle}
           disabled={isPulling || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
-          <Download className="w-3.5 h-3.5 flex-shrink-0" />
           {isPulling ? (
-            <span className="action-label truncate">{t('git.pulling')}</span>
+            <>
+              <Spinner size="sm" tone="inherit" />
+              <span className="action-label truncate">{t('git.pulling')}</span>
+            </>
           ) : (
             <>
-              <span className="action-label truncate">{t('config:git.pull')}</span>
-              <span className="flex-shrink-0 tabular-nums">{cta.behind}</span>
+              <Download width={11} height={11} style={{ flexShrink: 0 }} />
+              <span className="action-label truncate" style={{ flex: 1, textAlign: 'left' }}>
+                {t('config:git.pull')}
+              </span>
+              <span style={COUNT_BADGE_STYLE}>{cta.behind}</span>
             </>
           )}
-        </Button>
+        </FilledCta>
       </div>
     );
   }
 
-  // `loading` / `noChanges` falls through to the neutral look — the
-  // parent GitStatusButton already renders a spinner when it matters.
+  // `loading` / `noChanges` → neutral disabled look.
   return (
     <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
       <style>{CONTAINER_QUERY_STYLE}</style>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled
-        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden opacity-50 cursor-default"
-        style={{
-          color: 'var(--text-3)',
-          border: '1px solid var(--border-1)',
-          background: 'var(--surface-2)',
-        }}
-      >
-        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+      <button type="button" disabled style={NEUTRAL_BUTTON_STYLE}>
+        <Check width={11} height={11} style={{ flexShrink: 0 }} />
         <span className="action-label truncate">{t('git.noChanges')}</span>
-      </Button>
+      </button>
     </div>
   );
 }
