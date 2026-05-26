@@ -579,8 +579,14 @@ export const DESIGN_FILE_PATTERNS: ReadonlyArray<DesignFilePattern> = [
     wildcardHint: { en: 'tokens, assets, or spec', ko: 'tokens, assets, 또는 spec' },
   },
   {
+    // B5/§3.5.2/T7 — accept BOTH canonical (`architecture/spec/{slug}.md`)
+    // and legacy (`spec-{slug}.md`) naming. The empty prefix lets any
+    // `.md` filename in `architecture/spec/` pass, while the `.md`
+    // extension check via `matchesExt` keeps wrong-extension files (e.g.
+    // `notes.txt`) invalid. Adjacent `dir: 'gameArt'` entry intentionally
+    // retains its strict `game-art-` prefix — do NOT generalize that one.
     dir: 'spec',
-    prefixes: ['spec-'],
+    prefixes: ['', 'spec-'],
     ext: '.md',
     description: { en: 'Feature spec document', ko: '기능 스펙 문서' },
     wildcardHint: { en: 'feature slug (e.g. social-login)', ko: '기능 슬러그 (예: social-login)' },

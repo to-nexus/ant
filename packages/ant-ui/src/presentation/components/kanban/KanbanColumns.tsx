@@ -7,12 +7,6 @@ import { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { PopAppear, useAutoScrollOnGrowth } from '../common/motion';
-import {
-  SparkleOrbits,
-  GlowHalo,
-  ShimmerSweepOverlay,
-  CompletedCheckChip,
-} from './TaskCardEffects';
 import { KanbanColumnShell, COLUMN_TOKENS } from './KanbanColumnShell';
 
 /**
@@ -249,36 +243,13 @@ export function KanbanColumns({
                   }}
                   className="min-w-0"
                 >
-                  {isNewlyCompleted ? (
-                    <div className="relative">
-                      <GlowHalo rounded="rounded-lg" accent={COLUMN_TOKENS.completed} />
-                      <ShimmerSweepOverlay
-                        variant="completed-slow"
-                        rounded="rounded-lg"
-                        accent={COLUMN_TOKENS.completed}
-                      />
-                      <SparkleOrbits rounded="rounded-lg" />
-                      <div className="relative z-10 flex items-start gap-1">
-                        <CompletedCheckChip />
-                        <div className="flex-1 min-w-0">
-                          <TaskCard
-                            task={task}
-                            status="completed"
-                            columnColor={COLUMN_TOKENS.completed.color}
-                            columnGradient={COLUMN_TOKENS.completed.gradient}
-                            justCompleted
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <TaskCard
-                      task={task}
-                      status="completed"
-                      columnColor={COLUMN_TOKENS.completed.color}
-                      columnGradient={COLUMN_TOKENS.completed.gradient}
-                    />
-                  )}
+                  <TaskCard
+                    task={task}
+                    status="completed"
+                    columnColor={COLUMN_TOKENS.completed.color}
+                    columnGradient={COLUMN_TOKENS.completed.gradient}
+                    justCompleted={isNewlyCompleted}
+                  />
                 </motion.div>
               );
             })}

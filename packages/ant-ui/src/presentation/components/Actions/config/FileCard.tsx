@@ -53,20 +53,30 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
       : emptyGrayStyle
     : undefined;
 
-  const borderClass = isEmpty
-    ? ''
+  // §T5: selected/locked는 동일 시각이므로 한 스타일 객체를 공유.
+  // 비-empty 분기는 인라인 style의 1px solid가 보더를 그리므로
+  // Tailwind `border` 유틸을 켜지 않는다 (더블 보더 방지).
+  const selectedLockedStyle: React.CSSProperties = {
+    background: 'var(--status-done-bg)',
+    border: '1px solid var(--status-done-fg)',
+  };
+  const inactiveStyle: React.CSSProperties = {
+    background: 'oklch(from var(--bg-canvas) l c h / 0.5)',
+    border: '1px solid var(--border-1)',
+    opacity: 0.6,
+  };
+  const stateStyle: React.CSSProperties | undefined = isEmpty
+    ? undefined
     : hasWarnings || isDisabled
-      ? 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60'
-      : locked
-        ? 'bg-emerald-50 border-emerald-200'
-        : selected
-          ? 'bg-emerald-50 border-emerald-200'
-          : 'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)] opacity-60';
+      ? inactiveStyle
+      : (locked || selected)
+        ? selectedLockedStyle
+        : inactiveStyle;
 
-  // For empty branches the wrapper applies its own border via inline-style
-  // (dashed) — skip the Tailwind `border` utility so it doesn't paint a
-  // solid 1px line under the dashed inline border.
-  const borderUtil = isEmpty ? '' : 'border';
+  // empty 분기는 dashed inline border를 wrapperStyle이 직접 그리고,
+  // 비-empty 분기는 stateStyle이 1px solid를 직접 그린다 → 두 경우 모두 Tailwind 보더 OFF.
+  const borderUtil = isEmpty ? '' : '';
+  const borderClass = '';
 
   const nameClass = isEmpty && isAmber
     ? 'text-sm truncate block font-medium'
@@ -79,7 +89,7 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
   return (
     <div
       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${borderUtil} ${borderClass}`}
-      style={wrapperStyle}
+      style={wrapperStyle ?? stateStyle}
     >
       <button
         type="button"
@@ -90,14 +100,14 @@ export function FileCard({ name, path, warnings, description, icon, selected, lo
         <span className="shrink-0">
           {icon ?? (
             isEmpty
-              ? <Circle className={`w-4 h-4 ${isAmber ? 'text-amber-400' : 'text-gray-400'}`} />
+              ? <Circle className="w-4 h-4" style={{ color: isAmber ? 'var(--amber-500)' : 'var(--text-4)' }} />
               : hasWarnings
-                ? <Circle className="w-4 h-4 text-gray-300" />
+                ? <Circle className="w-4 h-4" style={{ color: 'var(--text-4)' }} />
                 : locked
-                  ? <Lock className="w-4 h-4 text-emerald-500" />
+                  ? <Lock className="w-4 h-4" style={{ color: 'var(--status-done-fg)' }} />
                   : selected
-                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    : <Circle className="w-4 h-4 text-gray-400" />
+                    ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--status-done-fg)' }} />
+                    : <Circle className="w-4 h-4" style={{ color: 'var(--text-4)' }} />
           )}
         </span>
         <span className="min-w-0 text-left">

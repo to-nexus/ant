@@ -362,6 +362,24 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const _gameArtTierEnabled = isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime);
   const _gameContentTierEnabled = isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime);
 
+  // Defensive normalization of `state.resolvedAction.documents` entries so
+  // any `action-context` partial render reached via this entry point (sub-
+  // render, cache warming) finds `{label, path, content}` populated and
+  // does not trip the FilePromptAdapter `missingVars` validator. The
+  // `AutoInjectionResolver` performs the same normalization, but the two
+  // entry points can run independently, so we mirror it here. We only
+  // touch the `documents` array — `resolvedAction` itself is not replaced.
+  const _racDocs = (state.resolvedAction as { documents?: Array<Record<string, unknown>> } | undefined)?.documents;
+  if (Array.isArray(_racDocs)) {
+    for (const entry of _racDocs) {
+      if (entry && typeof entry === 'object') {
+        if (entry.label === undefined || entry.label === null) entry.label = '';
+        if (entry.path === undefined || entry.path === null) entry.path = '';
+        if (entry.content === undefined || entry.content === null) entry.content = '';
+      }
+    }
+  }
+
   const enrichedVars = {
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
@@ -371,7 +389,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // Drives the gate that lets `<tasks>` JSON values (`name`, `description`)
     // come out in the user's language instead of being silently overridden
     // to English by the legacy directive in `jobs/code/base/system.md`.
-    userLanguage: state.context?.userLanguage || 'en',
+    //
+    // `??` (not `||`) so an explicitly-set empty string would still fall
+    // through to the 'en' fallback only when truly nullish. `state.context`
+    // is optional-chained because some entry points (cache warming,
+    // partial sub-renders) may invoke decompose-derived variable builds
+    // before `context` is initialized.
+    userLanguage: state.context?.userLanguage ?? 'en',
     // Codebase Channel SSOT — surface workspace state to the codebase-channel
     // partial (PromptBuilder.render auto-derives codebaseRole from this).
     workspaceState: state.workspaceState,

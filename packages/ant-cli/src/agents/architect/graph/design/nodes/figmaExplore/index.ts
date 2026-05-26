@@ -44,6 +44,24 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     };
   }
 
+  // Workflow instrumentation: signal phase start to broadcaster so this node
+  // appears in the workflow UI active state. The matching exitNode is invoked
+  // in the finally block at the bottom of this function so all early-return
+  // paths (adapter init fail, parse_url, metadata_error, rate_limit,
+  // soft_error, no usable data, success) emit a single exitNode automatically.
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId,
+      'figmaExplore',
+      0,
+      undefined,
+      undefined,
+      state.recursionCount,
+      state.recursionLimit,
+    );
+  }
+
+  try {
   // Diagnostic collector for figma-exploration-debug.json
   const debugInfo: {
     jobId?: string;
@@ -330,6 +348,11 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     figmaExplorationResult: result,
     _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
   };
+  } finally {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'figmaExplore', 0);
+    }
+  }
 }
 
 async function saveDebugFile(state: DesignGraphState, debugInfo: any): Promise<void> {

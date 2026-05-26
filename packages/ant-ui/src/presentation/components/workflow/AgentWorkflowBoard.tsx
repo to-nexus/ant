@@ -1,14 +1,13 @@
-import { useTranslation } from 'react-i18next';
 import { BoardContainer } from '../BoardContainer';
-import { StatusChip } from '../StatusChip';
+import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from '../kanban/KanbanHeader';
 import { useStore } from '@/domain/store';
-import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
-import { capitalize } from '@/shared/utils/text-utils';
+import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowVisualization } from './WorkflowVisualization';
 
 interface AgentWorkflowBoardProps {
   workflowState: WorkflowRealtimeState | null;  // ✅ App에서 전달받음 (job 단위 SSE)
+  kanbanData: KanbanData;
 }
 
 /**
@@ -19,37 +18,55 @@ interface AgentWorkflowBoardProps {
  * - Node states and transitions
  * - Real-time progress
  */
-export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
-  const { t } = useTranslation('kanban');
-  const selectedAgent = useStore((state) => state.selectedAgent);
-  const selectedJobType = useStore((state) => state.selectedJobType);
-  
-  // ✅ UI Policy 시스템 사용
-  const policy = useUIActionPolicy();
+export function AgentWorkflowBoard({ workflowState, kanbanData }: AgentWorkflowBoardProps) {
+  const systemRecursionLimit = useStore((state) => state.recursionLimit);
+
+  // Recursion 게이지 SSOT: state.kanban 슬라이스(이미 kanbanData prop으로 전달됨).
+  // KanbanBoard 와 동일한 단일 writer(updateKanbanRecursion) 출력을 읽어 두 뷰가
+  // byte-identical 한 값을 표시하도록 보장한다. workflowState 기반 derive 금지.
 
   return (
     <BoardContainer
+      className="workflow-board"
       titleActions={
-        <div className="flex items-center gap-2">
-          {/* Always show selected agent */}
-          <StatusChip 
-            variant="info" 
-            label={t('workflow.agent', { name: capitalize(selectedAgent) })}
-            hideDot
+        <>
+          <ElapsedTimeBadge
+            jobTiming={kanbanData.jobTiming}
+            completedTasks={kanbanData.completed?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              timing: task.timing,
+            }))}
+            inProgressTasks={kanbanData.inProgress?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              timing: task.timing,
+            })) || []}
           />
-          {/* Always show selected work type (job) */}
-          <StatusChip 
-            variant="success" 
-            label={t('workflow.job', { name: capitalize(selectedJobType) })}
-            hideDot
+          <TokenUsageBadge
+            jobId={kanbanData.jobId}
+            tokenUsage={kanbanData.tokenUsage}
+            estimatingTokenUsage={kanbanData.estimatingTokenUsage}
+            phaseTokenUsages={kanbanData.phaseTokenUsages}
+            completedTasks={kanbanData.completed?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              tokenUsage: task.tokenUsage,
+            }))}
+            inProgressTasks={kanbanData.inProgress?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              tokenUsage: task.tokenUsage,
+            })) || []}
           />
-          {/* Show Status (Running / Idle) - dot 표시 필요 */}
-          {/* ✅ UI Policy 준수 */}
-          <StatusChip 
-            variant={policy.isRunning ? "live" : "session"} 
-            label={policy.isRunning ? t('workflow.running') : t('workflow.idle')}
-          />
-        </div>
+        </>
+      }
+      headerActions={
+        <GaugesGroup
+          recursionCount={kanbanData.recursionCount}
+          recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
+          recursionTaskName={kanbanData.recursionTaskName}
+        />
       }
     >
       <WorkflowVisualization workflowState={workflowState} />

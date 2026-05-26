@@ -33,18 +33,19 @@ export function BoardContainer({
   children,
   className = ''
 }: BoardContainerProps) {
-  // Kanban 보드 인스턴스는 outline-only frame 시각 언어를 따른다 —
+  // Kanban 및 workflow 보드 인스턴스는 outline-only frame 시각 언어를 따른다 —
   // 헤더와 컨텐츠 영역 배경을 투명 처리하여 페이지 전역 aurora mesh가
-  // 컬럼 사이로 비치게 한다. 워크플로우 보드 등 다른 사용처는 기존
-  // surface 배경을 그대로 유지한다.
+  // 컬럼/노드 사이로 비치게 한다. 그 외 사용처는 기존 surface 배경을
+  // 그대로 유지한다.
   const isKanbanBoard = className.includes('kanban-board');
+  const isWorkflowBoard = className.includes('workflow-board');
   return (
     <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {/* Compact Sticky Header - pinned at top when scrolling */}
       <div
         className="sticky top-0 z-10 shrink-0 px-4 py-2"
         style={{
-          background: isKanbanBoard ? 'transparent' : 'var(--bg-surface)',
+          background: isKanbanBoard || isWorkflowBoard ? 'transparent' : 'var(--bg-surface)',
           borderBottom: '1px solid var(--border-1)',
         }}
       >
@@ -79,7 +80,7 @@ export function BoardContainer({
             ? 'overflow-y-auto scrollbar-hide'
             : ''
         }`}
-        style={{ background: isKanbanBoard ? 'transparent' : 'var(--bg-surface)' }}
+        style={{ background: isKanbanBoard || isWorkflowBoard ? 'transparent' : 'var(--bg-surface)' }}
       >
         {children}
       </div>
