@@ -21,7 +21,7 @@ import { ActionChipGrid } from '../Actions';
 import { useStore } from '@/domain/store';
 import { selectFileStats } from '@/domain/store/selectors/chat';
 import type { IntentGroup } from '@ant/shared';
-import { Zap, ChevronRight } from 'lucide-react';
+import { Zap, ChevronRight, ChevronLeft } from 'lucide-react';
 
 interface ChatPanelProps {
   projectId: string | null;
@@ -283,12 +283,20 @@ function ChatActionCards() {
   // the visible action set (filtering is now permanent to current agent).
   const selectedAgent = useStore(s => s.selectedAgent);
 
+  // 'Show all actions' toggle — when true, ActionChipGrid sees no agent
+  // filter and exposes intent groups across every agent. The toggle is the
+  // empty-state entry point into the broader action catalog; the dedicated
+  // ActionsCTA only renders after turnCount > 0 and cannot serve here.
+  const [showAll, setShowAll] = useState<boolean>(false);
+
   const handleSelect = (actionId: IntentGroup) => {
     openActionsPanel(actionId);
   };
 
   const BASE = import.meta.env.BASE_URL;
-  const agentWatermark = selectedAgent
+  // Hide agent watermark in 'show all' mode — the view is no longer scoped
+  // to the current agent, so the agent-themed art would mislead.
+  const agentWatermark = selectedAgent && !showAll
     ? `${BASE}watermarks/${selectedAgent}-color.png`
     : undefined;
 
@@ -302,7 +310,7 @@ function ChatActionCards() {
         maxWidth: '28rem',
       }}
     >
-      {/* Agent character watermark — always shown when an agent is selected. */}
+      {/* Agent character watermark — shown only in agent-scoped mode. */}
       {agentWatermark && (
         <img
           src={agentWatermark}
@@ -312,21 +320,83 @@ function ChatActionCards() {
         />
       )}
 
-      <h2
-        className="text-lg font-semibold mb-5"
-        style={{ color: 'var(--text-1)', flexShrink: 0 }}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          marginBottom: '1.25rem',
+          flexShrink: 0,
+          position: 'relative',
+          width: '100%',
+        }}
       >
-        {t('title')}
-      </h2>
+        {showAll && (
+          <button
+            type="button"
+            onClick={() => setShowAll(false)}
+            aria-label={t('back') as string}
+            className="flex items-center justify-center"
+            style={{
+              position: 'absolute',
+              left: 0,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-2)',
+              padding: '0.25rem',
+              borderRadius: 'var(--r-sm)',
+            }}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
+        <h2
+          className="text-lg font-semibold"
+          style={{ color: 'var(--text-1)' }}
+        >
+          {t('title')}
+        </h2>
+      </div>
 
       <div style={{ width: '100%', flexShrink: 0 }}>
         <ActionChipGrid
           readiness={readiness}
           variant="compact"
           onSelect={handleSelect}
-          agentFilter={selectedAgent || undefined}
+          agentFilter={showAll ? undefined : (selectedAgent || undefined)}
         />
       </div>
+
+      {!showAll && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            width: '100%',
+            flexShrink: 0,
+            marginTop: '1rem',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="text-xs flex items-center gap-1"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-3)',
+              padding: '0.25rem 0.5rem',
+              borderRadius: 'var(--r-sm)',
+            }}
+          >
+            <span>{t('showAll')}</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
