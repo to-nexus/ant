@@ -32,3 +32,5 @@ export type { SymbolLocation } from "./ASTAnalyzer";
 export {
   CodebaseCache
 } from "./CodebaseCache";
+
+export { detectCodebasePresence } from "./detectCodebasePresence";
