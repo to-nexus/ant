@@ -33,15 +33,15 @@ export interface VisualDef {
 // hue consistent with ACTION_GRADIENTS (purple→violet, rose→pink, cyan/blue
 // keep their names since the token palette exposes them).
 export const ACTION_VISUALS: Record<IntentGroup, VisualDef> = {
-  plan:              { icon: FileText,           bg: 'bg-[color:var(--blue-50)]',    text: 'text-[color:var(--blue-600)]' },
-  'design-system':   { icon: Server,             bg: 'bg-[color:var(--violet-50)]',  text: 'text-[color:var(--violet-600)]' },
-  'design-ui':       { icon: Palette,            bg: 'bg-[color:var(--pink-50)]',    text: 'text-[color:var(--pink-600)]' },
-  'design-game-art': { icon: Brush,              bg: 'bg-[color:var(--amber-50)]',   text: 'text-[color:var(--amber-600)]' },
-  'design-spec':     { icon: LayoutList,         bg: 'bg-[color:var(--pink-50)]',    text: 'text-[color:var(--pink-600)]' },
-  code:              { icon: Code2,              bg: 'bg-[color:var(--emerald-50)]', text: 'text-[color:var(--emerald-600)]' },
-  visual:            { icon: ImageIcon,          bg: 'bg-[color:var(--violet-50)]',  text: 'text-[color:var(--violet-600)]' },
-  'learn-codebase':  { icon: BookOpen,           bg: 'bg-[color:var(--amber-50)]',   text: 'text-[color:var(--amber-600)]' },
-  ask:               { icon: MessageCircleQuestion, bg: 'bg-[color:var(--cyan-50)]', text: 'text-[color:var(--cyan-600)]' },
+  plan:              { icon: FileText,           bg: 'bg-[color:var(--intent-blue-bg)]',    text: 'text-[color:var(--intent-blue-fg)]' },
+  'design-system':   { icon: Server,             bg: 'bg-[color:var(--intent-violet-bg)]',  text: 'text-[color:var(--intent-violet-fg)]' },
+  'design-ui':       { icon: Palette,            bg: 'bg-[color:var(--intent-pink-bg)]',    text: 'text-[color:var(--intent-pink-fg)]' },
+  'design-game-art': { icon: Brush,              bg: 'bg-[color:var(--intent-amber-bg)]',   text: 'text-[color:var(--intent-amber-fg)]' },
+  'design-spec':     { icon: LayoutList,         bg: 'bg-[color:var(--intent-pink-bg)]',    text: 'text-[color:var(--intent-pink-fg)]' },
+  code:              { icon: Code2,              bg: 'bg-[color:var(--intent-emerald-bg)]', text: 'text-[color:var(--intent-emerald-fg)]' },
+  visual:            { icon: ImageIcon,          bg: 'bg-[color:var(--intent-violet-bg)]',  text: 'text-[color:var(--intent-violet-fg)]' },
+  'learn-codebase':  { icon: BookOpen,           bg: 'bg-[color:var(--intent-amber-bg)]',   text: 'text-[color:var(--intent-amber-fg)]' },
+  ask:               { icon: MessageCircleQuestion, bg: 'bg-[color:var(--intent-cyan-bg)]', text: 'text-[color:var(--intent-cyan-fg)]' },
 };
 
 // ============================================
