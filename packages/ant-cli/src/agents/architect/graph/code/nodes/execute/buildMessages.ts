@@ -21,6 +21,7 @@ import type { CodeTask } from "../../../../types/task";
 import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
+import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { formatViolations } from "../../utils/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -30,7 +31,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { detectImageMimeFromBuffer, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
-import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
+import { effectiveTechTier, getTechTier, getRACDocuments, getModelContextWindow, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
 import {
@@ -704,10 +705,55 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Compose messages via MessageComposer
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //
+  // History budget keyed to the REAL model window (dim-beating-brass RCA).
+  // The 50K/75K defaults evicted already-read file content mid-task and
+  // forced the model to re-read the same files until it burned the recursion
+  // budget. Size the conversation-history area to a large share of the active
+  // window and trip compaction only near that share, so reads stay resident.
+  // `getModelContextWindow` returns the real ceiling once the model is on a
+  // larger window (e.g. Opus 1M); today it tracks whatever the architect
+  // model actually exposes (falling back to 200K).
+  const execModelId = state.deps?.llm ? extractLLMInfo(state.deps.llm).model : undefined;
+  // getModelContextWindow throws on unknown/undefined modelId — never let a
+  // model-table gap break message composition; fall back to the legacy 200K.
+  let execWindowTokens = 200_000;
+  try {
+    if (execModelId) execWindowTokens = getModelContextWindow(execModelId);
+  } catch {
+    execWindowTokens = 200_000;
+  }
+  // Reserve room for system/project/task blocks + output/overhead; give the
+  // rest to history. Floored at the legacy 75K so we never regress below it.
+  const HISTORY_RESERVED_TOKENS = 105_000; // 30K+30K+25K area blocks + ~20K output/overhead margin
+  const execHistoryBudget = Math.max(
+    75_000,
+    Math.min(Math.floor(execWindowTokens * 0.7), execWindowTokens - HISTORY_RESERVED_TOKENS),
+  );
+  const execTokenManager = new TokenBudgetManager({
+    // Pass the already-resolved maxTokens (short-circuits the constructor's
+    // own getModelContextWindow call, which throws on unknown models);
+    // modelId is kept for config provenance only.
+    maxTokens: execWindowTokens,
+    ...(execModelId ? { modelId: execModelId } : {}),
+    areaBudgets: {
+      systemPrompt: 30_000,
+      projectContext: 30_000,
+      taskContext: 25_000,
+      conversationHistory: execHistoryBudget,
+    },
+  });
   const { messages } = composeMessages({
     initialBlocks: blocks,
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     cleanAssistantContent: cleanFileContentFromResponse,
+    tokenManager: execTokenManager,
+    // Standard-stage compaction trips only near the history budget (not 50K),
+    // and keeps a deeper hot tail so recent reads survive intact.
+    compactParams: {
+      autoCompactThreshold: Math.floor(execHistoryBudget * 0.9),
+      autoCompactHotTail: 8,
+    },
     budgetRecovery: {
       aggressiveParams: { autoCompactThreshold: 20000, autoCompactHotTail: 1 },
       stubBlockIndex: 1,

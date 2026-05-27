@@ -96,6 +96,14 @@ export class TurnPruner {
     const content = JSON.stringify(turn);
     const lowerContent = content.toLowerCase();
 
+    // The auto-compaction summary carries forward the preserved (deduplicated,
+    // staleness-safe) contents of files already read. It must survive pruning —
+    // dropping it loses that context and re-triggers the read-thrash loop
+    // (dim-beating-brass RCA). Dominates the large-turn penalty below.
+    if (lowerContent.includes('[auto-compacted:')) {
+      priority += 1000;
+    }
+
     if (this.config.prioritizeErrors) {
       if (lowerContent.includes('error') ||
           lowerContent.includes('failed') ||
