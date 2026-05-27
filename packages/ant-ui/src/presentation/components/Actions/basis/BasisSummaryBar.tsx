@@ -327,9 +327,15 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
     ...(actionMetadata.context ?? []),
   ]);
   const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis, hasUiDoc, actionMetadata.domain);
-  const hasAnyBadge = rows.some(r => r.badges.some(b => !b.isAuto));
 
-  if (mode === 'default' && !hasAnyBadge && !draftBasis) {
+  // Empty-rows fallback — when every tier is closed by the matrix or
+  // runtime suppressors there is nothing to enumerate as a row, so we
+  // surface a single dashed CTA that still hands the user into the
+  // wizard (manual override entry). When at least one tier row exists,
+  // render it as-is — its per-layer "Auto" badges and per-row edit
+  // pencil already convey the unset state without collapsing the
+  // whole bar into one anonymous button.
+  if (mode === 'default' && rows.length === 0) {
     return (
       <button
         type="button"

@@ -8,7 +8,8 @@
  *  - todo    (isActive=false, not yet visited) → opacity 0.45
  *  - done    (visited && !isActive)            → opacity 0.9
  *
- * Worker chip stack is gated on plan/execute phase nodes only.
+ * Worker chip stack is gated on the parallel worker-subgraph phase nodes
+ * (plan / execute / docGen / tool / checkTaskStatus / learn).
  */
 
 import { memo } from 'react';
@@ -38,10 +39,22 @@ interface WorkflowNodeProps {
   data: NodeData;
 }
 
-// Worker chips are only meaningful for plan / execute phase nodes.
+// Worker chips follow a parallel worker through its subgraph phases, so the chip
+// stays visible as the worker moves plan → tool ↔ execute/docGen → checkTaskStatus → learn.
+// Matched on the RAW node id (see useGraphLayout `data.id`), NOT the formatted label,
+// so camelCase ids like 'docGen' / 'checkTaskStatus' normalize cleanly (no inserted spaces).
+// Orchestration nodes (detect/resolve/triage/decompose/revise/…) are intentionally excluded.
+const WORKER_CHIP_PHASES = new Set([
+  'plan',
+  'execute',         // code job work phase
+  'docgen',          // design job work phase (rendered label is "Doc Gen")
+  'tool',
+  'checktaskstatus',
+  'learn',
+]);
+
 function isWorkerChipPhase(identifier: string | undefined): boolean {
-  const normalized = (identifier ?? '').toLowerCase().trim();
-  return normalized === 'plan' || normalized === 'execute';
+  return WORKER_CHIP_PHASES.has((identifier ?? '').toLowerCase().trim());
 }
 
 // 노드 크기
@@ -309,7 +322,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
         </div>
       </div>
 
-      {/* Worker chip stack — plan/execute phases only, taskName only */}
+      {/* Worker chip stack — worker-subgraph phases only, taskName only */}
       {showWorkerChips && (
         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full flex flex-col items-center gap-0.5">
           {data.workers!.map((w) => (

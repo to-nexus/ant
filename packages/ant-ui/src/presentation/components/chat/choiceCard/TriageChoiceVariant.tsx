@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { INTENT_DEFINITIONS, getIntentLabel, type Domain } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { submitTriageChoice, TriageChoiceAction } from '@/infrastructure/http/api';
@@ -14,6 +16,7 @@ interface TriageChoiceOptions {
 export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
   const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
+  const { i18n } = useTranslation();
   const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
 
   const state = useChoiceCardState({ presented, resolved });
@@ -24,6 +27,23 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
   if (!options) return null;
 
   const hasNeutral = !!options.neutral;
+
+  // Suggested-intent subtitle — surfaces WHICH intent the card switches to
+  // (not just the target agent/job in the title). The intent id rides on the
+  // ChoiceEnvelope carried in the card payload (`switchIntentId`); resolve a
+  // localized label via the matrix SSOT, same as ActionMetadataBadges.
+  const envelope = (payload.triageResult ?? {}) as { switchIntentId?: string; domain?: Domain };
+  const suggestedIntentId = envelope.switchIntentId;
+  const lang = i18n.language?.startsWith('ko') ? 'ko' : 'en';
+  const intentDef = suggestedIntentId
+    ? INTENT_DEFINITIONS.find(d => d.id === suggestedIntentId)
+    : undefined;
+  const intentLabel = intentDef ? getIntentLabel(intentDef, envelope.domain, lang) : suggestedIntentId;
+  const subtitle = suggestedIntentId
+    ? (lang === 'ko'
+        ? `제안 인텐트: ${intentLabel} (${suggestedIntentId})`
+        : `Suggested intent: ${intentLabel} (${suggestedIntentId})`)
+    : undefined;
 
   const handlePositive = async () => {
     if (!state.selectedProject || !state.selectedFeature || !cardId || state.isSelected) return;
@@ -47,7 +67,12 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
         if (response.suggestedAgent) {
           useStore.getState().setSelectedAgent(response.suggestedAgent);
         }
-        await runJob(targetAgent, response.suggestedJob, response.directive, { skipTriage: true });
+        // Carry the exact resolved intent so the target job runs it directly
+        // (explicit metadata) instead of re-inferring and possibly drifting.
+        await runJob(targetAgent, response.suggestedJob, response.directive, {
+          skipTriage: true,
+          actionMetadata: response.switchIntentId ? { intent: response.switchIntentId as any } : undefined,
+        });
         setSelectedJobType(response.suggestedJob as any);
       }
 
@@ -139,6 +164,7 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
       theme="blue"
       icon={<span className="text-sm">🔀</span>}
       title={presented.prompt || 'Choice required'}
+      subtitle={subtitle}
       isSelected={state.isSelected}
       resolvedLabel={displayResolvedLabel || null}
       resolvedIcon={state.selectedChoice === options.negative.action ? 'dismiss' : null}

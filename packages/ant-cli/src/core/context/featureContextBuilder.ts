@@ -45,6 +45,12 @@ import type { ExecutionTier } from '../executionTier/types';
  */
 export type MergedUserTurn = FeatureUserTurnLine & {
   executionTier?: FeatureUserTurnMetaLine['executionTier'];
+  /**
+   * Triage 가 user_turn_meta 로 적재한 intent/mode/domain. 다음 turn 의
+   * Triage 가 `featureContext.userTurns[-1].actionMetadata.intent` 로
+   * 직전 intent 를 보고 후속 발화 (rev-* / continuation) 추론에 사용.
+   */
+  actionMetadata?: FeatureUserTurnMetaLine['actionMetadata'];
 };
 
 export interface FeatureContext {
@@ -85,16 +91,24 @@ export function mergeFeatureContext(
   // explicit window override; ignored when undefined or negative.
   options?: { breadcrumbWindow?: number },
 ): FeatureContext {
+  // Partial-merge by turnId: Triage emits a meta line with `actionMetadata`
+  // and Decompose later emits another with `executionTier`. Same-turnId
+  // patches accumulate non-destructively so a Triage retry that re-emits
+  // intent does not clobber a previously-recorded executionTier.
   const metaByTurn = new Map<
     string,
-    Pick<FeatureUserTurnMetaLine, 'executionTier'>
+    Pick<FeatureUserTurnMetaLine, 'executionTier' | 'actionMetadata'>
   >();
   for (const meta of input.userTurnMetas) {
     // Defensive: ignore collapsed meta patches — adapter already filters but
     // legacy entries may slip through.
     if ((meta as { collapsed?: true }).collapsed) continue;
+    const prev = metaByTurn.get(meta.turnId);
     metaByTurn.set(meta.turnId, {
-      executionTier: meta.executionTier,
+      executionTier: meta.executionTier ?? prev?.executionTier,
+      actionMetadata: meta.actionMetadata
+        ? { ...prev?.actionMetadata, ...meta.actionMetadata }
+        : prev?.actionMetadata,
     });
   }
 
@@ -332,6 +346,13 @@ export interface HydrateFeatureContextInput {
    * `core/executionTier/`.
    */
   executionTier?: ExecutionTier;
+  /**
+   * When `true`, skip the `compactFeatureContext` safety-net entirely. Used
+   * by Triage's per-turn re-hydrate so multi-turn jobs don't trigger
+   * repeated LLM compaction (cost). Compaction is guaranteed once at job
+   * entry (the job's resolve node calls hydrate without `skipCompaction`).
+   */
+  skipCompaction?: boolean;
 }
 
 export interface HydrateFeatureContextResult {
@@ -371,7 +392,7 @@ export async function hydrateFeatureContext(
       `📚 [${logPrefix}] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
     );
 
-    if (deps.llm && deps.promptPort) {
+    if (deps.llm && deps.promptPort && !input.skipCompaction) {
       const before = featureContext.userTurns.length;
       // Tier facade is the preferred path (post 5-tier refactor). Fallback
       // to the direct helper preserves behavior for callers that have not
@@ -393,6 +414,8 @@ export async function hydrateFeatureContext(
           `🗜️  [${logPrefix}] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
         );
       }
+    } else if (input.skipCompaction) {
+      console.log(`⏭️  [${logPrefix}] featureContext compaction skipped (skipCompaction=true)`);
     }
   }
 

@@ -19,7 +19,8 @@ import type { Basis, ResolvedActionContext } from '@ant/shared';
 import { coerceExecutionTier } from '../executionTier';
 import { EXECUTION_TIER_LABELS } from '../executionTier/labels';
 import { getCompletionMessage, type UserLanguage } from '../utils/languageDetector';
-import { formatRACForChat, type RACFormatPhase } from '../types/detection';
+import { formatRACForChat, type RACFormatPhase, type DetectPathsCompressedView } from '../types/detection';
+import type { PathOrFolder } from '@ant/shared';
 import type { TransformContext, TransformResult } from './OutputTagRegistry';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -202,6 +203,38 @@ function formatReferences(references: any[], language: UserLanguage): string {
  * partial fields. Missing fields are rendered as omitted sections by
  * `formatRACForChat`.
  */
+/**
+ * Defensive parser for `payload.pathsCompressed` — the chat <detect>
+ * payload is JSON-from-LLM-or-BE so every field is `unknown` until proven
+ * shape-valid. Drops unknown variants silently; missing slots default to
+ * undefined so `formatRACForChat` can fall back to `rac.target/refs/context`.
+ */
+function normalizePathsCompressed(
+  raw: unknown,
+): DetectPathsCompressedView | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const out: DetectPathsCompressedView = {};
+  for (const role of ['target', 'refs', 'context'] as const) {
+    const slot = obj[role];
+    if (!Array.isArray(slot)) continue;
+    const entries: PathOrFolder[] = [];
+    for (const entry of slot) {
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      if (typeof e.path !== 'string') continue;
+      if (e.kind === 'folder' && typeof e.fileCount === 'number') {
+        entries.push({ kind: 'folder', path: e.path, fileCount: e.fileCount });
+      } else if (e.kind === 'file' || e.kind === undefined) {
+        entries.push({ kind: 'file', path: e.path });
+      }
+    }
+    if (entries.length) out[role] = entries;
+  }
+  if (!out.target && !out.refs && !out.context) return undefined;
+  return out;
+}
+
 export function transformDetect(
   match: RegExpMatchArray,
   ctx: TransformContext,
@@ -247,6 +280,8 @@ export function transformDetect(
       intent: parsed.intentId,
       domain: parsed.domain,
       target: Array.isArray(parsed.target) ? parsed.target : undefined,
+      refs: Array.isArray(parsed.refs) ? parsed.refs : undefined,
+      context: Array.isArray(parsed.context) ? parsed.context : undefined,
       basis,
       source,
       hasExplicitFields: source === 'explicit',
@@ -274,7 +309,8 @@ export function transformDetect(
 
     const phase: RACFormatPhase =
       parsed.phase === 'decompose-final' ? 'decompose-final' : 'detect';
-    const formatted = formatRACForChat(rac, reasoning, ctx.language, phase);
+    const pathsCompressed = normalizePathsCompressed(parsed.pathsCompressed);
+    const formatted = formatRACForChat(rac, reasoning, ctx.language, phase, pathsCompressed);
 
     const tierLine = buildExecutionTierLine(parsed.executionTier, ctx.language);
 
