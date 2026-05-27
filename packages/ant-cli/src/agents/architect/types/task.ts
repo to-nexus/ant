@@ -111,16 +111,6 @@ interface CodeTaskCommon {
    */
   batchSplitCount?: number;
   /**
-   * Number of times the plan-time size gate has forced this task to
-   * re-emit an over-large flat plan as `batches[]` (see
-   * `tasks/_shared/batchSplit/sizeGate.ts`). SSOT for the
-   * `flatplan_too_large` soft-fail floor (cap =
-   * MAX_FLATPLAN_REFRAME_ATTEMPTS). Carried on the task (like
-   * `batchSplitCount`) so the budget is shared across the two finalize
-   * call sites (`nodes/plan/llm/toolLoop.ts` + `nodes/plan/index.ts`).
-   */
-  _flatPlanReframeCount?: number;
-  /**
    * Pre-built planText from diagnostic batch split. When present, plan node
    * skips diagnostic generation and uses this directly as planText.
    */
