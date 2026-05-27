@@ -40,6 +40,14 @@ Handlebars.registerHelper("lower", function (value: any) {
   return String(value).toLowerCase();
 });
 
+Handlebars.registerHelper("json", (ctx: unknown) => {
+  try {
+    return new Handlebars.SafeString(JSON.stringify(ctx ?? null));
+  } catch {
+    return new Handlebars.SafeString('null');
+  }
+});
+
 export interface PartialFailure {
   name: string;
   error: Error;

@@ -35,7 +35,7 @@ interface CallDecomposeOptions {
    *
    * Both code-job paths forward the callback:
    *   - Inline mode (no tools)         → `StreamOrchestrator.onAction`
-   *   - Tool-use mode (RAG, with tools) → `decomposeWithToolLoop.onTaskParsed`
+   *   - Tool-use mode (RAG, with tools) → `callLLMWithToolLoop.onTaskParsed`
    *
    * Errors thrown by the callback propagate — the decompose retry loop
    * resets accumulated state per attempt.
@@ -47,7 +47,7 @@ interface CallDecomposeOptions {
  * Call LLM for task decomposition (with streaming for Chat UI)
  * Uses job/node-specific model from workspaceConfig
  *
- * When tools are provided, uses multi-turn tool-use loop via decomposeWithToolLoop.
+ * When tools are provided, uses multi-turn tool-use loop via callLLMWithToolLoop.
  * Otherwise, uses single-turn streaming with XML parsing.
  */
 export async function callLLMForDecompose(
@@ -79,8 +79,8 @@ export async function callLLMForDecompose(
   // Tool-use mode: multi-turn loop via shared utility
   if (options?.tools && options.tools.length > 0 && options.toolHandler) {
     console.log(`🔧 [Decompose] Tool-use mode with ${options.tools.length} tool(s)`);
-    const { decomposeWithToolLoop } = await import('../../../design/nodes/docGen/sourceSelector');
-    const { response, usage } = await decomposeWithToolLoop(
+    const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
+    const { response, usage } = await callLLMWithToolLoop(
       llmToUse,
       messages,
       options.tools,

@@ -32,6 +32,7 @@ export interface TriageRoutingResponse {
   action?: TriageChoiceAction;
   suggestedAgent?: string;
   suggestedJob?: string;
+  switchIntentId?: string;
   directive?: string;
 }
 
@@ -65,6 +66,7 @@ export interface TriageChoiceResponse {
   action?: TriageChoiceAction;
   suggestedAgent?: string;
   suggestedJob?: string;
+  switchIntentId?: string;
   directive?: string;
 }
 

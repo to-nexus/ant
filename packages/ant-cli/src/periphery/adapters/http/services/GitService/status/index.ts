@@ -35,6 +35,7 @@ import { GitHelper } from '../helper/GitHelper';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { RemoteChecker } from '../remote/helpers/RemoteChecker';
 import { emitWorktreeValidityFailure } from '../worktree';
+import { detectCodebasePresence } from '../../../../../../core/codebase/detectCodebasePresence';
 
 /**
  * TTL for the GitHub "repo exists" probe cache (milliseconds). Keeps the
@@ -85,12 +86,18 @@ export class StatusService {
     try {
       const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
-      const hasCodebase = fs.existsSync(codebasePath);
+      // `hasCodebase` is the manifest-based SSOT (a real dependency/build
+      // manifest is present) — shared with triage's `WorkspaceState`. The raw
+      // physical facts stay local: `codebaseDirExists` guards the readdir, and
+      // `codebaseHasFiles` (any non-hidden, non-node_modules file) drives
+      // ref-entry resolution on the FE.
+      const codebaseDirExists = fs.existsSync(codebasePath);
+      const hasCodebase = detectCodebasePresence(codebasePath);
       const gitDir = path.join(codebasePath, '.git');
       const hasGit = fs.existsSync(gitDir);
 
       let codebaseHasFiles = false;
-      if (hasCodebase) {
+      if (codebaseDirExists) {
         try {
           const items = fs.readdirSync(codebasePath);
           codebaseHasFiles = items.some(name => !name.startsWith('.') && name !== 'node_modules');

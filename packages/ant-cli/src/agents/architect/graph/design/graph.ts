@@ -11,8 +11,8 @@ import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
-import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
-import { designDetectStrategy } from './nodes/detect/strategy.js';
+import { createInferDetectNode } from '../../../common/graph/nodes/detect/index.js';
+import { augmentDesignFigma } from './nodes/detect/augmentFigma.js';
 import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
@@ -770,7 +770,7 @@ export function buildDesignGraph() {
 
   graph.addNode("resolve" as const, createResolveNode(designResolveStrategy) as any);
   graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
-  graph.addNode('detect' as const, createDetectNode(designDetectStrategy) as any);
+  graph.addNode('detect' as const, createInferDetectNode(augmentDesignFigma) as any);
   graph.addNode("figmaExplore" as const, figmaExplore as any);  // ✅ Figma exploration (Phase 0)
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("revise" as const, withPhaseTracking('revise', revise) as any);  // ✅ Task queue revision (on resume with new directive)

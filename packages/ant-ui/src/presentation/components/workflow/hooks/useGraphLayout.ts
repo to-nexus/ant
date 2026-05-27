@@ -75,6 +75,7 @@ export function useGraphLayout(
         id: node.id,
         type: node.type,
         data: {
+          id: node.id,  // Raw node id (e.g. 'docGen') — phase gating of worker chips matches on this, not the formatted label
           label: node.label,
           description: node.description,
           importance: node.importance,

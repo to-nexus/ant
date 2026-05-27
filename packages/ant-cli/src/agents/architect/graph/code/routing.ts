@@ -50,6 +50,21 @@ export function routeAfterResolve(state: ArchitectGraphState): string {
   return 'triage';
 }
 
+/**
+ * Routes after detect. `state.resolvedAction` is the proceed signal:
+ * detect populates it on success and leaves it unset on blocked /
+ * redirect-suggested, where the node has already streamed displayMessage
+ * + choiceOptions to chat so the FE renders the card on __end__.
+ */
+export function routeAfterDetect(state: ArchitectGraphState): string {
+  if (state.resolvedAction) {
+    console.log('[RouteAfterDetect] resolvedAction present → decompose');
+    return 'decompose';
+  }
+  console.log('[RouteAfterDetect] no resolvedAction → __end__ (blocked / redirect / failure)');
+  return '__end__';
+}
+
 export function routeAfterDecompose(state: ArchitectGraphState): string {
   if (state.awaitingDecomposeClarify || state.specClarify) {
     const reason = state.awaitingDecomposeClarify

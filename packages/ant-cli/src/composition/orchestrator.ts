@@ -1,6 +1,8 @@
 import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
-import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
+import { runAskGraph } from "../agents/architect/graph/ask/runner";
+import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, deriveTriageGroup, validateIntentId } from "../agents/common/graph/nodes/triage";
+import type { IntentId } from "@ant/shared";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { isVectorDbEnabled } from "../core/config/vectorDbCapability";
 import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
@@ -152,7 +154,6 @@ export async function orchestrator(params: {
         let interruptedJob = 'design';
         let interruptedAgent = 'architect';
         let foundInterruptedSession = false;
-        let existingTaskSummary: string | undefined;
 
         for (const entry of getAllSessionPaths(featurePath)) {
           if (fsSync.existsSync(entry.path)) {
@@ -163,21 +164,6 @@ export async function orchestrator(params: {
                 interruptedAgent = entry.agent;
                 foundInterruptedSession = true;
                 console.log(`🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}`);
-
-                // Build task summary for continuation assessment
-                const taskQueue = data.state?.taskQueue;
-                const completedTasks = data.state?.completedTasks;
-                if (taskQueue && Array.isArray(taskQueue) && taskQueue.length > 0) {
-                  const taskLines = taskQueue.map((t: any, i: number) =>
-                    `${i + 1}. [${t.status || 'pending'}] ${t.title || t.description || t.id || 'Untitled task'}`
-                  );
-                  const completedCount = Array.isArray(completedTasks) ? completedTasks.length : 0;
-                  existingTaskSummary = `Pending tasks (${taskQueue.length}):\n${taskLines.join('\n')}`;
-                  if (completedCount > 0) {
-                    existingTaskSummary += `\n\nCompleted tasks: ${completedCount}`;
-                  }
-                  console.log(`📋 [Orchestrator:InlineAsk] Task summary: ${taskQueue.length} pending, ${completedCount} completed`);
-                }
                 break;
               }
             } catch {
@@ -219,25 +205,27 @@ export async function orchestrator(params: {
           console.warn('[Orchestrator:InlineAsk] Failed to record user_turn:', err);
         });
 
-        const result = await runInlineAsk({
-          message: overrideDirective || input,
+        // Phase D — inlined triage + ask dispatch (replaces deleted
+        // `runInlineAsk` wrapper). Two responsibilities, no coupling:
+        //   1. Classify the directive to an intent id via the matrix-driven
+        //      single-tag triage LLM call.
+        //   2. If the resulting `group === 'ask'` → run the ask graph and
+        //      return the answer. If `'work'` → return `intent='work'` so
+        //      the orchestrator caller decides newJob vs continue.
+        const message = overrideDirective || input;
+        const inlineAskResult = await runInlineAskDispatch({
+          message,
           featurePath,
           currentJob: interruptedJob,
           currentAgent: interruptedAgent,
           projectId: project,
-          deps: { llm: inlineAskLLM, memory },
-          _httpJobId: jobId,
-          existingTaskSummary,
+          llm: inlineAskLLM,
+          memory,
+          jobId,
         });
 
         return {
-          status: result.status,
-          intent: result.intent,
-          action: result.action,
-          suggestedJob: result.suggestedJob,
-          suggestedAgent: result.suggestedAgent,
-          redirectReason: result.redirectReason,
-          response: result.response,
+          ...inlineAskResult,
           noSession: !foundInterruptedSession,
         };
       }
@@ -631,5 +619,106 @@ export async function orchestrator(params: {
     default:
       throw new Error(`Unknown agent: ${agent}`);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Inline ask dispatch — Phase D replacement for `runInlineAsk`.
+//
+// SSOT split: triage classifies (single-tag intent id → derived group);
+// the ask graph runs only when `group === 'ask'`. No prereq guard, no
+// redirect choice card — that progressibility logic now lives in detect
+// (full-job flow) and is out of scope for the lightweight inline-ask
+// channel.
+// ─────────────────────────────────────────────────────────────────────
+interface InlineAskDispatchParams {
+  message: string;
+  featurePath: string;
+  currentJob: string;
+  currentAgent: string;
+  projectId?: string;
+  llm: any;
+  memory?: any;
+  jobId?: string;
+}
+
+async function runInlineAskDispatch(
+  params: InlineAskDispatchParams,
+): Promise<{
+  status: 'completed';
+  intent: 'ask' | 'work';
+  response?: string;
+}> {
+  const { message, featurePath, currentJob, currentAgent, projectId, llm, memory, jobId } = params;
+
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('💬 INLINE ASK DISPATCH');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+  await AgentRegistry.initialize();
+
+  const workspaceState = await analyzeWorkspace(featurePath, { memory, projectId });
+  // Chat input always carries a directive — surface that to the prompt.
+  workspaceState.hasMetaDirectives = true;
+  const language = AgentRegistry.detectLanguage(message);
+
+  const promptPort = new FilePromptAdapter();
+  const { system, user } = await buildTriagePrompt({
+    userInput: message,
+    currentJob,
+    currentAgent,
+    workspaceState,
+    promptPort,
+  });
+
+  const messages = [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+
+  // Match the main triage's retry policy: one re-ask before falling back.
+  const invokeOnce = async (): Promise<string> => {
+    if (llm.invokeWithUsage) {
+      const resp = await llm.invokeWithUsage(messages);
+      return resp.content;
+    }
+    return llm.invoke(messages);
+  };
+
+  let intentId = parseIntentIdTag(await invokeOnce());
+  if (!intentId) {
+    console.warn('[InlineAskDispatch] No <intentId> tag — retrying once');
+    intentId = parseIntentIdTag(await invokeOnce());
+  }
+  if (!intentId) {
+    console.warn('[InlineAskDispatch] Retry also yielded no intent — defaulting to work');
+    return { status: 'completed', intent: 'work' };
+  }
+  try {
+    validateIntentId(intentId);
+  } catch {
+    return { status: 'completed', intent: 'work' };
+  }
+  const group = deriveTriageGroup(intentId as IntentId);
+  console.log(`[InlineAskDispatch] intent=${intentId} group=${group}`);
+
+  if (group !== 'ask') {
+    return { status: 'completed', intent: 'work' };
+  }
+
+  const askResult = await runAskGraph({
+    question: message,
+    language,
+    workspaceState: { ...workspaceState, featurePath },
+    currentJob,
+    currentAgent,
+    deps: { llm },
+    _httpJobId: jobId,
+  });
+
+  return {
+    status: 'completed',
+    intent: 'ask',
+    response: askResult.response,
+  };
 }
 

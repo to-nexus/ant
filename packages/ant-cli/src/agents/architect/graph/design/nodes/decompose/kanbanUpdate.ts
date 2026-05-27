@@ -41,7 +41,7 @@ export function updateKanban(
  * so design's per-`<task>` wrappers fill the Kanban todo column one task
  * at a time during tool-use (RAG) decompose runs.
  *
- * Wire-up: pass `onTaskParsed: hook.onTaskParsed` to `decomposeWithToolLoop`.
+ * Wire-up: pass `onTaskParsed: hook.onTaskParsed` to `callLLMWithToolLoop`.
  * The tool loop runs the SSOT `XMLStreamParser` over each `event.text`
  * chunk and forwards `task_added` actions here.
  *
@@ -68,7 +68,7 @@ export interface DesignTaskStreamingHook {
  * Build a per-decompose-call streaming hook.
  *
  * Each sub-decompose (ui / system / gameArt) instantiates one hook before
- * calling `decomposeWithToolLoop`. The hook captures `state` in a closure,
+ * calling `callLLMWithToolLoop`. The hook captures `state` in a closure,
  * so all broadcasts target the same `_httpJobId` / `kanbanUpdate` surface.
  */
 export function createDesignTaskStreamingHook(

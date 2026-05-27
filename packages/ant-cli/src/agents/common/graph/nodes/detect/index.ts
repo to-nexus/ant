@@ -11,7 +11,7 @@
  * and immutable. state.resolvedArtifacts holds materialized file contents.
  */
 
-import type { DetectableState, DetectStrategy } from './types.js';
+import type { DetectableState, DetectStrategy, DetectAugment, DetectResult } from './types.js';
 import type { Basis, InferredAction, IntentId, ResolvedActionContext, Domain } from '@ant/shared';
 import {
   resolveToRAC,
@@ -19,14 +19,19 @@ import {
   isValidIntentId,
   getConfigSlots,
   getDefaultTargetPaths,
+  deriveFromIntent,
 } from '@ant/shared';
+import type { ChoiceOptions } from '../triage/types.js';
 import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 import { appendOrUpdatePool } from '../../../../../core/prompt/builder/ArtifactPipeline.js';
-import { emitDetectOutcome } from '../../../../../core/streaming/emitDetectOutcome.js';
+import { emitDetectOutcome, type DetectPathsCompressed } from '../../../../../core/streaming/emitDetectOutcome.js';
+import { compressPathsByFolder } from '../../../../../core/context/compressPathsByFolder.js';
+import type { FileSystemPort } from '../../../../../core/ports/filesystem.js';
+import { inferRacWithTools } from './inferRacWithTools.js';
 
-export { type DetectableState, type DetectStrategy, type DetectResult } from './types.js';
+export { type DetectableState, type DetectStrategy, type DetectResult, type DetectAugment } from './types.js';
 
 /**
  * Create a detect node bound to a job-specific strategy.
@@ -87,7 +92,7 @@ export function createDetectNode<T extends DetectableState>(
           ? appendOrUpdatePool((state as any).artifacts, resumeArtifacts || [])
           : undefined;
 
-        emitRACSummary(state.resolvedAction, undefined, state._uiLocale);
+        emitRACSummary(state.resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
 
         return {
           resolvedAction: state.resolvedAction,
@@ -240,7 +245,7 @@ export function createDetectNode<T extends DetectableState>(
       // Unified chat emission — explicit / infer both go through the single
       // SpecialTagTransformer entry. `reasoning` is included when present
       // (infer path); absence only omits the reasoning subsection.
-      emitRACSummary(resolvedAction, reasoning, state._uiLocale);
+      emitRACSummary(resolvedAction, reasoning, state._uiLocale, state.deps?.fileSystem);
 
       // Pool writer — single SSOT for `state.artifacts` filling. RAC-resolved
       // artifacts merge into any existing pool entries (intra-job self-output
@@ -341,11 +346,317 @@ function applyDomainDefaultsToBasis(
  * Fire-and-forget chat emission for the detect phase. Never awaited so graph
  * execution stays non-blocking; rendering failures surface via emitDetectOutcome's
  * own warn logging (no silent swallow — see AGENTS.md Canonical Tag Rendering SSOT).
+ *
+ * When `fileSystem` is provided, the helper compresses RAC slot paths
+ * (target / refs / context) into folder entries where every file in a
+ * directory was selected — produces `pathsCompressed` for the chat
+ * `<detect>` renderer. fileSystem absence (e.g. tests) degrades to the
+ * legacy un-compressed emission.
  */
 function emitRACSummary(
   rac: ResolvedActionContext,
   reasoning: InferredAction['reasoning'] | undefined,
   locale: string | undefined,
+  fileSystem: FileSystemPort | undefined,
 ): void {
-  void emitDetectOutcome(rac, { reasoning, locale, phase: 'detect' });
+  void (async () => {
+    const pathsCompressed = await buildPathsCompressed(rac, fileSystem);
+    await emitDetectOutcome(rac, { reasoning, locale, phase: 'detect', pathsCompressed });
+  })();
+}
+
+async function buildPathsCompressed(
+  rac: ResolvedActionContext,
+  fileSystem: FileSystemPort | undefined,
+): Promise<DetectPathsCompressed | undefined> {
+  if (!fileSystem) return undefined;
+  const [target, refs, context] = await Promise.all([
+    rac.target?.length ? compressPathsByFolder(rac.target, fileSystem) : Promise.resolve(undefined),
+    rac.refs?.length ? compressPathsByFolder(rac.refs, fileSystem) : Promise.resolve(undefined),
+    rac.context?.length ? compressPathsByFolder(rac.context, fileSystem) : Promise.resolve(undefined),
+  ]);
+  if (!target && !refs && !context) return undefined;
+  return { target, refs, context };
+}
+
+/**
+ * Choice options for an agent/job switch — the resolved intent belongs to a
+ * different agent/job than the one currently selected. Only switch / dismiss:
+ * "proceed here" is meaningless when the current job cannot produce this
+ * artifact, and (until the toolbar selects intents directly) there is no
+ * well-defined in-job intent to fall back to.
+ */
+function buildAgentJobSwitchChoice(): ChoiceOptions {
+  return {
+    positive: { label: '전환', action: 'redirect' },
+    negative: { label: '취소', action: 'dismiss' },
+  };
+}
+
+/**
+ * DetectResult for the agent/job-switch gate. Reuses the `redirect-suggested`
+ * surface so the existing Phase 4 card-render + `routeAfterDetect → __end__`
+ * pause path applies unchanged. The single suggested alternative is the
+ * resolved intent itself — run in its correct agent/job after the user
+ * confirms the switch.
+ */
+function buildAgentJobSwitchResult<T extends DetectableState>(
+  intentId: IntentId,
+  want: { agent: string; jobType: string },
+  state: T,
+): DetectResult<T> {
+  return {
+    status: 'redirect-suggested',
+    suggestedAlternatives: [
+      { intentId, reason: `${want.agent}/${want.jobType}에서 처리되는 작업입니다.` },
+    ],
+    choiceOptions: buildAgentJobSwitchChoice(),
+    displayMessage: `요청이 현재 ${state.currentJob} 작업 범위를 벗어납니다. ${want.agent}/${want.jobType}(으)로 전환할까요?`,
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// createInferDetectNode — Phase D SSOT (job-blind tool-use + augment hook)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Job-blind detect factory — consumes `state.triageResult.resolvedIntentId`
+ * (or `actionMetadata.intent` on the explicit path) and runs the unified
+ * tool-use RAC inference via `inferRacWithTools`. An optional `augment` hook
+ * lets jobs add post-infer state (e.g. planner-plan `executionTier`, design
+ * Figma reachability) without re-classifying intent or re-loading artifacts.
+ *
+ * Replaces the per-job `createDetectNode(strategy)` wiring for code / design
+ * / plan. Visual keeps `createDetectNode(visualDetectStrategy)` because its
+ * "detect" classifies asset type — orthogonal to the matrix slot resolution
+ * this factory implements.
+ */
+export function createInferDetectNode<T extends DetectableState>(
+  augment?: DetectAugment<T>,
+): (state: T) => Promise<Partial<T>> {
+  return async (state: T): Promise<Partial<T>> => {
+    const phaseStart = Date.now();
+
+    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+      state.deps.kanbanUpdate.setEstimatingActivity(
+        getEstimatingLabel('detect', state._uiLocale as UILocale | undefined),
+        'detect',
+      );
+    }
+
+    state.recursionCount = (state.recursionCount || 0) + 1;
+
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.enterNode(
+        state._httpJobId,
+        'detect',
+        0,
+        undefined,
+        state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
+        state.recursionCount,
+        state.recursionLimit,
+      );
+    }
+
+    try {
+      // ── Phase 0: Resume fast path (preserved escalation reuse) ──
+      if (state.resolvedAction) {
+        console.log(`🔍 [detect:infer] Resume — using existing resolvedAction (LLM skip)`);
+        const resumeFeaturePath = resolveFeaturePath(state);
+        let resumeArtifacts = state.resolvedArtifacts;
+        if ((!resumeArtifacts || resumeArtifacts.length === 0) && resumeFeaturePath) {
+          resumeArtifacts = loadResolvedArtifacts(state.resolvedAction, resumeFeaturePath);
+        }
+        const resumeUpdatedArtifacts = (state as any).artifacts
+          ? appendOrUpdatePool((state as any).artifacts, resumeArtifacts || [])
+          : undefined;
+        emitRACSummary(state.resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
+        return {
+          resolvedAction: state.resolvedAction,
+          resolvedArtifacts: resumeArtifacts,
+          ...(resumeUpdatedArtifacts !== undefined ? { artifacts: resumeUpdatedArtifacts } : {}),
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+          _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+        } as unknown as Partial<T>;
+      }
+
+      // ── Phase 1: Resolve intentId source ──
+      const triageIntent = state.triageResult?.resolvedIntentId;
+      const explicitIntent = state.actionMetadata?.intent;
+      const intentId = (state.actionMetadata?.explicit ? explicitIntent : triageIntent) || triageIntent || explicitIntent;
+      if (!intentId) {
+        throw new Error(
+          '[detect:infer] No intentId — triage.resolvedIntentId and actionMetadata.intent both missing',
+        );
+      }
+      if (!isValidIntentId(intentId)) {
+        throw new Error(`[detect:infer] Invalid intentId: "${intentId}"`);
+      }
+
+      const domain = state.triageResult?.domain ?? state.actionMetadata?.domain;
+      const featurePath = resolveFeaturePath(state);
+      const llm = state.deps?.llm;
+      const promptBuilder = state.deps?.promptBuilder;
+      if (!llm) throw new Error('[detect:infer] LLM not available');
+      if (!promptBuilder) throw new Error('[detect:infer] PromptBuilder not available');
+
+      // ── Phase 2: Build DetectResult ──
+      let detectResult: DetectResult<T>;
+      if (state.actionMetadata?.explicit) {
+        // Explicit path — metadata is authoritative; build RAC directly,
+        // load artifacts. No tool-loop, no progressibility check.
+        const metadata = state.actionMetadata;
+        const explicitTarget = metadata.target?.length
+          ? metadata.target
+          : getDefaultTargetPaths(intentId as IntentId, metadata.domain, { refs: metadata.refs });
+        const basis = applyDomainDefaultsToBasis(intentId, metadata.domain, metadata.basis);
+        const resolvedAction = resolveToRAC(
+          intentId as IntentId,
+          {
+            target: explicitTarget,
+            refs: metadata.refs,
+            context: metadata.context,
+            domain: metadata.domain,
+          },
+          'explicit',
+          basis,
+        );
+        const artifacts = featurePath ? loadResolvedArtifacts(resolvedAction, featurePath) : [];
+        detectResult = {
+          status: 'proceed',
+          resolvedAction,
+          artifacts,
+        };
+        console.log(`⚡ [detect:infer] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
+      } else {
+        // ── Agent/job-switch gate ──
+        // The resolved intent must belong to the currently selected
+        // agent/job. If it crosses that boundary, do NOT silently run it
+        // here (which would build tasks for another job's intent while the
+        // toolbar stays put). Surface a switch choice card and pause; the
+        // user confirms before we hand off to the correct agent/job.
+        const want =
+          state.currentAgent && state.currentJob
+            ? deriveFromIntent(intentId as IntentId)
+            : undefined;
+        if (want && (want.agent !== state.currentAgent || want.jobType !== state.currentJob)) {
+          console.log(
+            `🔀 [detect:infer] Cross-job intent — resolved=${intentId} → ${want.agent}/${want.jobType}, ` +
+              `current=${state.currentAgent}/${state.currentJob}; offering switch`,
+          );
+          detectResult = buildAgentJobSwitchResult(intentId as IntentId, want, state);
+        } else {
+          // Infer path — job-blind tool-use loop.
+          const inferred = await inferRacWithTools({
+            intentId: intentId as IntentId,
+            domain,
+            workspaceState: state.workspaceState,
+            featureContext: (state as any).featureContext,
+            featurePath,
+            fileSystem: state.deps?.fileSystem,
+            command: state.deps?.command,
+            llm,
+            promptBuilder,
+            locale: state._uiLocale,
+          });
+          detectResult = inferred as DetectResult<T>;
+        }
+      }
+
+      // ── Phase 3: Augment hook (job-specific post-infer) ──
+      if (augment) {
+        const aug = await augment({
+          intentId: intentId as IntentId,
+          detectResult,
+          state,
+        });
+        detectResult = {
+          ...detectResult,
+          ...aug,
+          stateUpdates: {
+            ...(detectResult.stateUpdates || {}),
+            ...(aug.stateUpdates || {}),
+          } as Partial<T>,
+        };
+      }
+
+      // ── Phase 4: Commit ──
+      // No `state.detect` channel — would shadow the `detect` node name; the
+      // outcome lives on `state.resolvedAction` (DetectableFields SSOT).
+      const baseReturn: Record<string, any> = {
+        recursionCount: state.recursionCount,
+        recursionLimit: state.recursionLimit,
+        _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+        ...(detectResult.stateUpdates || {}),
+      };
+
+      if (detectResult.status === 'proceed' && detectResult.resolvedAction) {
+        const resolvedAction = detectResult.resolvedAction;
+        const resolvedArtifacts = detectResult.artifacts ?? [];
+        emitRACSummary(resolvedAction, undefined, state._uiLocale, state.deps?.fileSystem);
+        const updatedArtifacts = (state as any).artifacts
+          ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts)
+          : undefined;
+        return {
+          ...baseReturn,
+          resolvedAction,
+          resolvedArtifacts,
+          ...(updatedArtifacts !== undefined ? { artifacts: updatedArtifacts } : {}),
+          tokenUsage: state.tokenUsage,
+        } as unknown as Partial<T>;
+      }
+
+      // blocked / redirect-suggested — surface display message + choice
+      // card via the chat adapter so the FE renders the UI even when the
+      // graph ends immediately.
+      if (detectResult.displayMessage) {
+        try {
+          const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient.js');
+          const chatAPI = getChatAPIClient();
+          await chatAPI.startMessage();
+          if (detectResult.status === 'redirect-suggested' && detectResult.choiceOptions) {
+            const altIntent = detectResult.suggestedAlternatives?.[0]?.intentId;
+            // The alternative is an intent id; the switch target's agent/job
+            // is derived from it (matrix SSOT), and the intent itself is
+            // carried so the target runs exactly it (no re-inference drift).
+            const target = altIntent ? deriveFromIntent(altIntent) : undefined;
+            const envelope = {
+              resolvedIntentId: state.triageResult?.resolvedIntentId,
+              group: 'work' as const,
+              mode: state.triageResult?.mode,
+              domain: state.triageResult?.domain,
+              displayMessage: detectResult.displayMessage,
+              choiceOptions: detectResult.choiceOptions,
+              suggestedAgent: target?.agent,
+              suggestedJob: target?.jobType,
+              switchIntentId: altIntent,
+            };
+            await chatAPI.sendTriageChoice(
+              detectResult.displayMessage,
+              state._httpJobId || 'unknown',
+              detectResult.choiceOptions,
+              envelope,
+              state.overrideDirective || state.directive || '',
+            );
+          } else {
+            await chatAPI.sendLLMEvent({ type: 'text', text: detectResult.displayMessage });
+          }
+          await chatAPI.finalizeMessage();
+        } catch (chatError) {
+          console.warn('[detect:infer] Failed to send blocked/redirect chat message:', chatError);
+        }
+      }
+
+      console.log(`🚫 [detect:infer] status=${detectResult.status} intent=${intentId}`);
+      return {
+        ...baseReturn,
+        tokenUsage: state.tokenUsage,
+      } as unknown as Partial<T>;
+    } finally {
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'detect', 0);
+      }
+    }
+  };
 }

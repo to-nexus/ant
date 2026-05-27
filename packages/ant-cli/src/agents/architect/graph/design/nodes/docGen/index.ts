@@ -39,6 +39,7 @@ import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
 import { buildMessages } from './intent/system';
 import { buildUiDesignMessages } from './intent/ui';
 import { buildSpecMessages } from './intent/spec';
+import { renderExplainResponse } from './explain';
 
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
 const ARTIFACT_MUTATE_TOOLS = new Set([
@@ -92,12 +93,22 @@ export async function docGen(
   
   // ✅ Build messages based on intent group
   const intentGroup = state.resolvedAction?.intentGroup;
-  const isExplainMode = state.resolvedAction?.mode === 'explain';
+  const isExplainMode = state.resolvedAction?.mode === 'explain'
+    || state.currentTask?.type === 'explain';
 
   // ✅ Log iteration start info (per-call debugging, like code job's execute)
   const taskTokensSoFar = state._currentTaskTokenUsage;
   console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
   console.log(`   Intent group: ${intentGroup || 'unknown'}`);
+
+  // Explain mode: chat-only response — no XML parsing, no disk artifact.
+  // Branch BEFORE the intentGroup splits so the persisted-artifact templates
+  // (system-design / design-spec / design-ui) never run for an explain task.
+  if (isExplainMode) {
+    state._docGenCallIndex = newCallIndex;
+    console.log(`📝 [DocGen] explain mode — chat-only response, file write skipped`);
+    return await renderExplainResponse(state);
+  }
   const nodeDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
   console.log(`   Conversation history: ${nodeDocGen.length} messages`);
   if (taskTokensSoFar?.totalTokens) {
@@ -200,7 +211,7 @@ export async function docGen(
     state.context.userLanguage,  // ✅ Pass user language for localized messages
     state.deps?.git,  // ✅ Pass gitPort for immediate file writes
     state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
-    true,  // ✅ writeImmediately: true (design job now writes files immediately like code job)
+    !isExplainMode,  // ✅ writeImmediately gated by mode — explain returns earlier, this is defence-in-depth.
     'design',  // ✅ jobType: 'design' (for LAST_SECTION metadata handling)
     state.context.featurePath,  // ✅ Feature path for absolute path resolution
     undefined,  // ✅ Design job: no codebasePath

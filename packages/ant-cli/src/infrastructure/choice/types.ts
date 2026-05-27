@@ -1,10 +1,35 @@
 /**
- * Choice System Types
- * 
- * Triage 결과에 따른 사용자 선택 처리
+ * Choice System Types — pending choice card envelope.
+ *
+ * The detect node (or any other producer that wants to surface a choice
+ * card) emits a `ChoiceEnvelope` and registers it via ChoiceService. On
+ * a user pick the service returns a `ChoiceResponse` so the orchestrator
+ * can route the next turn.
  */
 
-import { ChoiceAction, TriageResult } from '../../agents/common/graph/nodes/triage/types';
+import { ChoiceAction, ChoiceOptions } from '../../agents/common/graph/nodes/triage/types';
+import type { IntentId, Mode, Domain } from '@ant/shared';
+
+/**
+ * ChoiceEnvelope — the minimum information needed to (a) surface a
+ * choice card to the user and (b) route the user's pick downstream.
+ * Built by detect on `blocked` / `redirect-suggested`, never by triage.
+ */
+export interface ChoiceEnvelope {
+  resolvedIntentId?: IntentId;
+  group: 'ask' | 'work';
+  mode?: Mode;
+  domain?: Domain;
+  displayMessage?: string;
+  choiceOptions?: ChoiceOptions;
+  // ── Redirect target (set when choiceOptions exposes a 'redirect' action) ──
+  /** Agent to switch to, derived from `switchIntentId` via the matrix. */
+  suggestedAgent?: string;
+  /** Job to switch to (design/code/plan/visual/learn), derived from `switchIntentId`. */
+  suggestedJob?: string;
+  /** Exact intent to run after the switch — passed to the target as explicit metadata. */
+  switchIntentId?: IntentId;
+}
 
 /**
  * Choice Request
@@ -21,11 +46,12 @@ export interface ChoiceRequest {
  */
 export interface ChoiceResponse {
   type: 'guide' | 'continue' | 'dismiss';
-  message?: string;        // guide/dismiss: message
-  action?: ChoiceAction;   // continue: action to perform
-  suggestedAgent?: string; // redirect: target agent
-  suggestedJob?: string;   // redirect: target job
-  directive?: string;      // redirect: original directive
+  message?: string;          // guide/dismiss: message
+  action?: ChoiceAction;     // continue: action to perform
+  suggestedAgent?: string;   // redirect: target agent
+  suggestedJob?: string;     // redirect: target job (design/code/plan/visual/learn)
+  switchIntentId?: IntentId; // redirect: exact intent to run after switch
+  directive?: string;        // redirect: original directive
 }
 
 /**
@@ -36,18 +62,15 @@ export interface PendingChoice {
   jobId: string;
   projectId: string;
   featureName: string;
-  triageResult: TriageResult;
-  originalDirective?: string;  // ✅ For redirect - pass to new job
+  envelope: ChoiceEnvelope;
+  originalDirective?: string;
   createdAt: number;
-  expiresAt: number;  // 자동 만료 시간
+  expiresAt: number;
 }
 
 /**
  * Choice Handler Interface
  */
 export interface ChoiceHandler {
-  /**
-   * Handle user choice
-   */
-  handle(request: ChoiceRequest, triageResult: TriageResult): Promise<ChoiceResponse>;
+  handle(request: ChoiceRequest, envelope: ChoiceEnvelope): Promise<ChoiceResponse>;
 }

@@ -76,7 +76,7 @@ interface TurnItemProps {
 // place.
 export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0">
       {turn.user && <UserBubble user={turn.user} />}
       <div className="space-y-3">
         {turn.sections.map((section, idx) => (
@@ -112,8 +112,8 @@ const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }
         <ActionMetadataBadges metadata={user.actionMetadata} readOnly />
       )}
       <div
-        className="text-sm select-text whitespace-pre-wrap"
-        style={{ color: 'var(--text-1)' }}
+        className="text-sm select-text whitespace-pre-wrap break-words"
+        style={{ color: 'var(--text-1)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}
       >
         {user.text}
       </div>
@@ -611,10 +611,10 @@ const AssistantTextBlock = memo(function AssistantTextBlock({
   if (!text) return null;
 
   return (
-    <div className="px-1 py-2 w-full select-text" ref={scrollContainerRef}>
+    <div className="px-1 py-2 w-full select-text overflow-x-hidden" ref={scrollContainerRef}>
       <div
         className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
-        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
       >
         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
           {text}

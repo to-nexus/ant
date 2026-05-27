@@ -55,6 +55,10 @@ export function routeAfterResolve(s: DesignGraphState): string {
 }
 
 export function routeAfterDetect(s: DesignGraphState): string {
+  // designError and awaitingDetectClarify keep precedence — the figma augment
+  // may stuff designError into stateUpdates, and design strategy may set
+  // awaitingDetectClarify when it asks the user to disambiguate before RAC
+  // is built. Both short-circuit before the resolvedAction check.
   if (s.designError) {
     console.log(`❌ [Graph] Design error detected → routing to learn for cleanup`);
     return 'learn';
@@ -63,8 +67,16 @@ export function routeAfterDetect(s: DesignGraphState): string {
     console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
     return '__end__';
   }
-  if (isFigmaPipeline(s.resolvedAction?.intent, isFigmaDataPopulated(s.figmaConfig))) {
-    console.log(`🎨 [Graph] Figma pipeline (intent=${s.resolvedAction?.intent}) → figmaExplore`);
+  // SSOT: createInferDetectNode writes resolvedAction iff status='proceed';
+  // blocked / redirect-suggested return baseReturn without it (the node has
+  // already streamed displayMessage + choiceOptions to chat). Mirrors
+  // code/routing.ts:routeAfterDetect and planner/graph.ts:routeAfterPlannerDetect.
+  if (!s.resolvedAction) {
+    console.log(`🚫 [Graph] no resolvedAction → __end__ (blocked / redirect — detect already streamed chat)`);
+    return '__end__';
+  }
+  if (isFigmaPipeline(s.resolvedAction.intent, isFigmaDataPopulated(s.figmaConfig))) {
+    console.log(`🎨 [Graph] Figma pipeline (intent=${s.resolvedAction.intent}) → figmaExplore`);
     return 'figmaExplore';
   }
   return 'decompose';

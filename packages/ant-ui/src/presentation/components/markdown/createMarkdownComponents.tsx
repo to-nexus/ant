@@ -49,7 +49,16 @@ export function createMarkdownComponents(
 
       if (hasLanguage || isMultiLine) {
         return (
-          <code className={className} style={{ color: 'inherit' }} {...props}>
+          <code
+            className={className}
+            style={{
+              color: 'inherit',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+            }}
+            {...props}
+          >
             {children}
           </code>
         );
