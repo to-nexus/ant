@@ -344,7 +344,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
   const itemContent = useCallback((index: number, turn: Turn) => {
     return (
       <div
-        className="px-8 py-2"
+        className="px-8 py-2 min-w-0"
         data-turn-index={index}
         ref={(el) => registerTurnRef(index, el)}
       >
@@ -385,7 +385,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
   const Footer = useCallback(() => {
     if (!showTypingInFooter) return null;
     return (
-      <div className="px-8 py-2">
+      <div className="px-8 py-2 min-w-0">
         <TypingIndicator />
       </div>
     );
