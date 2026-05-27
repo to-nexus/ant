@@ -124,6 +124,10 @@ One `batches[]` entry is one execute round. The observable signal is the slice's
 
 This axis is orthogonal to coherence: the rubric decides *whether the work is separable*, this check decides *whether one session can hold it*. A coherent unit may still need to be split when single-session closure says so. When that happens, `parentReasoning` names single-session closure (not coherence) as the concrete benefit.
 
+**Aggregator / route-track tasks.** When this task consumes several distinct feature domains (a route-track or aggregator), single-session closure is unrealistic: emit one `batches[]` entry per domain, plus a dedicated batch for any cross-cutting wiring — do not keep it flat because the wiring feels horizontal. The runtime enforces this: a flat plan too broad for the remaining execute budget is rejected and the plan call is re-issued asking you to re-partition into batches; refusing repeatedly fails the task.
+
+**Recursion budget.** You are shown `remainingRecursionBudget` (execute rounds left this session). If the flat work you are about to emit would plausibly consume a large share of that budget, it cannot close in one session — split.
+
 ### Scheduling fields — REQUIRED per batch
 
 Each `batches[]` entry MUST declare both of:
