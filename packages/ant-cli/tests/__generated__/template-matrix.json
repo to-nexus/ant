@@ -1335,6 +1335,16 @@
       "manifest"
     ]
   },
+  "jobs/design/nodes/execute/variants/explain-only/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/explain-only/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/design/nodes/execute/variants/spec/base": {
     "sources": [
       "build-callsite",

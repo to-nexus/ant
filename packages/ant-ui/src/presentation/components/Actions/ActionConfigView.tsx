@@ -11,11 +11,11 @@ import {
   getDefaultTargetPaths,
   getIntentLabel,
   pickDefaultUiSourceRefs,
+  listActiveTiers,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
-import { useActiveTiers } from '@/application/hooks/features/useActiveTiers';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { FileText, BookOpen, Crosshair, Layers } from 'lucide-react';
 import {
@@ -99,12 +99,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     actionMetadata.domain ?? 'service',
     { hasCodebase: gitSnapshot?.hasCodebase ?? false },
   );
-  // SSOT D27 — surface the BasisSummaryBar / Edit affordance only when at
-  // least one tier is actually live for the current domain × runtime.
-  // Static `slots.basis.tiers.length` would surface a Section whose Edit
-  // button leads to an empty BasisWizard (sister bug to the
-  // IntentChipGrid → blank-screen path).
-  const activeTiers = useActiveTiers(slots?.basis);
 
   const selectedRefs = useMemo(() => new Set(actionMetadata.refs ?? []), [actionMetadata.refs]);
   const selectedCtx = useMemo(() => new Set(actionMetadata.context ?? []), [actionMetadata.context]);
@@ -295,15 +289,18 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {slots && (
           <>
-            {/* Basis preset — rev-* intents declare `basis.tiers === []` so
-                we skip the section entirely (their basis is fully encoded
-                in the artifact under review; user picks would conflict).
-                Domain × runtime gates can also collapse every tier — in
-                that case there is nothing to edit, so the Section + Edit
-                affordance must disappear (otherwise Edit lands on an
-                empty BasisWizard). `useActiveTiers` is the SSOT facade
-                that combines both. */}
-            {slots.basis && activeTiers.length > 0 && (
+            {/* Basis preset — visibility is gated on (static slot.tiers ×
+                TIER_DOMAIN_MATRIX), evaluated by `listActiveTiers` with an
+                empty runtime context so suppressors (`hasCodebase`,
+                `hasUiDoc`, backend stack) do NOT hide the Section. The
+                runtime suppressors are consumed only by
+                `decideActionsStepAfterIntent` for auto-routing — they
+                must not hide the manual override entry.
+                  - rev-* intents declare `basis.tiers === []` → 0 → skip.
+                  - gen-ui-figma + service → ['gameContentTier'] which the
+                    matrix closes on service → 0 → skip (figma is the
+                    visual authority). */}
+            {slots.basis && listActiveTiers(slots.basis, actionMetadata.domain ?? 'service').length > 0 && (
               <Section
                 title={t('section.basis')}
                 icon={Layers}
