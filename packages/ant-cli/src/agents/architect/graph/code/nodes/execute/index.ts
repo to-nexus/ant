@@ -670,7 +670,7 @@ export async function execute(
         profile: state.profile,
       };
     }
-    
+
     // ✅ CRITICAL: Extract files from FileRegistry for state.files
     const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
     if (finalizeResult?.streamedFiles) {
@@ -778,7 +778,25 @@ export async function execute(
           .map(fp => `[file written to disk: ${fp}]`)
           .join('\n');
       }
-      
+
+      // dim-beating-brass RCA — "marker mimicry": the model can type the
+      // literal status text `[file written to disk: X]` instead of a real
+      // <file> tag, so nothing is written. `cleanFileContentFromResponse`
+      // strips real <file> bodies, so a marker SURVIVING in the cleaned text
+      // while ZERO files were streamed can only have been typed by the model.
+      const typedPhantomMarker =
+        streamedFilePaths.length === 0 &&
+        /\[file (?:written to disk|edited|appended):\s*[^\]]+\]/.test(cleanedResponse);
+      if (typedPhantomMarker) {
+        // Neutralize the hallucinated marker before it enters history — left
+        // intact, `compactTurns.extractFactsFromMessages` would later parse it
+        // as a genuine write and re-inject the false "already saved" belief.
+        cleanedResponse = cleanedResponse.replace(
+          /\[file (?:written to disk|edited|appended):\s*[^\]]+\]/g,
+          '(emitted marker text only — NO file was written)',
+        );
+      }
+
       // Thinking-only response: LLM produced a thinking block but no text/tools.
       // Preserve the thinking content so the next call has context and
       // enableThinking switches to false (isAfterToolCall becomes true).
@@ -789,24 +807,44 @@ export async function execute(
       if (cleanedResponse) {
         // Build re-entry message with specific file list so the LLM doesn't
         // have to search through history to find which files already exist.
-        const reentryParts = [
-          'Your previous response did not include any tool calls or <done>true</done>.',
-        ];
-        if (streamedFilePaths.length > 0) {
+        const reentryParts: string[] = [];
+        if (typedPhantomMarker) {
+          // Truthful correction. The previous "files already saved — do NOT
+          // recreate" guidance is exactly what spiralled the model on
+          // dim-beating-brass: it confirmed the false belief that typing the
+          // marker had saved the file. Tell it the truth and show the real tag.
+          reentryParts.push(
+            '⚠️ NO file was written. Your previous response contained literal text like',
+            '"[file written to disk: ...]" but NOT a real <file> tag.',
+            '',
+            'That bracket is a status RECORD the system shows AFTER a real tag is saved —',
+            'typing it yourself writes nothing. To create a file, your output must contain a',
+            'real tag whose first token is `<`:',
+            '',
+            '  <file path="src/...">...the full file content, verbatim...</file>',
+            '',
+            'Emit the real <file> tag now for the file you intended to write.',
+          );
+        } else {
+          reentryParts.push(
+            'Your previous response did not include any tool calls or <done>true</done>.',
+          );
+          if (streamedFilePaths.length > 0) {
+            reentryParts.push(
+              '',
+              `The following ${streamedFilePaths.length} file(s) are already saved to disk — do NOT recreate them:`,
+              ...streamedFilePaths.map(fp => `  - ${fp}`),
+            );
+          }
+          const doneHint = isRemediationTask
+            ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
+            : 'If you have completed all work for this task, output <done>true</done> now.';
           reentryParts.push(
             '',
-            `The following ${streamedFilePaths.length} file(s) are already saved to disk — do NOT recreate them:`,
-            ...streamedFilePaths.map(fp => `  - ${fp}`),
+            doneHint,
+            'If there is remaining work, continue with NEW files only.',
           );
         }
-        const doneHint = isRemediationTask
-          ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
-          : 'If you have completed all work for this task, output <done>true</done> now.';
-        reentryParts.push(
-          '',
-          doneHint,
-          'If there is remaining work, continue with NEW files only.',
-        );
 
         const newHistory = [
           ...nodeExecute,
