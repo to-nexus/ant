@@ -46,6 +46,7 @@ export * from './deploy';
 export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';
+export * from './codebase-presence';
 export * from './session-log';
 export * from './file-resource';
 export * from './chat-status';

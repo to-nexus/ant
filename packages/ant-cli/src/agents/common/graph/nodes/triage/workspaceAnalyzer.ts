@@ -26,6 +26,7 @@ import {
 } from '@ant/shared';
 import { MemoryPort } from '../../../../../core/ports';
 import { isTemplateContent } from '../../../../../core/utils/templateDetector';
+import { detectCodebasePresence } from '../../../../../core/codebase/detectCodebasePresence';
 
 const PLAN_DIR = ARTIFACT_PREFIX.SOURCES;
 const META_DIRECTIVES_DIR = 'meta/directives';
@@ -275,16 +276,19 @@ export async function analyzeWorkspace(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // codebase — disk walk (depth-1, path-only) OR memory / vector index
-  // (Codebase Channel SSOT). Either signal flips hasCodebase=true so
-  // existing-project workspaces always activate the codebase-channel
-  // partial in plan/design jobs even before gen-learn runs.
+  // codebase — manifest-based detection (depth-1, path-only) OR memory /
+  // vector index (Codebase Channel SSOT). Either signal flips hasCodebase=true
+  // so existing-project workspaces activate the codebase-channel partial in
+  // plan/design jobs even before gen-learn runs. A folder with only docs
+  // (README/notes) — or no dependency/build manifest — is NOT a codebase.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const codebaseAbs = path.join(featurePath, CODEBASE_DIR);
-  const entryPoints = scanCodebaseEntryPoints(codebaseAbs);
-  if (entryPoints.length > 0) {
+  if (detectCodebasePresence(codebaseAbs)) {
     state.hasCodebase = true;
-    state.codebaseEntryPoints = entryPoints;
+    // Orientation cues for the LLM (manifest names, src/, README, …) — surfaced
+    // only once a real codebase is confirmed.
+    const entryPoints = scanCodebaseEntryPoints(codebaseAbs);
+    if (entryPoints.length > 0) state.codebaseEntryPoints = entryPoints;
   }
 
   // Monorepo marker scan — independent of `hasCodebase` (a codebase that
@@ -318,6 +322,9 @@ export async function analyzeWorkspace(
  * Path-only entry-point scan under `codebase/`. Returns the subset of
  * `CODEBASE_ENTRY_POINT_NAMES` that actually exists at depth 1. No file
  * bodies are read. Returns [] when the directory is missing or empty.
+ *
+ * Orientation **cues** only — codebase *existence* is decided by
+ * `detectCodebasePresence` (manifest-based), not by this function.
  */
 function scanCodebaseEntryPoints(codebaseAbs: string): string[] {
   if (!fs.existsSync(codebaseAbs)) return [];
@@ -331,12 +338,7 @@ function scanCodebaseEntryPoints(codebaseAbs: string): string[] {
   const present = new Set(
     entries.filter(e => !e.name.startsWith('.')).map(e => e.name),
   );
-  const matched = CODEBASE_ENTRY_POINT_NAMES.filter(n => present.has(n));
-  // Even with zero canonical entry points, a non-empty codebase/ tree is
-  // still an "existing project" signal — fall back to a single sentinel
-  // so `hasCodebase` flips and the partial activates.
-  if (matched.length === 0 && present.size > 0) return ['codebase/'];
-  return matched;
+  return CODEBASE_ENTRY_POINT_NAMES.filter(n => present.has(n));
 }
 
 /**
