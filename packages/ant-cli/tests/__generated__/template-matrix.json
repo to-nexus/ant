@@ -804,17 +804,6 @@
       "partial-ref"
     ]
   },
-  "jobs/code/nodes/detect/variants/default/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/detect/variants/default/rules": {
-    "sources": [
-      "render-call",
-      "partial-ref"
-    ]
-  },
   "jobs/code/nodes/direct/variants/default/base": {
     "sources": [
       "build-callsite",
@@ -1244,11 +1233,6 @@
       "partial-ref"
     ]
   },
-  "jobs/design/nodes/detect/variants/default/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
   "jobs/design/nodes/execute/injections/append-anchor": {
     "sources": [
       "partial-ref",
@@ -1349,6 +1333,16 @@
       "render-call",
       "partial-ref",
       "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/explain-only/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/explain-only/rules": {
+    "sources": [
+      "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/spec/base": {
@@ -1468,16 +1462,6 @@
   "jobs/plan/domain/service": {
     "sources": [
       "basis-registry"
-    ]
-  },
-  "jobs/plan/nodes/detect/variants/default/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
-  "jobs/plan/nodes/detect/variants/default/rules": {
-    "sources": [
-      "render-call"
     ]
   },
   "jobs/plan/nodes/plan/variants/default/base": {
@@ -1609,6 +1593,16 @@
     "sources": [
       "partial-ref",
       "manifest"
+    ]
+  },
+  "jobs/shared/nodes/detect/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/shared/nodes/detect/variants/default/rules": {
+    "sources": [
+      "render-call"
     ]
   },
   "jobs/shared/nodes/triage/variants/default/base": {

@@ -44,7 +44,6 @@ export const ResolvableFields = {
     reducer: conversationsReducer,
     default: () => ({}),
   }),
-  sessionDigest: Annotation<string | undefined>,
 } as const satisfies StateDefinition;
 
 export const TriageableFields = {

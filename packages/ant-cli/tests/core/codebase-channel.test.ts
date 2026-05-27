@@ -4,8 +4,8 @@
  * Locks the four invariants that make existing-project workspaces
  * receive the codebase awareness partial without RAC slot pollution:
  *
- *   1. WorkspaceState.hasCodebase reflects disk presence OR memory index
- *      (workspaceAnalyzer disk walk path).
+ *   1. WorkspaceState.hasCodebase reflects a real dependency/build manifest
+ *      OR memory index (workspaceAnalyzer manifest-based detection path).
  *   2. getConfigSlots / getConfigSlotsForDomain dynamically inject the
  *      auto codebase context slot for plan/design intents when
  *      hasCodebase is true; greenfield workspaces stay unaffected.
@@ -66,12 +66,28 @@ describe('workspaceAnalyzer — codebase disk walk (Codebase Channel SSOT)', () 
     expect(state.codebaseEntryPoints).toContain('src');
   });
 
-  it('hasCodebase=true with sentinel when codebase/ has only non-canonical files', async () => {
+  it('hasCodebase=false when codebase/ has only non-manifest files (.txt)', async () => {
     fs.mkdirSync(path.join(tmpRoot, 'codebase'));
     fs.writeFileSync(path.join(tmpRoot, 'codebase', 'random.txt'), 'x');
     const state = await analyzeWorkspace(tmpRoot);
+    expect(state.hasCodebase).toBe(false);
+    expect(state.codebaseEntryPoints).toBeUndefined();
+  });
+
+  it('hasCodebase=false when codebase/ has only docs (README.md)', async () => {
+    fs.mkdirSync(path.join(tmpRoot, 'codebase'));
+    fs.writeFileSync(path.join(tmpRoot, 'codebase', 'README.md'), '# notes');
+    const state = await analyzeWorkspace(tmpRoot);
+    expect(state.hasCodebase).toBe(false);
+    expect(state.codebaseEntryPoints).toBeUndefined();
+  });
+
+  it('hasCodebase=true for a non-package.json manifest (go.mod)', async () => {
+    fs.mkdirSync(path.join(tmpRoot, 'codebase'));
+    fs.writeFileSync(path.join(tmpRoot, 'codebase', 'go.mod'), 'module example');
+    const state = await analyzeWorkspace(tmpRoot);
     expect(state.hasCodebase).toBe(true);
-    expect(state.codebaseEntryPoints).toEqual(['codebase/']);
+    expect(state.codebaseEntryPoints).toContain('go.mod');
   });
 });
 

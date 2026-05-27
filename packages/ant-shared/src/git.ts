@@ -38,9 +38,14 @@ export type GitSnapshot = Readonly<{
   hasGit: boolean;
   /** `true` if a GitHub remote is configured for the project. */
   hasRemote: boolean;
-  /** `true` if the project has a codebase directory. */
+  /**
+   * `true` if the project has a *real* codebase — a recognized dependency/build
+   * manifest is present at the codebase root (manifest-based SSOT, shared with
+   * triage's `WorkspaceState.hasCodebase`). A docs-only or empty folder is NOT
+   * a codebase. For raw "is the folder non-empty?", use {@link codebaseHasFiles}.
+   */
   hasCodebase: boolean;
-  /** `true` if the codebase directory is non-empty. */
+  /** `true` if the codebase directory is physically non-empty (any non-hidden file). */
   codebaseHasFiles: boolean;
   /** `true` if any non-`_base` features exist. */
   hasFeatures: boolean;

@@ -18,7 +18,7 @@
  * synthetic `{ ...meta, tasks: [...] }` object so callers see one shape.
  * This is the format the streaming pipeline renders task-by-task as
  * each `</task>` arrives (see `XMLStreamParser.task_added` and
- * `decomposeWithToolLoop`'s `onTaskParsed` hook).
+ * `callLLMWithToolLoop`'s `onTaskParsed` hook).
  *
  * Legacy `<decompose>{...}</decompose>` and bare-JSON contracts are
  * NOT accepted — the prompt rules.md / inline prompts forbid them and

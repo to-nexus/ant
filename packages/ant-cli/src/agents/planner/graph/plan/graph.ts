@@ -24,9 +24,9 @@ import { planResolveStrategy } from './nodes/resolve';
 import { createResolveNode } from '../../../common/graph/nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
-import { triage } from '../../../common/graph/nodes/triage';
-import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
-import { planDetectStrategy } from './nodes/detect/strategy.js';
+import { triage, routeAfterTriage } from '../../../common/graph/nodes/triage';
+import { createInferDetectNode } from '../../../common/graph/nodes/detect/index.js';
+import { augmentPlanExecutionTier } from './nodes/detect/augmentExecutionTier.js';
 import { withPhaseTracking } from '../../../common/graph/llmHelpers';
 
 /**
@@ -44,39 +44,17 @@ function routeAfterPlannerResolve(state: PlanGraphState): string {
 }
 
 /**
- * Route after triage for planner agent.
- * Proceeds to 'detect' for mode detection + RAC creation before generate.
+ * Routes after detect for planner-plan. `state.resolvedAction` is the
+ * proceed signal — detect populates it on success and leaves it unset on
+ * blocked / redirect-suggested (displayMessage already streamed to chat).
  */
-function routeAfterPlannerTriage(state: PlanGraphState): string {
-  const result = state.triageResult;
-  
-  if (!result) {
-    console.log('[PlannerTriageRouter] No triage result, proceeding to detect');
-    return 'detect';
+function routeAfterPlannerDetect(state: PlanGraphState): string {
+  if (state.resolvedAction) {
+    console.log('[PlannerDetectRouter] resolvedAction present → generate');
+    return 'generate';
   }
-  
-  if (result.intent === 'ask') {
-    console.log('[PlannerTriageRouter] ask intent → __end__');
-    return '__end__';
-  }
-  
-  if (result.workStatus === 'proceed') {
-    console.log('[PlannerTriageRouter] work:proceed → detect');
-    return 'detect';
-  }
-  
-  if (result.workStatus === 'redirect') {
-    console.log('[PlannerTriageRouter] work:redirect → __end__ (await choice)');
-    return '__end__';
-  }
-  
-  if (result.workStatus === 'blocked') {
-    console.log('[PlannerTriageRouter] work:blocked → __end__');
-    return '__end__';
-  }
-  
-  console.log('[PlannerTriageRouter] default → detect');
-  return 'detect';
+  console.log('[PlannerDetectRouter] no resolvedAction → __end__');
+  return '__end__';
 }
 
 export function buildPlanGraph() {
@@ -85,10 +63,10 @@ export function buildPlanGraph() {
   // Add nodes (no separate write node — generate handles everything like design job's docGen)
   graph.addNode('resolve', createResolveNode(planResolveStrategy) as any);
   graph.addNode('triage', triage as any);
-  graph.addNode('detect', createDetectNode(planDetectStrategy) as any);
+  graph.addNode('detect', createInferDetectNode(augmentPlanExecutionTier) as any);
   graph.addNode('generate', withPhaseTracking('generate', generateNode) as any);
   graph.addNode('tool', toolNode as any);
-  
+
   // Edges: resolve → (triage | generate) → detect → generate → ... → END
   graph.addEdge('__start__' as any, 'resolve' as any);
 
@@ -102,15 +80,30 @@ export function buildPlanGraph() {
     } as any
   );
 
+  // Phase D — ask externalised, work continues to detect. Plan has no
+  // `revise` node, so the resume-queue branch in the shared
+  // routeAfterTriage falls through to `detect` (the `revise` label is
+  // remapped to the same node here).
   graph.addConditionalEdges(
     'triage' as any,
-    routeAfterPlannerTriage as any,
+    routeAfterTriage as any,
     {
       detect: 'detect',
+      revise: 'detect',
       __end__: END,
     } as any
   );
-  graph.addEdge('detect' as any, 'generate' as any);
+
+  // Phase D — detect routes to generate on proceed (plan job uses detect
+  // as its tier entry; no decompose node).
+  graph.addConditionalEdges(
+    'detect' as any,
+    routeAfterPlannerDetect as any,
+    {
+      generate: 'generate',
+      __end__: END,
+    } as any
+  );
   graph.addConditionalEdges(
     'generate' as any,
     routeAfterGenerate as any,

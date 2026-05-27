@@ -712,7 +712,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         ? { refs: _racRefs, context: _racContext }
         : undefined;
 
-      // Silent chatStatus — sourceSelector.decomposeWithToolLoop owns
+      // Silent chatStatus — sourceSelector.callLLMWithToolLoop owns
       // the UI emission for every tool call in the loop (one card per
       // `tc.input.path`, merged through `_mergeIndex: cardId`).
       // Forwarding the common handler's emission through the real

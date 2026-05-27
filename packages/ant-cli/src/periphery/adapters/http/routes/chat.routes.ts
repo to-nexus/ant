@@ -120,6 +120,25 @@ export function createChatRoutes(deps: {
     const { generateTurnId } = await import('../../../../composition/recordUserTurn');
     const turnId = generateTurnId();
 
+    // Fold full-folder selections into a single `📂` badge entry before
+    // the optimistic SSE echo so the user sees the same compressed view
+    // the durable chat.jsonl record will eventually carry — without
+    // this, the badge briefly renders N file pills and only collapses
+    // when the worker's recordUserTurn lands. Best-effort; failures
+    // degrade to raw paths (helper own guards).
+    let enrichedActionMetadata = actionMetadata;
+    if (actionMetadata && deps.workspaceResolver) {
+      try {
+        const featurePath: string = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        const { AdapterFactory } = await import('../../../../infrastructure/adapters/AdapterFactory');
+        const { enrichActionMetadataWithFolders } = await import('../../../../core/context/enrichActionMetadataWithFolders');
+        const fs = AdapterFactory.createFileSystemAdapterWithPath(featurePath);
+        enrichedActionMetadata = await enrichActionMetadataWithFolders(actionMetadata, fs);
+      } catch (err) {
+        console.warn('[chat.routes /chat/user-message] foldersCompressed enrichment failed:', err);
+      }
+    }
+
     await deps.chatService.appendUserTurn(
       projectId,
       featureName,
@@ -127,7 +146,7 @@ export function createChatRoutes(deps: {
       turnId,
       undefined,
       userContext,
-      actionMetadata,
+      enrichedActionMetadata,
     );
 
     res.json({ turnId, messageId: `user-${turnId}` });
@@ -187,7 +206,7 @@ export function createChatRoutes(deps: {
     if (pending) {
       res.json({
         hasPending: true,
-        triageResult: pending.triageResult,
+        envelope: pending.envelope,
         createdAt: pending.createdAt,
         expiresAt: pending.expiresAt,
       });

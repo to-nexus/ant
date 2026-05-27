@@ -17,9 +17,21 @@ export type {
   InferredAction,
 } from '@ant/shared';
 
-import type { Mode, IntentGroup, Domain, InferredAction, ResolvedActionContext } from '@ant/shared';
+import type { Mode, IntentGroup, Domain, InferredAction, ResolvedActionContext, PathOrFolder } from '@ant/shared';
 import { isValidIntentId } from '@ant/shared';
 import { extractJsonFromLlmResponse } from '../utils/llmResponseParser';
+
+/**
+ * Folder-compressed view of the RAC slot paths, forwarded from the
+ * `<detect>` payload (`pathsCompressed` field). Each slot is an array of
+ * `PathOrFolder` entries — full-folder selections collapse into a single
+ * `{kind: 'folder'}` entry, partial / single-file selections stay as files.
+ */
+export interface DetectPathsCompressedView {
+  target?: ReadonlyArray<PathOrFolder>;
+  refs?: ReadonlyArray<PathOrFolder>;
+  context?: ReadonlyArray<PathOrFolder>;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Target Files Resolution — intentId → target files (no intermediate environment)
@@ -85,6 +97,7 @@ export function formatRACForChat(
   reasoning?: { intent?: string; domain?: string },
   language: UserLanguage = 'ko',
   phase: RACFormatPhase = 'detect',
+  pathsCompressed?: DetectPathsCompressedView,
 ): string {
   const isKorean = language === 'ko';
   const isVisual = rac.intentGroup === 'visual';
@@ -92,11 +105,14 @@ export function formatRACForChat(
   let formatted = renderHeader(phase, isVisual, isKorean);
 
   if (phase === 'detect') {
+    formatted += renderIntentSection(rac, isKorean);
     formatted += renderModeSection(rac, reasoning, isKorean);
     if (isVisual) return formatted + '\n';
     formatted += renderIntentGroupSection(rac, isKorean);
     formatted += renderDomainSection(rac, reasoning, isKorean);
-    formatted += renderTargetSection(rac, isKorean);
+    formatted += renderTargetSection(rac, pathsCompressed, isKorean);
+    formatted += renderRefsSection(rac, pathsCompressed, isKorean);
+    formatted += renderContextSection(rac, pathsCompressed, isKorean);
     formatted += renderDesignUiOutputSection(rac, isKorean);
   }
 
@@ -162,12 +178,101 @@ function renderDomainSection(
   return out;
 }
 
-function renderTargetSection(rac: ResolvedActionContext, isKorean: boolean): string {
-  if (rac.intentGroup !== 'design-system' || !rac.target?.length) return '';
-  const filesList = rac.target.map(f => `\`${f}\``).join(', ');
+/**
+ * Intent id line — surfaces the resolved intent (e.g. `rev-spec`) directly
+ * to the chat reader, with an `(inferred)` suffix on the infer path. Until
+ * Phase D of `triage-intent-infer-rosy-pearl`, only `mode` was textualised
+ * and the intent id stayed buried inside the payload — operators / users
+ * had no way to tell which of the 34 matrix intents Triage picked.
+ */
+function renderIntentSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  if (!rac.intent) return '';
+  const suffix =
+    rac.source === 'infer'
+      ? isKorean
+        ? ' (추론)'
+        : ' (inferred)'
+      : '';
   return isKorean
-    ? `📄 **대상 문서**: ${filesList}\n\n`
-    : `📄 **Target**: ${filesList}\n\n`;
+    ? `🪪 **인텐트**: \`${rac.intent}\`${suffix}\n\n`
+    : `🪪 **Intent**: \`${rac.intent}\`${suffix}\n\n`;
+}
+
+/**
+ * Target paths — generalised from design-system-only to every job. Prefers
+ * `pathsCompressed.target` (folder-collapsed) when provided; otherwise
+ * falls back to `rac.target` as individual files. design-ui /
+ * design-game-art keep the legacy hardcoded `renderDesignUiOutputSection`
+ * because their `target` is a fixed bundle, not user-selected paths.
+ */
+function renderTargetSection(
+  rac: ResolvedActionContext,
+  pathsCompressed: DetectPathsCompressedView | undefined,
+  isKorean: boolean,
+): string {
+  const entries = resolvePathEntries(pathsCompressed?.target, rac.target);
+  if (!entries.length) return '';
+  if (rac.intentGroup === 'design-ui' || rac.intentGroup === 'design-game-art') {
+    // These groups render output via `renderDesignUiOutputSection` instead.
+    return '';
+  }
+  return renderPathBlock(
+    isKorean ? '🎯 **타겟**' : '🎯 **Target**',
+    entries,
+    isKorean,
+  );
+}
+
+function renderRefsSection(
+  rac: ResolvedActionContext,
+  pathsCompressed: DetectPathsCompressedView | undefined,
+  isKorean: boolean,
+): string {
+  const entries = resolvePathEntries(pathsCompressed?.refs, rac.refs);
+  if (!entries.length) return '';
+  return renderPathBlock(
+    isKorean ? '📎 **참고**' : '📎 **Refs**',
+    entries,
+    isKorean,
+  );
+}
+
+function renderContextSection(
+  rac: ResolvedActionContext,
+  pathsCompressed: DetectPathsCompressedView | undefined,
+  isKorean: boolean,
+): string {
+  const entries = resolvePathEntries(pathsCompressed?.context, rac.context);
+  if (!entries.length) return '';
+  return renderPathBlock(
+    isKorean ? '📚 **컨텍스트**' : '📚 **Context**',
+    entries,
+    isKorean,
+  );
+}
+
+function resolvePathEntries(
+  compressed: ReadonlyArray<PathOrFolder> | undefined,
+  fallback: string[] | undefined,
+): ReadonlyArray<PathOrFolder> {
+  if (compressed?.length) return compressed;
+  if (fallback?.length) return fallback.map((p) => ({ kind: 'file' as const, path: p }));
+  return [];
+}
+
+function renderPathBlock(
+  header: string,
+  entries: ReadonlyArray<PathOrFolder>,
+  isKorean: boolean,
+): string {
+  const lines = entries.map((e) => {
+    if (e.kind === 'folder') {
+      const count = isKorean ? `파일 ${e.fileCount}개` : `${e.fileCount} files`;
+      return `   • 📂 \`${e.path}/\` (${count})`;
+    }
+    return `   • 📄 \`${e.path}\``;
+  });
+  return `${header}:\n${lines.join('\n')}\n\n`;
 }
 
 function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {

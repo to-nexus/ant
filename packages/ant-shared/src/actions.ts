@@ -386,6 +386,22 @@ export function isValidIntentId(id: string): id is IntentId {
 // ActionMetadata (passed from FE to BE for explicit/infer pipeline)
 // ============================================
 
+/**
+ * Path-or-folder entry — output of `compressPathsByFolder` (BE) and
+ * payload for chat / FE rendering of RAC slot paths.
+ *
+ * `folder` is emitted only when *every* file in that directory was
+ * selected (BE FS check). Otherwise the slot stays as individual
+ * `file` entries. Single-file groups also stay as `file` (compression
+ * has no value).
+ *
+ * SSOT: BE produces these, FE consumes (chat `<detect>` payload,
+ * `ChatUserTurnLine.actionMetadata.foldersCompressed` badges).
+ */
+export type PathOrFolder =
+  | { kind: 'file'; path: string }
+  | { kind: 'folder'; path: string; fileCount: number };
+
 export interface ActionMetadata {
   /** true = explicit pipeline (no inference, use only provided values). Set only via ActionsPanel "Start via Chat". */
   explicit?: boolean;
@@ -421,6 +437,19 @@ export interface ActionMetadata {
    * changes; `updateActionMetadata` mirrors changes back into the cache.
    */
   techTierByGroup?: Partial<Record<IntentGroup, TechTierConfig>>;
+  /**
+   * BE-supplied folder-compressed view of `target` / `refs` / `context`
+   * (one entry per parent directory; `folder` kind when every file in
+   * that directory was selected). The FE renders this in
+   * `ActionMetadataBadges` when present so a 30-file folder collapses to
+   * a single `📂 dir/ (N files)` badge. Falls back to the raw paths
+   * when omitted (FE never recomputes — BE owns the FS check).
+   */
+  foldersCompressed?: {
+    target?: PathOrFolder[];
+    refs?: PathOrFolder[];
+    context?: PathOrFolder[];
+  };
 }
 
 /**

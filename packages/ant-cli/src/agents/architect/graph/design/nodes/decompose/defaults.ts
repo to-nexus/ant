@@ -28,9 +28,9 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
   return {
     id: 'explain-1',
     name: 'Explain: Design documents',
-    type: 'doc',
+    type: 'explain',
     priority: 200,
-    targetFile: isUi ? 'ui-spec.json' : 'be-system-main.md',
+    // No targetFile — explain mode is chat-only, no disk artifact.
     include: isUi
       ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT]
       : [ARTIFACT_PREFIX.SOURCES],
