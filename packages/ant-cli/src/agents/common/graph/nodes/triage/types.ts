@@ -2,7 +2,7 @@
  * Triage System Types — SSOT (single-tag intent lookup).
  *
  * Triage LLM emits only `<intentId>X</intentId>`. Everything else
- * (group / mode / domain / continuationType) is derived from the matrix.
+ * (group / mode / domain) is derived from the matrix.
  * Progressibility (status / missingPrerequisites / choiceOptions /
  * suggestedAlternatives / displayMessage) lives on `DetectResult`.
  */
@@ -48,19 +48,9 @@ export interface ChoiceOptions {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * ContinuationType — new semantics (Plan v2 §B):
- *   - `'proceed'` — same intent group as prev turn (same job).
- *   - `'switch'`  — different intent group (job boundary crossed).
- *
- * Replaces the legacy `'supplement' | 'newScope'` set, which was an LLM
- * signal; the new value is derived from intent identity.
- */
-export type ContinuationType = 'proceed' | 'switch';
-
-/**
  * TriageResult — SSOT (single-tag intent lookup).
  *
- * `triage()` populates these five fields and nothing else; progressibility
+ * `triage()` populates these four fields and nothing else; progressibility
  * (status / missingPrerequisites / displayMessage / choiceOptions) is on
  * `DetectResult`.
  */
@@ -73,8 +63,6 @@ export interface TriageResult {
   mode: Mode;
   /** Derived: actionMetadata.domain ?? workspaceState hint ?? 'service'. */
   domain: Domain;
-  /** Derived from prev intent (same job → proceed, cross-job → switch). */
-  continuationType?: ContinuationType;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -232,25 +220,4 @@ export interface TriageableState extends ResolvableState {
   skipTriage?: boolean;
   triageResult?: TriageResult;
   workspaceState?: WorkspaceState;
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// API Types
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * TriageChoiceRequest: 선택 API 요청
- */
-export interface TriageChoiceRequest {
-  jobId: string;
-  choice: ChoiceAction;
-}
-
-/**
- * TriageChoiceResponse: 선택 API 응답
- */
-export interface TriageChoiceResponse {
-  type: 'guide' | 'continue';
-  message?: string;  // guide일 때
-  action?: ChoiceAction;  // continue일 때
 }

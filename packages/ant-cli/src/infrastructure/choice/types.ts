@@ -22,8 +22,13 @@ export interface ChoiceEnvelope {
   domain?: Domain;
   displayMessage?: string;
   choiceOptions?: ChoiceOptions;
-  /** Best-effort target intent (alternatives[0].intentId) used by redirect handler. */
+  // ── Redirect target (set when choiceOptions exposes a 'redirect' action) ──
+  /** Agent to switch to, derived from `switchIntentId` via the matrix. */
+  suggestedAgent?: string;
+  /** Job to switch to (design/code/plan/visual/learn), derived from `switchIntentId`. */
   suggestedJob?: string;
+  /** Exact intent to run after the switch — passed to the target as explicit metadata. */
+  switchIntentId?: IntentId;
 }
 
 /**
@@ -41,10 +46,12 @@ export interface ChoiceRequest {
  */
 export interface ChoiceResponse {
   type: 'guide' | 'continue' | 'dismiss';
-  message?: string;        // guide/dismiss: message
-  action?: ChoiceAction;   // continue: action to perform
-  suggestedJob?: string;   // redirect: target job (intent id)
-  directive?: string;      // redirect: original directive
+  message?: string;          // guide/dismiss: message
+  action?: ChoiceAction;     // continue: action to perform
+  suggestedAgent?: string;   // redirect: target agent
+  suggestedJob?: string;     // redirect: target job (design/code/plan/visual/learn)
+  switchIntentId?: IntentId; // redirect: exact intent to run after switch
+  directive?: string;        // redirect: original directive
 }
 
 /**

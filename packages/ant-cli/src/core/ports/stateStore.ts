@@ -88,7 +88,9 @@ export interface PendingChoiceEnvelope {
   mode?: string;
   domain?: string;
   displayMessage?: string;
+  suggestedAgent?: string;
   suggestedJob?: string;
+  switchIntentId?: string;
   choiceOptions?: {
     positive?: { label: string; action: string };
     negative?: { label: string; action: string };
