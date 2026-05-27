@@ -17,6 +17,16 @@ If you have something to say to the user, the first thing you write is
 opening a tag. That sentence has nowhere to go and disappears. Open the
 tag immediately.
 
+### Invariant 1b — Status markers are records, not actions
+
+After a `<file>`/`<edit>`/`<append>` tag is saved, the transcript may show
+it compacted to `[file written to disk: <path>]` (or `[file edited: …]` /
+`[file appended: …]`). That bracket line is the past **result** of a real
+tag — a read-only record that the file already exists. It is NOT a way to
+write a file: typing that bracket text yourself writes nothing. The only
+way to create or change a file is a real `<file>`/`<edit>`/`<append>` tag
+(first token `<`, per Invariant 1).
+
 ### Invariant 2 — No nesting across intent axes
 
 Tags from different intent axes MUST NOT nest inside each other.
