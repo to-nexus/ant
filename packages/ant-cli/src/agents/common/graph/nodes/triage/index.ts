@@ -3,7 +3,7 @@
  *
  * SSOT: triage performs ONE responsibility — resolve the user directive
  * to a single IntentId from the matrix. All other fields (group / mode /
- * domain / continuationType) are derived by the matrix; nothing is judged
+ * domain) are derived by the matrix; nothing is judged
  * about progressibility (workStatus / missing prerequisites / choices) —
  * that lives in `detect` from Phase C onward.
  *
@@ -19,7 +19,6 @@ import {
   deriveTriageGroup,
   deriveTriageMode,
   deriveTriageDomain,
-  deriveContinuationType,
   validateIntentId,
 } from './derive.js';
 import { AgentRegistry } from './AgentRegistry.js';
@@ -142,7 +141,6 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Step 2: Skip path — skipTriage flag or explicit actionMetadata.intent
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.skipTriage || state.actionMetadata?.intent) {
-    const prevIntent = pickPrevIntent(rehydratedContext);
     const reason = state.skipTriage
       ? 'skipTriage=true'
       : `actionMetadata.intent=${state.actionMetadata!.intent}`;
@@ -159,7 +157,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     }
 
     const intentId = state.actionMetadata!.intent as IntentId;
-    const triageResult = buildTriageResult(intentId, state, workspaceState, prevIntent);
+    const triageResult = buildTriageResult(intentId, state, workspaceState);
     await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
     logTriageResult(triageResult);
 
@@ -211,8 +209,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     jobId: state._httpJobId || 'unknown',
   });
 
-  const prevIntent = pickPrevIntent(rehydratedContext);
-  const triageResult = buildTriageResult(intentId, state, workspaceState, prevIntent);
+  const triageResult = buildTriageResult(intentId, state, workspaceState);
   await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
 
   logTriageResult(triageResult);
@@ -247,31 +244,20 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
 // Helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function pickPrevIntent(featureContext: unknown): IntentId | undefined {
-  if (!featureContext || typeof featureContext !== 'object') return undefined;
-  const userTurns = (featureContext as any).userTurns;
-  if (!Array.isArray(userTurns) || userTurns.length === 0) return undefined;
-  const last = userTurns[userTurns.length - 1];
-  return last?.actionMetadata?.intent as IntentId | undefined;
-}
-
 function buildTriageResult(
   intentId: IntentId,
   state: TriageableState,
   workspaceState: WorkspaceState,
-  prevIntent: IntentId | undefined,
 ): TriageResult {
   validateIntentId(intentId);
   const group = deriveTriageGroup(intentId);
   const mode = deriveTriageMode(intentId);
   const domain = deriveTriageDomain(intentId, workspaceState, state.actionMetadata);
-  const continuationType = deriveContinuationType(prevIntent, intentId);
   return {
     resolvedIntentId: intentId,
     group,
     mode,
     domain,
-    ...(continuationType ? { continuationType } : {}),
   };
 }
 
@@ -403,9 +389,6 @@ function logTriageResult(result: TriageResult): void {
   console.log(`   Group:  ${result.group}`);
   console.log(`   Mode:   ${result.mode}`);
   console.log(`   Domain: ${result.domain}`);
-  if (result.continuationType) {
-    console.log(`   Continuation: ${result.continuationType}`);
-  }
   console.log('');
 }
 
@@ -514,6 +497,5 @@ export {
   deriveTriageGroup,
   deriveTriageMode,
   deriveTriageDomain,
-  deriveContinuationType,
   validateIntentId,
 } from './derive.js';

@@ -47,7 +47,9 @@ export class ChoiceService {
       mode: envelope.mode,
       domain: envelope.domain,
       displayMessage: envelope.displayMessage,
+      suggestedAgent: envelope.suggestedAgent,
       suggestedJob: envelope.suggestedJob,
+      switchIntentId: envelope.switchIntentId,
       choiceOptions: envelope.choiceOptions,
     };
   }
@@ -232,7 +234,9 @@ export class ChoiceService {
         return {
           type: 'continue',
           action: 'redirect',
+          suggestedAgent: envelope.suggestedAgent,
           suggestedJob: envelope.suggestedJob,
+          switchIntentId: envelope.switchIntentId,
           directive: pending.originalDirective,
         };
 
