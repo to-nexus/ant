@@ -162,7 +162,7 @@ export function TabButton({
           <span className="flex-shrink-0">{trailing}</span>
         )}
       </div>
-      {showCloseButtonEffective && (
+      {showCloseButtonEffective && showText && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -170,7 +170,6 @@ export function TabButton({
           }}
           onMouseEnter={() => setCloseHover(true)}
           onMouseLeave={() => setCloseHover(false)}
-          className={cn(!showText && 'hidden')}
           style={closeStyle}
           title={t('tabs.closeTab', { label: label.toLowerCase() })}
         >
