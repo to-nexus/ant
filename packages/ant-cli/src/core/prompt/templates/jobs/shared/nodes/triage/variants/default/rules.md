@@ -55,7 +55,4 @@ workspace state.
 
 - The chosen `X` MUST appear verbatim in the INTENT CATALOG; misspellings,
   synonyms, and inventions are not allowed.
-- Do not emit `continuationType`, `workStatus`, `inScope`, `displayMessage`,
-  `choiceOptions`, `suggestedAgent`, `suggestedJob`, `missingPrerequisites`,
-  or any other field. Those are derived from `<intentId>` by the host code.
 - Do not output any text outside `<intentId>...</intentId>`.

@@ -19,7 +19,9 @@ import {
   isValidIntentId,
   getConfigSlots,
   getDefaultTargetPaths,
+  deriveFromIntent,
 } from '@ant/shared';
+import type { ChoiceOptions } from '../triage/types.js';
 import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
@@ -377,6 +379,42 @@ async function buildPathsCompressed(
   return { target, refs, context };
 }
 
+/**
+ * Choice options for an agent/job switch — the resolved intent belongs to a
+ * different agent/job than the one currently selected. Only switch / dismiss:
+ * "proceed here" is meaningless when the current job cannot produce this
+ * artifact, and (until the toolbar selects intents directly) there is no
+ * well-defined in-job intent to fall back to.
+ */
+function buildAgentJobSwitchChoice(): ChoiceOptions {
+  return {
+    positive: { label: '전환', action: 'redirect' },
+    negative: { label: '취소', action: 'dismiss' },
+  };
+}
+
+/**
+ * DetectResult for the agent/job-switch gate. Reuses the `redirect-suggested`
+ * surface so the existing Phase 4 card-render + `routeAfterDetect → __end__`
+ * pause path applies unchanged. The single suggested alternative is the
+ * resolved intent itself — run in its correct agent/job after the user
+ * confirms the switch.
+ */
+function buildAgentJobSwitchResult<T extends DetectableState>(
+  intentId: IntentId,
+  want: { agent: string; jobType: string },
+  state: T,
+): DetectResult<T> {
+  return {
+    status: 'redirect-suggested',
+    suggestedAlternatives: [
+      { intentId, reason: `${want.agent}/${want.jobType}에서 처리되는 작업입니다.` },
+    ],
+    choiceOptions: buildAgentJobSwitchChoice(),
+    displayMessage: `요청이 현재 ${state.currentJob} 작업 범위를 벗어납니다. ${want.agent}/${want.jobType}(으)로 전환할까요?`,
+  };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // createInferDetectNode — Phase D SSOT (job-blind tool-use + augment hook)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -492,20 +530,38 @@ export function createInferDetectNode<T extends DetectableState>(
         };
         console.log(`⚡ [detect:infer] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
       } else {
-        // Infer path — job-blind tool-use loop.
-        const inferred = await inferRacWithTools({
-          intentId: intentId as IntentId,
-          domain,
-          workspaceState: state.workspaceState,
-          featureContext: (state as any).featureContext,
-          featurePath,
-          fileSystem: state.deps?.fileSystem,
-          command: state.deps?.command,
-          llm,
-          promptBuilder,
-          locale: state._uiLocale,
-        });
-        detectResult = inferred as DetectResult<T>;
+        // ── Agent/job-switch gate ──
+        // The resolved intent must belong to the currently selected
+        // agent/job. If it crosses that boundary, do NOT silently run it
+        // here (which would build tasks for another job's intent while the
+        // toolbar stays put). Surface a switch choice card and pause; the
+        // user confirms before we hand off to the correct agent/job.
+        const want =
+          state.currentAgent && state.currentJob
+            ? deriveFromIntent(intentId as IntentId)
+            : undefined;
+        if (want && (want.agent !== state.currentAgent || want.jobType !== state.currentJob)) {
+          console.log(
+            `🔀 [detect:infer] Cross-job intent — resolved=${intentId} → ${want.agent}/${want.jobType}, ` +
+              `current=${state.currentAgent}/${state.currentJob}; offering switch`,
+          );
+          detectResult = buildAgentJobSwitchResult(intentId as IntentId, want, state);
+        } else {
+          // Infer path — job-blind tool-use loop.
+          const inferred = await inferRacWithTools({
+            intentId: intentId as IntentId,
+            domain,
+            workspaceState: state.workspaceState,
+            featureContext: (state as any).featureContext,
+            featurePath,
+            fileSystem: state.deps?.fileSystem,
+            command: state.deps?.command,
+            llm,
+            promptBuilder,
+            locale: state._uiLocale,
+          });
+          detectResult = inferred as DetectResult<T>;
+        }
       }
 
       // ── Phase 3: Augment hook (job-specific post-infer) ──
@@ -561,6 +617,10 @@ export function createInferDetectNode<T extends DetectableState>(
           await chatAPI.startMessage();
           if (detectResult.status === 'redirect-suggested' && detectResult.choiceOptions) {
             const altIntent = detectResult.suggestedAlternatives?.[0]?.intentId;
+            // The alternative is an intent id; the switch target's agent/job
+            // is derived from it (matrix SSOT), and the intent itself is
+            // carried so the target runs exactly it (no re-inference drift).
+            const target = altIntent ? deriveFromIntent(altIntent) : undefined;
             const envelope = {
               resolvedIntentId: state.triageResult?.resolvedIntentId,
               group: 'work' as const,
@@ -568,7 +628,9 @@ export function createInferDetectNode<T extends DetectableState>(
               domain: state.triageResult?.domain,
               displayMessage: detectResult.displayMessage,
               choiceOptions: detectResult.choiceOptions,
-              suggestedJob: altIntent,
+              suggestedAgent: target?.agent,
+              suggestedJob: target?.jobType,
+              switchIntentId: altIntent,
             };
             await chatAPI.sendTriageChoice(
               detectResult.displayMessage,

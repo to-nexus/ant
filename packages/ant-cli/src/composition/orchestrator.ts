@@ -211,8 +211,7 @@ export async function orchestrator(params: {
         //      single-tag triage LLM call.
         //   2. If the resulting `group === 'ask'` → run the ask graph and
         //      return the answer. If `'work'` → return `intent='work'` so
-        //      the orchestrator caller decides newJob vs continue based on
-        //      `continuationType` semantics (FE wizard / runner).
+        //      the orchestrator caller decides newJob vs continue.
         const message = overrideDirective || input;
         const inlineAskResult = await runInlineAskDispatch({
           message,
