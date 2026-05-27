@@ -16,12 +16,6 @@ import {
   diagnosticBatchShape,
 } from './policy';
 import { BatchSplitSchemaViolation } from './schemaViolation';
-import {
-  evaluateFlatPlanSizeGate,
-  SIZE_GATE_TYPES,
-  MAX_FLATPLAN_REFRAME_ATTEMPTS,
-} from './sizeGate';
-import { FlatPlanTooLargeViolation } from './sizeViolation';
 
 /**
  * Detect an LLM-explicit fan-out plan and spawn the sub-tasks.
@@ -102,77 +96,17 @@ export function processDiagnosticBatchSplit(
     const hasExistingBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
     const topLevelImplCount = modifyArr.length + createArr.length + deleteArr.length;
 
-    // Fan-out is LLM-explicit: the LLM emitting `batches[]` is the only
-    // signal that fabricates batches. The system never invents batch
-    // boundaries from top-level entries (05977571). BUT a flat plan that
-    // is too large to close in one execute session is no longer allowed to
-    // ride silently into the recursion crash (dim-beating-brass RCA): the
-    // size gate forces the LLM to re-partition ITS OWN flat plan into
-    // `batches[]` (seams stay LLM-authored), and soft-fails the task if the
-    // LLM refuses after `MAX_FLATPLAN_REFRAME_ATTEMPTS`. See
-    // `sizeGate.ts` for the breadth/budget thresholds and
-    // `task-split-rubric.md` for the splitting principle.
+    // SSOT for fan-out decision is the LLM's explicit `batches[]`. A flat
+    // `implementation` block — regardless of entry count, package count, or
+    // domain count — proceeds to execute as a single task. The system never
+    // fabricates batches from top-level entries; LLM judgement is the only
+    // signal. See `templates/jobs/code/shared/task-split-rubric.md` for the
+    // splitting principle taught to both decompose and plan.
     if (!hasExistingBatches) {
-      const gate = SIZE_GATE_TYPES.has(nextTask.type)
-        ? evaluateFlatPlanSizeGate({
-            modify: modifyArr,
-            create: createArr,
-            delete: deleteArr,
-            recursionLimit: state.recursionLimit,
-            recursionCount: state.recursionCount,
-          })
-        : null;
-
-      if (gate?.trip) {
-        const reframeCount = (nextTask as { _flatPlanReframeCount?: number })._flatPlanReframeCount ?? 0;
-        if (reframeCount < MAX_FLATPLAN_REFRAME_ATTEMPTS) {
-          // Force a re-partition: throw the typed violation so the plan-node
-          // catch re-issues the call with framing that embeds this flat plan.
-          logBatchSplit({
-            action: 'size_gate_reframe',
-            reframeCount,
-            taskName: nextTask.name,
-            parentType: nextTask.type,
-            ...gate.metrics,
-          });
-          throw new FlatPlanTooLargeViolation({ flatPlanText: planText, ...gate.metrics });
-        }
-        // Reframe budget exhausted — the LLM refused to split a plan that
-        // cannot close in one session. Soft-fail (no fabrication): mark the
-        // task and throw a terminal error the orchestrator routes to
-        // `failedTasks` + drain + kanban tooltip, instead of executing into
-        // a 200-step crash. Mirrors the cycle-limit block below.
-        const userLanguage = state.context?.userLanguage || 'en';
-        const reason = userLanguage === 'ko'
-          ? `대규모 평면 계획(${gate.metrics.topLevelImplCount}개 항목 / ${gate.metrics.distinctTopLevelDomains}개 영역)을 ${MAX_FLATPLAN_REFRAME_ATTEMPTS}회 재요청했지만 배치로 분할되지 않았습니다. 작업 "${nextTask.name}"은(는) 단일 세션에서 완료할 수 없어 체크포인트로 보존합니다.`
-          : `Flat plan spanning ${gate.metrics.topLevelImplCount} entries across ${gate.metrics.distinctTopLevelDomains} domains was not split after ${MAX_FLATPLAN_REFRAME_ATTEMPTS} reframe attempts. Task "${nextTask.name}" cannot close in a single session; preserved as a checkpoint.`;
-        (nextTask as { _failed?: boolean })._failed = true;
-        (nextTask as { _failureReason?: string })._failureReason = reason;
-        logBatchSplit({
-          action: 'size_gate_soft_fail',
-          reframeCount,
-          taskName: nextTask.name,
-          parentType: nextTask.type,
-          ...gate.metrics,
-        });
-        console.error(`❌ [SizeGate] Flat plan too large and not split after ${MAX_FLATPLAN_REFRAME_ATTEMPTS} reframes for "${nextTask.name}". Soft-failing.`);
-        appendTrace({
-          node: 'plan',
-          taskId: nextTask.id,
-          taskType: nextTask.type,
-          extra: { reason: 'flatplan_too_large_terminal', ...gate.metrics },
-        });
-        throw new VerificationTerminalError(
-          'flatplan_too_large',
-          `Flat plan too large ("${nextTask.name}", ${gate.metrics.topLevelImplCount} entries / ${gate.metrics.distinctTopLevelDomains} domains) not split after ${MAX_FLATPLAN_REFRAME_ATTEMPTS} reframes.`,
-        );
-      }
-
       logBatchSplit({
         action: 'skipped',
-        reason: gate ? `flat_plan_${gate.reason}` : 'flat_plan_no_batches',
+        reason: 'flat_plan_no_batches',
         topLevelImplCount,
-        distinctTopLevelDomains: gate?.metrics.distinctTopLevelDomains,
         taskName: nextTask.name,
         parentType: nextTask.type,
       });
@@ -631,9 +565,6 @@ export function processDiagnosticBatchSplit(
       throw err;
     }
     if (err instanceof BatchSplitSchemaViolation) {
-      throw err;
-    }
-    if (err instanceof FlatPlanTooLargeViolation) {
       throw err;
     }
     logBatchSplit({ action: 'skipped', reason: 'json_parse_error', error: (err as Error).message, planTextPreview: planText.substring(0, 120), taskName: nextTask.name });
