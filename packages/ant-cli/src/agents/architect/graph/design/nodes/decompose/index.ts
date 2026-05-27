@@ -273,7 +273,11 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     // UI Design mode: LLM-driven decomposition
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.resolvedAction?.intentGroup === 'design-ui') {
-      return decomposeUiDesign(state, {
+      // `return await` (not bare `return`): the enclosing `finally` calls
+      // exitDecomposeNode, and a non-awaited return runs `finally` the instant
+      // the work promise is created — firing exitNode('decompose') before the
+      // decomposition runs and collapsing the node's active-state window to ~0.
+      return await decomposeUiDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,
@@ -284,7 +288,9 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     // Game-Art Design mode: LLM-driven decomposition (D17/D28)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.resolvedAction?.intentGroup === 'design-game-art') {
-      return decomposeGameArtDesign(state, {
+      // `return await` so exitDecomposeNode (in finally) defers until the work
+      // completes — see the design-ui branch above.
+      return await decomposeGameArtDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,
@@ -295,7 +301,9 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     // Spec mode: single task for spec document generation
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.resolvedAction?.intentGroup === 'design-spec') {
-      return decomposeSpec(state, {
+      // `return await` so exitDecomposeNode (in finally) defers until the work
+      // completes — see the design-ui branch above.
+      return await decomposeSpec(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,
@@ -308,7 +316,9 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     const pool = new ArtifactPoolView(state.artifacts || []);
     const hasSpec = Boolean(pool.hasSources() || pool.hasSystemDesign() || state.directive);
     if (!hasSpec) {
-      return handleDefaultTask(state, timing);
+      // `return await` so exitDecomposeNode (in finally) defers until the work
+      // completes — see the design-ui branch above.
+      return await handleDefaultTask(state, timing);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
