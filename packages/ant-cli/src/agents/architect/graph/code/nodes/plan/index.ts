@@ -40,9 +40,6 @@ import {
   MAX_BATCH_SPLIT_CYCLES,
   BatchSplitSchemaViolation,
   buildBatchSplitSchemaViolationFraming,
-  FlatPlanTooLargeViolation,
-  buildFlatPlanTooLargeFraming,
-  MAX_FLATPLAN_REFRAME_ATTEMPTS,
 } from '../../tasks/_shared/batchSplit';
 import { runPlanRAG } from './rag';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
@@ -291,28 +288,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       await workflowExit(state);
       return mergeDelta(updatedState, entryDelta) as ArchitectGraphState;
     } catch (e) {
-      if (e instanceof FlatPlanTooLargeViolation) {
-        // Defensive parity with `nodes/plan/llm/toolLoop.ts`. Gated types
-        // (feature / ui / design-system) normally finalise in the tool
-        // loop, so this fires only when the single-shot path produced an
-        // over-large flat plan. Bump the task-scoped reframe counter and
-        // re-issue with framing (embeds the flat plan; no re-investigation).
-        // `process.ts` soft-fails — throwing a terminal
-        // `VerificationTerminalError` caught by the `throw e` below — once
-        // `_flatPlanReframeCount` hits `MAX_FLATPLAN_REFRAME_ATTEMPTS`, so
-        // this loop is bounded without an explicit attempt cap.
-        const task = nextTask as { _flatPlanReframeCount?: number };
-        task._flatPlanReframeCount = (task._flatPlanReframeCount ?? 0) + 1;
-        // Reuse the single plan-retry framing slot (mutually exclusive with
-        // schema-violation framing per LLM output → last-write-wins).
-        state._batchSplitViolationFraming = buildFlatPlanTooLargeFraming(e);
-        console.warn(
-          `⚠️  [Plan] FlatPlanTooLargeViolation — reframe ` +
-          `${task._flatPlanReframeCount}/${MAX_FLATPLAN_REFRAME_ATTEMPTS}: ` +
-          `${e.detail.topLevelImplCount} entries / ${e.detail.distinctTopLevelDomains} domains — re-issuing as batches[].`,
-        );
-        continue;
-      }
       if (!(e instanceof BatchSplitSchemaViolation)) throw e;
 
       if (attempt >= PLAN_SCHEMA_VIOLATION_MAX_ATTEMPTS) {

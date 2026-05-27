@@ -25,6 +25,19 @@ export interface ComposeOptions {
   /** Token budget manager override. Defaults to new TokenBudgetManager(). */
   tokenManager?: TokenBudgetManager;
   /**
+   * Standard-stage (stage 1) compaction params. When omitted the standard
+   * `compactTurns` uses its 50K default — far below the real model window,
+   * which evicts already-read file content mid-task and forces re-reads
+   * (dim-beating-brass RCA). Callers that know their window SHOULD pass a
+   * threshold keyed to it (e.g. ~80-90% of the history budget) so reads stay
+   * resident. Distinct from `budgetRecovery.aggressiveParams`, which is the
+   * last-resort stage 2 re-compact.
+   */
+  compactParams?: {
+    autoCompactThreshold: number;
+    autoCompactHotTail: number;
+  };
+  /**
    * Multi-stage budget recovery (code execute pattern).
    *
    * stage 1: standard compactAndPruneHistory (always runs)
@@ -61,6 +74,7 @@ export function composeMessages(options: ComposeOptions): ComposeResult {
     cleanAssistantContent,
     trailingUserMessage = 'Continue.',
     tokenManager = new TokenBudgetManager(),
+    compactParams,
     budgetRecovery,
   } = options;
 
@@ -72,6 +86,7 @@ export function composeMessages(options: ComposeOptions): ComposeResult {
     composeWithHistory(messages, priorTurns, {
       cleanAssistantContent,
       tokenManager,
+      compactParams,
       budgetRecovery,
     });
   } else {
@@ -99,16 +114,19 @@ function composeWithHistory(
   opts: {
     cleanAssistantContent?: (content: string) => string;
     tokenManager: TokenBudgetManager;
+    compactParams?: ComposeOptions['compactParams'];
     budgetRecovery?: ComposeOptions['budgetRecovery'];
   },
 ): void {
-  const { cleanAssistantContent, tokenManager, budgetRecovery } = opts;
+  const { cleanAssistantContent, tokenManager, compactParams, budgetRecovery } = opts;
 
   // Step a: Skip initial user messages until first assistant
   const filtered = filterInitialUserMessages(priorTurns, cleanAssistantContent);
 
-  // Step b-c: Compact & prune
-  const { result: prunedTurns, wasCompacted } = compactAndPruneHistory(filtered, tokenManager);
+  // Step b-c: Compact & prune. `compactParams` (when supplied) keys the
+  // standard-stage threshold to the real model window instead of the 50K
+  // default, so already-read file content is not evicted mid-task.
+  const { result: prunedTurns, wasCompacted } = compactAndPruneHistory(filtered, tokenManager, compactParams);
 
   // Step d: Convert to MessageContentBlock[] and append
   appendTurns(messages, prunedTurns, wasCompacted);
