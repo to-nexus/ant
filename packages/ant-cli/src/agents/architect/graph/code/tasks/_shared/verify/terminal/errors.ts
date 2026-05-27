@@ -7,6 +7,7 @@ export type VerificationTerminalKind =
   | 'max_retries_exceeded'
   | 'unresolved_violations'
   | 'batch_cycle_limit'
+  | 'flatplan_too_large'
   | 'orchestrator_fail_limit';
 
 // Both code and design jobs retired the analogous Safety Net D/E.
