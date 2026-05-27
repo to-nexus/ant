@@ -494,8 +494,16 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
   }
 
-  return { 
-    ...state, 
+  // Workflow instrumentation: Exit node (parity with code learn).
+  // learn is terminal so endJob() also clears active state, but emitting exit
+  // here avoids a stuck-active 'learn' if endJob is delayed, and keeps the
+  // enter/exit bracket symmetric across jobs.
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', state.workerId ?? 0);
+  }
+
+  return {
+    ...state,
     lessons
   };
 }
