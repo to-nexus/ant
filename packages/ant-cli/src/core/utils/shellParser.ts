@@ -33,6 +33,100 @@ export function hasActualPipe(command: string): boolean {
 }
 
 /**
+ * Strip the contents of single-quoted, double-quoted, backtick, and `$( … )`
+ * regions from `command`, replacing them with whitespace (one space per
+ * stripped character so column offsets and tokenization-by-regex around
+ * the masked region stay sane).
+ *
+ * Used by `extractWriteTargets` and any other pre-execution regex guard so
+ * that JavaScript-style literals inside `node -e "…"` (e.g. arrow functions
+ * `() => { … }` whose `>` would otherwise look like a `>` redirect) do not
+ * trigger false positives. The surrounding command shape (`node -e <mask>`,
+ * `mkdir foo`, `cmd > file.txt`) is preserved because only the *interior*
+ * of each quoted region is blanked.
+ *
+ * NOTE: This is a one-way mask for guard regex. Do NOT use it to actually
+ * execute or display commands — the original string is what runs.
+ */
+export function maskQuotedRegions(command: string): string {
+  let out = '';
+  let i = 0;
+  while (i < command.length) {
+    const ch = command[i];
+
+    if (ch === '\\' && i + 1 < command.length) {
+      out += ch + command[i + 1];
+      i += 2;
+      continue;
+    }
+
+    if (ch === "'") {
+      const end = command.indexOf("'", i + 1);
+      if (end === -1) {
+        out += "'" + ' '.repeat(command.length - i - 1);
+        i = command.length;
+      } else {
+        out += "'" + ' '.repeat(end - i - 1) + "'";
+        i = end + 1;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      out += '"';
+      let j = i + 1;
+      while (j < command.length) {
+        if (command[j] === '\\' && j + 1 < command.length) {
+          out += '  ';
+          j += 2;
+        } else if (command[j] === '"') {
+          out += '"';
+          j++;
+          break;
+        } else {
+          out += ' ';
+          j++;
+        }
+      }
+      i = j;
+      continue;
+    }
+
+    if (ch === '`') {
+      const end = command.indexOf('`', i + 1);
+      if (end === -1) {
+        out += '`' + ' '.repeat(command.length - i - 1);
+        i = command.length;
+      } else {
+        out += '`' + ' '.repeat(end - i - 1) + '`';
+        i = end + 1;
+      }
+      continue;
+    }
+
+    // `$( … )` command substitution — mask interior, keep parens
+    if (ch === '$' && command[i + 1] === '(') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < command.length && depth > 0) {
+        if (command[j] === '(') depth++;
+        else if (command[j] === ')') depth--;
+        if (depth > 0) j++;
+      }
+      const end = j; // index of the closing ')' or command.length
+      const interiorLen = Math.max(0, end - i - 2);
+      out += '$(' + ' '.repeat(interiorLen) + (end < command.length ? ')' : '');
+      i = end < command.length ? end + 1 : end;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Tokenize a single shell command segment into words, respecting
  * single/double quotes and backslash escapes.
  *

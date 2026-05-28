@@ -152,7 +152,15 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
             resultPreview: resultStr.length <= 500 ? resultStr : undefined,
             wasTruncated: false,
             error: event.result.error,
-            phase: state._activePhase as 'plan' | 'execute' | undefined,
+            // Surface 'verify' in the debug log when verification is active,
+            // even though the graph's `_activePhase` channel stays 'plan'
+            // (verification loops live inside the plan node). Downstream
+            // consumers of `activePhase` still see 'plan' | 'execute' via
+            // the ToolExecutionContext; this is a log-only refinement so
+            // debug traces accurately reflect which phase actually ran.
+            phase: (isVerifyModeActive(state)
+              ? 'verify'
+              : state._activePhase) as 'plan' | 'execute' | 'verify' | undefined,
             sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
           })
           .catch(() => { /* non-blocking */ });
