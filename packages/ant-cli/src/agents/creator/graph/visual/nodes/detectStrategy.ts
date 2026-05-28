@@ -26,7 +26,33 @@ function mapVisualIntentId(mode: string, assetType?: string): string {
   }
 }
 
+/** Inverse of mapVisualIntentId — intent → assetType. */
+function deriveAssetType(intentId: string): VisualAssetType {
+  switch (intentId) {
+    case 'gen-visual-logo': return 'logo';
+    case 'gen-visual-icon': return 'icon';
+    case 'gen-visual-hero': return 'hero';
+    case 'gen-visual-illustration': return 'illustration';
+    default: return 'general';
+  }
+}
+
 export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
+  /**
+   * Explicit-branch hook — LLM classify is skipped, derive visual state from
+   * intent. Symmetric to `onResume` (both signal "LLM skipped, set
+   * job-specific state"). Tier defaults to Reflex since the user committed
+   * intent → no LLM judgment needed.
+   */
+  onExplicit(_state, intentId): Partial<VisualGraphState> {
+    const jobMode: Mode = intentId === 'explain-visual' ? 'explain' : 'generate';
+    return {
+      assetType: deriveAssetType(intentId),
+      jobMode,
+      executionTier: ExecutionTierId.Reflex,
+    };
+  },
+
   async run(state): Promise<DetectResult<VisualGraphState>> {
     if (state.skipClassify) {
       console.log(`⏭️ [Visual:Detect] Skipped (skipClassify=true, assetType=${state.assetType || 'general'})`);

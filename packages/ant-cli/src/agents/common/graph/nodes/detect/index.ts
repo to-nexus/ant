@@ -68,7 +68,14 @@ export function createDetectNode<T extends DetectableState>(
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Phase 0: Resume fast path
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (state.resolvedAction && !strategy.isAwaitingInput?.(state)) {
+      // SSOT — `actionMetadata.intent` 가 진실. 세션이 옛 turn 의
+      // `resolvedAction.intent` 를 복원했어도 새 turn 의 explicit intent 와
+      // 다르면 fast-path 우회 → 아래 explicit/infer 분기에서 새 intent 로
+      // RAC 재구성. 같으면 정상 fast-path (continuation).
+      const restoredIntent = state.resolvedAction?.intent;
+      const newIntent = state.actionMetadata?.intent;
+      const intentDiverged = !!newIntent && !!restoredIntent && newIntent !== restoredIntent;
+      if (state.resolvedAction && !strategy.isAwaitingInput?.(state) && !intentDiverged) {
         console.log(`🔍 [detect] Resume — using existing resolvedAction (LLM skip)`);
         console.log(`   mode=${state.resolvedAction.mode}, intent=${state.resolvedAction.intent}`);
 
@@ -115,13 +122,13 @@ export function createDetectNode<T extends DetectableState>(
       let reasoning: InferredAction['reasoning'] | undefined;
       let inferStateUpdates: Partial<T> | undefined;
 
-      if (state.actionMetadata?.explicit) {
-        // ── Explicit path: metadata provides all slots. No LLM. ──
+      if (state.actionMetadata?.intent) {
+        // ── Explicit path: SSOT = `actionMetadata.intent` 존재.
+        // Triage skip ([triage/index.ts:143]) 와 동일 게이트. `.explicit`
+        // boolean 은 BE 가 더 이상 read 하지 않는다 (FE UI badge 잔존).
+        // metadata 가 모든 slot 을 제공. No LLM. ──
         const metadata = state.actionMetadata;
-        if (!metadata.intent) {
-          throw new Error('[detect] explicit=true but no intent provided in actionMetadata');
-        }
-        intentId = metadata.intent;
+        intentId = metadata.intent!;
 
         // dusk-mounding-pilot regression — chat-driven explicit submits
         // (DomainToggle / `@domain:` mention / explicit toggle without
@@ -159,6 +166,10 @@ export function createDetectNode<T extends DetectableState>(
         };
         source = 'explicit';
         basis = metadata.basis;
+        // 전략별 explicit hook — LLM classify 가 채우던 job-specific state
+        // (예: visual 의 assetType / jobMode / executionTier) 를 intent 에서 derive.
+        // 다른 잡은 미구현 → no-op.
+        inferStateUpdates = strategy.onExplicit?.(state, intentId) as Partial<T> | undefined;
         console.log(`⚡ [detect] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
 
       } else {
@@ -460,7 +471,12 @@ export function createInferDetectNode<T extends DetectableState>(
 
     try {
       // ── Phase 0: Resume fast path (preserved escalation reuse) ──
-      if (state.resolvedAction) {
+      // SSOT — 새 turn 의 explicit intent 가 복원된 옛 intent 와 다르면 우회.
+      // Phase 1 의 explicit 분기에서 새 intent 로 RAC 재구성. 같으면 정상 fast-path.
+      const restoredIntentInfer = state.resolvedAction?.intent;
+      const newIntentInfer = state.actionMetadata?.intent;
+      const intentDivergedInfer = !!newIntentInfer && !!restoredIntentInfer && newIntentInfer !== restoredIntentInfer;
+      if (state.resolvedAction && !intentDivergedInfer) {
         console.log(`🔍 [detect:infer] Resume — using existing resolvedAction (LLM skip)`);
         const resumeFeaturePath = resolveFeaturePath(state);
         let resumeArtifacts = state.resolvedArtifacts;
@@ -482,9 +498,10 @@ export function createInferDetectNode<T extends DetectableState>(
       }
 
       // ── Phase 1: Resolve intentId source ──
-      const triageIntent = state.triageResult?.resolvedIntentId;
-      const explicitIntent = state.actionMetadata?.intent;
-      const intentId = (state.actionMetadata?.explicit ? explicitIntent : triageIntent) || triageIntent || explicitIntent;
+      // SSOT — `actionMetadata.intent` (사용자가 explicit 하게 고른 값) 이
+      // 있으면 그것을, 없으면 triage 가 LLM 으로 결정한 값을 사용. Triage 의
+      // skip 게이트 ([triage/index.ts:143]) 와 같은 진실 ([actionMetadata.intent] 존재).
+      const intentId = state.actionMetadata?.intent ?? state.triageResult?.resolvedIntentId;
       if (!intentId) {
         throw new Error(
           '[detect:infer] No intentId — triage.resolvedIntentId and actionMetadata.intent both missing',
@@ -496,16 +513,12 @@ export function createInferDetectNode<T extends DetectableState>(
 
       const domain = state.triageResult?.domain ?? state.actionMetadata?.domain;
       const featurePath = resolveFeaturePath(state);
-      const llm = state.deps?.llm;
-      const promptBuilder = state.deps?.promptBuilder;
-      if (!llm) throw new Error('[detect:infer] LLM not available');
-      if (!promptBuilder) throw new Error('[detect:infer] PromptBuilder not available');
 
       // ── Phase 2: Build DetectResult ──
       let detectResult: DetectResult<T>;
-      if (state.actionMetadata?.explicit) {
-        // Explicit path — metadata is authoritative; build RAC directly,
-        // load artifacts. No tool-loop, no progressibility check.
+      if (state.actionMetadata?.intent) {
+        // Explicit path — SSOT = `actionMetadata.intent` 존재. metadata 가
+        // 권위. No tool-loop, no progressibility check.
         const metadata = state.actionMetadata;
         const explicitTarget = metadata.target?.length
           ? metadata.target
@@ -547,7 +560,12 @@ export function createInferDetectNode<T extends DetectableState>(
           );
           detectResult = buildAgentJobSwitchResult(intentId as IntentId, want, state);
         } else {
-          // Infer path — job-blind tool-use loop.
+          // Infer path — job-blind tool-use loop. LLM / promptBuilder
+          // 의존성 검증은 이 분기 안에서만 — explicit branch 는 LLM 불필요.
+          const llm = state.deps?.llm;
+          const promptBuilder = state.deps?.promptBuilder;
+          if (!llm) throw new Error('[detect:infer] LLM not available');
+          if (!promptBuilder) throw new Error('[detect:infer] PromptBuilder not available');
           const inferred = await inferRacWithTools({
             intentId: intentId as IntentId,
             domain,
