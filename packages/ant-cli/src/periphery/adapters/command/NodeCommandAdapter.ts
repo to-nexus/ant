@@ -120,9 +120,22 @@ export class NodeCommandAdapter implements CommandPort {
     'tree',      // Directory tree (if installed)
     
     // Process management
+    'ps',        // Process listing (procps full ps replaces busybox mini-ps)
+    'pgrep',     // Find PID by name (DevProcessControl pgrep BFS)
+    'pkill',     // Kill by name (LLM cleanup of leaked dev servers)
     'lsof',      // List open files (for port checking)
     'kill',      // Kill processes
     'xargs',     // Build and execute commands from stdin
+
+    // Network/port diagnostics
+    'ss',        // Socket statistics (iproute2, replaces netstat)
+    'netstat',   // Legacy port listing (net-tools, fallback if ss unavailable)
+    'fuser',     // Identify processes using files/sockets (psmisc)
+
+    // Sleep/no-op (common in kill chains: `pkill X; sleep 1; lsof -ti :PORT`)
+    'sleep',
+    'true',
+    'false',
 
     // Common shell builtins / env helpers used in compound commands
     'env',

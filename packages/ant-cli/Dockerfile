@@ -213,10 +213,20 @@ ARG GO_VERSION="1.23.6"
 
 # Install runtime dependencies
 # libc6-compat: required to run official Go binaries (glibc-linked) on Alpine (musl)
+# curl/bash: verification probes from architect agent (run_command tool)
+# procps/iproute2/lsof: process & port discovery used by DevProcessControl
+#   (pgrep BFS, lsof -ti :PORT, ss -ltnp). Without these, DevProcessControl's
+#   execFileSync calls ENOENT silently and orphan dev servers accumulate
+#   between verification cycles.
 RUN apk add --no-cache \
     git \
     ca-certificates \
     wget \
+    curl \
+    bash \
+    procps \
+    iproute2 \
+    lsof \
     libc6-compat
 
 # Go toolchain (official binary + GOTOOLCHAIN=auto for per-project version switching)
