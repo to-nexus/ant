@@ -8,7 +8,7 @@ USER root
 # Single apt layer — minimal diff.
 # vim/make: user-facing tools (rosy-tome).
 # redis-tools/jq/curl: claim-watcher.sh dependencies (Track B prelayer, dormant when ANT_IDE_POOL_MODE != true).
-# ripgrep: code search standard used by LLM-driven editors (Claude Code, etc.) running in the IDE terminal.
+# ripgrep/tree: code-search + directory-overview standards used by LLM-driven editors (Claude Code, etc.) running in the IDE terminal.
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         vim \
@@ -18,6 +18,7 @@ RUN apt-get update \
         jq \
         redis-tools \
         ripgrep \
+        tree \
  && rm -rf /var/lib/apt/lists/*
 
 # mise — system-wide install. Pin MISE_VERSION after first stable build.
