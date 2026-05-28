@@ -96,9 +96,45 @@ describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
   it('plan-batch-capacity partial states the plan-only orthogonal axis with articulation contract', () => {
     expect(CAPACITY).toMatch(/Single-session capacity \(plan-time only\)/);
     expect(CAPACITY).toMatch(/orthogonal/i);
-    expect(CAPACITY).toMatch(/per-file cost/i);
-    expect(CAPACITY).toMatch(/recipe uniformity/i);
     expect(CAPACITY).toMatch(/parentReasoning/);
+  });
+
+  it('plan-batch-capacity partial unit is per-task involvement scope (NOT per-file)', () => {
+    // The capacity decision is about the TASK as a whole — the union of
+    // files it will read, modify, create, delete, or discover — not just
+    // files it edits. Edit count alone was the framing that let
+    // ui-instructor slip through: it had only ~16 modifications but 81
+    // reads + 53 list_files for design-system landscape discovery.
+    expect(CAPACITY).toMatch(/involvement scope/i);
+    expect(CAPACITY).toMatch(/task as a whole/i);
+  });
+
+  it('plan-batch-capacity partial covers all three dimensions of bulk', () => {
+    // Modification breadth, reference depth, exploration breadth — each
+    // can trigger split alone; any two reinforce each other. Reference
+    // depth alone (the prior framing) misses tasks that overflow on
+    // discovery cost (the ui-instructor failure mode).
+    expect(CAPACITY).toMatch(/modification breadth/i);
+    expect(CAPACITY).toMatch(/reference depth/i);
+    expect(CAPACITY).toMatch(/exploration breadth/i);
+    // All three must be articulated to defend a bundle.
+    expect(CAPACITY).toMatch(/ALL THREE dimensions/i);
+  });
+
+  it('plan-batch-capacity partial is budget-value-agnostic (FPOP — intrinsic principle, not arithmetic)', () => {
+    // The capacity decision is qualitative, not computational. The LLM
+    // recognises bulky scope intrinsically; it does NOT measure cost
+    // against a remaining budget number. Anchoring the partial to a
+    // budget value (RECURSION_LIMIT magic name OR a runtime-injected
+    // remaining-budget variable) reframes the principle as arithmetic
+    // and invites both miscounting and "this is under the ceiling so
+    // bundle" rationalisation — the failure mode this axis exists to
+    // catch. Keep the partial purely intrinsic.
+    expect(CAPACITY).not.toMatch(/RECURSION_LIMIT/);
+    expect(CAPACITY).not.toMatch(/{{remainingRecursionBudget}}/);
+    // Explicitly forbid budget-comparison framing.
+    expect(CAPACITY).toMatch(/regardless.*of.*the.*(?:prevailing\s+)?budget/i);
+    expect(CAPACITY).toMatch(/do NOT.*(?:compare|compute|estimate)/i);
   });
 
   it('renders the shared task-split-rubric partial (SSOT with decompose)', () => {
