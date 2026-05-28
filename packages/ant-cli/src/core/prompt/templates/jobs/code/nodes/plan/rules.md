@@ -118,11 +118,7 @@ The task arrived with its scope already chosen at decomposition. Fan-out here is
 
 {{> jobs/code/shared/task-split-rubric }}
 
-### Single-session closure (plan-time check)
-
-One `batches[]` entry is one execute round. The observable signal is the slice's expected work volume — files touched, modules created, domain breadth. When that volume makes single-round closure unrealistic for this work, split — even if the coherence rubric above would otherwise bundle.
-
-This axis is orthogonal to coherence: the rubric decides *whether the work is separable*, this check decides *whether one session can hold it*. A coherent unit may still need to be split when single-session closure says so. When that happens, `parentReasoning` names single-session closure (not coherence) as the concrete benefit.
+{{> jobs/code/shared/plan-batch-capacity }}
 
 ### Scheduling fields — REQUIRED per batch
 
