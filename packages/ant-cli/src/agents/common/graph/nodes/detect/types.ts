@@ -103,6 +103,15 @@ export interface DetectStrategy<T extends DetectableState = DetectableState> {
   onResume?(state: T): Partial<T>;
 
   /**
+   * Job-specific state updates when explicit branch fires (LLM classify
+   * skipped because `actionMetadata.intent` is set). Symmetric to `onResume` —
+   * "LLM skipped, here's job-specific state derived from intent". Visual
+   * strategy uses this to derive `assetType` / `jobMode` / `executionTier`
+   * from the intent name.
+   */
+  onExplicit?(state: T, intentId: string): Partial<T>;
+
+  /**
    * When true, the factory skips the resume fast path and calls run() instead.
    * Used by Design strategy to handle awaitingDetectClarify → resume must
    * go through strategy.run(), not the factory's resume path.

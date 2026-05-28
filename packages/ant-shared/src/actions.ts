@@ -403,7 +403,15 @@ export type PathOrFolder =
   | { kind: 'folder'; path: string; fileCount: number };
 
 export interface ActionMetadata {
-  /** true = explicit pipeline (no inference, use only provided values). Set only via ActionsPanel "Start via Chat". */
+  /**
+   * FE UI badge state only — BE does not read this field. Authority SSOT
+   * for "explicit turn" is `intent` presence (Triage / Detect 양쪽 동일).
+   *
+   * @deprecated as a BE gate. FE may continue setting this for UI badge
+   *   decisions (`<ActionMetadataBadges>` / `useExplicitAutoSync`); a future
+   *   pass will derive the badge state directly from `intent` presence and
+   *   remove the field.
+   */
   explicit?: boolean;
   /** When present, determines agent/job and bypasses triage */
   intent?: IntentId;
