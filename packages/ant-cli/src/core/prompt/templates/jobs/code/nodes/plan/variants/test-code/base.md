@@ -134,6 +134,22 @@ For test-code, independent feature slices are the natural units when failure iso
 
 **Constraint**: Do NOT split when the project is small (< ~4 test files total). The coordination overhead exceeds the parallel gain.
 
+### Step 3.5 — Recognize Already-Sufficient Coverage (non-negotiable)
+
+Before emitting a plan, decide whether your task's own surface still has
+test work left.
+
+- If your reads / greps in Step 1 show every test target your task claims
+  (slice files, modules, entry points) already has a co-located test file
+  covering the same surface, your task is already resolved. **Emit the
+  empty plan in the Output Format section below and stop.**
+- Do NOT run the test suite or any verification command "just to confirm"
+  — the verification phase owns that gate, and emitting a verification-only
+  batch with no test files to create is a slice violation.
+- A test-code parent's Steps 2 / 2.5 (install + wire entry) still complete
+  normally before this check: if the runner / entry are already in place
+  AND the slice's tests already exist, the empty plan is correct.
+
 ## Output Format
 
 ### Format A: Single Plan (no split)
@@ -185,6 +201,24 @@ Execute phase then writes every `create` entry itself.
 **Constraint**: Do NOT include `package.json`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `pyproject.toml`, `poetry.lock`, `go.mod`, `go.sum`, `vitest.config.*`, `jest.config.*`, `tsconfig.json`, or any shared test config in any batch's `create` / `modify`. Those are parent-owned and must already be in place when sub-tasks start. If a config change is genuinely needed, finalise it here in your plan phase (via `run_command` + the appropriate edit) BEFORE emitting the batches.
 
 **Constraint**: Order batches by dependency — batches that create shared test fixtures / helpers come first; consumers come later. For purely independent slices, any order works.
+
+### Format C: Empty Plan (slice already has sufficient coverage)
+
+If Step 3.5 matched — every target your task claims already has a co-located
+test file covering the same surface — emit an empty plan to mark this task
+complete without further work:
+
+```
+<plan>
+{
+  "task": { "id": "{{taskId}}", "goal": "Coverage already sufficient" },
+  "implementation": { "create": [], "modify": [] }
+}
+</plan>
+```
+
+Do NOT run the test suite, do NOT emit a no-op batch — both are slice
+violations. The downstream verification task owns the cross-task test gate.
 
 {{#if isRetry}}
 ────────────────────────────────────────────────────────────────────────────────

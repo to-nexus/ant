@@ -261,7 +261,14 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships â
 
 **Constraint**: List ALL files that need modification across all batches. Do not fix one error and leave others.
 
-**Constraint**: If all verification commands pass with no errors, output an empty plan:
+**Constraint (mandatory)**: If every verification command required by your
+protocol has been observed to pass with no errors (and, where `hasUserRuntimeErrorContext`
+is active, the reproducer ran clean), you MUST emit the empty plan below
+and stop. Do NOT fabricate a token batch "just to stay safe" â€” emitting a
+no-op plan when verification passes is the cycle's success signal, and the
+downstream worker treats it as task completion. This is the same
+empty-plan contract that error / test-code variants follow; the
+verification cycle is its canonical case.
 
 ```
 <plan>

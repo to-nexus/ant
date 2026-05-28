@@ -58,10 +58,30 @@ Use `read_file` and `search_code` to examine the relevant source files.
 
 **Constraint**: When you need to read multiple files, issue ALL reads in ONE response.
 
-### Step 3: Diagnostic Commands (Optional)
+### Step 3: Recognize Already-Resolved State (non-negotiable)
+
+Before considering any verification command, decide whether your task's own
+surface still has work left.
+
+- If the reads / greps you ran in Step 2 show the bad pattern is **absent
+  from every file your task's description claims** (no `<a href="/"` left,
+  the missing import is now present, the broken call now matches the new
+  signature, etc.), your task is already resolved. **Emit the empty plan
+  in Step 5 and stop.**
+- Do NOT run a verification command (typecheck / build / lint / test) to
+  "double-check" — emitting a verification-only batch with no on-disk
+  change is a slice violation. The downstream verification task owns the
+  cross-task gate.
+- Do NOT scrape additional files looking for work to justify continuing.
+  If your own surface is clean, the task is done; absorbing sibling work
+  to keep busy is the failure mode this rule exists to close.
+
+### Step 4: Diagnostic Commands (Optional, only when Step 3 did NOT match)
 
 {{#if hasTools}}
-If code inspection alone is insufficient to determine the root cause, you may run diagnostic commands:
+If — and only if — Step 3 did not match (some bad pattern is still on disk
+in your task's surface), and code inspection alone is insufficient to
+determine the root cause, you may run diagnostic commands:
 
 - **Type checking** (e.g., `tsc --noEmit`) — efficient for structural errors (type mismatches, missing imports)
 - **Build commands** — useful when the error may be build-related
@@ -74,7 +94,7 @@ Language-specific diagnostic hints are provided below.
 {{/if}}
 {{/if}}
 
-### Step 4: Produce Remediation Plan
+### Step 5: Produce Remediation Plan
 
 Output the structured plan.
 
@@ -200,7 +220,15 @@ Batch grouping MUST reflect root-cause and cross-file dependency relationships �
 
 **Constraint**: Order batches so that foundational changes (shared types, interfaces, configs) come first and consumers come later.
 
-**Constraint**: If investigation reveals the error is already resolved, output an empty plan:
+**Constraint (mandatory, MUST follow Step 3)**: If your investigation surface
+(file reads + greps) shows every diagnosed root cause is already absent from
+your task's own surface on disk — the bad pattern returns zero matches, the
+missing import is present, the broken signature is now correct — you MUST
+emit the empty plan below and stop. Do NOT run a verification command
+(typecheck / build / lint / test) to confirm; the downstream verification
+task owns that gate, and emitting a verification-only batch with no on-disk
+change is a slice violation. "Just to be safe" / "one last check" is the
+failure mode this rule exists to close.
 
 ```
 <plan>
