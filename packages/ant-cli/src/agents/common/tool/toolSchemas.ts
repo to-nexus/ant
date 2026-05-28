@@ -155,7 +155,7 @@ export const ARCHITECT_TOOLS = {
         },
         keep_running: {
           type: 'boolean',
-          description: 'For long-running servers: set to true to keep server running beyond task completion (very rare). Default: false (auto-cleanup)',
+          description: 'For dev/preview/watch servers (next dev, vite dev, npm run start, cargo run, go run). Default false: spawn → startup window (5s normal / 30s compile-run) → 1 HTTP probe → auto-kill. Set true when you need to probe multiple paths or query the server across multiple run_command rounds; you MUST explicitly kill the PID returned in this tool result before <done>. Do NOT background via `&` / `nohup` — use this flag instead so the runtime tracks the PID and can act as a safety net. See persistent-process-policy injection.',
         },
         oneshot: {
           type: 'boolean',

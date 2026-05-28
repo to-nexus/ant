@@ -25,8 +25,9 @@ import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 type Gate = string;
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
-import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../../../core/utils/shellParser';
+import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment, maskQuotedRegions } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
+import { getDefaultDevProcessControl } from '../../../../core/process/DevProcessControl';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
 import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
 import {
@@ -200,7 +201,13 @@ interface WriteViolation { path: string; reason: string; }
 function extractWriteTargets(command: string): string[] {
   const targets: string[] = [];
   const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
-  const segments = splitOnShellOperators(cmdPart);
+  // Mask quoted/backtick/`$( … )` regions BEFORE regex extraction so that JS
+  // literals (e.g. `() => { … }` inside `node -e "…"`) cannot masquerade as
+  // shell redirects (`> {`) or `mkdir/touch/cp/mv` calls. The masked string
+  // is ONLY used for guard regex matching; the original `command` is what
+  // actually runs.
+  const guard = maskQuotedRegions(cmdPart);
+  const segments = splitOnShellOperators(guard);
 
   for (const seg of segments) {
     const trimmed = seg.trim();
@@ -361,17 +368,29 @@ function makeCommandExecuted(input: {
 const HARD_TIMEOUT_DEFAULT_MS = 10 * 60_000;
 const HARD_TIMEOUT_INSTALL_MS = 20 * 60_000;
 const NO_OUTPUT_INSTALL_MS = 5 * 60_000;
+// Build/test gates legitimately go silent for minutes (Next.js bundling, Rust
+// codegen, Vitest run before first test prints, etc.). DEFAULT_NO_OUTPUT_MS
+// (60s) was tripping them; 180s aligns with observed Next.js cold-build
+// timings. Tune via ANT_NO_OUTPUT_BUILD_MS.
+const NO_OUTPUT_BUILD_DEFAULT_MS = 3 * 60_000;
 const INSTALL_COMMAND_RE = /\b(npm|pnpm|yarn)\s+(ci|install)\b/;
 const GO_DEPENDENCY_COMMAND_RE = /\bgo\s+mod\s+(tidy|download)\b/;
+const BUILD_COMMAND_RE =
+  /\b(?:next\s+build|vite\s+build|tsc(?:\s+-p\b|\s+--build\b|\s*$)|vitest\s+run|jest(?:\s|$)|playwright\s+test|go\s+build|cargo\s+build|turbo\s+run\s+build|npm\s+run\s+build|pnpm\s+(?:run\s+)?build|yarn\s+(?:run\s+)?build|npm\s+test|pnpm\s+test|yarn\s+test|npm\s+run\s+typecheck|pnpm\s+(?:run\s+)?typecheck)\b/;
 
 function isLikelyInstallCommand(command: string): boolean {
   return INSTALL_COMMAND_RE.test(command) || GO_DEPENDENCY_COMMAND_RE.test(command);
+}
+
+function isLikelyBuildCommand(command: string): boolean {
+  return BUILD_COMMAND_RE.test(command);
 }
 
 const ONESHOT_POST_OUTPUT_IDLE_MS = 3_000;
 
 function resolveThresholds(command: string, opts: { oneshot: boolean }): SupervisorThresholds {
   const isInstall = isLikelyInstallCommand(command);
+  const isBuild = !isInstall && isLikelyBuildCommand(command);
   return {
     serverDetectionMs: readPositiveInt(process.env.ANT_SERVER_DETECTION_MS, DEFAULT_SERVER_DETECTION_MS),
     serverOutputPattern: SERVER_OUTPUT_PATTERNS,
@@ -379,7 +398,11 @@ function resolveThresholds(command: string, opts: { oneshot: boolean }): Supervi
     repeatThreshold: readPositiveInt(process.env.ANT_REPEAT_THRESHOLD, DEFAULT_REPEAT_THRESHOLD),
     noOutputMs: readPositiveInt(
       process.env.ANT_NO_OUTPUT_MS,
-      isInstall ? NO_OUTPUT_INSTALL_MS : DEFAULT_NO_OUTPUT_MS,
+      isInstall
+        ? NO_OUTPUT_INSTALL_MS
+        : isBuild
+          ? readPositiveInt(process.env.ANT_NO_OUTPUT_BUILD_MS, NO_OUTPUT_BUILD_DEFAULT_MS)
+          : DEFAULT_NO_OUTPUT_MS,
     ),
     hardTimeoutMs: isInstall ? HARD_TIMEOUT_INSTALL_MS : HARD_TIMEOUT_DEFAULT_MS,
     postOutputIdleMs: opts.oneshot ? ONESHOT_POST_OUTPUT_IDLE_MS : undefined,
@@ -818,6 +841,17 @@ export async function handleLongRunningCommand(
   const { spawn } = await import('child_process');
   const startedAt = Date.now();
 
+  // SSOT: ant-cli's DevProcessControl handles dev-server cleanup, descendant
+  // discovery (pgrep BFS), and framework lock files (.next/dev/server.json).
+  // We delegate kill + pre-flight cleanup to it instead of re-implementing.
+  const devControl = getDefaultDevProcessControl();
+
+  // Pre-flight: clear any stale Next.js dev lock left by a prior crashed
+  // run. Idempotent — no-op when no lock exists. This prevents the "Another
+  // dev server is already running" cascade observed across verification
+  // cycles that share a working directory.
+  try { await devControl.cleanupStaleLocks(workingDir); } catch { /* best-effort */ }
+
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -874,15 +908,27 @@ export async function handleLongRunningCommand(
       supervisor.dispose();
       streamer.flush();
       if (opts.kill && child.exitCode === null) {
-        if (child.pid) await terminateProcessTree(child.pid);
-        else child.kill('SIGTERM');
+        // Use DevProcessControl.killTree (pgrep BFS for descendants) so that
+        // next dev → next-server worker chains are reaped together. Falling
+        // back to processTree.terminateProcessTree if killTree itself fails
+        // (e.g. pgrep absent on a stripped image) keeps the kill best-effort.
+        try {
+          await devControl.killTree(child);
+        } catch {
+          if (child.pid) await terminateProcessTree(child.pid);
+          else child.kill('SIGTERM');
+        }
       }
+      // EADDRINUSE in stderr means the child reported a port conflict even
+      // if it then exited 0 (next dev does this). Suppress the spurious
+      // "server started" signal — there is no live server to track.
+      const addressInUse = /EADDRINUSE|address already in use/i.test(stderr);
       // exit === null means the child is still alive (we intentionally kill
       // it, or keepRunning=true and we leave it running); treat as exit-OK.
       // The httpProbe (if performed) is the second axis: status < 500 is OK.
       const exitOk = exit === null || exit === 0;
       const probeOk = httpProbe?.ok ?? true;
-      const success = exitOk && probeOk;
+      const success = exitOk && probeOk && !addressInUse;
       const output = buildOutput(exit);
       await ctx.chatStatus.commandComplete(command, success, exit ?? -1, output);
       resolve({
@@ -890,7 +936,7 @@ export async function handleLongRunningCommand(
         output,
         exitCode: exit,
         httpProbe,
-        serverPid: keepRunning && success ? child.pid : undefined,
+        serverPid: keepRunning && success && !addressInUse ? child.pid : undefined,
       });
     };
 
@@ -919,7 +965,11 @@ export async function handleLongRunningCommand(
       resolved = true;
       clearTimeout(startupTimeout);
       streamer.flush();
-      if (child.pid) await terminateProcessTree(child.pid);
+      try {
+        await devControl.killTree(child);
+      } catch {
+        if (child.pid) await terminateProcessTree(child.pid);
+      }
       const allOutput = stdout + stderr;
       const termination = ProgressSupervisor.renderTermination(signal, {
         command,
@@ -981,3 +1031,5 @@ export async function handleLongRunningCommand(
 
 // Re-export utilities needed by Code command policy
 export { isBareInstallCommand, PACKAGE_MANAGER_INSTALL_PATTERNS };
+// Pure policy helpers exposed for unit tests.
+export { extractWriteTargets, detectWritePathViolations, isLikelyBuildCommand };
