@@ -153,11 +153,37 @@ The following tasks will be executed after yours (or in parallel):
 - **{{this.name}}** (priority {{this.priority}}): {{this.description}}
 {{/each}}
 
-### Task Boundary Principle
+### Task Boundary Principle (non-negotiable)
 
-Your plan MUST only include work that belongs to YOUR task's scope.
-If a remaining task's description already covers a responsibility,
-that work belongs to THAT task — not yours.
+**You own only what your own task description names as yours.** Your plan's
+`batches[]` and any `implementation.modify` / `implementation.create` /
+`implementation.delete` entries MUST stay within the files, symbols, and
+modules your task description claims.
+
+**If a remaining task's description claims a file, symbol, or module — by
+naming it as a target, listing it under its scope, or describing the change
+to be made there — that work belongs to that task.** Do NOT absorb it into
+your plan, even when:
+- the surrounding spec document describes both responsibilities,
+- the diagnostic input lists multiple root causes that span both surfaces, or
+- bundling them looks more efficient than two consecutive task runs.
+
+"Efficient to do both at once" / "the recipe is uniform" / "shared
+investigation" are articulation failures, not bundle defenses. Each task's
+own plan call owns its own surface; the next task gets its own plan call.
+
+**When the spec or diagnostic surface points at work outside your task's
+description, your only honest options are**:
+
+1. **Author a plan whose `implementation` block stays inside your own
+   surface** — let the sibling task own its surface in its own plan call.
+2. **If investigation (reads / greps) shows your own surface has nothing
+   left to do, emit an empty plan** (no batches, no `implementation`
+   entries) so the worker can mark this task complete without further tool
+   calls. Do NOT issue a verification command (typecheck / build / test)
+   to confirm — the downstream verification task owns that gate, and
+   emitting a verification-only batch with no on-disk change is itself a
+   slice violation.
 
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}

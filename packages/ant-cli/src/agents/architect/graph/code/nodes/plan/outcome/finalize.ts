@@ -62,22 +62,34 @@ export function finalizePlanOutcome(
     : dispatchBatchSplit(state, preSplitPlanText, nextTask);
 
   const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
-  // Verify-mode + 빈 planText(plan-tool-loop의 sentinel shortcut이 비워줌) 면
-  // cycle 종료 신호. task-type-blind — requiresVerification(task)인 모든 task
-  // (verification + selfVerifyOnDone) 가 동일 verify-mode 계약을 공유한다.
-  // (solar-coming-bough 회귀: 옛 게이트는 isVerificationTask/allowsEmptyImplShortcut
-  // 정적 검사라 Tier-2 self-verify의 sentinel을 인식 못 했다.)
+  // 빈 planText (no batch-split) 는 task type 무관 cycle 종료 신호다 —
+  // "LLM이 자기 surface 에 할 일이 없다고 판단했다". 이 신호는 plan-tool-loop
+  // 의 sentinel shortcut (`llm/tools.ts`) 이 LLM이 emit한 parseable no-op JSON
+  // (`{diagnostics.totalErrors:0}` 또는 `{implementation:{modify:[],create:[],
+  // delete:[]}}`) 을 ''로 변환하면서 발생한다.
+  //
+  // 두 RCA가 같은 게이트에 모인다:
+  // (1) solar-coming-bough — Tier-2 self-verify error의 verify-mode sentinel
+  //     이 정적 task-type 게이트에 막혔던 결함.
+  // (2) hidden-mooring-rivet — error 외 task type도 sibling이 이미 끝낸 일을
+  //     받았을 때 동일 sentinel로 즉시 종료할 수 있어야 함. base.md /
+  //     rules.md / variants 모든 template이 동일 empty-plan 계약을 가르치므
+  //     로 finalize는 task type을 분기하지 않는다.
+  //
+  // verify-mode는 isRemediationTask 채널로 trace에 별도로 보존된다.
   const verifyMode = isVerifyModeActive(state);
-  const diagnosticPass = verifyMode && planText === '' && !batchSplitOccurred;
-  const isDone = batchSplitOccurred || diagnosticPass;
+  const noOpComplete = planText === '' && !batchSplitOccurred;
+  const isDone = batchSplitOccurred || noOpComplete;
 
   tracePlanFinalize(state, nextTask, {
     callSite,
     preSplitPlanText,
     planText,
     batchSplitOccurred,
-    diagnosticPass,
-    // 옛 `emptyImplShortCircuit` axis는 `diagnosticPass`로 통합. 로그 스키마
+    // 옛 `diagnosticPass` 키는 trace 스키마 호환 + 의미 일관성을 위해
+    // noOpComplete로 매핑한다 (외부 grep / kibana 쿼리가 키 이름에 의존).
+    diagnosticPass: noOpComplete,
+    // 옛 `emptyImplShortCircuit` axis는 noOpComplete로 통합. 로그 스키마
     // 호환을 위해 키는 유지 (executionLogger / kibana 쿼리 등 외부 grep).
     emptyImplShortCircuit: false,
     // 옛 `isRemediationTask`는 `allowsEmptyImplShortcut` 플래그였다. 이제
@@ -88,8 +100,9 @@ export function finalizePlanOutcome(
   });
 
   if (callSite === 'plan-index') {
-    if (diagnosticPass) {
-      console.log(`[Plan] Verify-mode sentinel detected for ${nextTask.type} task → short-circuit to checkTaskStatus`);
+    if (noOpComplete) {
+      const reason = verifyMode ? 'Verify-mode sentinel' : 'Empty-plan no-op';
+      console.log(`[Plan] ${reason} detected for ${nextTask.type} task → short-circuit to checkTaskStatus`);
     }
     console.log(`🔍 [Plan] Returning state with planText: ${planText ? planText.length : 0} chars`);
     if (planText) {
