@@ -1058,6 +1058,11 @@
       "partial-ref"
     ]
   },
+  "jobs/code/shared/plan-batch-capacity": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/code/shared/task-split-rubric": {
     "sources": [
       "partial-ref"

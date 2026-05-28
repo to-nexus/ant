@@ -28,9 +28,14 @@ const RUBRIC_PATH = path.resolve(
   __dirname,
   '../src/core/prompt/templates/jobs/code/shared/task-split-rubric.md',
 );
+const CAPACITY_PATH = path.resolve(
+  __dirname,
+  '../src/core/prompt/templates/jobs/code/shared/plan-batch-capacity.md',
+);
 
 const RULES = readFileSync(RULES_PATH, 'utf8');
 const RUBRIC = readFileSync(RUBRIC_PATH, 'utf8');
+const CAPACITY = readFileSync(CAPACITY_PATH, 'utf8');
 
 describe('plan/rules.md — REQUIRED markers on LLM-authored semantic fields', () => {
   it('create[].name is annotated REQUIRED with a noun-phrase exemplar', () => {
@@ -78,14 +83,36 @@ describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
     expect(RULES).not.toMatch(/##\s+🌿\s+(OPTIONAL|PROACTIVE) FAN-OUT/);
   });
 
-  it('plan-time single-session-closure check is rendered alongside the shared rubric', () => {
-    expect(RULES).toMatch(/Single-session closure \(plan-time check\)/);
-    expect(RULES).toMatch(/one execute round/);
-    expect(RULES).toMatch(/orthogonal to coherence/);
+  it('plan-time single-session-capacity partial is rendered alongside the shared rubric', () => {
+    // Capacity axis is now a standalone partial (plan-only SSOT), kept
+    // separate from the shared semantic rubric so decompose can render the
+    // rubric without inheriting the plan-time capacity axis.
+    expect(RULES).toMatch(/{{>\s+jobs\/code\/shared\/plan-batch-capacity\s+}}/);
+    // Inline legacy wording must not survive — the partial is the only SSOT.
+    expect(RULES).not.toMatch(/Single-session closure \(plan-time check\)/);
+    expect(RULES).not.toMatch(/orthogonal to coherence/);
+  });
+
+  it('plan-batch-capacity partial states the plan-only orthogonal axis with articulation contract', () => {
+    expect(CAPACITY).toMatch(/Single-session capacity \(plan-time only\)/);
+    expect(CAPACITY).toMatch(/orthogonal/i);
+    expect(CAPACITY).toMatch(/per-file cost/i);
+    expect(CAPACITY).toMatch(/recipe uniformity/i);
+    expect(CAPACITY).toMatch(/parentReasoning/);
   });
 
   it('renders the shared task-split-rubric partial (SSOT with decompose)', () => {
     expect(RULES).toMatch(/{{>\s+jobs\/code\/shared\/task-split-rubric\s+}}/);
+  });
+
+  it('decompose does NOT receive the plan-batch-capacity partial (token-weight protection)', () => {
+    const DECOMPOSE_OUTPUT_UNIT_PATH = path.resolve(
+      __dirname,
+      '../src/core/prompt/templates/jobs/code/nodes/decompose/variants/default/output-unit-splitting.md',
+    );
+    const DECOMPOSE = readFileSync(DECOMPOSE_OUTPUT_UNIT_PATH, 'utf8');
+    expect(DECOMPOSE).not.toMatch(/plan-batch-capacity/);
+    expect(DECOMPOSE).not.toMatch(/Single-session capacity/);
   });
 
   it('states that the system does NOT auto-convert flat plans', () => {
