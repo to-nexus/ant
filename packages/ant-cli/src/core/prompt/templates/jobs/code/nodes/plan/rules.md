@@ -56,6 +56,32 @@ Generate a **concrete implementation plan** for this task.
 
 Per the Output Tag Contract, the first output token must be `<` of a registered tag, so do NOT write any prose before `<plan>` opens. Emit nothing after `</plan>` closes — the plan node terminates at that boundary and the next phase consumes the sealed JSON directly.
 
+### Empty plan — when surface shows no work left (non-negotiable)
+
+If your investigation (file reads / greps / list_files) shows your task's
+own surface — every file, symbol, and module your task description claims
+— has nothing left to do (the feature is already implemented, the bad
+pattern is already absent, the missing module already exists with the
+expected exports), you MUST emit the empty plan below and stop. This is
+the same contract the variants (error / test-code / verification) follow;
+it is a property of the plan node, not of any task type.
+
+```
+<plan>
+{
+  "task": { "id": "task-id", "goal": "Nothing to do" },
+  "implementation": { "create": [], "modify": [], "delete": [] }
+}
+</plan>
+```
+
+Do NOT run a verification command (typecheck / build / lint / test) to
+"double-check" before emitting the empty plan — emitting a verification-
+only batch with no on-disk change is a slice violation. The downstream
+verification task owns that gate. Do NOT scrape additional files looking
+for work to justify continuing — if your own surface is clean, the task
+is done.
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 JSON SCHEMA FOR `<plan>`
 ────────────────────────────────────────────────────────────────────────────────

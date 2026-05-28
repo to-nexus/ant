@@ -1,24 +1,26 @@
 /**
- * Regression — verify-mode sentinel을 받으면 plan 사이클이 종료돼야 한다.
+ * Regression — empty-plan sentinel 게이트는 task type 무관 일관 계약이다.
  *
- * Bug (job `solar-coming-bough`): Tier-2 self-verify error 태스크가 verify-
- * mode 사이클에서 `typecheck/build/test` 게이트를 모두 통과하고 no-errors
- * sentinel(`{diagnostics:{totalErrors:0,...},implementation:{modify:[],create:[],
- * delete:[]}}`) 을 emit했는데도 plan 사이클이 종료되지 않고 다음 plan-tool-loop
- * 라운드를 또 시작했다. 그 이유는 `nodes/plan/llm/tools.ts`와
- * `nodes/plan/outcome/finalize.ts`의 두 게이트가 정적 task type 검사
- * (`hooksForTaskType(task.type)?.plan?.allowsEmptyImplShortcut` /
- * `isVerificationTask(task)`)로만 fire되어 `task.type === 'error'`인 Tier-2
- * self-verify의 sentinel을 인식하지 못했기 때문.
+ * Two RCAs converge here:
  *
- * Fix는 두 게이트를 verify-mode 상태 (`isVerifyModeActive(state)`) 기반으로
- * 교체. requiresVerification(task)인 모든 task — verification task type +
- * 모든 `selfVerifyOnDone:true` 타입 — 가 동일한 verify-mode 프롬프트·동일한
- * sentinel 계약을 공유하므로 task type을 분기할 필요가 없다.
+ *   - `solar-coming-bough`: Tier-2 self-verify error 태스크가 verify-mode에서
+ *     no-errors sentinel을 emit했는데도 plan 사이클이 종료되지 않았던 결함.
+ *     fix 1차로 verify-mode (`isVerifyModeActive(state)`) 기반 게이트로 교체.
  *
- * 이 테스트는 `finalizePlanOutcome` (post-shortcut 게이트)를 직접 호출해서
- * verify-mode + 빈 planText 조합이 `isDone:true`를 만들고, apply-mode는
- * 그대로 통과시키는지 확인한다.
+ *   - `hidden-mooring-rivet`: error / feature / ui 등 apply-mode 태스크가
+ *     sibling이 이미 처리한 work를 받았을 때(중복 task) "이미 다 됐다" 를
+ *     surface로 확인하고도 empty plan을 emit해도 execute로 라우팅되어 불필요한
+ *     verification command (tsc 등) 를 호출하다 worker stall로 죽었던 결함.
+ *     fix 2차로 verify-mode 게이트를 제거 — base.md / rules.md / variants 모든
+ *     plan template이 동일 empty-plan 계약 ("investigation이 surface에서 no-op
+ *     을 확인하면 empty implementation JSON emit") 을 가르치므로 finalize는
+ *     task type을 분기하지 않는다.
+ *
+ * 새 contract: planText === '' && !batchSplitOccurred → isDone:true,
+ *             task.type 무관 / verify-mode 진입 무관.
+ *
+ * verify-mode 여부는 `isRemediationTask` trace 채널로 별도로 보존된다 (
+ * downstream 노드의 task-type 분기에는 영향 없음).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -50,11 +52,10 @@ function makeState(over: Partial<ArchitectGraphState> = {}): ArchitectGraphState
   } as unknown as ArchitectGraphState;
 }
 
-describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-bough 회귀)', () => {
-  it('Tier-2 self-verify error + verify-mode + 빈 planText → isDone:true', () => {
-    // Plan-tool-loop의 sentinel shortcut이 verify-mode에서 sentinel을 ''로
-    // 비웠다고 가정 (`nodes/plan/llm/tools.ts` fix). finalize는 이 빈 문자열을
-    // verify-mode + planText==='' 게이트로 done 처리해야 한다.
+describe('finalizePlanOutcome — empty-plan sentinel 게이트 (solar-coming-bough + hidden-mooring-rivet 회귀)', () => {
+  it('Tier-2 self-verify error + verify-mode + 빈 planText → isDone:true (solar-coming-bough)', () => {
+    // Plan-tool-loop의 sentinel shortcut이 sentinel을 ''로 비웠다고 가정
+    // (`nodes/plan/llm/tools.ts`). finalize는 빈 planText를 done 처리해야 한다.
     const task = makeTask({ type: 'error', selfVerifyOnDone: true });
     const state = makeState({ _verifyEntered: true, currentTask: task });
 
@@ -68,10 +69,12 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
     expect(result.planText).toBe('');
   });
 
-  it('Tier-2 self-verify error + apply-mode + 빈 planText → isDone:false (apply 단계에서 빈 plan은 done이 아님)', () => {
-    // 회귀 가드: apply 단계의 빈 plan은 다른 경로(execute의 emptyPlanFallback 등)가
-    // 처리한다. finalize의 verify-mode 게이트가 잘못 fire하면 안 됨.
-    const task = makeTask({ type: 'error', selfVerifyOnDone: true });
+  it('error apply-mode + 빈 planText → isDone:true (hidden-mooring-rivet)', () => {
+    // 새 contract: apply-mode error task가 sibling이 이미 처리한 work를 받아
+    // surface로 "이미 다 됐다"를 확인하고 empty plan을 emit하면 즉시 done.
+    // 이전엔 verify-mode 게이트에 막혀 execute로 라우팅됐고 거기서 불필요한
+    // verification command 호출이 stall로 이어졌다.
+    const task = makeTask({ type: 'error', selfVerifyOnDone: undefined as any });
     const state = makeState({ _verifyEntered: false, currentTask: task });
 
     const result = finalizePlanOutcome(state, task, {
@@ -80,12 +83,10 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
       skipBatchSplit: true,
     });
 
-    expect(result.llmResponse?.done).toBe(false);
+    expect(result.llmResponse?.done).toBe(true);
   });
 
   it('Tier-3/4 verification task + verify-mode + 빈 planText → isDone:true (기존 동작 보존)', () => {
-    // 옛 `allowsEmptyImplShortcut`/`isVerificationPassWithoutCodeGen` 게이트로
-    // fire되던 정상 경로가 새 verify-mode axis로도 동일하게 fire되는지 확인.
     const task = makeTask({
       id: 'v1',
       type: 'verification',
@@ -103,10 +104,7 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
     expect(result.llmResponse?.done).toBe(true);
   });
 
-  it('feature 태스크 + selfVerifyOnDone + verify-mode + 빈 planText → isDone:true (task type 비분기 확인)', () => {
-    // 사용자 확인 원칙: "error 타입말고 feature, ui 등도 자체검증이 가능하니까
-    // 그것 외에도 더 있을 수 있다". verify-mode 진입한 모든 selfVerifyOnDone
-    // task가 동일하게 sentinel을 인정받아야 한다.
+  it('feature 태스크 + selfVerifyOnDone + verify-mode + 빈 planText → isDone:true', () => {
     const task = makeTask({
       id: 'f1',
       type: 'feature',
@@ -124,7 +122,11 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
     expect(result.llmResponse?.done).toBe(true);
   });
 
-  it('일반 feature 태스크 (selfVerifyOnDone 없음, apply-mode) + 빈 planText → isDone:false', () => {
+  it('feature 태스크 apply-mode + 빈 planText → isDone:true (hidden-mooring-rivet — task type 무관 일관 계약)', () => {
+    // user 확인 원칙: feature/ui/design-system도 sibling 중복 시나리오에서
+    // 동일하게 empty-plan-as-done으로 빠져나올 수 있어야 한다. base.md /
+    // rules.md가 모든 default-template task type에 동일 empty-plan 계약을
+    // 가르치므로 finalize는 task type을 분기하지 않는다.
     const task = makeTask({
       id: 'f2',
       type: 'feature',
@@ -139,7 +141,7 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
       skipBatchSplit: true,
     });
 
-    expect(result.llmResponse?.done).toBe(false);
+    expect(result.llmResponse?.done).toBe(true);
   });
 
   it('non-empty planText (실제 fix plan) → isDone:false, planText 보존 (execute로 라우팅)', () => {
@@ -153,7 +155,7 @@ describe('finalizePlanOutcome — verify-mode sentinel 게이트 (solar-coming-b
       skipBatchSplit: true,
     });
 
-    // batchSplit skip + non-empty planText → diagnosticPass:false → isDone:false.
+    // batchSplit skip + non-empty planText → noOpComplete:false → isDone:false.
     expect(result.llmResponse?.done).toBe(false);
     expect(result.planText).toBe(fixPlan);
   });

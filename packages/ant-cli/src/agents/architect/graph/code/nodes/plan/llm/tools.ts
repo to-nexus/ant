@@ -157,28 +157,31 @@ export async function runPlanLLMWithTools(
 
   if (result.kind === 'planText') {
     const planText = result.planText;
-    // Verify-mode 진입 자체가 "verify-mode plan 프롬프트가 LLM에게 no-errors
-    // sentinel emit을 지시했고 그 sentinel은 cycle 종료 신호다" 라는 계약을
-    //의미한다. requiresVerification(task)인 모든 task — verification +
-    // selfVerifyOnDone (error/feature/ui/setup) — 가 동일한 verify-mode
-    // 프롬프트·동일 sentinel 계약을 쓰므로 task type을 분기할 필요가 없다.
-    // (solar-coming-bough 회귀: 옛 게이트는 `verification` task에만 fire되어
-    // Tier-2 self-verify의 sentinel을 인식하지 못했고 cycle이 닫히지 않았다.)
-    if (isVerifyModeActive(state)) {
-      try {
-        const parsed = JSON.parse(planText);
-        if (
-          parsed.diagnostics?.totalErrors === 0 ||
-          (parsed.implementation?.modify?.length === 0 &&
-            parsed.implementation?.create?.length === 0 &&
-            (parsed.implementation?.delete?.length ?? 0) === 0)
-        ) {
-          console.log(`✅ [Plan] Verify-mode sentinel detected — returning empty planText for immediate done`);
-          return { planText: '' };
-        }
-      } catch {
-        // Non-blocking parse error, use plan as-is.
+    // Empty-plan sentinel은 task type과 무관한 일관 계약이다 —
+    // base.md/rules.md (기본), variants/error / variants/test-code /
+    // variants/verification (오버라이드) 모두 "investigation이 자기 surface
+    // 에서 no-op 을 확인하면 빈 implementation JSON을 emit하라" 를 메인
+    // 흐름에서 가르친다. LLM이 그 sentinel JSON을 emit하면 여기서 ''로
+    // 변환해 finalize의 noOpComplete 게이트가 즉시 done 처리하도록 한다.
+    //
+    // 두 RCA가 이 단일 게이트에 모인다:
+    //   solar-coming-bough — verify-mode self-verify sentinel 처리,
+    //   hidden-mooring-rivet — apply-mode task가 sibling work를 받았을 때
+    //     즉시 종료할 수 있도록 함.
+    try {
+      const parsed = JSON.parse(planText);
+      if (
+        parsed.diagnostics?.totalErrors === 0 ||
+        (parsed.implementation?.modify?.length === 0 &&
+          parsed.implementation?.create?.length === 0 &&
+          (parsed.implementation?.delete?.length ?? 0) === 0)
+      ) {
+        const reason = isVerifyModeActive(state) ? 'verify-mode' : `${task.type}-apply-mode`;
+        console.log(`✅ [Plan] Empty-plan sentinel detected (${reason}) — returning empty planText for immediate done`);
+        return { planText: '' };
       }
+    } catch {
+      // Non-blocking parse error, use plan as-is.
     }
     return { planText };
   }
