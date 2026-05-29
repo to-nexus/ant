@@ -29,6 +29,7 @@ import {
   isServiceVirtualizationContractActive,
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
+  isServiceVirtualizationSessionActive,
 } from "../../../../../../../core/prompt/builder/serviceVirtualization";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../../core/artifact/antrules";
@@ -240,9 +241,9 @@ export async function buildPlanPrompt(
     // Tier 0/1/2 — those rows leave the block silently empty.
     analysis: state.analysis ?? '',
     hasAnalysis: !!state.analysis,
-    // Service Virtualization gates (SBS) — three orthogonal partials
-    // (contract / data / imagery). `hasBusinessConnection` is derived
-    // once at resolve and parked on `state.virtualizationSnapshot`.
+    // Service Virtualization gates (SBS) — four orthogonal partials
+    // (contract / data / imagery / session). `hasBusinessConnection` is
+    // derived once at resolve and parked on `state.virtualizationSnapshot`.
     // See `core/prompt/builder/serviceVirtualization/`.
     serviceVirtualizationContractActive: isServiceVirtualizationContractActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
@@ -254,6 +255,10 @@ export async function buildPlanPrompt(
     serviceVirtualizationImageryActive: isServiceVirtualizationImageryActive({
       hasFrontend,
       domain: state.resolvedAction?.domain,
+      taskType: task.type,
+    }),
+    serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       taskType: task.type,
     }),
     // Plan-tool-loop budget surfacing — observable signal for

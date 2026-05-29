@@ -42,6 +42,7 @@
     "service-virtualization-contract": [],
     "service-virtualization-data": [],
     "service-virtualization-imagery": [],
+    "service-virtualization-session": [],
     "response-language": ["userLanguage"],
     "entry-point-ownership-rule": ["taskBand"],
     "entry-point-ownership-checklist": ["taskBand"],

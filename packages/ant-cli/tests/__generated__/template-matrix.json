@@ -600,6 +600,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/service-virtualization-session": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/system-design-guide": {
     "sources": [
       "partial-ref",
