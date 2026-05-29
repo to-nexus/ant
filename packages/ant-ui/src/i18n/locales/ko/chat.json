@@ -71,7 +71,6 @@
     "sweepConfirmAction": "정리",
     "sweepConfirmRunningAction": "작업 중단 후 정리",
     "sweepFailed": "채팅창 정리에 실패했습니다. 잠시 후 다시 시도해주세요.",
-    "resetBlockedByInterruption": "중단된 작업을 먼저 해결(재개 또는 dismiss)한 뒤 컨텍스트를 리셋하세요.",
     "offline": "채팅 오프라인",
     "expand": "채팅 확장",
     "collapse": "채팅 축소"

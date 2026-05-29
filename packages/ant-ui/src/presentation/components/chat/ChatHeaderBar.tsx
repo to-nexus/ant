@@ -43,10 +43,6 @@ export function ChatHeaderBar({
   const chatEvents = useStore((state) => state.chatEvents);
   const isRunning = useStore((state) => state.isRunning);
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
-  const kanbanData = useStore((state) => state.kanban);
-  const dismissedInterruptTimestamp = useStore(
-    (state) => state.dismissedInterruptTimestamp,
-  );
   const resetFeatureContext = useStore((state) => state.resetFeatureContext);
 
   const { showConfirm, showError, showSuccess } = useAlertModalContext();
@@ -56,6 +52,11 @@ export function ChatHeaderBar({
   const [confirming, setConfirming] = useState(false);
 
   // Feature-scoped guards (mirrors useChatPolicy + previous wrapper logic).
+  // Reset is intentionally NOT blocked by `hasInterruption` — interruption =
+  // paused state with no active writer, and reset is the canonical escape
+  // hatch when no dismiss-UI / resume-card is available (abnormal-termination
+  // stuck case). Only `hasRunningJobForFeature` remains as a file-write race
+  // guard.
   const featureKey =
     selectedProject && selectedFeature
       ? `${selectedProject}/${selectedFeature}`
@@ -63,14 +64,10 @@ export function ChatHeaderBar({
   const hasRunningJobForFeature = featureKey
     ? !!runningJobsByFeature[featureKey]
     : false;
-  const hasInterruption =
-    !isRunning &&
-    kanbanData?.interruption?.canResume === true &&
-    kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
 
   const canSweep = chatEvents.length > 0;
   const resetDisabled =
-    !selectedFeature || isResetting || hasRunningJobForFeature || hasInterruption;
+    !selectedFeature || isResetting || hasRunningJobForFeature;
 
   // Auto-cancel the trash-confirm state after 3s of inactivity.
   useEffect(() => {
@@ -135,12 +132,6 @@ export function ChatHeaderBar({
     if (!confirming) {
       if (hasRunningJobForFeature) {
         showError(t('context.resetBlockedByJob'), {
-          title: t('common:error.title'),
-        });
-        return;
-      }
-      if (hasInterruption) {
-        showError(t('sidebar.resetBlockedByInterruption'), {
           title: t('common:error.title'),
         });
         return;

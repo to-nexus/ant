@@ -71,7 +71,6 @@
     "sweepConfirmAction": "Clean up",
     "sweepConfirmRunningAction": "Stop job & clear",
     "sweepFailed": "Failed to clean up chat view. Please try again later.",
-    "resetBlockedByInterruption": "Resolve the interrupted job first (resume or dismiss) before resetting context.",
     "offline": "Chat is Offline",
     "expand": "Expand Chat",
     "collapse": "Collapse Chat"
