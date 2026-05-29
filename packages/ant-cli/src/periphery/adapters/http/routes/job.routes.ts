@@ -394,7 +394,7 @@ export function createJobRoutes(deps: {
     const modelId =
       (req.query.modelId as string | undefined) ||
       process.env.AI_MODEL_NAME ||
-      'claude-opus-4-7';
+      'claude-opus-4-8';
 
     if (!intent || !projectId || !featureName) {
       res.status(400).json({ error: 'intent, projectId, featureName are required' });

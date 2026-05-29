@@ -112,7 +112,7 @@ export class ProjectCrudService {
     
     // ✅ Get LLM config from environment variables
     const envModel = process.env.AI_MODEL_NAME;
-    const modelOpus = envModel || 'claude-opus-4-7';
+    const modelOpus = envModel || 'claude-opus-4-8';
     const modelSonnet = envModel || 'claude-sonnet-4-6';
     
     // ✅ Read effective GitHub owner: user override > org config
@@ -406,7 +406,7 @@ export class ProjectCrudService {
     
     // Get environment variable defaults for LLM (per-job)
     const envModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
-    const fallbackOpus = envModel || 'claude-opus-4-7';
+    const fallbackOpus = envModel || 'claude-opus-4-8';
     const fallbackSonnet = envModel || 'claude-sonnet-4-6';
     
     try {

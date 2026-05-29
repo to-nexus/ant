@@ -26,8 +26,8 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
     capabilities: ['coding', 'reasoning', 'large-context']
   },
   {
-    id: 'claude-opus-4-7',
-    displayName: 'Opus 4.7',
+    id: 'claude-opus-4-8',
+    displayName: 'Opus 4.8',
     provider: 'anthropic',
     description: 'Most capable Claude model, best for complex reasoning',
     recommended: false,
@@ -81,7 +81,7 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: 'claude-opus-4-7'
+        default: 'claude-opus-4-8'
       });
     } catch (error) {
       console.error('[Models API] Error:', error);

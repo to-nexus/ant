@@ -9,7 +9,7 @@
  *
  * Three cases lock the contract:
  *  - C1: both empty → placeholder renders, contextWindow = DEFAULT_FALLBACK_CONTEXT_WINDOW
- *  - C2: live arrives (contextWindow=1M) → both clear → placeholder inherits 1M (sticky)
+ *  - C2: live arrives (contextWindow=200K Haiku) → both clear → placeholder inherits 200K (sticky, NOT the default 1M)
  *  - C3: live + baseline both present → live wins (unchanged behaviour)
  */
 
@@ -100,15 +100,16 @@ describe('TurnTokenGauge — empty fallback (always visible)', () => {
     expect(ph.contextWindow).toBe(DEFAULT_FALLBACK_CONTEXT_WINDOW);
   });
 
-  it('C2: live arrives (1M) then both clear → placeholder inherits the 1M contextWindow (sticky)', () => {
-    // Frame 1: live phase with 1M context window.
-    mockKanban = { currentPhaseTokenUsages: [liveSnapshot(1_000_000)] };
+  it('C2: live arrives (200K Haiku) then both clear → placeholder inherits the 200K contextWindow (sticky, NOT default 1M)', () => {
+    // Frame 1: live phase with Haiku 4.5's 200K context window (non-default
+    // — the gauge's DEFAULT_FALLBACK is 1M, matching Opus 4.8 / Sonnet 4.6).
+    mockKanban = { currentPhaseTokenUsages: [liveSnapshot(200_000)] };
     let tree: ReactTestRenderer | undefined;
     act(() => {
       tree = create(<TurnTokenGauge />);
     });
     expect(capturedPhases).toHaveLength(1);
-    expect(capturedPhases[0].contextWindow).toBe(1_000_000);
+    expect(capturedPhases[0].contextWindow).toBe(200_000);
     expect(capturedPhases[0].mode).toBe('live');
 
     // Frame 2: both cleared. Force a re-render of the SAME instance so
@@ -122,8 +123,8 @@ describe('TurnTokenGauge — empty fallback (always visible)', () => {
     const placeholder = lastPlaceholder()!;
     expect(placeholder.mode).toBe('baseline');
     expect(placeholder.tokenUsage.totalTokens).toBe(0);
-    // Sticky: NOT the default 200k — the last-known 1M is preserved.
-    expect(placeholder.contextWindow).toBe(1_000_000);
+    // Sticky: NOT the default 1M — the last-known 200K is preserved.
+    expect(placeholder.contextWindow).toBe(200_000);
   });
 
   it('C3: live + baseline both present → live wins (unchanged behaviour)', () => {

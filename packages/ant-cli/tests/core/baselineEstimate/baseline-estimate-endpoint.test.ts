@@ -91,8 +91,8 @@ const sampleEstimate: BaselineEstimate = {
   staticFloor: { tokens: 0 },
   dynamic: { racBodyTokens: 0, userMessageTokens: 0 },
   total: 8_421,
-  contextWindow: 200_000,
-  modelId: 'claude-opus-4-7',
+  contextWindow: 1_000_000,
+  modelId: 'claude-opus-4-8',
   timing: 'T0',
 };
 
