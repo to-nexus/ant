@@ -41,7 +41,7 @@ function makeState(overrides: Partial<DetectableState>): DetectableState {
     context: {},
     currentAgent: 'architect',
     currentJob: 'code',
-    deps: { llm: {} as any, promptBuilder: {} as any },
+    deps: { llm: {} as any, promptBuilder: {} as any, fileSystem: {} as any },
     ...overrides,
   } as DetectableState;
 }
