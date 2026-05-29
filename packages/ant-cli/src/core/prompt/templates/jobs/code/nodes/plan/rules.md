@@ -304,11 +304,12 @@ what YOU own; depend on interfaces for what others own.
 {{> jobs/code/base/injections/secure-coding}}
 
 {{!--
-  Service Virtualization SSOT — three orthogonal partials gated by
+  Service Virtualization SSOT — four orthogonal partials gated by
   helpers under `core/prompt/builder/serviceVirtualization/`:
     - contract: hasBusinessConnection
     - data:     hasBusinessConnection × (taskType ∈ feature|ui|design-system)
-    - imagery:  hasFrontend × domain==='service' × taskType==='feature'
+    - imagery:  hasFrontend × domain==='service' × (taskType ∈ feature|ui|design-system|setup|error|verification)
+    - session:  hasBusinessConnection × (taskType ∈ feature|ui|design-system|setup)
   Domain-Branching Locality (I1): the gates are derived in code; the
   templates only see the resulting booleans.
 --}}
@@ -322,6 +323,10 @@ what YOU own; depend on interfaces for what others own.
 
 {{#if serviceVirtualizationImageryActive}}
 {{> jobs/code/base/injections/service-virtualization-imagery}}
+{{/if}}
+
+{{#if serviceVirtualizationSessionActive}}
+{{> jobs/code/base/injections/service-virtualization-session}}
 {{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────

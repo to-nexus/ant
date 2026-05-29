@@ -1,18 +1,18 @@
 /**
  * Service Virtualization SSOT regression guard.
  *
- * Phase 2 of the `mock_real_symmetry_ssot` plan introduced three orthogonal
- * partials under the umbrella concept "Service Virtualization":
+ * Four orthogonal partials under the umbrella concept "Service Virtualization":
  *
  *   - `service-virtualization-contract` — port shape + toggle grammar
- *   - `service-virtualization-data`     — fake body realism (non-image)
+ *   - `service-virtualization-data`     — fake body realism (non-image, ONE response body)
  *   - `service-virtualization-imagery`  — image subtype dispatch
+ *   - `service-virtualization-session`  — cross-body demo coherence over time
  *
  * This guard locks (across 5 sub-suites):
  *   1. Body discipline — language/platform neutrality + game-vocabulary
- *      absence + 3-partial cross-talk absence
+ *      absence + 4-partial cross-talk absence (bidirectional MECE)
  *   2. Wire sites — partial-include presence at plan + execute rules.md
- *   3. Gate truth tables — three predicates, one test each axis
+ *   3. Gate truth tables — four predicates, one test each axis
  *   4. End-to-end Handlebars render — boolean drives include
  *   5. Removed legacy artifacts — old mock-* files MUST NOT exist
  *
@@ -31,6 +31,7 @@ const INJECTIONS_DIR = path.join(TEMPLATES_ROOT, 'jobs/code/base/injections');
 const PARTIAL_CONTRACT = path.join(INJECTIONS_DIR, 'service-virtualization-contract.md');
 const PARTIAL_DATA = path.join(INJECTIONS_DIR, 'service-virtualization-data.md');
 const PARTIAL_IMAGERY = path.join(INJECTIONS_DIR, 'service-virtualization-imagery.md');
+const PARTIAL_SESSION = path.join(INJECTIONS_DIR, 'service-virtualization-session.md');
 const PLAN_RULES = path.join(TEMPLATES_ROOT, 'jobs/code/nodes/plan/rules.md');
 const EXECUTE_RULES = path.join(TEMPLATES_ROOT, 'jobs/code/nodes/execute/variants/default/rules.md');
 const BUILD_MESSAGES = path.join(REPO_ROOT, 'src/agents/architect/graph/code/nodes/execute/buildMessages.ts');
@@ -39,6 +40,7 @@ const PLAN_PROMPT = path.join(REPO_ROOT, 'src/agents/architect/graph/code/nodes/
 const INCLUDE_CONTRACT = '{{> jobs/code/base/injections/service-virtualization-contract}}';
 const INCLUDE_DATA = '{{> jobs/code/base/injections/service-virtualization-data}}';
 const INCLUDE_IMAGERY = '{{> jobs/code/base/injections/service-virtualization-imagery}}';
+const INCLUDE_SESSION = '{{> jobs/code/base/injections/service-virtualization-session}}';
 
 function read(p: string): string {
   return fs.readFileSync(p, 'utf-8');
@@ -53,6 +55,7 @@ describe('service-virtualization partials — body discipline', () => {
     { name: 'contract', path: PARTIAL_CONTRACT },
     { name: 'data', path: PARTIAL_DATA },
     { name: 'imagery', path: PARTIAL_IMAGERY },
+    { name: 'session', path: PARTIAL_SESSION },
   ];
 
   for (const { name, path: partialPath } of partials) {
@@ -75,6 +78,23 @@ describe('service-virtualization partials — body discipline', () => {
       }
     });
 
+    it(`${name}: body does NOT cite platform-specific storage / auth APIs (FPOP §3)`, () => {
+      const src = read(partialPath);
+      const banned = [
+        'sessionStorage',
+        'localStorage',
+        'IndexedDB',
+        'AsyncStorage',
+        'JWT',
+        'OAuth2',
+        'autocomplete',
+      ];
+      for (const word of banned) {
+        const re = new RegExp(`\\b${word}\\b`);
+        expect(re.test(src), `platform-specific API/UX term '${word}' present in ${partialPath}`).toBe(false);
+      }
+    });
+
     it(`${name}: body does NOT leak game-domain vocabulary (Domain-Surface Boundary I7)`, () => {
       const src = read(partialPath);
       const banned = ['sprite', 'OscillatorNode', 'particle', 'projectile'];
@@ -85,9 +105,23 @@ describe('service-virtualization partials — body discipline', () => {
     });
   }
 
-  it('contract: MUST NOT mention data-realism / imagery vocabulary (MECE §3)', () => {
+  it('contract: MUST NOT mention sibling-axis vocabulary (MECE §3)', () => {
     const src = read(PARTIAL_CONTRACT);
-    const banned = ['Lorem ipsum', 'placeholder image', 'inline SVG', 'data realism'];
+    const banned = [
+      // data
+      'Lorem ipsum',
+      'data realism',
+      // imagery
+      'placeholder image',
+      'inline SVG',
+      // session
+      'seeded identity',
+      'authorization graph',
+      'cross-body',
+      'multi-endpoint cardinality',
+      'surface discoverability',
+      'mutation persistence',
+    ];
     for (const phrase of banned) {
       expect(
         src.toLowerCase().includes(phrase.toLowerCase()),
@@ -96,9 +130,23 @@ describe('service-virtualization partials — body discipline', () => {
     }
   });
 
-  it('data: MUST NOT mention port-shape vocabulary (MECE §3)', () => {
+  it('data: MUST NOT mention sibling-axis vocabulary (MECE §3)', () => {
     const src = read(PARTIAL_DATA);
-    const banned = ['interface contract', 'port shape', 'adapter pair', 'switching contract'];
+    const banned = [
+      // contract
+      'interface contract',
+      'port shape',
+      'adapter pair',
+      'switching contract',
+      // session
+      'seeded identity',
+      'authorization graph',
+      'cross-body',
+      'inhabitant',
+      'login surface',
+      'mutation persistence',
+      'surface discoverability',
+    ];
     for (const phrase of banned) {
       expect(
         src.toLowerCase().includes(phrase.toLowerCase()),
@@ -107,13 +155,53 @@ describe('service-virtualization partials — body discipline', () => {
     }
   });
 
-  it('imagery: MUST NOT mention non-image data fields (MECE §3)', () => {
+  it('imagery: MUST NOT mention sibling-axis vocabulary (MECE §3)', () => {
     const src = read(PARTIAL_IMAGERY);
-    const banned = ['timestamp', 'cross-entity', 'fake user name', 'fake order'];
+    const banned = [
+      // data
+      'timestamp',
+      'cross-entity',
+      'fake user name',
+      'fake order',
+      // session
+      'seeded identity',
+      'authorization graph',
+      'inhabitant',
+      'mutation persistence',
+    ];
     for (const phrase of banned) {
       expect(
         src.toLowerCase().includes(phrase.toLowerCase()),
         `imagery MUST NOT cite '${phrase}'`,
+      ).toBe(false);
+    }
+  });
+
+  it('session: MUST NOT mention sibling-axis deep content (MECE §3)', () => {
+    // The session partial's defer table necessarily cites sibling scopes
+    // (e.g. "Port shape + toggle grammar" for contract, "Image fields" for
+    // imagery). Ban list focuses on DEEP content terms that never appear
+    // in a one-line defer summary.
+    const src = read(PARTIAL_SESSION);
+    const banned = [
+      // contract — deep content
+      'interface contract',
+      'adapter pair',
+      'switching contract',
+      'USE_MOCK_',
+      // data — deep content
+      'Lorem ipsum',
+      'data realism',
+      'temporal plausibility',
+      'within-body FK',
+      // imagery — deep content
+      'inline SVG',
+      'placeholder service',
+    ];
+    for (const phrase of banned) {
+      expect(
+        src.toLowerCase().includes(phrase.toLowerCase()),
+        `session MUST NOT cite '${phrase}'`,
       ).toBe(false);
     }
   });
@@ -149,6 +237,9 @@ describe('service-virtualization — wire sites', () => {
     it(`${label} includes imagery partial`, () => {
       expect(read(rulesPath).includes(INCLUDE_IMAGERY)).toBe(true);
     });
+    it(`${label} includes session partial`, () => {
+      expect(read(rulesPath).includes(INCLUDE_SESSION)).toBe(true);
+    });
 
     it(`${label}: contract include is gated by serviceVirtualizationContractActive`, () => {
       const src = read(rulesPath);
@@ -175,26 +266,38 @@ describe('service-virtualization — wire sites', () => {
       const window = src.slice(Math.max(0, idx - 400), idx);
       expect(window).toMatch(/serviceVirtualizationImageryActive/);
     });
+
+    it(`${label}: session include is gated by serviceVirtualizationSessionActive`, () => {
+      const src = read(rulesPath);
+      const idx = src.indexOf(INCLUDE_SESSION);
+      expect(idx).toBeGreaterThan(-1);
+      const window = src.slice(Math.max(0, idx - 400), idx);
+      expect(window).toMatch(/serviceVirtualizationSessionActive/);
+    });
   }
 
-  it('buildMessages.ts injects all three Active flags', () => {
+  it('buildMessages.ts injects all four Active flags', () => {
     const src = read(BUILD_MESSAGES);
     expect(src).toMatch(/isServiceVirtualizationContractActive\s*\(/);
     expect(src).toMatch(/isServiceVirtualizationDataActive\s*\(/);
     expect(src).toMatch(/isServiceVirtualizationImageryActive\s*\(/);
+    expect(src).toMatch(/isServiceVirtualizationSessionActive\s*\(/);
     expect(src).toMatch(/serviceVirtualizationContractActive:/);
     expect(src).toMatch(/serviceVirtualizationDataActive:/);
     expect(src).toMatch(/serviceVirtualizationImageryActive:/);
+    expect(src).toMatch(/serviceVirtualizationSessionActive:/);
   });
 
-  it('plan/llm/prompt.ts injects all three Active flags', () => {
+  it('plan/llm/prompt.ts injects all four Active flags', () => {
     const src = read(PLAN_PROMPT);
     expect(src).toMatch(/isServiceVirtualizationContractActive\s*\(/);
     expect(src).toMatch(/isServiceVirtualizationDataActive\s*\(/);
     expect(src).toMatch(/isServiceVirtualizationImageryActive\s*\(/);
+    expect(src).toMatch(/isServiceVirtualizationSessionActive\s*\(/);
     expect(src).toMatch(/serviceVirtualizationContractActive:/);
     expect(src).toMatch(/serviceVirtualizationDataActive:/);
     expect(src).toMatch(/serviceVirtualizationImageryActive:/);
+    expect(src).toMatch(/serviceVirtualizationSessionActive:/);
   });
 });
 
@@ -206,6 +309,7 @@ import {
   isServiceVirtualizationContractActive,
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
+  isServiceVirtualizationSessionActive,
 } from '../../src/core/prompt/builder/serviceVirtualization';
 
 describe('isServiceVirtualizationContractActive — gate truth table', () => {
@@ -234,6 +338,30 @@ describe('isServiceVirtualizationDataActive — gate truth table', () => {
     it(c.name, () => {
       expect(
         isServiceVirtualizationDataActive({ hasBusinessConnection: c.has, taskType: c.t }),
+      ).toBe(c.expected);
+    });
+  }
+});
+
+describe('isServiceVirtualizationSessionActive — gate truth table', () => {
+  const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
+    { name: 'business + feature', has: true, t: 'feature', expected: true },
+    { name: 'business + ui', has: true, t: 'ui', expected: true },
+    { name: 'business + design-system', has: true, t: 'design-system', expected: true },
+    { name: 'business + setup', has: true, t: 'setup', expected: true },
+    { name: 'business + verification', has: true, t: 'verification', expected: false },
+    { name: 'business + error', has: true, t: 'error', expected: false },
+    { name: 'business + test-code', has: true, t: 'test-code', expected: false },
+    { name: 'business + doc', has: true, t: 'doc', expected: false },
+    { name: 'business + explain', has: true, t: 'explain', expected: false },
+    { name: 'business + undefined', has: true, t: undefined, expected: false },
+    { name: 'no business + feature', has: false, t: 'feature', expected: false },
+    { name: 'no business + setup', has: false, t: 'setup', expected: false },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        isServiceVirtualizationSessionActive({ hasBusinessConnection: c.has, taskType: c.t }),
       ).toBe(c.expected);
     });
   }
@@ -287,6 +415,7 @@ describe('service-virtualization — Handlebars boolean gate render', () => {
   const SENTINEL_CONTRACT = 'Service Virtualization Contract';
   const SENTINEL_DATA = 'Fake Data Realism';
   const SENTINEL_IMAGERY = 'Service Virtualization — Imagery';
+  const SENTINEL_SESSION = 'Service Virtualization — Session';
 
   beforeAll(async () => {
     await initPartials(TEMPLATES_ROOT);
@@ -339,11 +468,26 @@ describe('service-virtualization — Handlebars boolean gate render', () => {
       expect(out).not.toContain(SENTINEL_IMAGERY);
     });
 
+    it(`${label} — session gate true → session body present`, async () => {
+      const out = await adapter.render(templatePath, {
+        serviceVirtualizationSessionActive: true,
+      });
+      expect(out).toContain(SENTINEL_SESSION);
+    });
+
+    it(`${label} — session gate false → session body absent`, async () => {
+      const out = await adapter.render(templatePath, {
+        serviceVirtualizationSessionActive: false,
+      });
+      expect(out).not.toContain(SENTINEL_SESSION);
+    });
+
     it(`${label} — all gates undefined → all bodies absent (default falsy)`, async () => {
       const out = await adapter.render(templatePath, {});
       expect(out).not.toContain(SENTINEL_CONTRACT);
       expect(out).not.toContain(SENTINEL_DATA);
       expect(out).not.toContain(SENTINEL_IMAGERY);
+      expect(out).not.toContain(SENTINEL_SESSION);
     });
   }
 });

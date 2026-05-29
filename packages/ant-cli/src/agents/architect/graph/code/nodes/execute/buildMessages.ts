@@ -38,6 +38,7 @@ import {
   isServiceVirtualizationContractActive,
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
+  isServiceVirtualizationSessionActive,
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
@@ -469,9 +470,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // gates including the Service Virtualization imagery partial.
       hasFrontend,
       hasBackend,
-      // Service Virtualization gates (SBS) — three orthogonal partials
-      // (contract / data / imagery). The `hasBusinessConnection` flag is
-      // derived once at resolve time and parked on
+      // Service Virtualization gates (SBS) — four orthogonal partials
+      // (contract / data / imagery / session). The `hasBusinessConnection`
+      // flag is derived once at resolve time and parked on
       // `state.virtualizationSnapshot` so every phase shares one snapshot.
       // See `core/prompt/builder/serviceVirtualization/`.
       serviceVirtualizationContractActive: isServiceVirtualizationContractActive({
@@ -484,6 +485,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       serviceVirtualizationImageryActive: isServiceVirtualizationImageryActive({
         hasFrontend,
         domain: state.resolvedAction?.domain,
+        taskType,
+      }),
+      serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         taskType,
       }),
       // figmaAvailable is strictly derived from uiSource === 'figma'.
