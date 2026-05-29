@@ -51,7 +51,7 @@ const toolNodeFn = createToolNode<PlanGraphState>({
 
   buildContext(state) {
     return {
-      fileSystem: {} as any,
+      fileSystem: state.deps?.fileSystem as any,
       chatStatus: createChatStatusReporter(),
       workingDir: state.featurePath,
       featurePath: state.featurePath,

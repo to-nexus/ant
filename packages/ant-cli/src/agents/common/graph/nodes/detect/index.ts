@@ -560,19 +560,24 @@ export function createInferDetectNode<T extends DetectableState>(
           );
           detectResult = buildAgentJobSwitchResult(intentId as IntentId, want, state);
         } else {
-          // Infer path — job-blind tool-use loop. LLM / promptBuilder
-          // 의존성 검증은 이 분기 안에서만 — explicit branch 는 LLM 불필요.
+          // Infer path — job-blind tool-use loop. LLM / promptBuilder /
+          // fileSystem 의존성 검증은 이 분기 안에서만 — explicit branch 는
+          // LLM 불필요. fileSystem 가드는 navy-keeping-polar 회귀 방지:
+          // 누락 시 pathResolver.getRootPath() 가 익명 TypeError 로 죽지 않고
+          // DI 결손을 명시적으로 surface 한다.
           const llm = state.deps?.llm;
           const promptBuilder = state.deps?.promptBuilder;
+          const fileSystem = state.deps?.fileSystem;
           if (!llm) throw new Error('[detect:infer] LLM not available');
           if (!promptBuilder) throw new Error('[detect:infer] PromptBuilder not available');
+          if (!fileSystem) throw new Error('[detect:infer] FileSystemPort not available — orchestrator must inject state.deps.fileSystem for any agent using createInferDetectNode');
           const inferred = await inferRacWithTools({
             intentId: intentId as IntentId,
             domain,
             workspaceState: state.workspaceState,
             featureContext: (state as any).featureContext,
             featurePath,
-            fileSystem: state.deps?.fileSystem,
+            fileSystem,
             command: state.deps?.command,
             llm,
             promptBuilder,
