@@ -108,6 +108,17 @@ class FakeStateStore implements Partial<StateStorePort> {
   async clearTurnBuffer(): Promise<void> {}
   async clearTurnBufferPendingCard(): Promise<void> {}
   async appendToTurnBuffer(): Promise<void> {}
+
+  /** Generic key/value store used by the choice-card index (`ant:choice:card:*`). */
+  kv = new Map<string, { value: string; ttl: number }>();
+  setKeyWithTTLCalls: Array<{ key: string; value: string; ttl: number }> = [];
+  async setKeyWithTTL(key: string, value: string, ttl: number): Promise<void> {
+    this.setKeyWithTTLCalls.push({ key, value, ttl });
+    this.kv.set(key, { value, ttl });
+  }
+  async getKey(key: string): Promise<string | null> {
+    return this.kv.get(key)?.value ?? null;
+  }
 }
 
 const USER_CTX: UserContext = {
@@ -547,6 +558,123 @@ describe('ChatService — Phase 9 emission contract', () => {
     await seedUserTurn('job-1', 't-aa');
     const ctx = await service.findTurnIdByCardId('proj', 'feat-a', 'missing-card', USER_CTX);
     expect(ctx).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Redis cardId index (`ant:choice:card:*`) — Issue 1 fix
+  //
+  // The choice-resolved 404 in cloud was caused by EFS/NFS
+  // read-after-write lag: worker wrote chat.jsonl but the API server
+  // (different NFS client) hadn't yet seen the new line when the FE
+  // clicked. The fix mirrors every `choice_presented` line into Redis
+  // at the appendAndBroadcast chokepoint so the resolve handler can
+  // find the turnId without touching disk. File scan remains the
+  // durable fallback.
+  // ─────────────────────────────────────────────────────────────────
+  it('appendChoicePresented mirrors the line into the Redis cardId index', async () => {
+    await seedUserTurn('job-redis-1', 't-redis-aa');
+    await service.appendChoicePresented('proj', 'feat-a', {
+      jobId: 'job-redis-1',
+      cardId: 'card-redis-set',
+      cardType: 'eval_save',
+      userContext: USER_CTX,
+    });
+
+    const setCall = store.setKeyWithTTLCalls.find((c) =>
+      c.key.endsWith('card-redis-set'),
+    );
+    expect(setCall).toBeDefined();
+    expect(setCall!.key).toBe('ant:choice:card:card-redis-set');
+    expect(setCall!.ttl).toBe(604800);
+    const parsed = JSON.parse(setCall!.value);
+    expect(parsed).toEqual({ turnId: 't-redis-aa', jobId: 'job-redis-1', jobType: 'code' });
+  });
+
+  it('appendAndBroadcast does NOT touch the cardId index for non-choice_presented lines', async () => {
+    await seedUserTurn('job-redis-2', 't-redis-bb');
+    await service.appendAssistantMessage('proj', 'feat-a', 'final answer', {
+      jobId: 'job-redis-2',
+      userContext: USER_CTX,
+    });
+
+    const choiceCardSets = store.setKeyWithTTLCalls.filter((c) =>
+      c.key.startsWith('ant:choice:card:'),
+    );
+    expect(choiceCardSets).toHaveLength(0);
+  });
+
+  it('findTurnIdByCardId returns the Redis-indexed entry without scanning chat.jsonl', async () => {
+    // Pre-seed Redis ONLY — no chat.jsonl line. Simulates the cloud
+    // scenario where the worker's file write has not yet propagated
+    // to the API server's NFS client.
+    store.kv.set('ant:choice:card:card-redis-hit', {
+      value: JSON.stringify({
+        turnId: 't-redis-hit',
+        jobId: 'job-redis-hit',
+        jobType: 'code',
+      }),
+      ttl: 604800,
+    });
+
+    const ctx = await service.findTurnIdByCardId(
+      'proj',
+      'feat-a',
+      'card-redis-hit',
+      USER_CTX,
+    );
+    expect(ctx).toEqual({
+      turnId: 't-redis-hit',
+      jobId: 'job-redis-hit',
+      jobType: 'code',
+      workerScope: undefined,
+    });
+  });
+
+  it('findTurnIdByCardId carries workerScope through the Redis fast-path', async () => {
+    store.kv.set('ant:choice:card:card-redis-scope', {
+      value: JSON.stringify({
+        turnId: 't-redis-scope',
+        jobId: 'job-redis-scope',
+        jobType: 'code',
+        workerScope: '_spec_complete_:card-redis-scope',
+      }),
+      ttl: 604800,
+    });
+
+    const ctx = await service.findTurnIdByCardId(
+      'proj',
+      'feat-a',
+      'card-redis-scope',
+      USER_CTX,
+    );
+    expect(ctx).toEqual({
+      turnId: 't-redis-scope',
+      jobId: 'job-redis-scope',
+      jobType: 'code',
+      workerScope: '_spec_complete_:card-redis-scope',
+    });
+  });
+
+  it('findTurnIdByCardId falls through to the file scan when Redis has no entry', async () => {
+    // Seed the file but NOT Redis — equivalent to a pre-rollout card
+    // that predates the index, or a Redis SET that errored silently.
+    await seedUserTurn('job-redis-fallback', 't-redis-fallback');
+    await service.appendChoicePresented('proj', 'feat-a', {
+      jobId: 'job-redis-fallback',
+      cardId: 'card-redis-fallback',
+      cardType: 'eval_save',
+      userContext: USER_CTX,
+    });
+    // Drop the Redis entry to simulate a miss.
+    store.kv.delete('ant:choice:card:card-redis-fallback');
+
+    const ctx = await service.findTurnIdByCardId(
+      'proj',
+      'feat-a',
+      'card-redis-fallback',
+      USER_CTX,
+    );
+    expect(ctx).toEqual({ turnId: 't-redis-fallback', jobId: 'job-redis-fallback', jobType: 'code' });
   });
 
   // ─────────────────────────────────────────────────────────────────
