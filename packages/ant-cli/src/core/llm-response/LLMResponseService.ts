@@ -35,7 +35,15 @@ import { TurnContext } from './TurnContext';
 import { ChatLogAppender } from './ChatLogAppender';
 import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
-import { getChatSyncChannel } from '../constants/redis';
+import { getChatSyncChannel, REDIS_KEYS } from '../constants/redis';
+
+/**
+ * 7-day TTL for the `cardId → turnId` Redis index. Long enough to cover
+ * users returning to a stale choice card; bounded so dead cardIds expire
+ * naturally. The file-based `chat.jsonl` remains the durable record past
+ * the TTL window.
+ */
+const CHOICE_CARD_INDEX_TTL_SECONDS = 604800;
 import { logger } from '../../utils/logger';
 import { transformAndStrip } from '../streaming/OutputTagRegistry';
 
@@ -1059,12 +1067,38 @@ export class LLMResponseService {
     if (this.chatLogAppender) {
       this.chatLogAppender.appendChatLine(line);
     }
+    if (line.type === 'choice_presented') {
+      this.indexChoicePresented(line as ChatChoicePresentedLine);
+    }
     this.broadcaster.broadcastChatLine(
       this.turnContext.context.projectId,
       this.turnContext.context.featureName,
       line,
       this.turnContext.context.userContext,
     );
+  }
+
+  /**
+   * Mirror a `choice_presented` line into Redis so the API-server's
+   * `/chat/choice-resolved` handler can resolve `cardId → turnId` without
+   * waiting for NFS read-after-write visibility on the worker-written
+   * `chat.jsonl`. Fire-and-forget — file remains the durable record.
+   */
+  private indexChoicePresented(line: ChatChoicePresentedLine): void {
+    if (!line.cardId || !line.turnId) return;
+    const key = `${REDIS_KEYS.CHOICE.CARD_INDEX}${line.cardId}`;
+    const value = JSON.stringify({
+      turnId: line.turnId,
+      jobId: line.jobId,
+      jobType: line.jobType,
+      ...(line.workerScope ? { workerScope: line.workerScope } : {}),
+    });
+    this.stateStore.setKeyWithTTL(key, value, CHOICE_CARD_INDEX_TTL_SECONDS).catch((err) => {
+      logger.warn(
+        `[LLMResponseService] choice-card index SET failed: ${(err as Error)?.message ?? err}`,
+        { component: 'LLMResponseService' },
+      );
+    });
   }
 
   private async appendBufferKind(

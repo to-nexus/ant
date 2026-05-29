@@ -95,6 +95,15 @@ class FakeStateStore implements Partial<StateStorePort> {
   async clearTurnBuffer(): Promise<void> {}
   async clearTurnBufferPendingCard(): Promise<void> {}
   async appendToTurnBuffer(): Promise<void> {}
+
+  /** Generic key/value store — used by the choice-card index (`ant:choice:card:*`). */
+  kv = new Map<string, { value: string; ttl: number }>();
+  async setKeyWithTTL(key: string, value: string, ttl: number): Promise<void> {
+    this.kv.set(key, { value, ttl });
+  }
+  async getKey(key: string): Promise<string | null> {
+    return this.kv.get(key)?.value ?? null;
+  }
 }
 
 const USER_CTX = { userId: 'local', organizationId: 'local', email: 'local@local' } as any;

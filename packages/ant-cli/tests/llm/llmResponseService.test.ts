@@ -164,6 +164,17 @@ class FakeStateStore implements Partial<StateStorePort> {
       this.subscribeCallback = null;
     };
   }
+
+  /** Generic key/value store — used by the choice-card index (`ant:choice:card:*`). */
+  kv = new Map<string, { value: string; ttl: number }>();
+  setKeyWithTTLCalls: Array<{ key: string; value: string; ttl: number }> = [];
+  async setKeyWithTTL(key: string, value: string, ttl: number): Promise<void> {
+    this.setKeyWithTTLCalls.push({ key, value, ttl });
+    this.kv.set(key, { value, ttl });
+  }
+  async getKey(key: string): Promise<string | null> {
+    return this.kv.get(key)?.value ?? null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
