@@ -45,6 +45,11 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   deps?: {
     llm?: any;
     session?: any;
+    /**
+     * Required by detect's infer branch (createInferDetectNode → inferRacWithTools).
+     * Orchestrator must inject; absence trips the runtime guard in detect/index.ts.
+     */
+    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
     kanbanUpdate?: any;
     fileTreeUpdate?: any;
     workflowUpdate?: any;

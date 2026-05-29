@@ -469,6 +469,12 @@ export async function orchestrator(params: {
       // Create session for planner
       const session = new FileSessionAdapter(featurePath || '', 'planner', project, feature, fileTreeUpdate);
 
+      // FileSystemPort — required by detect's infer branch (createInferDetectNode).
+      // Without injection, inferRacWithTools → handleReadFile / handleListFiles
+      // → pathResolver.getRootPath() crashes with TypeError. Mirrors the
+      // architect branch wiring at ~line 248.
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath || '');
+
       // ✅ Record user_turn (feature.jsonl + chat.jsonl) — plan is a feature-context job.
       // Use the orchestrator-level `isResume` param (propagated from job-runner via
       // ANT_IS_RESUME). The legacy `!!(overrideDirective && jobId)` heuristic was a
@@ -514,7 +520,7 @@ export async function orchestrator(params: {
         chatSource: chatSource,
         skipTriage: skipTriage,
         actionMetadata: actionMetadata,
-        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort, promptBuilder: planPromptBuilder },
+        deps: { llm, session, fileSystem, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort, promptBuilder: planPromptBuilder },
         _httpJobId: jobId,
       });
 
@@ -578,6 +584,11 @@ export async function orchestrator(params: {
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
       const session = new FileSessionAdapter(featurePath, 'creator', project, featureName, fileTreeUpdate);
 
+      // FileSystemPort — consumed by detect's emitRACSummary path-compression
+      // helper. Aligns creator with the architect/planner DI contract so the
+      // `<detect>` chat card renders folder-compressed paths consistently.
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath);
+
       const { runVisualGraph } = await import("../agents/creator/graph/visual/runner");
 
       const result = await runVisualGraph({
@@ -598,6 +609,7 @@ export async function orchestrator(params: {
           engraveLLM,
           sketchImageClient,
           renderImageClient,
+          fileSystem,
           promptBuilder: new (await import('../core/prompt/builder/PromptBuilder')).PromptBuilder(visualPromptPort),
           session,
           kanbanUpdate,

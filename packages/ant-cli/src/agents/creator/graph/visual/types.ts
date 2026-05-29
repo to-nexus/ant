@@ -95,6 +95,13 @@ export interface VisualGraphDeps {
   renderImageClient: ImageGenerationPort;
   promptBuilder: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
   session: any;
+  /**
+   * Consumed by detect's emitRACSummary path-compression helper. Optional in the
+   * type (matches the other update ports + supports test stubs); orchestrator
+   * always injects in production so the `<detect>` chat card stays consistent
+   * with architect / planner.
+   */
+  fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
   kanbanUpdate?: TaskQueueUpdatePort;
   fileTreeUpdate?: FileTreeUpdatePort;
   workflowUpdate?: WorkflowStateUpdatePort;
