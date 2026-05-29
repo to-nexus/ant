@@ -100,6 +100,15 @@ export class AnthropicLLMClient implements LLMClient {
     };
   }
 
+  // Idle timeout matches the request regime. 90s assumes a non-thinking
+  // call (TCP-appears-open / Mac sleep). Anthropic adaptive thinking can
+  // be silent >180s between message_start and first thinking_delta on
+  // large prompts (plum-meeting-ember docGen incident).
+  private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {
+    if (!enableThinking) return 90_000;
+    return this.modelName.includes('opus-') && thinkingBudget >= 5000 ? 300_000 : 180_000;
+  }
+
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
     const result = await this.invokeWithUsage(messages, options);
     return result.content;
@@ -334,10 +343,8 @@ export class AnthropicLLMClient implements LLMClient {
         ...(tokenUsage.cacheCreationTokens !== undefined && { cacheCreationTokens: tokenUsage.cacheCreationTokens }),
       };
 
-    // Idle timeout: if no stream event is received for 90s, treat as terminated.
-    // Handles Mac sleep/wake and silent network partitions where the TCP connection
-    // appears open but data has stopped flowing (no OS-level "terminated" error).
-    const STREAM_IDLE_TIMEOUT_MS = 90_000;
+    // Idle timeout varies by thinking regime — see resolveIdleTimeoutMs.
+    const STREAM_IDLE_TIMEOUT_MS = this.resolveIdleTimeoutMs(enableThinking, thinkingBudget);
     for await (const event of withStreamIdleTimeout(stream, STREAM_IDLE_TIMEOUT_MS)) {
       // ✅ Capture usage from message_start (initial usage snapshot)
       if (event.type === 'message_start' && (event as any).message?.usage) {
