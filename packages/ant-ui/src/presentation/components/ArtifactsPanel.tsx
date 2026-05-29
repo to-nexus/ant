@@ -383,79 +383,111 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     [fileTree, workspaceDomain],
   );
 
-  // Don't show if no feature is selected (must be after all hooks)
-  if (!selectedProject || !selectedFeature) {
-    return null;
-  }
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Unified Artifacts tree — a single <ArtifactsSection> wraps the
   // canonical 'Artifacts' SectionShell header (handoff B3). The
   // domain roots (plan/architecture/visual/assets/meta/sessions) are
-  // rendered as folder rows inside that single section, NOT as their
-  // own uppercase eyebrow headers.
+  // rendered as folder rows inside that single section.
+  //
+  // Derived values below are memoized so the <ArtifactsSection nodes={...}>
+  // prop keeps a stable reference across parent re-renders. Child effects
+  // that depend on `nodes` would otherwise re-run on every keystroke /
+  // file-select / store update and reset internal UI state.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const topLevelByName = new Map(prunedFileTree?.map((n) => [n.name, n]) ?? []);
+  const topLevelByName = useMemo(
+    () => new Map(prunedFileTree?.map((n) => [n.name, n]) ?? []),
+    [prunedFileTree],
+  );
 
-  const planNode = topLevelByName.get('plan');
-  const planTemplateFiles =
-    planNode?.children?.filter((n) => n.type === 'file' && n.meta?.isTemplate) || [];
+  const planTemplateFiles = useMemo(
+    () =>
+      topLevelByName.get('plan')?.children?.filter((n) => n.type === 'file' && n.meta?.isTemplate) ||
+      [],
+    [topLevelByName],
+  );
 
   // Build domain-root nodes for the unified tree. Each entry in the
   // canonical UI_PANEL_TOP_LEVEL_DIRS becomes one top-level folder row.
   // Missing domains (filetree hasn't materialized them yet) are
   // rendered as synthetic empty-directory placeholders so the row is
   // visible regardless — matches the handoff b3-explorer FileTree UX.
-  const visibleTopLevelDirNodes: FileNode[] = UI_PANEL_TOP_LEVEL_DIRS.map(({ name }) => {
-    const existing = topLevelByName.get(name);
-    if (existing) return existing;
-    return {
-      name,
-      path: name,
-      type: 'directory',
-      children: [],
-    } as FileNode;
-  });
+  const visibleTopLevelDirNodes = useMemo<FileNode[]>(
+    () =>
+      UI_PANEL_TOP_LEVEL_DIRS.map(({ name }) => {
+        const existing = topLevelByName.get(name);
+        if (existing) return existing;
+        return {
+          name,
+          path: name,
+          type: 'directory',
+          children: [],
+        } as FileNode;
+      }),
+    [topLevelByName],
+  );
 
   // Per-row permission resolver — maps a node path to its owning
   // domain's ArtifactPermissions via the path's top-level segment.
-  const permissionsByDomain = new Map<string, ArtifactPermissions | undefined>(
-    UI_PANEL_TOP_LEVEL_DIRS.map((d) => [d.name, d.permissions]),
+  const permissionsByDomain = useMemo(
+    () =>
+      new Map<string, ArtifactPermissions | undefined>(
+        UI_PANEL_TOP_LEVEL_DIRS.map((d) => [d.name, d.permissions]),
+      ),
+    [],
   );
-  const getNodePermissions = (path: string): ArtifactPermissions | undefined => {
-    const top = path.split('/')[0];
-    return permissionsByDomain.get(top);
-  };
+  const getNodePermissions = useCallback(
+    (path: string): ArtifactPermissions | undefined => {
+      const top = path.split('/')[0];
+      return permissionsByDomain.get(top);
+    },
+    [permissionsByDomain],
+  );
 
   // Merge indicator dictionaries across all domains. Keys are file
   // basenames as before — ArtifactsSection reads `fileIndicators[node.name]`
   // for file rows so the key namespace is unchanged.
-  const mergedIndicators: Record<string, React.ReactNode> = {
-    ...Object.fromEntries(
-      planTemplateFiles.map((n) => [
-        n.name,
-        <TemplateStatusIndicator
-          key={`tpl-${n.name}`}
-          reason={n.meta?.templateReason ?? undefined}
-          contentLength={n.meta?.templateContentLength}
-          threshold={n.meta?.templateThreshold}
+  const mergedIndicators = useMemo<Record<string, React.ReactNode>>(
+    () => ({
+      ...Object.fromEntries(
+        planTemplateFiles.map((n) => [
+          n.name,
+          <TemplateStatusIndicator
+            key={`tpl-${n.name}`}
+            reason={n.meta?.templateReason ?? undefined}
+            contentLength={n.meta?.templateContentLength}
+            threshold={n.meta?.templateThreshold}
+            t={t}
+          />,
+        ]),
+      ),
+      'figma.json': (
+        <FigmaStatusIndicator
+          isPopulated={figmaPopulated}
+          bridgeConnected={bridgeConnected === true}
+          figmaDesktopReachable={figmaDesktopReachable}
+          onOpenSettings={() => {
+            openMainPanelTab('accountConfig');
+            setAccountConfigScrollTarget('figma');
+          }}
           t={t}
-        />,
-      ]),
-    ),
-    'figma.json': (
-      <FigmaStatusIndicator
-        isPopulated={figmaPopulated}
-        bridgeConnected={bridgeConnected === true}
-        figmaDesktopReachable={figmaDesktopReachable}
-        onOpenSettings={() => {
-          openMainPanelTab('accountConfig');
-          setAccountConfigScrollTarget('figma');
-        }}
-        t={t}
-      />
-    ),
-  };
+        />
+      ),
+    }),
+    [
+      planTemplateFiles,
+      figmaPopulated,
+      bridgeConnected,
+      figmaDesktopReachable,
+      t,
+      openMainPanelTab,
+      setAccountConfigScrollTarget,
+    ],
+  );
+
+  // Don't show if no feature is selected (must be after all hooks)
+  if (!selectedProject || !selectedFeature) {
+    return null;
+  }
 
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>

@@ -137,33 +137,57 @@ export function ArtifactsSection({
     });
   }, [highlightedDirs]);
 
+  // Spotlight effect — reacts to `spotlightTarget` set transitions only.
+  // Unions ancestor paths into `expandedDirs` (preserves user-expanded dirs)
+  // and scrolls the spotlight target into view. `nodes` is intentionally
+  // NOT in deps: data ref churn from the parent must not reset UI state.
   useEffect(() => {
-    if (!spotlightTarget) {
-      setExpandedDirs(new Set(nodes.map((n) => n.path)));
-      return;
-    }
+    if (!spotlightTarget) return;
     const targetPath = spotlightTarget.path;
     const belongsToThisSection =
       !sectionPrefix || targetPath.startsWith(sectionPrefix + '/') || targetPath === sectionPrefix;
-
-    if (!belongsToThisSection) {
-      setExpandedDirs(new Set());
-      return;
-    }
+    if (!belongsToThisSection) return;
 
     const parts = targetPath.split('/');
     const depth = spotlightTarget.type === 'file' ? parts.length - 1 : parts.length;
-    const requiredDirs = new Set<string>();
+    const requiredDirs: string[] = [];
     for (let i = 1; i <= depth; i++) {
-      requiredDirs.add(parts.slice(0, i).join('/'));
+      requiredDirs.push(parts.slice(0, i).join('/'));
     }
-    setExpandedDirs(requiredDirs);
+    setExpandedDirs((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const d of requiredDirs) {
+        if (!next.has(d)) {
+          next.add(d);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
 
     requestAnimationFrame(() => {
       const el = document.querySelector('[data-spotlight-path]');
       el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
-  }, [spotlightTarget, sectionPrefix, nodes]);
+  }, [spotlightTarget, sectionPrefix]);
+
+  // First-populate effect — when nodes transition from empty to populated,
+  // union the top-level paths into `expandedDirs` exactly once so the
+  // canonical domain roots are open by default. Guarded by a ref so later
+  // `nodes` ref changes (parent re-renders, fileTree refreshes) cannot
+  // re-run the default and clobber user toggles.
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    if (nodes.length === 0) return;
+    initializedRef.current = true;
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      for (const n of nodes) next.add(n.path);
+      return next;
+    });
+  }, [nodes]);
 
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
