@@ -45,8 +45,16 @@ import { getSessionKey } from '../../../../../core/chat/schema';
 import {
   getChoiceResolvedNXKey,
   getChoiceResolvedChannel,
+  REDIS_KEYS,
 } from '../../../../../core/constants/redis';
 import { logger } from '../../../../../utils/logger';
+
+/**
+ * 7-day TTL for the `cardId → turnId` Redis index (`ant:choice:card:*`).
+ * Mirrors the worker-side TTL in `LLMResponseService` so the choke-point
+ * SET on either process has the same lifecycle.
+ */
+const CHOICE_CARD_INDEX_TTL_SECONDS = 604800;
 
 const COMPONENT = 'ChatService';
 
@@ -1052,6 +1060,41 @@ export class ChatService {
     workerScope?: string;
   } | null> {
     const ctx = userContext ?? this.defaultUserContext;
+
+    // Redis fast-path — Issue 1 fix. The worker writes `chat.jsonl` and
+    // the API server reads it from a different NFS client; EFS attribute
+    // cache invalidation can lag enough that a FE click arrives before
+    // the API server's file view catches up. The cross-process Redis
+    // index closes that visibility gap; file scan remains the durable
+    // fallback if Redis missed (best-effort SET).
+    if (this.stateStore) {
+      try {
+        const raw = await this.stateStore.getKey(`${REDIS_KEYS.CHOICE.CARD_INDEX}${cardId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            turnId: string;
+            jobId: string;
+            jobType: LogJobType;
+            workerScope?: string;
+          };
+          if (parsed?.turnId && parsed?.jobId && parsed?.jobType) {
+            return {
+              turnId: parsed.turnId,
+              jobId: parsed.jobId,
+              jobType: parsed.jobType,
+              workerScope: parsed.workerScope,
+            };
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          `findTurnIdByCardId: Redis index lookup failed, falling through to file scan`,
+          { component: COMPONENT },
+          err,
+        );
+      }
+    }
+
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     if (!adapter) return null;
     try {
@@ -1122,7 +1165,32 @@ export class ChatService {
         ),
       );
     }
+    if (line.type === 'choice_presented') {
+      this.indexChoicePresented(line as ChatChoicePresentedLine);
+    }
     this.broadcaster.broadcastChatLine(projectId, featureName, line, userContext);
+  }
+
+  /**
+   * Mirror a `choice_presented` line into Redis so subsequent
+   * `/chat/choice-resolved` calls can resolve `cardId → turnId` without
+   * scanning `chat.jsonl`. Fire-and-forget — file remains durable record.
+   */
+  private indexChoicePresented(line: ChatChoicePresentedLine): void {
+    if (!this.stateStore || !line.cardId || !line.turnId) return;
+    const key = `${REDIS_KEYS.CHOICE.CARD_INDEX}${line.cardId}`;
+    const value = JSON.stringify({
+      turnId: line.turnId,
+      jobId: line.jobId,
+      jobType: line.jobType,
+      ...(line.workerScope ? { workerScope: line.workerScope } : {}),
+    });
+    this.stateStore.setKeyWithTTL(key, value, CHOICE_CARD_INDEX_TTL_SECONDS).catch((err) =>
+      logger.warn(
+        `choice-card index SET failed: ${(err as Error)?.message ?? err}`,
+        { component: COMPONENT },
+      ),
+    );
   }
 
   /**

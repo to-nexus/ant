@@ -123,6 +123,17 @@ export const REDIS_KEYS = {
      * `ant:choice:resolved:{cardId}` (SET NX, 24h)
      */
     RESOLVED_NX: `${REDIS_DOMAINS.CHOICE}:resolved:`,
+    /**
+     * cardId → turnId index for cross-process choice-resolved lookup.
+     * `ant:choice:card:{cardId}` → JSON `{turnId, jobId, jobType, workerScope?}` (7d TTL).
+     *
+     * Written by the choice-emitting process at the chat-line persistence
+     * chokepoint; read by the API server's `/chat/choice-resolved` handler
+     * before falling back to a `chat.jsonl` scan. Closes the EFS/NFS
+     * read-after-write visibility gap where the worker's append is not
+     * yet visible to the API server's NFS client when the FE clicks.
+     */
+    CARD_INDEX: `${REDIS_DOMAINS.CHOICE}:card:`,
   },
   
   /** Infrastructure keys (ant:infra:*) */
