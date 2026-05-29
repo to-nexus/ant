@@ -324,7 +324,7 @@ retentionPolicy → compactRun, types, tokenBudget
 | `core/prompt/templates/code/base/injections/job-history.md` | Code decompose에 주입되는 job history partial |
 | `core/prompt/templates/design/base/injections/job-history.md` | Design decompose에 주입되는 job history partial |
 | `core/context/retentionPolicy.ts` | Task-boundary retention (Isolation) |
-| `core/utils/tokenBudget.ts` | TokenBudgetManager (200K area budgets) |
+| `core/utils/tokenBudget.ts` | TokenBudgetManager (model-aware area budgets — auto-scales to `getModelContextWindow(modelId)`, 200K fallback for unknown models) |
 | `core/types/session.ts` | Session, SessionRun, ConversationEntry types |
 | `core/schemas/session.schema.ts` | Zod validation schemas |
 | `core/ports/session.ts` | SessionPort interface |

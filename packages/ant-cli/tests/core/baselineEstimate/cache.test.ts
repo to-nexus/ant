@@ -43,7 +43,7 @@ const baseScope = (): BaselineCacheScope => ({
   projectId: 'proj-X',
   featureName: 'feat-Y',
   intent: 'gen-code-spec' as any,
-  modelId: 'claude-opus-4-7',
+  modelId: 'claude-opus-4-8',
   racFingerprint: 'abc',
   draftHash: 'def',
 });
@@ -53,8 +53,8 @@ const sampleEstimate: BaselineEstimate = {
   staticFloor: { tokens: 0 },
   dynamic: { racBodyTokens: 0, userMessageTokens: 0 },
   total: 12_345,
-  contextWindow: 200_000,
-  modelId: 'claude-opus-4-7',
+  contextWindow: 1_000_000,
+  modelId: 'claude-opus-4-8',
   timing: 'T0',
 };
 
@@ -62,7 +62,7 @@ describe('baseline cache — key shape', () => {
   it('embeds every tenant + RAC + draft segment under the ant:baseline namespace', () => {
     const key = buildCacheKey(baseScope());
     expect(key).toBe(
-      'ant:baseline:org-A:user-1:proj-X:feat-Y:gen-code-spec:claude-opus-4-7:abc:def',
+      'ant:baseline:org-A:user-1:proj-X:feat-Y:gen-code-spec:claude-opus-4-8:abc:def',
     );
   });
 });

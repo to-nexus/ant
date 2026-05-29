@@ -42,10 +42,10 @@ export const LLM_MAX_TOKENS = {
   //
   // Anthropic model output ceilings (per Anthropic docs, 2026-04):
   //   - Sonnet 4.6 / 4.5 / 4 (codebase default for code.*): 64K ceiling
-  //   - Opus 4.7 / 4.6 (env override / reviewer): 128K ceiling
+  //   - Opus 4.8 / 4.7 / 4.6 (env override / reviewer): 128K ceiling
   //   - Opus 4 (deprecated, retires 2026-06-15): 32K hard limit
   //
-  // 64K is the safe default: matches Sonnet's ceiling, well within Opus 4.7's.
+  // 64K is the safe default: matches Sonnet's ceiling, well within Opus 4.8's.
   // With thinkingBudget 10K, text space = ~54K; with 5K, ~59K.
   //
   // Why bumped 32K → 64K (safe-braking-eagle RCA):

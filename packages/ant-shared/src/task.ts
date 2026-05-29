@@ -50,18 +50,19 @@ export interface TaskTiming {
  * the backend [TokenBudgetManager](../../ant-cli/src/core/utils/tokenBudget.ts).
  *
  * Strict: an unknown model id throws. Silent fallback to a hardcoded 200k
- * would produce a 5× under-reported gauge when running against Opus 4.7's 1M
- * variant. Update the map (and only the map) when adding a new model.
+ * would produce a 5× under-reported gauge when running against the 1M
+ * ceiling that Opus 4.8 / Sonnet 4.6 expose by default on the Claude API.
+ * Update the map (and only the map) when adding a new model.
  *
  * The map is the SSOT for "what context window does THIS model expose"; phase
  * snapshots carry the resolved number on `PhaseTokenUsage.contextWindow` so
  * the gauge does not need to know modelId at all.
  */
 export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
-  // Anthropic
-  'claude-opus-4-7': 200_000,
-  'claude-opus-4-7[1m]': 1_000_000,
-  'claude-sonnet-4-6': 200_000,
+  // Anthropic — Opus 4.8 / Sonnet 4.6 expose 1M by default on the Claude API
+  // (no beta header required since 4.6). Haiku 4.5 is 200k-only.
+  'claude-opus-4-8': 1_000_000,
+  'claude-sonnet-4-6': 1_000_000,
   'claude-haiku-4-5-20251001': 200_000,
   // OpenAI / Gemini follow when wired
 };
@@ -70,14 +71,15 @@ export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
  * Fallback context window used by UI surfaces (e.g. `TurnTokenGauge`'s
  * empty-state ring) when no live / baseline `PhaseTokenUsage` snapshot is
  * available yet. Picked to match the modal value of `MODEL_CONTEXT_WINDOWS`
- * (3 of 4 supported models use 200_000). When a snapshot lands, the gauge
- * switches to its model-specific `contextWindow` — this constant is only
- * the first-frame placeholder, never a long-lived ground truth.
+ * (Opus 4.8 + Sonnet 4.6 use 1_000_000; only Haiku 4.5 uses 200_000).
+ * When a snapshot lands, the gauge switches to its model-specific
+ * `contextWindow` — this constant is only the first-frame placeholder,
+ * never a long-lived ground truth.
  *
  * Update if `MODEL_CONTEXT_WINDOWS` ever shifts so a different value
  * becomes the modal denominator.
  */
-export const DEFAULT_FALLBACK_CONTEXT_WINDOW = 200_000;
+export const DEFAULT_FALLBACK_CONTEXT_WINDOW = 1_000_000;
 
 export function getModelContextWindow(modelId: string | undefined | null): number {
   if (!modelId) {
@@ -139,8 +141,8 @@ export interface PhaseTokenUsage {
   /**
    * Model's full context window in tokens (resolved via
    * `getModelContextWindow(modelId)`). Required so the gauge's denominator
-   * is model-aware — Opus 4.7 1M variant vs. Sonnet 200k must not collapse
-   * into a single hardcoded constant.
+   * is model-aware — Opus 4.8 / Sonnet 4.6 (1M) vs. Haiku 4.5 (200k) must
+   * not collapse into a single hardcoded constant.
    */
   contextWindow: number;
   /**
