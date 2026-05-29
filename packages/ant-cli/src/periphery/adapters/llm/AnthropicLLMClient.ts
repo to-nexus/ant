@@ -14,6 +14,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
+import { getModelContextWindow } from '@ant/shared';
 
 /**
  * Anthropic Messages API accepted content block shapes.
@@ -34,6 +35,13 @@ export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
   public readonly provider = 'anthropic';
   public readonly modelName: string;
+
+  // Per-instance dedup for capacity alerts. Instance lifecycle = job lifecycle
+  // (orchestrator.ts creates one client per job), so these naturally fire at
+  // most once per job. Critical also suppresses warn — once the louder alert
+  // sounds, the lower-tier reminder would be redundant.
+  private hasWarnedCapacityWarn = false;
+  private hasWarnedCapacityCritical = false;
 
   constructor(
     private agentJob?: string,
@@ -353,12 +361,32 @@ export class AnthropicLLMClient implements LLMClient {
           console.log(`💰 [CACHE] read=${tokenUsage.cacheReadTokens || 0} create=${tokenUsage.cacheCreationTokens || 0}`);
         }
         
-        // 200K pricing tier check (actual API-reported tokens)
+        // Capacity check — model-aware via MODEL_CONTEXT_WINDOWS.
+        // SRE-conventional thresholds: 80% = attention, 95% = act.
         const totalPromptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
-        if (totalPromptTokens > 200000) {
-          console.error(`💸 [PRICING] OVER 200K! ${totalPromptTokens.toLocaleString()} prompt tokens → 2x pricing tier (input=$6, cache_read=$0.60, cache_write=$7.50 per MTok)`);
-        } else if (totalPromptTokens > 160000) {
-          console.warn(`⚠️  [PRICING] ${totalPromptTokens.toLocaleString()} prompt tokens — approaching 200K tier (${((totalPromptTokens / 200000) * 100).toFixed(0)}%)`);
+        try {
+          const contextWindow = getModelContextWindow(this.modelName);
+          const usagePct = totalPromptTokens / contextWindow;
+          if (usagePct > 0.95) {
+            if (!this.hasWarnedCapacityCritical) {
+              this.hasWarnedCapacityCritical = true;
+              this.hasWarnedCapacityWarn = true;
+              console.error(
+                `🚨 [CAPACITY] ${(usagePct * 100).toFixed(0)}% of ${this.modelName} ` +
+                `(${totalPromptTokens.toLocaleString()}/${contextWindow.toLocaleString()}) — compaction overdue`
+              );
+            }
+          } else if (usagePct > 0.80) {
+            if (!this.hasWarnedCapacityWarn) {
+              this.hasWarnedCapacityWarn = true;
+              console.warn(
+                `⚠️  [CAPACITY] ${(usagePct * 100).toFixed(0)}% of ${this.modelName} window`
+              );
+            }
+          }
+        } catch {
+          // Unknown modelId — skip capacity check (mirrors buildMessages.ts pattern).
+          // Register new models in MODEL_CONTEXT_WINDOWS to enable alerts.
         }
 
         // Emit initial usage_partial immediately so chat-input gauge reflects the
