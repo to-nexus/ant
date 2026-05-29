@@ -180,7 +180,7 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
   const envModel = process.env.AI_MODEL_NAME;
-  const modelOpus = envModel || 'claude-opus-4-7';
+  const modelOpus = envModel || 'claude-opus-4-8';
   const modelSonnet = envModel || 'claude-sonnet-4-6';
   
   return {

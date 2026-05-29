@@ -47,7 +47,7 @@ function mkPhase(phase: string, input: number, output: number, workerId?: number
       // Phase-3: phase snapshots are LATEST-call, no callCount on tokenUsage.
     },
     mode: 'live',
-    contextWindow: 200_000, // claude-opus-4-7
+    contextWindow: 1_000_000, // claude-opus-4-8
     ...(typeof workerId === 'number' && { workerId }),
   };
 }

@@ -8,9 +8,9 @@ Three scales of token accounting live side-by-side in Ant. This document defines
 |---|---|---|---|
 | **Job-level** | `state.tokenUsage: TokenUsage` | Cumulative across every LLM call in the job. Survives task boundaries. | Chat-input sidebar "total tokens" badge |
 | **Task-level** | `state._currentTaskTokenUsage: TokenUsage` | Cumulative within the currently-running task. Reset per task. | Per-task card token counts in the Kanban view |
-| **Node-phase snapshot** | `state.currentPhaseTokenUsage: PhaseTokenUsage` | Latest single LLM-call snapshot for the currently-running graph node. Overwritten — *not* accumulated. | Chat-input **context gauge** (input+output / 200k) |
+| **Node-phase snapshot** | `state.currentPhaseTokenUsage: PhaseTokenUsage` | Latest single LLM-call snapshot for the currently-running graph node. Overwritten — *not* accumulated. | Chat-input **context gauge** ((input+output) / `phase.contextWindow`) |
 
-`PhaseTokenUsage` is defined in `@ant/shared/src/task.ts`. `CONTEXT_WINDOW_MAX_TOKENS = 200_000` is the denominator of the gauge.
+`PhaseTokenUsage` is defined in `@ant/shared/src/task.ts`. The gauge's denominator is per-model: `MODEL_CONTEXT_WINDOWS` SSOT (Opus 4.8 / Sonnet 4.6 = 1_000_000, Haiku 4.5 = 200_000) is resolved via `getModelContextWindow(modelId)` and stamped onto `PhaseTokenUsage.contextWindow`. `DEFAULT_FALLBACK_CONTEXT_WINDOW = 1_000_000` is the first-frame placeholder before any snapshot arrives.
 
 ## Why "overwrite, not accumulate" for the node-phase snapshot
 
@@ -60,7 +60,7 @@ Every LLM call sends the full prompt (system + history + current message). `inpu
 
 ## Frontend persistence (gauge behaviour during idle)
 
-The Redux slice at `packages/ant-ui/src/domain/store/slices/sse/kanbanReducer.ts` preserves the last `currentPhaseTokenUsage` value when the next SSE update omits the field (e.g. job idle, task boundary). This gives the gauge a "most recent meaningful reading" semantic instead of blanking out between LLM calls. The frontend component `presentation/components/chat/TurnTokenGauge.tsx` renders `(input + output) / 200_000` and shows a tooltip with the split.
+The Redux slice at `packages/ant-ui/src/domain/store/slices/sse/kanbanReducer.ts` preserves the last `currentPhaseTokenUsage` value when the next SSE update omits the field (e.g. job idle, task boundary). This gives the gauge a "most recent meaningful reading" semantic instead of blanking out between LLM calls. The frontend component `presentation/components/chat/TurnTokenGauge.tsx` renders `(input + output) / phase.contextWindow` (where `contextWindow` is the model-specific denominator stamped by `getModelContextWindow`) and shows a tooltip with the split.
 
 ## Enforcement (keep the SSOTs honest)
 

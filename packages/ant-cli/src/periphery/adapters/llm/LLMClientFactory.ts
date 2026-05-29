@@ -70,7 +70,7 @@ function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-opus-4-7';
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-opus-4-8';
   
   // If no context provided, use default
   if (!context) {

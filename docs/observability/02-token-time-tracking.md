@@ -45,12 +45,12 @@ cacheHitRatio가 높을수록 billableInput이 낮아진다. 이것이 캐시 �
 
 ## 토큰 예산 체계
 
-### 200K Window 할당
+### Context Window 영역 할당
 
-TokenBudgetManager가 200K context window를 영역별로 분배한다:
+TokenBudgetManager는 모델의 실제 context window (Opus 4.8 / Sonnet 4.6 = 1M, Haiku 4.5 = 200K) 를 영역별로 분배한다. 절대값은 모델에 따라 자동 스케일링되며, 비율은 다음과 같다 (200K 모델 기준 예시):
 
 ```
-200K context window
+200K context window (예시 — 1M 모델은 5배로 자연 스케일)
 ├── System Prompt       30K (15%)    base.md + rules.md + profile
 ├── Project Context     30K (15%)    PRD, design docs, codebase
 ├── Task Context        25K (12.5%)  task plan, file tree, violations
@@ -59,6 +59,8 @@ TokenBudgetManager가 200K context window를 영역별로 분배한다:
 ├── Safety Margin       20K (10%)    buffer
 └── Output Budget       18K (9%)     LLM response space
 ```
+
+`buildMessages.ts` 의 `execHistoryBudget = min(execWindow * 0.7, execWindow − 105K)` 가 model context 에 따라 history 영역을 자동 확장 — 1M 모델은 ~700K 까지 history 보전 가능.
 
 관측 시 중요한 포인트:
 - `estimatedPromptChars`가 180K chars(~51K tokens)를 넘으면 window 압박
