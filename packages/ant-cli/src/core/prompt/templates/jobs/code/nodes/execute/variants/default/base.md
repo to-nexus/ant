@@ -169,9 +169,21 @@ Setup's job at this point is typically **NOT** to seed ANTRULES. Framework / tes
 
 **Constraint**: Keep the file under 1500 characters. In practice, setup-time ANTRULES should be **zero or a handful of lines**. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`).
 
-**Default action**: If NO deviation passes the 3-condition filter at setup time, do NOT create the file at all. Later tasks will create it the moment a filter-passing invariant is discovered (via the injected antrules partial guidance).
+**Bootstrap action — new project**: If `codebase/ANTRULES.md` does NOT exist at this point, you MUST create it now as part of setup. The stub is REQUIRED for new projects so sibling tasks have a ledger to append to when a filter-passing invariant is discovered.
 
-**Pre-`<done>` Discovery Check** — Before emitting `<done>true</done>`, re-evaluate the decisions you made during this setup turn against the 3-condition filter above. Examples that occasionally pass: a naming convention chosen over the framework default, a point-in-time package pinning with a non-obvious rationale, a directory organization choice that future tasks could violate. If yes — append to `codebase/ANTRULES.md`. If no — skip. Do NOT fabricate entries; most setups have nothing to record.
+Stub body — emit this verbatim, do NOT expand:
+
+```markdown
+# ANTRULES.md
+
+(no project-local deviations recorded yet — sibling tasks will append as they emerge)
+```
+
+Do NOT seed any section. Do NOT enumerate framework / test-runner / library / alias / source-root / icon-library / styling decisions — those are already declared in `package.json` / `tsconfig.json` / config files and duplicating them creates dual-SSOT drift. The placeholder line ABOVE is the entire body — no examples, no exceptions.
+
+**Idempotency**: If `codebase/ANTRULES.md` already exists, do NOT overwrite. Existing projects fall through to the live-document update flow handled by the antrules partial.
+
+**Pre-`<done>` Discovery Check** — Before emitting `<done>true</done>`, re-evaluate the decisions you made during this setup turn against the 3-condition filter above. Examples that occasionally pass: a naming convention chosen over the framework default, a point-in-time package pinning with a non-obvious rationale, a directory organization choice that future tasks could violate. If yes — `edit_file` on `codebase/ANTRULES.md` to replace the placeholder line with your first entry. If no — leave the stub as-is. Do NOT fabricate entries; most setups have nothing to record.
 
 **Framework-Specific Requirements:**
 

@@ -357,12 +357,19 @@ export class FileRenderer {
       finalActionType = 'create';
     }
     registry.markAsStreamed(canonicalPath, finalActionType);
-    
-    // ✅ Determine isOverwrite: was this file known at execute start?
-    // If yes, this is a legitimate overwrite (existing file in codebase).
-    // If no, this is a new file creation — subject to cross-worker conflict check.
-    const isOverwrite = registry.isKnownAtStart(canonicalPath);
-    
+
+    // ✅ Determine isOverwrite from two sources:
+    // 1. Explicit `<file overwrite="true">` attribute from LLM (intentional takeover)
+    // 2. registry.isKnownAtStart() — file existed in codebase at execute start
+    //    (legitimate overwrite of pre-existing on-disk file)
+    //
+    // Neither source covers "sibling task already wrote this file during the
+    // current job" — that case is intentionally treated as NEW (isOverwrite=false)
+    // so SharedFileBuffer's isNewFile conflict check fires and prevents silent
+    // cross-task clobber. LLM must emit explicit `overwrite="true"` to confirm.
+    const explicitOverwrite = action.data.overwrite === true;
+    const isOverwrite = explicitOverwrite || registry.isKnownAtStart(canonicalPath);
+
     this.activeFiles.set(canonicalPath, {
       filePath: canonicalPath,
       actionType: finalActionType,

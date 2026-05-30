@@ -29,6 +29,15 @@ export interface ParsedAction {
     content?: string;
     filePath?: string;
     actionType?: 'create' | 'append' | 'edit' | 'delete';
+    /**
+     * `<file path="..." overwrite="true">` attribute.
+     * - undefined / false: caller declared NEW file intent — SharedFileBuffer
+     *   will conflict if the file was already committed by a sibling task.
+     * - true: caller declared deliberate overwrite intent — SharedFileBuffer
+     *   accepts the takeover.
+     * Populated by XMLStreamParser for `<file>` opening tags.
+     */
+    overwrite?: boolean;
     metadata?: Record<string, any>;
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
     blockEnd?: boolean;    // ✅ For thinking: marks </thinking> tag closed (duration calc)
