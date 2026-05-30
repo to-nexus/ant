@@ -239,6 +239,10 @@ export interface UIActions {
   clearHighlightedArtifactDirs: () => void;
   setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => void;
   clearSpotlightTarget: () => void;
+  setExpandedArtifactDirs: (next: ReadonlySet<string>) => void;
+  unionExpandedArtifactDirs: (paths: readonly string[]) => void;
+  removeExpandedArtifactDirs: (paths: readonly string[]) => void;
+  toggleExpandedArtifactDir: (path: string) => void;
   syncUnpinnedEditorTab: (filePath: string | undefined) => void;
   selectEditorTab: (tabId: string) => void;
   pinEditorTab: (tabId: string) => void;
@@ -371,6 +375,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   actionMetadata: { domain: 'service' } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
+  expandedArtifactDirs: new Set<string>() as ReadonlySet<string>,
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
@@ -1633,6 +1638,47 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   clearSpotlightTarget: () => {
     set({ spotlightTarget: null });
+  },
+
+  setExpandedArtifactDirs: (next: ReadonlySet<string>) => {
+    set({ expandedArtifactDirs: next });
+  },
+
+  unionExpandedArtifactDirs: (paths: readonly string[]) => {
+    set((s: any) => {
+      const prev: ReadonlySet<string> = s.expandedArtifactDirs;
+      let changed = false;
+      const next = new Set<string>(prev);
+      for (const p of paths) {
+        if (!next.has(p)) {
+          next.add(p);
+          changed = true;
+        }
+      }
+      return changed ? { expandedArtifactDirs: next } : {};
+    });
+  },
+
+  removeExpandedArtifactDirs: (paths: readonly string[]) => {
+    set((s: any) => {
+      const prev: ReadonlySet<string> = s.expandedArtifactDirs;
+      let changed = false;
+      const next = new Set<string>(prev);
+      for (const p of paths) {
+        if (next.delete(p)) changed = true;
+      }
+      return changed ? { expandedArtifactDirs: next } : {};
+    });
+  },
+
+  toggleExpandedArtifactDir: (path: string) => {
+    set((s: any) => {
+      const prev: ReadonlySet<string> = s.expandedArtifactDirs;
+      const next = new Set<string>(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return { expandedArtifactDirs: next };
+    });
   },
 });
 

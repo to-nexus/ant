@@ -7,47 +7,48 @@ const sectionPath = resolve(
   '../../src/presentation/components/ArtifactsPanel/ArtifactsSection.tsx',
 );
 const panelPath = resolve(__dirname, '../../src/presentation/components/ArtifactsPanel.tsx');
+const uiSlicePath = resolve(__dirname, '../../src/domain/store/slices/uiSlice.ts');
+const uiTypesPath = resolve(__dirname, '../../src/domain/store/types.ts');
 
 const sectionSource = readFileSync(sectionPath, 'utf-8');
 const panelSource = readFileSync(panelPath, 'utf-8');
+const uiSliceSource = readFileSync(uiSlicePath, 'utf-8');
+const uiTypesSource = readFileSync(uiTypesPath, 'utf-8');
 
 /**
  * Static SSOT guards for the artifact-tree expand state.
  *
- * The expand bug ("file tree closes when a file is selected") was caused by
- * the spotlight `useEffect` reacting to `nodes` ref churn from the parent
- * (ArtifactsPanel re-rendered every store change, rebuilding the nodes
- * array, which fired the effect and reset `expandedDirs` to top-level
- * only). These tests lock the SSOT in place:
+ * Phase 1 fix targeted the spotlight `useEffect` that reset `expandedDirs`
+ * whenever the parent rebuilt the `nodes` array (which happened on every
+ * store change). Phase 2 lifted `expandedArtifactDirs` to the zustand
+ * uiSlice so transient remounts of ArtifactsSection (e.g. when
+ * ExplorerPanel's `connectionStatus` conditional render flickers) no
+ * longer wipe the user's expansion. These tests lock both fixes:
  *
- *  1. The effect that mutates `expandedDirs` based on `nodes` ref must
- *     only ever do so as a union (never as a wholesale replacement).
- *  2. The defunct "different section → close everything" branch must not
- *     return — ArtifactsSection has a single unified mount, so the branch
- *     is unreachable; reintroducing it would mask a future regression.
+ *  1. ArtifactsSection no longer owns the expandedDirs useState — every
+ *     mutation goes through ref-stable store actions with no-op guards.
+ *  2. The spotlight effect deps stay free of `nodes` so data ref churn
+ *     does not re-fire it.
  *  3. ArtifactsPanel's derived values feeding into <ArtifactsSection>
- *     must stay ref-stable across re-renders (useMemo / useCallback).
+ *     stay ref-stable across re-renders (useMemo / useCallback).
+ *  4. The uiSlice exposes the lifted channel + its mutation API.
  */
 describe('ArtifactsSection — expandedDirs SSOT', () => {
-  it('does not reset expandedDirs from a nodes-based wholesale replace', () => {
-    // `setExpandedDirs(new Set(nodes.map(...)))` would discard user
-    // expansions on every parent re-render. Allowed: `setExpandedDirs((prev)
-    // => new Set([...prev, ...]))` (union form).
-    expect(sectionSource).not.toMatch(/setExpandedDirs\(new Set\(nodes\.map/);
+  it('no longer owns expandedDirs as component-local useState', () => {
+    // Lifted to uiSlice. Reintroducing a useState<Set<string>> here would
+    // partition the SSOT and resurrect the unmount-wipe regression.
+    expect(sectionSource).not.toMatch(/useState<Set<string>>/);
+    expect(sectionSource).not.toMatch(/useState\([^)]*new Set/);
   });
 
-  it('does not clear expandedDirs via empty-set replace', () => {
-    // The legacy `!belongsToThisSection` branch did
-    // `setExpandedDirs(new Set())`. With the unified single-section mount,
-    // that branch is unreachable; the call site is removed so a future
-    // copy-paste cannot resurrect a global-clear behaviour.
-    expect(sectionSource).not.toMatch(/setExpandedDirs\(new Set\(\)\)/);
+  it('reads expandedDirs from the store and dispatches via lifted actions', () => {
+    expect(sectionSource).toMatch(/useStore\(\(s\)\s*=>\s*s\.expandedArtifactDirs\)/);
+    expect(sectionSource).toMatch(/unionExpandedArtifactDirs/);
+    expect(sectionSource).toMatch(/toggleExpandedArtifactDir/);
+    expect(sectionSource).toMatch(/removeExpandedArtifactDirs/);
   });
 
   it('keeps the spotlight effect deps free of `nodes`', () => {
-    // The spotlight effect must depend only on spotlightTarget +
-    // sectionPrefix. Adding `nodes` (or its derivatives) re-runs the effect
-    // on every parent re-render and undoes the fix.
     const spotlightBlock = sectionSource.match(
       /useEffect\(\(\) => \{\s*if \(!spotlightTarget\) return;[\s\S]*?\}, \[([^\]]*)\]\)/,
     );
@@ -58,8 +59,43 @@ describe('ArtifactsSection — expandedDirs SSOT', () => {
     expect(deps).not.toContain('nodes');
   });
 
-  it('guards first-populate with a ref so it runs at most once', () => {
+  it('guards first-populate with a ref so it runs at most once per workspace', () => {
     expect(sectionSource).toMatch(/initializedRef\.current\s*=\s*true/);
+    // And the workspace-switch reset clears the ref so a new project gets a
+    // fresh default expand.
+    expect(sectionSource).toMatch(/initializedRef\.current\s*=\s*false/);
+  });
+});
+
+describe('uiSlice — expandedArtifactDirs lifted channel', () => {
+  it('declares expandedArtifactDirs in the UIState type', () => {
+    expect(uiTypesSource).toMatch(/expandedArtifactDirs:\s*ReadonlySet<string>/);
+  });
+
+  it('exposes set / union / remove / toggle actions', () => {
+    expect(uiSliceSource).toMatch(/setExpandedArtifactDirs:/);
+    expect(uiSliceSource).toMatch(/unionExpandedArtifactDirs:/);
+    expect(uiSliceSource).toMatch(/removeExpandedArtifactDirs:/);
+    expect(uiSliceSource).toMatch(/toggleExpandedArtifactDir:/);
+  });
+
+  it('union/remove reducers ship a no-op guard so subscribers stay ref-stable', () => {
+    // Both reducers compute `changed` and return `{}` (no state diff) when
+    // the requested mutation is a no-op. This is the property that keeps
+    // mid-render dispatches from re-rendering every subscriber.
+    const unionBlock = uiSliceSource.match(
+      /unionExpandedArtifactDirs:\s*\(paths[^)]*\)\s*=>\s*\{[\s\S]*?\}\s*\)\s*;?\s*\}/,
+    );
+    expect(unionBlock, 'union reducer must exist').not.toBeNull();
+    expect(unionBlock![0]).toMatch(/changed\s*\?\s*\{\s*expandedArtifactDirs:/);
+    expect(unionBlock![0]).toMatch(/:\s*\{\}/);
+
+    const removeBlock = uiSliceSource.match(
+      /removeExpandedArtifactDirs:\s*\(paths[^)]*\)\s*=>\s*\{[\s\S]*?\}\s*\)\s*;?\s*\}/,
+    );
+    expect(removeBlock, 'remove reducer must exist').not.toBeNull();
+    expect(removeBlock![0]).toMatch(/changed\s*\?\s*\{\s*expandedArtifactDirs:/);
+    expect(removeBlock![0]).toMatch(/:\s*\{\}/);
   });
 });
 

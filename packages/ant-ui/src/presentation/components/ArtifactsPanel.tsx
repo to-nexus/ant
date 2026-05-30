@@ -228,6 +228,10 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     if (path && path.length > 0) {
       openMainPanelTab('fileEdit');
       if (unseenArtifacts?.includes(path)) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log('[trace] markArtifactsSeen', path, Math.round(performance.now()));
+        }
         markArtifactsSeen([path]);
       }
     }
