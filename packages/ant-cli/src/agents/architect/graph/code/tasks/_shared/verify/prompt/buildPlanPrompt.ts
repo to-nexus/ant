@@ -15,6 +15,7 @@ import { effectiveTechTier, getTechTier } from '@ant/shared';
 import { CONV_KEYS } from '../../../../../../../common/graph/conversations';
 import { formatCodeContext, mapLang } from '../../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook';
+import { TEMPLATE_PATHS } from '../../../../../../../../core/prompt/builder/templatePaths';
 import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { renderPriorErrorTasks } from './priorErrorTasks';
 import { containsRuntimeErrorPattern } from '../../../../../../../../core/utils/runtimeErrorPattern';
@@ -123,7 +124,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
-  const body = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
+  const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanVerification.base, {
     taskId: task.id,
     taskName: task.name,
     taskDescription: task.description,

@@ -14,6 +14,7 @@ import { convKey } from './hooks/conversations';
 import { classify as schedulingClassify } from './hooks/scheduling';
 
 import { buildPrompt as planBuildPrompt } from '../_shared/verify/prompt/buildPlanPrompt';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { executeHook } from '../_shared/verify/hooks/executeHook';
 import { routeAfterDone } from '../_shared/verify/hooks/router';
 import { parityCheckEvaluate } from '../_shared/verify/parity';
@@ -28,7 +29,7 @@ const noDoneSignalHint =
 export const hooks: TaskHooks = {
   plan: {
     buildPrompt: planBuildPrompt,
-    toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/verification/rules',
+    toolLoopLogTemplate: TEMPLATE_PATHS.codePlanVerification.rules!,
     // Verification's signature: no plan-text body (only gate diagnostics
     // drive the cycle), uses the plan↔tool loop, exclusive paths-only
     // RAG fast-path. The "empty plan → done" shortcut now lives on the

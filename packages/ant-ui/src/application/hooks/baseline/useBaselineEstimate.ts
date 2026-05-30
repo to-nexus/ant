@@ -81,7 +81,22 @@ export function useBaselineEstimate(input: UseBaselineEstimateInput = {}): void 
         const res = await fetch(`/api/jobs/baseline-estimate?${params.toString()}`, {
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          // 400 `intent-unmapped` is expected for visual intents (image
+          // generation has no PromptBuilder-based heaviest call) — log it
+          // informatively so a missing gauge is debuggable, then leave the
+          // gauge hidden (FE's existing "no baseline" surface).
+          if (res.status === 400) {
+            const body = await res.json().catch(() => null);
+            if (body?.error === 'intent-unmapped') {
+              console.info(
+                `[baseline] intent "${intent}" has no PromptBuilder-based heaviest call ` +
+                `(visual / image-generation intents are intentionally unmapped). Gauge hidden.`,
+              );
+            }
+          }
+          return;
+        }
         const data = (await res.json()) as BaselineEstimate;
         updateBaseline(toPhaseTokenUsage(data));
       } catch {

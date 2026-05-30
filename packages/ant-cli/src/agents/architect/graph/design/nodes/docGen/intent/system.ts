@@ -18,6 +18,7 @@ import { PromptBuilder } from '../../../../../../../core/prompt/builder/PromptBu
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder/ArtifactRoleResolver';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
@@ -212,11 +213,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     const { planText, runtimeContext } = buildRuntimeContext(state);
 
     const designConfig: PromptBuildConfig = {
-      templates: {
-        base: 'jobs/design/nodes/execute/variants/system-design/base',
-        rules: 'jobs/design/nodes/execute/variants/system-design/rules',
-        system: 'jobs/design/base/system',
-      },
+      templates: TEMPLATE_PATHS.designSystem,
       intent,
       artifactPolicies: intent
         ? deriveArtifactPolicies(intent, getRACDocuments(resolvedActionWithDocs))
@@ -303,7 +300,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           {
             taskId: state.currentTask?.id,
             taskName: state.currentTask?.name,
-            templatePath: 'jobs/design/nodes/execute/variants/system-design/base',
+            templatePath: TEMPLATE_PATHS.designSystem.base,
             usedTemplates,
             injectedVariables: {
               targetFile,
@@ -363,7 +360,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          templatePath: 'jobs/design/nodes/execute/variants/system-design/base',
+          templatePath: TEMPLATE_PATHS.designSystem.base,
           usedTemplates: usedTemplatesForLog,
           injectedVariables: {
             targetFile: targetFileForLog,  // ✅ NEW: Critical for MSA debugging
@@ -471,7 +468,7 @@ export function buildRuntimeContext(state: DesignGraphState): RuntimeContextBloc
  * resolver decides which `basis/techTier/framework/*` files to emit.
  */
 function detectUsedTemplates(state: DesignGraphState, targetFile: string): string[] {
-  const templates: string[] = ['jobs/design/nodes/execute/variants/system-design/rules'];
+  const templates: string[] = [TEMPLATE_PATHS.designSystem.rules!];
 
   if (targetFile.includes('api-contract')) {
     templates.push('jobs/design/base/injections/api-contract-guide');

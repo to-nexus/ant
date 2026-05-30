@@ -22,6 +22,7 @@ import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, selectArtifactsWithPolicy, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
@@ -125,11 +126,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   }
 
   const config: PromptBuildConfig = {
-    templates: {
-      base: 'jobs/design/nodes/execute/variants/spec/base',
-      rules: 'jobs/design/nodes/execute/variants/spec/rules',
-      system: 'jobs/design/base/system',
-    },
+    templates: TEMPLATE_PATHS.designSpec,
     pipeline: {
       sanitizeInput: true,
       applyPolicyGuardrails: false,
@@ -254,7 +251,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   });
 
   // ✅ Log prompt structure
-  const TEMPLATE_PATH = 'jobs/design/nodes/execute/variants/spec/base';
+  const TEMPLATE_PATH = TEMPLATE_PATHS.designSpec.base;
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -269,7 +266,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
           taskName: task?.name,
           templatePath: TEMPLATE_PATH,
           usedTemplates: [
-            'jobs/design/nodes/execute/variants/spec/rules',
+            TEMPLATE_PATHS.designSpec.rules!,
           ],
           injectedVariables: {
             targetFile,

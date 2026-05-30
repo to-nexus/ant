@@ -1,5 +1,6 @@
 import { PlanGraphState, getPlanMode } from '../../state';
 import type { ConversationMessage } from '../../../../../common/graph/conversations';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 
 /**
  * Format conversation entries for the system prompt.
@@ -63,7 +64,7 @@ export async function buildSystemPrompt(
   const resolvedArtifacts = state.resolvedArtifacts || [];
 
   const result = await promptBuilder.build({
-    templates: { base: 'jobs/plan/nodes/plan/variants/default/base', rules: 'jobs/plan/nodes/plan/variants/default/rules' },
+    templates: TEMPLATE_PATHS.plannerPlan,
     intent: state.resolvedAction?.intent,
     artifacts: resolvedArtifacts.length > 0 ? resolvedArtifacts : undefined,
     // Phase 1 (F-1) + D27: plan generate must opt into basis injection so

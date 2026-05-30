@@ -11,6 +11,7 @@ import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
@@ -49,8 +50,10 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
   const sketchCount = state.availableSketchPaths?.length || 0;
 
   try {
-    const systemPrompt = await pb.render('jobs/visual/nodes/explain/variants/default/base', {});
+    const systemPrompt = await pb.render(TEMPLATE_PATHS.visualExplain.base, {});
 
+    // context partial is a node-local payload, not a TEMPLATE_PATHS-tracked
+    // base/rules — kept as raw literal.
     const userPrompt = await pb.render('jobs/visual/nodes/explain/variants/default/context', {
       conversationContext: conversationContext || '(no previous conversation)',
       currentDirective,
@@ -103,8 +106,8 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'explain', systemPrompt.length + userPrompt.length, {
-          templatePath: 'jobs/visual/nodes/explain/variants/default/base',
-          usedTemplates: ['jobs/visual/nodes/explain/variants/default/base', 'jobs/visual/nodes/explain/variants/default/context'],
+          templatePath: TEMPLATE_PATHS.visualExplain.base,
+          usedTemplates: [TEMPLATE_PATHS.visualExplain.base, 'jobs/visual/nodes/explain/variants/default/context'],
           injectedVariables: { currentDirective, conversationEntries: sessionMain.length, hasSketchContext: !!sketchVariationList },
           hardcodedContent: responseText.substring(0, 500),
         });

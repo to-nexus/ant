@@ -26,9 +26,9 @@ import type {
 } from '@ant/shared';
 import { getModelContextWindow } from '@ant/shared';
 import type { StateStorePort } from '../ports/stateStore';
-import { PromptBuilder } from '../prompt/builder/PromptBuilder';
+import { PromptBuilder, PromptBuilderCriticalTemplateError } from '../prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../periphery/adapters/prompt/FilePromptAdapter';
-import { heaviestNodeFor } from './heaviestNode';
+import { heaviestNodeFor, type HeaviestNodeMapping } from './heaviestNode';
 import { buildMockStateForIntent } from './mockState';
 import { applyNodeCompaction } from './applyNodeCompaction';
 import { getToolDefsFor } from './toolDefs';
@@ -100,13 +100,24 @@ export async function estimateBaseline(
   const cached = await getCached(stateStore, scope);
   if (cached) return cached;
 
-  const built = await buildPromptStrings({
-    job: mapping.job,
-    node: mapping.node,
-    resolvedAction: mock.resolvedAction,
-    compacted,
-    draftText: draftText ?? '',
-  });
+  let built: { system: string; user: string };
+  try {
+    built = await buildPromptStrings({
+      mapping,
+      resolvedAction: mock.resolvedAction,
+      compacted,
+      draftText: draftText ?? '',
+    });
+  } catch (err) {
+    if (err instanceof PromptBuilderCriticalTemplateError) {
+      throw new BaselineEstimateError(
+        'template-mapping-stale',
+        `heaviestNode.templates points at stale paths: ${err.failedTemplates.join(', ')}. ` +
+        `Update TEMPLATE_PATHS or the heaviestNode entry for intent "${intent}".`,
+      );
+    }
+    throw err;
+  }
 
   const tools = getToolDefsFor(mapping.job, mapping.node);
 
@@ -144,8 +155,7 @@ export async function estimateBaseline(
 }
 
 interface BuildArgs {
-  job: string;
-  node: string;
+  mapping: HeaviestNodeMapping;
   resolvedAction: ReturnType<typeof buildMockStateForIntent>['resolvedAction'];
   compacted: ResolvedArtifact[];
   draftText: string;
@@ -155,18 +165,11 @@ async function buildPromptStrings(args: BuildArgs): Promise<{ system: string; us
   const adapter = new FilePromptAdapter();
   const builder = new PromptBuilder(adapter);
 
-  // Wire the heaviest node's template paths. We point at the default
-  // `base` / `rules` / `system` triplet for each (job, node) — the
-  // estimator targets order-of-magnitude faithfulness for the heaviest
-  // node's first call, not the exact variant the production graph might
-  // select (variant drift is bounded by the dominant 30K compaction
-  // budget on artifacts, which IS faithfully reproduced).
-  const base = `jobs/${args.job}/nodes/${args.node}/base`;
-  const rules = `jobs/${args.job}/nodes/${args.node}/rules`;
-  const system = `jobs/${args.job}/base/system`;
-
+  // Templates come from the heaviest-node mapping, which is the same
+  // `TEMPLATE_PATHS` reference the production graph builder consumes. Path
+  // drift is locked at compile-time by the path-existence regression test.
   const built = await builder.build({
-    templates: { base, rules, system },
+    templates: args.mapping.templates,
     intent: args.resolvedAction.intent,
     techContext: {
       taskType: 'feature',
@@ -176,10 +179,23 @@ async function buildPromptStrings(args: BuildArgs): Promise<{ system: string; us
     pipeline: {
       sanitizeInput: false,
       applyPolicyGuardrails: false,
+      // Surface stale path mapping as a typed error instead of a silently
+      // truncated estimate. `estimateBaseline` catches and maps to a 503
+      // (`template-mapping-stale`) so the FE gauge stays in its no-baseline
+      // state rather than displaying a fabricated low number.
+      failOnCriticalTemplateMiss: true,
     },
     vars: {
       userMessage: args.draftText,
       resolvedAction: args.resolvedAction,
+      // Silence self-gated partials that branch on user locale / workspace
+      // existence. The estimator runs before the user submits, so locale
+      // detection has not happened yet — assume English (the prevailing
+      // workspace default; partial renders to empty body when language is
+      // English). `workspaceState` undefined keeps the codebase-channel
+      // partial self-gate closed (greenfield assumption).
+      userLanguage: 'en',
+      workspaceState: undefined,
     },
     artifacts: args.compacted,
   });
@@ -190,7 +206,8 @@ async function buildPromptStrings(args: BuildArgs): Promise<{ system: string; us
 export type BaselineEstimateErrorKind =
   | 'intent-unmapped'
   | 'unknown-model'
-  | 'count-tokens-unavailable';
+  | 'count-tokens-unavailable'
+  | 'template-mapping-stale';
 
 export class BaselineEstimateError extends Error {
   constructor(public readonly kind: BaselineEstimateErrorKind, message: string) {

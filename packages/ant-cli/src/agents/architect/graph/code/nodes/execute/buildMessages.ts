@@ -50,10 +50,11 @@ import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import { resolveCodebaseRel } from "./codebaseRel";
+import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
 
 const DEFAULT_EXECUTE_TEMPLATES = {
-  base: 'jobs/code/nodes/execute/variants/default/base',
-  rules: 'jobs/code/nodes/execute/variants/default/rules',
+  base: TEMPLATE_PATHS.codeExecuteDefault.base,
+  rules: TEMPLATE_PATHS.codeExecuteDefault.rules!,
 } as const;
 
 const DEFAULT_PLAN_FRAMING = {
@@ -408,7 +409,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     templates: {
       base: templateBase,
       rules: templateRules,
-      system: 'jobs/code/base/system',
+      system: TEMPLATE_PATHS.codeExecuteDefault.system!,
     },
     intent,
     artifactPolicies: intent

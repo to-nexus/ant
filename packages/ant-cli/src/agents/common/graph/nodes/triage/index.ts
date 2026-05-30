@@ -39,8 +39,10 @@ import {
 // Intent catalog cache
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const TRIAGE_BASE_TEMPLATE = 'jobs/shared/nodes/triage/variants/default/base';
-const TRIAGE_RULES_TEMPLATE = 'jobs/shared/nodes/triage/variants/default/rules';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
+
+const TRIAGE_BASE_TEMPLATE = TEMPLATE_PATHS.triage.base;
+const TRIAGE_RULES_TEMPLATE = TEMPLATE_PATHS.triage.rules!;
 
 let intentCatalogCache: string | null = null;
 

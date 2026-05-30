@@ -32,6 +32,7 @@ import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext } from '../../../../../common/tool/types';
 import { toolResultManager } from '../tool/utils/managers';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { saveCheckpoint } from '../../session/checkpoint';
 import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { invokeLLMWithTools } from '../_common/invokeLLMWithTools';
@@ -112,11 +113,7 @@ export async function direct(
   // has no task by construction.
   const executionTierForPrompt = state.executionTier !== undefined ? state.executionTier : 0;
   const promptResult = await promptBuilder.build({
-    templates: {
-      system: 'jobs/code/base/system',
-      base: 'jobs/code/nodes/direct/variants/default/base',
-      rules: 'jobs/code/nodes/direct/variants/default/rules',
-    },
+    templates: TEMPLATE_PATHS.codeDirect,
     intent: state.resolvedAction?.intent,
     techContext: {
       techTier: getTechTier(state) ?? undefined,

@@ -25,6 +25,7 @@ import { ArchitectGraphState } from "../../../state";
 import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
+import { TEMPLATE_PATHS } from "../../../../../../../core/prompt/builder/templatePaths";
 import {
   isServiceVirtualizationContractActive,
   isServiceVirtualizationDataActive,
@@ -206,7 +207,7 @@ export async function buildPlanPrompt(
   // correctly. Non-feature task types do not carry a band; the template
   // defaults to the foundation/no-band branch in that case.
   const taskBand = task.type === 'feature' ? (task as FeatureCodeTask).band : undefined;
-  const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
+  const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`

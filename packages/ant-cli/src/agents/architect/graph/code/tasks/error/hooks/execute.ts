@@ -11,10 +11,11 @@
  */
 
 import type { TaskExecuteHook, ExecutePromptCtx } from '../../_shared/types';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 
 const templatePaths = {
-  base: 'jobs/code/nodes/execute/variants/error/base',
-  rules: 'jobs/code/nodes/execute/variants/error/rules',
+  base: TEMPLATE_PATHS.codeExecuteError.base,
+  rules: TEMPLATE_PATHS.codeExecuteError.rules!,
 } as const;
 
 const runtimePlanFraming = {

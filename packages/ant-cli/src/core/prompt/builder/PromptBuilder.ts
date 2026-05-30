@@ -39,6 +39,19 @@ import {
   type PolicyRuleset,
 } from './policyRules';
 
+/**
+ * Thrown by `PromptBuilder.build()` when `pipeline.failOnCriticalTemplateMiss`
+ * is on and one or more critical templates (base / rules) failed to render.
+ * Default silent-empty behaviour is preserved when the flag is off so the
+ * production graph builders are unaffected.
+ */
+export class PromptBuilderCriticalTemplateError extends Error {
+  constructor(public readonly failedTemplates: string[]) {
+    super(`Critical templates failed to render: ${failedTemplates.join(', ')}`);
+    this.name = 'PromptBuilderCriticalTemplateError';
+  }
+}
+
 export class PromptBuilder implements PromptPort {
   private autoResolver = new AutoInjectionResolver();
   private systemPromptCache: Record<string, string> = {};
@@ -234,8 +247,10 @@ export class PromptBuilder implements PromptPort {
     // appears in both basisSection and AutoInjectionResolver output).
     const allInjections = resolvedInjections.filter(p => !basisPaths.has(p));
 
-    // 3c. Rules template
+    // 3c. Rules template (critical)
+    const beforeRulesLen = failedTemplates.length;
     const rules = await this.renderTemplate(config.templates.rules, vars, failedTemplates, true);
+    const rulesFailed = failedTemplates.length > beforeRulesLen;
 
     // 3d. Injections
     const injectionParts: string[] = [];
@@ -254,11 +269,20 @@ export class PromptBuilder implements PromptPort {
       examples = await this.renderTemplate(`jobs/${job}/base/examples`, {}, failedTemplates);
     }
 
-    // 3f. Base (user) template
+    // 3f. Base (user) template (critical)
+    const beforeBaseLen = failedTemplates.length;
     const user = await this.renderTemplate(config.templates.base, vars, failedTemplates, true);
+    const baseFailed = failedTemplates.length > beforeBaseLen;
 
     if (failedTemplates.length > 0) {
       console.error(`🚨 [PromptBuilder] ${failedTemplates.length} template(s) failed: ${failedTemplates.join(', ')}`);
+    }
+
+    if (config.pipeline?.failOnCriticalTemplateMiss && (rulesFailed || baseFailed)) {
+      const criticalFails: string[] = [];
+      if (rulesFailed && config.templates.rules) criticalFails.push(config.templates.rules);
+      if (baseFailed) criticalFails.push(config.templates.base);
+      throw new PromptBuilderCriticalTemplateError(criticalFails);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -12,6 +12,7 @@ import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingMa
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
@@ -591,7 +592,7 @@ export async function decomposeSystemDesign(
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const prompt = await promptAdapter.render('jobs/design/nodes/decompose/variants/system-design/base', {
+  const prompt = await promptAdapter.render(TEMPLATE_PATHS.designDecomposeSystem.base, {
     documentName: decomposeCtx.documentName,
     refs: decomposeCtx.refs,
     context: decomposeCtx.context,
@@ -610,9 +611,10 @@ export async function decomposeSystemDesign(
     'decompose-systemDesign',
     prompt.length,
     {
-      templatePath: 'jobs/design/nodes/decompose/variants/system-design/base',
+      templatePath: TEMPLATE_PATHS.designDecomposeSystem.base,
       usedTemplates: [
-        'jobs/design/nodes/decompose/variants/system-design/rules',
+        TEMPLATE_PATHS.designDecomposeSystem.rules!,
+        // shared/input-context is a partial included by base.md, not a node template
         'jobs/design/nodes/decompose/shared/input-context',
       ],
       injectedVariables: {
@@ -861,7 +863,7 @@ export async function decomposeSystemDesign(
     'decompose-systemDesign-result',
     JSON.stringify(response).length,
     {
-      templatePath: 'jobs/design/nodes/decompose/variants/system-design/base',
+      templatePath: TEMPLATE_PATHS.designDecomposeSystem.base,
       injectedVariables: {
         documentType: response.documentType,
         services: response.services || [],

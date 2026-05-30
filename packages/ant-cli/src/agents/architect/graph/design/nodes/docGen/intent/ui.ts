@@ -20,6 +20,7 @@ import type { FigmaNodeSummary } from '@ant/shared';
 import { designDirOf, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { extractLastSectionKey } from '../../../_shared/anchor';
 
 /**
@@ -144,6 +145,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         .reduce((sum, c) => sum + c.text.length, 0);
       
       const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
+      const uiTpl = figmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -153,9 +155,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: `jobs/design/nodes/execute/variants/ui-design-${logSuffix}/base`,
+          templatePath: uiTpl.base,
           usedTemplates: [
-            `jobs/design/nodes/execute/variants/ui-design-${logSuffix}/rules`,
+            uiTpl.rules!,
+            // ui-{tokens,assets,spec}-guide-{by-figma,by-desc} are injection
+            // partials (Tier A auto-injection), not node base/rules — kept
+            // as raw literals because they have no TEMPLATE_PATHS slot.
             `jobs/design/nodes/execute/injections/ui-tokens-guide-${logSuffix}`,
             `jobs/design/nodes/execute/injections/ui-assets-guide-${logSuffix}`,
             `jobs/design/nodes/execute/injections/ui-spec-guide-${logSuffix}`,
@@ -284,7 +289,9 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const freshLogSuffix = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) ? 'by-figma' : 'by-desc';
+      const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
+      const freshLogSuffix = freshFigmaMode ? 'by-figma' : 'by-desc';
+      const freshUiTpl = freshFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -294,9 +301,9 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: `jobs/design/nodes/execute/variants/ui-design-${freshLogSuffix}/base`,
+          templatePath: freshUiTpl.base,
           usedTemplates: [
-            `jobs/design/nodes/execute/variants/ui-design-${freshLogSuffix}/rules`,
+            freshUiTpl.rules!,
             `jobs/design/nodes/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
             `jobs/design/nodes/execute/injections/ui-assets-guide-${freshLogSuffix}`,
             `jobs/design/nodes/execute/injections/ui-spec-guide-${freshLogSuffix}`,
@@ -569,10 +576,11 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
 
   const sysFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-desc';
-  const templatePath = `jobs/design/nodes/execute/variants/ui-design-${templateSuffix}/base`;
+  const sysUiTpl = sysFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
+  const templatePath = sysUiTpl.base;
 
   const template = await promptBuilder.render(templatePath, injectedVariables);
-  
+
   if (!template) {
     throw new Error(`[DocGen] Failed to load ${templatePath}.md template`);
   }
@@ -597,7 +605,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           taskName: state.currentTask?.name,
           templatePath,
           usedTemplates: [
-            `jobs/design/nodes/execute/variants/ui-design-${templateSuffix}/rules`,
+            sysUiTpl.rules!,
             `jobs/design/nodes/execute/injections/ui-tokens-guide-${templateSuffix}`,
             `jobs/design/nodes/execute/injections/ui-assets-guide-${templateSuffix}`,
             `jobs/design/nodes/execute/injections/ui-spec-guide-${templateSuffix}`,

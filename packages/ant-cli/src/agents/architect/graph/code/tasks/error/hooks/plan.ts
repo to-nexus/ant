@@ -16,6 +16,7 @@ import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 
 /**
  * Compose the error-variant plan prompt. Mirrors the legacy `task.type ===
@@ -65,7 +66,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
-  const body = await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
+  const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanError.base, {
     taskId: task.id,
     taskName: task.name,
     taskDescription: task.description,

@@ -17,6 +17,7 @@ import { PlanGraphState, getPlanMode } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { v4 as uuidv4 } from 'uuid';
 import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../tools';
 import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
@@ -116,8 +117,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         'generate',
         systemPrompt.length,
         {
-          templatePath: 'jobs/plan/nodes/plan/variants/default/base',
-          usedTemplates: ['jobs/plan/nodes/plan/variants/default/base', 'jobs/plan/nodes/plan/variants/default/rules'],
+          templatePath: TEMPLATE_PATHS.plannerPlan.base,
+          usedTemplates: [TEMPLATE_PATHS.plannerPlan.base, TEMPLATE_PATHS.plannerPlan.rules!],
           injectedVariables: {
             directive: state.directive || '',
             mode: planMode,
