@@ -64,28 +64,28 @@ The environment tier (frontend / backend / fullstack) is determined by the detec
 
 **Default Target Files**: {{#each resolvedTargetFiles}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
 
-These are initial defaults for this tier. **MSA DETECTION below may expand them** (e.g., `be-system-main.md` → per-service files). The tier is immutable; only file granularity may change.
+These are initial defaults for this tier. **MULTI-BOUNDARY DETECTION below may expand them** (e.g., `be-system-main.md` → per-service files). The tier is immutable; only file granularity may change.
 
 {{#if (eq environment "frontend")}}
 **FRONTEND-ONLY project.**
-- `documentType`: `"unified"` by default; becomes `"contract-first"` when `consumedApis` is non-empty.
-- All system-design tasks MUST target `fe-system-main.md` (or `fe-system-{package}.md` if FE MSA detected below).
+- `documentType`: `"unified"` by default; becomes `"contract-first"` when `consumedApis` is non-empty, and `"msa-contract-first"` when FE multi-boundary is observed below (with or without `consumedApis`).
+- All system-design tasks MUST target `fe-system-{name}.md` where `{name}` is determined by the MULTI-BOUNDARY DETECTION below. `{name}` = `"main"` ONLY when no FE boundaries are observed; otherwise `{name}` is each package identifier extracted from the source. Single and multi-package are equally valid outcomes — let the source decide.
 - Do NOT create `be-system-*.md` tasks (frontend projects own no provider boundary).
 - `services` MUST stay empty for frontend-only (no provider services).
 - **External API consumer hints** — observe the supplied PRD / directive / refs for **external API contract sources**: a URL, a repository handle, a command that emits the contract, or any other addressable handle. IF observed, populate `consumedApis: [<host>, …]`. Each entry produces `api-contract-{host}.md` as a CONSUMER-perspective snapshot. Use `["main"]` when only one host is observable; use per-host names otherwise. If none observed, leave `consumedApis: []`.
 - All `api-contract-*.md` tasks (when present) author from the CONSUMER perspective — they capture an EXTERNAL contract this project consumes; the `api-contract-guide.md` "External Contract Discovery" rules apply.
-- The CONTRACT-FIRST DETECTION section below targets PROVIDER decisions and MUST be skipped here. The MSA DETECTION section applies only to frontend package boundaries (multiple FE apps).
+- The CONTRACT-FIRST DETECTION section below targets PROVIDER decisions and MUST be skipped here. The MULTI-BOUNDARY DETECTION section applies only to frontend package boundaries (multiple FE apps).
 {{/if}}
 {{#if (eq environment "backend")}}
 **BACKEND-ONLY project.**
 - Do NOT create `fe-system-*.md` tasks.
 - `services` (provider) — observe for backend service boundaries this project owns; each entry produces `be-system-{s}.md` + `api-contract-{s}.md`.
 - `consumedApis` (consumer) — observe for external APIs this project's backend depends on; each entry produces `api-contract-{c}.md` only (no co-creation).
-- CONTRACT-FIRST DETECTION and MSA DETECTION below apply for the provider axis.
+- CONTRACT-FIRST DETECTION and MULTI-BOUNDARY DETECTION below apply for the provider axis.
 {{/if}}
 {{#if (eq environment "fullstack")}}
 **FULLSTACK project.**
-- All sections below (CONTRACT-FIRST, MSA) apply normally for the provider axis (`services`, `fePackages`).
+- All sections below (CONTRACT-FIRST, MULTI-BOUNDARY) apply normally for the provider axis (`services`, `fePackages`).
 - `consumedApis` (consumer) — observe for external APIs this project depends on; orthogonal to `services`. Each entry produces `api-contract-{c}.md` only.
 - `services` and `consumedApis` MUST NOT share names (provider authorship and consumer snapshot of the same name conflict).
 {{/if}}
@@ -222,11 +222,13 @@ Separate concerns into distinct design documents. Each document covers a non-ove
 
 Observe the project's tier structure to determine which documents are needed:
 
-| Observation | Document Structure |
+| Observation | Document Structure (tier composition only) |
 |-------------|-------------------|
 | Project has **both frontend and backend** | `contract-first` (api-contract + fe + be — all independent) |
 | Project is **backend-only** and exposes external API | `contract-first` without FE (api-contract + be — both independent) |
 | Project is **frontend-only** | `unified` (`fe-system-main.md`) |
+
+**Orthogonality**: `documentType` is orthogonal to package count. The rubric above selects the document-type axis (`unified` / `contract-first`) from tier composition alone. The MULTI-BOUNDARY DETECTION below selects each tier's package count from observable source signals. When any tier has multiple boundaries, `documentType` upgrades to `msa-contract-first` — regardless of how the rubric above classified the tier composition.
 
 ### Decision
 
@@ -234,9 +236,15 @@ Observe the project's tier structure to determine which documents are needed:
 **IF backend with external API → CONTRACT-FIRST without FE** (`api-contract-main.md` + `be-system-main.md`)
 **IF frontend-only → UNIFIED** (`fe-system-main.md`)
 
+**Upgrade rule (applies after MULTI-BOUNDARY DETECTION below)**: if any tier produces multiple boundaries (`services.length > 0` or `fePackages.length > 0`), the final `documentType` is `msa-contract-first` and per-boundary filenames replace the corresponding `*-main.md`. Examples:
+
+- Frontend-only with multi-package observed → `msa-contract-first`, files: `fe-system-{pkg1}.md` + `fe-system-{pkg2}.md` + …
+- Backend-only with multi-service observed → `msa-contract-first`, files: `be-system-{svc}.md` + `api-contract-{svc}.md` per service.
+- Fullstack with multi-service AND multi-package → `msa-contract-first`, files per service AND per FE package; tiers without observed boundaries keep `*-main.md`.
+
 ---
 
-## MSA / MULTI-UNIT DETECTION
+## MULTI-BOUNDARY DETECTION
 
 **Principle**: Decide each tier's granularity from the source. Backend and frontend decisions are independent.
 
@@ -245,26 +253,41 @@ Observe the project's tier structure to determine which documents are needed:
 1. **Directive** — if it expresses any opinion about package or service boundaries (in any language, in any wording), that opinion is authoritative.
 2. **Source documents (PRD/GDD)** — otherwise, the requirements determine the granularity.
 
-### Observable (per tier)
+### Observable (per tier) — positive boundary signals
 
-| Outcome | What you observe in the source |
-|---------|--------------------------------|
-| Single (`*-main.md`) | The tier reads as one cohesive boundary: unified responsibilities, unified data ownership, unified audience, unified operational characteristics. |
-| Multiple (`*-{name}.md`) | The tier reads as separable boundaries: distinct responsibilities, distinct data ownership, distinct audiences, or distinct operational characteristics. |
+Each row is a positive boundary observation. **If ANY row is observed for a tier, that tier's boundaries are populated (the corresponding array is NOT empty).**
 
-### Constraints
+| Tier | Observable |
+|------|------------|
+| BE | Source defines bounded contexts / services with distinct data ownership and lifecycle |
+| BE | Multiple deployable backend services with independent operational characteristics |
+| BE | Inter-service communication (sync or async) described as an architectural commitment |
+| FE | Source describes multiple independent audience shells (e.g. admin / operations console vs end-user app) with distinct IA, navigation, or deploy cadence |
+| FE | Multiple deployable frontend packages or micro-frontends with independent ownership |
+| FE | Multiple frontends consume disjoint backend boundaries that the source itself separates |
 
-- Splits must be necessary, not theoretical — prefer one boundary unless the source justifies why the units cannot share responsibilities, ownership, audience, or operational rhythm.
-- Do NOT default to single without observing the source.
-- Do NOT default to multiple without observing distinct separations.
+⚠️ **Blind spot**: Source-side explicit decomposition signals (separate console, separate audience shells, bounded context maps, domain boundary definitions) ARE evidence of boundaries. Qualifying language ("shell-only", "uses the same responsive principles", "shares the design system") does NOT erase the boundary signal — it only constrains implementation rhythm. Do NOT disregard the signal because of the qualifier.
+
+### Constraints (symmetric — both directions need source grounding)
+
+- **Splits must be source-grounded, not theoretical** — do NOT split a tier without a positive observable above.
+- **Single must equally be source-grounded** — do NOT collapse a tier with explicit decomposition signals into one boundary on parsimony alone.
 - Do NOT invent identifiers — extract names from the source exactly as written.
-- Do NOT match surface keywords (specific language, framework, runtime, or vocabulary terms) — judge by what the description means.
+- Do NOT match incidental technology terms (specific language / framework / runtime names) — but DO take seriously source-side decomposition vocabulary (`separate console`, `separate shell`, `bounded context`, `micro-frontend`, audience-shell language, etc.) when it appears as an architectural commitment.
 - Backend and frontend granularities are independent: a fullstack project may have one backend with multiple frontends, multiple backends with one frontend, or any combination.
 
-### Encoding
+### Encoding & extraction
 
-- Single → `services: []` / `fePackages: []`, keep `*-main.md`.
-- Multiple → `services: [<id>, ...]` / `fePackages: [<id>, ...]`. The validator expands them into per-boundary files: each service identifier produces `be-system-{id}.md` + `api-contract-{id}.md`; each frontend package produces `fe-system-{id}.md`. Tiers not split keep `*-main.md`.
+When boundaries are observed for a tier, populate the array AND ground each entry in the source:
+
+- **Names** — exact identifiers (package / service / shell names) from the source. Do NOT translate, rename, or invent.
+- **Responsibilities** — what each unit owns (audience, data, surface). Captured during DocGen; the decompose-time names must be unambiguous about which unit owns what.
+- **Inter-unit relation** — for BE, communication patterns (sync vs async); for FE, audience & IA boundary (which shell serves which role / surface).
+
+Output mapping:
+
+- Single (no observables for a tier) → `services: []` / `fePackages: []`, keep `*-main.md`.
+- Multiple (one or more observables) → `services: [<id>, ...]` / `fePackages: [<id>, ...]`. The validator expands them into per-boundary files: each service identifier produces `be-system-{id}.md` + `api-contract-{id}.md`; each frontend package produces `fe-system-{id}.md`. Tiers without observables keep `*-main.md`.
 
 ---
 

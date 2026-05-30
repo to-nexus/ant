@@ -87,5 +87,28 @@
       "leftoversShow": "Show {{count}} leftover entr{{count, plural, one {y} other {ies}}}",
       "correlationId": "Error ID: {{cid}}"
     }
+  },
+  "featureDeletion": {
+    "title": "Deleting feature",
+    "body": "Removing feature '{{featureName}}' from project '{{projectId}}' and cleaning up resources…",
+    "step": {
+      "cancelJobs": "Cancelling running jobs",
+      "ideCleanup": "Stopping IDE pod",
+      "previewCleanup": "Stopping preview server",
+      "redisCleanup": "Clearing Redis state",
+      "fsVerify": "Verifying filesystem cleanup"
+    },
+    "completed": {
+      "title": "Feature deleted",
+      "body": "'{{featureName}}' was removed successfully."
+    },
+    "failed": {
+      "title": "Feature deletion failed",
+      "stage": "Step {{current}}/{{total}} ({{label}}) failed",
+      "forceDelete": "Force Delete",
+      "dismiss": "Close",
+      "leftoversShow": "Show {{count}} leftover entr{{count, plural, one {y} other {ies}}}",
+      "correlationId": "Error ID: {{cid}}"
+    }
   }
 }

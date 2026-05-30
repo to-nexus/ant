@@ -153,31 +153,43 @@ export type IdeSessionState =
  * `phaseHistory` tracks which phases completed/failed so the step rail can
  * mark them appropriately even when the SSE stream is reconnected mid-flight.
  */
-export type ProjectDeletionPhaseSnapshot = {
-  phase: import('@ant/shared').ProjectDeletionPhase;
-  status: 'complete' | 'failed';
-};
+export type ProjectDeletionPhaseSnapshot = import(
+  '@/presentation/components/common/async/PhasedOperationSession'
+).PhasedOperationPhaseSnapshot<import('@ant/shared').ProjectDeletionPhase>;
 
+type _ProjectDeletionGeneric = import(
+  '@/presentation/components/common/async/PhasedOperationSession'
+).PhasedOperationSession<import('@ant/shared').ProjectDeletionPhase>;
+
+/**
+ * Domain session = generic phased-operation session + project identity
+ * fields on every non-idle variant. The generic part is reused by
+ * `<PhasedOperationPanel>`; `projectId` lets selectors / panel body
+ * interpolation know which project the cascade is for.
+ */
 export type ProjectDeletionSession =
-  | { kind: 'idle' }
-  | {
-      kind: 'deleting';
-      projectId: string;
-      phase: import('@ant/shared').ProjectDeletionPhase | null;
-      startedAt: number;
-      phaseHistory: ProjectDeletionPhaseSnapshot[];
-    }
-  | { kind: 'completed'; projectId: string; completedAt: number }
-  | {
-      kind: 'failed';
-      projectId: string;
-      stage: import('@ant/shared').ProjectDeletionPhase;
-      message: string;
-      hint?: string;
-      leftovers?: string[];
-      canForceCleanup: boolean;
-      correlationId: string;
-    };
+  | Extract<_ProjectDeletionGeneric, { kind: 'idle' }>
+  | (Exclude<_ProjectDeletionGeneric, { kind: 'idle' | 'completed' }> & { projectId: string })
+  | (Extract<_ProjectDeletionGeneric, { kind: 'completed' }> & { projectId: string });
+
+export type FeatureDeletionPhaseSnapshot = import(
+  '@/presentation/components/common/async/PhasedOperationSession'
+).PhasedOperationPhaseSnapshot<import('@ant/shared').FeatureDeletionPhase>;
+
+type _FeatureDeletionGeneric = import(
+  '@/presentation/components/common/async/PhasedOperationSession'
+).PhasedOperationSession<import('@ant/shared').FeatureDeletionPhase>;
+
+/**
+ * Feature deletion session — mirrors `ProjectDeletionSession` over the
+ * feature scope. Identity carries both `projectId` and `featureName` so
+ * the SSE handler can dedup by `${projectId}:${featureName}` and the
+ * panel body can render either id.
+ */
+export type FeatureDeletionSession =
+  | Extract<_FeatureDeletionGeneric, { kind: 'idle' }>
+  | (Exclude<_FeatureDeletionGeneric, { kind: 'idle' | 'completed' }> & { projectId: string; featureName: string })
+  | (Extract<_FeatureDeletionGeneric, { kind: 'completed' }> & { projectId: string; featureName: string });
 
 export interface UIState {
   theme: 'light' | 'dark';
@@ -217,6 +229,12 @@ export interface UIState {
   actionMetadata: import('@ant/shared').ActionMetadata;
   highlightedArtifactDirs: string[];
   spotlightTarget: { type: 'file' | 'dir'; path: string } | null;
+  // Expanded directories in the Artifacts tree. Lifted from ArtifactsSection
+  // component-local state so it survives transient remounts of the panel
+  // (e.g. connectionStatus flicker), which would otherwise reset the user's
+  // expand selection. Reducer-side no-op guards keep ref-stability when the
+  // requested mutation is a no-op.
+  expandedArtifactDirs: ReadonlySet<string>;
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
   pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
   pendingClarifyQuestions: string[];  // original question texts (for combining with free input)

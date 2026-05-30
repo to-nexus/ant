@@ -16,13 +16,17 @@ import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { JobQueuePort } from '../../../../../core/ports/queue';
 import { logger } from '../../../../../utils/logger';
 import { requestPreviewCleanup } from './previewCleanup';
-import { cancelAllProjectJobs } from './projectJobCascade';
-import { DeletionVerificationError, ProjectDeletionError } from './errors';
+import { cancelAllProjectJobs, cancelScopedJobs } from './projectJobCascade';
+import { DeletionVerificationError, FeatureDeletionError, ProjectDeletionError } from './errors';
 import {
   createProjectDeletionPhaseEmitter,
   type ProjectDeletionPhaseEmitter,
 } from './projectDeletionPhaseEmitter';
-import type { ProjectDeletionPhase } from '@ant/shared';
+import {
+  createFeatureDeletionPhaseEmitter,
+  type FeatureDeletionPhaseEmitter,
+} from './featureDeletionPhaseEmitter';
+import type { FeatureDeletionPhase, ProjectDeletionPhase } from '@ant/shared';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';
@@ -311,44 +315,169 @@ export class ProjectService {
   }
   
   /**
-   * Delete a feature.
+   * Delete a feature — mirrors `deleteProject`'s 5-step cascade so the
+   * lifecycle stays SSOT-aligned (Project / Feature Lifecycle SSOT). The
+   * route now hands the entire flow (job cascade included) to this method
+   * so progress can be broadcast as `featureDeletionPhase` SSE events.
    *
-   * Note: per-feature job cascade is handled in [features.routes.ts] DELETE
-   * handler (it has access to JobCleanupManager + KanbanService via deps and
-   * calls `finalizeTerminalJob` per job). This method is invoked AFTER that
-   * cascade has sealed the jobs, so we focus on infra cleanup:
-   *   1. IDE pod/container stop (waitForPodDeletion inside K8s stop)
-   *   2. Preview cleanup via pub/sub (timeout-tolerant)
-   *   3. Worktree + disk delete
+   * Cascade:
+   *   1. cancelJobs — cancel feature jobs + wait for child exit (avoids
+   *      NFS silly-rename when fs.rm races a job-runner child).
+   *   2. ideCleanup — stop the feature's IDE pod.
+   *   3. previewCleanup — Redis pub/sub ack to ant-preview.
+   *   4. redisCleanup — feature-scoped Redis residue sweep.
+   *   5. fsVerify — worktree remove + fs.rm with verification loop.
    *
-   * IDE stop errors are surfaced (no silent .catch swallow) so failures show
-   * up to the caller — a successful delete must mean the IDE is actually gone.
+   * Failures wrap into `FeatureDeletionError` so the route returns a
+   * structured body (stage / hint / leftovers / canForceCleanup). Force
+   * mode (`opts.force === true`) tolerates step 1-4 failures with warn
+   * logs; step 5 still hard-fails (leftover files would re-surface as a
+   * 409 on the next createFeature with the same name).
    */
-  async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
-    if (this.ideOrchestrator) {
-      const tenantId = `${userContext.organizationId}:${userContext.userId}`;
-      const result = await this.ideOrchestrator.stop(tenantId, projectId, featureName);
-      if (!result.success) {
-        // Stop failure is a hard error — letting fs.rm proceed would leak the IDE.
-        throw new Error(
-          `Failed to stop IDE for feature '${featureName}' before deletion: ${result.message ?? '<no message>'}`,
-        );
-      }
-    }
+  async deleteFeature(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext,
+    opts: { force?: boolean } = {},
+  ): Promise<void> {
+    const startedAt = Date.now();
+    const emitter = this.stateStore
+      ? createFeatureDeletionPhaseEmitter(this.stateStore, userContext, projectId, featureName, startedAt)
+      : null;
 
-    if (this.stateStore) {
-      try {
-        await requestPreviewCleanup(this.stateStore, 'feature', userContext, projectId, featureName, 10_000);
-      } catch (e: any) {
-        logger.warn(`[ProjectService] Preview feature cleanup ack timed out (continuing)`, { component: 'ProjectService' }, {
-          projectId,
-          featureName,
-          error: e?.message,
+    await this.stopFeatureRuntime(projectId, featureName, userContext, { force: opts.force ?? false }, emitter);
+
+    await emitter?.emit('fsVerify', 'active');
+    try {
+      await this.featureCrud.deleteFeature(projectId, featureName, userContext, { force: opts.force });
+      await emitter?.emit('fsVerify', 'complete');
+    } catch (err: any) {
+      if (err?.message === 'Feature not found') {
+        // Pre-cascade existence check — surface as-is (route maps to 404).
+        throw err;
+      }
+      if (err instanceof DeletionVerificationError) {
+        await emitter?.emit('fsVerify', 'failed', `${err.leftovers.length} leftover entries`);
+        throw new FeatureDeletionError('fsVerify', err, {
+          canForceCleanup: !opts.force,
+          hint: opts.force
+            ? 'Force-delete still left files on disk — likely an active IDE pod or preview process holding open handles. Retry after waiting briefly.'
+            : 'Filesystem still holds open file handles. Try Force Delete to extend the wait window.',
+          leftovers: err.leftovers,
         });
       }
+      await emitter?.emit('fsVerify', 'failed', err?.message ?? String(err));
+      throw new FeatureDeletionError('fsVerify', err instanceof Error ? err : new Error(String(err)), {
+        canForceCleanup: !opts.force,
+        hint: 'Disk-level delete failed. Try Force Delete.',
+      });
     }
+  }
 
-    return this.featureCrud.deleteFeature(projectId, featureName, userContext);
+  /**
+   * SSOT cascade for feature stop — cancel jobs → stop IDE → preview
+   * cleanup → Redis cleanup. Mirrors `stopProjectRuntime` so future
+   * lifecycle helpers (e.g. renameFeature) can share this surface.
+   *
+   * Same force semantics as `stopProjectRuntime`.
+   */
+  private async stopFeatureRuntime(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext,
+    opts: { force: boolean },
+    emitter?: FeatureDeletionPhaseEmitter | null,
+  ): Promise<void> {
+    const runStep = async (
+      phase: FeatureDeletionPhase,
+      run: (() => Promise<void>) | null,
+      hint: string,
+    ): Promise<void> => {
+      if (!run) return;
+      await emitter?.emit(phase, 'active');
+      try {
+        await run();
+        await emitter?.emit(phase, 'complete');
+      } catch (e: any) {
+        await emitter?.emit(phase, 'failed', e?.message ?? String(e));
+        if (!opts.force) {
+          throw new FeatureDeletionError(phase, e instanceof Error ? e : new Error(String(e)), {
+            canForceCleanup: true,
+            hint,
+          });
+        }
+        logger.warn(
+          `[ProjectService] ${phase} failed (force=true — continuing)`,
+          { component: 'ProjectService' },
+          { projectId, featureName, error: e?.message },
+        );
+      }
+    };
+
+    await runStep(
+      'cancelJobs',
+      this.stateStore && this.jobQueue
+        ? async () => {
+            const jobs = await this.stateStore!.listJobsByFeature(projectId, featureName);
+            // Refuse outright when an active job is running — force lets the
+            // user override (cancelScopedJobs SIGTERMs the child).
+            const activeJob = jobs.find((j) => ['running', 'queued', 'pending'].includes(j.status));
+            if (activeJob && !opts.force) {
+              throw new Error(
+                `Cannot delete feature while job is active (jobId: ${activeJob.jobId}, status: ${activeJob.status}). Stop the job first, or use Force Delete to cancel it.`,
+              );
+            }
+            await cancelScopedJobs({
+              stateStore: this.stateStore!,
+              jobQueue: this.jobQueue!,
+              jobs,
+              scope: `feature: ${projectId}/${featureName}`,
+              killReason: 'feature_delete_cascade',
+              userContext,
+            });
+          }
+        : null,
+      'Some jobs failed to cancel cleanly. Try Force Delete to skip the strict wait (the active job will be killed).',
+    );
+
+    await runStep(
+      'ideCleanup',
+      this.ideOrchestrator
+        ? async () => {
+            const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+            const result = await this.ideOrchestrator!.stop(tenantId, projectId, featureName);
+            if (!result.success) {
+              throw new Error(`IDE stop failed: ${result.message ?? '<no message>'}`);
+            }
+          }
+        : null,
+      'IDE pod did not shut down in time. Try Force Delete (the pod will be deleted with grace=0).',
+    );
+
+    await runStep(
+      'previewCleanup',
+      this.stateStore
+        ? async () => {
+            await requestPreviewCleanup(this.stateStore!, 'feature', userContext, projectId, featureName, 10_000);
+          }
+        : null,
+      'Preview server did not acknowledge cleanup. Try Force Delete (cleanup will be skipped).',
+    );
+
+    await runStep(
+      'redisCleanup',
+      this.stateStore
+        ? async () => {
+            await this.stateStore!.cleanupFeature(
+              userContext.organizationId,
+              userContext.userId,
+              projectId,
+              featureName,
+            );
+          }
+        : null,
+      'Feature Redis cleanup failed. Try Force Delete to skip the strict gate.',
+    );
   }
   
   async getSession(

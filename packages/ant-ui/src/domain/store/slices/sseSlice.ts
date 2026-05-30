@@ -321,6 +321,23 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       ),
     );
 
+    // Feature deletion cascade phase events. sessionKey = `${projectId}:
+    // ${featureName}`; the slice carries both fields so we compare them
+    // independently (defense in depth — a malformed sessionKey on the BE
+    // side still leaves the projectId/featureName fields intact).
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId(
+        'featureDeletionPhase',
+        (data: SSEMessageMap['featureDeletionPhase']) => {
+          const s = get();
+          const sess = s.featureDeletionSession;
+          if (sess?.kind !== 'deleting') return;
+          if (sess.projectId !== data.projectId || sess.featureName !== data.featureName) return;
+          s.updateFeatureDeletionPhase?.(data.phase, data.status);
+        },
+      ),
+    );
+
     sliceHandlerIds.push(
       sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();

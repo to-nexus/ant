@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
+import { randomBytes } from 'crypto';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort, JobStatusData } from '../../../../core/ports/stateStore';
-import type { InterruptionDetails } from '../../../../core/types';
 import type { SessionableJobType, KanbanData } from '@ant/shared';
 import type { SessionRun } from '../../../../core/types/session';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
@@ -15,10 +15,10 @@ import {
   deleteJobRunFromSession,
   broadcastKanbanReset,
 } from './helpers/sessionCleanup';
-import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import * as fs from 'fs';
 import { GitOperationError } from '../services/GitService/errors';
+import { FeatureDeletionError } from '../services/ProjectService/errors';
 
 /**
  * Allowed job types for the per-jobId history / restore / delete endpoints.
@@ -58,16 +58,6 @@ export function createFeaturesRoutes(deps: {
   kanbanService?: KanbanService;
   stateStore?: StateStorePort;
   workspaceResolver?: any;
-  /** Wire via RouteConfigurator — required for DELETE cascade to finalize jobs. */
-  cleanupJobState?: (
-    jobId: string,
-    projectId?: string,
-    featureName?: string,
-    interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
-    userContext?: any,
-  ) => Promise<void>;
-  stateTracker?: any;
 }): Router {
   const router = Router();
 
@@ -128,112 +118,25 @@ export function createFeaturesRoutes(deps: {
     }
   });
   
-  // Delete a feature — cascades through every associated job so the three
-  // lifecycle stores (session file / Redis / BullMQ) stay consistent.
+  // Delete a feature — delegates the entire 5-phase cascade to
+  // `ProjectService.deleteFeature` so progress can be broadcast as
+  // `featureDeletionPhase` SSE events.
   //
-  // Sequence:
-  //   1. Refuse if a job is actively running / queued / pending (409).
-  //      Paused jobs are NOT blocked — they are force-terminated below.
-  //   2. For every remaining jobId in `listJobsByFeature`: finalize(failed)
-  //      with skipSessionPatch (the feature directory is about to be wiped,
-  //      no point writing back to session.json) and `jobQueue.cancel` to
-  //      drop any BullMQ waiting/delayed residue.
-  //   3. `projectService.deleteFeature` removes the worktree + directory.
+  // Returns:
+  //   - 200: { success: true, message }
+  //   - 404: { error: 'Feature not found' }
+  //   - 409: { kind: 'featureDeletion', stage, error, hint, canForceCleanup: true, correlationId }
+  //          → user can retry with ?force=true to opt out of strict gating
+  //   - 500: { kind: 'featureDeletion', stage, error, hint, leftovers?, canForceCleanup: false, correlationId }
+  //          → force already attempted; surface the underlying failure
   router.delete('/projects/:id/features/:feature', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const force = req.query.force === 'true' || req.query.force === '1';
     try {
-      const projectId = req.params.id;
-      const featureName = req.params.feature;
       const userContext = extractUserContext(req);
 
-      let jobsToFinalize: JobStatusData[] = [];
-      if (deps.stateStore) {
-        const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
-        const activeJob = jobs.find(j => ['running', 'queued', 'pending'].includes(j.status));
-        if (activeJob) {
-          res.status(409).json({
-            error: 'Feature has active job',
-            message: `Cannot delete feature while job is running (jobId: ${activeJob.jobId})`,
-            jobId: activeJob.jobId,
-            jobStatus: activeJob.status,
-          });
-          return;
-        }
-        // Paused / orphaned jobs get force-terminated as part of cascade.
-        jobsToFinalize = jobs;
-      }
-
-      // Cascade seal for every remaining job. finalizeTerminalJob requires
-      // stateTracker + cleanupJobState; when either is missing we fall back
-      // to a bare seal via the helper (no session patch, no broadcast) —
-      // the directory is about to be rm -rf'd anyway.
-      const factory = getInfrastructureFactory();
-      const jobQueue = factory.getJobQueue();
-      for (const job of jobsToFinalize) {
-        try {
-          if (deps.cleanupJobState && deps.stateTracker) {
-            await finalizeTerminalJob(
-              {
-                cleanupJobState: deps.cleanupJobState,
-                stateTracker: deps.stateTracker,
-                kanbanService: deps.kanbanService,
-              },
-              {
-                jobId: job.jobId,
-                finalStatus: 'failed',
-                projectId,
-                featureName,
-                jobType: (job.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual',
-                userContext: job.userContext as { userId: string; organizationId: string } | undefined ?? userContext,
-                interruption: {
-                  reason: 'user_stopped',
-                  message: 'Feature deleted by user',
-                  canResume: false,
-                  timestamp: new Date().toISOString(),
-                  metadata: { stoppedBy: 'feature_delete_cascade' },
-                },
-                // Skip session patch / broadcast — the feature is being
-                // removed. We still want Redis sealed so ghost jobs don't
-                // linger in `listJobsByFeature`.
-                skipSessionPatch: true,
-              },
-            );
-          } else {
-            // Lifecycle deps unavailable (e.g. a caller wired createFeaturesRoutes
-            // directly without RouteConfigurator). Fall back to bare seal.
-            const featurePath = getFeaturePath(userContext, projectId, featureName);
-            await sealJobRedisState(
-              deps.stateStore,
-              deps.kanbanService,
-              job.jobId,
-            );
-            await scrubJobDebugArtifacts(
-              featurePath,
-              (job.type || 'code') as SessionableJobType,
-              job.jobId,
-            );
-          }
-          // Drop any BullMQ waiting/delayed residue. No-op for jobs that
-          // have already settled (completed/failed records stay per the
-          // queue's removeOnComplete/removeOnFail policy).
-          try {
-            await jobQueue.cancel(job.jobId);
-          } catch (err) {
-            logger.warn(
-              `Failed to cancel BullMQ job during feature cascade: ${job.jobId}`,
-              { component: 'Features' },
-              err,
-            );
-          }
-        } catch (cascadeErr) {
-          logger.warn(
-            `Failed to finalize job during feature cascade: ${job.jobId}`,
-            { component: 'Features' },
-            cascadeErr,
-          );
-        }
-      }
-
-      await deps.projectService.deleteFeature(projectId, featureName, userContext);
+      await deps.projectService.deleteFeature(projectId, featureName, userContext, { force });
 
       if (req.user) {
         logger.debug(`[Features] Deleted feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
@@ -242,14 +145,29 @@ export function createFeaturesRoutes(deps: {
       res.json({
         success: true,
         message: `Feature ${featureName} deleted`,
-        cascadedJobs: jobsToFinalize.length,
       });
     } catch (error: any) {
-      if (error.message === 'Feature not found') {
+      if (error?.message === 'Feature not found') {
         res.status(404).json({ error: error.message });
-      } else {
-        sendErrorResponse(res, 500, error, 'Features');
+        return;
       }
+      if (error instanceof FeatureDeletionError) {
+        const correlationId = randomBytes(4).toString('hex');
+        const shape = error.toShape();
+        const statusCode = shape.canForceCleanup ? 409 : 500;
+        logger.warn(
+          `[Features] DELETE failed at stage='${shape.stage}' (force=${force}) [cid:${correlationId}]`,
+          { component: 'Features', projectId },
+          { stage: shape.stage, featureName, message: shape.message, leftovers: shape.leftovers },
+        );
+        res.status(statusCode).json({
+          error: shape.message,
+          ...shape,
+          correlationId,
+        });
+        return;
+      }
+      sendErrorResponse(res, 500, error, 'Features');
     }
   });
   

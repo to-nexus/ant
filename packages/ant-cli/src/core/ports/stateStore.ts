@@ -693,6 +693,30 @@ export interface StateStorePort {
     projectId: string,
   ): Promise<void>;
 
+  /**
+   * Feature-scoped cleanup — mirrors `cleanupProject` but only touches keys
+   * belonging to a single `(projectId, featureName)`. Deletes:
+   *
+   *   - JOB.* for every jobId in INDEX.JOBS_BY_FEATURE:{projectId}:{featureName}
+   *   - INDEX.JOBS_BY_FEATURE:{projectId}:{featureName} itself
+   *
+   * IDE / Preview / Deploy keys are NOT swept here — those are owned by the
+   * feature's `stopFeatureRuntime` `ideCleanup` / `previewCleanup` phases,
+   * which call the respective service's own cleanup path (and that path is
+   * what writes / deletes the infra Redis keys). The redisCleanup phase
+   * exists for defense-in-depth: it removes any feature-job Redis residue
+   * that `cancelJobs`'s `sealJobRedisState` did not catch (e.g. a SCAN
+   * race), and it deletes the feature's `jobsByFeature` index entry.
+   *
+   * Errors during individual ops are logged + swallowed.
+   */
+  cleanupFeature(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+    featureName: string,
+  ): Promise<void>;
+
   // ============================================
   // Distributed Lock — SETNX + value-aware DEL
   // ============================================

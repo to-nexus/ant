@@ -228,9 +228,31 @@ export function validateAndFixTargetFiles(
   // Step 1c: Single-package fallback — wildcards not consumed by expansion
   // collapse to `-main.md`. The downstream strict-equality (Step 2 task
   // filter, Step 5 coverage check) is concrete-filename only.
-  effectiveTargetFiles = effectiveTargetFiles.map(f =>
-    f.endsWith('-*.md') ? f.replace(/-\*\.md$/, '-main.md') : f
-  );
+  //
+  // Diagnostic: surface each collapse. An empty services/fePackages array
+  // reaching this point means the LLM did not emit any boundary observable,
+  // so the wildcard is a default fallback rather than a deliberate choice.
+  // Useful for spotting prompt drift that silently collapses multi-boundary
+  // intent into a single `-main.md` file (see `MULTI-BOUNDARY DETECTION`).
+  const collapsedWildcards: Array<{ from: string; to: string }> = [];
+  effectiveTargetFiles = effectiveTargetFiles.map(f => {
+    if (f.endsWith('-*.md')) {
+      const collapsed = f.replace(/-\*\.md$/, '-main.md');
+      collapsedWildcards.push({ from: f, to: collapsed });
+      return collapsed;
+    }
+    return f;
+  });
+  if (collapsedWildcards.length > 0) {
+    const mappings = collapsedWildcards
+      .map(({ from, to }) => `"${from}" → "${to}"`)
+      .join(', ');
+    console.log(
+      `ℹ️  [validateAndFixTargetFiles] Wildcard collapse: ${mappings} ` +
+      `(empty services / fePackages → single-boundary fallback). ` +
+      `If multi-boundary was expected, check MULTI-BOUNDARY DETECTION trigger conditions in the decompose prompt.`
+    );
+  }
 
   // Step 1d: FE intent defense — strip any be-system survivors. Frontend
   // projects never own provider boundaries; LLM emissions to the contrary
