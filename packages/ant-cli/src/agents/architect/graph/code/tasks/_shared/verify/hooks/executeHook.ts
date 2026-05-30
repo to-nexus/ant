@@ -21,10 +21,11 @@
  */
 
 import type { TaskExecuteHook } from '../../types';
+import { TEMPLATE_PATHS } from '../../../../../../../../core/prompt/builder/templatePaths';
 
 const templatePaths = {
-  base: 'jobs/code/nodes/execute/variants/verification/base',
-  rules: 'jobs/code/nodes/execute/variants/verification/rules',
+  base: TEMPLATE_PATHS.codeExecuteVerification.base,
+  rules: TEMPLATE_PATHS.codeExecuteVerification.rules!,
 } as const;
 
 const runtimePlanFraming = {

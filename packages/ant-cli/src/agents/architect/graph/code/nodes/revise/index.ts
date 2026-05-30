@@ -3,6 +3,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { ArchitectGraphState } from "../../state";
 import { CodeTask, TaskQueue } from "../../../../types/task";
+import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
 import { saveCheckpoint } from "../../session/checkpoint";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
@@ -96,7 +97,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     })) || [];
     
     // Generate prompt via PromptEngine
-    const prompt = await promptBuilder.render('jobs/code/nodes/revise/variants/default/base', {
+    const prompt = await promptBuilder.render(TEMPLATE_PATHS.codeRevise.base, {
       context: state.context,
       completedCount,
       totalTasks,

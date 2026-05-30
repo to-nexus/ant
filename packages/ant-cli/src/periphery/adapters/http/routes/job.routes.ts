@@ -453,6 +453,16 @@ export function createJobRoutes(deps: {
           res.status(400).json({ error: err.kind, message: err.message });
           return;
         }
+        if (err.kind === 'template-mapping-stale') {
+          // Stale heaviestNode template mapping — server-side wiring bug,
+          // not a transient failure. 500 so the FE gauge falls back to
+          // honest-no-baseline and engineering surfaces in error tracking.
+          res.status(500).json({
+            error: err.kind,
+            message: err.message,
+          });
+          return;
+        }
         // count-tokens-unavailable → 503 + explicit reason. The FE's gauge
         // stays in its no-baseline state (honest) rather than displaying a
         // fabricated floor.

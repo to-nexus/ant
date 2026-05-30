@@ -5,6 +5,7 @@ import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 import { saveReviseCheckpoint } from "../session/checkpoint";
+import { TEMPLATE_PATHS } from "../../../../../core/prompt/builder/templatePaths";
 
 /**
  * Revise Node for Design Job
@@ -97,7 +98,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     })) || [];
     
     // Generate prompt via PromptEngine
-    const prompt = await promptBuilder.render('jobs/design/nodes/revise/variants/default/base', {
+    const prompt = await promptBuilder.render(TEMPLATE_PATHS.designRevise.base, {
       context: state.context,
       completedCount,
       totalTasks,

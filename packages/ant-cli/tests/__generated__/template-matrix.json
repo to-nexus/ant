@@ -606,6 +606,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/setup-directory-sealing": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/system-design-guide": {
     "sources": [
       "partial-ref",
@@ -751,6 +757,7 @@
   },
   "jobs/code/nodes/decompose/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -791,6 +798,7 @@
   },
   "jobs/code/nodes/decompose/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -979,11 +987,13 @@
   },
   "jobs/code/nodes/plan/base-keyword": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/plan/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -1007,28 +1017,33 @@
   },
   "jobs/code/nodes/plan/rules-keyword": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/code/nodes/plan/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/code/nodes/plan/variants/error/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/plan/variants/test-code/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/plan/variants/verification/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -1050,17 +1065,21 @@
   },
   "jobs/code/nodes/plan/variants/verification/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/code/nodes/revise/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/revise/variants/default/rules": {
     "sources": [
+      "build-callsite",
+      "render-call",
       "partial-ref"
     ]
   },
@@ -1213,11 +1232,13 @@
   },
   "jobs/design/nodes/decompose/variants/system-design/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/design/nodes/decompose/variants/system-design/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
@@ -1348,11 +1369,13 @@
   },
   "jobs/design/nodes/execute/variants/explain-only/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/explain-only/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -1383,22 +1406,26 @@
   },
   "jobs/design/nodes/execute/variants/ui-design-by-desc/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/ui-design-by-desc/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/design/nodes/execute/variants/ui-design-by-figma/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/ui-design-by-figma/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
@@ -1417,6 +1444,8 @@
   },
   "jobs/design/nodes/plan/rules": {
     "sources": [
+      "build-callsite",
+      "render-call",
       "partial-ref"
     ]
   },
@@ -1442,11 +1471,14 @@
   },
   "jobs/design/nodes/revise/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/design/nodes/revise/variants/default/rules": {
     "sources": [
+      "build-callsite",
+      "render-call",
       "partial-ref"
     ]
   },
@@ -1608,26 +1640,31 @@
   },
   "jobs/shared/nodes/detect/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/shared/nodes/detect/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/shared/nodes/triage/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/shared/nodes/triage/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/visual/nodes/direct/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -1643,23 +1680,27 @@
   },
   "jobs/visual/nodes/direct/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/visual/nodes/engrave/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/visual/nodes/engrave/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call",
       "partial-ref"
     ]
   },
   "jobs/visual/nodes/explain/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },

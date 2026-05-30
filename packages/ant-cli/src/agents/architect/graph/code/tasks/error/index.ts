@@ -49,12 +49,13 @@ import { guard as commandGuard } from './hooks/command';
 import { onTaskComplete as orchestratorOnTaskComplete } from './hooks/orchestrator';
 import { executeHook } from './hooks/execute';
 import { composeBundle } from '../_shared/verify';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 
 export const hooks = composeBundle({
   apply: {
     plan: {
       buildPrompt: planBuildPrompt,
-      toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/error/base',
+      toolLoopLogTemplate: TEMPLATE_PATHS.codePlanError.base,
       // Focused error-related context only (mirrors analyzer.ts
       // ContextStrategy.maxFilesToRead).
       ragQuota: 5,

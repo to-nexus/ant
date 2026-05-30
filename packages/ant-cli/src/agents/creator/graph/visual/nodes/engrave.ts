@@ -11,6 +11,7 @@ import { VisualGraphState, SvgSketch } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 export async function engraveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
@@ -34,7 +35,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   const candidateCount = state.visualSettings?.candidateCount ?? 3;
   const usePerSketchPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
-  const systemPrompt = await pb.render('jobs/visual/nodes/engrave/variants/default/base', {});
+  const systemPrompt = await pb.render(TEMPLATE_PATHS.visualEngrave.base, {});
 
   const svgSketches: SvgSketch[] = [];
   const sketchCount = usePerSketchPrompts ? variations!.length : candidateCount;
@@ -84,8 +85,8 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
       const svgSummary = svgSketches.map((d, i) => `[variation ${i + 1}] ${d.code.length} chars`).join(', ');
       const promptLen = systemPrompt.length + (usePerSketchPrompts ? basePrompt!.length : fallbackPrompt.length);
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'engrave', promptLen, {
-        templatePath: 'jobs/visual/nodes/engrave/variants/default/base',
-        usedTemplates: ['jobs/visual/nodes/engrave/variants/default/base', 'jobs/visual/nodes/engrave/variants/default/rules'],
+        templatePath: TEMPLATE_PATHS.visualEngrave.base,
+        usedTemplates: [TEMPLATE_PATHS.visualEngrave.base, TEMPLATE_PATHS.visualEngrave.rules!],
         injectedVariables: { basePrompt: basePrompt || fallbackPrompt, candidateCount: sketchCount, perSketchVariations: usePerSketchPrompts },
         hardcodedContent: `Generated ${svgSketches.length}/${sketchCount} SVGs: ${svgSummary}`,
       });

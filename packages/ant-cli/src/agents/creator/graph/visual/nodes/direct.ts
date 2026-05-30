@@ -15,6 +15,7 @@ import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import type { LLMClient, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
 import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.js';
@@ -150,7 +151,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}`);
 
-  const systemPrompt = await pb.render('jobs/visual/nodes/direct/variants/default/base', {
+  const systemPrompt = await pb.render(TEMPLATE_PATHS.visualDirect.base, {
     isLogo: assetType === 'logo',
     isIcon: assetType === 'icon',
     isHero: assetType === 'hero',
@@ -291,8 +292,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   if (state._httpJobId && state.featurePath) {
     try {
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'direct', systemPrompt.length + userPrompt.length, {
-        templatePath: 'jobs/visual/nodes/direct/variants/default/base',
-        usedTemplates: ['jobs/visual/nodes/direct/variants/default/base', 'jobs/visual/nodes/direct/variants/default/rules', 'jobs/visual/nodes/direct/variants/default/context'],
+        templatePath: TEMPLATE_PATHS.visualDirect.base,
+        usedTemplates: [TEMPLATE_PATHS.visualDirect.base, TEMPLATE_PATHS.visualDirect.rules!, 'jobs/visual/nodes/direct/variants/default/context'],
         injectedVariables: { assetType, currentDirective, conversationEntries: sessionMain.length },
         hardcodedContent: JSON.stringify({ route: result.route, engineeredPrompt: result.engineeredPrompt, reasoning: result.reasoning }),
       });

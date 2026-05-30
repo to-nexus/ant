@@ -14,6 +14,7 @@ import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
   const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
@@ -64,7 +65,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   const prePlanTextRaw = task.prePlanText;
   const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
 
-  const body = await promptBuilder.render('jobs/code/nodes/plan/variants/test-code/base', {
+  const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanTestCode.base, {
     taskId: task.id,
     taskName: task.name,
     taskDescription: task.description,

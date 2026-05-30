@@ -32,6 +32,7 @@
 
 import type { LLMClient, ToolDefinition, MessageContentBlock } from '../../../../../core/ports/llm';
 import type { PromptBuilder } from '../../../../../core/prompt/builder/PromptBuilder';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import type { FeatureContext } from '../../../../../core/context/featureContextBuilder';
 import type { WorkspaceState } from '../triage/types.js';
 import type { DetectResult, MissingPrerequisites, SuggestedAlternative } from './types.js';
@@ -109,11 +110,11 @@ export async function inferRacWithTools(
     chatRequiresRefs: slots.chatRequiresRefs ?? true,
   };
   const systemPrompt = await promptBuilder.render(
-    'jobs/shared/nodes/detect/variants/default/rules',
+    TEMPLATE_PATHS.detect.rules!,
     vars,
   );
   const userPrompt = await promptBuilder.render(
-    'jobs/shared/nodes/detect/variants/default/base',
+    TEMPLATE_PATHS.detect.base,
     vars,
   );
 

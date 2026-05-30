@@ -65,6 +65,7 @@ import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { evaluate } from './hooks/check';
 import { executeHook } from './hooks/execute';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { buildPrompt as planBuildPrompt } from './hooks/plan';
 import { guard as commandGuard } from './hooks/command';
 
@@ -75,7 +76,7 @@ export const hooks: TaskHooks = {
   execute: executeHook,
   plan: {
     buildPrompt: planBuildPrompt,
-    toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/test-code/base',
+    toolLoopLogTemplate: TEMPLATE_PATHS.codePlanTestCode.base,
     // Sub-tasks receive `prePlanText` from batch-split; it is surfaced as
     // input to the plan-tool-loop (see
     // `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the

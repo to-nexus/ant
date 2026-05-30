@@ -17,6 +17,7 @@ import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTo
 import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/workspaceAnalyzer.js';
 import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
+import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
@@ -31,7 +32,7 @@ async function buildSystemPrompt(state: AskGraphState): Promise<string> {
   const hasWorkspace = !!state.workspaceState?.featurePath;
 
   const result = await promptBuilder.build({
-    templates: { base: 'jobs/ask/nodes/agent/variants/default/base', rules: 'jobs/ask/nodes/agent/variants/default/rules' },
+    templates: TEMPLATE_PATHS.askAgent,
     intent: state.resolvedAction?.intent,
     vars: {
       isKorean: state.language === 'ko',
