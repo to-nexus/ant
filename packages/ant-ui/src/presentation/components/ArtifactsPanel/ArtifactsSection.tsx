@@ -105,16 +105,21 @@ export function ArtifactsSection({
   getNodePermissions,
 }: ArtifactsSectionProps) {
   const { t } = useTranslation('artifacts');
-  // Initial expanded set is empty; the spotlight effect below runs on mount
-  // and overwrites this within the first render cycle (either to the full
-  // set of `nodes` paths when no spotlight, or to the required ancestor
-  // chain when a spotlight target belongs to this section). Hardcoding
-  // legacy single-tree top-level domain names here would leak section-foreign
-  // paths into per-domain mounts (spec §5 T3 / G1).
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set<string>());
+  // `expandedDirs` is lifted to the zustand store so it survives transient
+  // remounts of ArtifactsSection / ArtifactsPanel (e.g. when ExplorerPanel
+  // briefly drops its children during a connectionStatus flicker). The five
+  // mutation channels below all dispatch through ref-stable store actions
+  // with no-op guards, so a parent re-render never wipes user expansion.
+  const expandedDirs = useStore((s) => s.expandedArtifactDirs);
+  const setExpandedArtifactDirs = useStore((s) => s.setExpandedArtifactDirs);
+  const unionExpandedArtifactDirs = useStore((s) => s.unionExpandedArtifactDirs);
+  const removeExpandedArtifactDirs = useStore((s) => s.removeExpandedArtifactDirs);
+  const toggleExpandedArtifactDir = useStore((s) => s.toggleExpandedArtifactDir);
   const highlightedDirs = useStore((s) => s.highlightedArtifactDirs);
   const spotlightTarget = useStore((s) => s.spotlightTarget);
   const clearSpotlightTarget = useStore((s) => s.clearSpotlightTarget);
+  const selectedProject = useStore((s) => s.selectedProject);
+  const selectedFeature = useStore((s) => s.selectedFeature);
 
   const belongsToSpotlight = !spotlightTarget
     ? true
@@ -123,19 +128,50 @@ export function ArtifactsSection({
       : spotlightTarget.path === sectionPrefix ||
         spotlightTarget.path.startsWith(sectionPrefix + '/');
 
+  // [trace] Diagnostic — observe ArtifactsSection mount/unmount in dev so the
+  // unmount-trigger (connectionStatus flicker, conditional render churn, etc.)
+  // can be pinpointed. Remove after Phase 3 fix lands.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[trace] ArtifactsSection mounted', Math.round(performance.now()));
+      return () => {
+        // eslint-disable-next-line no-console
+        console.log('[trace] ArtifactsSection unmounted', Math.round(performance.now()));
+      };
+    }
+  }, []);
+
+  // Project / feature change → clear stale expand state from the previous
+  // workspace. Uses a ref-based diff so the effect is a no-op on every other
+  // re-render (and crucially on remounts where the deps haven't actually
+  // changed — those must preserve the lifted state).
+  const prevProjectRef = useRef(selectedProject);
+  const prevFeatureRef = useRef(selectedFeature);
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (
+      prevProjectRef.current !== selectedProject ||
+      prevFeatureRef.current !== selectedFeature
+    ) {
+      setExpandedArtifactDirs(new Set());
+      initializedRef.current = false;
+    }
+    prevProjectRef.current = selectedProject;
+    prevFeatureRef.current = selectedFeature;
+  }, [selectedProject, selectedFeature, setExpandedArtifactDirs]);
+
   useEffect(() => {
     if (highlightedDirs.length === 0) return;
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      for (const dir of highlightedDirs) {
-        const parts = dir.split('/');
-        for (let i = 1; i <= parts.length; i++) {
-          next.add(parts.slice(0, i).join('/'));
-        }
+    const ancestors: string[] = [];
+    for (const dir of highlightedDirs) {
+      const parts = dir.split('/');
+      for (let i = 1; i <= parts.length; i++) {
+        ancestors.push(parts.slice(0, i).join('/'));
       }
-      return next;
-    });
-  }, [highlightedDirs]);
+    }
+    unionExpandedArtifactDirs(ancestors);
+  }, [highlightedDirs, unionExpandedArtifactDirs]);
 
   // Spotlight effect — reacts to `spotlightTarget` set transitions only.
   // Unions ancestor paths into `expandedDirs` (preserves user-expanded dirs)
@@ -154,40 +190,25 @@ export function ArtifactsSection({
     for (let i = 1; i <= depth; i++) {
       requiredDirs.push(parts.slice(0, i).join('/'));
     }
-    setExpandedDirs((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const d of requiredDirs) {
-        if (!next.has(d)) {
-          next.add(d);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    unionExpandedArtifactDirs(requiredDirs);
 
     requestAnimationFrame(() => {
       const el = document.querySelector('[data-spotlight-path]');
       el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
-  }, [spotlightTarget, sectionPrefix]);
+  }, [spotlightTarget, sectionPrefix, unionExpandedArtifactDirs]);
 
   // First-populate effect — when nodes transition from empty to populated,
-  // union the top-level paths into `expandedDirs` exactly once so the
-  // canonical domain roots are open by default. Guarded by a ref so later
-  // `nodes` ref changes (parent re-renders, fileTree refreshes) cannot
-  // re-run the default and clobber user toggles.
-  const initializedRef = useRef(false);
+  // union the top-level paths into `expandedDirs` exactly once per project
+  // so the canonical domain roots are open by default. `initializedRef`
+  // ensures later `nodes` ref churn doesn't re-run this and the
+  // project/feature change effect above resets it on workspace switch.
   useEffect(() => {
     if (initializedRef.current) return;
     if (nodes.length === 0) return;
     initializedRef.current = true;
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      for (const n of nodes) next.add(n.path);
-      return next;
-    });
-  }, [nodes]);
+    unionExpandedArtifactDirs(nodes.map((n) => n.path));
+  }, [nodes, unionExpandedArtifactDirs]);
 
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
@@ -203,27 +224,27 @@ export function ArtifactsSection({
   const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoExpandedRef = useRef<Set<string>>(new Set());
 
-  const updateDragTarget = useCallback((dirPath: string | null) => {
-    if (dirPath === dragOverPathRef.current) return;
-    dragOverPathRef.current = dirPath;
-    setDragOverPath(dirPath);
+  const updateDragTarget = useCallback(
+    (dirPath: string | null) => {
+      if (dirPath === dragOverPathRef.current) return;
+      dragOverPathRef.current = dirPath;
+      setDragOverPath(dirPath);
 
-    if (dragExpandTimerRef.current) {
-      clearTimeout(dragExpandTimerRef.current);
-      dragExpandTimerRef.current = null;
-    }
-    if (dirPath) {
-      dragExpandTimerRef.current = setTimeout(() => {
-        setExpandedDirs((prev) => {
-          if (prev.has(dirPath)) return prev;
-          const next = new Set(prev);
-          next.add(dirPath);
+      if (dragExpandTimerRef.current) {
+        clearTimeout(dragExpandTimerRef.current);
+        dragExpandTimerRef.current = null;
+      }
+      if (dirPath) {
+        dragExpandTimerRef.current = setTimeout(() => {
+          const current = useStore.getState().expandedArtifactDirs;
+          if (current.has(dirPath)) return;
           autoExpandedRef.current.add(dirPath);
-          return next;
-        });
-      }, DRAG_EXPAND_DELAY_MS);
-    }
-  }, []);
+          unionExpandedArtifactDirs([dirPath]);
+        }, DRAG_EXPAND_DELAY_MS);
+      }
+    },
+    [unionExpandedArtifactDirs],
+  );
 
   const clearDragState = useCallback(() => {
     dragOverPathRef.current = null;
@@ -233,14 +254,10 @@ export function ArtifactsSection({
       dragExpandTimerRef.current = null;
     }
     if (autoExpandedRef.current.size > 0) {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev);
-        autoExpandedRef.current.forEach((p) => next.delete(p));
-        return next;
-      });
+      removeExpandedArtifactDirs(Array.from(autoExpandedRef.current));
       autoExpandedRef.current.clear();
     }
-  }, []);
+  }, [removeExpandedArtifactDirs]);
 
   // Keep a ref to unseenArtifacts so cleanup can read the latest value
   const unseenRef = useRef(unseenArtifacts);
@@ -255,26 +272,25 @@ export function ArtifactsSection({
   }, []);
 
   const toggleDirectory = (dirPath: string) => {
-    const newExpanded = new Set(expandedDirs);
-    if (newExpanded.has(dirPath)) {
-      if (onMarkSeen) {
-        const childUnseen = getDirectChildUnseen(dirPath);
-        if (childUnseen.length > 0) {
-          onMarkSeen(childUnseen);
-        }
+    if (expandedDirs.has(dirPath) && onMarkSeen) {
+      // closing — mark direct unseen children seen before collapsing.
+      const childUnseen = getDirectChildUnseen(dirPath);
+      if (childUnseen.length > 0) {
+        onMarkSeen(childUnseen);
       }
-      newExpanded.delete(dirPath);
-    } else {
-      newExpanded.add(dirPath);
     }
-    setExpandedDirs(newExpanded);
+    toggleExpandedArtifactDir(dirPath);
   };
 
   useEffect(() => {
     return () => {
       if (!onMarkSeen) return;
+      // Read the latest expanded set from the store at unmount time. The
+      // local `expandedDirs` capture would be stale because this effect runs
+      // exactly once (deps=[]) — and after lifting, the store is the SSOT.
+      const latest = useStore.getState().expandedArtifactDirs;
       const allChildUnseen: string[] = [];
-      expandedDirs.forEach((dirPath) => {
+      latest.forEach((dirPath) => {
         const children = unseenRef.current.filter((p) => {
           if (!p.startsWith(dirPath + '/')) return false;
           const remainder = p.slice(dirPath.length + 1);

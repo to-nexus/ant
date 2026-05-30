@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Lock, AlertTriangle, Menu } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ProjectSection } from '../ProjectSection';
@@ -32,7 +33,22 @@ export function ExplorerPanel({
 
   // Check authentication status (serverMode unresolved → treat as cloud).
   const isAuthenticated = serverMode === 'local' || !!userEmail;
-  
+
+  // [trace] Diagnostic — watch the conditional-render gate that mounts the
+  // artifacts subtree. A flicker here unmounts ArtifactsSection and would
+  // historically wipe expandedDirs (now lifted to the store). Remove after
+  // Phase 3 fix lands.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[trace] ExplorerPanel render gate',
+        { connectionStatus, isAuthenticated, isCollapsed },
+        Math.round(performance.now()),
+      );
+    }
+  }, [connectionStatus, isAuthenticated, isCollapsed]);
+
   if (isCollapsed) return null;
 
   return (
