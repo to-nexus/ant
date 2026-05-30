@@ -1,29 +1,26 @@
 /**
- * Project-scope job cascade — cancel & wait for child exit before deletion.
+ * Scoped job cancel cascade — generic helper used by project deletion and
+ * feature deletion to safely cancel jobs and wait for child process exit
+ * before `fs.rm`.
  *
- * `ProjectService.deleteProject` cannot safely `fs.rm` while a job-runner
- * child process is still writing to EFS (NFS silly-renames open files into
- * `.nfsXXXX` orphans, leaving the project directory partially populated and
- * making the next createProject return 409 "Project already exists").
+ * `cancelScopedJobs(jobs, ctx)` is the SSOT helper: callers (project /
+ * feature deletion) pre-filter `jobs[]` to their scope and the helper
+ * applies the 4-step cascade uniformly. `cancelAllProjectJobs` is now a
+ * thin wrapper that flattens `listJobsByFeature` for every feature in the
+ * project and delegates.
  *
- * Cascade per jobId:
+ * Cascade per jobId (uniform across scopes):
  *   1. Mark `userStopped` + set `killReason` so the worker that owns the job
- *      sends SIGTERM to its child as soon as it polls (Worker existing path).
+ *      sends SIGTERM to its child as soon as it polls.
  *   2. `jobQueue.cancel` — drop any BullMQ waiting/delayed residue.
- *   3. `sealJobRedisState` — DEL all Redis keys (no session patch — feature
- *      is about to be wiped).
- *   4. `waitForJobChildExit` — block on Redis `JOB.STATUS` reaching a terminal
- *      value (failed/completed/cancelled) so we know the child has actually
- *      exited and is no longer holding open file descriptors.
- *
- * The helper is intentionally small (no JobCleanupManager / KanbanService /
- * session patch) — it matches the "bare seal" fallback path already used in
- * features.routes.ts when lifecycle deps are unavailable. Project deletion
- * removes the entire feature directory anyway, so session.json patches would
- * be writes to a doomed file.
+ *   3. `sealJobRedisState` — DEL all Redis keys (no session patch — the
+ *      target directory is about to be wiped).
+ *   4. `waitForJobChildExit` — block on Redis `JOB.STATUS` reaching a
+ *      terminal value so we know the child has actually exited and is no
+ *      longer holding open file descriptors (NFS silly-rename guard).
  */
 
-import type { StateStorePort } from '../../../../../core/ports/stateStore';
+import type { StateStorePort, JobStatusData } from '../../../../../core/ports/stateStore';
 import type { JobQueuePort } from '../../../../../core/ports/queue';
 import type { UserContext } from '../../../../../core/types/user';
 import type { RedisStateStore } from '../../../../../infrastructure/state/RedisStateStore';
@@ -34,6 +31,20 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed', 'paused']);
 
 const CHILD_EXIT_POLL_INTERVAL_MS = 500;
 const CHILD_EXIT_DEFAULT_TIMEOUT_MS = 30_000;
+
+export interface CancelScopedJobsArgs {
+  stateStore: StateStorePort;
+  jobQueue: JobQueuePort;
+  /** Caller-filtered job list (project-wide or feature-scoped). */
+  jobs: JobStatusData[];
+  /** Human-readable scope label for logs (e.g. `project: foo`, `feature: foo/bar`). */
+  scope: string;
+  /** `RedisStateStore.setKillReason` value (e.g. `project_delete_cascade`). */
+  killReason: string;
+  userContext: UserContext;
+  /** Override per-job child exit wait. Defaults to 30s. */
+  childExitTimeoutMs?: number;
+}
 
 interface CancelAllProjectJobsArgs {
   stateStore: StateStorePort;
@@ -73,15 +84,90 @@ async function waitForJobChildExit(
 }
 
 /**
+ * Generic scoped cancel cascade. Idempotent — safe to call with `jobs=[]`.
+ * Errors during individual cancels are logged and swallowed so a single
+ * stuck job cannot block deletion (the fs.rm verification loop is the
+ * final guard).
+ */
+export async function cancelScopedJobs(args: CancelScopedJobsArgs): Promise<void> {
+  const {
+    stateStore,
+    jobQueue,
+    jobs,
+    scope,
+    killReason,
+    userContext,
+    childExitTimeoutMs = CHILD_EXIT_DEFAULT_TIMEOUT_MS,
+  } = args;
+
+  if (jobs.length === 0) {
+    logger.debug(`[CancelCascade] No active jobs to cancel`, { component: 'CancelCascade' }, {
+      scope,
+      organizationId: userContext.organizationId,
+      userId: userContext.userId,
+    });
+    return;
+  }
+
+  logger.info(`[CancelCascade] Cancelling ${jobs.length} job(s) for ${scope}`, { component: 'CancelCascade' }, {
+    scope,
+    jobIds: jobs.map((j) => j.jobId),
+  });
+
+  // Step 1: mark user stopped + set kill reason. Worker will pick this up
+  // and SIGTERM its child on next poll.
+  for (const job of jobs) {
+    try {
+      await stateStore.markUserStopped(job.jobId);
+    } catch (err) {
+      logger.warn(`[CancelCascade] markUserStopped failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
+    }
+    // setKillReason is on RedisStateStore (not in the port interface yet).
+    // Same cast pattern as JobWorker.setKillReason — see SSOT note in
+    // RedisStateStore.setKillReason.
+    const ssAny = stateStore as unknown as Partial<RedisStateStore>;
+    if (typeof ssAny.setKillReason === 'function') {
+      try {
+        await ssAny.setKillReason(job.jobId, killReason);
+      } catch (err) {
+        logger.warn(`[CancelCascade] setKillReason failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
+      }
+    }
+  }
+
+  // Step 2: drop BullMQ residue.
+  for (const job of jobs) {
+    try {
+      await jobQueue.cancel(job.jobId);
+    } catch (err) {
+      logger.warn(`[CancelCascade] jobQueue.cancel failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
+    }
+  }
+
+  // Step 3: bare Redis seal (no session patch — directory is about to be removed).
+  for (const job of jobs) {
+    try {
+      await sealJobRedisState(stateStore, undefined, job.jobId);
+    } catch (err) {
+      logger.warn(`[CancelCascade] sealJobRedisState failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
+    }
+  }
+
+  // Step 4: wait for each child process to actually exit (or timeout best-effort).
+  await Promise.all(
+    jobs.map((job) => waitForJobChildExit(stateStore, job.jobId, childExitTimeoutMs)),
+  );
+
+  logger.info(`[CancelCascade] Cancelled ${jobs.length} job(s) — children exited`, { component: 'CancelCascade' }, { scope });
+}
+
+/**
  * Cancel every job tied to the project and wait for child processes to exit.
- *
- * Idempotent — safe to call when no jobs exist or when some have already
- * sealed. Errors during individual cancels are logged and swallowed so a
- * single stuck job cannot block project deletion (the fs.rm verification
- * loop is the final guard).
+ * Thin wrapper over `cancelScopedJobs` — collects feature jobs via
+ * `listJobsByFeature` and delegates.
  */
 export async function cancelAllProjectJobs(args: CancelAllProjectJobsArgs): Promise<void> {
-  const { stateStore, jobQueue, projectId, features, userContext, childExitTimeoutMs = CHILD_EXIT_DEFAULT_TIMEOUT_MS } = args;
+  const { stateStore, jobQueue, projectId, features, userContext, childExitTimeoutMs } = args;
 
   const allJobs = (
     await Promise.all(
@@ -96,63 +182,13 @@ export async function cancelAllProjectJobs(args: CancelAllProjectJobsArgs): Prom
     )
   ).flat();
 
-  if (allJobs.length === 0) {
-    logger.debug(`[CancelCascade] No active jobs to cancel`, { component: 'CancelCascade' }, {
-      projectId,
-      organizationId: userContext.organizationId,
-      userId: userContext.userId,
-    });
-    return;
-  }
-
-  logger.info(`[CancelCascade] Cancelling ${allJobs.length} job(s) for project deletion`, { component: 'CancelCascade' }, {
-    projectId,
-    jobIds: allJobs.map((j) => j.jobId),
+  return cancelScopedJobs({
+    stateStore,
+    jobQueue,
+    jobs: allJobs,
+    scope: `project: ${projectId}`,
+    killReason: 'project_delete_cascade',
+    userContext,
+    childExitTimeoutMs,
   });
-
-  // Step 1: mark user stopped + set kill reason. Worker will pick this up
-  // and SIGTERM its child on next poll.
-  for (const job of allJobs) {
-    try {
-      await stateStore.markUserStopped(job.jobId);
-    } catch (err) {
-      logger.warn(`[CancelCascade] markUserStopped failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
-    }
-    // setKillReason is on RedisStateStore (not in the port interface yet).
-    // Same cast pattern as JobWorker.setKillReason — see SSOT note in
-    // RedisStateStore.setKillReason.
-    const ssAny = stateStore as unknown as Partial<RedisStateStore>;
-    if (typeof ssAny.setKillReason === 'function') {
-      try {
-        await ssAny.setKillReason(job.jobId, 'project_delete_cascade');
-      } catch (err) {
-        logger.warn(`[CancelCascade] setKillReason failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
-      }
-    }
-  }
-
-  // Step 2: drop BullMQ residue.
-  for (const job of allJobs) {
-    try {
-      await jobQueue.cancel(job.jobId);
-    } catch (err) {
-      logger.warn(`[CancelCascade] jobQueue.cancel failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
-    }
-  }
-
-  // Step 3: bare Redis seal (no session patch — feature dir is about to be removed).
-  for (const job of allJobs) {
-    try {
-      await sealJobRedisState(stateStore, undefined, job.jobId);
-    } catch (err) {
-      logger.warn(`[CancelCascade] sealJobRedisState failed`, { component: 'CancelCascade' }, { jobId: job.jobId, err });
-    }
-  }
-
-  // Step 4: wait for each child process to actually exit (or timeout best-effort).
-  await Promise.all(
-    allJobs.map((job) => waitForJobChildExit(stateStore, job.jobId, childExitTimeoutMs)),
-  );
-
-  logger.info(`[CancelCascade] Cancelled ${allJobs.length} job(s) — children exited`, { component: 'CancelCascade' }, { projectId });
 }

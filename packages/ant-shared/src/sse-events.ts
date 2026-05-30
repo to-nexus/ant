@@ -36,7 +36,40 @@ export type SSEMessageType =
   | 'unseenArtifacts'
   | 'bridge'
   | 'idePhase'
-  | 'projectDeletionPhase';
+  | 'projectDeletionPhase'
+  | 'featureDeletionPhase';
+
+/**
+ * Generic phase status shared by every phased-operation SSE event
+ * (idePhase / projectDeletionPhase / featureDeletionPhase / future).
+ */
+export type PhaseStatus = 'active' | 'complete' | 'failed';
+
+/**
+ * Generic payload base for any phased-operation SSE event. Domain-specific
+ * payloads extend this with their own identifiers (projectId, featureName, ...).
+ * `sessionKey` lets the FE drop stale events from a previous session.
+ */
+export type PhasedOperationPhaseEventData<TPhase extends string> = {
+  phase: TPhase;
+  status: PhaseStatus;
+  sessionKey: string;
+  elapsedMs: number;
+  detail?: string;
+};
+
+/**
+ * Generic cross-boundary error shape for phased-operation failures (project /
+ * feature deletion / future). Domain shapes add a literal `kind` discriminator.
+ */
+export type PhasedOperationErrorShape<TPhase extends string> = {
+  stage: TPhase;
+  message: string;
+  hint?: string;
+  leftovers?: string[];
+  canForceCleanup: boolean;
+  retryable: boolean;
+};
 
 /**
  * IDE startup sub-phase observable to the FE. Step 5 (`frame-load`) is FE-only
@@ -73,20 +106,16 @@ export type ProjectDeletionPhase =
   | 'redisCleanup'
   | 'fsVerify';
 
-export type ProjectDeletionPhaseStatus = 'active' | 'complete' | 'failed';
+/** Backwards-compat alias — prefer the generic `PhaseStatus`. */
+export type ProjectDeletionPhaseStatus = PhaseStatus;
 
 /**
  * Payload for `projectDeletionPhase` SSE events. `sessionKey = projectId`
  * (only one deletion may be in-flight per project at a time). FE drops
  * events whose sessionKey doesn't match the current `projectDeletionSession`.
  */
-export type ProjectDeletionPhaseEventData = {
-  phase: ProjectDeletionPhase;
-  status: ProjectDeletionPhaseStatus;
+export type ProjectDeletionPhaseEventData = PhasedOperationPhaseEventData<ProjectDeletionPhase> & {
   projectId: string;
-  sessionKey: string;
-  elapsedMs: number;
-  detail?: string;
 };
 
 /**
@@ -94,14 +123,40 @@ export type ProjectDeletionPhaseEventData = {
  * `GitOperationErrorShape` so the FE can route deletion errors the same
  * way it routes git errors.
  */
-export type ProjectDeletionErrorShape = {
+export type ProjectDeletionErrorShape = PhasedOperationErrorShape<ProjectDeletionPhase> & {
   kind: 'projectDeletion';
-  stage: ProjectDeletionPhase;
-  message: string;
-  hint?: string;
-  leftovers?: string[];
-  canForceCleanup: boolean;
-  retryable: boolean;
+};
+
+/**
+ * Feature deletion cascade sub-phases — mirrors the 5 project deletion
+ * stages so feature lifecycle stays SSOT-aligned with project lifecycle.
+ * `redisCleanup` may be a no-op for features whose Redis state was already
+ * sealed during `cancelJobs`; the phase is kept for symmetry.
+ */
+export type FeatureDeletionPhase =
+  | 'cancelJobs'
+  | 'ideCleanup'
+  | 'previewCleanup'
+  | 'redisCleanup'
+  | 'fsVerify';
+
+/**
+ * Payload for `featureDeletionPhase` SSE events.
+ * `sessionKey = `${projectId}:${featureName}`` — disambiguates concurrent
+ * deletions across features within the same project.
+ */
+export type FeatureDeletionPhaseEventData = PhasedOperationPhaseEventData<FeatureDeletionPhase> & {
+  projectId: string;
+  featureName: string;
+};
+
+/**
+ * Cross-boundary error shape for feature deletion failures. Identical
+ * structure to `ProjectDeletionErrorShape` except for the `kind`
+ * discriminator and `stage` element type.
+ */
+export type FeatureDeletionErrorShape = PhasedOperationErrorShape<FeatureDeletionPhase> & {
+  kind: 'featureDeletion';
 };
 
 /**
@@ -141,6 +196,7 @@ export interface SSEMessageMap {
   gitState: GitStateEventData;
   idePhase: IdePhaseEventData;
   projectDeletionPhase: ProjectDeletionPhaseEventData;
+  featureDeletionPhase: FeatureDeletionPhaseEventData;
 }
 
 // Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.

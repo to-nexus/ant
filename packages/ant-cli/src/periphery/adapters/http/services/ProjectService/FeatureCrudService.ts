@@ -5,6 +5,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { getSessionFilePathByJob, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import { isBaseBranch, readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../core/utils/branchUtils';
 import { WorktreeService } from '../GitService/worktree';
+import { DeletionVerificationError } from './errors';
 import { logger } from '../../../../../utils/logger';
 
 /**
@@ -186,28 +187,71 @@ export class FeatureCrudService {
   }
   
   /**
-   * Delete a feature (removes worktree, branch, and feature directory)
+   * Delete a feature (removes worktree, branch, and feature directory).
+   *
+   * Verification loop mirrors `ProjectCrudService.deleteProject` — an IDE
+   * pod / job-runner child / preview process holding open file handles
+   * causes NFS silly-rename `.nfsXXXX` orphans to survive the initial
+   * `fs.rm`. Caller (`ProjectService.deleteFeature`) has already cancelled
+   * jobs / stopped IDE / acked preview cleanup before this runs, so this
+   * loop is the final guard.
+   *
+   * On timeout, throws `DeletionVerificationError`; caller wraps it into
+   * a `FeatureDeletionError({ stage: 'fsVerify', leftovers })`. `force =
+   * true` extends the window 10s → 20s.
    */
-  async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+  async deleteFeature(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext,
+    opts: { force?: boolean } = {},
+  ): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    
+
     try {
       await fs.promises.access(featurePath);
     } catch {
       throw new Error('Feature not found');
     }
-    
-    // Remove Git worktree and branch first
+
+    // Remove Git worktree and branch first.
     if (this.worktreeService) {
       try {
         await this.worktreeService.removeWorktree(projectId, featureName, userContext);
       } catch (error: any) {
-        console.warn(`[FeatureCrudService] Worktree removal failed (non-critical): ${error.message}`);
+        logger.warn(`[FeatureCrudService] Worktree removal failed (non-critical)`, { component: 'FeatureCrudService' }, {
+          projectId,
+          featureName,
+          error: error?.message ?? String(error),
+        });
       }
     }
-    
-    // Remove the entire feature directory
+
+    // Initial recursive remove. Errors tolerated; verification loop is SSOT.
     await fs.promises.rm(featurePath, { recursive: true, force: true });
+
+    // Verify completion. Same NFS silly-rename rationale as deleteProject.
+    const POLL_INTERVAL_MS = 200;
+    const MAX_POLL_ATTEMPTS = opts.force ? 100 : 50;
+    for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+      const exists = await fs.promises
+        .access(featurePath)
+        .then(() => true)
+        .catch(() => false);
+      if (!exists) return;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+
+    // Still there → collect diagnostic info for the FE failure banner.
+    let leftovers: string[] = [];
+    try {
+      const all = await fs.promises.readdir(featurePath);
+      leftovers = all.slice(0, 20);
+    } catch {
+      // Path read failed — likely transient; leave leftovers empty.
+    }
+
+    throw new DeletionVerificationError(featurePath, leftovers);
   }
 }
 

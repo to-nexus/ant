@@ -4,6 +4,7 @@ import type {
   ProjectDeletionErrorShape,
 } from '@ant/shared';
 import type { ProjectDeletionSession, ProjectDeletionPhaseSnapshot } from '../types';
+import { selectFailedPhase } from '@/presentation/components/common/async/PhasedOperationSession';
 
 /**
  * Tracks the in-flight project deletion so the FE can render a step rail +
@@ -124,18 +125,12 @@ export const createProjectDeletionSlice: StateCreator<ProjectDeletionSlice> = (s
 
 /**
  * Derive the failed phase (if any) from a deleting-session's history.
- * Helper for `ProjectDeletionStepRail` to mark the right step red even
+ * Helper for `<PhasedOperationPanel>` to mark the right step red even
  * while the session is still mid-cascade (force mode continues after a
- * step's `failed` event).
+ * step's `failed` event). Delegates to the generic `selectFailedPhase`.
  */
 export function selectProjectDeletionFailedPhase(
   s: { projectDeletionSession: ProjectDeletionSession },
 ): ProjectDeletionPhase | null {
-  const sess = s.projectDeletionSession;
-  if (sess.kind === 'deleting') {
-    const failed = sess.phaseHistory.find((p) => p.status === 'failed');
-    return failed ? failed.phase : null;
-  }
-  if (sess.kind === 'failed') return sess.stage;
-  return null;
+  return selectFailedPhase(s.projectDeletionSession);
 }

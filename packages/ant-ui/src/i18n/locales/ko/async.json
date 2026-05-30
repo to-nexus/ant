@@ -87,5 +87,28 @@
       "leftoversShow": "남은 파일 {{count}}개 보기",
       "correlationId": "오류 ID: {{cid}}"
     }
+  },
+  "featureDeletion": {
+    "title": "피처 삭제 중",
+    "body": "'{{projectId}}' 프로젝트의 '{{featureName}}' 피처를 삭제하고 관련 리소스를 정리하고 있습니다…",
+    "step": {
+      "cancelJobs": "실행 중인 작업 취소",
+      "ideCleanup": "IDE pod 중지",
+      "previewCleanup": "프리뷰 서버 중지",
+      "redisCleanup": "Redis 상태 정리",
+      "fsVerify": "파일시스템 정리 확인"
+    },
+    "completed": {
+      "title": "피처 삭제 완료",
+      "body": "'{{featureName}}' 피처가 삭제되었습니다."
+    },
+    "failed": {
+      "title": "피처 삭제 실패",
+      "stage": "{{total}}단계 중 {{current}}단계 ({{label}}) 실패",
+      "forceDelete": "강제 삭제",
+      "dismiss": "닫기",
+      "leftoversShow": "남은 파일 {{count}}개 보기",
+      "correlationId": "오류 ID: {{cid}}"
+    }
   }
 }

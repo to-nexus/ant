@@ -597,6 +597,63 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     });
   }
 
+  /**
+   * Feature-scoped Redis cleanup. See `StateStorePort.cleanupFeature` for
+   * the scope contract — touches only the one feature's `jobsByFeature`
+   * index entry and any residual JOB.* keys it points to. Errors logged +
+   * swallowed; the deleteFeature fsVerify phase is the final guard.
+   */
+  async cleanupFeature(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+    featureName: string,
+  ): Promise<void> {
+    logger.info(`[StateStore] cleanupFeature start`, { component: 'RedisStateStore' }, {
+      organizationId,
+      userId,
+      projectId,
+      featureName,
+    });
+
+    try {
+      const indexKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+      const jobIds = await this.redis.smembers(indexKey);
+
+      const pipeline = this.redis.pipeline();
+      for (const jobId of jobIds) {
+        pipeline.del(this.key(REDIS_KEYS.JOB.STATUS, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.MAPPING, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.USER_STOPPED, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.WORKFLOW, jobId));
+        pipeline.del(this.key(REDIS_KEYS.JOB.KILL_REASON, jobId));
+      }
+      pipeline.del(indexKey);
+
+      if (jobIds.length > 0) {
+        await pipeline.exec();
+      } else {
+        // Index key may still exist as an empty set or be already absent —
+        // a bare DEL is cheap and idempotent.
+        await this.redis.del(indexKey);
+      }
+
+      logger.info(`[StateStore] cleanupFeature done`, { component: 'RedisStateStore' }, {
+        projectId,
+        featureName,
+        jobCount: jobIds.length,
+      });
+    } catch (err) {
+      logger.warn(`[StateStore] cleanupFeature failed (continuing)`, { component: 'RedisStateStore' }, {
+        projectId,
+        featureName,
+        err,
+      });
+    }
+  }
+
   // ============================================
   // Distributed Lock — SETNX + value-aware DEL
   // ============================================

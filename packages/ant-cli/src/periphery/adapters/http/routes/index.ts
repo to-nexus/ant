@@ -84,8 +84,6 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     kanbanService: deps.kanbanService,
     stateStore: deps.stateStore,
     workspaceResolver: deps.workspaceResolver,
-    cleanupJobState: deps.cleanupJobState,
-    stateTracker: deps.stateTracker,
   }));
   
   // File operations

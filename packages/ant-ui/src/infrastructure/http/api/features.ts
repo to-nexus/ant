@@ -40,9 +40,22 @@ export async function createFeature(
   }
 }
 
-export function deleteFeature(projectId: string, featureName: string): Promise<void> {
+/**
+ * Delete a feature. Pass `opts.force = true` to opt out of strict
+ * cascade gating — steps 1-4 (cancel jobs / IDE cleanup / preview ack /
+ * Redis cleanup) tolerate failures with warn logs instead of throwing,
+ * and the fs verification poll window extends from 10s to 20s. The
+ * route returns 409 (with `canForceCleanup: true`) on the strict path
+ * and 500 if force was already attempted.
+ */
+export function deleteFeature(
+  projectId: string,
+  featureName: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const qs = opts.force ? '?force=true' : '';
   return apiDelete(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}${qs}`,
   );
 }
 
