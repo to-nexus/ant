@@ -1,96 +1,94 @@
 {{!--
   Per-UiSource planning guidance for `design-system` and `ui` task types.
-  Dispatched by `plan/rules.md` when `hasUi` is true. Each `uiSource` branch
-  describes which inventory steps the plan MUST produce. The Gate `hasUi`
-  stays the outer condition — this partial only fires when at least one UI
-  source is selected.
+  Dispatched by `plan/rules.md` when `hasUi` is true. The Gate `hasUi` stays
+  the outer condition — this partial only fires when at least one UI source
+  is selected.
+
+  Structure:
+    - Each branch lists its inventory items as bullet sections
+      (bold header + bullets) instead of numbered steps so this partial
+      composes cleanly regardless of how many numbered steps the dispatching
+      template already authored.
+    - The **INTEGRATION CHAIN** item is identical across `ant` / `figma` /
+      `handoff`, so it is authored once after the source-specific token
+      section, not duplicated per branch.
+    - A task-type boundary statement sits above the `ui` branches as a
+      source-agnostic reminder (token infrastructure is the design-system
+      task's responsibility; ui tasks observe tokens but do not author them).
+      It matters most for handoff (where token-shape and code-shape files
+      mix in one manifest) but applies uniformly to all sources.
 --}}
 {{#if hasUi}}
 {{#if (eq taskType "design-system")}}
 
-**FOR `design-system` TASKS ({{uiSource}} source):**
+**FOR `design-system` TASKS ({{uiSource}} source) — inventory items to cover in the plan:**
 
 {{#if (eq uiSource 'ant')}}
-1. **TOKEN INVENTORY**
-   - Extract ALL token keys and values from ui-tokens.json
-   - Group by category (colors, typography, spacing, etc.)
-   - Identify target output: CSS custom properties and/or styling framework theme config
-   - Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
-
-2. **INTEGRATION CHAIN**
-   - Identify the global CSS entry file and the CSS framework in use
-   - Plan the import chain: entry file → token files, typography files
-   - Plan the framework bridge: CSS vars → utility classes
-   - Each integration file must appear in `create` or `modify`
+**TOKEN INVENTORY**
+- Extract ALL token keys and values from ui-tokens.json
+- Group by category (colors, typography, spacing, etc.)
+- Identify target output: CSS custom properties and/or styling framework theme config
+- Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
 {{/if}}
 
 {{#if (eq uiSource 'figma')}}
-1. **TOKEN INVENTORY (deferred to MCP)**
-   - Token values are NOT read ahead of time. Plan a token extraction step that calls `figma_get_variable_defs` at execute time and records the returned values into the design-system output.
-   - If Figma variables are absent, plan to infer tokens from observed node properties via `figma_get_design_context` — explicitly.
-   - Constraint: Do NOT paraphrase tokens from `figma.json` itself — it carries only the workfile URL.
-
-2. **INTEGRATION CHAIN**
-   - Identify the global CSS entry file and the CSS framework in use
-   - Plan: extract tokens via MCP → write token file → wire import chain → extend framework theme config
-   - Each integration file must appear in `create` or `modify`
+**TOKEN INVENTORY (deferred to MCP)**
+- Token values are NOT read ahead of time. Plan a token extraction step that calls `figma_get_variable_defs` at execute time and records the returned values into the design-system output.
+- If Figma variables are absent, plan to infer tokens from observed node properties via `figma_get_design_context` — explicitly.
+- Constraint: Do NOT paraphrase tokens from `figma.json` itself — it carries only the workfile URL.
 {{/if}}
 
 {{#if (eq uiSource 'handoff')}}
-1. **TOKEN INVENTORY (deferred to read_file)**
-   - The handoff bundle is injected as a STUB manifest (path + size + kind). File contents are not pre-loaded. Scan the manifest and pick the minimum set of text entries likely to carry token-level information (css, design-system markdown, json).
-   - Plan to call `read_file("<path>", startLine, endLine)` at execute time on each selected entry; do NOT dump contents into this plan.
-   - Record for each planned read: (a) the path, (b) the property family expected (colour / spacing / radius / typography), (c) why that file is the most explicit source per property.
-   - Constraint: Do NOT assume schema consistency across files. If two files claim the same property, the plan MUST pick ONE authoritative file rather than merging.
-   - Constraint: Do NOT plan reads on binary-kind entries — reference them by path only.
-   - Constraint: Code-shaped entries (per `handoff-code-shape-discipline`) MUST NOT appear in the token inventory — token transcription is reserved for token-shaped entries; code-shaped files belong to the ui-task evidence map and are observed for intent.
-
-2. **INTEGRATION CHAIN**
-   - Identify the global CSS entry file and the CSS framework in use
-   - Plan the import chain and framework bridge as with canonical tokens
-   - Each integration file must appear in `create` or `modify`
+**TOKEN READ PLAN (deferred to read_file)**
+- Apply the **Discipline (Survey-first, guide-then-execute)** section that appears earlier in this same prompt. The survey identifies token-level entries (css, design-system markdown, json); the manifest's guide (if any) is the SSOT for ordering and exclusions.
+- Plan the `read_file("<path>", startLine, endLine)` calls in that surveyed-guide order. Do NOT dump file contents into this plan.
+- Binary-kind entries (png/jpg/woff/…) are path-only references — never schedule `read_file` on them.
+- Code-shaped entries (per the code-shape discipline section earlier in this prompt) belong to ui-task observation, not token transcription.
 {{/if}}
+
+**INTEGRATION CHAIN** (common across UI sources)
+- Identify the global CSS entry file and the CSS framework in use
+- Plan the wiring: token output → entry-file import → framework theme config and/or utility-class bridge (use whichever the framework supports)
+- Each integration file must appear in `create` or `modify`
 
 {{/if}}
 {{#if (eq taskType "ui")}}
 
-**FOR `ui` TASKS ({{uiSource}} source):**
+**FOR `ui` TASKS ({{uiSource}} source) — inventory items to cover in the plan (in addition to the ui-task plan steps defined above):**
+
+> Task-type boundary: token-level infrastructure (design tokens, theme config, global CSS) is the **design-system task's** responsibility. A ui task may **reference** token values from the source but MUST NOT (re-)author the token output — assume the design-system task has already produced it or will produce it in parallel.
 
 {{#if (eq uiSource 'ant')}}
-4. **ASSET INVENTORY**
-   - Search ui-assets.json for assets related to this task
-   - List ALL assets with source → destination mappings
+**ASSET INVENTORY**
+- Search ui-assets.json for assets related to this task
+- List ALL assets with source → destination mappings
 
-5. **LAYOUT & COMPONENT SPECS**
-   - Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
-   - Record token references with ACTUAL values (not just key names)
-   - Record `visibleWhen` conditions and the parent component where enforcement is needed
-   - Record all interactive elements (preset buttons, toggles, conditional content) from `interactionStates`
+**LAYOUT & COMPONENT SPECS**
+- Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
+- Record token references with ACTUAL values (not just key names)
+- Record `visibleWhen` conditions and the parent component where enforcement is needed
+- Record all interactive elements (preset buttons, toggles, conditional content) from `interactionStates`
 {{/if}}
 
 {{#if (eq uiSource 'figma')}}
-4. **FRAME SELECTION**
-   - Identify the Figma frame(s) that correspond to this task's surface area
-   - Record `nodeId` values for each frame; these feed `figma_get_design_context` / `figma_get_screenshot` at execute time
-   - If the starting `nodeId` is ambiguous, plan a `figma_get_metadata` call first
+**FRAME SELECTION**
+- Identify the Figma frame(s) that correspond to this task's surface area
+- Record `nodeId` values for each frame; these feed `figma_get_design_context` / `figma_get_screenshot` at execute time
+- If the starting `nodeId` is ambiguous, plan a `figma_get_metadata` call first
 
-5. **LAYOUT & COMPONENT OBSERVATION (deferred to MCP)**
-   - Plan to observe layout properties via `figma_get_design_context` at execute time
-   - Plan to use `figma_get_screenshot` for visual verification
-   - Constraint: Do NOT commit to specific token values here — they come from the MCP response
+**LAYOUT & COMPONENT OBSERVATION (deferred to MCP)**
+- Plan to observe layout properties via `figma_get_design_context` at execute time
+- Plan to use `figma_get_screenshot` for visual verification
+- Constraint: Do NOT commit to specific token values here — they come from the MCP response
 {{/if}}
 
 {{#if (eq uiSource 'handoff')}}
-4. **HANDOFF EVIDENCE MAP (read-plan, not content)**
-   - The bundle is injected as a STUB manifest. For each manifest entry the task might consult, record: (a) the path, (b) the visual aspect it likely covers (layout / tokens / asset list / copy / interaction), (c) whether execute will need a full read or a ranged read (`startLine` / `endLine`).
-   - Constraint: Binary-kind entries (png/jpg/woff/…) appear in the plan ONLY as `<img src>` / `url(...)` references. Never schedule `read_file` on them.
-   - Constraint: One task may plan to read multiple handoff files; two tasks must NOT both claim exclusive ownership of the same file unless the content partitions cleanly.
-
-5. **LAYOUT & COMPONENT OBSERVATION (deferred to read_file)**
-   - Do NOT commit to specific layout values here — they come from `read_file` at execute time against the paths recorded in step 4.
-   - Plan the observation order: which file is read first, what design property is expected from it, and what to do if the observation is absent.
-   - Constraint: If a property is not observable in any planned read, note it as "unspecified" and defer to framework conventions — do NOT invent.
-   - Constraint: For code-shaped entries (per `handoff-code-shape-discipline`), the plan MUST NOT specify "copy this component" or "reuse this markup" as an action — implementation is authored at execute time under the target codebase's framework and sibling conventions. Plan only the observation of design intent.
+**READ PLAN (deferred to read_file)**
+- Apply the **Discipline (Survey-first, guide-then-execute)** section that appears earlier in this same prompt under the "UI SOURCE — HANDOFF" block: the survey + the manifest's guide (if any) determine which files this ui task reads and in what order.
+- Plan the `read_file("<path>", startLine, endLine)` calls in that order. Do NOT dump file contents into this plan.
+- Binary-kind entries (png/jpg/woff/…) are path-only references — never schedule `read_file` on them; reference them as `<img src>` or `url(...)` in the emitted code.
+- For code-shaped entries (per the code-shape discipline section earlier in this prompt), the plan MUST observe intent only — do NOT plan actions like "copy this component" or "reuse this markup". Implementation is authored at execute time under the target codebase's framework and sibling conventions.
+- If a design property is not observable in any planned read, note it as "unspecified" and defer to framework conventions; do NOT invent.
 {{/if}}
 
 {{/if}}
