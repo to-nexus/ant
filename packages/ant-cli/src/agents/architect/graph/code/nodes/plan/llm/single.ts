@@ -14,6 +14,7 @@ import { ArchitectGraphState, Violation } from "../../../state";
 import { CodeTask } from "../../../../../types/task";
 import { formatViolations } from "../../../utils/violationFormatter";
 import { logPrompt } from "../../../../../../../core/utils/promptLogger";
+import { TEMPLATE_PATHS } from "../../../../../../../core/prompt/builder/templatePaths";
 import { collectResolvedPartials } from "../../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/graph/llmConfig";
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens } from "../../../../../../common/graph/llmHelpers";
@@ -56,9 +57,9 @@ export async function generatePlanText(
         {
           taskId: task.id,
           taskName: task.name,
-          templatePath: 'jobs/code/nodes/plan/base',
-          usedTemplates: ['jobs/code/nodes/plan/rules'],
-          resolvedPartials: collectResolvedPartials(['jobs/code/nodes/plan/base', 'jobs/code/nodes/plan/rules']),
+          templatePath: TEMPLATE_PATHS.codePlanDefault.base,
+          usedTemplates: [TEMPLATE_PATHS.codePlanDefault.rules!],
+          resolvedPartials: collectResolvedPartials([TEMPLATE_PATHS.codePlanDefault.base, TEMPLATE_PATHS.codePlanDefault.rules!]),
           injectedVariables: {
             taskName: task.name,
             taskType: task.type,

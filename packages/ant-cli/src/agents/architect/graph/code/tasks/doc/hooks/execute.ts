@@ -8,11 +8,12 @@
  */
 
 import type { TaskExecuteHook } from '../../_shared/types';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 
 export const executeHook: TaskExecuteHook = {
   templatePaths: {
-    base: 'jobs/code/nodes/execute/variants/docgen/base',
-    rules: 'jobs/code/nodes/execute/variants/docgen/rules',
+    base: TEMPLATE_PATHS.codeExecuteDocgen.base,
+    rules: TEMPLATE_PATHS.codeExecuteDocgen.rules!,
   },
   skipExamples: true,
 };

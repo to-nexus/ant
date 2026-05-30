@@ -19,6 +19,7 @@ import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, applyExplici
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
 // ArtifactService no longer needed — metadata extracted from state.artifacts
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
@@ -467,11 +468,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // `agents/common/intentCommit.ts` for the SSOT predicate.
     ...buildIntentClarifyTemplateVars(state),
   };
-  const decomposeSystem = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/rules', enrichedVars);
+  const decomposeSystem = await state.deps.promptBuilder.render(TEMPLATE_PATHS.codeDecompose.rules!, enrichedVars);
   let envContract = '';
   try { envContract = await state.deps.promptBuilder.render('jobs/code/base/injections/preview-env-contract', {}); } catch { /* skip */ }
   const fullSystem = envContract ? `${decomposeSystem}\n\n---\n\n${envContract}` : decomposeSystem;
-  const decomposeUser = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/base', enrichedVars);
+  const decomposeUser = await state.deps.promptBuilder.render(TEMPLATE_PATHS.codeDecompose.base, enrichedVars);
   // Direct-path re-entry framing (E from plan): `direct` sets
   // needsEscalation=true when a write-intent Tier 1 attempt touched no
   // files. The router (routeAfterDirect, 1-shot cap) sends us back here
@@ -515,9 +516,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         'decompose',
         prompts.system.length + prompts.user.length,
         {
-          templatePath: 'jobs/code/nodes/decompose/variants/default/base (user) + jobs/code/nodes/decompose/variants/default/rules (system)',
+          templatePath: `${TEMPLATE_PATHS.codeDecompose.base} (user) + ${TEMPLATE_PATHS.codeDecompose.rules} (system)`,
           usedTemplates: [
-            'jobs/code/nodes/decompose/variants/default/rules',
+            TEMPLATE_PATHS.codeDecompose.rules!,
+            // partials included by decompose base.md — no TEMPLATE_PATHS slot
             'jobs/code/nodes/decompose/variants/default/techTier-rules',
             'jobs/code/nodes/decompose/variants/default/mode-guide',
             'jobs/code/nodes/decompose/variants/default/error-or-general',

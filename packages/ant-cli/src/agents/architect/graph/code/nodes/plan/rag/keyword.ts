@@ -12,6 +12,7 @@ import { ArchitectGraphState } from "../../../state";
 import { CodeTask } from "../../../../../types/task";
 import { getChatAPIClient } from "../../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../../core/utils/promptLogger";
+import { TEMPLATE_PATHS } from "../../../../../../../core/prompt/builder/templatePaths";
 import { effectiveTechTier, getTechTier } from "@ant/shared";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combine";
@@ -93,7 +94,7 @@ export async function generateTaskKeywords(
   }
 
   const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
-  const prompt = await promptBuilder.render('jobs/code/nodes/plan/base-keyword', {
+  const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanKeyword.base, {
     taskName: task.name,
     taskDescription: task.description,
     directive: state.directive || '',
@@ -119,8 +120,8 @@ export async function generateTaskKeywords(
         {
           taskId: task.id,
           taskName: task.name,
-          templatePath: 'jobs/code/nodes/plan/base-keyword',
-          usedTemplates: ['jobs/code/nodes/plan/rules-keyword'],
+          templatePath: TEMPLATE_PATHS.codePlanKeyword.base,
+          usedTemplates: [TEMPLATE_PATHS.codePlanKeyword.rules!],
           injectedVariables: {
             taskName: task.name,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,

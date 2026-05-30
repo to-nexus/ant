@@ -14,6 +14,7 @@ import type { TextContentBlock } from '../../../../../../core/ports/llm';
 import type { DesignGraphState } from '../../state';
 import type { DesignTask } from '../../../../types/task';
 import type { PromptBuildConfig } from '../../../../../../core/prompt/builder/PromptBuildConfig';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import {
@@ -57,9 +58,13 @@ export async function buildPlanPromptBlocks(
   const sectionScope: string = taskAny?.sectionScope ?? '';
 
   const config: PromptBuildConfig = {
+    // designPlan triple includes a `rules` field; the design plan node
+    // intentionally renders rules as a partial inside `base.md` rather than
+    // through PromptBuilder's rules slot. Passing only base+system keeps
+    // that wiring unchanged while still referencing the SSOT.
     templates: {
-      base: 'jobs/design/nodes/plan/base',
-      system: 'jobs/design/base/system',
+      base: TEMPLATE_PATHS.designPlan.base,
+      system: TEMPLATE_PATHS.designPlan.system!,
     },
     pipeline: {
       sanitizeInput: true,

@@ -213,13 +213,32 @@ export class FilePromptAdapter implements PromptPort {
       !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
     );
 
+    // Resolve a dot-path against the top-level vars (e.g. `resolvedAction.documents`
+    // → `vars.resolvedAction?.documents`). Returns undefined if any intermediate
+    // segment is nullish.
+    const lookupDotPath = (path: string): unknown => {
+      const segments = path.split('.');
+      let current: unknown = vars;
+      for (const seg of segments) {
+        if (current == null || typeof current !== 'object') return undefined;
+        current = (current as Record<string, unknown>)[seg];
+      }
+      return current;
+    };
+
     const shouldValidate = (varName: string): boolean => {
-      const conditionalPattern = new RegExp(`\\{\\{#if\\s+(\\w+)[^}]*\\}\\}[\\s\\S]*?\\{\\{${varName}[^}]*\\}\\}[\\s\\S]*?\\{\\{\\/if\\}\\}`, 'g');
+      // Capture dot-paths (e.g. `resolvedAction.documents`) so a guard whose
+      // discriminator lives on a nested field is evaluated correctly. The
+      // legacy `\w+` regex only captured the head segment, treating any
+      // truthy parent object as "guard open" — which forced top-level
+      // validation of inner-each fields (`label` / `path` / `content`) even
+      // when the outer collection itself was undefined.
+      const conditionalPattern = new RegExp(`\\{\\{#if\\s+([\\w.]+)[^}]*\\}\\}[\\s\\S]*?\\{\\{${varName}[^}]*\\}\\}[\\s\\S]*?\\{\\{\\/if\\}\\}`, 'g');
       const conditionalMatch = templateSource.match(conditionalPattern);
       if (!conditionalMatch) return true;
-      const conditionMatch = conditionalMatch[0].match(/\{\{#if\s+(\w+)/);
+      const conditionMatch = conditionalMatch[0].match(/\{\{#if\s+([\w.]+)/);
       if (!conditionMatch) return true;
-      return !!vars[conditionMatch[1]];
+      return !!lookupDotPath(conditionMatch[1]);
     };
 
     const missingVars = templateVars.filter(shouldValidate).filter(v => !(v in vars));

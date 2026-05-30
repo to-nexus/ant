@@ -23,11 +23,12 @@ import {
 } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { selectArtifacts } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import type { DesignTask } from '../../../../types/task';
 
-const EXPLAIN_BASE_TEMPLATE = 'jobs/design/nodes/execute/variants/explain-only/base';
-const EXPLAIN_RULES_TEMPLATE = 'jobs/design/nodes/execute/variants/explain-only/rules';
+const EXPLAIN_BASE_TEMPLATE = TEMPLATE_PATHS.designExplain.base;
+const EXPLAIN_RULES_TEMPLATE = TEMPLATE_PATHS.designExplain.rules!;
 
 const MAX_SOURCE_CHARS = 60_000;
 

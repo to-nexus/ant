@@ -64,6 +64,16 @@ export interface PromptBuildConfig {
     applyPolicyGuardrails?: boolean;
     strictValidation?: boolean;
     formatForLLM?: boolean;
+    /**
+     * Throw `PromptBuilderCriticalTemplateError` from `build()` when any
+     * `critical` template (base / rules) fails to render. Opt-in because
+     * the default silent-empty behaviour is required by production graph
+     * builders that tolerate occasional partial render gaps; the
+     * baseline-estimate path turns this on so a stale template mapping
+     * surfaces as an explicit 503 (`template-mapping-stale`) instead of a
+     * silent under-reported token count.
+     */
+    failOnCriticalTemplateMiss?: boolean;
   };
 
   /** Template variables — consumed by Handlebars rendering. */

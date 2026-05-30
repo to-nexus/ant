@@ -247,18 +247,15 @@ export class AutoInjectionResolver {
     if (resolvedAction) {
       // Normalize `resolvedAction.documents` entries so the `action-context`
       // partial — which references `{label, path, content}` inside an
-      // `{{#each resolvedAction.documents}}` block — does not trip the
-      // FilePromptAdapter `missingVars` validator. The validator checks
-      // template variables against top-level `vars` membership and is
-      // unaware of `#each` block scopes, so absent keys on document entries
-      // surface as spurious "missing variables" warnings.
-      //
-      // When `documents` is undefined the partial's outer
-      // `{{#if resolvedAction.documents}}` short-circuits and no warning
-      // fires — so we only normalize when the array exists. Mutating
-      // in-place keeps callers' references stable; filling with empty
-      // strings is safe because the partial's inner conditionals
-      // (`{{#if (eq role "ref")}}` etc.) treat them as falsy.
+      // `{{#each resolvedAction.documents}}` block — renders without empty
+      // gaps when an entry omits a field. Validator-side spurious warnings
+      // were addressed separately by the FilePromptAdapter dot-path fix
+      // (the `{{#if resolvedAction.documents}}` guard now closes properly
+      // when the array is undefined). This normalization is purely for
+      // *render output* — it keeps each entry's optional fields as empty
+      // strings so the partial's inner conditionals
+      // (`{{#if (eq role "ref")}}` etc.) treat them as falsy without
+      // producing `undefined` interpolation in the rendered text.
       const docs = (resolvedAction as { documents?: Array<Record<string, unknown>> }).documents;
       if (Array.isArray(docs)) {
         for (const entry of docs) {
