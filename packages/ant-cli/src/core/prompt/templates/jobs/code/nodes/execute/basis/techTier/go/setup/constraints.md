@@ -36,7 +36,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 ### File Categories:
 
-**✅ CREATE (Configuration layer — single service OR MSA root setup)**
+**✅ CREATE (Configuration + Directory skeleton — single service OR MSA root setup)**
 - Module: go.mod (single service) OR go.work (MSA root)
 - Build: Makefile
 - Ignore: .gitignore
@@ -44,17 +44,18 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Environment (TOML alternative): `config.example.toml` (template with `@connection env:VAR` annotations) AND `config.toml` (active copy with localhost defaults). Use when design document specifies TOML-based configuration.
 - Infrastructure: docker-compose.yml (see Infrastructure Services below)
 - Documentation: README.md
+- **Directory skeleton** — create the top-level source directory tree reflecting architecture boundaries from system design (or Go convention default: `cmd/`, `internal/`, `pkg/`). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files` as the structural context.
 
 **✅ CREATE (Configuration layer — MSA service setup)**
 - Module: services/{svc}/go.mod
 - Build: services/{svc}/Makefile
+- Per-service directory skeleton under `services/{svc}/` reflecting that service's boundaries (with `.gitkeep`).
 
-**❌ DON'T CREATE (Application layer)**
-- Source directories: cmd/*, internal/*, pkg/*
-- Application files: main.go, handler.go, service.go, repository.go
+**❌ DON'T CREATE (Application source files)**
+- Application source files: main.go, handler.go, service.go, repository.go
 - Any .go source files
 
-**Constraint**: Only create configuration-layer files. Do NOT create application code directories (cmd/*, internal/*, pkg/*) or .go source files.
+**Constraint**: Create configuration files AND the directory skeleton (with `.gitkeep`). Do NOT create .go source files — feature tasks own those.
 
 **MSA Root vs Service Setup Constraint**: In multi-service projects, the root setup task creates workspace-level files (`go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, `.env`). Service-level setup tasks create ONLY `services/{svc}/go.mod` and `services/{svc}/Makefile`. Do NOT create `docker-compose.yml`, `.env.example`, or `.gitignore` inside service directories.
 

@@ -143,6 +143,8 @@ Create config files only. **NO source code, NO tests.**
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
+{{> jobs/code/base/injections/setup-directory-sealing}}
+
 **ANTRULES.md (Agent Settings File) — gated by the 3-condition filter:**
 
 `codebase/ANTRULES.md` is **deviation-only**. Create it ONLY when a fact discovered during setup passes ALL three conditions:
@@ -168,6 +170,8 @@ Setup's job at this point is typically **NOT** to seed ANTRULES. Framework / tes
 **Constraint**: Keep the file under 1500 characters. In practice, setup-time ANTRULES should be **zero or a handful of lines**. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`).
 
 **Default action**: If NO deviation passes the 3-condition filter at setup time, do NOT create the file at all. Later tasks will create it the moment a filter-passing invariant is discovered (via the injected antrules partial guidance).
+
+**Pre-`<done>` Discovery Check** — Before emitting `<done>true</done>`, re-evaluate the decisions you made during this setup turn against the 3-condition filter above. Examples that occasionally pass: a naming convention chosen over the framework default, a point-in-time package pinning with a non-obvious rationale, a directory organization choice that future tasks could violate. If yes — append to `codebase/ANTRULES.md`. If no — skip. Do NOT fabricate entries; most setups have nothing to record.
 
 **Framework-Specific Requirements:**
 
