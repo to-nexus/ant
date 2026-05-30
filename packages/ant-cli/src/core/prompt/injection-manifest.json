@@ -27,6 +27,7 @@
     "ui-source-dispatch": ["uiSource"],
     "game-art-source": [],
     "antrules": ["antrulesContent"],
+    "setup-directory-sealing": [],
     "dep-self-contained": [],
     "monorepo-install-locality": ["monorepoActive", "monorepoRootPath", "monorepoManagerLabel", "monorepoRootMarker", "monorepoMembersSummary"],
     "persistent-process-policy": ["allowPersistentProcesses"],
