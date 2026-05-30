@@ -460,7 +460,7 @@ register({
   },
   streamAction: 'file_start',
   promptContract:
-    'Use `<file path="...">body</file>` to write a NEW file. The body is written verbatim to disk. No commentary inside.',
+    'Use `<file path="...">body</file>` to write a NEW file. The body becomes the COMPLETE file content. If the file already exists (e.g. a sibling task already wrote it), you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — without `overwrite="true"`, the write conflicts to prevent silent clobber. For partial modification use `<edit>`; for tail concat use `<append>`.',
 });
 
 register({
@@ -572,6 +572,20 @@ register({
   extract: (text) => parseClarifyTags(text),
   promptContract:
     'Use `<clarify>question</clarify>` ONLY when you cannot continue without a user answer. The job halts until the user replies. For non-blocking questions or summaries, use `<reply>` instead.',
+});
+
+register({
+  name: 'antrules-decision',
+  pattern: /<antrules-decision>\s*(none|write|update)\s*<\/antrules-decision>/i,
+  axis: {
+    intent: 'control',
+    processing: ['consumed-suppressed', 'post-stream'],
+    persistence: ['none'],
+    blocking: 'non-blocking',
+  },
+  extract: (text) => extractTagBody(text, 'antrules-decision'),
+  promptContract:
+    'Emit `<antrules-decision>none|write|update</antrules-decision>` followed by a `<reply>` justification (≥10 chars) before `<done>true</done>` on Tier 3/4 final verification. `none` = no 3-condition entry found; `write` = file did not exist + new entry found; `update` = file exists + new entry found.',
 });
 
 // ── decision axis ──────────────────────────────────────────────────────────

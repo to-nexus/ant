@@ -585,12 +585,15 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 17. Check for <file path="..."> opening
+      // 17. Check for <file path="..." overwrite="..."?> opening
       if (!this.context.insideFile) {
-        const fileMatch = this.buffer.match(/<file\s+path="([^"]+)">/);
+        const fileMatch = this.buffer.match(
+          /<file\s+path="([^"]+)"(?:\s+overwrite="(true|false)")?\s*>/,
+        );
         if (fileMatch) {
           const fullMatch = fileMatch[0];
           const filePath = fileMatch[1];
+          const overwrite = fileMatch[2] === 'true';
           const startIdx = this.buffer.indexOf(fullMatch);
 
           this.buffer = this.buffer.substring(startIdx + fullMatch.length);
@@ -602,7 +605,8 @@ export class XMLStreamParser implements IStreamParser {
             type: 'file_start',
             data: {
               filePath,
-              actionType: 'create'  // Registry will determine if it should be 'edit'
+              actionType: 'create',  // Registry will determine if it should be 'edit'
+              overwrite,
             }
           });
           continueParsingLoop = true;

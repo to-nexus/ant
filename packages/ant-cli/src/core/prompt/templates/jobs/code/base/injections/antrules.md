@@ -9,6 +9,8 @@ These rules are **codebase-specific deviations** recorded by prior tasks — the
 
 If any rule seems stale or restates information already in the codebase, call `read_file codebase/ANTRULES.md` to confirm the live content — then trust the actual project files over this block if they disagree.
 
+If the rendered block contains only the placeholder line `(no project-local deviations recorded yet — sibling tasks will append as they emerge)`, that means setup created an empty ledger and no deviation has been recorded YET — it is NOT stale noise. Treat the file as a valid empty ledger and `edit_file` the placeholder line into your first filter-passing entry when you discover one.
+
 ### Updating ANTRULES.md — 3-condition filter
 
 Record a finding here ONLY when ALL three conditions hold:

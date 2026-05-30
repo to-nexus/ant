@@ -362,8 +362,17 @@ describe('Template Smoke Tests', () => {
     // / tsconfig / config files already declare.
     expect(output).toMatch(/no redundant restatements/i);
     expect(output).toMatch(/drift/i);
-    // Default action when nothing passes the filter: do not create the file.
-    expect(output).toMatch(/Default action/);
+    // Fix A (classboard-architect-sonnet plan): setup MUST bootstrap an
+    // empty ANTRULES stub for new projects so sibling tasks have a ledger
+    // to append to. The prior "Default action: do NOT create" wording was
+    // replaced with mandatory bootstrap + placeholder body.
+    expect(output).toMatch(/Bootstrap action.*new project/);
+    expect(output).toMatch(/MUST create it now as part of setup/);
+    expect(output).toContain(
+      '(no project-local deviations recorded yet — sibling tasks will append as they emerge)',
+    );
+    // Idempotency for existing projects.
+    expect(output).toMatch(/already exists.*do NOT overwrite/i);
     // Test-code authoring remains explicit owner of runner selection (this
     // lives in the separate FORBIDDEN block, not the ANTRULES seed block).
     expect(output).toMatch(/test-code task/i);

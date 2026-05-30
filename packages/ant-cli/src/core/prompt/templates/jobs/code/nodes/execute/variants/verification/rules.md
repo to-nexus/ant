@@ -98,6 +98,40 @@ Matrix — apply the filter to the kind of deviation at hand:
 
 **Constraint**: When you DO append, keep the entry to one or two lines with the rationale that cannot be derived from the code alone. Do NOT paste diagnostic output or fix commands.
 
+### Mandatory decision emit before `<done>true</done>`
+
+Before emitting `<done>true</done>`, you MUST emit exactly one `<antrules-decision>` tag followed by one `<reply>` justification of ≥10 characters. This makes the filter-result explicit so the gate sees that the check ran (preventing silent skip).
+
+Valid values:
+
+| value | precondition | required emit shape |
+|---|---|---|
+| `none` | No 3-condition-passing entry found during this job | `<antrules-decision>none</antrules-decision>` + `<reply>` explaining why every candidate failed the filter |
+| `write` | `codebase/ANTRULES.md` does NOT exist AND a filter-passing entry was found | `<file path="codebase/ANTRULES.md">` with the new entry, then `<antrules-decision>write</antrules-decision>` + `<reply>` summarizing the entry |
+| `update` | `codebase/ANTRULES.md` exists AND a filter-passing entry was found | `edit_file codebase/ANTRULES.md` (replace the placeholder line OR append your entry below existing ones), then `<antrules-decision>update</antrules-decision>` + `<reply>` summarizing the entry |
+
+Example — no deviation found:
+
+```xml
+<antrules-decision>none</antrules-decision>
+<reply>No filter-passing deviation observed — every fix this job applied was already encoded in package.json, tsconfig.json, or framework config.</reply>
+<done>true</done>
+```
+
+Example — deviation found:
+
+```xml
+<edit path="codebase/ANTRULES.md">
+  <search>(no project-local deviations recorded yet — sibling tasks will append as they emerge)</search>
+  <replace>- jsdom pinned at v24 — v25 incompatible with current jest 29 transformer (upstream issue #NNN). Bumping jsdom alone breaks the test runner; bump must be paired with jest upgrade.</replace>
+</edit>
+<antrules-decision>update</antrules-decision>
+<reply>Recorded jsdom v24 pin rationale — not derivable from package.json (which only shows the version number), and any sibling test-config task would otherwise re-encounter the same incompatibility.</reply>
+<done>true</done>
+```
+
+**Constraint**: Omitting the `<antrules-decision>` tag, providing a justification under 10 characters, or using a value outside `none|write|update` fails the verification gate (within the existing retry budget).
+
 ---
 
 ## Interaction Methods

@@ -48,6 +48,69 @@ export interface WriteOptions {
   taskName?: string;
 }
 
+/**
+ * Build the conflict message shown to the LLM when a `<file>` write collides
+ * with a prior committed write (cross-worker OR cross-task on same worker).
+ *
+ * The message presents three channel choices with `<edit>` as the DEFAULT
+ * for cross-task continuation. `<append>` is narrowed to physical-tail-concat
+ * use cases (CSS cascade / .gitignore / log entry) so the LLM does not
+ * mistakenly append to JSON/config files where middle-insert is the correct
+ * shape.
+ *
+ * The tail preview is capped at 200 chars to keep retry body size bounded
+ * (max_tokens cliff regression guard — body inclusion is never demanded).
+ */
+function buildClobberConflictMessage(params: {
+  filePath: string;
+  priorTaskName?: string;
+  priorVersion: number;
+  priorSize: number;
+  priorTail: string;
+  emittedSize: number;
+}): string {
+  const {
+    filePath,
+    priorTaskName,
+    priorVersion,
+    priorSize,
+    priorTail,
+    emittedSize,
+  } = params;
+  const ownerLabel = priorTaskName ? `task "${priorTaskName}"` : 'a sibling writer';
+  const tailHintLine =
+    emittedSize > 0 && emittedSize < priorSize
+      ? `\nHint: your body (${emittedSize} bytes) is smaller than the existing content (${priorSize} bytes) — you are likely modifying middle content or extending the tail, not replacing the whole file. Use <edit>, not <file overwrite="true">.`
+      : '';
+  return (
+    `File "${filePath}" was already committed by ${ownerLabel} ` +
+    `(size: ${priorSize} bytes, version: ${priorVersion}, ` +
+    `tail: ${JSON.stringify(priorTail)}).\n\n` +
+    `Your emitted body is ${emittedSize} bytes. Before retry, choose ONE channel:\n\n` +
+    `1. PARTIAL modification of existing content (DEFAULT — most cross-task ` +
+    `continuation falls here: adding an import, inserting a JSON property, ` +
+    `changing a value, adjusting a block):\n` +
+    `       <edit path="${filePath}">\n` +
+    `         <search>...existing snippet to match...</search>\n` +
+    `         <replace>...new snippet...</replace>\n` +
+    `       </edit>\n\n` +
+    `2. ADDITION that physically concatenates at the file's END without ` +
+    `affecting prior content (ONLY for tail-naturally-extending files — ` +
+    `CSS cascade tail layers, .gitignore line, log entry):\n` +
+    `       <append path="${filePath}">\n` +
+    `         ...new tail content...\n` +
+    `       </append>\n\n` +
+    `3. COMPLETE rewrite — your body intentionally REPLACES all ${priorSize} ` +
+    `existing bytes (rare; verify this is your true intent):\n` +
+    `       <file path="${filePath}" overwrite="true">\n` +
+    `         ...complete new file content...\n` +
+    `       </file>\n\n` +
+    `Hint: <edit> is the default for cross-task continuation. Use <append> ` +
+    `ONLY when content naturally belongs at the file's physical end.` +
+    tailHintLine
+  );
+}
+
 export class SharedFileBuffer {
   private files = new Map<string, FileEntry>();
   private fileLocks = new Map<string, AsyncMutex>();
@@ -160,11 +223,18 @@ export class SharedFileBuffer {
         }
       }
 
-      // 2. Overwrite-without-read check (<file> tag on pre-existing file)
-      // The worker is overwriting a file that existed at task start, but another
-      // worker has since modified it. The overwriter's content is based on the
-      // original (pre-task) state and would silently discard the other worker's changes.
-      if (options.isOverwrite && existing && existing.workerId !== workerId) {
+      // 2. Overwrite-without-explicit-intent check (<file> tag on pre-existing file)
+      // The worker is overwriting a file that another worker OR a prior task on
+      // the same worker has committed. Without explicit `overwrite="true"`, the
+      // overwriter's content would silently discard the other writer's changes.
+      // Task-level (not worker-level) comparison closes the same-worker
+      // sequential cross-task gap (e.g. ds-tokens -> batch-zw6xc on Worker 0).
+      if (
+        options.isOverwrite &&
+        existing &&
+        (existing.workerId !== workerId ||
+          existing.taskName !== options.taskName)
+      ) {
         const authorized = this.authorizedWriters.get(normalized);
         if (authorized?.has(workerId)) {
           authorized.delete(workerId);
@@ -176,17 +246,28 @@ export class SharedFileBuffer {
             conflict: true,
             ownerTask: existing.taskName,
             currentContent: existing.content,
-            error:
-              `File "${filePath}" was modified by task "${existing.taskName}" ` +
-              `since task start. Your <file> tag would overwrite their changes.`,
+            error: buildClobberConflictMessage({
+              filePath,
+              priorTaskName: existing.taskName,
+              priorVersion: existing.version,
+              priorSize: existing.content.length,
+              priorTail: existing.content.slice(-200),
+              emittedSize: content.length,
+            }),
           };
         }
       }
 
-      // 3. Cross-worker ownership check (new file creation path)
-      // If this is a new file creation and another worker already created it,
-      // check if this worker was authorized (post-conflict merge).
-      if (options.isNewFile && existing && existing.workerId !== workerId) {
+      // 3. Cross-writer ownership check (new file creation path)
+      // If this is a new file creation and another worker OR a prior task on
+      // the same worker already created it, check if this worker was authorized
+      // (post-conflict merge / takeover via explicit overwrite="true" intent).
+      if (
+        options.isNewFile &&
+        existing &&
+        (existing.workerId !== workerId ||
+          existing.taskName !== options.taskName)
+      ) {
         const authorized = this.authorizedWriters.get(normalized);
         if (authorized?.has(workerId)) {
           // Worker was told about the conflict and instructed to merge.
@@ -200,8 +281,14 @@ export class SharedFileBuffer {
             conflict: true,
             ownerTask: existing.taskName,
             currentContent: existing.content,
-            error:
-              `File "${filePath}" was already created by task "${existing.taskName}".`,
+            error: buildClobberConflictMessage({
+              filePath,
+              priorTaskName: existing.taskName,
+              priorVersion: existing.version,
+              priorSize: existing.content.length,
+              priorTail: existing.content.slice(-200),
+              emittedSize: content.length,
+            }),
           };
         }
       }

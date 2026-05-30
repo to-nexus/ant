@@ -185,14 +185,15 @@ Your modularization:
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ `<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**
+**⚠️ `<file>`, `<append>` are XML streaming tags. File editing uses `edit_file` tool call.**
 
-### XML Streaming (Content Generation)
+### XML Streaming (Content Generation) — three-channel matrix
 
-| Tag | Purpose |
-|-----|---------|
-| `<file path="...">` | Create NEW file (first chunk of a chunked emission, too) |
-| `<append path="...">` | Add to end of EXISTING file — OR continue a `<file>` you opened earlier |
+| Tag | Body semantic | Use when |
+|-----|---------------|----------|
+| `<file path="...">` | COMPLETE new content; any existing content is REPLACED | Creating a NEW file (or first chunk of chunked emission). If the file already exists, you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — otherwise the write conflicts to prevent silent clobber. |
+| `<append path="...">` | ADDITION only, concatenated at the file's *physical end* | ONLY when content naturally extends the file's tail without affecting prior content (CSS cascade tail layer, .gitignore line, log entry, barrel re-export at bottom). NOT a default for "sibling task already wrote this file" — that's `edit_file`. |
+| `edit_file` (tool) | Search/replace targeted pairs | **Default channel for modifying an existing file** — adding an import, inserting a JSON property, changing a value, adjusting a block. Most cross-task continuation falls here. |
 
 **🚨 CRITICAL: `<file>` and `<append>` tags are SELF-CONTAINED XML, NOT tool calls!**
 
@@ -239,8 +240,9 @@ code...
 | Create NEW file (small enough for one round) | `<file path="...">` tag |
 | Create NEW file (expected ≥ ~20 KB) | First chunk: `<file path="...">` + `<done>false</done>`; rest: `<append path="...">` in next rounds |
 | Continue a file truncated by a previous round | `<append path="...">` (do NOT re-emit content already written) |
-| Edit EXISTING file | `edit_file` tool |
-| Append to existing file (extend separately) | `<append path="...">` tag |
+| Modify existing file (most cross-task continuation — adding import / JSON property / value change / block adjust) | `edit_file` tool |
+| Extend existing file at its *physical tail* (CSS cascade tail / .gitignore line / log entry — line-based natural concat) | `<append path="...">` tag |
+| Deliberately REPLACE all content of an existing file with a complete new body | `<file path="..." overwrite="true">` tag |
 | Delete single file | `delete_file` tool |
 | Delete directory / multiple files | `run_command` with `rm` |
 
@@ -282,16 +284,21 @@ const y = "</append>";    // Use: "</" + "append>"
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Before Any CREATE: Check First
 
-**Constraint**: Do NOT use `<file>` tag on a file that already exists. It overwrites all content.
+**Constraint**: Plain `<file path="...">` (without `overwrite="true"`) is for NEW files only. If the file already exists, the write conflicts to prevent silent clobber. Choose channel by *what your body represents*:
 
 | Check | Source |
 |-------|--------|
 | File content shown in this prompt? | `Modify Targets — Current Content` section |
 | File path listed in this prompt? | `Existing Codebase Files` section |
-| File created earlier in this session? | Your own previous output |
+| File created earlier in this session (by you OR a sibling task)? | Your own previous output / sibling task's touched files |
 | Uncertain (path not in either section)? | `list_files` to verify |
 
-Existing files (any of the above checks hits): `edit_file` or `<append>`. New files only: `<file>`.
+If any check hits (existing file), pick channel by body shape:
+- **`edit_file` (DEFAULT)** — body modifies existing content (adding an import, inserting a JSON property, changing a value, adjusting a block). Most cross-task continuation falls here.
+- **`<append path="...">`** — body extends the file's *physical tail* without affecting prior content (CSS cascade tail, .gitignore line, log entry).
+- **`<file path="..." overwrite="true">`** — body REPLACES all existing content (rare; verify your body is truly the complete new file).
+
+New files (no check hits): plain `<file path="...">`.
 
 **Constraint**: Only create/modify files within YOUR task's scope.
 
