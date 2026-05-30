@@ -10,6 +10,7 @@ import { SectionShell } from '../layout/Explorer/SectionShell';
 import { RowList } from '../layout/Explorer/RowList';
 import { FeatureRow } from '../layout/Explorer/FeatureRow';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { FeatureDeletionPanel } from '../common/FeatureDeletion/FeatureDeletionPanel';
 
 /**
  * Aurora-tokenized FeatureSection.
@@ -42,6 +43,7 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
   const {
     handleCreateFeature,
     handleDeleteFeature,
+    handleForceDeleteFeature,
     handleFeatureChange,
   } = useFeatureActions(selectedProject);
 
@@ -316,6 +318,8 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
           />
         </div>
       )}
+
+      <FeatureDeletionPanel onForceDelete={handleForceDeleteFeature} />
     </div>
   );
 }

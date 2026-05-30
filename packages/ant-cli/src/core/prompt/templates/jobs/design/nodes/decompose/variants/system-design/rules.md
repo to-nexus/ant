@@ -126,9 +126,9 @@ All document types can be generated in parallel. Tasks targeting the SAME file s
 
 ---
 
-## MSA MULTI-DOCUMENT STRATEGY (if multiple boundaries detected)
+## MULTI-BOUNDARY DOCUMENT STRATEGY (if multiple boundaries detected)
 
-**When MSA / MULTI-UNIT DETECTION above produces non-empty `services` and/or `fePackages`.**
+**When MULTI-BOUNDARY DETECTION above produces non-empty `services` and/or `fePackages`.**
 
 The two tier decisions are independent:
 - **Backend split**: Each entry in `services` → `be-system-{service}.md` + `api-contract-{service}.md`
@@ -224,6 +224,34 @@ Example prefix (literal digit only):
 </tasks>
 ```
 
+#### Concrete value examples (illustrate the spectrum — pick the case that matches your observation, do NOT copy names verbatim)
+
+**Case A — single boundary per tier (no multi-boundary observed):**
+
+```
+<documentType>unified</documentType>
+<services>[]</services>
+<fePackages>[]</fePackages>
+```
+
+**Case B — frontend-only with multi-package observed (e.g. admin console + end-user app):**
+
+```
+<documentType>msa-contract-first</documentType>
+<services>[]</services>
+<fePackages>["app","admin"]</fePackages>
+```
+
+**Case C — fullstack with multi-service AND multi-package observed:**
+
+```
+<documentType>msa-contract-first</documentType>
+<services>["auth","order"]</services>
+<fePackages>["web","admin"]</fePackages>
+```
+
+> The identifiers shown (`app`, `admin`, `auth`, `order`, `web`) are illustrative only. **Always extract actual names from the source documents** — do NOT copy these placeholder identifiers verbatim.
+
 ### Provider vs Consumer fields
 
 | Field | Meaning | Files produced | Allowed intent(s) |
@@ -259,25 +287,27 @@ The `techTier` object describes the job-level technology stack (singular). When 
 ### Document Type Rules
 
 **"unified"**:
-- Use for: Frontend-only projects (with no consumer hint), CLI tools, or projects without ANY api-contract surface
-- targetFiles (frontend-only): `["fe-system-main.md"]`
-- targetFiles (backend without external API): `["be-system-main.md"]`
+- Use for: Frontend-only projects with a **single FE package** (no multi-boundary observed in MULTI-BOUNDARY DETECTION above) and no consumer hint; CLI tools; projects without ANY api-contract surface.
+- targetFiles (frontend-only, single package): `["fe-system-main.md"]`
+- targetFiles (backend without external API, single service): `["be-system-main.md"]`
 - services: `[]`, fePackages: `[]`, consumedApis: `[]`
+- **Upgrade**: If FE multi-package OR BE multi-service is observed, switch to `msa-contract-first` (see below).
 
 **"contract-first"**:
-- Use for: Any project with an `api-contract-*.md` surface — provider OR consumer
+- Use for: Any project with an `api-contract-*.md` surface AND no multi-boundary observed — provider OR consumer.
   - PROVIDER (this project exposes its own API): backend-only / fullstack with `services: []` (single boundary)
   - CONSUMER (this project consumes external APIs): any intent with `consumedApis: [...]` non-empty
-- targetFiles (fullstack provider): `["api-contract-main.md", "fe-system-main.md", "be-system-main.md"]`
-- targetFiles (backend-only provider): `["api-contract-main.md", "be-system-main.md"]`
-- targetFiles (frontend-only consumer): `["fe-system-main.md", "api-contract-{c}.md", ...]`
+- targetFiles (fullstack provider, single boundary per tier): `["api-contract-main.md", "fe-system-main.md", "be-system-main.md"]`
+- targetFiles (backend-only provider, single boundary): `["api-contract-main.md", "be-system-main.md"]`
+- targetFiles (frontend-only consumer, single boundary): `["fe-system-main.md", "api-contract-{c}.md", ...]`
 - services: `[]`, fePackages: `[]`
+- **Upgrade**: If FE multi-package OR BE multi-service is observed, switch to `msa-contract-first` (the api-contract surface can still coexist).
 
 **"msa-contract-first"**:
-- Use for: Projects with **multiple OWNED service boundaries** and/or **multiple frontend package boundaries**
+- Use for: Projects where the MULTI-BOUNDARY DETECTION above produced **multiple OWNED service boundaries** and/or **multiple frontend package boundaries**. This is the canonical case for monorepo / multi-package projects in any of the three tier compositions (FE-only / BE-only / fullstack).
 - services: `["<service1>", "<service2>", ...]` (backend services from source documents, empty if single backend)
 - fePackages: `["<package1>", "<package2>", ...]` (frontend packages from source documents, empty if single frontend)
-- targetFiles: computed from services and fePackages
+- targetFiles: computed from services and fePackages (tiers without observed boundaries keep `*-main.md`).
 - `consumedApis` may also coexist with msa-contract-first when this project both owns multiple services AND consumes external APIs.
 
 **⚠️ Constraint**: Only use `msa-contract-first` when OWNED service or package boundaries are observed. Multiple `consumedApis` entries alone do NOT make this project an MSA — they describe external systems.
@@ -326,6 +356,8 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
   <task>{"id":"<unique-kebab-case-id>","name":"<concise task name>","targetFile":"<must match one of targetFiles>","parallelGroup":"<group-id: same file = same group>","assignedSections":["§ <exact catalog section name>", "§ <exact catalog section name>"]{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"<abstract topic areas; section assignments are authoritative>","priority":200}</task>
 </tasks>
 ```
+
+The empty arrays above are the **structural shape** — they do NOT indicate that single-boundary is the default. Populate them from MULTI-BOUNDARY DETECTION above; concrete-value examples are in the OUTPUT FORMAT section's "Case A / B / C" subsection.
 
 **Constraints:**
 - `assignedSections` values MUST use exact names from the document-type catalog (e.g., `"§ API Endpoints"`, NOT abbreviated forms like `"§ Endpoints"`)

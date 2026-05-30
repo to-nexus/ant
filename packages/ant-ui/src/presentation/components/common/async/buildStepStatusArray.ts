@@ -3,9 +3,10 @@ import type { StepIndicatorStep, StepStatus } from './primitives/StepIndicator';
 /**
  * Derive a `StepIndicator` step array from a phase order + current/failed phase.
  *
- * Two consumers — IDE startup (`IdeStepRail`) and project deletion
- * (`ProjectDeletionStepRail`) — share this logic so the rules for
- * pending/active/complete/failed cannot drift.
+ * Consumers — IDE startup (`IdeStepRail`) and any phased-operation
+ * panel (`<PhasedOperationPanel>` used by project/feature deletion) —
+ * share this logic so the rules for pending/active/complete/failed
+ * cannot drift.
  *
  * Status rules:
  *   - `failedPhase === step` → `failed` (red)
