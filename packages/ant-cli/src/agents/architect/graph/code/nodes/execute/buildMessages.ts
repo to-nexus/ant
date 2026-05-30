@@ -569,15 +569,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         let totalBytes = 0;
 
         if (candidates.length > 0) {
-          const previewList = candidates.slice(0, maxImages).map(p => `- ${p}`).join('\n');
           uiImageBlocks.push({
             type: 'text',
             text:
               `# UI Handoff Images\n` +
-              `The following image blocks are images from \`visual/ui/handoff\` (the handoff UI source — free-form bundle, observe only).\n` +
-              `Use them to match layout/spacing/visual states.\n` +
-              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`visual/ui/ant/ui-assets.json\` (including destination paths).\n\n` +
-              `${previewList}\n`,
+              `The blocks that follow pair each handoff binary preview with its source path (caption immediately precedes its image). Use the previews to match layout/spacing/visual states. Other binary entries in the stub manifest are path-only references with no attached preview.\n` +
+              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`visual/ui/ant/ui-assets.json\` (including destination paths).\n`,
           });
         }
 
@@ -622,6 +619,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           const data = buf.toString('base64');
           totalBytes += stat.size;
 
+          uiImageBlocks.push({
+            type: 'text',
+            text: `Image preview — ${rel}:`,
+          });
           uiImageBlocks.push({
             type: 'image',
             source: {
