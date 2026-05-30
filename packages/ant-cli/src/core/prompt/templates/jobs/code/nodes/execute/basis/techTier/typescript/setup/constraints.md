@@ -37,7 +37,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 ### File Categories:
 
-**✅ CREATE (Configuration layer)**
+**✅ CREATE (Configuration + Directory skeleton)**
 - Package: package.json, lock files
 - TypeScript: tsconfig.json, tsconfig.*.json
 - Build tool config (e.g., Vite, Webpack — use the tool's current config format)
@@ -46,13 +46,13 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Project: .gitignore, README.md, index.html (entry point only)
 - Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Docker: Dockerfile, docker-compose.yml (see Infrastructure Services below)
+- **Directory skeleton** — create the top-level source directory tree reflecting architecture boundaries from system design (or framework convention if no system design exists). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files` as the structural context.
 
-**❌ DON'T CREATE (Application layer)**
-- Source directories: src/*, app/*, pages/*, lib/*, components/*, hooks/*, utils/*
-- Application files: main.ts, App.tsx, server.ts, index.tsx
+**❌ DON'T CREATE (Application source files)**
+- Application source files: main.ts, App.tsx, server.ts, index.tsx
 - Any .tsx/.jsx/.ts/.js outside of *.config.* files
 
-**Constraint**: Only create configuration-layer files. Do NOT create application code directories (src/*, app/*, pages/*, components/*) or application source files (.tsx/.jsx/.ts/.js outside *.config.*).
+**Constraint**: Create configuration files AND the directory skeleton (with `.gitkeep`). Do NOT create application source files (.tsx/.jsx/.ts/.js outside *.config.*) — feature tasks own those.
 
 **Source root for tooling config**: When configuring paths that reference source directories (e.g., styling framework source scan paths, tsconfig `paths`), use `src/` as the default source root per the language profile convention. Feature tasks will create source files there.
 

@@ -703,6 +703,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 | **Application configuration** | Does the specification mention secrets, API keys, or configuration that must be provided via environment variables? |
 
 **Setup task description MUST mention (when applicable):**
+- Initial directory skeleton — seal the top-level source directory tree (with `.gitkeep`) reflecting architecture boundaries from the system design (or framework convention if no system design). Sibling and future tasks bind to this skeleton via `list_files` as the structural context.
 - `docker-compose.yml` with **infrastructure** service definitions ONLY (databases, caches, message queues) — if external services are observed in the specification. Do NOT include application/business services (API servers, web servers) in docker-compose — the platform manages application process lifecycle separately.
 - `.env.example` / `.env` with `# @connection {category} {name}` annotation for connection endpoint URLs — the platform runtime contract defines placement (root for shared infrastructure, per-service for service-specific configuration)
 - Application configuration variables (secrets, API keys) observed in the specification — mention their purpose so the setup task provisions them
