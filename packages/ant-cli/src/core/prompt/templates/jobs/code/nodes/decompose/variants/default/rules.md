@@ -296,6 +296,14 @@ CRITICAL:
 **Constraint**: a handoff bundle is selected — create `"design-system"` task(s) that will observe the bundle:
 - Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure derived from whatever the handoff files explicitly show. Do NOT set `uiSections` (handoff has no schema).
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. Component **design patterns** (structure, layout hierarchy, micro-interactions) MUST be derived from observations of the handoff; the **implementation** is authored in the target codebase's framework and conventions at execute time. Do NOT plan tasks whose deliverable is a verbatim copy of a handoff code file.
+
+**ui task grouping**: If the stub manifest carries multiple code-shaped entries (e.g. several `.jsx` / `.html` / framework-component files), decompose ALSO emits `"ui"` task(s) alongside the design-system task. Grouping signals (observe the manifest shape; do not read file contents at this phase):
+- Directory-per-screen pattern (e.g. `screens/login/`, `pages/dashboard/`) → one ui task per screen directory.
+- Flat bundle with named files (e.g. `Header.jsx`, `Sidebar.jsx`, `Hero.html`) → one ui task per major component or layout region.
+- Single prototype file → ui task may be unnecessary; the design-system task can carry component intent for that case.
+- If a guide-candidate markdown is visible in the manifest (e.g. a top-level `*.md` whose name or position suggests it explains the bundle — `README`, `HANDOFF`, `INDEX`, `GUIDE`, `INSTRUCTIONS`, `INTENT`, `NOTES`, `SPEC`, `OVERVIEW`, `MANIFEST` in any case, or a markdown file otherwise positioned as the bundle's explanation), its stated screen/component grouping is the SSOT — it overrides manifest-shape inference. Detailed observation of that guide (full survey + read order) is deferred to each task's plan and execute phase; decompose only needs enough information to choose the grouping.
+
+The design-system task handles token / theme infrastructure; ui tasks handle component-level pattern derivation — each ui task's plan phase produces a handoff evidence map (path × intent categories × read range) before any file content is consumed.
 {{/if}}
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
