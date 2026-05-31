@@ -29,6 +29,12 @@ export function DockedConsole({
   const visibleLogs = logs.slice(-100);
   const hasLogs = logs.length > 0;
 
+  const formatTimestamp = (raw: string) => {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleTimeString('en-GB', { hour12: false });
+  };
+
   return (
     <div
       style={{
@@ -145,7 +151,7 @@ export function DockedConsole({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {log.timestamp}
+                  {formatTimestamp(log.timestamp)}
                 </span>
                 <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                   {log.message}
