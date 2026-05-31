@@ -54,9 +54,9 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 | **Implement** | Create, modify, copy per plan fields. |
 
 ────────────────────────────────────────────────────────────────────────────────
-### 1-1. Pre-Planned Sub-Task (when `parentReasoning` is in the plan)
+### 1-1. Plan Application & Refinement Authority
 
-If the plan JSON contains a top-level `parentReasoning` field, this task is a **child of a deep-think parent** that already settled the solution. The plan you received is the parent's confirmed sub-slice for you. The plan-thinking phase has been skipped on purpose.
+**Principle**: The plan is a sketch of WHAT and WHERE; current codebase files are the SSOT for HOW the citations realize. The plan typically points you at the defining file via an inline path in the citing entry's `purpose` / `changes`. Read that file to verify the exact signature and call shape before writing the call site — if plan prose and defining file disagree on shape, the defining file wins. If the plan cites an identifier without a defining-file path, locate the file via `search_code` / `list_files` before writing the call; do NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted from the defining file's signature. Plan's structural decisions (decomposition, file allocation, intent) remain frozen; your refinement authority is limited to the realization axis (signatures, call shapes, type shapes, conventions discovered while reading).
 
 **Constraint — Solution direction is FROZEN**:
 
@@ -64,12 +64,12 @@ If the plan JSON contains a top-level `parentReasoning` field, this task is a **
 |---|---|
 | Use `read_file` / `search_code` to confirm exact import paths, function signatures, type shapes, file conventions | Change the chosen approach, library, naming, or architecture |
 | Adapt to existing-file conventions discovered while reading | Propose alternative solutions or "better" patterns |
-| Fill in edge cases / error handling the plan didn't spell out | Question or override `parentReasoning` |
-| Resolve trivially missing details consistent with `parentReasoning` | Skip implementation entries or add unrelated work |
+| Fill in edge cases / error handling the plan didn't spell out | Question or override the plan's structural reasoning |
+| Resolve trivially missing details consistent with the plan | Skip implementation entries or add unrelated work |
 
-**Why**: sibling sub-tasks share the SAME `parentReasoning` and rely on identical naming / signatures decided by the parent. Renaming a parent-specified symbol breaks any sibling that imports or calls it. The parent owned integrated reasoning across siblings; your job is faithful application + tool-driven refinement, not re-design.
+**Additional constraint (when `parentReasoning` is present in the plan)**: Sibling sub-tasks share the SAME `parentReasoning` and rely on identical naming / signatures decided by the parent. Renaming a parent-specified symbol breaks any sibling that imports or calls it. The parent owned integrated reasoning across siblings; your job is faithful application + tool-driven refinement, not re-design of cross-sibling contracts.
 
-If something in the plan looks impossible to apply (e.g. `modify` target file does not exist), do NOT improvise an alternative — emit `<done>false</done>` with a brief diagnostic so the parent's verification task surfaces the gap.
+If something in the plan looks impossible to apply (e.g. `modify` target file does not exist), do NOT improvise an alternative — emit `<done>false</done>` with a brief diagnostic so the downstream verification task surfaces the gap.
 
 ### Dependency Compliance
 
