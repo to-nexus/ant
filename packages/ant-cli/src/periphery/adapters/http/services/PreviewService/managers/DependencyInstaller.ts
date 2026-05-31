@@ -270,7 +270,7 @@ export class DependencyInstaller {
     
     if (pm === 'pnpm') {
       command = 'pnpm';
-      args = ['install'];
+      args = ['install', '--config.confirm-modules-purge=false'];
     } else if (pm === 'yarn') {
       command = 'yarn';
       args = ['install'];
@@ -291,9 +291,11 @@ export class DependencyInstaller {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
-        ...(credentialEnv && Object.keys(credentialEnv).length > 0
-          ? { env: { ...process.env, ...credentialEnv } }
-          : {}),
+        env: {
+          ...process.env,
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+          ...(credentialEnv ?? {}),
+        },
       });
 
       const onAbort = () => {
