@@ -290,16 +290,20 @@ shared namespace scope, the build fails with duplicate symbol errors. Define ONL
 what YOU own; depend on interfaces for what others own.
 
 ────────────────────────────────────────────────────────────────────────────────
-## 🔌 INTERFACE CONTRACT CONFORMANCE
+## 🔌 EXISTING-IDENTIFIER CONTRACT
 ────────────────────────────────────────────────────────────────────────────────
 
-**Principle**: An implementation must conform to its interface contract. The interface definition is the single source of truth for method names, parameter types, and return types.
+**Principle**: For every identifier already defined in the codebase at the time this task runs — a factory, hook, interface, exported class, type alias, or constant created by an earlier task in this job or by the pre-existing codebase — the **defining file** is the single source of truth for its name, signature, and call shape. Task hierarchy (parent / sibling / foundation) is irrelevant; what matters is whether the file already exists when this task executes.
 
-**Observation target**: Does this task create implementations for interfaces defined by a foundation task or another module?
+**Observation target**: Do your `create` / `modify` entries cite an identifier whose defining file already exists in the codebase? This includes outputs of earlier-priority tasks, sub-batches that ran before yours, and files present before this job started.
 
-**Constraint**: When the plan includes implementation files, the corresponding interface definition files MUST be listed in `requiredFiles`. Do NOT implement from memory or inferred naming — observe the actual interface first.
+**Constraint**: When the plan cites such an identifier in `purpose` / `changes`, record the **defining file path** inline next to the citation. A bare identifier name with no defining-file hint forces execute into rediscovery via `search_code` and risks pointing execute at a drifted caller of the same identifier elsewhere in the codebase.
 
-⚠️ **Blind spot**: When interface and implementation are created by different tasks (or at different times within the same task), method names and signatures easily drift. The implementation author assumes a name like `subscribe(symbol, callback)` while the interface defines `subscribe(symbol)` + `onUpdate(callback)` separately.
+**Constraint** (fan-out / batches[] case): When your plan fans out via `batches[]` and a child batch will consume an existing identifier whose defining file is not in the directory tree your parent observed, list that defining file in the child batch's `requiredFiles` so the child's plan phase observes it before planning. This is the structured channel parallel to the inline `purpose` / `changes` path above — use whichever fits the plan shape.
+
+**Constraint**: Do NOT implement (or plan implementation of) a consumed existing identifier from memory or inferred naming. Observe the defining file first — at plan time for path sketch, at execute time for exact signature verification.
+
+⚠️ **Blind spot**: When a consumed identifier and its callers land in the codebase at different times (different tasks / different turns within one task), method names and signatures easily drift. The implementation author assumes a name like `subscribe(symbol, callback)` while the defining file declares `subscribe(symbol)` + `onUpdate(callback)` separately — or a factory `createApiPort(session)` is called as `createApiPort()` because the caller mimicked a drifted earlier caller in the codebase instead of reading the factory's defining file. Inline the defining file's path in your plan entry; execute will read that file as the SSOT and verify the exact shape, ignoring any drifted callers it may also encounter.
 
 {{> jobs/code/base/injections/secure-coding}}
 

@@ -255,6 +255,8 @@ Follow the framework/language-specific setup instructions from:
 
 **Constraint**: Do NOT mix conventions within a single commit. If a new convention genuinely emerges (e.g. flipping to a different export style across the codebase) AND the decision passes the 3-condition filter, record it in `codebase/ANTRULES.md` in the same commit and update sibling files atomically; do not leave mixed styles. A one-off inconsistency with an existing sibling pattern is a mistake to fix, not a new convention to record.
 
+**Constraint**: This rule applies to convention-level patterns (export style, casing, formatting). For an identifier's signature or call shape, the defining file is the SSOT (see "Plan Application & Refinement Authority" in rules.md) — existing callers in the codebase may have drifted; verify against the defining file, not against a nearby caller.
+
 ⚠️ **Blind spot**: Parallel feature tasks that all create "just this one component" with slightly different conventions produce silent downstream failures — integration files (`page.tsx`) and test files pick one convention and the other half of components break. Sibling observation catches this at creation time.
 
 ### Testability Principle
