@@ -688,8 +688,10 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 - Create setup task(s) ONLY for NEW projects (no existing codebase)
 - Do NOT create setup task if fileList shows ANY files
 - Do NOT create setup task to fix missing entry points (that is a feature task)
-- Monorepo -> multiple setup tasks (root + each package), ascending priorities (100, 101, 102, ...)
-- Monolithic -> single setup task
+- **Package boundary follows unit boundary, NOT stack**: extract one package per independently-runnable **application** (deployable app or service) AND one per **shared library** consumed by ≥ 2 applications. Stack does not cap package count — a single stack (frontend-only or backend-only) with multiple complete applications IS multi-package; a fullstack project is not merely "one frontend + one backend package" but every application/service it describes plus its shared libraries. Do NOT lump all frontend or all backend into one package.
+- **⚠️ Discriminator**: multiple audience views within a SINGLE application spec are ONE package (internal route/layout separation); separately-specified complete applications are SEPARATE packages. The signal is the described unit granularity, not audience count and not the frontend/backend axis. Do NOT split one application into invented packages, and do NOT collapse distinct applications merely because they share a stack.
+- Monorepo (multiple units) -> multiple setup tasks (root + each package), ascending priorities (100, 101, 102, ...)
+- Monolithic (single application, no shared library) -> single setup task
 - Setup = infrastructure and configuration (dependency manifests, build tool config, environment files). Setup MUST NOT create application source code (handlers, services, business logic)
 - Features = user-facing functionality (source code)
 - Each task must have a unique id (kebab-case)

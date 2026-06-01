@@ -17,44 +17,36 @@
 
 ---
 
-## 0. Project Structure Decision ⭐⭐⭐
+## 0. Workspace Mechanics (single vs multi-package) ⭐⭐⭐
 
-**Monorepo vs Single Package:**
+**The package structure is already decided by your setup task scope** — whether this is a single
+package or a multi-package workspace was determined during decomposition (single setup task →
+single package; root + per-package setup tasks → multi-package workspace). This section gives the
+**pnpm/TypeScript mechanics** for realizing whichever structure your setup task specifies. It does
+NOT re-decide the structure.
 
-Use **monorepo** (multiple packages) if:
-- Multiple related applications/libraries (even single-stack)
-- Shared code between packages (types, utils, domain logic)
-- Need independent versioning or deployment
+**Single package**: a plain `package.json` at `codebase/` — no `pnpm-workspace.yaml`.
 
-Use **single package** if:
-- Single application, simple domain, no sharing needed
+**Multi-package workspace (monorepo)**: realize the units the setup tasks define —
+**deployable applications** under `apps/*` and **shared libraries** under `packages/*`.
 
-**🚨 CRITICAL: Fullstack projects MUST use monorepo**
-- Frontend + Backend = Always separate packages
-- Mandatory structure: `packages/frontend`, `packages/backend`, `packages/shared`
-- No exceptions for fullstack
+**Tool:** Use **pnpm workspaces** (not npm — faster, stricter).
 
-**🚨 MSA/Service-Oriented (if design doc specifies service boundaries):**
-- Each service boundary in design doc = separate package
-- Shared code (types, DTOs) = separate package
-- Use scoped package names: `@project/<service-name>`
-- **Follow design doc's service naming and boundaries exactly**
-
-**Monorepo tool:** Use **pnpm workspaces** (not npm - faster, stricter)
-
-**🚨 CRITICAL: For monorepo, you MUST create `pnpm-workspace.yaml`:**
+**🚨 CRITICAL: A multi-package workspace MUST have `pnpm-workspace.yaml` at `codebase/`**, with
+globs covering whichever of deployable apps and shared libraries the structure uses:
 
 ```yaml
 packages:
+  - 'apps/*'
   - 'packages/*'
 ```
 
-**Critical rules:**
-- ✅ Always create `pnpm-workspace.yaml` file first
-- Use scoped package names: `@project/backend`, `@project/frontend`, `@project/shared`
-- Cross-package refs: `"@project/shared": "workspace:*"` (not `"*"`)
-- Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`
-- ❌ Do NOT use npm workspaces (slower, less strict)
+**Critical rules (multi-package):**
+- ✅ Create `pnpm-workspace.yaml` first; include only the globs the structure actually uses.
+- Use scoped package names: `@project/<app-or-lib-name>` (e.g. `@project/admin`, `@project/shared`).
+- Cross-package refs: `"@project/shared": "workspace:*"` (not `"*"`).
+- Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`.
+- ❌ Do NOT use npm workspaces (slower, less strict).
 
 ### Dependency Classification Protocol
 
