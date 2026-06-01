@@ -130,10 +130,9 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     expect(s.hasSpec).toBe(true);
     expect(s.hasSpecRef).toBe(true);
 
-    // System-design is context — Contract flag OFF (plan's "API Contract
-    // IMMUTABLE" must NOT fire from this slot alone; it re-fires later
-    // via package-mapping in `deriveArtifactPolicy` which is out of
-    // scope for this slot-level test).
+    // System-design surfaces as a Gate flag (`hasSystemDesign`) regardless of
+    // role — the plan's "API Contract IMMUTABLE" guidance gates on presence,
+    // not on this slot-level role distinction.
     expect(s.hasSystemDesign).toBe(true);
     expect(s.hasSystemDesignRef).toBe(false);
     expect(s.hasSystemDesignContext).toBe(true);
@@ -183,9 +182,9 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
 
   it('explicit override path — user-promoted UI refs bypass the intent default', () => {
     // When the user explicitly selects UI as refs in a gen-code-spec
-    // request (e.g. via the Action footer), `selectArtifactsWithPolicy`
-    // re-stamps role='ref' on the selected artifacts. The Contract
-    // flag then fires without any change to the intent matrix.
+    // request (e.g. via the Action footer), the RAC pool annotates those
+    // artifacts role='ref'. The Contract flag then fires without any
+    // change to the intent matrix (role is inherited from the pool).
     const userPromoted: ResolvedArtifact[] = [
       { path: 'visual/ui/ant/ui-spec.json', content: '{}', role: 'ref' },
     ];

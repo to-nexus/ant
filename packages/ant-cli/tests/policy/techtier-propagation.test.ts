@@ -3,7 +3,7 @@
  *
  * Verifies that:
  * - buildTechTier correctly constructs TechTier from codebase profile
- * - resolveTaskTechTiersFromMap maps packages to per-task tiers
+ * - resolveTaskTechTierFromStack maps a task's `stack` pointer to its tier
  * - applyExplicitTechTierOverrides preserves explicit basis over LLM emit
  * - effectiveTechTier collapses multiple tiers into one
  * - Jobs without decompose (plan, ask, visual) work without techTier
@@ -13,12 +13,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTechTier,
-  resolveTaskTechTiersFromMap,
+  resolveTaskTechTierFromStack,
   applyExplicitTechTierOverrides,
   effectiveTechTier,
   resolveToRAC,
 } from '@ant/shared';
-import type { TechTier, TechTierConfig, PackageTierEntry } from '@ant/shared';
+import type { TechTier, TechTierConfig } from '@ant/shared';
 import { AutoInjectionResolver } from '../../src/core/prompt/builder/AutoInjectionResolver';
 
 const resolver = new AutoInjectionResolver();
@@ -67,69 +67,64 @@ describe('buildTechTier', () => {
 // tests/core/rac.test.ts (the @ant/shared normalisation SSOT).
 
 // ============================================
-// resolveTaskTechTiersFromMap
+// resolveTaskTechTierFromStack — per-task stack pointer → config slot
 // ============================================
 
-describe('resolveTaskTechTiersFromMap', () => {
-  const config: TechTierConfig = {
+describe('resolveTaskTechTierFromStack', () => {
+  // Fullstack config with DISTINCT frameworks per tier — the non-collapse
+  // invariant (Next front + Express back must not merge into one framework).
+  const fullstack: TechTierConfig = {
     stack: 'fullstack',
     frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' },
-    backend: { language: 'typescript', framework: 'nextjs', stack: 'backend' },
+    backend: { language: 'typescript', framework: 'express', stack: 'backend' },
   };
 
-  const packageTiers: Record<string, PackageTierEntry> = {
-    'fe-main': { language: 'typescript', framework: 'react', stack: 'frontend' },
-    'be-api': { language: 'typescript', framework: 'nestjs', stack: 'backend' },
-    'be-go': { language: 'go', framework: 'gin', stack: 'backend' },
-  };
-
-  it('no packages → all tiers from config', () => {
-    const tiers = resolveTaskTechTiersFromMap(undefined, config, packageTiers);
-    expect(tiers).toHaveLength(2);
+  it('stack=frontend → [config.frontend] (framework not collapsed)', () => {
+    const tiers = resolveTaskTechTierFromStack('frontend', fullstack);
+    expect(tiers).toHaveLength(1);
+    expect(tiers[0].stack).toBe('frontend');
+    expect(tiers[0].framework).toBe('nextjs');
   });
 
-  it('no config → empty', () => {
-    expect(resolveTaskTechTiersFromMap(['fe-main'], undefined, packageTiers)).toEqual([]);
-  });
-
-  it('uses packageTier entry values over config values', () => {
-    const tiers = resolveTaskTechTiersFromMap(['be-api'], config, packageTiers);
+  it('stack=backend → [config.backend] (distinct from frontend)', () => {
+    const tiers = resolveTaskTechTierFromStack('backend', fullstack);
     expect(tiers).toHaveLength(1);
     expect(tiers[0].stack).toBe('backend');
-    expect(tiers[0].framework).toBe('nestjs');
-    expect(tiers[0].language).toBe('typescript');
+    expect(tiers[0].framework).toBe('express');
   });
 
-  it('frontend package gets entry framework', () => {
-    const tiers = resolveTaskTechTiersFromMap(['fe-main'], config, packageTiers);
+  it('fullstack frameworks do NOT collapse: fe=nextjs ≠ be=express', () => {
+    const fe = resolveTaskTechTierFromStack('frontend', fullstack)[0];
+    const be = resolveTaskTechTierFromStack('backend', fullstack)[0];
+    expect(fe.framework).not.toBe(be.framework);
+  });
+
+  it('no config → []', () => {
+    expect(resolveTaskTechTierFromStack('frontend', undefined)).toEqual([]);
+  });
+
+  it('stack omitted on single-stack config → the sole tier', () => {
+    const single: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+    };
+    const tiers = resolveTaskTechTierFromStack(undefined, single);
     expect(tiers).toHaveLength(1);
     expect(tiers[0].framework).toBe('react');
   });
 
-  it('mixed packages → two tiers with correct frameworks', () => {
-    const tiers = resolveTaskTechTiersFromMap(['fe-main', 'be-api'], config, packageTiers);
-    expect(tiers).toHaveLength(2);
-    const fe = tiers.find(t => t.stack === 'frontend');
-    const be = tiers.find(t => t.stack === 'backend');
-    expect(fe?.framework).toBe('react');
-    expect(be?.framework).toBe('nestjs');
+  it('stack given but that slot empty → []', () => {
+    const single: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', stack: 'frontend' },
+    };
+    expect(resolveTaskTechTierFromStack('backend', single)).toEqual([]);
   });
 
-  it('go backend package uses entry language', () => {
-    const tiers = resolveTaskTechTiersFromMap(['be-go'], config, packageTiers);
+  it('stack omitted on fullstack config → contract-violation fallback to frontend', () => {
+    const tiers = resolveTaskTechTierFromStack(undefined, fullstack);
     expect(tiers).toHaveLength(1);
-    expect(tiers[0].language).toBe('go');
-    expect(tiers[0].framework).toBe('gin');
-  });
-
-  it('unmapped packages → falls back to all config tiers', () => {
-    const tiers = resolveTaskTechTiersFromMap(['unknown-pkg'], config, packageTiers);
-    expect(tiers).toHaveLength(2);
-  });
-
-  it('deduplicates by stack key', () => {
-    const tiers = resolveTaskTechTiersFromMap(['fe-main', 'fe-main'], config, packageTiers);
-    expect(tiers).toHaveLength(1);
+    expect(tiers[0].stack).toBe('frontend');
   });
 });
 
@@ -138,7 +133,7 @@ describe('resolveTaskTechTiersFromMap', () => {
 //
 // Policy: explicit basis from `actionMetadata.basis.techTier` is authoritative.
 // Mirrors the visualTier / gameArtTier / gameContentTier invariant — preset
-// fields win over LLM-emitted packageTiers entries for the same stack.
+// fields win over LLM-emitted `<techTier>` values for the same stack.
 // ============================================
 
 describe('applyExplicitTechTierOverrides', () => {
@@ -204,40 +199,33 @@ describe('applyExplicitTechTierOverrides', () => {
     expect(out[0].gameEngine).toBe('phaser');
   });
 
-  it('end-to-end: explicit nextjs survives LLM packageTiers emitting react', () => {
+  it('end-to-end: explicit nextjs survives a config frontend framework of react', () => {
+    // Config (LLM-derived) has react on frontend; explicit basis pins nextjs.
     const config: TechTierConfig = {
       stack: 'frontend',
-      frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' },
-    };
-    const llmEmittedPackageTiers: Record<string, PackageTierEntry> = {
-      'fe-main': { language: 'typescript', framework: 'react', stack: 'frontend' },
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
     };
     const explicit: TechTierConfig = {
       stack: 'frontend',
       frontend: { framework: 'nextjs', stack: 'frontend' },
     };
-    const resolved = resolveTaskTechTiersFromMap(['fe-main'], config, llmEmittedPackageTiers);
+    const resolved = resolveTaskTechTierFromStack('frontend', config);
     const final = applyExplicitTechTierOverrides(resolved, explicit);
     expect(final).toHaveLength(1);
     expect(final[0].framework).toBe('nextjs');
     expect(final[0].stack).toBe('frontend');
   });
 
-  it('end-to-end without explicit: monorepo packageTiers divergence preserved', () => {
+  it('end-to-end without explicit: per-stack framework divergence preserved', () => {
     const config: TechTierConfig = {
       stack: 'fullstack',
-      frontend: { language: 'typescript', stack: 'frontend' },
-      backend: { language: 'typescript', stack: 'backend' },
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+      backend: { language: 'typescript', framework: 'express', stack: 'backend' },
     };
-    const llmEmittedPackageTiers: Record<string, PackageTierEntry> = {
-      'fe-main': { language: 'typescript', framework: 'react', stack: 'frontend' },
-      'be-api': { language: 'typescript', framework: 'express', stack: 'backend' },
-    };
-    const resolved = resolveTaskTechTiersFromMap(['fe-main', 'be-api'], config, llmEmittedPackageTiers);
-    const final = applyExplicitTechTierOverrides(resolved, undefined);
-    expect(final).toHaveLength(2);
-    expect(final.find(t => t.stack === 'frontend')?.framework).toBe('react');
-    expect(final.find(t => t.stack === 'backend')?.framework).toBe('express');
+    const fe = applyExplicitTechTierOverrides(resolveTaskTechTierFromStack('frontend', config), undefined);
+    const be = applyExplicitTechTierOverrides(resolveTaskTechTierFromStack('backend', config), undefined);
+    expect(fe[0].framework).toBe('react');
+    expect(be[0].framework).toBe('express');
   });
 });
 
@@ -373,28 +361,23 @@ describe('E2E: decompose techTier → injection chain', () => {
     expect(injections).not.toContain('jobs/code/base/injections/preview-setup');
   });
 
-  it('simulates fullstack multi-package decompose → execute flow', () => {
-    const packageTiers: Record<string, PackageTierEntry> = {
-      'fe-main': { language: 'typescript', framework: 'nextjs', stack: 'frontend' },
-      'be-api': { language: 'typescript', framework: 'express', stack: 'backend' },
-    };
+  it('simulates fullstack decompose → per-stack task tiers → execute flow', () => {
     const config: TechTierConfig = {
       stack: 'fullstack',
-      frontend: { language: 'typescript', stack: 'frontend' },
-      backend: { language: 'typescript', stack: 'backend' },
+      frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' },
+      backend: { language: 'typescript', framework: 'express', stack: 'backend' },
     };
-    const taskTiers = resolveTaskTechTiersFromMap(['fe-main', 'be-api'], config, packageTiers);
+    // Each task narrows to a single stack via its `stack` pointer.
+    const feTiers = resolveTaskTechTierFromStack('frontend', config);
+    const beTiers = resolveTaskTechTierFromStack('backend', config);
+    expect(feTiers[0].framework).toBe('nextjs');
+    expect(beTiers[0].framework).toBe('express');
 
-    expect(taskTiers).toHaveLength(2);
-
-    const eff = effectiveTechTier(taskTiers);
-    expect(eff.stack).toBeUndefined();
-
+    // A backend task surfaces the backend-safety injection.
     const injections = resolver.resolve({
       job: 'code', node: 'execute', taskType: 'feature',
-      techTiers: taskTiers, data: {},
+      techTiers: beTiers, data: {},
     });
-
     expect(injections).toContain('jobs/code/nodes/execute/injections/backend-safety');
   });
 

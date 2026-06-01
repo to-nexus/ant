@@ -18,8 +18,8 @@
  * Intentionally absent:
  *   - plan.buildPrompt / extraTemplateVars — UI flows through the
  *     shared `jobs/code/nodes/plan/base` template and the generic
- *     artifact-resolution pipeline. `uiSections` scoping is applied
- *     upstream during decompose (drives `task.include` + `artifactPolicy`),
+ *     artifact-resolution pipeline. UI scoping is applied upstream during
+ *     decompose (the LLM authors `task.include` with the UI pool paths),
  *     so no ui-specific plan variant template or template-var override
  *     is required. There is no `plan/variants/ui/` template and no
  *     planGeneration.ts branch to port.
@@ -28,8 +28,8 @@
  *     transitively via test-code; integration is a feature-band concern).
  *
  * Phase-layer `task.type === 'ui'` residuals were resolved in T6b-κ:
- *   - `nodes/decompose/responseParser.ts deriveArtifactPolicy` — the
- *     ui||design-system design-context guard now dispatches through
+ *   - `nodes/decompose/responseParser.ts` task building — the
+ *     ui||design-system guard dispatches through
  *     `isUiTask` / `isDesignSystemTask` instead of literal comparison.
  *   - `nodes/execute/tools.ts isFrontendTask` — the OR chain
  *     now calls `isUiTask` / `isFeatureTask` / `isDesignSystemTask`.

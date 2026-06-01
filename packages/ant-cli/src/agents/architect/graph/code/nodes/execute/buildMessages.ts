@@ -30,7 +30,7 @@ import { collectResolvedPartials } from "../../../../../../periphery/adapters/pr
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { detectImageMimeFromBuffer, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
-import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { selectArtifacts, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, getModelContextWindow, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
@@ -298,42 +298,25 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const poolView = new ArtifactPoolView(state.artifacts || []);
   const pool = poolView.all;
 
-  const hasExplicitSelection = state.resolvedAction?.hasExplicitFields
-    && ((state.resolvedAction.refs?.length ?? 0) + (state.resolvedAction.context?.length ?? 0) > 0);
-
+  // Single per-task injection SSOT — `task.include` only. Both explicit and
+  // infer pipelines flow through the SAME narrowing path; the legacy explicit
+  // full-RAC bypass (which injected `refs ∪ context` wholesale and ignored
+  // `task.include`) is removed so per-task narrowing is structurally possible.
+  // Pool doc not pre-injected here is reachable on-demand via RAC-scoped reads
+  // (the code `tool` node gate). `verification` → selectArtifacts returns [].
   let resolvedActionWithDocs = state.resolvedAction;
-  if (hasExplicitSelection) {
-    const explicitPolicy = {
-      refs: state.resolvedAction!.refs || [],
-      context: state.resolvedAction!.context || [],
-    };
-    const selected = selectArtifactsWithPolicy(pool, explicitPolicy);
-    if (selected.length > 0) {
-      const compacted = compactArtifacts(selected, { threshold: 30_000 });
-      resolvedActionWithDocs = {
-        ...(state.resolvedAction!),
-        artifacts: compacted,
-        documents: compacted,
-      };
-      const totalChars = compacted.reduce((s, a) => s + (a.content?.length || 0), 0);
-      console.log(`📄 [Execute] Explicit: ${pool.length} pool → ${compacted.length} selected (${totalChars.toLocaleString()} chars, refs=${JSON.stringify(explicitPolicy.refs)}, context=${JSON.stringify(explicitPolicy.context)})`);
-    }
-  } else {
-    const task = state.currentTask;
-    const selected = task.artifactPolicy
-      ? selectArtifactsWithPolicy(pool, task.artifactPolicy)
-      : selectArtifacts(pool, { taskType: task.type, include: task.include });
-    const inferred = compactArtifacts(selected, { threshold: 30_000 });
+  const task = state.currentTask;
+  const selected = selectArtifacts(pool, { taskType: task.type, include: task.include });
+  const inferred = compactArtifacts(selected, { threshold: 30_000 });
 
-    if (inferred.length > 0) {
-      resolvedActionWithDocs = {
-        ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
-        artifacts: inferred,
-        documents: inferred,
-      };
-      const totalChars = inferred.reduce((s, a) => s + (a.content?.length || 0), 0);
-      console.log(`📄 [Execute] Pipeline: ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? 'default')})`);
-    }
+  if (inferred.length > 0) {
+    resolvedActionWithDocs = {
+      ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+      artifacts: inferred,
+      documents: inferred,
+    };
+    const totalChars = inferred.reduce((s, a) => s + (a.content?.length || 0), 0);
+    console.log(`📄 [Execute] ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? [])})`);
   }
 
   const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
@@ -457,12 +440,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         : (state.directive || ''),
       referenceRequests: state.referenceRequests || [],
       // Gate flag — execute branches on whether UI artifacts are
-      // present in the post-RAC selected pool. Role semantics are
-      // already baked into the selection (`selectArtifactsWithPolicy`
-      // reassigns `role='context'` for ui/design-system tasks; explicit
-      // user selections keep their authored role); the template only
-      // needs presence. See `AGENTS.md`
-      // "Post-RAC Template Condition SSOT".
+      // present in the post-RAC selected pool. Role is inherited from the
+      // pool's RAC annotation (3-axis Authority); the template only needs
+      // presence. See `AGENTS.md` "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
@@ -804,7 +784,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             artifactPool: pool.length,
             artifactsSelected: getRACDocuments(resolvedActionWithDocs).length,
             include: state.currentTask?.include || undefined,
-            packages: state.currentTask?.packages || undefined,
+            stack: state.currentTask?.stack || undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
             detectedMode: state.resolvedAction?.mode,
             taskType: state.currentTask?.type,

@@ -6,7 +6,7 @@ export function decomposeCodeResponse(): string {
       type: 'setup',
       priority: 100,
       description: 'Initialize project structure with package.json and configuration files.',
-      packages: ['mock-app'],
+      stack: 'frontend',
     },
     {
       id: 'mock-feature',
@@ -14,7 +14,7 @@ export function decomposeCodeResponse(): string {
       type: 'feature',
       priority: 200,
       description: 'Implement the main feature as described in the directive.',
-      packages: ['mock-app'],
+      stack: 'frontend',
     },
   ]);
 

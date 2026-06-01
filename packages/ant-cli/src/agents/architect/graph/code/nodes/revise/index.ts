@@ -154,8 +154,8 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
         type: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'doc';
         priority: number;
         insertAfter?: string;
-        uiSections?: string[];
-        packages?: string[];
+        include?: string[];
+        stack?: 'frontend' | 'backend';
       }>;
     };
 
@@ -292,8 +292,8 @@ function applyTaskModifications(
       type: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'doc';
       priority: number;
       insertAfter?: string;
-      uiSections?: string[];
-      packages?: string[];
+      include?: string[];
+      stack?: 'frontend' | 'backend';
     }>;
   }
 ): ArchitectGraphState {
@@ -328,11 +328,11 @@ function applyTaskModifications(
         description: taskDef.description,
         type: taskDef.type,
         priority: taskDef.priority,
-        ...(taskDef.uiSections && { uiSections: taskDef.uiSections }),
-        ...(taskDef.packages && { packages: taskDef.packages }),
+        ...(taskDef.include?.length && { include: taskDef.include }),
+        ...(taskDef.stack && { stack: taskDef.stack }),
       };
       newTasks.push(newTask);
-      console.log(`   ➕ Added task: "${newTask.name}" (P${newTask.priority}, type=${newTask.type}, packages=${taskDef.packages?.join(',') || 'none'})`);
+      console.log(`   ➕ Added task: "${newTask.name}" (P${newTask.priority}, type=${newTask.type}, stack=${taskDef.stack || 'none'})`);
     }
   }
   
