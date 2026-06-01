@@ -263,9 +263,6 @@ export async function decomposeSpec(
       totalSections: tasks.length,
       sectionScope: chapter.scope,
       include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
-      artifactPolicy: {
-        refs: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
-      },
       parallelGroup,
       completed: false,
     };

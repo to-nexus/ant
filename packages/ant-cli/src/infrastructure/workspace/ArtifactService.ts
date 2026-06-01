@@ -221,7 +221,8 @@ export class ArtifactService {
    * This enables token-efficient injection:
    * - Only requested sections are injected into prompts
    * - Decompose prompt receives TOC (section list) only
-   * - Plan/CodeGen prompts receive specific sections based on task.uiSections
+   * - Plan/CodeGen prompts receive specific sections based on the task's
+   *   `include` manifest (e.g. `visual/ui/ant/spec/{section}`)
    * 
    * @returns ParsedUiDocs structure with:
    *   - tokens: Full ui-tokens.json content

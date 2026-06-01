@@ -36,8 +36,8 @@ export interface UnifiedTask {
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
 
-  // Package scope
-  packages?: string[];
+  // Per-task tech-tier pointer (frontend / backend). Single at task level.
+  stack?: 'frontend' | 'backend';
 
   // Source files (design job)
   sourceFiles?: string[];
@@ -61,7 +61,7 @@ export function normalizeTask(task: Record<string, unknown>): UnifiedTask {
     _failureReason: task._failureReason as string | undefined,
     timing: task.timing as TaskTiming | undefined,
     tokenUsage: task.tokenUsage as TaskTokenUsage | undefined,
-    packages: Array.isArray(task.packages) ? task.packages as string[] : undefined,
+    stack: task.stack === 'frontend' || task.stack === 'backend' ? task.stack : undefined,
     sourceFiles: Array.isArray(task.sourceFiles) ? task.sourceFiles as string[] : undefined,
   };
 }

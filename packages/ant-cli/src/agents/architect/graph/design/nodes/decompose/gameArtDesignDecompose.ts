@@ -229,9 +229,6 @@ export async function decomposeGameArtDesign(
       const includePrefixes = isFigmaMode
         ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
         : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
-      const contextPrefixes = isFigmaMode
-        ? [ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
 
       taskQueue.push({
         id: task.id,
@@ -240,11 +237,8 @@ export async function decomposeGameArtDesign(
         priority: task.priority,
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
+        // Single injection SSOT — `include`; role inherited from RAC pool.
         include: includePrefixes,
-        artifactPolicy: {
-          refs: [ARTIFACT_PREFIX.SOURCES],
-          context: contextPrefixes,
-        },
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,

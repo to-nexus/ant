@@ -21,7 +21,7 @@ import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts, selectArtifactsWithPolicy, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
 
@@ -109,13 +109,13 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
   const title = task?.name?.replace(/^Spec: .+ — /, 'Spec: ').replace('Spec: ', '') || 'Feature';
 
-  // Artifact selection via artifactPolicy (role-aware) or include (flat)
+  // Single injection SSOT — `task.include` (LLM-authored), SOURCES fallback.
   const currentTask = state.currentTask as DesignTask | undefined;
   const taskSourceFiles = currentTask?.sourceFiles;
 
-  let selectedArtifacts = currentTask?.artifactPolicy
-    ? selectArtifactsWithPolicy(state.artifacts || [], currentTask.artifactPolicy)
-    : selectArtifacts(state.artifacts || [], { include: currentTask?.include || [ARTIFACT_PREFIX.SOURCES] });
+  let selectedArtifacts = selectArtifacts(state.artifacts || [], {
+    include: currentTask?.include?.length ? currentTask.include : [ARTIFACT_PREFIX.SOURCES],
+  });
 
   if (taskSourceFiles?.length) {
     const planPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;

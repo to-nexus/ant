@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -34,6 +34,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary } from "./responseParser";
+import { computeRacScope } from "./racGate";
 import { saveAnalysisForDebug } from "./saveAnalysisText";
 import type { BaseTask, TaskType } from "@ant/shared";
 import {
@@ -328,9 +329,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // See `AGENTS.md` "Post-RAC Template Condition SSOT".
   const hasUi = pool.hasUi();
 
-  // Functional meta — UI section IDs inform the LLM's `uiSections`
-  // task assignment. Full content is NOT embedded here; plan/execute
-  // load sections per task via artifactPolicy.
+  // Functional meta — UI section IDs inform the LLM's per-task `include`
+  // authoring (e.g. `visual/ui/ant/spec/<id>`). Full content is NOT embedded
+  // here; plan/execute select sections per task via `include`.
   //
   // ID = basename — fine for all three UiSource prefixes
   // (`visual/ui/{ant,figma,handoff}/…`).
@@ -659,7 +660,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const type: TaskType = typeof raw.type === 'string' ? raw.type as TaskType : 'feature';
     const priority = typeof raw.priority === 'number' ? raw.priority : 300;
     const description = typeof raw.description === 'string' ? raw.description : '';
-    const packages = Array.isArray(raw.packages) ? raw.packages.filter((p: any) => typeof p === 'string') : undefined;
+    const stack: 'frontend' | 'backend' | undefined =
+      raw.stack === 'frontend' || raw.stack === 'backend' ? raw.stack : undefined;
     const exclusive = typeof raw.exclusive === 'boolean' ? raw.exclusive : undefined;
     const parallelGroup = typeof raw.parallelGroup === 'string' ? raw.parallelGroup : undefined;
     const minimal: BaseTask = {
@@ -668,7 +670,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       type,
       priority,
       description,
-      ...(packages && { packages }),
+      ...(stack && { stack }),
       ...(exclusive !== undefined && { exclusive }),
       ...(parallelGroup && { parallelGroup }),
     };
@@ -706,13 +708,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       const { ARCHITECT_TOOLS } = await import('../../../../../common/tool/toolSchemas');
       const { handleReadFile, handleListFiles } = await import('../../../../../common/tool/handlers');
       const { CLARIFY_TOOL, handleClarify } = await import('../../../../../common/clarify');
-      const racGate = await import('./racGate');
-      const { decideRacGate } = racGate;
-      type RacScope = (typeof racGate)['decideRacGate'] extends (t: any, s: infer S) => any ? S : never;
-
-      const racScope: RacScope = isExplicitPipeline
-        ? { refs: _racRefs, context: _racContext }
-        : undefined;
+      const { decideRacGate } = await import('./racGate');
+      const racScope = computeRacScope(state.resolvedAction);
 
       // Silent chatStatus — sourceSelector.callLLMWithToolLoop owns
       // the UI emission for every tool call in the loop (one card per
@@ -1146,7 +1143,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     activeSpecRefFilename,
     uiSource ?? undefined,
     executionTier,
-    isExplicitPipeline ? 'explicit' : 'infer',
+    computeRacScope(state.resolvedAction),
   );
   logTaskSummary(tasks, referenceRequests);
   
@@ -1162,7 +1159,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     );
 
     const inferredConfig: TechTierConfig = { stack };
-    const pkgTiers = parsedTechTier.packageTiers as Record<string, { language?: string; framework?: string; stack: string }> | undefined;
 
     // Phase 1 — gameEngine 5th slot. The LLM emits `"gameEngine"` inside the
     // <techTier> JSON; the parser surfaces it as `parsedTechTier.gameEngine`
@@ -1170,27 +1166,32 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // in the browser, so engine is meaningful only on the frontend tier).
     const parsedGameEngine = parsedTechTier.gameEngine;
 
-    if (pkgTiers && stack === 'fullstack') {
-      const feEntries = Object.values(pkgTiers).filter(e => e.stack === 'frontend');
-      const beEntries = Object.values(pkgTiers).filter(e => e.stack === 'backend');
-      const feEntry = feEntries[0];
-      const beEntry = beEntries[0];
+    if (stack === 'fullstack') {
+      // Fullstack ⇒ FE and BE are distinct runtime categories, so frameworks
+      // are ALWAYS two independent values read from the stack-keyed `frontend`
+      // / `backend` sub-objects. NEVER fall back to `defaultTier.framework`
+      // for framework — that would unify FE and BE under one framework, which
+      // is incorrect. Language may legitimately be shared, so it keeps the
+      // defaultTier fallback.
+      const feParsed = parsedTechTier.frontend;
+      const beParsed = parsedTechTier.backend;
       inferredConfig.frontend = {
-        language: ((feEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
-        framework: feEntry?.framework ?? defaultTier.framework,
+        language: ((feParsed?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        framework: feParsed?.framework ?? undefined,
         stack: 'frontend',
         gameEngine: parsedGameEngine,
       };
       inferredConfig.backend = {
-        language: ((beEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
-        framework: beEntry?.framework ?? defaultTier.framework,
+        language: ((beParsed?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        framework: beParsed?.framework ?? undefined,
         stack: 'backend',
       };
     } else {
-      if (stack === 'fullstack' || stack === 'frontend') {
+      // Single-stack / no-stack — fullstack is fully handled above.
+      if (stack === 'frontend') {
         inferredConfig.frontend = { ...defaultTier, stack: 'frontend', gameEngine: parsedGameEngine };
       }
-      if (stack === 'fullstack' || stack === 'backend') {
+      if (stack === 'backend') {
         inferredConfig.backend = { ...defaultTier, stack: 'backend' };
       }
       if (!stack) {
@@ -1231,8 +1232,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (parsedTechTier.stackReasoning) {
       console.log(`   Reasoning: ${parsedTechTier.stackReasoning}`);
     }
-    if (parsedTechTier.packageTiers) {
-      console.log(`   PackageTiers: ${Object.keys(parsedTechTier.packageTiers).join(', ')}`);
+    if (stack === 'fullstack') {
+      console.log(`   Fullstack frameworks: frontend=${mergedConfig.frontend?.framework || 'none'}, backend=${mergedConfig.backend?.framework || 'none'}`);
     }
     
     if (state.deps?.previewUpdate && state.context) {
@@ -1378,16 +1379,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.7: Assign task-level techTier (packageTiers mapping)
+  // STEP 6.7: Assign task-level techTier (task.stack → config slot)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const currentTechTierConfig = state.resolvedAction?.basis?.techTier;
   if (currentTechTierConfig) {
     // Explicit techTier (raw actionMetadata.basis.techTier — never merged with LLM emit)
-    // is the authority signal: preset fields override LLM-emitted packageTiers entries
-    // for the same stack. Mirrors the visualTier / gameArtTier / gameContentTier policy.
+    // is the authority signal: preset fields override LLM-emitted values for the same
+    // stack. Mirrors the visualTier / gameArtTier / gameContentTier policy.
     const explicitTechTier = state.actionMetadata?.basis?.techTier;
     for (const task of taskQueue.getAll()) {
-      const resolved = resolveTaskTechTiersFromMap(task.packages, currentTechTierConfig, parsedTechTier?.packageTiers);
+      const resolved = resolveTaskTechTierFromStack(task.stack, currentTechTierConfig);
       task.techTiers = applyExplicitTechTierOverrides(resolved, explicitTechTier);
     }
     const narrowedCount = taskQueue.getAll().filter(t => {

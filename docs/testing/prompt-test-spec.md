@@ -25,7 +25,7 @@ D. Build Pipeline (빌드 파이프라인)
 │                                      Stage 1: 경로 해석 / Stage 2: 렌더 성공 / Stage 3: 내용 주입
 │  artifact-injection-e2e.test.ts ──── 아티팩트 role별 주입 + directive 경로별 주입 정방향 E2E (12 시나리오)
 │                                      + JSON 매트릭스 생성 (__generated__/artifact-injection-matrix.json)
-│  artifact-injection-audit.test.ts ── build() 호출부 artifacts 전달 + decompose artifactPolicy 정적 감사 (7 케이스)
+│  artifact-injection-audit.test.ts ── build() 호출부 artifacts 전달 + decompose include 정적 감사 (단일 주입 SSOT)
 │  prompt-integration.test.ts ──────── ArtifactPipeline, 문서 조립 시나리오
 │  documents-pipeline-audit.test.ts ── 문서 파이프라인 회귀 미러
 │
@@ -181,7 +181,7 @@ G. Non-prompt (비프롬프트)
 | 그룹 | 대상 파일 | 검증 |
 |------|-----------|------|
 | 2-A. build() 호출부 | code/execute/buildMessages, design/docGen/intent/system, design/docGen/intent/spec | `artifacts` 키워드 존재 |
-| 2-B. decompose 노드 | code/decompose/responseParser, design/decompose/uiDesign·systemDesign·spec | `artifactPolicy` 키워드 존재 |
+| 2-B. decompose 노드 | code/decompose/responseParser, design/decompose/uiDesign·systemDesign·spec | `include` 키워드 존재 + `artifactPolicy` 부재 |
 
 ### prompt-integration.test.ts
 
@@ -247,7 +247,7 @@ G. Non-prompt (비프롬프트)
 
 1. action-context.md, directive.md, PromptBuilder 브릿지, build() 호출부 수정
 2. `pnpm test:cli` → artifact-injection-e2e가 12개 시나리오 role별 렌더 검증
-3. artifact-injection-audit가 호출부 artifacts 전달 + decompose artifactPolicy 설정 감사
+3. artifact-injection-audit가 호출부 artifacts 전달 + decompose include 설정(및 artifactPolicy 부재) 감사
 4. `artifact-injection-matrix.json` diff로 주입 경로 변화 추적
 
 ---
