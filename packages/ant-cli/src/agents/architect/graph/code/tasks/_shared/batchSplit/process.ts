@@ -1,4 +1,5 @@
 import type { TechTier } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
@@ -375,6 +376,13 @@ export function processDiagnosticBatchSplit(
       // entry by `scheduleFor` — see its comment above for the three
       // dispatch shapes.
       const { parallelGroup, priority } = scheduleFor(i, batch);
+      // `include` carry-over: Path B inherits the parent's manifest; Path A
+      // (verification parent has none) seeds spec+api-contract so fix-applier
+      // sub-tasks keep the context the retired `error` default once supplied.
+      const subInclude: string[] | undefined =
+        effectiveKind === 'requeue-parent'
+          ? [ARTIFACT_PREFIX.SPEC, ARTIFACT_PREFIX.API_CONTRACT]
+          : nextTask.include;
       const subTask: CodeTask = {
         id: `${subType}-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         name: batch.name,
@@ -385,6 +393,10 @@ export function processDiagnosticBatchSplit(
         exclusive: hasFileOverlap,
         parallelGroup,
         batchSplitCount: newBatchSplitCount,
+        // `stack` is carried over verbatim from the parent in BOTH paths
+        // (like `band`) so per-task tech-tier narrowing survives the split.
+        ...(nextTask.stack ? { stack: nextTask.stack } : {}),
+        ...(subInclude?.length ? { include: subInclude } : {}),
         ...(subType === 'feature' ? { band: parentBand } : {}),
       } as CodeTask;
       if (taskPolicy?.populateRemediationMode !== false) {

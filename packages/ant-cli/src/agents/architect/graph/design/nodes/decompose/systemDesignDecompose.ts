@@ -20,7 +20,7 @@ import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiersFromMap, applyExplicitTechTierOverrides, type PackageTierEntry } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { assignedNotInCatalog, resolveCatalogEntry } from "./catalogLookup";
 
@@ -61,8 +61,18 @@ export interface SystemDesignResponse {
    */
   consumedApis?: string[];
   targetFiles: string[];
-  techTier?: { stack: string; language: string; framework?: string };
-  packageTiers?: Record<string, PackageTierEntry>;
+  /**
+   * Job-level tech stack. For fullstack the `frontend` / `backend` sub-objects
+   * carry each runtime's framework independently — FE (browser) and BE (server)
+   * are distinct runtime categories whose frameworks never collapse to one.
+   */
+  techTier?: {
+    stack: string;
+    language: string;
+    framework?: string;
+    frontend?: Partial<TechTier>;
+    backend?: Partial<TechTier>;
+  };
   tasks: Array<{
     id: string;
     name: string;
@@ -446,15 +456,15 @@ function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['task
 // ============================================
 
 /**
- * Convert a design targetFile to a normalized tag using Code Job `packages` convention.
- * e.g. "be-system-auth.md" → "be-auth", "api-contract-main.md" → "be-main"
+ * Derive a design task's per-task `stack` pointer from its targetFile prefix.
+ * `fe-system-*.md` → frontend; `be-system-*.md` / `api-contract-*.md` → backend.
+ * `stack` is the single per-task tech-tier narrowing pointer (it replaced the
+ * old package-name tag convention).
  */
-function targetFileToTag(targetFile: string): string | undefined {
-  const match = targetFile.match(/^(be-system|fe-system|api-contract)-(.+)\.md$/);
-  if (!match) return undefined;
-  const [, prefix, name] = match;
-  const tier = prefix === 'fe-system' ? 'fe' : 'be';
-  return `${tier}-${name}`;
+function targetFileToStack(targetFile: string): 'frontend' | 'backend' | undefined {
+  if (/^fe-system-/.test(targetFile)) return 'frontend';
+  if (/^(be-system|api-contract)-/.test(targetFile)) return 'backend';
+  return undefined;
 }
 
 // ============================================
@@ -484,9 +494,9 @@ function buildTaskQueue(
 
   // consumedApis-derived api-contract files capture an EXTERNAL contract
   // — they are not authored by this project and must NOT contribute to
-  // this project's techTier resolution. The `targetFileToTag` mapping
-  // (`api-contract-{s}.md → be-{s}`) would otherwise inject a phantom
-  // backend tier hint into `resolveTaskTechTiersFromMap`.
+  // this project's techTier resolution. The `targetFileToStack` mapping
+  // (`api-contract-{s}.md → backend`) would otherwise inject a phantom
+  // backend tier hint via `resolveTaskTechTierFromStack`.
   const consumerApiContractFiles = new Set(
     (response.consumedApis ?? []).map(c => `api-contract-${c}.md`)
   );
@@ -495,16 +505,15 @@ function buildTaskQueue(
     if (!response.targetFiles.includes(taskData.targetFile)) {
       taskData.targetFile = response.targetFiles[0];
     }
-    
+
     const exclusive = typeof taskData.exclusive === 'boolean' ? taskData.exclusive : undefined;
     const parallelGroup = !exclusive && typeof taskData.parallelGroup === 'string'
       ? taskData.parallelGroup
       : undefined;
-    
+
     const isConsumerContract = consumerApiContractFiles.has(taskData.targetFile);
-    const tag = isConsumerContract ? undefined : targetFileToTag(taskData.targetFile);
-    const packages = tag ? [tag] : undefined;
-    const resolvedTiers = resolveTaskTechTiersFromMap(packages, basisTechTierConfig, response.packageTiers);
+    const stack = isConsumerContract ? undefined : targetFileToStack(taskData.targetFile);
+    const resolvedTiers = resolveTaskTechTierFromStack(stack, basisTechTierConfig);
     const taskTechTiers = applyExplicitTechTierOverrides(resolvedTiers, explicitTechTier);
 
     taskQueue.push({
@@ -517,12 +526,10 @@ function buildTaskQueue(
       targetService: taskData.targetService,
       assignedSections: taskData.assignedSections,
       sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
+      // Single injection SSOT — design tasks read upstream plan sources.
       include: [ARTIFACT_PREFIX.SOURCES],
-      artifactPolicy: {
-        refs: [ARTIFACT_PREFIX.SOURCES],
-      },
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
-      packages,
+      stack,
       techTiers: taskTechTiers,
       exclusive: exclusive || undefined,
       parallelGroup,
@@ -538,12 +545,12 @@ function buildTaskQueue(
     }
   }
 
-  if (response.packageTiers && Object.keys(response.packageTiers).length > 0) {
+  {
     const tierSummary = taskQueue.getAll()
       .filter(t => t.techTiers?.length)
       .map(t => `${t.id}→${t.techTiers!.map(tier => `${tier.language}${tier.framework ? `/${tier.framework}` : ''}`).join('+')}`)
       .join(', ');
-    console.log(`🔧 [Decompose] TechTiers resolved: ${tierSummary || 'none'}`);
+    if (tierSummary) console.log(`🔧 [Decompose] TechTiers resolved: ${tierSummary}`);
   }
   
   return taskQueue;
@@ -774,7 +781,7 @@ export async function decomposeSystemDesign(
         `Re-emit the response strictly in the contract from the original prompt:\n` +
         `  1. Meta tags first, one per line, JSON-encoded body\n` +
         `     (\`<executionTier>\`, \`<documentType>\`, \`<services>\`, \`<fePackages>\`,\n` +
-        `      \`<consumedApis>\`, \`<techTier>\`, \`<packageTiers>\`, \`<targetFiles>\`).\n` +
+        `      \`<consumedApis>\`, \`<techTier>\`, \`<targetFiles>\`).\n` +
         `  2. Then a \`<tasks>\` block with one \`<task>{json}</task>\` per task.\n` +
         `NO markdown fences. NO \`<decompose>\` wrapper. Output the contract only — no other prose.`
       },
@@ -858,15 +865,34 @@ export async function decomposeSystemDesign(
     : buildTechTier(undefined, detectedEnv);
   console.log(`✅ TechTier: stack=${graphTechTier.stack || detectedEnv}, language=${graphTechTier.language}, framework=${graphTechTier.framework || 'none'}`);
 
-  // Sync to RAC basis.techTier (TechTierConfig) so getTechTier(state) returns it
+  // Sync to RAC basis.techTier (TechTierConfig) so getTechTier(state) returns it.
+  // For fullstack, FE and BE frameworks are distinct runtime categories: read
+  // each from the stack-keyed `response.{frontend,backend}` sub-object so they
+  // do NOT collapse to the single `graphTechTier.framework` (FE/BE unification
+  // is incorrect). Language may legitimately be shared, so it keeps the
+  // graphTechTier fallback.
   const tierKey = graphTechTier.stack === 'fullstack' ? undefined : graphTechTier.stack;
+  const isFullstack = graphTechTier.stack === 'fullstack';
   const basisTechTierConfig: TechTierConfig = {
     stack: graphTechTier.stack,
-    ...(tierKey === 'frontend' || graphTechTier.stack === 'fullstack'
+    ...(tierKey === 'frontend'
       ? { frontend: { ...graphTechTier, stack: 'frontend' as const } } : {}),
-    ...(tierKey === 'backend' || graphTechTier.stack === 'fullstack'
+    ...(tierKey === 'backend'
       ? { backend: { ...graphTechTier, stack: 'backend' as const } } : {}),
-    ...(!tierKey && graphTechTier.stack !== 'fullstack'
+    ...(isFullstack
+      ? {
+          frontend: {
+            ...graphTechTier,
+            framework: response.techTier?.frontend?.framework ?? undefined,
+            stack: 'frontend' as const,
+          },
+          backend: {
+            ...graphTechTier,
+            framework: response.techTier?.backend?.framework ?? undefined,
+            stack: 'backend' as const,
+          },
+        } : {}),
+    ...(!tierKey && !isFullstack
       ? { frontend: graphTechTier } : {}),
   };
   state.resolvedAction = {
@@ -889,7 +915,8 @@ export async function decomposeSystemDesign(
       injectedVariables: {
         documentType: response.documentType,
         services: response.services || [],
-        packageTiers: response.packageTiers || {},
+        frontend: response.techTier?.frontend || undefined,
+        backend: response.techTier?.backend || undefined,
         targetFiles: response.targetFiles,
         taskCount: response.tasks.length,
         tasks: response.tasks.map(t => ({ id: t.id, name: t.name, targetFile: t.targetFile, priority: t.priority }))

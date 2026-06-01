@@ -1,32 +1,14 @@
 /**
  * RAC scope invariant — `state.artifacts ⊆ resolvedAction.refs ∪ context`.
  *
- * Locks the post-RAC SSOT introduced after the `post-RAC pool-leak (2026-04)`
- * regression: a wholesale `architecture/system/**` load on the resolve
- * node injected `fe-system-main.md` into a `gen-code-directive` job whose
- * RAC explicitly excluded system-design slots. The leak surfaced through
- * three independent channels — decompose `tierRefs`, decompose `documents`,
- * and `deriveArtifactPolicy` package mapping — yet none was strictly
- * RAC-bounded. Pinning the pool itself to the RAC subset closes all three
- * at once. See `AGENTS.md` "state.artifacts Post-RAC SSOT".
- *
- * The `discovery-tool RAC bypass (2026-04)` follow-up regression (Apr 26 2026) showed the
- * pool fix alone was insufficient: two compensating channels remained —
- *
- *   Channel A: decompose `discoveryTools` (`read_file` / `list_files`,
- *              scope=`artifact`) bypassed the RAC entirely because its
- *              path validation only checked traversal/root containment.
- *              Closure: explicit RAC injects a `racScope` whitelist so
- *              tool calls outside `refs ∪ context` are rejected.
- *
- *   Channel B: `deriveArtifactPolicy` synthesised `refs` paths from the
- *              LLM's `packages` tag (e.g. `fe-main → fe-system-main.md`)
- *              regardless of pool membership. Closure: the function
- *              accepts an `ArtifactPolicyMode`; explicit pipelines
- *              suppress package→ref mapping.
- *
- * The Channel A/B locks live in this file so a single regression test
- * suite covers every leak path that has ever bypassed the pool SSOT.
+ * Locks the post-RAC SSOT: `state.artifacts` is pinned to the RAC subset, so
+ * a wholesale `architecture/system/**` load can no longer inject docs the RAC
+ * excluded. The decompose `read_file` / `list_files` tool calls are RAC-scoped
+ * via `computeRacScope(resolvedAction)` + `decideRacGate` (explicit pipeline
+ * only); the same gate runs at the shared code `tool` node so plan/execute
+ * reads are RAC-scoped symmetrically (SSOT: `racGate.ts`). Per-task injection
+ * is the single LLM-authored, RAC-validated `include` field — a task sees only
+ * its own `include`. See `AGENTS.md` "state.artifacts Post-RAC SSOT".
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -36,11 +18,11 @@ import * as os from 'os';
 import { loadResolvedArtifacts } from '../../src/agents/common/graph/loadDocumentsForRAC';
 import {
   createTaskQueue,
-  deriveArtifactPolicy,
 } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
 import {
   decideRacGate,
   isWithinRacWhitelist,
+  computeRacScope,
   type RacScope,
 } from '../../src/agents/architect/graph/code/nodes/decompose/racGate';
 import { handleReadFile, handleListFiles } from '../../src/agents/common/tool/handlers';
@@ -325,108 +307,85 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
 });
 
 // ───────────────────────────────────────────────────────────────────────
-// Channel B — deriveArtifactPolicy / createTaskQueue must respect mode
+// computeRacScope — explicit-only RAC scope derivation
 // ───────────────────────────────────────────────────────────────────────
 
-describe('deriveArtifactPolicy mode gate (Channel B — `discovery-tool RAC bypass (2026-04)`)', () => {
-  it('explicit mode + fe-main packages → no auto refs synthesis', () => {
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['fe-main'],
-      undefined,
-      undefined,
-      undefined,
-      'explicit',
-    );
-    expect(result).toBeUndefined();
+describe('computeRacScope', () => {
+  it('explicit pipeline with non-empty RAC → scope', () => {
+    const scope = computeRacScope({
+      source: 'explicit',
+      hasExplicitFields: true,
+      refs: ['plan/prd.md'],
+      context: [],
+    } as any);
+    expect(scope).toEqual({ refs: ['plan/prd.md'], context: [] });
   });
 
-  it('explicit mode + spec ref still surfaces the spec (RAC-derived)', () => {
-    // The active spec is pulled from the RAC pool view, not the
-    // packages mapping, so it must survive even in explicit mode —
-    // suppressing it would hide a legitimately user-selected file.
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['fe-main'],
-      undefined,
-      'spec-login.md',
-      undefined,
-      'explicit',
-    );
-    expect(result?.refs).toEqual([`${ARTIFACT_PREFIX.SPEC}spec-login.md`]);
+  it('infer pipeline → undefined (everything allowed downstream)', () => {
+    expect(computeRacScope({ source: 'infer', hasExplicitFields: false, refs: [], context: [] } as any)).toBeUndefined();
   });
 
-  it('infer mode keeps the legacy package → fe-system-main.md mapping', () => {
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['fe-main'],
-      undefined,
-      undefined,
-      undefined,
-      'infer',
-    );
-    expect(result?.refs).toContain(`${ARTIFACT_PREFIX.FE_SYSTEM}main.md`);
-    expect(result?.refs).toContain(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
+  it('explicit but empty RAC → undefined (LLM must discover anchors)', () => {
+    expect(computeRacScope({ source: 'explicit', hasExplicitFields: true, refs: [], context: [] } as any)).toBeUndefined();
   });
 });
 
-describe('createTaskQueue mode gate — explicit pipeline produces RAC-only task.include', () => {
-  it('Tier 3 explicit pipeline: no fe-system-main.md leaks into task.include', () => {
-    // Reproduces `discovery-tool RAC bypass (2026-04)` task shape: gen-code-directive
-    // with PRD-only RAC, decompose LLM emits `packages: ["fe-main"]`.
-    // Explicit mode must NOT bake `architecture/system/fe-system-main.md`
-    // into the task.
-    const tasks = [
-      {
-        id: 'feature-navbar',
-        name: 'Feature: Navbar',
-        type: 'feature' as const,
-        priority: 300,
-        description: 'Implement navbar',
-        packages: ['fe-main'],
-      },
-      {
-        id: 'final-verification',
-        name: 'Final Verification',
-        type: 'verification' as const,
-        priority: 1000,
-        description: 'Verify',
-      },
-    ] as any;
+// ───────────────────────────────────────────────────────────────────────
+// createTaskQueue — LLM-authored `include`, RAC-validated
+// ───────────────────────────────────────────────────────────────────────
 
-    const { taskQueue } = createTaskQueue(tasks, null, undefined, 3, 'explicit');
+describe('createTaskQueue include RAC validation', () => {
+  const baseTasks = (include: string[]) => ([
+    {
+      id: 'feature-navbar',
+      name: 'Feature: Navbar',
+      type: 'feature' as const,
+      priority: 300,
+      description: 'Implement navbar',
+      stack: 'frontend',
+      include,
+    },
+    {
+      id: 'final-verification',
+      name: 'Final Verification',
+      type: 'verification' as const,
+      priority: 1000,
+      description: 'Verify',
+    },
+  ] as any);
+
+  it('explicit pipeline: include paths outside RAC are dropped', () => {
+    // RAC pinned to PRD only; LLM authored an out-of-RAC system-design path.
+    const racScope = { refs: ['plan/prd.md'], context: [] };
+    const { taskQueue } = createTaskQueue(
+      baseTasks(['plan/prd.md', 'architecture/system/fe-system-main.md']),
+      null, undefined, 3, racScope,
+    );
     const navbar = taskQueue.getAll().find(t => t.id === 'feature-navbar')!;
-
-    expect(navbar.artifactPolicy).toBeUndefined();
-    expect(navbar.include ?? []).not.toContain('architecture/system/fe-system-main.md');
-    expect(navbar.include ?? []).not.toContain('architecture/system/api-contract-*');
-    // packages survives as a tech-tier hint.
-    expect(navbar.packages).toEqual(['fe-main']);
+    expect(navbar.include).toEqual(['plan/prd.md']);
+    expect(navbar.include).not.toContain('architecture/system/fe-system-main.md');
+    // retired carriers are gone
+    expect((navbar as any).artifactPolicy).toBeUndefined();
+    expect((navbar as any).packages).toBeUndefined();
   });
 
-  it('Tier 3 infer pipeline: legacy fe-main → fe-system-main.md path remains', () => {
-    const tasks = [
-      {
-        id: 'feature-navbar',
-        name: 'Feature: Navbar',
-        type: 'feature' as const,
-        priority: 300,
-        description: 'Implement navbar',
-        packages: ['fe-main'],
-      },
-      {
-        id: 'final-verification',
-        name: 'Final Verification',
-        type: 'verification' as const,
-        priority: 1000,
-        description: 'Verify',
-      },
-    ] as any;
-
-    const { taskQueue } = createTaskQueue(tasks, null, undefined, 3, 'infer');
+  it('explicit pipeline: in-RAC include survives; stack preserved', () => {
+    const racScope = { refs: ['plan/prd.md', 'architecture/system/api-contract-main.md'], context: [] };
+    const { taskQueue } = createTaskQueue(
+      baseTasks(['architecture/system/api-contract-main.md']),
+      null, undefined, 3, racScope,
+    );
     const navbar = taskQueue.getAll().find(t => t.id === 'feature-navbar')!;
+    expect(navbar.include).toEqual(['architecture/system/api-contract-main.md']);
+    expect(navbar.stack).toBe('frontend');
+  });
 
-    expect(navbar.artifactPolicy?.refs).toContain(`${ARTIFACT_PREFIX.FE_SYSTEM}main.md`);
-    expect(navbar.include ?? []).toContain(`${ARTIFACT_PREFIX.FE_SYSTEM}main.md`);
+  it('infer pipeline (racScope undefined): include passes through unvalidated', () => {
+    const { taskQueue } = createTaskQueue(
+      baseTasks(['architecture/system/fe-system-main.md']),
+      null, undefined, 3, undefined,
+    );
+    const navbar = taskQueue.getAll().find(t => t.id === 'feature-navbar')!;
+    expect(navbar.include).toEqual(['architecture/system/fe-system-main.md']);
   });
 });

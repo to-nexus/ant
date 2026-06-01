@@ -86,11 +86,13 @@ LLM 출력 <techTier>             코드 파싱               mergeTechTier(pres
 │ stack            │───>│ parsed           │───>│ RAC.basis        │
 │ language         │    │   .stack         │    │   .techTier      │
 │ framework        │    │   .language      │    │     .stack       │
-│ packageTiers     │    │   .framework     │    │     .language    │
-└──────────────────┘    │   .packageTiers  │    │     .framework   │
-                        └──────────────────┘    │     .runtime     │
-                                                └──────────────────┘
+│ frontend{ … }    │    │   .framework     │    │     .frontend    │
+│ backend{ … }     │    │   .frontend      │    │     .backend     │
+└──────────────────┘    │   .backend       │    └──────────────────┘
+                        └──────────────────┘
 ```
+
+> fullstack 잡은 `frontend` / `backend` 서브오브젝트로 각 런타임 framework 를 독립 전달한다 (FE/BE 런타임 분리상 framework 가 한 값으로 붕괴하면 안 된다). 단일-스택 잡은 두 서브오브젝트를 생략하고 top-level `framework` 만 쓴다.
 
 | TechTier 필드 | 판별 소스 | 정규화 |
 |---|---|---|
@@ -218,10 +220,10 @@ Plan 단계의 RAG 결과(`PlanCodeContext` — files / filePaths / directoryTre
 
 ## Split Injection
 
-병렬 실행 시 태스크의 `packages` 필드에 따라 필요한 설계 문서만 주입한다:
-- `packages = ['fe']` -> fe-system-design + api-contract
-- `packages = ['be']` -> be-system-design + api-contract
-- `packages = ['fe', 'be']` -> 전체 포함
+병렬 실행 시 태스크의 `include` 필드(단일 주입 SSOT)에 나열된 풀 경로만 선주입한다. `include`는 decompose/revise LLM이 직접 저작하고 `createTaskQueue`가 RAC 교집합으로 검증한다. 예:
+- `include = ['architecture/system/fe-system-main.md']` -> 해당 FE 설계문서만
+- cross-tier 태스크 -> `architecture/system/api-contract-*` 경로를 include 에 추가
+- `include` 미설정 -> 선주입 0; 필요한 doc 은 execute `read_file` 로 on-demand 조회 (RAC 스코프 게이트 통과)
 
 plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일 읽기는 execute `read_file` 도구로 수행한다.
 
@@ -258,17 +260,18 @@ interface ParsedUiDocs {
 
 `ArtifactPipeline`이 태스크별 문서 선택 + 컴팩션을 처리한다:
 
-1. `buildCodeArtifactPool(state)` — 레거시 state 변수(`designDocs`, `specDocs`, `parsedUiDocs`, `sourceDocuments`, `prd`)를 `ResolvedArtifact[]` 풀로 변환
-2. `resolveArtifacts(pool, { taskType, include }, { threshold })` — `task.include` 패턴 또는 taskType 기본 규칙으로 필터링 + 컴팩션
+1. 풀은 RAC 부분집합 — `loadResolvedArtifacts(resolvedAction, featurePath)`가 `refs ∪ context`만 적재한다 (`state.artifacts Post-RAC SSOT`).
+2. `resolveArtifacts(pool, { taskType, include }, { threshold })` — `task.include` 의 path-prefix 매칭으로 필터링 + 컴팩션.
 
-| task.type | 기본 선택 규칙 |
+선택 규칙은 단일 SSOT다 — `task.include` 매칭이 전부이고 taskType 기본 분기는 없다:
+
+| 조건 | 선택 결과 |
 |-----------|---------------|
-| `ui`, `design-system` | `visual/ui/ant/*` (ant UiSource 기준; figma/handoff 는 per-task `artifactPolicy` 가 직접 지정) |
-| `feature`, `setup`, `test-code`, `doc` | `architecture/system/*` + `architecture/spec/*` + `visual/ui/*` + `plan` 전체 |
-| `error` | spec + api-contract (spec 존재 시) |
-| `verification` | 빈 배열 |
+| `taskType === 'verification'` | 빈 배열 (방어적 가드) |
+| `include` 지정 | include path-prefix 에 매칭되는 풀 아티팩트 (role 은 풀 RAC 주석에서 상속) |
+| `include` 미설정/빈 값 | 빈 배열 (taskType 기본 규칙 없음 — 명시적 빈 주입) |
 
-`task.include`가 지정되면 기본 규칙 대신 정확한 path-prefix 매칭이 적용된다. `include`는 decompose LLM이 출력하거나, `packages`/`uiSections` + RAC의 활성 spec ref(`ArtifactPoolView.activeSpecRefFilename()`)에서 자동 유도된다.
+`include`는 decompose/revise LLM이 직접 저작한다 (RAC 검증). UI 경로는 uiSource 게이트 가이드(`visual/ui/ant/spec/<section>` 등), spec-driven 태스크는 활성 spec(`ArtifactPoolView.activeSpecRefFilename()`)을 include 에 포함하도록 프롬프트가 안내한다. 옛 `packages`/`uiSections`/`artifactPolicy` 자동 유도는 제거됐다.
 
 ### Document Authority
 

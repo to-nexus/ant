@@ -46,8 +46,9 @@ import {
  * Each sub-decompose variant uses a different subset:
  *   - ui / game-art       : `targetFiles`, `strategy`
  *   - system-design       : `documentType`, `services`, `fePackages`,
- *                           `consumedApis`, `techTier`, `packageTiers`,
- *                           `targetFiles`, `references`
+ *                           `consumedApis`, `techTier` (carries `frontend`/
+ *                           `backend` framework sub-objects), `targetFiles`,
+ *                           `references`
  *   - spec (inline prompt): `slug`, `title`
  *
  * Adding a new meta tag here is the only change needed to surface it on
@@ -59,7 +60,6 @@ const META_TAG_NAMES = [
   'fePackages',
   'consumedApis',
   'techTier',
-  'packageTiers',
   'documentType',
   'strategy',
   'slug',

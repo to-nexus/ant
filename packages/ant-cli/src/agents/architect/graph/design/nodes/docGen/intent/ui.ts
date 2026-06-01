@@ -19,7 +19,7 @@ import { DesignTask } from '../../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
 import { designDirOf, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { extractLastSectionKey } from '../../../_shared/anchor';
 
@@ -88,9 +88,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
 
   const taskInclude = (task as DesignTask | undefined)?.include;
   const designTask = task as DesignTask | undefined;
-  let selectedDocs = designTask?.artifactPolicy
-    ? selectArtifactsWithPolicy(state.artifacts || [], designTask.artifactPolicy)
-    : selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  // Single injection SSOT — `task.include` (LLM-authored), falling back to
+  // SOURCES so a task without an authored manifest still sees its upstream
+  // plan docs. Role is inherited from the pool's RAC annotation.
+  let selectedDocs = selectArtifacts(state.artifacts || [], {
+    include: designTask?.include?.length ? designTask.include : [ARTIFACT_PREFIX.SOURCES],
+  });
   if (taskSourceFiles?.length) {
     selectedDocs = selectedDocs.filter(a =>
       taskSourceFiles.some(f => a.path.endsWith('/' + f)),

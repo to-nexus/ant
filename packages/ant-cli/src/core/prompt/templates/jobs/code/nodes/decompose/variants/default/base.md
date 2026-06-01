@@ -69,9 +69,9 @@ validator.
 {{/if}}
 
 {{#if uiArtifactPaths.length}}
-## UI Document Sections (available for `uiSections` task assignment)
+## UI sections available for `include` (ant source)
 
-Use these IDs when populating `uiSections` on `"ui"` and `"design-system"` tasks.
+These section IDs are available for `"ui"` / `"design-system"` tasks. See "UI injection via `include`" in the rules for how to form each `visual/ui/ant/...` path.
 
 {{#each uiArtifactPaths}}
 - `{{this.id}}` ({{this.role}})
@@ -113,7 +113,7 @@ Observe the following in order:
 3. **Directive and PRD** — only when design documents are absent
 {{/if}}
 
-Explicit values from `resolvedAction.basis.techTier` are authoritative — preserve them as-is in your `<techTier>` output and in any per-package `packageTiers` entries that target the same stack. Infer only the slots that are not pinned by the explicit basis.
+Explicit values from `resolvedAction.basis.techTier` are authoritative — preserve them as-is in your `<techTier>` output, including the `frontend` / `backend` sub-objects that target the same stack. Infer only the slots that are not pinned by the explicit basis.
 
 Output the tech tier in `<techTier>` tags before `<tasks>`:
 
@@ -124,16 +124,13 @@ Output the tech tier in `<techTier>` tags before `<tasks>`:
   "language": "typescript" | "javascript" | "python" | "go" | "rust" | "java",
   "framework": "react" | "vue" | "nextjs" | "express" | "fastapi" | "gin" | ... (or null){{#if gameEngineCandidates}},
   "gameEngine": {{{gameEngineCandidates}}}{{/if}},
-  "packageTiers": {
-    "fe-main": { "language": "typescript", "framework": "nextjs", "stack": "frontend" },
-    "be-api": { "language": "go", "framework": "gin", "stack": "backend" }
-  }
+  "frontend": { "language": "typescript", "framework": "nextjs" },
+  "backend": { "language": "go", "framework": "gin" }
 }
 </techTier>
 
-- `packageTiers` is REQUIRED when `stack` is `"fullstack"` and packages use different languages/frameworks.
-- `packageTiers` is OPTIONAL otherwise (omit when all packages share the same stack).
-- Each key is a package tag (e.g. `fe-main`, `be-auth`, `be-order`).
+- `frontend` / `backend` sub-objects are REQUIRED when `stack` is `"fullstack"` — FE (browser) and BE (server) are distinct runtime categories whose frameworks never collapse to one.
+- Omit both sub-objects for single-stack jobs (the top-level `language` / `framework` is the sole tier).
 {{#if gameEngineCandidates}}
 - `gameEngine` is the game-domain 5th slot. Pick exactly one of the candidates above. The engine layers on top of the framework — `react+phaser` is the canonical Phase 2 combination (React hosts the page, Phaser owns the canvas).
 {{/if}}

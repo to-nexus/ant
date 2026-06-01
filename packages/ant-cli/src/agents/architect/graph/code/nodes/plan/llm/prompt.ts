@@ -93,25 +93,25 @@ export async function buildPlanPrompt(
   // Spec-driven = a spec artifact is present with role='ref' (RAC-derived).
   const pool = state.artifacts || [];
   const isSpecDriven = new ArtifactPoolView(pool).activeSpecRefFilename() !== null;
-  const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
-    && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
-  let planDocs: ResolvedArtifact[] = [];
+  // Single per-task injection SSOT — `task.include` only. The legacy explicit
+  // full-RAC bypass (which reused `resolvedAction.documents` for explicit
+  // pipelines and skipped per-task narrowing) is removed so both pipelines
+  // narrow identically. Pool doc not pre-injected here is reachable on-demand
+  // via RAC-scoped reads (the code `tool` node gate).
   let resolvedActionWithDocs = state.resolvedAction;
-  if (!hasExplicitDocs) {
-    planDocs = resolveArtifacts(pool,
-      { taskType: task.type, include: task.include },
-      { threshold: 30_000 });
+  const planDocs: ResolvedArtifact[] = resolveArtifacts(pool,
+    { taskType: task.type, include: task.include },
+    { threshold: 30_000 });
 
-    if (planDocs.length > 0) {
-      resolvedActionWithDocs = {
-        ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
-        artifacts: planDocs,
-        documents: planDocs,
-      };
-      const totalChars = planDocs.reduce((s, a) => s + (a.content?.length || 0), 0);
-      console.log(`📄 [Plan] Pipeline: ${pool.length} pool → ${planDocs.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? 'default')})`);
-    }
+  if (planDocs.length > 0) {
+    resolvedActionWithDocs = {
+      ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+      artifacts: planDocs,
+      documents: planDocs,
+    };
+    const totalChars = planDocs.reduce((s, a) => s + (a.content?.length || 0), 0);
+    console.log(`📄 [Plan] ${pool.length} pool → ${planDocs.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? [])})`);
   }
 
   const taskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);

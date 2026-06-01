@@ -36,7 +36,7 @@ export interface InferWorkspaceState {
 // TechTier
 // ============================================
 
-import type { SupportedLanguage, TechTierKey } from './tech-tier-registry';
+import type { SupportedLanguage } from './tech-tier-registry';
 
 export type Language = SupportedLanguage;
 export type Stack = 'frontend' | 'backend' | 'fullstack';
@@ -340,67 +340,50 @@ export function buildTechTier(
 }
 
 // ============================================
-// PackageTier (per-package breakdown from decompose)
+// Per-task TechTier resolution (stack pointer → config slot)
 // ============================================
 
-export interface PackageTierEntry {
-  language: string;
-  framework?: string;
-  stack: string;
-}
-
 /**
- * Resolve task-level TechTiers from TechTierConfig + packageTiers mapping.
- * Returns TechTier[] for the task's packages, preserving per-package stack info.
- *
- * Rules:
+ * Resolve a single task's TechTier[] from its `stack` pointer + the job-level
+ * TechTierConfig. Task-level `stack` is always single (never fullstack):
  *  - No config → []
- *  - No packages or no mapping → all tiers from config
- *  - Package-based: lookup by stack key, deduplicate
+ *  - `stack` given → `[config[stack]]` (or [] if that slot is empty)
+ *  - `stack` omitted → the sole configured tier (`frontend ?? backend`). If the
+ *    config has BOTH (fullstack) while `stack` is omitted, that is an LLM
+ *    contract violation — warn and fall back to the first available tier.
  */
-export function resolveTaskTechTiersFromMap(
-  packages: string[] | undefined,
+export function resolveTaskTechTierFromStack(
+  stack: 'frontend' | 'backend' | undefined,
   techTierConfig: TechTierConfig | undefined,
-  packageTiers?: Record<string, PackageTierEntry>,
 ): TechTier[] {
   if (!techTierConfig) return [];
   const { frontend, backend } = techTierConfig;
-  const allTiers = [frontend, backend].filter((t): t is TechTier => !!t);
-  if (!packages?.length || !packageTiers || Object.keys(packageTiers).length === 0) {
-    return allTiers;
+
+  if (stack) {
+    const tier = techTierConfig[stack];
+    return tier ? [tier] : [];
   }
 
-  const VALID_KEYS: TechTierKey[] = ['frontend', 'backend'];
-  const seen = new Set<TechTierKey>();
-  const result: TechTier[] = [];
-  for (const pkg of packages) {
-    const entry = packageTiers[pkg];
-    if (!entry) continue;
-    const key = VALID_KEYS.find(k => k === entry.stack);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    const configTier = techTierConfig[key];
-    result.push({
-      language: (entry.language as Language) || configTier?.language,
-      framework: entry.framework || configTier?.framework,
-      stack: key,
-      packageManager: configTier?.packageManager,
-      gameEngine: configTier?.gameEngine,
-    });
+  if (frontend && backend) {
+    console.warn(
+      '⚠️ [TechTier] task.stack omitted but config has both frontend and backend; ' +
+      'defaulting to frontend (LLM must set task.stack on fullstack jobs).',
+    );
+    return [frontend];
   }
-  return result.length > 0 ? result : allTiers;
+  const sole = frontend ?? backend;
+  return sole ? [sole] : [];
 }
 
 /**
  * Apply explicit (preset) techTier overrides on top of resolved task tiers.
  *
  * Policy: explicit fields from `actionMetadata.basis.techTier` are authoritative
- * — they win over any value emitted by the LLM in `<techTier>` / `packageTiers`.
- * Mirrors the `visualTier` / `gameArtTier` / `gameContentTier` invariant.
+ * — they win over any value emitted by the LLM in `<techTier>`. Mirrors the
+ * `visualTier` / `gameArtTier` / `gameContentTier` invariant.
  *
  * Behavior:
- *  - `explicit` undefined → return input unchanged (infer path; preserves
- *    monorepo per-package divergence emitted via packageTiers).
+ *  - `explicit` undefined → return input unchanged (infer path).
  *  - For each task tier, if `explicit.{frontend|backend}` matches `tier.stack`,
  *    explicit fields (language / framework / packageManager / gameEngine) are
  *    merged onto the tier with explicit-first precedence.
