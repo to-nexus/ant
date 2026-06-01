@@ -3,13 +3,14 @@
  *
  * Locks the contract for T6 call-site flips:
  *   - scheduling.preUiBarrier  — true (orchestrator gates ui while feature/setup runs)
+ *   - scheduling.blocksTestgen — true (ui gates test-code so tests target built views)
  *   - conversations.convKey    — `node:execute:ui:<id>`
  *   - registry entry           — `hooksForTaskType('ui')` returns the bundle
  */
 
 import { describe, it, expect } from 'vitest';
 
-import { preUiBarrier } from '../../../src/agents/architect/graph/code/tasks/ui/hooks/scheduling';
+import { preUiBarrier, blocksTestgen } from '../../../src/agents/architect/graph/code/tasks/ui/hooks/scheduling';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/ui/hooks/conversations';
 import { hooks as uiBundle } from '../../../src/agents/architect/graph/code/tasks/ui';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
@@ -53,16 +54,19 @@ describe('tasks/_shared/registry — ui entry', () => {
     expect(uiBundle.decompose).toBeUndefined();
   });
 
-  it('scheduling exposes only the ui consumer flag — no other consumer or producer flags', () => {
+  it('scheduling: ui consumer flag + blocksTestgen producer only', () => {
     expect(uiBundle.scheduling?.preUiBarrier).toBe(true);
     expect(uiBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(uiBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(uiBundle.scheduling?.preIntegrationBarrier).toBeUndefined();
-    // UI is a barrier sink only — it must NEVER activate barriers for
-    // other task types. Regression guard: if someone adds a producer
-    // flag here it changes orchestrator scheduling semantics silently.
+    // UI gates ONLY testgen — test-code waits until ui work finishes so
+    // generated tests target fully-built views (alongside setup/feature).
+    expect(uiBundle.scheduling?.blocksTestgen).toBe(true);
+    // It must NOT activate any other barrier. Regression guard: adding a
+    // producer flag here changes orchestrator scheduling semantics silently.
+    // (No self-block on ui; doc reaches ui transitively via test-code;
+    // integration is a feature-band concern.)
     expect(uiBundle.scheduling?.blocksUi).toBeUndefined();
-    expect(uiBundle.scheduling?.blocksTestgen).toBeUndefined();
     expect(uiBundle.scheduling?.blocksDoc).toBeUndefined();
     expect(uiBundle.scheduling?.blocksIntegration).toBeUndefined();
   });
@@ -71,6 +75,9 @@ describe('tasks/_shared/registry — ui entry', () => {
 describe('tasks/ui/hooks/scheduling', () => {
   it('preUiBarrier — true', () => {
     expect(preUiBarrier).toBe(true);
+  });
+  it('blocksTestgen — true', () => {
+    expect(blocksTestgen).toBe(true);
   });
 });
 
