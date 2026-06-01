@@ -16,7 +16,11 @@
   Branch axis: `taskBand` (SBS gate axis).
 --}}
 {{~#if (eq taskBand "integration")~}}
-All files belong to YOUR task scope; shared entry points / cross-cutting wirings the parent owns appear in `create`/`modify` at the literal path pinned by the tech-tier partial (sibling coordinates are not substitutes)
+All files belong to YOUR task scope; shared entry points / cross-cutting wirings the parent owns appear in `create`/`modify` at the literal path pinned by the tech-tier partial (sibling coordinates are not substitutes); mount platform-provided services, do not author them
+{{~else if (eq taskBand "platform")~}}
+You own a shared runtime service consumed by many features: define its access contract AND its producer here (contract + implementation) so consumers bind instead of hand-constructing; entry-point mounting belongs to the integration band
+{{~else if (eq taskBand "foundation")~}}
+You own pure contracts (types/interfaces) only — shared runtime services/state belong to the `platform` band, shared entry points to the `integration` band
 {{~else~}}
-All files belong to YOUR task scope (no shared entry points — those are owned by the `integration` band task)
+All files belong to YOUR task scope (no shared entry points — those are owned by the `integration` band task); obtain any shared runtime value from its `platform` access contract, never hand-construct it with empty/placeholder fields to satisfy a type
 {{~/if~}}

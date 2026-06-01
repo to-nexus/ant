@@ -88,7 +88,7 @@ describe('decompose/variants/default/rules.md — priority guidance gate', () =>
     // The description of shared-foundation type (priority 200–299) appears
     // elsewhere in the document (Task Type Rules section), so scope the
     // negative match tightly to the priority schema row phrasing.
-    expect(output).not.toMatch(/100–189: setup, 200–299: feature or design-system/);
+    expect(output).not.toMatch(/100–189: setup, 200–279: feature \(shared foundation/);
     expect(output).not.toMatch(/900–980: error, 1000: verification/);
 
     // The universal ordering Note is suppressed in spec mode (the free
@@ -105,7 +105,7 @@ describe('decompose/variants/default/rules.md — priority guidance gate', () =>
     );
 
     // Canonical band table row.
-    expect(output).toMatch(/100–189: setup, 200–299: feature or design-system/);
+    expect(output).toMatch(/100–189: setup, 200–279: feature \(shared foundation/);
     expect(output).toMatch(/600–649: feature \(integration\)/);
     expect(output).toMatch(/900–980: error, 1000: verification/);
 
@@ -125,7 +125,7 @@ describe('decompose/variants/default/rules.md — priority guidance gate', () =>
       'jobs/code/nodes/decompose/variants/default/rules',
       { ...BASE_VARS /* isPriorityFromSpec omitted */ },
     );
-    expect(output).toMatch(/100–189: setup, 200–299: feature or design-system/);
+    expect(output).toMatch(/100–189: setup, 200–279: feature \(shared foundation/);
     expect(output).toMatch(
       /\*\*Note\*\*: `priority` is the ordering key \(lower = earlier\)/,
     );

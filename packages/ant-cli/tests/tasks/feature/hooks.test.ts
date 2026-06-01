@@ -137,6 +137,20 @@ describe('tasks/feature/hooks/scheduling', () => {
     it('band==="foundation" ⇒ isFoundation + expandedRagQuota', () => {
       expect(schedClassify(task('sf-foundation', { band: 'foundation' }))).toEqual({
         isFoundation: true,
+        isPlatform: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        expandedRagQuota: true,
+      });
+    });
+
+    it('band==="platform" ⇒ isPlatform + expandedRagQuota (shared runtime services)', () => {
+      // Platform runs after foundation, before ordinary feature consumers.
+      // It activates the hasPrePlatformWork barrier (isPlatform) and gets
+      // expanded RAG, but does NOT produce/consume the integration gate.
+      expect(schedClassify(task('platform-session', { band: 'platform' }))).toEqual({
+        isFoundation: false,
+        isPlatform: true,
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
         expandedRagQuota: true,
@@ -146,6 +160,7 @@ describe('tasks/feature/hooks/scheduling', () => {
     it('band===undefined ⇒ producesIntegrationGate (normal feature)', () => {
       expect(schedClassify(task('feat-normal'))).toEqual({
         isFoundation: false,
+        isPlatform: false,
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
         expandedRagQuota: false,
@@ -155,6 +170,7 @@ describe('tasks/feature/hooks/scheduling', () => {
     it('band==="integration" ⇒ consumesIntegrationGate + expandedRagQuota', () => {
       expect(schedClassify(task('int', { band: 'integration' }))).toEqual({
         isFoundation: false,
+        isPlatform: false,
         producesIntegrationGate: false,
         consumesIntegrationGate: true,
         expandedRagQuota: true,
@@ -168,6 +184,7 @@ describe('tasks/feature/hooks/scheduling', () => {
       // feature work UNLESS band is explicitly set to 'foundation'.
       expect(schedClassify(task('sneaky-priority', { priority: 250 }))).toEqual({
         isFoundation: false,
+        isPlatform: false,
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
         expandedRagQuota: false,

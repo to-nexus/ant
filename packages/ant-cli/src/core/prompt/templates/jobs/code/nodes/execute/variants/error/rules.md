@@ -57,6 +57,12 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 
 ---
 
+## Test Integrity
+
+**Constraint**: A failing **behavioral** test (a render-smoke or data-path assertion that the product shows real content for the seeded happy-path actor) signals that PRODUCT code is missing or wrong — most often a shared value consumed empty because its producer was never built. Fix the product code so the assertion passes. Do NOT delete, skip, weaken, or invert such an assertion to turn the suite green — that converts a real defect into a silent false-green. Only adjust a test itself when the plan identifies the test as genuinely incorrect (asserting behavior the spec does not require), and say so explicitly in the fix.
+
+---
+
 ## Interaction Methods
 
 **`<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**

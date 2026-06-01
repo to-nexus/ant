@@ -52,7 +52,8 @@ export interface OrchestratorConfig {
    * Stage-gate barriers controlling task dispatch order.
    *
    * Code barrier chain:
-   *   foundation (200–299)    ──[feature]     ──▶ feature     (300–599)
+   *   foundation (200–279)    ──[feature]     ──▶ feature     (300–599)
+   *   platform   (280–299)    ──[platform]    ──▶ feature     (300–599)
    *   feature    (300–599)    ──[integration] ──▶ integration (600–649)
    *   feature+integ (300–649) ──[ui]          ──▶ ui          (650–699)
    *   feature+integ (300–649) ──[test-code]   ──▶ test-code   (700)
@@ -71,8 +72,15 @@ export interface OrchestratorConfig {
    * (e.g. a post-UI cleanup feature).
    */
   barriers?: {
-    /** Blocks feature (300+) until all foundation (200–299) tasks complete. */
+    /** Blocks feature (300+) until all foundation (200–279) tasks complete. */
     feature?: boolean;
+    /**
+     * Blocks ordinary feature / integration / ui work until all platform
+     * (280–299) tasks complete — shared runtime services (context/session/
+     * config providers, client singletons) finish before consumers bind to
+     * them, so consumers import a real access contract instead of stubbing.
+     */
+    platform?: boolean;
     /** Blocks integration (600–649) until all feature (<600) tasks complete. */
     integration?: boolean;
     /** Blocks ui tasks until all feature/setup tasks complete. */

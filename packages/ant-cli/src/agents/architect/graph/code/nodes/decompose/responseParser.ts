@@ -35,6 +35,17 @@ import { isWithinRacWhitelist, type RacScope } from './racGate';
  * (their type alone is the discriminator).
  */
 export function deriveBandFromPriority(priority: number): TaskBand | undefined {
+  // Platform is a sub-range carved from the TOP of the foundation window:
+  // [PLATFORM_MIN, PLATFORM_MAX] ⊂ [SHARED_FOUNDATION, FOUNDATION_MAX]. Checked
+  // FIRST so a feature task in [280, 299] derives 'platform', leaving the
+  // effective foundation band at [200, 279]. (FOUNDATION_MAX stays 299 for the
+  // orthogonal design-job `doc` classifier — see state.ts.)
+  if (
+    priority >= TASK_PRIORITIES.PLATFORM_MIN &&
+    priority <= TASK_PRIORITIES.PLATFORM_MAX
+  ) {
+    return 'platform';
+  }
   if (
     priority >= TASK_PRIORITIES.SHARED_FOUNDATION &&
     priority <= TASK_PRIORITIES.FOUNDATION_MAX

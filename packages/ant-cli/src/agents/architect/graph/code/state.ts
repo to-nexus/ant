@@ -65,9 +65,21 @@ export const TASK_PRIORITIES = {
   SETUP_PROJECT: 100,
   SETUP_MAX: 189,
 
-  // Design-System + Shared Foundation (200-299) — visual infrastructure + shared types/interfaces
+  // Design-System + Shared Foundation (200-299) — visual infrastructure + shared types/interfaces.
+  // FOUNDATION_MAX stays 299 because the design-job `doc` bundle classifies on
+  // [SHARED_FOUNDATION, FOUNDATION_MAX]. For CODE-job FEATURE band derivation,
+  // [PLATFORM_MIN, PLATFORM_MAX] is carved out of the top of this window (see
+  // deriveBandFromPriority), so a feature task's effective foundation band is
+  // [200, 279] and [280, 299] is platform.
   SHARED_FOUNDATION: 200,
   FOUNDATION_MAX: 299,
+
+  // Platform (280-299) — shared runtime services/state built on foundation
+  // contracts and consumed by many features. Sub-range of the 200-299 window:
+  // a CODE-job feature task whose priority lands here derives band 'platform'.
+  // Runs after foundation, before ordinary feature work (hasPrePlatformWork).
+  PLATFORM_MIN: 280,
+  PLATFORM_MAX: 299,
 
   // Feature (300-599) — headless skeleton implementation
   FEATURE_CRITICAL: 300,

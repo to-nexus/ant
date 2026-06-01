@@ -377,6 +377,14 @@ export interface TaskExecuteHook {
 export interface SchedulingClassification {
   isTokens?: boolean;
   isFoundation?: boolean;
+  /**
+   * `band === 'platform'` — shared runtime services/state consumed by many
+   * features, built on foundation. Activates the `hasPrePlatformWork` barrier
+   * (feature consumers wait so they bind to a real access contract instead of
+   * hand-constructing). Distinct from `isFoundation`: foundation is pure
+   * contracts (runs first); platform runs after foundation, before features.
+   */
+  isPlatform?: boolean;
   isFinal?: boolean;
   producesIntegrationGate?: boolean;
   consumesIntegrationGate?: boolean;

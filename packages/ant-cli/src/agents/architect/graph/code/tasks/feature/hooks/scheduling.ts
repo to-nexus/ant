@@ -25,6 +25,10 @@
  * classify — band-driven scheduling role:
  *   - isFoundation              — `band === 'foundation'`. Activates
  *                                 `hasPreFeatureWork` barrier.
+ *   - isPlatform                — `band === 'platform'`. Activates the
+ *                                 `hasPrePlatformWork` barrier (shared runtime
+ *                                 services run after foundation, before
+ *                                 ordinary feature consumers).
  *   - producesIntegrationGate   — `band === undefined` (ordinary feature).
  *                                 Activates `hasPreIntegrationWork`.
  *   - consumesIntegrationGate   — `band === 'integration'`. Waits on
@@ -59,12 +63,16 @@ export function classify(task: BaseTask): SchedulingClassification {
   // for tasks of its own type, so this narrowing is total in practice.
   const band = task.type === 'feature' ? task.band : undefined;
   const isFoundation = band === 'foundation';
+  const isPlatform = band === 'platform';
   const consumesIntegrationGate = band === 'integration';
+  // Only ordinary feature work (band undefined) produces the integration gate.
+  // Platform runs before features, so it finishes long before integration.
   const producesIntegrationGate = band === undefined;
   return {
     isFoundation,
+    isPlatform,
     producesIntegrationGate,
     consumesIntegrationGate,
-    expandedRagQuota: isFoundation || consumesIntegrationGate,
+    expandedRagQuota: isFoundation || isPlatform || consumesIntegrationGate,
   };
 }

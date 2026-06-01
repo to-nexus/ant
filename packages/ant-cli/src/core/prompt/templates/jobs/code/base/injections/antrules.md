@@ -16,16 +16,18 @@ If the rendered block contains only the placeholder line `(no project-local devi
 Record a finding here ONLY when ALL three conditions hold:
 
 1. **Codebase-local** — this project's choice, not a system-wide default or techTier standard
-2. **Not auto-derivable** — `package.json` / `tsconfig.json` / framework convention / **any existing file the implementation phase can `read_file`** do NOT already carry this fact. If execute can derive the fact by reading a defining file, an interface, or a sibling that demonstrates the convention, it is auto-derivable and does NOT belong in ANTRULES.
+2. **Not auto-derivable as a one-off fact** — `package.json` / `tsconfig.json` / framework convention / a single defining file already carry it. A sibling file can "demonstrate" two very different things — distinguish them:
+   - A **stable recurring convention** — a naming or structural PATTERN that every future sibling must repeat (file-naming case, hooks file prefix, directory organization, a repeated per-module shape pattern, a singular/plural naming decision). "Derivable by reading N siblings" is NOT the disqualifying kind of auto-derivable: there is no single authoritative statement, so each task re-discovers (or drifts from) it. RECORD it — one terse line anchors consistency across tasks.
+   - A **specific symbol's shape** — a function's parameters, a type's fields, an exported class's signature. This IS auto-derivable from its one defining file, which is the SSOT. Do NOT record it.
 3. **Cross-task invariant** — a sibling or future task must repeat this choice to preserve consistency
 
 If any condition fails, the information belongs elsewhere (decompose reasoning, system prompt, config file, task description) — NOT in ANTRULES.
 
 Legitimate entries typically fall into two classes:
-- **Project-specific conventions** not encoded in any tool config — file-naming case (`kebab-case.tsx`), hooks prefix (`use-*`), export style preference, directory organization, custom domain glossary
+- **Project-specific conventions** not encoded in any tool config — file-naming case (`kebab-case.tsx`), hooks prefix (`use-*`), export style preference, directory organization, custom domain glossary. (These recur across siblings, so they pass condition 2 as stable conventions even though existing files demonstrate them.)
 - **Point-in-time package compatibility / pinning rationale** — "`shadcn X v0.4` breaks with `react@19` — pinned to 18 until upstream PR #NNN merges", "jest 30 migration pending, `.js` config maintained over `.ts` for now"
 
-Do NOT record: framework / library / runner names that package.json already declares; alias / source-root paths that tsconfig already declares; config file locations that the filesystem already reveals; convention restatements the codebase already demonstrates; **shared call shapes / signatures / type shapes** — these are defined in the source file (factory definition, interface declaration, exported class); execute verifies against the defining file at write-time, recording them here duplicates the SSOT and seeds drift when the defining file evolves. These are redundant and seed drift.
+Do NOT record: framework / library / runner names that package.json already declares; alias / source-root paths that tsconfig already declares; config file locations that the filesystem already reveals; **a specific symbol's call shape / signature / type fields** — these are defined in their one source file (factory definition, interface declaration, exported class); execute verifies against the defining file at write-time, recording them here duplicates the SSOT and seeds drift when the defining file evolves. (Note the distinction from condition 2: a *naming/structure PATTERN that recurs* is a recordable convention; a *specific symbol's shape* is not.)
 
 Update via `<file>` or `edit_file`. Keep under 1500 characters. Do NOT fabricate prohibitions or decisions — record only what you actually observed during this task.
 {{else}}
@@ -34,10 +36,10 @@ Update via `<file>` or `edit_file`. Keep under 1500 characters. Do NOT fabricate
 This project does not yet have a `codebase/ANTRULES.md`. Create one ONLY when you discover a fact that passes the 3-condition filter:
 
 1. **Codebase-local** — this project's choice, not a techTier standard
-2. **Not auto-derivable** — `package.json` / `tsconfig.json` / framework convention / **any existing file the implementation phase can `read_file`** do NOT already carry it. Shared call shapes / signatures / type shapes (defined in source files) are auto-derivable and do NOT belong here.
+2. **Not auto-derivable as a one-off fact** — `package.json` / `tsconfig.json` / framework convention / a single defining file already carry it. Distinguish what a sibling file "demonstrates": a **stable recurring convention** (a naming/structural PATTERN every future sibling must repeat — naming case, hooks prefix, directory organization) is RECORDABLE (no single authoritative statement exists, so tasks otherwise re-discover or drift); a **specific symbol's shape** (a function's parameters / a type's fields, defined in its one source file) is the SSOT and does NOT belong here.
 3. **Cross-task invariant** — a sibling or future task must repeat this choice
 
-Typical legitimate seeds: project-specific naming conventions not encoded in tool configs, or a point-in-time package pinning rationale (e.g. "`shadcn X v0.4` breaks with `react@19` — pinned to 18"). Do NOT seed framework / library / alias / source-root restatements — those live in `package.json` / `tsconfig.json` already and duplicating them creates drift.
+Typical legitimate seeds: project-specific naming/structure conventions not encoded in tool configs (these recur across siblings, so they pass condition 2), or a point-in-time package pinning rationale (e.g. "`shadcn X v0.4` breaks with `react@19` — pinned to 18"). Do NOT seed framework / library / alias / source-root restatements — those live in `package.json` / `tsconfig.json` already and duplicating them creates drift.
 
 If you create the file, use `# ANTRULES.md` heading + only the sections you are confident about. Keep under 1500 characters. Do NOT fabricate decisions — record only what you actually observed.
 {{/if}}

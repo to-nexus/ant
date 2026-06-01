@@ -226,7 +226,7 @@ following the schema below:
 {{#if isPriorityFromSpec}}
 | `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
 {{else}}
-| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 {{/if}}
 | `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
 | `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
@@ -240,6 +240,20 @@ following the schema below:
 lanes — when each task type starts relative to others — are determined
 by `type`, not by the priority number. The bands above are ordering
 guidance; `type` is the SSOT for scheduling.
+
+**Shared Runtime Services → priority 280–299 (platform band)**: When the
+inputs imply an app-wide shared runtime service or state that MANY feature
+units depend on AND that itself builds on the shared foundation contracts,
+emit it as a `type: "feature"` task at priority **280–299**. The defining
+test is dependency POSITION — *consumed by many feature units, built on
+foundation* — not any particular framework mechanism. Examples across
+stacks: a shared session / identity / authorization-context accessor, a
+configuration service, a shared client / transport singleton, shared
+dependency registration. Such a service runs after foundation contracts
+(200–279) and before ordinary feature work (300+), so feature consumers
+bind to its single access contract instead of constructing the shared value
+locally. When the inputs imply no such cross-feature shared service, emit
+none — 280–299 stays empty.
 {{/unless}}
 
 CRITICAL:
