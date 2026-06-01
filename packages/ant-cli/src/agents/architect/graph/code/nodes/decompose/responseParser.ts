@@ -17,11 +17,9 @@ import {
   asJsonSyntaxViolation,
 } from '../../../../../../core/utils/llmResponseParser';
 
-import type { PackageTierEntry, TaskType, GameEngine } from '@ant/shared';
+import type { TaskType, GameEngine, TechTier } from '@ant/shared';
 import { SUPPORTED_GAME_ENGINES } from '@ant/shared';
-import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
-
-type ArtifactPolicy = { refs?: string[]; context?: string[] };
+import { isWithinRacWhitelist, type RacScope } from './racGate';
 
 /**
  * Three-Axis SSOT — the SOLE phase site that translates `priority` into a
@@ -52,122 +50,19 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
   return undefined;
 }
 
-/**
- * Pipeline mode discriminator for `deriveArtifactPolicy`.
- *
- *   - `'infer'`   — RAC was inferred (no explicit user selection). The LLM's
- *                   `packages` tag is the canonical signal for which design
- *                   docs to inject; package → `fe-system-X.md` mapping is
- *                   active.
- *   - `'explicit'` — RAC was pinned by the user (`source: 'explicit'` AND
- *                   non-empty `refs ∪ context`). The user-selected files
- *                   are the sole authority; package-based ref synthesis
- *                   is suppressed. `packages` survives only as a tech-tier
- *                   hint consumed by `resolveTaskTechTiersFromMap`.
- *
- * Channel B closure for the `state.artifacts Post-RAC SSOT` (see
- * `AGENTS.md` and the `discovery-tool RAC bypass (2026-04)` regression). Without
- * suppression, a directive job whose RAC excluded `fe-system-main.md`
- * still ended up with that path baked into every `task.artifactPolicy.refs`
- * and `task.include`, which downstream phases then re-fetched from disk.
- */
-export type ArtifactPolicyMode = 'infer' | 'explicit';
-
-/**
- * Derive role-annotated artifact selection policy from legacy task fields.
- * Returns undefined for verification tasks (no docs needed).
- *
- * `activeSpecRefFilename` is the filename of the spec promoted to a
- * development source by the RAC (see `ArtifactPoolView.activeSpecRefFilename`).
- * The decompose LLM does NOT select specs anymore — the choice is fixed
- * upstream by intent + action metadata.
- *
- * `uiSource` selects the interpretation branch for ui/design-system tasks:
- *   - 'ant'     → honour `uiSections` to build a narrow subset of the canonical
- *                 ui-tokens/assets/spec JSON pool.
- *   - 'figma'   → ignore `uiSections`; inject the figma.json reference and
- *                 defer real data to live MCP exploration at execute time.
- *   - 'handoff' → ignore `uiSections` (handoff has no schema); select the
- *                 handoff directory via wildcard. `loadResolvedArtifacts`
- *                 replaces each file's content with a STUB (path + size +
- *                 kind + read_file hint) so the bundle behaves like source
- *                 code: execute/plan read files on demand rather than
- *                 receiving the whole bundle inline.
- * When undefined, fall back to 'ant' semantics for backward compatibility.
- *
- * `mode` — see `ArtifactPolicyMode`. Explicit pipelines suppress
- * package → `fe-system-X.md` ref synthesis. UI/design-system tasks keep
- * their `uiSections` branch in both modes because those paths are already
- * inside the RAC (the user explicitly selected the UI source slot when
- * the intent matrix exposed it).
- */
-export function deriveArtifactPolicy(
-  taskType: TaskType,
-  packages?: string[],
-  uiSections?: string[],
-  activeSpecRefFilename?: string | null,
-  uiSource?: UiSource,
-  mode: ArtifactPolicyMode = 'infer',
-): ArtifactPolicy | undefined {
-  // R1 — phase layer is blind to `task.type`. The predicate helpers below
-  // take a `{ type }` shape so this function (which owns only the type
-  // string, not the full task object) can still dispatch through the
-  // task-bundle SSOT.
-  const taskShape = { type: taskType };
-  if (isVerificationTask(taskShape)) return undefined;
-
-  if (isUiTask(taskShape) || isDesignSystemTask(taskShape)) {
-    const src: UiSource = uiSource ?? 'ant';
-    if (src === 'figma') {
-      return { context: [`${ARTIFACT_PREFIX.UI_FIGMA}figma.json`] };
-    }
-    if (src === 'handoff') {
-      return { context: [`${ARTIFACT_PREFIX.UI_HANDOFF}*`] };
-    }
-    // src === 'ant'
-    const contextPaths: string[] = [];
-    if (uiSections?.length) {
-      contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
-      for (const sec of uiSections) {
-        if (sec === 'tokens') continue;
-        if (sec === 'assets') contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}assets`);
-        else contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT_SPEC}${sec}`);
-      }
-    } else {
-      contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}*`);
-    }
-    return contextPaths.length > 0 ? { context: contextPaths } : undefined;
-  }
-
-  const refPaths: string[] = [];
-  if (activeSpecRefFilename) refPaths.push(`${ARTIFACT_PREFIX.SPEC}${activeSpecRefFilename}`);
-
-  // Channel B closure (`state.artifacts Post-RAC SSOT`): the
-  // `packages → fe-system-X.md` mapping is the legacy infer-mode
-  // mechanism for surfacing design docs to plan/execute. When the user
-  // explicitly pinned the RAC, those paths must come from the user's
-  // refs/context only — synthesizing them from `packages` reintroduces
-  // the `post-RAC pool-leak (2026-04)` / `discovery-tool RAC bypass (2026-04)` leak even though
-  // `state.artifacts` itself is RAC-bounded. `packages` is preserved on
-  // the task for tech-tier resolution only.
-  if (mode === 'infer' && packages?.length) {
-    for (const pkg of packages) {
-      if (pkg.startsWith('fe-')) refPaths.push(`${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}.md`);
-      else if (pkg.startsWith('be-')) refPaths.push(`${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}.md`);
-      else if (pkg === 'shared') refPaths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-    }
-    if (!packages.includes('shared')) refPaths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-  }
-
-  return refPaths.length > 0 ? { refs: refPaths } : undefined;
-}
-
 export interface ParsedTechTier {
   stack: string;
   stackReasoning: string;
   language: string;
   framework?: string | null;
-  packageTiers?: Record<string, PackageTierEntry>;
+  /**
+   * Stack-keyed framework sub-objects. For fullstack jobs the LLM emits each
+   * runtime's framework independently here, because FE (browser) and BE (Node)
+   * are distinct runtime categories and their frameworks never collapse to one.
+   * Single-stack jobs omit both.
+   */
+  frontend?: Partial<TechTier>;
+  backend?: Partial<TechTier>;
   /**
    * Phase 1 — game-domain 5th slot. When the LLM emits `"gameEngine": "phaser"`
    * inside the `<techTier>` JSON, the parser surfaces it here so the
@@ -291,7 +186,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: tasks must be an array');
     }
     
-    // ✅ Extract techTier from <techTier> tag (stack + language + framework + packageTiers)
+    // ✅ Extract techTier from <techTier> tag (stack + language + framework + frontend/backend sub-objects)
     let techTier: ParsedTechTier | undefined;
     const techTierMatch = rawResponse.match(/<techTier>\s*([\s\S]*?)\s*<\/techTier>/);
     
@@ -307,7 +202,8 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
           stackReasoning: parsed.stackReasoning || '',
           language: normalizeLanguage(parsed.language || 'typescript'),
           framework: normalizeFramework(parsed.framework || null),
-          packageTiers: parsed.packageTiers || undefined,
+          frontend: parsed.frontend || undefined,
+          backend: parsed.backend || undefined,
           gameEngine,
         };
       } catch (error) {
@@ -468,7 +364,7 @@ export function createTaskQueue(
   activeSpecRefFilename: string | null | undefined,
   defaultUiSource: UiSource | undefined,
   executionTier: ExecutionTierId,
-  mode: ArtifactPolicyMode = 'infer',
+  racScope?: RacScope,
 ): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
@@ -590,31 +486,38 @@ export function createTaskQueue(
       ? 'verification' as const
       : (task.type || DEFAULT_TASK_TYPE);
 
-    const uiSections: string[] | undefined = Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined;
-    const packages: string[] | undefined = Array.isArray((task as any).packages) ? (task as any).packages : undefined;
-
     // Resolve uiSource: explicit task field wins, otherwise inherit the pool-derived
     // default from the decompose node. Only UI-related task types consume this field;
     // everything else drops it. Kept undefined (not written) for non-UI tasks so the
-    // BaseTask.uiSource contract stays clean.
+    // BaseTask.uiSource contract stays clean. uiSource is an interpretation axis
+    // (ui-source-dispatch partial gate), NOT an injection selector — `include`
+    // owns injection.
     const explicitUiSource = typeof (task as any).uiSource === 'string' ? (task as any).uiSource as UiSource : undefined;
     const inheritedUiSource = explicitUiSource ?? defaultUiSource;
     const isUiRelated = isUiTask({ type: resolvedType }) || isDesignSystemTask({ type: resolvedType });
     const uiSource: UiSource | undefined = isUiRelated ? inheritedUiSource : undefined;
 
-    // artifactPolicy: role-annotated selection; include: flat backward-compat projection.
-    //
-    // `mode` threads the RAC-source gate (Channel B closure). When
-    // `mode === 'explicit'` the user pinned refs/context — `packages` is
-    // a tech-tier hint only and MUST NOT auto-synthesize `fe-system-X.md`
-    // refs (`discovery-tool RAC bypass (2026-04)` regression). The LLM may still emit a
-    // bare `include` array; we keep that pass-through but it is ignored
-    // by the explicit pipeline because explicit mode in
-    // `execute/buildMessages` selects from the RAC pool directly via
-    // `state.resolvedAction.{refs,context}` rather than `task.include`.
-    const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
-    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource, mode);
-    const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
+    // Per-task stack pointer (narrowing). Always single at task level.
+    const rawStack = (task as any).stack;
+    const stack: 'frontend' | 'backend' | undefined =
+      rawStack === 'frontend' || rawStack === 'backend' ? rawStack : undefined;
+
+    // Single injection SSOT — LLM-authored `include`, RAC-validated. When the
+    // RAC is pinned (explicit pipeline → racScope set), out-of-RAC paths are
+    // dropped with a warning. Belt-and-suspenders: the pool is itself a RAC
+    // subset, so `selectArtifacts(pool, {include})` already misses out-of-RAC
+    // paths — this guard surfaces the drift loudly. verification tasks carry
+    // no include (selectArtifacts returns [] for them regardless).
+    const rawInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
+    const include: string[] | undefined = rawInclude
+      ? rawInclude.filter((p: string) => {
+          const ok = isWithinRacWhitelist(p, racScope);
+          if (!ok) {
+            console.warn(`⚠️ [Decompose] Dropped include path outside RAC: "${p}" (task "${task.id || task.name}")`);
+          }
+          return ok;
+        })
+      : undefined;
 
     // Tier-Verification Alignment: Tier 2 Exploratory self-verify flag passthrough.
     //   - Emitted by the decompose LLM at Tier 2 (exactly one task).
@@ -642,10 +545,8 @@ export function createTaskQueue(
       type: resolvedType,
       priority: resolvedPriority,
       description: task.description,
-      uiSections,
-      packages,
       include,
-      artifactPolicy,
+      stack,
       uiSource,
       exclusive: exclusive || undefined,
       parallelGroup,

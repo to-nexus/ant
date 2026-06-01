@@ -14,6 +14,7 @@ import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
+import { computeRacScope, decideRacGate } from '../decompose/racGate';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { hooksIfActive } from '../../tasks/_shared/registry';
@@ -29,6 +30,21 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       name: tc.name,
       args: tc.args,
     }));
+  },
+
+  // RAC-scope gate for plan/execute on-demand file reads — the single
+  // code-job seam serving BOTH phases (they share this `tool` node). Mirrors
+  // the decompose inline gate so the RAC boundary is symmetric: explicit
+  // pipelines may read only inside `refs ∪ context` (plus codebase/, which
+  // `decideRacGate` treats as orthogonal); infer pipelines (racScope=undefined)
+  // allow everything. Only file-access tools carry a single artifact path.
+  // Common handlers stay RAC-orthogonal — the policy lives here, not in them.
+  gateCall(state, call) {
+    if (call.name !== 'read_file' && call.name !== 'list_files') return { allowed: true };
+    const racScope = computeRacScope(state.resolvedAction);
+    if (!racScope) return { allowed: true };
+    const target = ((call.args as any)?.path ?? (call.args as any)?.directory ?? '') as string;
+    return decideRacGate(target, racScope);
   },
 
   buildContext(state): ToolExecutionContext {

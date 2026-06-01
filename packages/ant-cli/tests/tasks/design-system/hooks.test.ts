@@ -122,10 +122,9 @@ describe('tasks/design-system/hooks/conversations', () => {
 
 describe('tasks/design-system/model/is — isDesignSystemTask', () => {
   // Introduced in T6b-κ together with isTestCodeTask / isExplainTask so
-  // phase-layer call sites (`nodes/execute/tools.ts
-  // isFrontendTask`, `nodes/decompose/responseParser.ts
-  // deriveArtifactPolicy`) can retire the last literal
-  // `taskType === 'design-system'` comparisons and delegate to the
+  // phase-layer call sites (`nodes/execute/tools.ts isFrontendTask`,
+  // `nodes/decompose/responseParser.ts` task building) can retire the last
+  // literal `taskType === 'design-system'` comparisons and delegate to the
   // per-task predicate SSOT.
   it('returns true only for design-system tasks', () => {
     expect(isDesignSystemTask({ type: 'design-system' })).toBe(true);

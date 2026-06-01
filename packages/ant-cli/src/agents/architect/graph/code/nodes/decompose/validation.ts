@@ -1,6 +1,5 @@
 import { CodeTask } from "../../../../types/task";
 import type { TaskType, ResolvedArtifact } from '@ant/shared';
-import { getDesignDocByPackageFromPool } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { isErrorTask } from '../../tasks/error';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 
@@ -115,17 +114,19 @@ export function validateTasks(
   directive: string | undefined,
   artifacts?: ResolvedArtifact[],
 ): void {
-  // Warn about packages referencing non-existent design docs
+  // Warn about include paths that match nothing in the post-RAC pool — the
+  // single injection SSOT is `task.include`, so an include that matches no
+  // artifact silently injects nothing for that path.
   if (artifacts && artifacts.length > 0) {
     for (const t of tasks) {
-      if (!t.packages) continue;
-      for (const pkg of t.packages) {
-        if (pkg === 'shared') continue;
-        const content = getDesignDocByPackageFromPool(pkg, artifacts);
-        if (!content) {
+      if (!t.include?.length) continue;
+      for (const inc of t.include) {
+        const prefix = inc.endsWith('*') ? inc.slice(0, -1) : inc;
+        const matches = artifacts.some(a => a.path === inc || a.path.startsWith(prefix));
+        if (!matches) {
           console.warn(
-            `⚠️  [Decompose Validation] Task "${t.id}" references package "${pkg}" ` +
-            `but no matching design doc found — design doc will not be injected for this tag`
+            `⚠️  [Decompose Validation] Task "${t.id}" include "${inc}" ` +
+            `matches no artifact in the RAC pool — nothing will be injected for it`
           );
         }
       }

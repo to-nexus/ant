@@ -183,6 +183,64 @@ describe('batchSplit — Three-Axis SSOT priority + band semantics', () => {
     }
   });
 
+  it('Path B (error parent): sub-tasks inherit the parent include + stack', () => {
+    const state = makeState();
+    const parent: CodeTask = {
+      id: 'err-1',
+      name: 'fix errors',
+      type: 'error',
+      priority: 905,
+      description: '',
+      stack: 'backend',
+      include: ['architecture/system/be-system-main.md', 'architecture/system/api-contract-main.md'],
+    } as CodeTask;
+    const plan = JSON.stringify({
+      batches: [
+        { name: 'fix a', rationale: 'error in a', modify: [{ target: 'a.ts' }] },
+        { name: 'fix b', rationale: 'error in b', modify: [{ target: 'b.ts' }] },
+      ],
+    });
+
+    processDiagnosticBatchSplit(state, plan, parent);
+
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+    expect(subs.length).toBe(2);
+    for (const s of subs) {
+      expect((s as any).include).toEqual(parent.include);
+      expect((s as any).stack).toBe('backend');
+    }
+  });
+
+  it('Path A (verification parent): error sub-tasks seed spec+api-contract include', () => {
+    // The verification parent carries no include; a blind inherit would
+    // leave fix-applier sub-tasks with empty injection. They MUST be seeded
+    // with spec + api-contract so the fix applier sees the contract.
+    const state = makeState();
+    const parent: CodeTask = {
+      id: 'final-v',
+      name: 'Final Verification',
+      type: 'verification',
+      priority: 1000,
+      description: '',
+    } as CodeTask;
+    const plan = JSON.stringify({
+      diagnostics: { totalErrors: 2 },
+      implementation: { modify: [] },
+      batches: [
+        { name: 'fix a', rationale: 'compile error in a', modify: ['a.ts'] },
+        { name: 'fix b', rationale: 'compile error in b', modify: ['b.ts'] },
+      ],
+    });
+
+    processDiagnosticBatchSplit(state, plan, parent);
+
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+    expect(subs.length).toBe(2);
+    for (const s of subs) {
+      expect((s as any).include).toEqual(['architecture/spec/', 'architecture/system/api-contract-']);
+    }
+  });
+
   it('non-feature sub-tasks (error parent → error children) MUST NOT carry band', () => {
     // Three-Axis SSOT: band is type-bound to FeatureCodeTask. Non-
     // feature sub-tasks must not surface a `band` field, even if the

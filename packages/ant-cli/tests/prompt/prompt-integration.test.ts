@@ -33,53 +33,52 @@ function rac(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext 
 // ============================================================================
 
 describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', () => {
-  it('feature task with design artifacts → selected by default', () => {
+  it('feature task with authored include → design doc selected', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/fe-system-main.md', content: '# Frontend System Design\nNext.js app', role: 'ref' },
     ];
-    expect(pool.some(a => a.path.includes('fe-system-main'))).toBe(true);
-
-    const selected = selectArtifacts(pool, { taskType: 'feature' });
+    const selected = selectArtifacts(pool, { taskType: 'feature', include: ['architecture/system/fe-system-main.md'] });
     expect(selected.some(a => a.content.includes('Frontend System Design'))).toBe(true);
   });
 
-  it('verification task → empty selection regardless of pool', () => {
+  it('verification task → empty selection regardless of include', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/fe-system-main.md', content: 'Design', role: 'ref' },
     ];
-    expect(pool.length).toBeGreaterThan(0);
-
-    const selected = selectArtifacts(pool, { taskType: 'verification' });
+    const selected = selectArtifacts(pool, { taskType: 'verification', include: ['architecture/system/fe-system-main.md'] });
     expect(selected).toHaveLength(0);
   });
 
-  it('error task without spec → empty selection', () => {
+  it('no include → empty selection (no taskType default)', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/fe-system-main.md', content: 'Design', role: 'ref' },
     ];
-    const selected = selectArtifacts(pool, { taskType: 'error' });
-    expect(selected).toHaveLength(0);
+    expect(selectArtifacts(pool, { taskType: 'error' })).toHaveLength(0);
+    expect(selectArtifacts(pool, { taskType: 'feature' })).toHaveLength(0);
   });
 
-  it('error task with specDocs in pool → spec selected', () => {
+  it('error task with spec/api-contract include → both selected', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/api-contract-main.md', content: 'API contract', role: 'ref' },
       { path: 'architecture/spec/spec-login', content: 'Login feature spec', role: 'ref' },
     ];
-    const selected = selectArtifacts(pool, { taskType: 'error' });
+    const selected = selectArtifacts(pool, {
+      taskType: 'error',
+      include: ['architecture/spec/', 'architecture/system/api-contract-'],
+    });
     expect(selected.some(a => a.path.includes('spec-login'))).toBe(true);
     expect(selected.some(a => a.path.includes('api-contract'))).toBe(true);
   });
 
-  it('ui task → only UI docs selected', () => {
+  it('ui task with UI include → only the listed UI docs selected', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/fe-system-main.md', content: 'FE design', role: 'ref' },
       { path: 'visual/ui/ant/tokens', content: '{ "colors": {} }', role: 'context' },
       { path: 'visual/ui/ant/spec/header', content: 'Header spec', role: 'context' },
     ];
-    const selected = selectArtifacts(pool, { taskType: 'ui' });
+    const selected = selectArtifacts(pool, { taskType: 'ui', include: ['visual/ui/ant/'] });
     expect(selected.every(a => a.path.startsWith('visual/ui/ant/'))).toBe(true);
-    expect(selected.length).toBeGreaterThan(0);
+    expect(selected.length).toBe(2);
   });
 
   it('include patterns → exact path matching', () => {

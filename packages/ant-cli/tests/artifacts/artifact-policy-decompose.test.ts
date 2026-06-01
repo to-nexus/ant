@@ -1,128 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { deriveArtifactPolicy } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
+import { createTaskQueue } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 
 // ---------------------------------------------------------------------------
-// deriveArtifactPolicy
+// Per-task injection narrowing via the single `include` SSOT. Locks:
+//   1. Explicit per-task narrowing — an app task sees ONLY its own include,
+//      never a sibling (admin) task's design doc.
+//   2. RAC validation — out-of-RAC include paths are dropped in explicit mode.
 // ---------------------------------------------------------------------------
 
-describe('deriveArtifactPolicy', () => {
-  it('verification: undefined 반환', () => {
-    expect(deriveArtifactPolicy('verification')).toBeUndefined();
-  });
+const FE_APP = `${ARTIFACT_PREFIX.FE_SYSTEM}app.md`;
+const FE_ADMIN = `${ARTIFACT_PREFIX.FE_SYSTEM}admin.md`;
+const API = `${ARTIFACT_PREFIX.API_CONTRACT}main.md`;
 
-  it('ui taskType: uiSections -> context paths', () => {
-    const result = deriveArtifactPolicy('ui', undefined, ['header', 'tokens', 'assets']);
-    expect(result).toBeDefined();
-    expect(result!.context).toBeDefined();
-    expect(result!.refs).toBeUndefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}assets`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT_SPEC}header`);
-  });
+function tier3(tasks: any[]) {
+  return [
+    ...tasks,
+    { id: 'final-verification', name: 'Final Verification', type: 'verification' as const, priority: 1000, description: 'Verify' },
+  ] as any;
+}
 
-  it('design-system taskType: uiSections -> context paths', () => {
-    const result = deriveArtifactPolicy('design-system', undefined, ['layout']);
-    expect(result).toBeDefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT_SPEC}layout`);
-  });
+describe('explicit per-task narrowing (app task does not receive admin doc)', () => {
+  const racScope = { refs: [FE_APP, FE_ADMIN, API], context: [] };
 
-  it('ui taskType: no uiSections -> wildcard context', () => {
-    const result = deriveArtifactPolicy('ui');
-    expect(result).toBeDefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}*`);
-  });
-
-  it('fe-/be- packages -> refs paths', () => {
-    const result = deriveArtifactPolicy('feature', ['fe-main', 'be-auth']);
-    expect(result).toBeDefined();
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.FE_SYSTEM}main.md`);
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.BE_SYSTEM}auth.md`);
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-  });
-
-  it('shared package -> api-contract ref', () => {
-    const result = deriveArtifactPolicy('feature', ['shared']);
-    expect(result).toBeDefined();
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-  });
-
-  it('active spec ref filename -> spec ref', () => {
-    const result = deriveArtifactPolicy('feature', undefined, undefined, 'spec-login.md');
-    expect(result).toBeDefined();
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.SPEC}spec-login.md`);
-  });
-
-  it('packages without shared -> still includes api-contract', () => {
-    const result = deriveArtifactPolicy('feature', ['fe-main']);
-    expect(result).toBeDefined();
-    expect(result!.refs).toContain(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-  });
-
-  it('no packages, no spec -> undefined', () => {
-    const result = deriveArtifactPolicy('feature');
-    expect(result).toBeUndefined();
-  });
-
-  // ─────────────────────────────────────────────────────────────────
-  // Channel B closure — explicit pipeline suppresses package→ref
-  // synthesis (`discovery-tool RAC bypass (2026-04)` regression).
-  // ─────────────────────────────────────────────────────────────────
-
-  it('explicit mode + fe-main packages -> no refs synthesis', () => {
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['fe-main'],
-      undefined,
-      undefined,
-      undefined,
-      'explicit',
+  it('app task include = [fe-system-app, api-contract]; admin doc absent', () => {
+    const { taskQueue } = createTaskQueue(
+      tier3([
+        { id: 'app', name: 'App', type: 'feature', priority: 300, stack: 'frontend', include: [FE_APP, API] },
+        { id: 'admin', name: 'Admin', type: 'feature', priority: 301, stack: 'frontend', include: [FE_ADMIN, API] },
+      ]),
+      null, undefined, 3, racScope,
     );
-    expect(result).toBeUndefined();
+    const app = taskQueue.getAll().find(t => t.id === 'app')!;
+    const admin = taskQueue.getAll().find(t => t.id === 'admin')!;
+    expect(app.include).toEqual([FE_APP, API]);
+    expect(app.include).not.toContain(FE_ADMIN);
+    expect(admin.include).toEqual([FE_ADMIN, API]);
+    expect(admin.include).not.toContain(FE_APP);
   });
 
-  it('explicit mode + shared package -> no api-contract synthesis', () => {
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['shared'],
-      undefined,
-      undefined,
-      undefined,
-      'explicit',
+  it('out-of-RAC include path is dropped (RAC validation)', () => {
+    const { taskQueue } = createTaskQueue(
+      tier3([
+        { id: 'app', name: 'App', type: 'feature', priority: 300, stack: 'frontend', include: [FE_APP, FE_ADMIN] },
+      ]),
+      null, undefined, 3,
+      { refs: [FE_APP], context: [] }, // admin NOT in RAC
     );
-    expect(result).toBeUndefined();
+    const app = taskQueue.getAll().find(t => t.id === 'app')!;
+    expect(app.include).toEqual([FE_APP]);
   });
 
-  it('explicit mode preserves spec ref derived from RAC', () => {
-    const result = deriveArtifactPolicy(
-      'feature',
-      ['fe-main'],
-      undefined,
-      'spec-login.md',
-      undefined,
-      'explicit',
+  it('retired carriers (artifactPolicy / packages / uiSections) are not set', () => {
+    const { taskQueue } = createTaskQueue(
+      tier3([{ id: 'app', name: 'App', type: 'feature', priority: 300, stack: 'frontend', include: [FE_APP] }]),
+      null, undefined, 3, racScope,
     );
-    expect(result?.refs).toEqual([`${ARTIFACT_PREFIX.SPEC}spec-login.md`]);
-  });
-
-  it('explicit mode preserves UI/design-system uiSections branch (slot already in RAC)', () => {
-    const result = deriveArtifactPolicy(
-      'design-system',
-      undefined,
-      ['layout'],
-      undefined,
-      undefined,
-      'explicit',
-    );
-    expect(result?.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
-    expect(result?.context).toContain(`${ARTIFACT_PREFIX.UI_ANT_SPEC}layout`);
-  });
-
-  it('default mode is infer (backward-compat)', () => {
-    // No 6th arg → infer behaviour preserved for any caller that has
-    // not been updated yet.
-    const result = deriveArtifactPolicy('feature', ['fe-main']);
-    expect(result?.refs).toContain(`${ARTIFACT_PREFIX.FE_SYSTEM}main.md`);
+    const app = taskQueue.getAll().find(t => t.id === 'app')! as any;
+    expect(app.artifactPolicy).toBeUndefined();
+    expect(app.packages).toBeUndefined();
+    expect(app.uiSections).toBeUndefined();
   });
 });

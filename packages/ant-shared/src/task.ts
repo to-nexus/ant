@@ -206,23 +206,22 @@ interface BaseTaskCommon {
   _failureReason?: string;
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
-  packages?: string[];
+  /**
+   * Per-task tech-tier pointer. In a fullstack job each task targets exactly one
+   * runtime, so `stack` selects which `basis.techTier[stack]` slot resolves to
+   * `task.techTiers`. Single-stack jobs may omit it (the sole tier is used).
+   * Always single at task level (no fullstack value).
+   */
+  stack?: 'frontend' | 'backend';
   exclusive?: boolean;
   parallelGroup?: string;
   /**
-   * Artifact path prefix patterns for task-level document selection.
-   * When set, only artifacts matching these prefixes are injected into the prompt.
-   * When unset, taskType-based default rules apply (backward compatible).
+   * Single SSOT for per-task artifact injection. Artifact pool paths (or glob
+   * prefixes) selected into this task's plan/execute prompt. Authored by the
+   * decompose / revise LLM (RAC-validated) or seeded by task-creating helpers.
+   * Empty / unset ⇒ no artifacts pre-injected (explicit `[]`, not a default).
    */
   include?: string[];
-  /**
-   * Role-annotated artifact selection policy. When present, overrides `include`
-   * for role-aware selection via `selectArtifactsWithPolicy`.
-   */
-  artifactPolicy?: {
-    refs?: string[];
-    context?: string[];
-  };
   /**
    * Which UiSource feeds this task (only meaningful for UI-related task types:
    * 'ui' and 'design-system'). Kept BE-internal (routing + prompt dispatch only);

@@ -93,8 +93,9 @@ export interface DesignTaskResumeState extends BaseTaskResumeState {}
  */
 interface CodeTaskCommon {
   /**
-   * Per-task technology tiers resolved from decompose's packageTiers map.
-   * Array preserves per-package stack info (e.g., [frontend/ts, backend/go]).
+   * Per-task technology tier(s), resolved from the task's `stack` pointer via
+   * `resolveTaskTechTierFromStack(stack, basis.techTier)`. Single-element at
+   * task level (a task targets exactly one runtime tier).
    */
   techTiers?: TechTier[];
   /**
@@ -121,12 +122,6 @@ interface CodeTaskCommon {
    * branch its "Minimal changes" rule between patch / upstream / refactor.
    */
   remediationMode?: 'patch' | 'upstream' | 'refactor';
-  /**
-   * UI sections required for this task (set by decompose LLM). Used for
-   * split injection — only specified sections are loaded into prompt.
-   * Meaningful only for `ui` / `design-system` variants.
-   */
-  uiSections?: string[];
   /**
    * Per-task resume state (exists only when interrupted during parallel
    * execution). Contains the worker's execution context at the time of
@@ -260,13 +255,12 @@ export type DesignTask = (DocTask | ExplainTask) & {
   sectionScope?: string;           // Description of what this section covers
 
   /**
-   * Per-task technology tiers resolved from decompose's packageTiers map.
+   * Per-task technology tier(s), resolved at buildTaskQueue time from the
+   * task's `stack` pointer (derived from targetFile prefix) via
+   * `resolveTaskTechTierFromStack(stack, basisTechTierConfig)`:
+   * - be-system-auth.md / api-contract-*.md → stack 'backend' → [config.backend]
+   * - fe-system-main.md                     → stack 'frontend' → [config.frontend]
    * Used by PromptResolver to deterministically select framework augmentations.
-   * Array preserves per-package stack info (e.g., [frontend/ts, backend/go]).
-   *
-   * Resolved at buildTaskQueue time via targetFile → tag → packageTiers lookup:
-   * - be-system-auth.md → packages: ["be-auth"] → packageTiers["be-auth"]
-   * - fe-system-main.md → packages: ["fe-main"] → packageTiers["fe-main"]
    */
   techTiers?: TechTier[];
 
