@@ -6,6 +6,11 @@
  * Hooks published:
  *   - scheduling.preUiBarrier   — block ui work while `blocksUi`
  *                                 producers (setup / feature) run.
+ *   - scheduling.blocksTestgen  — producer: test-code tasks wait for ui
+ *                                 work to finish so generated tests
+ *                                 target fully-built views (alongside
+ *                                 setup / feature). doc is gated
+ *                                 transitively (doc waits on test-code).
  *   - conversations.convKey     — per-task conversation scope (pre-wiring;
  *                                 phase layer still shares
  *                                 `CONV_KEYS.NODE_EXECUTE`).
@@ -18,9 +23,9 @@
  *     so no ui-specific plan variant template or template-var override
  *     is required. There is no `plan/variants/ui/` template and no
  *     planGeneration.ts branch to port.
- *   - scheduling producer flags (`blocksUi / blocksTestgen / blocksDoc /
- *     blocksIntegration`) — UI is a barrier sink only; it does not
- *     activate barriers for other task types.
+ *   - scheduling producer flags `blocksUi / blocksDoc / blocksIntegration`
+ *     — ui gates ONLY testgen (no self-block on ui; doc reaches ui
+ *     transitively via test-code; integration is a feature-band concern).
  *
  * Phase-layer `task.type === 'ui'` residuals were resolved in T6b-κ:
  *   - `nodes/decompose/responseParser.ts deriveArtifactPolicy` — the
@@ -33,7 +38,7 @@
  * presence, not task-type literals).
  */
 
-import { preUiBarrier } from './hooks/scheduling';
+import { preUiBarrier, blocksTestgen } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { composeBundle } from '../_shared/verify';
@@ -54,7 +59,7 @@ export const hooks = composeBundle({
     plan: { extraTemplateVars: planExtraTemplateVars },
   },
   taskTypeSpecific: {
-    scheduling: { preUiBarrier },
+    scheduling: { preUiBarrier, blocksTestgen },
     conversations: { convKey },
   },
 });

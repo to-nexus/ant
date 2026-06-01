@@ -119,39 +119,65 @@ function stringifyToolResultContent(content: string | MessageContentBlock[]): st
   return '';
 }
 
+interface PreservedRead {
+  path: string;
+  /** Human-readable range suffix, e.g. " (lines 140-160)"; "" for whole-file. */
+  label: string;
+  content: string;
+}
+
+/** Range descriptor for a read_file tool_use, derived from its input. */
+function readRangeOf(input: Record<string, any> | undefined): { rangeKey: string; label: string } {
+  const s = input?.startLine;
+  const e = input?.endLine;
+  const hasS = typeof s === 'number';
+  const hasE = typeof e === 'number';
+  if (!hasS && !hasE) return { rangeKey: '', label: '' }; // whole-file read
+  const sv = hasS ? String(s) : '';
+  const ev = hasE ? String(e) : '';
+  return { rangeKey: `${sv}-${ev}`, label: ` (lines ${sv}-${ev})` };
+}
+
 /**
- * Walk messages in order and return, per file path, the content of its MOST
- * RECENT `read_file` that has NO later `edit_file`/`create_file` on the same
- * path.
+ * Walk messages in order and return, per (file path, read range), the content
+ * of its MOST RECENT `read_file` that has NO later `edit_file`/`create_file`
+ * on the same path.
  *
- * Why: the old compaction dropped read content entirely (path-only summary),
- * so once history passed the threshold the model could no longer see files it
- * had read and re-read them in a loop until the recursion budget was burned
- * (dim-beating-brass RCA). Preserving the latest read lets the model keep its
- * context.
+ * Why keyed by (path, range), not path alone: the old compaction dropped read
+ * content entirely (path-only summary), so the model re-read files in a loop
+ * until the recursion budget burned (dim-beating-brass RCA). The first fix
+ * preserved the latest read PER PATH — but a large file read in multiple
+ * line-range chunks then collapsed to its last chunk, so the model lost the
+ * earlier chunks and re-read them: the same loop, recurring for ranged reads
+ * (grave-bolting-cloud RCA). Keying by (path, range) preserves EVERY distinct
+ * chunk. A whole-file read is the range=none point of the same key space, so
+ * reading a file whole twice still dedups to latest — identical to the prior
+ * path-only behaviour, no separate compatibility branch.
  *
- * Staleness-safe: a read followed by an edit/create of the same path is
- * dropped here (the edit / on-disk state is the truth, surfaced via the
+ * Staleness-safe: an edit/create of a path drops ALL preserved ranges of that
+ * path (the edit / on-disk state is the truth, surfaced via the
  * `[file edited/written: …]` markers), so we never resurrect pre-edit content.
- * Reads invalidated only by a `run_command` (formatter/codegen) are left to a
- * normal re-read — that is the legitimate re-read case, not thrash.
  */
-function extractLatestReadContent(messages: ConversationMessage[]): Map<string, string> {
-  const toolUseById = new Map<string, { name: string; path: string }>();
-  const latestRead = new Map<string, string>();
+function extractLatestReadContent(messages: ConversationMessage[]): Map<string, PreservedRead> {
+  const toolUseById = new Map<string, { name: string; path: string; rangeKey: string; label: string }>();
+  const preserved = new Map<string, PreservedRead>();
 
   for (const msg of messages) {
     if (!Array.isArray(msg.content)) continue;
     for (const block of msg.content) {
       if (block.type === 'tool_use' && block.name) {
-        const path = (block.input as Record<string, any>)?.path;
+        const input = block.input as Record<string, any> | undefined;
+        const path = input?.path;
         const pathStr = typeof path === 'string' ? path : '';
         if (typeof block.id === 'string') {
-          toolUseById.set(block.id, { name: block.name, path: pathStr });
+          const { rangeKey, label } = readRangeOf(input);
+          toolUseById.set(block.id, { name: block.name, path: pathStr, rangeKey, label });
         }
-        // A mutation invalidates any prior preserved read of that path.
+        // A mutation invalidates ALL preserved ranges of that path.
         if ((block.name === 'edit_file' || block.name === 'create_file') && pathStr) {
-          latestRead.delete(pathStr);
+          for (const [key, entry] of preserved) {
+            if (entry.path === pathStr) preserved.delete(key);
+          }
         }
       } else if (block.type === 'tool_result') {
         const origin = block.tool_use_id ? toolUseById.get(block.tool_use_id) : undefined;
@@ -159,28 +185,33 @@ function extractLatestReadContent(messages: ConversationMessage[]): Map<string, 
         const path = origin?.path;
         if (toolName === 'read_file' && path && !block.is_error) {
           const text = stringifyToolResultContent(block.content);
-          if (text) latestRead.set(path, text); // re-set moves to latest content
+          if (text) {
+            // (path, range) key — distinct chunks coexist; same chunk re-read
+            // moves to latest content.
+            const key = JSON.stringify([path, origin?.rangeKey ?? '']);
+            preserved.set(key, { path, label: origin?.label ?? '', content: text });
+          }
         }
       }
     }
   }
-  return latestRead;
+  return preserved;
 }
 
 /**
  * Render the preserved read contents as a labelled block appended to the
  * post-compaction user message, with an explicit do-not-re-read directive.
  */
-function buildPreservedReadsText(latestReads: Map<string, string>): string {
-  if (latestReads.size === 0) return '';
+function buildPreservedReadsText(preserved: Map<string, PreservedRead>): string {
+  if (preserved.size === 0) return '';
   const parts: string[] = [
     'Current contents of files already read this task (deduplicated to the ' +
-    'latest read of each; files later edited/created are omitted here and ' +
+    'latest read of each path+range; files later edited/created are omitted here and ' +
     'reflected by the [file written/edited] markers above). These remain in ' +
     'your context — DO NOT call read_file on them again:',
   ];
-  for (const [path, content] of latestReads) {
-    parts.push(`\n===== ${path} =====\n${content}`);
+  for (const { path, label, content } of preserved.values()) {
+    parts.push(`\n===== ${path}${label} =====\n${content}`);
   }
   return parts.join('\n');
 }

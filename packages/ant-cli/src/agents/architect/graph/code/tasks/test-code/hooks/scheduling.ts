@@ -2,9 +2,13 @@
  * test-code/hooks/scheduling.ts — TaskSchedulingHook
  *
  * Consumer flag (test-code task is BLOCKED by which barrier):
- *   - preTestgenBarrier — test-code generation waits until the feature
- *     + setup work it is testing against is complete; otherwise the
- *     generator races against still-moving source files.
+ *   - preTestgenBarrier — test-code generation waits until the setup +
+ *     feature + ui work it is testing against is complete; otherwise the
+ *     generator races against still-moving source / view files. The
+ *     producers that activate `hasPreTestgenWork` live on each upstream
+ *     bundle's `scheduling.blocksTestgen` flag (`setup` + `feature` +
+ *     `ui`). ui was added so tests target fully-built views, not
+ *     half-rendered components.
  *
  * Producer flag (test-code work ACTIVATES this barrier for other types):
  *   - blocksDoc — doc tasks wait until test-code work finishes so the
@@ -12,8 +16,9 @@
  *
  * Intentionally unpublished:
  *   - preUiBarrier / preDocBarrier / preIntegrationBarrier — test-code
- *     only blocks on testgen; it runs after feature/setup but does not
- *     need to wait on ui / doc / integration work.
+ *     consumes ONLY the testgen barrier. Note it still waits for ui, but
+ *     via ui's `blocksTestgen` producer (→ the testgen barrier), NOT by
+ *     consuming a preUiBarrier here. It does not wait on doc / integration.
  *   - blocksUi / blocksTestgen / blocksIntegration — test-code does not
  *     gate those barriers. In particular blocksTestgen=false prevents
  *     self-blocking (a test-code task would otherwise block sibling
