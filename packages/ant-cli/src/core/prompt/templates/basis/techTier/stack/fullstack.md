@@ -10,15 +10,14 @@
 
 ### Project Structure Patterns
 
-**Typical monorepo structure:**
+**Typical monorepo structure** — deployable apps under `apps/`, shared libraries under `packages/`:
 ```
 project/
-├── packages/
-│   ├── backend/     # Express/NestJS API server
-│   └── frontend/    # React/Vue frontend
 ├── apps/
-│   ├── api/         # Backend service
-│   └── web/         # Frontend app
+│   ├── api/         # backend service (deployable)
+│   └── web/         # frontend app (deployable)
+└── packages/
+    └── shared/      # cross-boundary types/contracts (library)
 ```
 
 ---

@@ -21,41 +21,43 @@
 ## 🏗️ REPOSITORY STRUCTURE DECISION
 ════════════════════════════════════════════════════════════════════════════════
 
-**Observation target**: How many independently deployable tiers does the design document describe?
+**Observation target**: How many independently runnable units does the design describe, and what code is shared across them?
+
+A *unit* is one of two kinds:
+- **Application** — a complete, independently runnable/deployable app or service, with its own entry, surface, and lifecycle. Each application is one application package.
+- **Shared library** — code consumed by two or more applications (interface contracts, shared domain, shared component library). Each shared body is one shared-library package.
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Tier count** | Count distinct document prefixes: `fe-system-*`, `be-system-*`, `api-contract-*` |
-| **Service boundaries** | Are there multiple `be-system-{service}.md` files (one per service)? |
-| **Shared contracts** | Does `api-contract-*` exist, implying a frontend-backend integration boundary? |
+| **Applications** | How many complete `*-system-{name}.md` documents exist, each describing a separately runnable app/service? Each one is its own application package — independent of stack. |
+| **Shared code** | Is there code (e.g. `api-contract-*`, shared domain) consumed by ≥ 2 applications? That code becomes a shared-library package. |
 
-**Principle**: Repository structure follows tier boundaries — each independently buildable tier becomes a package in a multi-package workspace. A single-tier project remains monolithic.
+**Principle**: Package boundary follows **unit** boundary, NOT stack. Extract every application the design distinguishes (each frontend app, each backend service) plus every shared library consumed by ≥ 2 applications. Stack count does NOT cap package count — a single stack with multiple complete applications is multi-package; a fullstack project is not merely "one frontend + one backend" but every application and service it describes, plus its shared libraries.
 
-**Constraint**: When multiple `be-system-{service}.md` files exist, each service boundary becomes a separate package. Package names MUST match the service name in the design document filename.
+**Constraint**: A `*-system-{name}.md` document names an application package; the package name MUST match the document name. `api-contract-*` is a frontend↔backend wire-protocol contract — it documents an *interface*, not an application, so it never becomes an application package, and its presence does NOT by itself imply a backend application is part of this job (its consumer may be frontend-only, e.g. mock adapters). It becomes a shared-library package only when ≥ 2 units in this job consume it; with a single consumer it lives inside that unit.
 
-**Constraint**: Shared types and contracts (from `api-contract-*`) belong in a dedicated shared package when the project has multiple tiers or services.
+**⚠️ Blind spot (the discriminator)**: Multiple audience views described **within a single application document** are ONE application package (internal route/layout separation) — do NOT split them into invented packages. Conversely, **separately-documented complete applications ARE separate packages** — do NOT collapse them into one merely because they share a stack. The signal is the design's described unit granularity, not audience count and not the frontend/backend axis.
 
 **Setup task mapping**:
-- **Single tier** → single setup task (priority 100, exclusive)
-- **Multiple tiers/services** → root workspace setup (priority 100, exclusive) + per-package setup (priority 101+, non-exclusive, distinct parallelGroup per package)
+- **One application, no shared library** → single setup task (priority 100, exclusive)
+- **Multiple units (applications and/or shared libraries)** → root workspace setup (priority 100, exclusive) + per-package setup (priority 101+, non-exclusive, distinct parallelGroup per package). The physical workspace layout (deployable apps vs shared libraries) is the setup task's concern.
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🏗️ MSA DESIGN DOCUMENT HANDLING
+## 🏗️ MULTI-APPLICATION TASK DISCIPLINE (frontend apps · backend services · MSA)
 ════════════════════════════════════════════════════════════════════════════════
 
-**Observation target**: Does the design document set include multiple service-scoped documents?
+This section adds task discipline once the unit observation above has identified more than one application. It does NOT re-derive the package count — that follows the unit principle above, applied identically to frontend apps and backend services.
 
-| Pattern Observed | Document Type | Package Strategy |
+| Documents observed | Units (per the principle above) | Result |
 |------------------|---------------|------------------|
-| Single `be-system-main.md` only | Unified | Single package |
-| `api-contract-*` + single `be-system-main.md` | Contract-First | FE + BE packages |
-| `api-contract-*` + multiple `be-system-*.md` | MSA-Contract-First | Package per service |
+| Single `*-system-main.md` only | 1 application | Single package |
+| Multiple `fe-system-{name}.md` (e.g. user app + admin console) | application per document | Application package per app + shared-library package(s) |
+| Multiple `be-system-{service}.md` | application per service | Application package per service + shared-library package(s) |
+| Mixed `fe-system-*` + `be-system-*` (+ `api-contract-*`) | every app & service + shared | Package per app/service + shared-library package(s) — do NOT collapse all frontend or all backend into one |
 
-**Principle**: Each service boundary maps to one package. Each service task references ONLY its own design document via the `include` field (that boundary's design-doc path).
+**Constraint**: Each application/service task references ONLY its own design document via the `include` field (that unit's design-doc path). Do NOT mix multiple applications' implementations in a single task — each application task targets a single `*-system-{name}.md` scope.
 
-**Constraint**: Do NOT mix service implementations in a single task. Each service task targets a single `be-system-{service}.md` scope.
-
-**Constraint**: All tasks that involve cross-tier integration MUST add the `api-contract-*` path to their `include` for interface contracts.
+**Constraint**: Tasks that integrate against a shared contract MUST add the `api-contract-*` path to their `include`. `api-contract-*` is consumed across stacks — its presence is a shared-contract signal, NOT evidence that a backend application is part of this job.
 
 ⚠️ **Blind spot**: When multiple services share a database or message queue, they APPEAR coupled but MUST still be separate tasks with separate packages. Cross-service coordination belongs in a shared foundation task.
 
