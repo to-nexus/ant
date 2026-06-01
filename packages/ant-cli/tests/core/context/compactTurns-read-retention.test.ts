@@ -34,6 +34,14 @@ function editTurn(id: string, path: string): ConversationMessage[] {
   ];
 }
 
+function readRangeTurn(id: string, path: string, content: string, startLine: number, endLine: number): ConversationMessage[] {
+  const pad = ' padding'.repeat(40);
+  return [
+    { role: 'assistant', content: [{ type: 'tool_use', id, name: 'read_file', input: { path, startLine, endLine } }] as MessageContentBlock[] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, tool_name: 'read_file', content: content + pad }] as MessageContentBlock[] },
+  ];
+}
+
 /** Flatten all text out of a compacted message list. */
 function allText(messages: ConversationMessage[]): string {
   return messages
@@ -83,5 +91,56 @@ describe('compactTurns — read-content preservation', () => {
 
   it('includes a do-not-re-read directive', () => {
     expect(text.toLowerCase()).toContain('do not call read_file');
+  });
+});
+
+/**
+ * Chunked (ranged) read preservation — grave-bolting-cloud RCA.
+ *
+ * The path-only/latest-per-path scheme collapsed a large file read in multiple
+ * line-range chunks to its LAST chunk, so the model lost the earlier chunks and
+ * re-read them: the dim-beating-brass loop, recurring for ranged reads. Keying
+ * preserved reads by (path, range) keeps every distinct chunk.
+ */
+describe('compactTurns — chunked (ranged) read preservation', () => {
+  it('preserves ALL distinct line-range chunks of one file (no chunk loss)', () => {
+    const history: ConversationMessage[] = [
+      ...readRangeTurn('r1', 'src/big.ts', 'CHUNK_ONE', 1, 50),
+      ...readRangeTurn('r2', 'src/big.ts', 'CHUNK_TWO', 51, 100),
+      ...readRangeTurn('r3', 'src/big.ts', 'CHUNK_THREE', 101, 150),
+      { role: 'assistant', content: [{ type: 'text', text: 'final hot turn' }] as MessageContentBlock[] },
+    ];
+    const { compacted, wasCompacted } = compactTurns(history, 50, 1);
+    const text = allText(compacted);
+    expect(wasCompacted).toBe(true);
+    // All three chunks survive — the prior latest-per-path scheme kept only CHUNK_THREE.
+    expect(text).toContain('CHUNK_ONE');
+    expect(text).toContain('CHUNK_TWO');
+    expect(text).toContain('CHUNK_THREE');
+    expect(text).toContain('src/big.ts (lines 1-50)'); // range label rendered
+  });
+
+  it('re-reading the SAME range collapses to latest content', () => {
+    const history: ConversationMessage[] = [
+      ...readRangeTurn('r1', 'src/x.ts', 'RANGE_OLD', 10, 20),
+      ...readRangeTurn('r2', 'src/x.ts', 'RANGE_NEW', 10, 20),
+      { role: 'assistant', content: [{ type: 'text', text: 'final hot turn' }] as MessageContentBlock[] },
+    ];
+    const text = allText(compactTurns(history, 50, 1).compacted);
+    expect(text).toContain('RANGE_NEW');
+    expect(text).not.toContain('RANGE_OLD');
+  });
+
+  it('an edit invalidates ALL ranges of that path', () => {
+    const history: ConversationMessage[] = [
+      ...readRangeTurn('r1', 'src/y.ts', 'Y_CHUNK_A', 1, 40),
+      ...readRangeTurn('r2', 'src/y.ts', 'Y_CHUNK_B', 41, 80),
+      ...editTurn('e1', 'src/y.ts'),
+      { role: 'assistant', content: [{ type: 'text', text: 'final hot turn' }] as MessageContentBlock[] },
+    ];
+    const text = allText(compactTurns(history, 50, 1).compacted);
+    expect(text).not.toContain('Y_CHUNK_A');
+    expect(text).not.toContain('Y_CHUNK_B');
+    expect(text).toContain('[file edited: src/y.ts]');
   });
 });
