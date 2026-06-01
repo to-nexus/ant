@@ -174,16 +174,30 @@ export interface PhaseTokenUsage {
  * Scheduling-axis sub-classification. Type-bound to {@link FeatureTask} —
  * other types do NOT carry band (their `type` alone determines scheduling).
  *
- *   - `'foundation'`  — shared types / interfaces. Decompose maps priority
- *                       band [SHARED_FOUNDATION, FOUNDATION_MAX] to this
- *                       value. Activates the `hasPreFeatureWork` barrier.
+ *   - `'foundation'`  — shared types / interfaces / pure contracts. Decompose
+ *                       maps priority band [SHARED_FOUNDATION, FOUNDATION_MAX)
+ *                       (effectively below PLATFORM_MIN) to this value.
+ *                       Activates the `hasPreFeatureWork` barrier.
+ *   - `'platform'`    — shared runtime services/state that many feature units
+ *                       depend on and that themselves build on foundation
+ *                       contracts (e.g. shared context/session/config
+ *                       providers, shared client singletons, DI registration).
+ *                       Stack-neutral: the defining axis is dependency
+ *                       POSITION (consumed by many features, built on
+ *                       foundation), not any "provider" mechanism. Decompose
+ *                       maps priority band [PLATFORM_MIN, PLATFORM_MAX] to this
+ *                       value. Runs AFTER foundation, BEFORE ordinary feature
+ *                       work — activates the `hasPrePlatformWork` barrier so
+ *                       feature consumers bind to a real access contract
+ *                       instead of hand-constructing it.
  *   - `'integration'` — cross-feature wiring. Decompose maps priority band
  *                       [INTEGRATION_MIN, INTEGRATION_MAX] to this value.
  *                       Consumes the `hasPreIntegrationWork` barrier.
  *
- * `undefined` = an ordinary feature task (the common case).
+ * `undefined` = an ordinary feature task (the common case) — a CONSUMER of
+ * foundation contracts and platform services.
  */
-export type TaskBand = 'foundation' | 'integration';
+export type TaskBand = 'foundation' | 'platform' | 'integration';
 
 interface BaseTaskCommon {
   id: string;

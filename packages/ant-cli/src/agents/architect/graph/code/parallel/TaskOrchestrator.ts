@@ -133,6 +133,7 @@ function schedClassify<T extends BaseTask>(
   t: T,
   flag:
     | 'isFoundation'
+    | 'isPlatform'
     | 'isTokens'
     | 'isFinal'
     | 'producesIntegrationGate'
@@ -146,6 +147,9 @@ function schedClassify<T extends BaseTask>(
 
 function isFoundationTask<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'isFoundation');
+}
+function isPlatformTask<T extends BaseTask>(t: T): boolean {
+  return schedClassify(t, 'isPlatform');
 }
 function isTokensTask<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'isTokens');
@@ -721,6 +725,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     const running = Array.from(this.runningTasks.values());
     return {
       hasPreFeatureWork: !!b?.feature && running.some(isFoundationTask),
+      hasPrePlatformWork: !!b?.platform && running.some(isPlatformTask),
       hasPreIntegrationWork: !!b?.integration && running.some(isPreIntegrationWork),
       hasPreUiWork: !!b?.ui && running.some((t) => schedBlocks(t, 'blocksUi')),
       hasPreTestgenWork: !!b?.['test-code'] && running.some((t) => schedBlocks(t, 'blocksTestgen')),
@@ -738,7 +743,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
-    const { hasPreFeatureWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     for (const task of this.taskQueue.getAll()) {
@@ -757,6 +762,17 @@ export class TaskOrchestrator<T extends BaseTask> {
       // own barrier (`preTestgenBarrier` / `preDocBarrier`) so they slip
       // through this foundation gate.
       if (hasPreFeatureWork && !isFoundationTask(task) && !isTokensTask(task)
+          && !sched?.preTestgenBarrier && !sched?.preDocBarrier) {
+        break;
+      }
+
+      // Platform barrier: don't assign ordinary feature / integration / ui /
+      // etc. while platform (shared runtime services) work exists. Platform and
+      // foundation tasks pass (foundation already ran; platform is the work in
+      // flight); test-code / doc keep their own barriers. This is what lets a
+      // feature consumer bind to a real platform-provided access contract
+      // instead of hand-constructing it.
+      if (hasPrePlatformWork && !isFoundationTask(task) && !isPlatformTask(task) && !isTokensTask(task)
           && !sched?.preTestgenBarrier && !sched?.preDocBarrier) {
         break;
       }
@@ -855,7 +871,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
-    const { hasPreFeatureWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     let potentialTasks = 0;
@@ -863,6 +879,8 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.exclusive) break;
       const sched = hooksForTaskType(task.type as TaskType)?.scheduling;
       if (hasPreFeatureWork && !isFoundationTask(task) && !isTokensTask(task)
+          && !sched?.preTestgenBarrier && !sched?.preDocBarrier) break;
+      if (hasPrePlatformWork && !isFoundationTask(task) && !isPlatformTask(task) && !isTokensTask(task)
           && !sched?.preTestgenBarrier && !sched?.preDocBarrier) break;
       if (hasPreIntegrationWork && sched?.preIntegrationBarrier
           && schedClassify(task, 'consumesIntegrationGate')) break;

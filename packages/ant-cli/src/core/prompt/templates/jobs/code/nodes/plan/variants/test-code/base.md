@@ -69,7 +69,7 @@ This project uses **{{packageManager}}**. All dependency install and script comm
 
 Use `read_file` / `list_files` / `search_code` to understand:
 
-- **Test targets**: entry points, public modules, HTTP routes, CLI commands — whatever the implemented features expose.
+- **Test targets**: entry points, public modules, HTTP routes, CLI commands — whatever the implemented features expose. Include **rendered surfaces** (screens / pages / views backed by virtualizable data) as render-smoke targets — see Render-Smoke Discipline in the execute rules; these catch surfaces that render dead from an empty hand-stubbed shared value.
 - **Existing conventions**: a project config (`package.json` / `pyproject.toml` / `go.mod` / ...) may already declare a runner. If one is declared, use it.
 - **Directory layout**: candidate slice boundaries are natural module groupings (domain / api / ui / infra; features/A / features/B; service-a / service-b in the same package).
 
@@ -87,6 +87,7 @@ Use `read_file` / `list_files` / `search_code` to understand:
   ```
 
 - Verify the runner is picked up by running its `--version` invocation (e.g. `npx vitest --version`). Do NOT run the actual test suite — that is the verification task's job.
+- **If render-smoke targets exist** (rendered surfaces among the test targets), the parent also installs the DOM test environment + component-render helper the detected stack needs (so sub-tasks inherit a working render graph), following the Self-Contained Dependency Principle. If the stack cannot host a render harness, the execute phase falls back to data-path tests (see Render-Smoke Discipline) — do NOT force-install an unsupported harness.
 
 **Constraint**: Do NOT modify application source code during the plan phase. `run_command` is reserved for install / version probe / observation. The single permitted manifest-write exception is the test-run entry described in Step 2.5 below — perform it via `edit_file`, not via `run_command`.
 

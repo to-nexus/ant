@@ -62,6 +62,7 @@ Observe the actual codebase (config files, entry points, source code) to determi
 | **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
 | **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
 | **Core logic** | Are there business logic modules? Observe how dependencies are accessed (see Test Level Selection below). |
+| **Rendered surfaces** | Does the application render UI surfaces (screens / pages / views) backed by data that a virtualized / in-memory adapter supplies? Create **render-smoke** tests — see Render-Smoke Discipline in the rules. This catches the "compiles but renders dead" class (a surface that silently shows nothing because a shared value was hand-stubbed empty) that type/build checks cannot. |
 
 ## Test Level Selection
 
