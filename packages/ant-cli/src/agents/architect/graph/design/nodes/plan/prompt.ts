@@ -19,7 +19,6 @@ import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/Cach
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import {
   selectArtifacts,
-  selectArtifactsWithPolicy,
 } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export interface BuildDesignPlanPromptResult {
@@ -41,9 +40,10 @@ export async function buildPlanPromptBlocks(
   // Artifact selection — mirrors `design/nodes/docGen/intent/spec.ts`.
   const taskAny = task as any;
   const taskSourceFiles: string[] | undefined = taskAny?.sourceFiles;
-  let selectedArtifacts = taskAny?.artifactPolicy
-    ? selectArtifactsWithPolicy(state.artifacts || [], taskAny.artifactPolicy)
-    : selectArtifacts(state.artifacts || [], { include: taskAny?.include || [ARTIFACT_PREFIX.SOURCES] });
+  // Single injection SSOT — `task.include` (LLM-authored), SOURCES fallback.
+  let selectedArtifacts = selectArtifacts(state.artifacts || [], {
+    include: taskAny?.include?.length ? taskAny.include : [ARTIFACT_PREFIX.SOURCES],
+  });
 
   if (taskSourceFiles?.length) {
     const planPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;

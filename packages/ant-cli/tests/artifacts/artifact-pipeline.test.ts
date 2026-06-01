@@ -1,7 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  selectArtifactsWithPolicy,
-  flattenPolicyToInclude,
   appendOrUpdatePool,
   selectArtifacts,
   ArtifactPoolView,
@@ -17,10 +15,10 @@ function artifact(path: string, role: 'ref' | 'context' = 'context', content = '
 }
 
 // ---------------------------------------------------------------------------
-// selectArtifactsWithPolicy
+// selectArtifacts — single `include` SSOT (no taskType defaults)
 // ---------------------------------------------------------------------------
 
-describe('selectArtifactsWithPolicy', () => {
+describe('selectArtifacts (include SSOT)', () => {
   const pool: ResolvedArtifact[] = [
     artifact('plan', 'context', 'prd content'),
     artifact('architecture/system/fe-system-main.md', 'ref', 'fe design'),
@@ -29,87 +27,39 @@ describe('selectArtifactsWithPolicy', () => {
     artifact('visual/ui/ant/spec/header', 'context', 'header spec'),
   ];
 
-  it('refs 패턴에 매칭되는 아티팩트를 role=ref로 반환', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      refs: ['plan'],
-    });
-    expect(result).toHaveLength(1);
-    expect(result[0].path).toBe('plan');
-    expect(result[0].role).toBe('ref');
-  });
-
-  it('context 패턴에 매칭되는 아티팩트를 role=context로 반환', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      context: ['visual/ui/'],
-    });
-    expect(result.length).toBeGreaterThanOrEqual(2);
-    expect(result.every(a => a.role === 'context')).toBe(true);
-  });
-
-  it('refs와 context 모두 매칭되면 refs 우선 (seen set)', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      refs: ['plan'],
-      context: ['plan'],
-    });
-    expect(result).toHaveLength(1);
-    expect(result[0].role).toBe('ref');
-  });
-
-  it('빈 policy면 빈 배열 반환', () => {
-    expect(selectArtifactsWithPolicy(pool, {})).toEqual([]);
-    expect(selectArtifactsWithPolicy(pool, { refs: [], context: [] })).toEqual([]);
-  });
-
-  it('매칭 없으면 빈 배열 반환', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      refs: ['nonexistent/path'],
-    });
-    expect(result).toEqual([]);
-  });
-
-  it('pool 원본의 role을 policy의 role로 오버라이드', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      context: ['architecture/system/fe-system-'],
-    });
+  it('include prefix 매칭만 선택하고 role은 pool에서 상속', () => {
+    const result = selectArtifacts(pool, { include: ['architecture/system/fe-system-'] });
     expect(result).toHaveLength(1);
     expect(result[0].path).toBe('architecture/system/fe-system-main.md');
-    expect(result[0].role).toBe('context');
+    expect(result[0].role).toBe('ref'); // inherited from pool, not reassigned
   });
 
   it('glob-style trailing * 패턴 지원', () => {
-    const result = selectArtifactsWithPolicy(pool, {
-      refs: ['architecture/system/api-contract-*'],
-    });
+    const result = selectArtifacts(pool, { include: ['architecture/system/api-contract-*'] });
     expect(result).toHaveLength(1);
     expect(result[0].path).toBe('architecture/system/api-contract-auth.md');
-    expect(result[0].role).toBe('ref');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// flattenPolicyToInclude
-// ---------------------------------------------------------------------------
-
-describe('flattenPolicyToInclude', () => {
-  it('refs+context를 하나의 string[]로 합침', () => {
-    const result = flattenPolicyToInclude({
-      refs: ['architecture/spec/'],
-      context: ['visual/ui/ant/'],
-    });
-    expect(result).toEqual(['architecture/spec/', 'visual/ui/ant/']);
   });
 
-  it('undefined 입력이면 undefined 반환', () => {
-    expect(flattenPolicyToInclude(undefined)).toBeUndefined();
+  it('여러 include 경로 동시 매칭', () => {
+    const result = selectArtifacts(pool, { include: ['visual/ui/ant/', 'plan'] });
+    expect(result.map(a => a.path).sort()).toEqual([
+      'plan',
+      'visual/ui/ant/spec/header',
+      'visual/ui/ant/tokens',
+    ]);
   });
 
-  it('빈 refs+context면 undefined 반환', () => {
-    expect(flattenPolicyToInclude({ refs: [], context: [] })).toBeUndefined();
+  it('빈/누락 include → [] (taskType default 없음)', () => {
+    expect(selectArtifacts(pool, {})).toEqual([]);
+    expect(selectArtifacts(pool, { include: [] })).toEqual([]);
+    // taskType present but no include → still [] (no legacy default)
+    expect(selectArtifacts(pool, { taskType: 'ui' })).toEqual([]);
+    expect(selectArtifacts(pool, { taskType: 'feature' })).toEqual([]);
+    expect(selectArtifacts(pool, { taskType: 'error' })).toEqual([]);
   });
 
-  it('refs만 있어도 동작', () => {
-    const result = flattenPolicyToInclude({ refs: ['a', 'b'] });
-    expect(result).toEqual(['a', 'b']);
+  it('verification → [] regardless of include (defensive guard)', () => {
+    expect(selectArtifacts(pool, { taskType: 'verification', include: ['plan'] })).toEqual([]);
   });
 });
 
@@ -223,31 +173,3 @@ describe('ArtifactPoolView UI detection', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// selectArtifacts task-type defaults — ui/design-system under ant
-// ---------------------------------------------------------------------------
-
-describe('selectArtifacts ui/design-system default', () => {
-  it('ant 하위 UI 문서가 ui 태스크 기본 선택에 포함', () => {
-    const candidates = [
-      artifact('visual/ui/ant/ui-tokens.json'),
-      artifact('visual/ui/ant/ui-assets.json'),
-      artifact('architecture/system/fe-system-main.md'),
-    ];
-    const selected = selectArtifacts(candidates, { taskType: 'ui' });
-    const paths = selected.map(a => a.path).sort();
-    expect(paths).toEqual([
-      'visual/ui/ant/ui-assets.json',
-      'visual/ui/ant/ui-tokens.json',
-    ]);
-  });
-
-  it('design-system 태스크도 동일 규칙', () => {
-    const candidates = [
-      artifact('visual/ui/ant/ui-spec.json'),
-      artifact('visual/ui/ant/ui-tokens.json'),
-    ];
-    const selected = selectArtifacts(candidates, { taskType: 'design-system' });
-    expect(selected).toHaveLength(2);
-  });
-});

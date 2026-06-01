@@ -214,15 +214,12 @@ export async function decomposeUiDesign(
       }
 
       // In figma mode, include the canonical figma workfile reference
-      // (visual/ui/figma/figma.json) as context so UI design tasks
-      // can read it via the role-based artifact pool instead of an ad-hoc
-      // prompt injection.
+      // (visual/ui/figma/figma.json) so UI design tasks can read it via the
+      // artifact pool. Single injection SSOT — `include`; role is inherited
+      // from the pool's RAC annotation.
       const includePrefixes = isFigmaMode
         ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
         : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT];
-      const contextPrefixes = isFigmaMode
-        ? [ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.UI_ANT];
 
       taskQueue.push({
         id: task.id,
@@ -232,10 +229,6 @@ export async function decomposeUiDesign(
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
         include: includePrefixes,
-        artifactPolicy: {
-          refs: [ARTIFACT_PREFIX.SOURCES],
-          context: contextPrefixes,
-        },
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,

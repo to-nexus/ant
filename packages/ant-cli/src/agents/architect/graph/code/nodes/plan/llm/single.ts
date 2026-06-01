@@ -66,7 +66,7 @@ export async function generatePlanText(
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             include: task.include || undefined,
-            packages: task.packages || undefined,
+            stack: task.stack || undefined,
             hasProjectCodeContext: !!codeContext,
             isRetry: !!violationsText,
             // hook-supplied variant variables (verification / error /

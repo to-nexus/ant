@@ -64,7 +64,8 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 - `name`: human-readable summary of what to explain
 - `type`: `"explain"`
 - `priority`: `200`
-- `packages`: one tier tag covering the area of the codebase to explain (e.g., `fe-main`, `be-main`, or `shared`)
+- `stack`: the tier whose code is being explained (`frontend` / `backend`; omit on single-stack jobs)
+- `include`: the design-doc / spec path(s) that ground the explanation (omit if none apply)
 - `exclusive`: `true`
 - `selfVerifyOnDone`: `false` (explain does not write code, no gates to run)
 - `description`: the full explanation scope derived from the directive
@@ -74,7 +75,8 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 - `name`: human-readable task name
 - `type`: the appropriate type (`"error"` for fixes of broken behavior, `"feature"` for new capability, `"ui"` for visual implementation, `"setup"` only for new-project infrastructure)
 - `priority`: per the Task Schema priority band for the chosen type
-- `packages`: relevant package tag(s)
+- `stack`: the runtime tier this task targets (`frontend` / `backend`; omit on single-stack jobs)
+- `include`: the design-doc / spec / api-contract / UI path(s) this task needs (omit if the directive + on-demand reads suffice)
 - `exclusive`: `true` (single-task breakdown is trivially exclusive)
 - `selfVerifyOnDone`: `true` (REQUIRED — signals that the task runs an automatic two-cycle apply→verify lifecycle; after the apply phase emits `<done>`, the runtime transitions the same task into verify-mode and runs install/typecheck/build/test gates against the verification template)
 - `description`: full scope of the unit of work
@@ -84,7 +86,8 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 - `name`: human-readable summary of what to explain
 - `type`: `"explain"`
 - `priority`: `200`
-- `packages`: one tier tag covering the area of the codebase to explain (e.g., `fe-main`, `be-main`, or `shared`)
+- `stack`: the tier whose code is being explained (`frontend` / `backend`; omit on single-stack jobs)
+- `include`: the design-doc / spec path(s) that ground the explanation (omit if none apply)
 - `exclusive`: `true`
 - `description`: the full explanation scope derived from the directive
 
@@ -209,8 +212,8 @@ tasks one-by-one as they stream in. The body of each `<task>` is a single JSON o
 following the schema below:
 
 <tasks>
-<task>{"id": "kebab-case-id", "name": "Human-readable task name", "type": "setup", "priority": 100, "packages": ["<tier>-<name>"], "exclusive": true, "description": "What to do"}</task>
-<task>{"id": "another-task", "name": "Another Task", "type": "feature", "priority": 300, "packages": ["<tier>-<name>"], "parallelGroup": "scope-id", "description": "What to do"}</task>
+<task>{"id": "kebab-case-id", "name": "Human-readable task name", "type": "setup", "priority": 100, "stack": "frontend", "include": ["<pool-path>"], "exclusive": true, "description": "What to do"}</task>
+<task>{"id": "another-task", "name": "Another Task", "type": "feature", "priority": 300, "stack": "backend", "include": ["<pool-path>"], "parallelGroup": "scope-id", "description": "What to do"}</task>
 </tasks>
 
 **Field reference:**
@@ -225,10 +228,10 @@ following the schema below:
 {{else}}
 | `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 {{/if}}
-| `packages` | Yes | Which design documents to inject (see Package Tags below) |
+| `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
+| `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
-| `uiSections` | When type is 'ui' or 'design-system' | Array of UI doc section IDs to inject (see specification for available sections) |
 | `selfVerifyOnDone` | Tier 2 only | `true` when the task should run install/typecheck/build/test gates as part of its lifecycle (Tier 2 Exploratory, single unit of work). The runtime transitions the task into a verify cycle automatically after the apply phase emits `<done>`. Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
 | `description` | Yes | Scope boundary + design doc section reference |
 
@@ -284,17 +287,17 @@ CRITICAL:
 {{#if hasUi}}
 {{#if (eq uiSource 'ant')}}
 **Constraint**: ant canonical UI documents exist — create `"design-system"` task(s):
-- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `uiSections: ["tokens"]`.
-- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `uiSections: ["tokens", "<component-section>"]`.
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `include: ["visual/ui/ant/tokens"]`.
+- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `include: ["visual/ui/ant/tokens", "visual/ui/ant/spec/<component-section>"]`.
 {{/if}}
 {{#if (eq uiSource 'figma')}}
 **Constraint**: figma workfile reference is selected — create `"design-system"` task(s) that will consume the workfile via MCP at execute time:
-- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. Do NOT set `uiSections` (Figma has no section schema). The execute stage will call `figma_get_variable_defs` to extract tokens.
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `include: ["visual/ui/figma/figma.json"]` (Figma has no section schema). The execute stage will call `figma_get_variable_defs` to extract tokens.
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. The execute stage observes frames via `figma_get_design_context`.
 {{/if}}
 {{#if (eq uiSource 'handoff')}}
 **Constraint**: a handoff bundle is selected — create `"design-system"` task(s) that will observe the bundle:
-- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure derived from whatever the handoff files explicitly show. Do NOT set `uiSections` (handoff has no schema).
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure derived from whatever the handoff files explicitly show. `include: ["visual/ui/handoff/"]` (handoff has no schema).
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. Component **design patterns** (structure, layout hierarchy, micro-interactions) MUST be derived from observations of the handoff; the **implementation** is authored in the target codebase's framework and conventions at execute time. Do NOT plan tasks whose deliverable is a verbatim copy of a handoff code file.
 
 **ui task grouping**: If the stub manifest carries multiple code-shaped entries (e.g. several `.jsx` / `.html` / framework-component files), decompose ALSO emits `"ui"` task(s) alongside the design-system task. Grouping signals (observe the manifest shape; do not read file contents at this phase):
@@ -308,7 +311,7 @@ The design-system task handles token / theme infrastructure; ui tasks handle com
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
 {{#if visualTierActive}}
-**Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `uiSections` field (no ui-docs to inject). Do NOT create 201+ tasks — those require ui-spec.
+**Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `include` field (no ui-docs to inject). Do NOT create 201+ tasks — those require ui-spec.
 {{else}}
 **Constraint**: Neither ui-docs nor visualTier policy is active — do NOT create `"design-system"` tasks. Priority 200–299 tasks are `"feature"` only.
 {{/if}}
@@ -378,7 +381,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 ⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test-code parent tasks modify independent directories — they MUST have different group IDs.
 
-**Constraint**: Each per-package test-code parent task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
+**Constraint**: Each per-package test-code parent task MUST state its target package scope in the `description` (and isolate it with a distinct `parallelGroup` per package). The executor observes actual code within that scope to determine test targets.
 
 **Constraint**: Do NOT create a single test-code task that spans all packages in a multi-package project.
 
@@ -438,7 +441,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Constraint**: Description MUST state whether this is "new project documentation" or "update existing documentation for [scope of changes]". Package-level descriptions MUST identify the target package scope.
 
-**Constraint**: `packages` field of each doc task should cover the tier(s) that task documents. Root doc uses all relevant tiers. Package doc uses only its package's tier tag.
+**Constraint**: Each doc task sets `stack` to the tier it documents (omit for a project-wide root doc spanning both tiers on a single-stack job). The `description` states the package/tier scope it covers.
 
 ---
 
@@ -477,69 +480,64 @@ the full path so the executor can copy it directly into the install command.
 
 ---
 
-## UI Sections (split injection)
+## UI injection via `include` (split injection)
 
-When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed.
+When `type` is `"ui"` or `"design-system"`, set `include` to the UI pool path(s) the task needs — the single injection SSOT also governs UI (no separate section field).
 
 {{#if hasUi}}
 {{#if (eq uiSource 'ant')}}
-- `"design-system"` (priority 200): `"uiSections": ["tokens"]`
-- `"design-system"` (priority 201+): `"uiSections": ["tokens", "<component-section>"]`
-- `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
-  If omitted, ALL UI docs are injected (not recommended for large docs).
+- `"design-system"` (priority 200): `"include": ["visual/ui/ant/tokens"]`
+- `"design-system"` (priority 201+): `"include": ["visual/ui/ant/tokens", "visual/ui/ant/spec/<component-section>"]`
+- `"ui"` tasks: `"include": ["visual/ui/ant/tokens", "visual/ui/ant/spec/<component-section>"]`
+  Each `visual/ui/ant/spec/<section>` entry pulls exactly that spec section; omitting the spec path injects only what is listed.
 {{/if}}
 {{#if (eq uiSource 'figma')}}
-- `uiSections` is NOT used for the figma UI source — Figma has no section schema. Tasks receive the figma.json reference; the execute stage calls MCP tools to extract data.
+- figma UI source has no section schema — `include` the figma reference (`visual/ui/figma/figma.json`); the execute stage calls MCP tools to extract data.
 {{/if}}
 {{#if (eq uiSource 'handoff')}}
-- `uiSections` is NOT used for the handoff UI source — handoff has no schema. Tasks receive a STUB manifest of the handoff bundle (path + size + kind per file); the execute stage picks up text contents via `read_file` on demand and references binaries by path only.
+- handoff UI source has no schema — `include` the handoff bundle (`visual/ui/handoff/`); tasks receive a STUB manifest (path + size + kind per file), and the execute stage picks up text contents via `read_file` on demand and references binaries by path only.
 {{/if}}
 {{else}}
-- `"design-system"` tasks: `uiSections` is NOT applicable (no UI source selected).
-- `"ui"` tasks: `uiSections` is NOT applicable (no UI source selected).
+- `"design-system"` / `"ui"` tasks: no UI source selected — omit UI `include` paths (tokens, when present, derive from visualTier policy).
 {{/if}}
 
 ---
 
-## Package Tags (Tech-Tier Hint{{#unless isExplicitPipeline}} + Split Design Doc Injection{{/unless}})
+## Injection Manifest (`include`) + Task Stack (`stack`)
 
-**Constraint**: Every task MUST have `"packages": [...]` so the system can map each task to its tech-tier (language/framework) entry.
+Two orthogonal per-task fields. `include` decides WHICH documents the task sees; `stack` decides WHICH runtime tier (language / framework) the task targets. They never overlap in responsibility.
+
+### `include` — the single per-task injection SSOT
+
+**Principle**: Observe the artifact paths available in `## Provided Documents` above. Declare in `include` the path(s) whose content THIS task needs pre-injected into its plan/execute prompt. Only what you list is injected; anything else the task reads on demand via `read_file`.
+
+**Authoring principles** (declare paths, never invent files that are not in the pool):
+- A task implementing against a system-design boundary includes that boundary's design-doc path.
+- A cross-tier task (one that must honor an API contract shared between tiers) includes the api-contract path.
+- A spec-driven task includes the active spec path.
+- A task that needs no pre-injected document (the directive + on-demand reads suffice) omits `include` or sets it to `[]`.
+- `include` entries are path prefixes — a directory prefix selects every artifact beneath it; an exact path selects one file.
+
+**Constraint**: `include` paths MUST be drawn from the artifact pool shown above. A path outside the pool injects nothing (and, when the RAC is pinned, is rejected).
 
 {{#if isExplicitPipeline}}
-**Constraint — explicit RAC active**: The user has pinned the input documents in `## Provided Documents` above. Treat that selection as the COMPLETE authority for this turn. Do NOT cite, infer, open, or list any file outside the user's `refs ∪ context`. `packages` is a tech-tier hint ONLY in this mode — design / system / API-contract documents are NOT auto-injected by package tag, and the `read_file` / `list_files` tools refuse paths outside the RAC selection.
-
-**How to choose `packages`:**
-- Task touches frontend code -> `fe-main` (or `fe-{pkg}` for monorepo)
-- Task touches backend code -> `be-main` (or `be-{svc}` for MSA)
-- Task touches shared/common code -> `shared`
-- Task touches both tiers -> combine relevant `{tier}-{name}` tags
-
-`packages` decides per-task language/framework when the workspace declares per-package tiers. It does NOT decide which documents the plan/execute phases see — that is fixed by the RAC.
-{{else}}
-**Tag mapping:**
-
-| Tag | Maps To | Description |
-|-----|---------|-------------|
-| `fe-main` | `fe-system-main.md` | Single frontend |
-| `fe-{pkg}` | `fe-system-{pkg}.md` | Multi-package frontend |
-| `be-main` | `be-system-main.md` | Single backend |
-| `be-{svc}` | `be-system-{svc}.md` | MSA service |
-| `shared` | api-contract-main.md only | Shared/utility (types, DTOs, configs) |
-
-**Principle**: Tags always follow `{tier}-{name}` pattern. Single-package projects use `main` as the name.
-
-- `api-contract-main.md` is ALWAYS injected when any package is specified.
-- `shared` tag: only `api-contract-main.md` is injected (no system design doc).
-
-**How to choose:**
-- Task touches frontend code -> `fe-main` (or `fe-{pkg}` for monorepo)
-- Task touches backend code -> `be-main` (or `be-{svc}` for MSA)
-- Task touches shared/common code -> `shared`
-- Task touches both tiers -> combine relevant `{tier}-{name}` tags
-- Root workspace setup -> all tier tags in the project, combined with `"shared"`
-
-⚠️ **Blind spot**: `shared` alone injects ONLY api-contract-main.md — no system design documents. Root setup and shared foundation tasks MUST combine all relevant tier tags. Without tier-specific system design documents, the plan phase cannot observe tech stack versions or infrastructure requirements.
+**Constraint — explicit RAC active**: The user pinned the input documents in `## Provided Documents`. Treat that selection as the COMPLETE authority for this turn. Do NOT cite, infer, open, or list any file outside the user's `refs ∪ context`; `include` MUST stay within that selection, and the `read_file` / `list_files` tools refuse paths outside it.
 {{/if}}
+
+### UI / design-system tasks — `include` by UiSource
+
+When a `ui` / `design-system` task draws from a UI source, choose `include` paths by the active source:
+- **handoff** source → include the handoff bundle path (no schema; the task observes the files on demand).
+- **figma** source → include the figma reference path; real data is fetched live at execute time.
+- **ant** source → include the UI tokens path, plus the specific spec-section paths this task renders.
+
+### `stack` — per-task tech-tier pointer
+
+**Principle**: `stack` selects which runtime tier's language/framework this task targets. It is always a single value at task level.
+- Task touches frontend (browser) runtime code → `"stack": "frontend"`.
+- Task touches backend (server) runtime code → `"stack": "backend"`.
+
+**Constraint**: On a fullstack job, EVERY task MUST set `stack` (frontend and backend are distinct runtime categories — the system cannot infer which one a task targets). On a single-stack job, `stack` may be omitted (the sole tier applies).
 
 ---
 
@@ -632,11 +630,11 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: When the observation above identifies cross-boundary atomic coordination needs, the coordination contract is shared infrastructure — the foundation task MUST define it. Without this contract, feature tasks bypass shared interfaces and independently implement coordination logic, causing architectural inconsistency.
 
-**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span{{#unless isExplicitPipeline}}, combined with `"shared"`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols. Always combine the relevant `{tier}-{name}` tags with `"shared"`{{/unless}}.
+**Constraint**: Set the foundation task's `stack` to the tier whose symbols it establishes.{{#unless isExplicitPipeline}} Its `include` MUST list the system-design path(s) for the tier(s) the parallel feature tasks span PLUS the api-contract path — the api-contract alone provides only the cross-tier contract, while the system-design documents are what let the plan phase identify infrastructure symbols.{{/unless}}
 
 **Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
 
-⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely.{{#unless isExplicitPipeline}} Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.{{/unless}}
+⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely.{{#unless isExplicitPipeline}} Additionally, if `include` carries only the api-contract path, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always include the relevant system-design path(s) alongside the api-contract.{{/unless}}
 
 ⚠️ **Blind spot — external integration boundaries**: Cross-cutting integration boundaries (SDK clients, wallet/payment providers, auth libraries, third-party API clients) are EASILY LEFT to individual feature tasks because each feature's description tends to phrase the integration as a feature concern (e.g. "navbar shows wallet connect button" and "checkout uses wallet for payment" both implicitly require a wallet adapter). Each feature then independently constructs its own copy of the adapter in a different directory, producing dead code and a split source of truth for the same integration. When {{#if isExplicitPipeline}}the user-pinned reference materials (see `## Provided Documents`){{else}}the design document{{/if}} names an external SDK / provider / API client that 2+ features touch, the adapter for that integration MUST be a shared foundation Implementations sub-task — even if no feature task description mentions the adapter explicitly.
 

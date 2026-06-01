@@ -11,7 +11,6 @@
  *
  * Pool extraction helpers (Phase 2):
  *   flattenDesignArtifacts — name→content map from system-design artifacts
- *   getDesignDocByPackageFromPool — lookup by package tag
  *   extractFirstDesign — first system-design artifact content
  *   hasSourceArtifact / getSourceContent — source/prd artifact access
  *
@@ -107,12 +106,18 @@ function matchesInclude(artifactPath: string, patterns: string[]): boolean {
 }
 
 /**
- * Filter candidate artifacts by policy.
+ * Filter candidate artifacts by policy — single per-task injection SSOT.
  *
  * Priority:
- * 1. `taskType: 'verification'` → always empty (no docs needed)
- * 2. `include` present → exact path-prefix match
- * 3. taskType-based default rules (backward-compatible fallback)
+ * 1. `taskType: 'verification'` → always empty (defensive; verification tasks
+ *    carry no `include`).
+ * 2. `include` present → path-prefix / glob match.
+ * 3. No `include` → empty (explicit `[]`, NOT a taskType-based default). The
+ *    legacy taskType default switch was removed — every task's injection is
+ *    now governed solely by its authored `include`.
+ *
+ * Role is inherited from the pool's RAC annotation (3-axis Authority: RAC owns
+ * role), so there is no separate role-aware selection path.
  */
 export function selectArtifacts(
   candidates: ResolvedArtifact[],
@@ -124,73 +129,7 @@ export function selectArtifacts(
     return candidates.filter(a => matchesInclude(a.path, policy.include!));
   }
 
-  // taskType-based defaults (backward compat when include is absent)
-  switch (policy.taskType) {
-    case 'error':
-      if (candidates.some(a => a.path.startsWith(ARTIFACT_PREFIX.SPEC))) {
-        return candidates.filter(
-          a => a.path.startsWith(ARTIFACT_PREFIX.SPEC) ||
-               a.path.startsWith(ARTIFACT_PREFIX.API_CONTRACT),
-        );
-      }
-      return [];
-
-    case 'ui':
-    case 'design-system':
-      return candidates.filter(a => isUiArtifactPath(a.path));
-
-    default:
-      return candidates.filter(
-        a =>
-          a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN) ||
-          a.path.startsWith(ARTIFACT_PREFIX.SPEC) ||
-          isUiArtifactPath(a.path) ||
-          isGameArtArtifactPath(a.path) ||
-          a.path.startsWith(ARTIFACT_PREFIX.SOURCES),
-      );
-  }
-}
-
-/**
- * Select artifacts with explicit role assignment from policy.
- * Refs patterns are matched first; context patterns skip already-seen paths.
- */
-export function selectArtifactsWithPolicy(
-  candidates: ResolvedArtifact[],
-  policy: { refs?: string[]; context?: string[] },
-): ResolvedArtifact[] {
-  const result: ResolvedArtifact[] = [];
-  const seen = new Set<string>();
-
-  for (const pattern of policy.refs ?? []) {
-    for (const a of candidates) {
-      if (!seen.has(a.path) && matchesInclude(a.path, [pattern])) {
-        result.push({ ...a, role: 'ref' });
-        seen.add(a.path);
-      }
-    }
-  }
-  for (const pattern of policy.context ?? []) {
-    for (const a of candidates) {
-      if (!seen.has(a.path) && matchesInclude(a.path, [pattern])) {
-        result.push({ ...a, role: 'context' });
-        seen.add(a.path);
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * Flatten an artifactPolicy into a simple include string[].
- * Used for backward-compat when only path prefixes (no roles) are needed.
- */
-export function flattenPolicyToInclude(
-  policy?: { refs?: string[]; context?: string[] },
-): string[] | undefined {
-  if (!policy) return undefined;
-  const all = [...(policy.refs || []), ...(policy.context || [])];
-  return all.length > 0 ? all : undefined;
+  return [];
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -415,22 +354,6 @@ export class ArtifactPoolView {
     return map;
   }
 
-  /**
-   * Look up design document by package tag.
-   * `fe-{name}` → `fe-system-{name}.md`, `be-{name}` → `be-system-{name}.md`.
-   */
-  getDesignDocByPackage(pkg: string): string | undefined {
-    let prefix: string;
-    if (pkg.startsWith('fe-')) {
-      prefix = `${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}`;
-    } else if (pkg.startsWith('be-')) {
-      prefix = `${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}`;
-    } else {
-      return undefined;
-    }
-    return this.pool.find(a => a.path === prefix || a.path === `${prefix}.md`)?.content;
-  }
-
   /** First system-design artifact content (for display/logging). */
   firstDesignContent(): string | undefined {
     return this.pool.find(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN))?.content;
@@ -521,9 +444,6 @@ export function flattenDesignArtifacts(artifacts: ResolvedArtifact[]): Record<st
   return new ArtifactPoolView(artifacts).flattenSystemDesigns();
 }
 
-export function getDesignDocByPackageFromPool(pkg: string, artifacts: ResolvedArtifact[]): string | undefined {
-  return new ArtifactPoolView(artifacts).getDesignDocByPackage(pkg);
-}
 
 // ────────────────────────────────────────────────────────────────
 // Design Job Pool Utilities (Phase 3: cross-job unification)

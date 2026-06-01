@@ -36,6 +36,13 @@ export interface ToolNodeConfig<TState> {
   /** Build ToolExecutionContext from state. */
   buildContext(state: TState): ToolExecutionContext;
 
+  /**
+   * Optional per-call gate. When provided, each pending call is checked before
+   * dispatch; a denied call yields an error tool_result instead of executing.
+   * RAC-agnostic at this layer — the code tool node binds an RAC-scope policy.
+   */
+  gateCall?(state: TState, call: ToolCall): { allowed: true } | { allowed: false; error: string };
+
   /** Pre-configured ToolRegistry (from presets + runtime registrations) */
   registry: ToolRegistry;
 
@@ -129,6 +136,7 @@ export function createToolNode<TState>(
 
     const batchResult = await orchestrator.executeBatch(ctx, {
       calls,
+      gateCall: config.gateCall ? (call) => config.gateCall!(state, call) : undefined,
       cache: config.getCache?.(state),
       workflowUpdate: config.getWorkflowUpdate?.(state),
       httpJobId: config.getHttpJobId?.(state),

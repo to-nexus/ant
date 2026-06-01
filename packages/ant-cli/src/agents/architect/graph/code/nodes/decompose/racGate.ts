@@ -17,6 +17,7 @@
  * same deny message, same orthogonality contract.
  */
 
+import type { ResolvedActionContext } from '@ant/shared';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 
 export const RAC_DENY_MESSAGE =
@@ -27,6 +28,28 @@ export const RAC_DENY_MESSAGE =
 export interface RacScope {
   refs: string[];
   context: string[];
+}
+
+/**
+ * Derive the active RAC scope from a resolved action. Pure function shared by
+ * every code-job phase that gates `read_file` / `list_files` (decompose inline
+ * dispatch + the shared code `tool` node serving plan/execute).
+ *
+ * Returns a `RacScope` only for the explicit pipeline (user pinned the RAC):
+ * `source === 'explicit'` AND `hasExplicitFields` AND `refs ∪ context` non-empty.
+ * Infer pipelines return `undefined` → `decideRacGate` allows everything
+ * (the LLM legitimately needs to discover anchors).
+ */
+export function computeRacScope(
+  resolvedAction: ResolvedActionContext | undefined,
+): RacScope | undefined {
+  const refs = resolvedAction?.refs ?? [];
+  const context = resolvedAction?.context ?? [];
+  const isExplicit =
+    resolvedAction?.source === 'explicit'
+    && (resolvedAction?.hasExplicitFields ?? false)
+    && (refs.length + context.length > 0);
+  return isExplicit ? { refs, context } : undefined;
 }
 
 /**

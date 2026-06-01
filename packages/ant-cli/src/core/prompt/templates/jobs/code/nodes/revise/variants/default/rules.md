@@ -30,12 +30,18 @@ Respond with ONLY a JSON object:
       "name": "Task Name",
       "description": "What this task implements",
       "type": "setup|feature",
-      "priority": 100
+      "priority": 100,
+      "stack": "frontend|backend",
+      "include": ["<pool-path>"]
     }
   ]
 }
 ```
 
 ⚠️ **Priority**: Observe the existing tasks' priority range and assign accordingly. Lower number = earlier execution.
+
+⚠️ **Injection manifest (`include`)**: For each added task, list the artifact pool path(s) whose content the task needs pre-injected (design-doc / spec / api-contract / UI paths). Omit when the directive plus on-demand reads suffice. This is the single per-task injection field — only what you list is injected.
+
+⚠️ **Task stack (`stack`)**: Set `stack` to the runtime tier the task targets (`frontend` / `backend`). Required on fullstack jobs; omit on single-stack jobs.
 
 **Now analyze and respond with your decision in JSON format:**

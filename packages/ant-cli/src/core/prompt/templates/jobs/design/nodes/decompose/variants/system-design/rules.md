@@ -217,12 +217,13 @@ Example prefix (literal digit only):
 <fePackages>[]</fePackages>
 <consumedApis>[]</consumedApis>
 <techTier>{"stack":"<frontend | backend | fullstack>","language":"<language>","framework":"<framework or omit>"}</techTier>
-<packageTiers>{}</packageTiers>
 <targetFiles>["..."]</targetFiles>
 <tasks>
   <task>{...}</task>
 </tasks>
 ```
+
+> For fullstack, embed each runtime's framework inside `<techTier>` via `frontend` / `backend` sub-objects (see Technology Tiers below) — there is no separate per-package framework tag.
 
 #### Concrete value examples (illustrate the spectrum — pick the case that matches your observation, do NOT copy names verbatim)
 
@@ -264,25 +265,19 @@ Example prefix (literal digit only):
 
 ### Technology Tiers
 
-The `techTier` object describes the job-level technology stack (singular). When `stack` is `"fullstack"`, the `packageTiers` map provides per-package breakdowns so each task inherits the correct technology context.
+The `techTier` object describes the job-level technology stack. For a single-stack job it is `stack` + `language` + `framework`. For a fullstack job, embed a `frontend` and a `backend` sub-object so each task inherits the correct runtime's framework — FE (browser) and BE (server) are distinct runtime categories whose frameworks never collapse to one.
 
-**`techTier` (required):** Job-level summary — `stack`, `language`, `framework`.
+**`techTier` (required):** `stack`, `language`, `framework` (single-stack). For fullstack, ALSO emit `frontend` / `backend` sub-objects.
 
-**`packageTiers` (optional, fullstack/monorepo only):**
+**Fullstack shape:**
 
-| Key pattern | Meaning |
-|-------------|---------|
-| `be-main` | Backend default tier (non-MSA: exact match; MSA: tier fallback) |
-| `fe-main` | Frontend default tier (non-MSA: exact match; MSA: tier fallback) |
-| `be-{service}` | MSA backend service override (only if different from `be-main`) |
-| `fe-{package}` | Frontend package override (only if different from `fe-main`) |
+`<techTier>{"stack":"fullstack","language":"<language>","frontend":{"language":"<lang>","framework":"<fe-framework or omit>"},"backend":{"language":"<lang>","framework":"<be-framework or omit>"}}</techTier>`
 
 **Constraints:**
 - Observe language/framework mentions in directive and source documents — do NOT assume or infer technologies not explicitly stated
-- If no technology is mentioned for a tier, omit that tier's key entirely
-- For MSA: if ALL backend services share the same stack, a single `be-main` entry suffices — add `be-{service}` overrides only for services that differ
-- Value shape: `{ "language": "<language>", "framework": "<framework or omit>", "stack": "frontend" | "backend" }`
-- Do NOT include `packageTiers` when all packages share the same language and framework
+- If no technology is mentioned for a tier, omit that tier's `framework`
+- For fullstack, ALWAYS emit both `frontend` and `backend` sub-objects — do NOT rely on the top-level `framework` to cover both (it would unify two distinct runtimes)
+- Single-stack jobs omit the sub-objects (top-level `language` / `framework` is the sole tier)
 
 ### Document Type Rules
 
@@ -350,7 +345,6 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 <fePackages>[]</fePackages>
 <consumedApis>[]</consumedApis>
 <techTier>{"stack":"<stack>","language":"<language>","framework":"<framework or omit>"}</techTier>
-<packageTiers>{}</packageTiers>
 <targetFiles>["<target-file>.md"]</targetFiles>
 <tasks>
   <task>{"id":"<unique-kebab-case-id>","name":"<concise task name>","targetFile":"<must match one of targetFiles>","parallelGroup":"<group-id: same file = same group>","assignedSections":["§ <exact catalog section name>", "§ <exact catalog section name>"]{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"<abstract topic areas; section assignments are authoritative>","priority":200}</task>
@@ -399,7 +393,7 @@ Before outputting, verify:
 
 ### Output Structure
 - ✅ `<executionTier>` tag emitted FIRST, BEFORE any other meta tag
-- ✅ Each meta tag (`<documentType>`, `<services>`, `<fePackages>`, `<techTier>`, `<packageTiers>`, `<targetFiles>`, `<references>`) on its own line with a JSON-encoded body
+- ✅ Each meta tag (`<documentType>`, `<services>`, `<fePackages>`, `<techTier>`, `<targetFiles>`, `<references>`) on its own line with a JSON-encoded body
 - ✅ One `<task>{json}</task>` element per task inside `<tasks>...</tasks>`
 - ✅ NO markdown fences anywhere in the output
 - ✅ NO `<decompose>` wrapper
@@ -419,8 +413,8 @@ Before outputting, verify:
 - ✅ No forbidden tasks (deployment, ops, verification)
 {{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames
 {{/if}}- ✅ `<techTier>` present with `stack`, `language` (and `framework` if applicable)
-- ✅ `<packageTiers>` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`) — only when fullstack/monorepo
-- ✅ `<packageTiers>` contains only explicitly mentioned technologies — no assumptions
+- ✅ For fullstack, `<techTier>` carries both `frontend` and `backend` sub-objects, each with its own framework — no separate per-package framework tag
+- ✅ `<techTier>` sub-objects contain only explicitly mentioned technologies — no assumptions
 - ✅ If reference project mentioned → `<references>` meta tag included
 - ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`

@@ -51,18 +51,18 @@
 | `api-contract-*` + single `be-system-main.md` | Contract-First | FE + BE packages |
 | `api-contract-*` + multiple `be-system-*.md` | MSA-Contract-First | Package per service |
 
-**Principle**: Each service boundary maps to one package. Each service task references ONLY its own design document via the `packages` field.
+**Principle**: Each service boundary maps to one package. Each service task references ONLY its own design document via the `include` field (that boundary's design-doc path).
 
 **Constraint**: Do NOT mix service implementations in a single task. Each service task targets a single `be-system-{service}.md` scope.
 
-**Constraint**: All tasks that involve cross-tier integration reference `api-contract-*` for interface contracts (this is automatic via the `packages` tag — api-contract is always injected).
+**Constraint**: All tasks that involve cross-tier integration MUST add the `api-contract-*` path to their `include` for interface contracts.
 
 ⚠️ **Blind spot**: When multiple services share a database or message queue, they APPEAR coupled but MUST still be separate tasks with separate packages. Cross-service coordination belongs in a shared foundation task.
 
 ════════════════════════════════════════════════════════════════════════════════
 
 **Critical Rules:**
-- ✅ Every task must reference design doc via `packages` field
+- ✅ Every task must reference its design doc via the `include` field (the design-doc path)
 - ✅ Follow architecture decisions from the design documents
 - ❌ Don't invent architecture not described in design documents
 - ❌ Task scope is bounded by the Development Source (see Scope Determination)

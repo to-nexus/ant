@@ -104,17 +104,22 @@ This default applies ONLY when all design documents are absent.
 
 **Framework**: If no framework is mentioned or implied, set `framework: null`.
 
-### packageTiers (Fullstack / Monorepo)
+### Fullstack frameworks (`frontend` / `backend` sub-objects)
 
-**Principle**: When `stack` is `"fullstack"` and packages use different languages or frameworks,
-provide a `packageTiers` map so each task inherits the correct technology context.
+**Principle**: When `stack` is `"fullstack"`, the frontend (browser) and backend (server)
+are distinct runtime categories whose frameworks NEVER collapse to a single value. Emit a
+`frontend` and a `backend` sub-object inside `<techTier>`, each carrying that tier's
+`language` (and `framework` when known), so each task inherits the correct technology context.
 
-**Observation**: Each key is a package tag matching the `fe-*` / `be-*` naming convention
-used in design documents and task packages.
+**Shape**:
 
-**Constraint**: Do NOT include `packageTiers` when all packages share the same language and framework.
+`<techTier>{"stack":"fullstack","language":"typescript","frontend":{"language":"typescript","framework":"<fe-framework>"},"backend":{"language":"typescript","framework":"<be-framework>"}}</techTier>`
+
+**Constraint**: For a fullstack job, ALWAYS emit both `frontend` and `backend` sub-objects.
+Do NOT rely on the top-level `framework` to cover both tiers — it would unify two distinct
+runtimes. Single-stack jobs omit both sub-objects (the top-level `language` / `framework` is
+the sole tier).
 
 **Constraint (explicit alignment)**: If `resolvedAction.basis.techTier.<tier>.framework`
-or `.language` is set, every `packageTiers` entry whose `stack` matches that tier MUST
-emit the same `framework` / `language`. Use `packageTiers` only to encode per-package
-divergence on slots the explicit basis does not pin.
+or `.language` is set, the matching sub-object MUST emit the same `framework` / `language`.
+Use the sub-objects only to encode the per-tier framework the explicit basis does not pin.

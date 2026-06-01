@@ -49,6 +49,14 @@ export interface OrchestratorBatchOptions {
   recursionLimit?: number;
   figmaContext?: FigmaContext;
   uiCardAnimationDelay?: number;
+  /**
+   * Optional per-call gate, evaluated before cache lookup and handler
+   * dispatch. When it denies a call, the orchestrator emits an error
+   * tool_result for that call (preserving tool_use/tool_result pairing) and
+   * skips execution. RAC-agnostic by design — the caller supplies whatever
+   * policy it wants (the code tool node binds an RAC-scope check here).
+   */
+  gateCall?(call: ToolCall): { allowed: true } | { allowed: false; error: string };
 }
 
 // Display names come from TOOL_DISPLAY_NAMES in toolCatalog.ts (single source of truth)
@@ -92,6 +100,23 @@ export class ToolOrchestrator {
     for (const tc of calls) {
       const { id, name, args } = tc;
       console.log(`🔧 [Tool] ${name}`);
+
+      // Per-call gate (RAC-agnostic). Denied calls get an error tool_result so
+      // the tool_use/tool_result pairing the LLM expects stays intact.
+      if (opts.gateCall) {
+        const gate = opts.gateCall(tc);
+        if (!gate.allowed) {
+          console.warn(`🚫 [Tool] ${name} blocked: ${gate.error}`);
+          events.push({
+            toolCallId: id,
+            toolName: name,
+            args,
+            result: { content: `Error: ${gate.error}`, error: gate.error },
+            cached: false,
+          });
+          continue;
+        }
+      }
 
       // Cache check
       if (this.config.cacheEnabled && this.config.cacheableTools?.has(name) && cache) {
