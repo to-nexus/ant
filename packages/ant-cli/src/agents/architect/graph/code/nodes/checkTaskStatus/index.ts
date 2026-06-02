@@ -384,6 +384,12 @@ export async function checkTaskStatus(
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
     _executeCallIndex: 0,
+    // Consume-and-clear the raw source — see workerIndex.ts for the full
+    // rationale. fileError violations are always retryable, so this is the
+    // only return path reached when fileErrors is non-empty; clearing it
+    // here makes the fileErrors→violations conversion one-shot and prevents
+    // a stale fileError from re-failing the task on the next cycle.
+    fileErrors: undefined,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };
