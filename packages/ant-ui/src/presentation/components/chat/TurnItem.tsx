@@ -109,7 +109,7 @@ const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }
       }}
     >
       {user.actionMetadata && Object.keys(user.actionMetadata).length > 0 && (
-        <ActionMetadataBadges metadata={user.actionMetadata} readOnly />
+        <ActionMetadataBadges metadata={user.actionMetadata} readOnly className="pb-1.5" />
       )}
       <div
         className="text-sm select-text whitespace-pre-wrap break-words"
