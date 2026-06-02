@@ -140,7 +140,7 @@ Design-prescribed package APIs (import paths + observed signatures) are carried 
 ## 🌿 FAN-OUT AT PLAN TIME (feature / ui / design-system)
 ────────────────────────────────────────────────────────────────────────────────
 
-The task arrived with its scope already chosen at decomposition. Fan-out here is meaningful only when plan-time investigation reveals sub-structure that decomposition could not foresee.
+Decomposition chose the task **set** blind to the code; that boundary stands — you do NOT re-decide which tasks exist. What you own now, having observed the actual codebase, is this one task's **internal unit structure**: whether it is a single unit or several. Your investigation can reveal either that the work resolves into multiple independent units, or that its involvement scope is too large for one execute cycle — neither of which decomposition could see. When **either** holds, fan out via `batches[]`. The two rubrics below are the test: the first (separability) decides whether the work is several independent units worth splitting; the second (single-session capacity) decides whether its involvement scope is too large for one cycle. A **split conclusion from either is sufficient** — capacity can mandate a split the separability rubric alone would bundle (small independent slices still bundle per the separability rubric, but an oversized scope splits regardless).
 
 {{> jobs/code/shared/task-split-rubric }}
 
@@ -177,7 +177,7 @@ This responsibility split is what keeps the parent's output bounded. Restating t
 
 ### How to emit `batches[]`
 
-The system does NOT auto-convert flat plans. Emit `batches[]` if and only if you decide to split per the principles above. Otherwise a flat `implementation` block proceeds to execute as one task — regardless of file count, package count, or domain count.
+The system does NOT auto-convert flat plans — the split-or-bundle call is yours, and it is a **required, explicit decision**, not a default to flat. Before you emit, resolve what the two rubrics above yield: a single investigation unit, or several. Whenever the symmetric-articulation rule applies (≥ 2 implementation entries spanning ≥ 2 distinct files), a flat `implementation` block is valid ONLY when you have articulated the single shared investigation footprint that rule demands (in `task.goal` / `bundleRationale`); a flat plan emitted *without* that articulation, where the rule applies, is the failure mode this section exists to prevent. Once resolved: emit `batches[]` to split, or a flat `implementation` block to bundle — which then executes as one task regardless of file count, package count, or domain count.
 
 **Constraint**: `parentReasoning` MUST name the concrete benefit (failure isolation / scope boundary / cognitive mode separation) for this specific task AND record the **cross-batch contracts** the parent observed (shared export names, file paths the children must agree on, shared types). Children read this verbatim — it is the only channel for sibling-drift prevention.
 
