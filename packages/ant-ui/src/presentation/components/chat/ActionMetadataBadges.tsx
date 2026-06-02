@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, getConfigSlotsForDomain, getIntentLabel, type ActionMetadata, type IntentId, type PathOrFolder } from '@ant/shared';
+import { INTENT_DEFINITIONS, compressPathsByFolderCore, getConfigSlotsForDomain, getIntentLabel, type ActionMetadata, type IntentId, type PathOrFolder } from '@ant/shared';
 import { X, Target, Crosshair, FileText, Folder, BookOpen, Zap, Lock } from 'lucide-react';
 import { BadgeOverflowRow, type BadgeOverflowItem } from './BadgeOverflowRow';
+import { makeTreeListDir } from './foldersCompressedTree';
 
 interface BadgeProps {
   icon: any;
@@ -106,8 +107,24 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
   const selectAction = useStore(s => s.selectAction);
   const selectedActionId = useStore(s => s.selectedActionId);
   const storeMetadata = useStore(s => s.actionMetadata);
+  const fileTree = useStore(s => s.fileTree);
 
   const meta = metadata || storeMetadata;
+
+  // Folder-collapse view. SSE/durable records (user bubble, PinnedQuery) arrive
+  // BE-enriched with `foldersCompressed`; the live store metadata (chat input)
+  // does not, so compute it here from the in-memory `fileTree` via the shared
+  // `compressPathsByFolderCore` — the same decision the BE makes at submit.
+  const folders = useMemo(() => {
+    if (meta.foldersCompressed) return meta.foldersCompressed;
+    if (!fileTree.length) return undefined;
+    const listDir = makeTreeListDir(fileTree);
+    return {
+      target: meta.target?.length ? compressPathsByFolderCore(meta.target, listDir) : undefined,
+      refs: meta.refs?.length ? compressPathsByFolderCore(meta.refs, listDir) : undefined,
+      context: meta.context?.length ? compressPathsByFolderCore(meta.context, listDir) : undefined,
+    };
+  }, [meta.foldersCompressed, meta.target, meta.refs, meta.context, fileTree]);
 
   // D28 — domain-filter slots so a service-workspace ref-lock check
   // never matches a phantom game-art slot (and vice versa).
@@ -228,7 +245,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
       ? lang === 'ko' ? `(파일 ${count}개)` : `(${count} files)`
       : undefined;
 
-  resolveSlot(meta.foldersCompressed?.target, meta.target).forEach(entry => {
+  resolveSlot(folders?.target, meta.target).forEach(entry => {
     pinned.push({
       key: `target:${entry.isFolder ? 'folder:' : ''}${entry.rawPath}`,
       node: (
@@ -243,7 +260,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
     });
   });
 
-  resolveSlot(meta.foldersCompressed?.refs, meta.refs).forEach(entry => {
+  resolveSlot(folders?.refs, meta.refs).forEach(entry => {
     const locked = isRefLocked(entry.rawPath);
     const icon = locked ? Lock : (entry.isFolder ? Folder : FileText);
     const node = (
@@ -264,7 +281,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
     else overflowable.push(item);
   });
 
-  resolveSlot(meta.foldersCompressed?.context, meta.context).forEach(entry => {
+  resolveSlot(folders?.context, meta.context).forEach(entry => {
     const locked = isCtxLocked(entry.rawPath);
     const icon = locked ? Lock : (entry.isFolder ? Folder : BookOpen);
     const node = (

@@ -49,6 +49,7 @@ export * from './git';
 export * from './codebase-presence';
 export * from './session-log';
 export * from './file-resource';
+export * from './folders-compressed';
 export * from './chat-status';
 export * from './chat-events';
 export * from './system-config';

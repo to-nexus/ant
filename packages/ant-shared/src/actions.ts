@@ -395,8 +395,10 @@ export function isValidIntentId(id: string): id is IntentId {
  * `file` entries. Single-file groups also stay as `file` (compression
  * has no value).
  *
- * SSOT: BE produces these, FE consumes (chat `<detect>` payload,
- * `ChatUserTurnLine.actionMetadata.foldersCompressed` badges).
+ * SSOT: produced by the shared `compressPathsByFolderCore`
+ * (`folders-compressed.ts`) — BE for the durable record / chat `<detect>`
+ * payload, FE for the live chat-input preview — and consumed by the
+ * `ActionMetadataBadges` renderer.
  */
 export type PathOrFolder =
   | { kind: 'file'; path: string }
