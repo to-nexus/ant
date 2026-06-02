@@ -63,6 +63,7 @@ Before finalizing, mentally verify:
 - ✅ Is ALL code complete (no placeholders)?
 - ✅ Did I keep changes minimal (if modifying existing code)?
 - ✅ Are code identifiers (variables, functions, types, file/import paths) in English?
+- ✅ Are newly authored comments and docstrings in English?
 - ✅ **Is ALL code syntactically valid? (brackets balanced, statements terminated)**
 
 These are MENTAL checks - do NOT run build/validation commands.

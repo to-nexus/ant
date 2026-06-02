@@ -4,6 +4,8 @@
 
 {{> jobs/code/base/injections/monorepo-install-locality}}
 
+{{> jobs/code/base/injections/response-language}}
+
 {{#if featureContext}}
 ════════════════════════════════════════════════════════════════════════════════
 ## Prior Context
