@@ -10,15 +10,7 @@
 
 ### Project Structure Patterns
 
-**Typical monorepo structure** — deployable apps under `apps/`, shared libraries under `packages/`:
-```
-project/
-├── apps/
-│   ├── api/         # backend service (deployable)
-│   └── web/         # frontend app (deployable)
-└── packages/
-    └── shared/      # cross-boundary types/contracts (library)
-```
+A fullstack project is a multi-package workspace with at least three members: the backend app, the frontend app, and a shared package for cross-boundary types. Each member is a separate workspace package with its own `package.json`. Which directory each member lives in (deployable app vs shared library) follows the **setup member-placement rule** — this is a stack-agnostic monorepo convention, not a fullstack-specific layout, so it is not re-stated here.
 
 ---
 

@@ -56,6 +56,19 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 **Source root for tooling config**: When configuring paths that reference source directories (e.g., styling framework source scan paths, tsconfig `paths`), use `src/` as the default source root per the language profile convention. Feature tasks will create source files there.
 
+### Member placement (multi-package workspace)
+
+**Observation target**: For each workspace member, does it have its own runnable/serve entry and lifecycle, or is it consumed by other members with no standalone run target?
+
+- A member with its own runnable/serve entry and lifecycle (a **deployable application or service** — frontend app, backend service, etc.) → `apps/<name>`.
+- A member consumed by other members, with no standalone run target (a **shared library**) → `packages/<name>`.
+
+This mapping is stack-agnostic: it holds for a frontend-only workspace (multiple apps + shared lib), a backend-only workspace (multiple services + shared lib), and a fullstack workspace alike.
+
+**Vocabulary constraint**: Every workspace member is a *package* in the manager's sense (it has its own `package.json`) **regardless of which directory it lives in**. "Package" does NOT mean "under `packages/`" — the directory is chosen by the member's kind above, never by the word "package" appearing in a task description or design document.
+
+⚠️ **Blind spot**: A deployable application is NEVER placed under `packages/` — `packages/` holds shared libraries only. The number of members does not change this kind→directory mapping.
+
 **Critical Requirements:**
 1. Linter config MUST exclude build output directories (`dist`, `build`), `node_modules`, and config files (`*.config.*`) from analysis
 2. Include ALL dependencies in package.json (don't defer to feature tasks)

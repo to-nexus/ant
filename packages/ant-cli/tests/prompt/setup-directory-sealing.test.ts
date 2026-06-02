@@ -92,6 +92,65 @@ describe('setup directory sealing — constraints', () => {
   });
 });
 
+describe('monorepo member placement — single location authority (apps/ vs packages/)', () => {
+  let adapter: FilePromptAdapter;
+
+  beforeAll(async () => {
+    await initPartials(TEMPLATES_DIR);
+    adapter = new FilePromptAdapter(TEMPLATES_DIR);
+  });
+
+  it('typescript/setup/constraints.md — owns the kind→directory rule + vocab disambiguation + blind spot', async () => {
+    const out = await adapter.render(
+      'jobs/code/nodes/execute/basis/techTier/typescript/setup/constraints',
+      {},
+    );
+
+    expect(out).toMatch(/Member placement/i);
+    // Deployable application → apps/, shared library → packages/.
+    expect(out).toMatch(/deployable application[\s\S]*apps\//i);
+    expect(out).toMatch(/shared library[\s\S]*packages\//i);
+    // Vocabulary disambiguation: "package" the npm-member ≠ "packages/" the directory.
+    expect(out).toMatch(/regardless of which directory/i);
+    expect(out).toMatch(/does NOT mean ["“]?under `?packages\//i);
+    // Blind spot: an application is never under packages/.
+    expect(out).toMatch(/NEVER placed under `?packages\//i);
+  });
+
+  it('_typescript-common.md — NO monorepo member-path literal (no packages/{name})', async () => {
+    const out = await adapter.render(
+      'basis/techTier/language/_typescript-common',
+      {},
+    );
+    // The always-on language profile must not steer members to packages/{name}.
+    expect(out).not.toMatch(/packages\/\{?name/i);
+    // It still keeps the universal src/ source-root convention.
+    expect(out).toMatch(/source files go under `src\/`/i);
+  });
+
+  it('config.md — defers the kind→directory rule (no standalone normative mapping prose)', async () => {
+    const out = await adapter.render(
+      'jobs/code/nodes/execute/basis/techTier/typescript/setup/config',
+      {},
+    );
+    // Deferral to the constraints rule is present...
+    expect(out).toMatch(/Member placement/i);
+    // ...and the old standalone normative sentence is gone (the glob example may stay).
+    expect(out).not.toMatch(/\*\*deployable applications\*\* under `apps\/\*`/);
+  });
+
+  it('fullstack.md — defers placement to the stack-agnostic setup rule, no normative apps/packages tree', async () => {
+    const out = await adapter.render('basis/techTier/stack/fullstack', {});
+    // Defers to the single authority, and explicitly disclaims fullstack-ownership.
+    expect(out).toMatch(/member-placement rule/i);
+    expect(out).toMatch(/stack-agnostic monorepo convention/i);
+    // The old normative "Typical monorepo structure" dir tree must be gone
+    // (it framed apps/packages as a fullstack-specific layout).
+    expect(out).not.toMatch(/Typical monorepo structure/);
+    expect(out).not.toMatch(/backend service \(deployable\)/);
+  });
+});
+
 describe('setup-directory-sealing partial', () => {
   let adapter: FilePromptAdapter;
 

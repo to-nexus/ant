@@ -27,8 +27,9 @@ NOT re-decide the structure.
 
 **Single package**: a plain `package.json` at `codebase/` — no `pnpm-workspace.yaml`.
 
-**Multi-package workspace (monorepo)**: realize the units the setup tasks define —
-**deployable applications** under `apps/*` and **shared libraries** under `packages/*`.
+**Multi-package workspace (monorepo)**: realize the units the setup tasks define, placing each
+member in the directory its kind selects — see the **Member placement** rule in the setup
+constraints (deployable application → `apps/<name>`, shared library → `packages/<name>`).
 
 **Tool:** Use **pnpm workspaces** (not npm — faster, stricter).
 
