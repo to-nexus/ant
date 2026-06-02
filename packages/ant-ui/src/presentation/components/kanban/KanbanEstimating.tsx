@@ -1,22 +1,37 @@
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/presentation/components/common/async';
 import { KanbanColumnShell, COLUMN_TOKENS } from './KanbanColumnShell';
+import { ShimmerSweepOverlay, TaskGlowPulseLayer } from './TaskCardEffects';
 
 /**
  * SkeletonCard - Placeholder card during decompose/revise.
- * The shell uses the `card` skeleton variant (shared primitive). The inner
- * rows use the `rect` variant with staggered `delayMs` for a subtle cascade.
+ *
+ * Mirrors the live `TaskCard` shape (badge row + title + description) via the
+ * shared `Skeleton` primitive, then overlays the SAME aurora effects the live
+ * board uses — `TaskGlowPulseLayer` + `ShimmerSweepOverlay` driven by the To Do
+ * column accent (violet) — so "planning" reads as the same visual family as
+ * "in progress". The shimmer `delayMs` cascades across the three cards so they
+ * read as tasks materializing into the lane.
  */
 function SkeletonCard({ delay = 0 }: { delay?: number }) {
   return (
-    <Skeleton variant="card" delayMs={delay}>
-      <div className="flex items-start gap-2 mb-2">
-        <Skeleton variant="rect" className="h-4 w-12" delayMs={delay} />
-        <Skeleton variant="rect" className="flex-1 h-4" delayMs={delay + 60} />
-        <Skeleton variant="rect" className="h-4 w-16" delayMs={delay + 120} />
-      </div>
-      <Skeleton variant="rect" className="h-3 w-3/4" delayMs={delay + 180} />
-    </Skeleton>
+    <div className="relative overflow-hidden rounded-lg">
+      <Skeleton variant="card" delayMs={delay}>
+        <div className="flex items-start gap-2 mb-2">
+          <Skeleton variant="rect" className="h-4 w-12" delayMs={delay} />
+          <Skeleton variant="rect" className="flex-1 h-4" delayMs={delay + 60} />
+          <Skeleton variant="rect" className="h-4 w-16" delayMs={delay + 120} />
+        </div>
+        <Skeleton variant="rect" className="h-3 w-3/4" delayMs={delay + 180} />
+      </Skeleton>
+      <TaskGlowPulseLayer accent={COLUMN_TOKENS.todo} rounded="rounded-lg" />
+      <ShimmerSweepOverlay
+        variant="in-progress"
+        accent={COLUMN_TOKENS.todo}
+        rounded="rounded-lg"
+        delayMs={delay}
+      />
+    </div>
   );
 }
 

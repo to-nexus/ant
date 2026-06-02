@@ -73,6 +73,9 @@ interface ShimmerSweepOverlayProps extends OverlayProps {
    * 'completed-slow' — single slow pass (3.6s, 1 iteration).
    */
   variant: 'in-progress' | 'completed-slow';
+  /** Optional start offset so adjacent overlays cascade (e.g. estimating
+   *  skeleton cards). Defaults to no delay. */
+  delayMs?: number;
 }
 
 /**
@@ -83,6 +86,7 @@ export function ShimmerSweepOverlay({
   variant,
   rounded = 'rounded-lg',
   accent,
+  delayMs,
 }: ShimmerSweepOverlayProps) {
   const reduceMotion = useReducedMotion();
   if (reduceMotion) return null;
@@ -108,6 +112,7 @@ export function ShimmerSweepOverlay({
         style={{
           background,
           animation: `task-shimmer-sweep ${duration} var(--ease-smooth) ${iterationCount}`,
+          ...(delayMs ? { animationDelay: `${delayMs}ms` } : {}),
           filter: 'blur(1px)',
         }}
       />
