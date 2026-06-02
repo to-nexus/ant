@@ -385,26 +385,12 @@ export function TaskCard({
           </div>
         )}
 
-        {/* Meta row — stack / elapsed / token usage / expand chevron. */}
+        {/* Meta row — source files / elapsed / token usage / expand chevron. */}
         <div
           className="flex items-center flex-wrap gap-1.5 min-w-0"
           style={{ fontSize: 10, color: 'var(--text-4)' }}
         >
-          {task.stack ? (
-            <span
-              className="font-mono"
-              style={{
-                padding: '1px 6px',
-                borderRadius: '4px',
-                background: 'var(--bg-surface-2)',
-                color: 'var(--text-3)',
-                fontWeight: 600,
-                flexShrink: 0,
-              }}
-            >
-              {task.stack}
-            </span>
-          ) : task.sourceFiles && task.sourceFiles.length > 0 ? (
+          {task.sourceFiles && task.sourceFiles.length > 0 ? (
             task.sourceFiles.map((f) => (
               <span
                 key={f}
