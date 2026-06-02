@@ -2,7 +2,7 @@
 
 ## Source Root Convention
 
-**Default**: Application source files go under `src/`. Configuration files (`package.json`, `tsconfig.json`, `*.config.*`, `.env`) remain at the project root. In monorepo packages, each package follows the same convention: `packages/{name}/src/`.
+**Default**: Application source files go under `src/`. Configuration files (`package.json`, `tsconfig.json`, `*.config.*`, `.env`) remain at the project root. In a multi-package workspace each member keeps its own source under `src/` the same way; the member's parent directory is governed by the setup member-placement rule, not by this source-root convention.
 
 **Note**: Architectural patterns like FSD (Feature-Sliced Design) do NOT conflict with `src/` — place FSD layers (`app/`, `entities/`, `features/`, `shared/`, `widgets/`, `pages/`) inside `src/`. Design documents describe boundary separation, not source root placement — do NOT let design document directory mentions override this convention.
 
