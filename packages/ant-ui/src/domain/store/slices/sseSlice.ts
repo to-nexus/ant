@@ -10,6 +10,7 @@ import type { KanbanData } from '@/infrastructure/http/api';
 import type { SSEMessageMap } from '@ant/shared';
 
 import { handleKanbanUpdate } from './sse/kanbanReducer';
+import { shouldApplyKanban } from './sse/shouldApplyKanban';
 import { createChatSseHandler } from './sse/chatSseHandler';
 import { createFileTreeSseHandler } from './sse/fileTreeSseHandler';
 import { createUnseenArtifactsHandler, createBridgeHandler, createTransferHandler } from './sse/auxiliarySseHandlers';
@@ -281,7 +282,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         }
       }
 
-      if (!data.jobType || data.jobType === currentState.selectedJobType) {
+      // The running job for the active feature drives the board even before
+      // `selectedJobType` syncs to it (live/estimating broadcasts are
+      // authoritative) — otherwise pre-task estimating broadcasts during
+      // triage→detect→decompose were dropped and the decompose skeleton never
+      // showed. See shouldApplyKanban for the full rationale.
+      if (shouldApplyKanban(data, currentState.selectedJobType)) {
         get().updateKanban(data);
       }
     }));
