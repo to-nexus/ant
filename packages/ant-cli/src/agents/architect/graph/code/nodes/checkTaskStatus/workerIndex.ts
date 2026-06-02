@@ -207,6 +207,15 @@ export async function workerCheckTaskStatus(
     _nextPlanEntry: 'retry' as const,
     _taskCompleted: false,
     _executeCallIndex: 0,
+    // Consume-and-clear the raw source: evaluateTaskStatus already
+    // transcribed every fileError into a (retryable) violation above, and
+    // fileError violations are always retryable (evaluate.ts), so this is
+    // the only return path reached when fileErrors is non-empty. Leaving
+    // the channel set would let the NEXT checkTaskStatus re-fabricate the
+    // same violation forever when the retry plan is an empty no-op —
+    // execute (the only other writer) is bypassed via planRouter's
+    // done→checkTaskStatus edge. Mirrors how `violations` is owned here.
+    fileErrors: undefined,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   } as any;
