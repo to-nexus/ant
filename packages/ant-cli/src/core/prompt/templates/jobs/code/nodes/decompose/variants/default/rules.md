@@ -799,11 +799,11 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Shared infrastructure module** | Will two tasks both need to create the same helper file, adapter implementation, or utility module? |
+| **Shared infrastructure module** | Will two tasks both need to create — or each extend in place — the same helper file, adapter implementation, or utility module? |
 | **Shared data-access implementation** | Will two tasks both need to create the same repository implementation file (not just interface)? |
 | **Cross-cutting integration boundary** | Will two tasks both wrap the same external SDK, wallet/payment provider, third-party API client, auth library, or any other service-integration surface? |
 
-**Constraint**: Tasks that will CREATE the same source file MUST share the same parallelGroup. A cross-worker file conflict occurs when two parallel tasks attempt to create an identical file path — the second task's write is rejected, triggering an unresolvable retry loop.
+**Constraint**: Tasks that will CREATE or MODIFY the same shared source file MUST share the same parallelGroup. A cross-worker file conflict occurs when two parallel tasks write the same file path — a creation collision rejects the second write (triggering a retry loop), and concurrent in-place modifications race to overwrite each other's additions. When that file's complete content is fixed by an upstream contract/spec rather than accrued per unit, prefer a single owning foundation/platform task that authors it in full — consumers then call it without modifying it in-place — over serializing many modifiers.
 
 **Constraint — Cross-cutting integration boundary extraction (mandatory)**: A cross-cutting boundary is any external integration consumed by 2+ features (SDK clients, wallet/payment providers, auth libraries, third-party API clients, event/message-queue adapters, observability instrumentation). Such boundaries MUST be extracted into a shared foundation task (priority 200-299, Implementations group, `parallelGroup: "sf-impl-<boundary>"`). Feature tasks consume the boundary — they do NOT each construct their own wrapper. The foundation barrier guarantees the boundary exists before any feature task imports it.
 
