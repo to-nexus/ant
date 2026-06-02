@@ -156,7 +156,8 @@ describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
   });
 
   it('says fan-out fires if and only if the LLM emits batches[] explicitly', () => {
-    expect(RULES).toMatch(/if and only if you decide to split/i);
+    expect(RULES).toMatch(/the split-or-bundle call is yours/i);
+    expect(RULES).toMatch(/required,?\s+explicit decision/i);
   });
 
   it('makes single-task execute the default regardless of file/package/domain count', () => {
