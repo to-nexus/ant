@@ -38,6 +38,9 @@ function Badge({ icon: Icon, label, value, suffix, color, onRemove }: BadgeProps
 interface ActionMetadataBadgesProps {
   metadata?: ActionMetadata;
   readOnly?: boolean;
+  /** Badge-row padding. Defaults to the live config-footer look; the user
+   *  bubble overrides this to align badges with the message text. */
+  className?: string;
 }
 
 function describePath(p: string): { isFolder: boolean; display: string } {
@@ -94,7 +97,7 @@ function resolveSlot(
   return [];
 }
 
-export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetadataBadgesProps) {
+export function ActionMetadataBadges({ metadata, readOnly = false, className = 'px-3 pt-2 pb-1' }: ActionMetadataBadgesProps) {
   const { i18n } = useTranslation();
   const lang = i18n.language as 'en' | 'ko';
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
@@ -286,7 +289,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
     <BadgeOverflowRow
       pinned={pinned}
       overflowable={overflowable}
-      className="px-3 pt-2 pb-1"
+      className={className}
     />
   );
 }

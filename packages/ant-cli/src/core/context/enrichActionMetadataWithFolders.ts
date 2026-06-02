@@ -5,8 +5,9 @@
  * The FE `ActionMetadataBadges` renders `foldersCompressed` when present so
  * a 30-file folder collapses to a single `📂 dir/ (N files)` badge instead
  * of 30 individual file badges. BE owns the FS check (`compressPathsByFolder`)
- * because deciding "all files in dir selected" requires reading the actual
- * directory contents — the FE has no view of paths outside the selection.
+ * because deciding "all files in the dir's subtree selected" requires reading
+ * the actual (recursive) directory contents — the FE has no view of paths
+ * outside the selection.
  *
  * Idempotent: missing `fileSystem` / missing paths / empty result short-
  * circuit and return the input unchanged. Safe to call on every
