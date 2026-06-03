@@ -23,9 +23,10 @@ Record a finding here ONLY when ALL three conditions hold:
 
 If any condition fails, the information belongs elsewhere (decompose reasoning, system prompt, config file, task description) — NOT in ANTRULES.
 
-Legitimate entries typically fall into two classes:
+Legitimate entries typically fall into three classes:
 - **Project-specific conventions** not encoded in any tool config — file-naming case (`kebab-case.tsx`), hooks prefix (`use-*`), export style preference, directory organization, custom domain glossary. (These recur across siblings, so they pass condition 2 as stable conventions even though existing files demonstrate them.)
 - **Point-in-time package compatibility / pinning rationale** — "`shadcn X v0.4` breaks with `react@19` — pinned to 18 until upstream PR #NNN merges", "jest 30 migration pending, `.js` config maintained over `.ts` for now"
+- **Shared-contract authority pointers** — when one module/package is the single source for a family of symbols every consumer must bind to, record the *pointer + binding discipline*, NOT the symbols' shapes: "request/response & enum types import from `@scope/contract` only — never redefine locally", "the API port interface lives at `path/to/port` — bind to it, do not reconstruct", "shared-UI identifier vocabulary is camelCase (e.g. `chevronLeft`, not `chevron-left`)". This anchors consumers to read the authority instead of guessing its surface; the surface itself (members/fields) stays in the defining file (condition 2).
 
 Do NOT record: framework / library / runner names that package.json already declares; alias / source-root paths that tsconfig already declares; config file locations that the filesystem already reveals; **a specific symbol's call shape / signature / type fields** — these are defined in their one source file (factory definition, interface declaration, exported class); execute verifies against the defining file at write-time, recording them here duplicates the SSOT and seeds drift when the defining file evolves. (Note the distinction from condition 2: a *naming/structure PATTERN that recurs* is a recordable convention; a *specific symbol's shape* is not.)
 
