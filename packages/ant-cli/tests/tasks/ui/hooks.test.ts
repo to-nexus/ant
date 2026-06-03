@@ -47,7 +47,14 @@ describe('tasks/_shared/registry — ui entry', () => {
     expect(typeof uiBundle.router?.routeAfterDone).toBe('function');
     expect((uiBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     expect(uiBundle.plan?.buildPrompt).toBeUndefined();
-    expect(uiBundle.execute).toBeUndefined();
+    // ui now publishes an apply.execute hook that injects `requiresAttestation`
+    // (pre-<done> contract attestation, design-conformance). It sets only that
+    // template var — no templatePaths — so the default execute template stays.
+    expect(uiBundle.execute).toBeDefined();
+    expect(uiBundle.execute?.templatePaths).toBeUndefined();
+    expect(
+      uiBundle.execute?.extraTemplateVars?.({ task: task('u1'), state: {} as any }),
+    ).toEqual({ requiresAttestation: true });
     // ui has no decompose hook (no isExclusive override).
     expect(uiBundle.decompose).toBeUndefined();
   });

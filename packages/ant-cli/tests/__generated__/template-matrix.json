@@ -858,6 +858,12 @@
       "basis-registry"
     ]
   },
+  "jobs/code/nodes/execute/injections/attestation": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/execute/injections/backend-safety": {
     "sources": [
       "auto-injection",
