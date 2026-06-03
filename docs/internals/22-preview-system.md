@@ -226,6 +226,8 @@ Docker Compose 프로젝트 이름: `ant-{projectId}-{feature}`. 서로 다른 p
 
 Preview Config UI의 "Service Connections" 섹션은 프로젝트의 모든 외부 서비스 의존성을 관리한다.
 
+> 이 문서는 **런타임 connection 감지·관리**를 다룬다. 그 연결들이 어떻게 **생성**되고 (production+mock 어댑터 쌍), 토글로 mock 기동이 어떻게 **보장**되는지는 [38-service-virtualization.md](38-service-virtualization.md) 참고. `@connection` 문법·토글 네이밍·스캔은 단일 SSOT `core/serviceVirtualization/connectionModel.ts` 가 소유하며 본 시스템도 이를 소비한다.
+
 ### 감지 메커니즘
 
 `ConnectionDetector`가 `.env.example`의 `@connection` 어노테이션을 파싱한다:

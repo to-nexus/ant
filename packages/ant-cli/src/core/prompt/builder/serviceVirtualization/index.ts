@@ -37,5 +37,21 @@ export {
 
 export {
   detectHasBusinessConnection,
+  detectIsGreenfield,
   buildVirtualizationSnapshot,
 } from './snapshot';
+
+export {
+  type ConnectionCategory,
+  type DeployFramework,
+  type AnnotationMatch,
+  type FrameworkAwareToggles,
+  CONNECTION_ANNOTATION_RE,
+  parseAnnotationLine,
+  deriveToggleVar,
+  frameworkTogglePrefix,
+  frameworkAwareToggleVars,
+  resolveActivation,
+  anyInScanRadius,
+  collectInScanRadius,
+} from './connectionModel';
