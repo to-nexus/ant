@@ -86,7 +86,7 @@ It owns:
 - the single `@connection` annotation grammar (`# @connection <business|infrastructure> <name> [modifier]`) and the bounded root + depth-2 monorepo scan (`scanAnnotationsInRadius`);
 - `deriveToggleVar(name)` → bare `USE_MOCK_<NAME>` (uppercase snake);
 - **`frameworkAwareToggleVars(name, framework)`** → the framework-correct toggle name(s) + master, the runtime codification of the naming table (server → `USE_MOCK_*`; Next.js client → `NEXT_PUBLIC_USE_MOCK_*`; Vite → `VITE_USE_MOCK_*`; CRA → `REACT_APP_USE_MOCK_*`);
-- `resolveActivation(toggleEnvVar, envMap)` → per-connection toggle > master > false.
+- `resolveActivation(bareToggle, envMap)` → per-connection toggle > master > false, **framework-prefix-agnostic** (checks the bare name plus every client prefix — `NEXT_PUBLIC_` / `VITE_` / `REACT_APP_` — so a prefixed client toggle is not misread as `false`).
 
 The naming table itself is documented once in the shared partial
 [`jobs/shared/injections/sv-toggle-naming.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/sv-toggle-naming.md),
