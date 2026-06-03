@@ -1057,12 +1057,6 @@
       "render-call"
     ]
   },
-  "jobs/code/nodes/plan/variants/verification/injections/contract-parity": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
   "jobs/code/nodes/plan/variants/verification/rules": {
     "sources": [
       "build-callsite",

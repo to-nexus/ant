@@ -62,16 +62,15 @@ describe('tasks/_shared/registry — setup entry', () => {
     expect(hooks?.execute?.skipCrossTaskContext).toBeUndefined();
   });
 
-  it('bundle publishes verify-mode router + parity-wrapped check (post Phase 4 SV parity)', () => {
-    // composeBundle wires `router.routeAfterDone` AND `check.evaluate`
-    // (Service Virtualization parity wrapper — fires only inside verify-
-    // mode + business-connection presence). Setup has
-    // plan.extraTemplateVars from apply phase forwarded; everything else
-    // remains undefined.
+  it('bundle publishes verify-mode router; no check slot (setup has no apply check)', () => {
+    // composeBundle wires `router.routeAfterDone`. The check slot passes
+    // through the apply-phase check verbatim — undefined for setup — so
+    // there is no composed check evaluator (the SV parity wrapper was
+    // removed). Setup has plan.extraTemplateVars from apply phase forwarded.
     expect(setupBundle.plan?.initSession).toBeUndefined();
     expect(setupBundle.plan?.buildPrompt).toBeUndefined();
     expect(typeof setupBundle.plan?.extraTemplateVars).toBe('function');
-    expect(typeof setupBundle.check?.evaluate).toBe('function');
+    expect(setupBundle.check).toBeUndefined();
     expect(setupBundle.tool?.onEvent).toBeUndefined();
     expect(setupBundle.command?.guard).toBeUndefined();
     expect(typeof setupBundle.router?.routeAfterDone).toBe('function');

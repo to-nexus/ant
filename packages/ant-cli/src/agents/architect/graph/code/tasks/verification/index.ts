@@ -17,7 +17,6 @@ import { buildPrompt as planBuildPrompt } from '../_shared/verify/prompt/buildPl
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { executeHook } from '../_shared/verify/hooks/executeHook';
 import { routeAfterDone } from '../_shared/verify/hooks/router';
-import { parityCheckEvaluate } from '../_shared/verify/parity';
 import { antrulesDecisionCheck } from '../_shared/verify/antrulesDecisionCheck';
 
 /**
@@ -43,20 +42,14 @@ export const hooks: TaskHooks = {
   },
   execute: executeHook,
   // Verification task is verify-mode by definition (every run IS a
-  // verification cycle). Evaluation order: parity first (build/test
-  // actually exercised), then ANTRULES decision gate (cheap textual check
+  // verification cycle). The ANTRULES decision gate (cheap textual check
   // that closes Defect 2 silent-skip — Tier 3/4 final verification only;
-  // `antrulesDecisionCheck` self-gates on `isVerificationTask`). Tier 2
-  // self-verify tasks pick up parity through `composeBundle`'s check
-  // wrapper but skip the ANTRULES gate (predicate guards against
-  // over-fire — see `feedback-antrules-broad-role`).
+  // `antrulesDecisionCheck` self-gates on `isVerificationTask`) is the sole
+  // check evaluator; the task's own plan/execute runs build/test/typecheck
+  // via the verify-mode command guard.
   check: {
     noDoneSignalHint,
-    evaluate: async (state) => {
-      const parityResult = await parityCheckEvaluate(state);
-      if (parityResult) return parityResult;
-      return antrulesDecisionCheck(state);
-    },
+    evaluate: async (state) => antrulesDecisionCheck(state),
   },
   router: { routeAfterDone },
   decompose: { isExclusive },

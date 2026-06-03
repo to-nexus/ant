@@ -36,14 +36,12 @@ describe('tasks/_shared/registry — ui entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes verify-mode router + parity-wrapped check (post Phase 4 SV parity)', () => {
-    // composeBundle wires `router.routeAfterDone` AND `check.evaluate`
-    // (Service Virtualization parity wrapper). The wrapper composes the
-    // apply-phase check (undefined for ui today) with the parity tail;
-    // parity self-gates on verify-mode entry + business connection
-    // presence so apply-phase fire stays a no-op.
+  it('bundle publishes verify-mode router; no check slot (ui has no apply check)', () => {
+    // composeBundle wires `router.routeAfterDone`. The check slot passes
+    // through the apply-phase check verbatim — undefined for ui — so there
+    // is no composed check evaluator (the SV parity wrapper was removed).
     expect(uiBundle.plan?.initSession).toBeUndefined();
-    expect(typeof uiBundle.check?.evaluate).toBe('function');
+    expect(uiBundle.check).toBeUndefined();
     expect(uiBundle.tool?.onEvent).toBeUndefined();
     expect(uiBundle.command?.guard).toBeUndefined();
     expect(typeof uiBundle.router?.routeAfterDone).toBe('function');

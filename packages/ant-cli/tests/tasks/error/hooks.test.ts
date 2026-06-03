@@ -56,15 +56,13 @@ describe('tasks/_shared/registry — error entry', () => {
     expect(hooks?.orchestrator?.onTaskComplete).toBe(orchestratorHook.onTaskComplete);
   });
 
-  it('bundle publishes verify-mode router dispatch + parity-wrapped check (post Phase 4 SV parity)', () => {
-    // composeBundle wires `router.routeAfterDone` (verify-mode routing
-    // for tasks that own a verification cycle) AND `check.evaluate` (the
-    // Service Virtualization parity wrapper). The wrapper composes the
-    // apply-phase check (undefined for error today) with the parity
-    // tail; the parity tail self-gates on verify-mode entry + business
-    // connection presence so apply-phase fire stays a no-op.
+  it('bundle publishes verify-mode router dispatch; no check slot (error has no apply check)', () => {
+    // composeBundle wires `router.routeAfterDone` (verify-mode routing for
+    // tasks that own a verification cycle). The check slot passes through
+    // the apply-phase check verbatim — undefined for error — so there is no
+    // composed check evaluator (the SV parity wrapper was removed).
     expect(typeof errorBundle.router?.routeAfterDone).toBe('function');
-    expect(typeof errorBundle.check?.evaluate).toBe('function');
+    expect(errorBundle.check).toBeUndefined();
     expect(errorBundle.tool?.onEvent).toBeUndefined();
     expect((errorBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();
     expect(errorBundle.scheduling).toBeUndefined();

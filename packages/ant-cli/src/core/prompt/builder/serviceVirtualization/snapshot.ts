@@ -9,7 +9,7 @@ import { anyInScanRadius, parseAnnotationLine } from './connectionModel';
  * greenfield (no project manifest yet). Grammar, toggle naming, and the
  * bounded scan radius are owned by `./connectionModel.ts` (the connection
  * SSOT) — this file only composes those primitives into the resolve-time
- * detection used for parity activation / diagnostics. See
+ * detection that gates the SV partials. See
  * `docs/internals/38-service-virtualization.md`.
  */
 

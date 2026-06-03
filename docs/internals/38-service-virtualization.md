@@ -12,13 +12,14 @@ jobs that touch it (design, code, preview/runtime) and the verification that
 guards it.
 
 > **Implementation status (2026-06).** §1–3, §5, §7 describe live behavior.
-> The connection-config SSOT (§3) and parity (§7) are implemented; SV partials
-> currently still activate via the resolve-time `hasBusinessConnection` flag
+> The connection-config SSOT (§3) is implemented; SV partials currently still
+> activate via the resolve-time `hasBusinessConnection` flag
 > (greenfield-defaulted). **§4 (default-ON + `<serviceVirtualization>`
 > opt-out)** and **§6 (preview mock-toggle injection that guarantees
 > greenfield mock boot)** are the TARGET and are NOT yet implemented — they
 > are the next steps. Until §6 lands, a greenfield app whose toggle lives only
-> in `.env.example` is NOT guaranteed to boot on mock.
+> in `.env.example` is NOT guaranteed to boot on mock. There is no
+> SV-specific verification gate (§7).
 
 ---
 
@@ -95,8 +96,7 @@ neither job reaches across the job boundary to the other's templates.
 ```mermaid
 flowchart TD
   CM["connectionModel.ts (SSOT)<br/>grammar · scan · deriveToggleVar<br/>frameworkAwareToggleVars · resolveActivation"]
-  CM --> SNAP["snapshot.ts (detect, parity/diag only)"]
-  CM --> PAR["verify/parity/loadConnections.ts"]
+  CM --> SNAP["snapshot.ts (SV-partial gate detect)"]
   CM --> DET["preview ConnectionDetector"]
   CM --> SPAWN["preview ProcessSpawner (toggle inject)"]
   NAME["sv-toggle-naming.md (shared partial)"]
@@ -188,22 +188,21 @@ is harmless.
 
 ---
 
-## 7. Verification — mock↔real parity
+## 7. Verification
 
-The verification task runs the SV parity check
-([`verify/parity/`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/parity/)).
-It is activated by a **live disk scan** of business `@connection`s (not the
-resolve-time snapshot) and is suppressed when the job opted out of SV. Two
-passes:
+There is **no SV-specific verification gate**. A dedicated mock↔real
+"parity" check previously spawned a second build under `USE_MOCK=false`, but
+it was removed: its distinctive value (catching mock↔real divergence) needs a
+reachable real backend, which is absent in the SV-first greenfield case it was
+meant to serve, so it rarely fired; its always-runnable half was just a
+mock-mode compile gate that did not catch incoherent mock *data*; and a
+final-verification gate is reactive (upstream tasks already erred) rather than
+preventive.
 
-1. **apply** (`USE_MOCK_*=true`): whole-workspace gate (`pnpm -r typecheck`)
-   must pass — the mock adapters must build/typecheck.
-2. **real** (`USE_MOCK_*=false`): only when a real endpoint is reachable
-   (probe-gated); otherwise skipped with a warning.
-
-A DTO-divergence heuristic compares the two passes' output. (A general
-whole-workspace compile gate for non-SV jobs, and generation-time contract-drift
-prevention, are tracked as separate work — out of scope here.)
+SV correctness is instead pursued where it has leverage: **generation** (the
+design structure + code partials produce a coherent adapter pair and mock
+data) and **runtime boot** (§6). A general whole-workspace compile gate and
+generation-time contract-drift prevention are tracked as separate work.
 
 ---
 

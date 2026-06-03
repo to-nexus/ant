@@ -5,7 +5,7 @@
  * derived at the resolve node from the on-disk `codebase/.env.example`. For
  * a GREENFIELD job the codebase is empty at resolve (the `.env.example` is
  * written later by `setup`), so the flag froze `false` and silently
- * suppressed all SV partials + the parity check.
+ * suppressed all SV partials.
  *
  * Fix: SV implementation guidance is a GENERATION decision (orthogonal to
  * the runtime mock/real toggle), so it defaults ON for greenfield —
