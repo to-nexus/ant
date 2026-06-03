@@ -89,7 +89,11 @@ describe('tasks/_shared/registry — feature entry', () => {
     // Apply-only static slots remain undefined for feature (no apply
     // hook wired in tasks/feature/index.ts).
     expect(featureBundle.plan?.buildPrompt).toBeUndefined();
-    expect(featureBundle.execute).toBeUndefined();
+    // feature now publishes an apply.execute hook injecting `requiresAttestation`
+    // (pre-<done> contract attestation). It sets only that var — no
+    // templatePaths — so the default execute template stays.
+    expect(featureBundle.execute).toBeDefined();
+    expect(featureBundle.execute?.templatePaths).toBeUndefined();
     // hasOwnAttemptCounter slot retired; verification responsibility holders
     // share the orchestrator's `_failedAttempts` axis.
     expect((featureBundle.orchestrator as any)?.hasOwnAttemptCounter).toBeUndefined();

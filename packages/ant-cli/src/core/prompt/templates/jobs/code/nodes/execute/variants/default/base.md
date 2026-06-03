@@ -289,7 +289,11 @@ MODIFY: app/page.tsx - Add import and render new component
 2. ✅ MODIFY: Update existing files as specified in Plan (if any)
 3. ✅ VERIFY: Confirm imports, type references, and function signatures are consistent across your created/modified files
 
-**Actions:** Write code → Modify as planned → Verify consistency → Output `<done>true</done>`
+{{#if requiresAttestation}}
+{{> jobs/code/nodes/execute/injections/attestation}}
+{{/if}}
+
+**Actions:** Write code → Modify as planned → Verify consistency →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
 
 ⛔ **NEVER** run build, dev, or start commands in feature tasks (e.g., `npm run build`, `go build`, `cargo build`, `make build`, etc.)
 
@@ -378,7 +382,11 @@ Sub-role is determined by priority:
 **Visual source**: Visual hints recorded in the plan's analysis section. If the plan notes no hints found, apply CSS framework best practices.
 {{/if}}
 
-**Actions:** Read skeleton files → implement styles and component extractions per plan → Output `<done>true</done>`
+{{#if requiresAttestation}}
+{{> jobs/code/nodes/execute/injections/attestation}}
+{{/if}}
+
+**Actions:** Read skeleton files → implement styles and component extractions per plan →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
 
 {{/if}}
 {{/if}}

@@ -57,7 +57,8 @@
     "missing-dependency-fix": [],
     "port-management": [],
     "backend-safety": [],
-    "chunked-emission": []
+    "chunked-emission": [],
+    "attestation": []
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],

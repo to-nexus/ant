@@ -125,6 +125,7 @@ import {
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
+import { extraTemplateVars as executeExtraTemplateVars } from './hooks/execute';
 import { composeBundle } from '../_shared/verify';
 
 // Wired through `composeBundle({...})` so Tier 2 self-verify feature tasks
@@ -157,6 +158,14 @@ export const hooks = composeBundle({
   apply: {
     plan: {
       extraTemplateVars: planExtraTemplateVars,
+    },
+    // Pre-`<done>` contract attestation (design-conformance). Publishes
+    // `requiresAttestation` for consumer feature tasks (band undefined /
+    // 'integration'); foundation/platform authors are excluded inside the hook.
+    // Apply-phase only — `activeExecuteHook` swaps to the verify hook in the
+    // Tier-2 reverify cycle, so attest never collides with physical verify.
+    execute: {
+      extraTemplateVars: executeExtraTemplateVars,
     },
   },
   taskTypeSpecific: {

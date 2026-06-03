@@ -41,6 +41,7 @@
 import { preUiBarrier, blocksTestgen } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
+import { extraTemplateVars as executeExtraTemplateVars } from './hooks/execute';
 import { composeBundle } from '../_shared/verify';
 
 // Wired through `composeBundle({...})` so Tier 2 self-verify UI tasks
@@ -57,6 +58,10 @@ import { composeBundle } from '../_shared/verify';
 export const hooks = composeBundle({
   apply: {
     plan: { extraTemplateVars: planExtraTemplateVars },
+    // Pre-`<done>` contract attestation (design-conformance). UI tasks always
+    // attest (they consume components/tokens/types; no band axis). Apply-phase
+    // only — verify hook takes over in any Tier-2 reverify cycle.
+    execute: { extraTemplateVars: executeExtraTemplateVars },
   },
   taskTypeSpecific: {
     scheduling: { preUiBarrier, blocksTestgen },
