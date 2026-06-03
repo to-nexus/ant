@@ -50,9 +50,6 @@ export type ViolationType =
   | 'cross_worker_conflict'     // file owned by another parallel worker — checkTaskStatus/evaluate (parallel only)
   | 'no_done_signal'            // reached checkTaskStatus without <done> (Safety Net forced exit) — checkTaskStatus/evaluate
   | 'incomplete_implementation' // test-code task signalled done but no test files on disk — test-code/hooks/check
-  | 'parity_apply_failed'       // Service Virtualization — virtualized variant (USE_MOCK=true) build/test failed
-  | 'parity_real_failed'        // Service Virtualization — production variant (USE_MOCK=false) build/test failed
-  | 'parity_dto_mismatch'       // Service Virtualization — DTO shape divergence between virtualized / production variants
   | 'other';                    // fallback for unclassified errors — _common/errorHandler.ts
 
 /**
@@ -708,10 +705,9 @@ export interface ArchitectGraphState extends TriageableState {
    * SSOT writer: `resolve` node calls `buildVirtualizationSnapshot` from
    * `core/prompt/builder/serviceVirtualization/snapshot.ts`.
    *
-   * SSOT readers (Phase 2 + later phases):
+   * SSOT readers:
    *   - `nodes/plan/llm/prompt.ts`       — gates contract / data partials
    *   - `nodes/execute/buildMessages.ts` — gates contract / data partials
-   *   - `tasks/_shared/verify/parity/`   — Phase 4 parity check skip when false
    *
    * Phase code never re-scans `.env.example` / docker-compose to derive
    * this — call sites read `state.virtualizationSnapshot.hasBusinessConnection`

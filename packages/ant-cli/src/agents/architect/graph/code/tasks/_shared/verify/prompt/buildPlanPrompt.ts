@@ -93,13 +93,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     : (getTechTier(state) ? [getTechTier(state)!] : []);
   const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
-  // Service Virtualization parity guidance fires only inside verify-mode
-  // when business external dependencies exist. The parity hook
-  // (`tasks/_shared/verify/parity/`) emits retryable violations on adapter
-  // shape divergence — surfacing the partial here teaches the LLM how to
-  // root-cause them on the next plan cycle.
-  const parityActive = state.virtualizationSnapshot?.hasBusinessConnection === true;
-
   // Conversation history discipline gate. NODE_EXECUTE is carried into the
   // plan-LLM messages array on reverify entries (see `plan/index.ts` Fix #1)
   // so the verify-mode plan turn can see what the apply phase actually did.
@@ -155,7 +148,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // user-reported runtime error (initial directive OR prior error
     // sub-tasks present).
     allowPersistentProcesses: hasUserRuntimeErrorContext,
-    parityActive,
     // Conversation History Discipline gate. True iff NODE_EXECUTE is being
     // carried into messages on this reverify entry.
     hasPriorExecuteHistory,
@@ -181,7 +173,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       priorErrorTasksCount: priorErrorTasks?.length ?? 0,
       hasUserRuntimeErrorContext,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
-      parityActive,
       hasPriorExecuteHistory,
     },
   };

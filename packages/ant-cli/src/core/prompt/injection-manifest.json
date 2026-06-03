@@ -64,9 +64,6 @@
     "analysis-block": ["analysis", "hasAnalysis"],
     "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
   },
-  "jobs/code/nodes/plan/variants/verification/injections": {
-    "contract-parity": []
-  },
   "jobs/design/base/injections": {
     "document-language": ["userLanguage"],
     "api-contract-guide": [],

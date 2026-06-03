@@ -43,8 +43,8 @@ exactly that name. Do not invent or shorten it (`USE_MOCK_API`,
 - Adapter pair MUST satisfy the same interface contract (TypeScript
   interface, Go interface, Python protocol — language equivalent)
 - A virtualized adapter that diverges from the production adapter's DTO
-  shape, error mapping, or status code mapping is a contract defect —
-  the verification phase will catch it on a parity run
+  shape, error mapping, or status code mapping is a contract defect — both
+  adapters MUST return the identical observable shape
 
 ### Blind Spot
 

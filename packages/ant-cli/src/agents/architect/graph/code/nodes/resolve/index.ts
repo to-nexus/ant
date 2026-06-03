@@ -138,8 +138,8 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     }
 
     // Service Virtualization snapshot — single SSOT derivation, read by
-    // every downstream phase that gates on "business external dependency
-    // present" (contract / data partials, Phase 4 parity check).
+    // the plan / execute nodes that gate the contract / data / session
+    // partials on "business external dependency present".
     const virtualizationSnapshot = await buildVirtualizationSnapshot(state.context.featurePath);
 
     return {
@@ -275,9 +275,8 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     })();
 
     // Service Virtualization snapshot — SSOT derivation site (resolve).
-    // Phase 2: gates `service-virtualization-{contract,data}` partials on
-    // a single boolean per job; Phase 4 will gate parity-check skip on
-    // the same channel.
+    // Gates the `service-virtualization-{contract,data,session}` partials on
+    // a single boolean per job.
     const virtualizationSnapshot = await buildVirtualizationSnapshot(context.featurePath);
 
     return {

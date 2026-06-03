@@ -35,7 +35,6 @@ import type {
 import { requiresVerification } from './predicate';
 import { isVerifyEntered } from './markVerifyEntered';
 import { routeAfterDone as verifyRouteAfterDone } from './hooks/router';
-import { parityCheckEvaluate } from './parity';
 
 /**
  * Inputs to `composeBundle`. `apply` carries the task type's apply-phase
@@ -77,35 +76,6 @@ function composeRouter(apply: TaskRouterHook | undefined): TaskRouterHook {
 }
 
 /**
- * Compose the `check.evaluate` slot so verify-mode tasks (Tier 2 self-
- * verify with `selfVerifyOnDone:true`) inherit the Service Virtualization
- * parity check after their apply-phase check fires. Apply-phase check
- * results take precedence — parity only runs when the apply check
- * returned no violation.
- *
- * `noDoneSignalHint` and any other static fields on the apply check
- * pass through unchanged.
- */
-function composeCheck(apply: TaskCheckHook | undefined): TaskCheckHook | undefined {
-  const applyEval = apply?.evaluate;
-  return {
-    ...apply,
-    evaluate: async (state) => {
-      if (applyEval) {
-        const v = await applyEval(state);
-        if (v) return v;
-      }
-      // Parity only fires in verify-mode (the helper itself short-circuits
-      // when `_verifyEntered === false` AND when the virtualization
-      // snapshot has no business connection). The wrapper still routes to
-      // it unconditionally so behaviour stays observable and the helper
-      // owns the full skip contract.
-      return await parityCheckEvaluate(state);
-    },
-  };
-}
-
-/**
  * Compose a task bundle with verify-mode router dispatch baked in.
  * Plan / execute / command / tool / check slots pass through from the
  * apply-phase definitions; verify-mode plan prompt + execute hook are
@@ -118,7 +88,7 @@ export function composeBundle(input: ComposeBundleInput): TaskHooks {
     plan: a.plan,
     execute: a.execute,
     command: a.command,
-    check: composeCheck(a.check),
+    check: a.check,
     router: composeRouter(a.router),
     tool: a.tool,
     orchestrator: t.orchestrator,

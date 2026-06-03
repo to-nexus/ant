@@ -1,15 +1,13 @@
 /**
  * Service Virtualization connection model — the single runtime SSOT for
  * `@connection` annotation parsing, mock-toggle naming, and the bounded
- * workspace scan radius. Consumed by the resolve-time detector
- * (`prompt/builder/serviceVirtualization/snapshot.ts`), the parity verifier
- * (`verify/parity/loadConnections.ts`), the preview ConnectionDetector, and
- * the preview ProcessSpawner mock-toggle injector.
+ * workspace scan radius. Consumed today by the resolve-time SV-partial-gate
+ * detector (`prompt/builder/serviceVirtualization/snapshot.ts`) and the
+ * preview ConnectionDetector (env + toml annotation parsers).
  *
- * Runtime helpers live here (not in `@ant/shared`, which is types-only). The
- * human/LLM-facing framework→prefix naming table is documented once in
- * `templates/jobs/shared/injections/sv-toggle-naming.md` and mirrors the
- * `frameworkAwareToggleVars` logic below.
+ * Runtime helpers live here (not in `@ant/shared`, which is types-only).
+ * `frameworkAwareToggleVars` codifies the framework→prefix naming rule for
+ * the upcoming preview mock-toggle injection (Phase 5).
  *
  * See `docs/internals/38-service-virtualization.md` §3.
  */
@@ -31,7 +29,7 @@ export interface AnnotationMatch {
 
 /**
  * Single `@connection` annotation grammar — a faithful superset of the three
- * former regexes (resolve snapshot / parity / preview): optional leading
+ * former regexes (resolve snapshot / verification / preview): optional leading
  * whitespace, both categories, the name token, and an optional trailing
  * resolution modifier. Anchored per-line; callers split the file into lines.
  */

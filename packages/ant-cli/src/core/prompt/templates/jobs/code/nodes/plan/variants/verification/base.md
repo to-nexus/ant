@@ -18,10 +18,6 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/code/base/injections/preview-env-contract}}
 
-{{#if parityActive}}
-{{> jobs/code/nodes/plan/variants/verification/injections/contract-parity}}
-{{/if}}
-
 ## Role
 
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.
