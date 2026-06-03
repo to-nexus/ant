@@ -103,6 +103,15 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     return presented.prompt || t('cancelled.defaultSubtitle');
   })();
 
+  // Surface the precise per-task failure detail (BE interruption.message) that
+  // the static reason-subtitle would otherwise discard — e.g. WHICH tasks were
+  // hit by an Anthropic overload. Shown only when it adds info beyond subtitle.
+  const detail = (() => {
+    const prompt = presented.prompt?.trim();
+    if (!prompt || prompt === subtitle) return null;
+    return prompt;
+  })();
+
   const resolvedIcon: ResolvedIcon =
     state.selectedChoice === 'dismiss' ? 'dismiss' :
     state.selectedChoice === 'resume' ? 'resume' : null;
@@ -117,6 +126,14 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={resolvedIcon}
     >
+      {detail && (
+        <div
+          className="text-xs mb-3 whitespace-pre-line"
+          style={{ color: 'var(--text-2)' }}
+        >
+          {detail}
+        </div>
+      )}
       {canResume && (
         <TwoButtonLayout
           theme="orange"

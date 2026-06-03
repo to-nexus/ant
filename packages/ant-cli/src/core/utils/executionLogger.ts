@@ -189,7 +189,7 @@ export class ExecutionLogger {
 
   async logTaskFail(taskId: string, data: {
     taskName: string;
-    reason: 'recursion_limit' | 'deterministic_error' | 'max_retries' | 'unknown';
+    reason: 'recursion_limit' | 'deterministic_error' | 'max_retries' | 'api_overloaded' | 'unknown';
     errorMessage: string;
     elapsedMs?: number;
     inputTokens?: number;

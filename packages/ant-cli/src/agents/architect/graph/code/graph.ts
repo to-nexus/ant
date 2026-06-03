@@ -27,6 +27,48 @@ import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager"
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import type { InterruptionReason } from '../../../../core/types/session';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
+import { isOverloadedError, summarizeFailureCause } from '../../../../core/utils/apiErrorClassify';
+
+/**
+ * Classify the reason + build the user-facing message for an orchestrator run
+ * that ended with permanently-failed tasks. SSOT for the two interruption-build
+ * sites below (session save + return state) so they never drift.
+ *
+ * When the failures are dominated by Anthropic `overloaded_error` (HTTP 529,
+ * external/transient), surface `api_overloaded` so the choice card tells the
+ * user "AI service overloaded — not your code, just resume" instead of the
+ * generic `tasks_failed` ("review the failed tasks"). The message lists the
+ * affected tasks with a summarized cause (no raw Anthropic JSON).
+ */
+function classifyOrchestratorFailure(
+  failedTasks: ReadonlyArray<{ task: { name: string }; error: Error }>,
+): { reason: InterruptionReason; message: string } {
+  const allOverloaded =
+    failedTasks.length > 0 && failedTasks.every(f => isOverloadedError(f.error));
+
+  const lines = failedTasks.map(
+    f => `- "${f.task.name}": ${summarizeFailureCause(f.error.message)}`,
+  );
+
+  if (allOverloaded) {
+    return {
+      reason: 'api_overloaded',
+      message: [
+        `Interrupted by an upstream AI-service overload (Anthropic HTTP 529).`,
+        `${failedTasks.length} task(s) affected:`,
+        ...lines,
+      ].join('\n'),
+    };
+  }
+
+  return {
+    reason: 'tasks_failed',
+    message: [
+      `${failedTasks.length} task(s) failed during parallel execution`,
+      ...lines,
+    ].join('\n'),
+  };
+}
 
 /**
  * Parallel Orchestrator node for code job.
@@ -136,13 +178,18 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         // executionLogger contract (vast-curling-perch C-3 RCA).
         if (state.context?.featurePath && state._httpJobId) {
           const isRecLimit = /recursion limit/i.test(error.message);
+          const failReason = isRecLimit
+            ? 'recursion_limit'
+            : isOverloadedError(error)
+              ? 'api_overloaded'
+              : 'unknown';
           void getExecutionLogger({
             featurePath: state.context.featurePath,
             jobId: state._httpJobId,
             jobType: 'code',
           }).logTaskFail(task.id, {
             taskName: task.name,
-            reason: isRecLimit ? 'recursion_limit' : 'unknown',
+            reason: failReason,
             errorMessage: error.message.substring(0, 500),
             elapsedMs: task.timing?.elapsedTime,
             inputTokens: task.tokenUsage?.inputTokens,
@@ -480,6 +527,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       const failedAsQueue = result.failedTasks.map(f =>
         buildResumableFailedTask(f.task as CodeTask, f.error.message),
       );
+      const { reason: failReason, message: failMessage } = classifyOrchestratorFailure(result.failedTasks);
 
       await state.deps.session.updateArtifacts(
         state.context.project,
@@ -496,11 +544,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             jobTiming: state.jobTiming,
             parallelMode: true,
             interruption: {
-              reason: 'tasks_failed',
-              message: [
-                `${result.failedTasks.length} task(s) failed during parallel execution`,
-                ...result.failedTasks.map(f => `- "${f.task.name}": ${f.error.message}`),
-              ].join('\n'),
+              reason: failReason,
+              message: failMessage,
               timestamp: new Date().toISOString(),
               canResume: true,
             },
@@ -542,11 +587,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         completedCount: result.completedTasks.length,
       },
     } : result.hasFailures ? {
-      reason: 'tasks_failed',
-      message: [
-        `${result.failedTasks.length} task(s) failed during parallel execution`,
-        ...result.failedTasks.map(f => `- "${f.task.name}": ${f.error.message}`),
-      ].join('\n'),
+      ...classifyOrchestratorFailure(result.failedTasks),
       timestamp: new Date().toISOString(),
       canResume: true,
       metadata: {

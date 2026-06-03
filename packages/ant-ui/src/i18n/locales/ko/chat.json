@@ -177,6 +177,7 @@
       "recursion_limit": "반복 횟수 한도 도달",
       "user_stopped": "사용자가 중지함",
       "api_error": "API 오류 발생",
+      "api_overloaded": "AI 서비스 과부하",
       "process_crash": "프로세스 비정상 종료",
       "server_crash": "서버 비정상 종료",
       "system_sleep": "시스템 절전 모드로 인해 작업이 중단됨",
@@ -193,6 +194,7 @@
     "subtitles": {
       "recursion_limit": "재개하면 중단된 지점부터 다시 시작합니다.",
       "api_error": "잠시 후 재개하면 중단된 지점부터 다시 시작합니다.",
+      "api_overloaded": "Anthropic API가 일시적으로 과부하 상태였습니다 — 코드 문제가 아닙니다. 잠시 후 재개하세요.",
       "process_crash": "재개하면 중단된 지점부터 다시 시작합니다.",
       "server_crash": "재개하면 중단된 지점부터 다시 시작합니다.",
       "system_sleep": "기기의 절전 모드가 해제되면 작업을 재개할 수 있습니다.",

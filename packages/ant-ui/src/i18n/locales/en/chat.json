@@ -177,6 +177,7 @@
       "recursion_limit": "Recursion limit reached",
       "user_stopped": "Stopped by user",
       "api_error": "API error occurred",
+      "api_overloaded": "AI service overloaded",
       "process_crash": "Process crashed unexpectedly",
       "server_crash": "Server crashed unexpectedly",
       "system_sleep": "System entered sleep mode",
@@ -193,6 +194,7 @@
     "subtitles": {
       "recursion_limit": "Resume to continue from where it left off.",
       "api_error": "Wait a moment, then resume to continue.",
+      "api_overloaded": "Anthropic's API was temporarily overloaded — not a problem with your code. Wait a moment, then resume.",
       "process_crash": "Resume to continue from where it left off.",
       "server_crash": "Resume to continue from where it left off.",
       "system_sleep": "You can resume once the system wakes up.",
