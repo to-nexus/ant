@@ -2,10 +2,12 @@
   Universal execution-context discipline (FPOP — Universal over Specific).
 
   SSOT for the cross-task contract that every authored module declares
-  its runtime requirements and every integration owner verifies the
-  graph it composes. Framework-specific declaration syntax (`'use client'`
-  for Next.js, `+page.server.ts` for SvelteKit, file-suffix conventions
-  for Vite, etc.) lives in techTier framework partials, NOT here.
+  its runtime requirements, every integration owner verifies the graph
+  it composes, and every consumer binds to a shared symbol's *exact
+  declared surface* rather than a guessed one. Framework-specific
+  declaration syntax (`'use client'` for Next.js, `+page.server.ts` for
+  SvelteKit, file-suffix conventions for Vite, etc.) lives in techTier
+  framework partials, NOT here.
 
   Rendered unconditionally from every code-job execute/plan node so that:
     - feature/foundation tasks self-declare module runtime requirements
@@ -48,6 +50,14 @@ When you wire modules into an entry point you own (root page, root layout, depen
 - If absent and the module's code touches runtime-specific APIs at evaluation time, assume **the narrowest runtime** the code implies based on the API surface touched at module evaluation.
 - Never assume portability by default for infrastructure adapters, OS bindings, or hardware-touching code.
 
+### 4. Surface fidelity (every task that uses another module's symbols)
+
+A shared symbol's **surface** — its exact name, the members of an enum/union, the fields and shape of a type or request/response object, the required props of a component, an identifier vocabulary (e.g. key/name spelling and casing), the subpaths a package exposes for import — is owned by its defining module. The consumer's memory or convention is never authoritative for it.
+
+- Before using any symbol defined by another task or a shared package, **read its authoritative definition first** — `search_code` to locate it, `read_file` to see the exact surface — and bind to exactly what is declared.
+- Do **not** invent or guess any part of that surface: not an enum/literal value, not a field name, not an object shape, not a required prop, not an identifier's spelling/casing, not an import subpath. If you have not read it, you do not know it.
+- A value that merely *looks* plausible from prior experience is not a substitute for the declared surface — recalling a shape from memory instead of reading it is the drift source.
+
 ### Why this exists
 
-Cross-task knowledge gaps (LLM agents don't know what an import chain looks like outside their task scope) make implicit runtime requirements the #1 cause of green-on-local-but-red-on-deploy build failures. Declaration + integrator verification closes the loop without requiring agents to share a global view.
+Cross-task knowledge gaps (an agent does not know what an import chain or a shared module's exact surface looks like outside its own task scope) cause two failure classes: implicit runtime requirements (the #1 cause of green-on-local-but-red-on-deploy build failures) and guessed contract surfaces (consumers inventing enum values, field names, props, or import paths that diverge from the authoritative definition). Declaration + integrator verification + read-before-bind closes the loop without requiring agents to share a global view.

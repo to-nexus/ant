@@ -328,11 +328,12 @@ export interface TaskExecuteHook {
    */
   skipExamples?: boolean;
   /**
-   * Skip Foundation Contract + Schema Anchor cross-task injections.
-   * Replaces the pre-T6b-ι `isVerification ? null : ...` gate on
-   * `buildFoundationContract` / `buildSchemaAnchor`. Only verification
-   * publishes this because its prompt fixes existing files rather than
-   * creating new ones that would need cross-task symbol visibility.
+   * Skip the Schema Anchor cross-task injection (migration table/column shape).
+   * Only verification publishes this because its prompt fixes existing files
+   * rather than creating new ones that would need cross-task schema visibility.
+   * (The former name-only "Foundation Contract" dump was removed — its half-truth
+   * symbol names caused contract drift; consumers now read authoritative source
+   * via `search_code`/`read_file` per the execution-context-discipline principle.)
    */
   skipCrossTaskContext?: boolean;
   /** Transform the user directive before it is rendered into the prompt. */

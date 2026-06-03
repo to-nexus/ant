@@ -518,7 +518,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Additional context parts for Block 2
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const foundationContract = skipCrossTaskContext ? null : await buildFoundationContract(state);
   const schemaAnchor = skipCrossTaskContext ? null : await buildSchemaAnchor(state);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -628,7 +627,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const preflightManager = new TokenBudgetManager();
   const blocks = buildCacheableBlocks(promptResult, {
-    contextParts: [foundationContract, schemaAnchor].filter(Boolean) as string[],
+    contextParts: [schemaAnchor].filter(Boolean) as string[],
     taskInvariantParts: taskInvariantRuntime ? [taskInvariantRuntime] : undefined,
     mediaBlocks: uiImageBlocks.length > 0 ? uiImageBlocks : undefined,
     tokenPreflight: {
@@ -1129,126 +1128,6 @@ export async function buildTurnVariableContext(state: ArchitectGraphState): Prom
   return lines.join('\n');
 }
 
-
-/**
- * Build Foundation Contract: exported symbol summary from completed foundation task files.
- * Injected into feature tasks so they discover shared utilities and avoid duplicate definitions.
- * Active only in parallel mode (SharedFileBuffer provides cross-worker file info).
- */
-async function buildFoundationContract(state: ArchitectGraphState): Promise<string | null> {
-  const otherWorkerFiles = state._otherWorkerFiles;
-  if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
-
-  const completedTasks = state.completedTasksDetails || [];
-  // Foundation identity is owned by each bundle's `classify` — phase layer
-  // never compares raw priority bands (see TaskSchedulingHook.classify).
-  const foundationTasks = completedTasks.filter(t => schedClassify(t, 'isFoundation'));
-  if (foundationTasks.length === 0) return null;
-
-  const foundationTaskNames = new Set(foundationTasks.map(t => t.name));
-  const foundationFiles = otherWorkerFiles.filter(
-    f => f.taskName && foundationTaskNames.has(f.taskName)
-  );
-  if (foundationFiles.length === 0) return null;
-
-  const fileSystem = state.deps?.fileSystem;
-  if (!fileSystem) return null;
-
-  const language = getTechTier(state)?.language;
-
-  const sections: string[] = [];
-  sections.push('# Foundation Contract (read-only, do NOT modify these files)\n');
-  sections.push('The following symbols were defined by the shared foundation task.');
-  sections.push('Import and use them — do NOT redefine or create alternatives.\n');
-
-  let symbolCount = 0;
-
-  for (const file of foundationFiles) {
-    try {
-      const content = await fileSystem.readFile(file.path);
-      if (!content) continue;
-
-      const symbols = extractExportedSymbols(content, language);
-      if (symbols.length === 0) continue;
-
-      sections.push(`### ${file.path}`);
-      for (const sym of symbols) {
-        sections.push(`  - ${sym}`);
-      }
-      sections.push('');
-      symbolCount += symbols.length;
-    } catch {
-      // Non-fatal: skip files that can't be read
-    }
-  }
-
-  if (symbolCount === 0) return null;
-
-  const result = sections.join('\n');
-  console.log(`📋 [Execute] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
-  return result;
-}
-
-/**
- * Extract exported symbol signatures from source code.
- * Captures only top-level exported declarations (types, functions, constants).
- * For TS/JS: preserves function signatures (parameters + return type) to prevent
- * import hallucination — LLM sees exact names and signatures without read_file.
- */
-function extractExportedSymbols(content: string, language?: string): string[] {
-  const lines = content.split('\n');
-  const symbols: string[] = [];
-
-  if (language === 'go') {
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (/^type\s+[A-Z]/.test(trimmed)) {
-        symbols.push(trimmed.replace(/\s*\{.*$/, ''));
-      } else if (/^func\s+(\([^)]+\)\s+)?[A-Z]/.test(trimmed)) {
-        symbols.push(trimmed.replace(/\s*\{.*$/, ''));
-      } else if (/^(var|const)\s+[A-Z]/.test(trimmed)) {
-        symbols.push(trimmed.replace(/\s*=.*$/, ''));
-      }
-    }
-  } else if (language === 'typescript' || language === 'javascript') {
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('export ')) continue;
-
-      // export function name(params): ReturnType { ... }
-      const fnMatch = trimmed.match(/^export\s+(?:async\s+)?function\s+(\w+)\s*(\([^)]*\))\s*(?::\s*([^{]+))?\s*\{?/);
-      if (fnMatch) {
-        const retType = fnMatch[3]?.trim() || '';
-        symbols.push(`export function ${fnMatch[1]}${fnMatch[2]}${retType ? ': ' + retType : ''}`);
-        continue;
-      }
-
-      // export class/interface/type/enum/abstract
-      if (/^export\s+(class|interface|type|enum|abstract)\s/.test(trimmed)) {
-        symbols.push(trimmed.replace(/\s*[{=].*$/, ''));
-        continue;
-      }
-
-      // export const name = (params): ReturnType => ...  (arrow function)
-      const arrowMatch = trimmed.match(/^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(\([^)]*\))\s*(?::\s*([^=>{]+))?\s*=>/);
-      if (arrowMatch) {
-        const retType = arrowMatch[3]?.trim() || '';
-        symbols.push(`export const ${arrowMatch[1]} = ${arrowMatch[2]}${retType ? ': ' + retType : ''} => ...`);
-        continue;
-      }
-
-      // export const/let/var name (non-function)
-      if (/^export\s+(const|let|var)\s/.test(trimmed)) {
-        symbols.push(trimmed.replace(/\s*=.*$/, ''));
-        continue;
-      }
-    }
-  } else {
-    return ['(symbol extraction not available — use read_file to inspect)'];
-  }
-
-  return symbols;
-}
 
 /**
  * Build Schema Anchor: concise table/type summary extracted from migration SQL files.
