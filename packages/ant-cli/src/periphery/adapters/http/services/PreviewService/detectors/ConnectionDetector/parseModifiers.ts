@@ -35,12 +35,3 @@ export function parseResolutionModifier(token: string, defaultValue: string): Co
   void defaultValue;
   return null;
 }
-
-/**
- * Convert a `@connection` name into its per-connection toggle env var.
- *   `stripe-api`       → `USE_MOCK_STRIPE_API`
- *   `payment_service`  → `USE_MOCK_PAYMENT_SERVICE`
- */
-export function deriveToggleVar(name: string): string {
-  return `USE_MOCK_${name.replace(/-/g, '_').toUpperCase()}`;
-}

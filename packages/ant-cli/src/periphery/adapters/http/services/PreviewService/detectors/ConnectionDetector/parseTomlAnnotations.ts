@@ -4,8 +4,7 @@ import { ServiceCategory, ServiceConnection } from '../../../../../../../core/po
 import { logger } from '../../../../../../../utils/logger';
 import { formatDisplayName, overrideWithEnvFile } from './utils';
 import { autoAttachVirtualization, dispatchResolutionTokens } from './parseEnvAnnotations';
-
-const ANNOTATION_REGEX = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?:\s+(.+))?/;
+import { parseAnnotationLine } from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Parse `@connection` annotations from `<projectPath>[/<subdir>]/config.example.toml`.
@@ -32,12 +31,12 @@ export function detectFromTomlAnnotations(projectPath: string, subdir?: string):
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].trim().match(ANNOTATION_REGEX);
-    if (!match) continue;
+    const annotation = parseAnnotationLine(lines[i]);
+    if (!annotation) continue;
 
-    const category = match[1] as ServiceCategory;
-    const name = match[2];
-    const rest = match[3]?.trim();
+    const category = annotation.category as ServiceCategory;
+    const name = annotation.name;
+    const rest = annotation.modifier?.trim();
 
     const { envVar, modifier } = parseTomlAnnotationRest(rest);
     if (!envVar) {

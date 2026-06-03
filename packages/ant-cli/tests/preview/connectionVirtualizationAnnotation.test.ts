@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import { detectFromAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseEnvAnnotations';
 import { detectFromTomlAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseTomlAnnotations';
 import { detectFromKnownPatterns } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseKnownPatterns';
-import { deriveToggleVar } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseModifiers';
+import { deriveToggleVar } from '../../src/core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Phase 1 — Service Virtualization auto-attach truth table.

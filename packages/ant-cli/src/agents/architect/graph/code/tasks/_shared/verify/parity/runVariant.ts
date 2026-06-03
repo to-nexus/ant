@@ -136,15 +136,28 @@ export function inferVariantCommand(
   packageManager: string | undefined,
 ): { command: string; args: string[] } | undefined {
   switch (packageManager) {
+    case 'pnpm':
+      // `pnpm -r typecheck` runs the `typecheck` script in EVERY workspace
+      // member that defines it and is a no-op in members that don't — a
+      // real whole-workspace compile signal that does NOT depend on a root
+      // `test` script (a monorepo root often has none, making the legacy
+      // `<pm> test` a vacuous pass) and is robust to a single package's
+      // name drift (no `--filter <name>` to mistype). Typecheck is the
+      // cheapest real signal within `VARIANT_TIMEOUT_MS`.
+      //
+      // Note: typecheck is env-independent, so the mock/real variants
+      // produce identical output — parity here is primarily a "does the
+      // mock-mode workspace compile" gate. The DTO-divergence comparison
+      // (real pass) only adds signal when a real endpoint is reachable,
+      // which is rare for greenfield previews.
+      return { command: 'pnpm', args: ['-r', 'typecheck'] };
     case 'npm':
     case 'yarn':
-    case 'pnpm':
     case 'bun':
-      // `<pm> test` is the conventional one-liner that covers the bulk
-      // of JS projects' "build + test" exit-code semantics. Projects
-      // without a `test` script make `<pm> test` exit non-zero with a
-      // recognisable "Missing script" message — same shape as a real
-      // failure so the parity check still observes it consistently.
+      // No portable recursive-typecheck one-liner across these managers;
+      // keep the conventional `<pm> test` whitelist entry. Projects without
+      // a `test` script exit non-zero with a recognisable "Missing script"
+      // message — same shape as a real failure so the check stays consistent.
       return { command: packageManager, args: ['test'] };
     default:
       return undefined;

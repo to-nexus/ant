@@ -2,14 +2,15 @@
  * Service Virtualization Mock↔Real Contract Parity verification — Phase 4
  * regression guard for `tasks/_shared/verify/parity/`.
  *
- * 6 case truth table (per plan §7.4):
+ * 6 case truth table (per plan §7.4 + greenfield-activation fix):
  *
- *   1. virtualizationSnapshot empty            → parityCheck skip
- *   2. business connection, real unreachable   → apply pass + skip + warning
- *   3. business connection, real reachable     → both passes pass → done
- *   4. apply variant fails                     → parity_apply_failed (retryable)
- *   5. real variant fails                      → parity_real_failed (retryable)
- *   6. real failure with DTO mismatch markers  → parity_dto_mismatch (retryable)
+ *   1a. live scan empty (snapshot ignored)     → parityCheck skip, scan consulted
+ *   1b. snapshot unset but scan finds a conn    → parity RUNS (greenfield fix)
+ *   2.  business connection, real unreachable   → apply pass + skip + warning
+ *   3.  business connection, real reachable     → both passes pass → done
+ *   4.  apply variant fails                     → parity_apply_failed (retryable)
+ *   5.  real variant fails                      → parity_real_failed (retryable)
+ *   6.  real failure with DTO mismatch markers  → parity_dto_mismatch (retryable)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -19,6 +20,7 @@ import {
   type ParityDeps,
   type BusinessConnection,
 } from '../../src/agents/architect/graph/code/tasks/_shared/verify/parity';
+import { inferVariantCommand } from '../../src/agents/architect/graph/code/tasks/_shared/verify/parity/runVariant';
 import type { ArchitectGraphState } from '../../src/agents/architect/graph/code/state';
 
 const SAMPLE_CONNECTION: BusinessConnection = {
@@ -71,16 +73,31 @@ describe('parityCheck — 6 case truth table', () => {
     logSpy.mockRestore();
   });
 
-  it('case 1: virtualizationSnapshot empty → skip (no violation, passed)', async () => {
+  it('case 1a: snapshot ignored — live scan empty → skip, but scan WAS consulted', async () => {
+    // Activation is the LIVE disk scan, NOT the resolve-time snapshot. Even
+    // with the snapshot unset, loadBusinessConnections must run; the skip
+    // happens only because it returned [].
+    const loadBusinessConnections = vi.fn(async () => []);
     const state = makeState({ virtualizationSnapshot: undefined } as any);
-    const deps = makeDeps();
+    const deps = makeDeps({ loadBusinessConnections });
     const result = await parityCheck(state, deps);
     expect(result.violation).toBeNull();
     expect(result.passed).toBe(true);
-    // None of the heavy work should have fired.
-    expect(deps.loadBusinessConnections).not.toHaveBeenCalled();
+    expect(loadBusinessConnections).toHaveBeenCalledTimes(1);
     expect(deps.runVariant).not.toHaveBeenCalled();
     expect(deps.probeReal).not.toHaveBeenCalled();
+  });
+
+  it('case 1b: snapshot unset but scan finds a connection → parity RUNS (greenfield-frozen-flag bug fixed)', async () => {
+    // The greenfield bug froze virtualizationSnapshot=false at resolve, which
+    // formerly short-circuited parity. With the snapshot ignored here, parity
+    // must still run off the live scan.
+    const state = makeState({ virtualizationSnapshot: undefined } as any);
+    const deps = makeDeps(); // default loadBusinessConnections → [SAMPLE_CONNECTION]
+    const result = await parityCheck(state, deps);
+    expect(deps.loadBusinessConnections).toHaveBeenCalledTimes(1);
+    expect(deps.runVariant).toHaveBeenCalled();
+    expect(result.passed).toBe(true);
   });
 
   it('case 2: real endpoint unreachable → apply passes, real skipped + warning emitted', async () => {
@@ -251,5 +268,22 @@ describe('parityCheck — guard ordering', () => {
     expect(result.passed).toBe(true);
     // Real pass never attempted because apply was a silent no-op.
     expect(runVariant).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('inferVariantCommand — parity gate command', () => {
+  it('pnpm → recursive typecheck (whole-workspace compile signal, no root test script needed)', () => {
+    expect(inferVariantCommand('pnpm')).toEqual({ command: 'pnpm', args: ['-r', 'typecheck'] });
+  });
+
+  it('npm / yarn / bun → <pm> test fallback (no portable recursive one-liner)', () => {
+    for (const pm of ['npm', 'yarn', 'bun']) {
+      expect(inferVariantCommand(pm)).toEqual({ command: pm, args: ['test'] });
+    }
+  });
+
+  it('unknown / undefined package manager → undefined (no observation)', () => {
+    expect(inferVariantCommand('cargo')).toBeUndefined();
+    expect(inferVariantCommand(undefined)).toBeUndefined();
   });
 });

@@ -29,8 +29,14 @@
  *
  * Activation gates (the orchestrator returns `null` early on any false):
  *
- *   - `state.virtualizationSnapshot?.hasBusinessConnection === true`
- *     (Phase 2 channel — set by the resolve node).
+ *   - A live disk scan (`loadBusinessConnections`) finds ≥ 1 `business`
+ *     `@connection` in the project's `.env.example`. This is the SOLE
+ *     activation signal — we do NOT consult the resolve-time
+ *     `virtualizationSnapshot` flag here. That flag is a GENERATION gate
+ *     that defaults `true` for greenfield (before any `.env.example`
+ *     exists), so using it for parity would fire the check on projects
+ *     that declare no concrete connection to test. The live scan runs late
+ *     (verification phase), by which point `setup` has written the file.
  *   - The shared verify-mode predicate (`isVerifyEntered(state)` for
  *     self-verify Tier 2; verification task type is verify-mode by
  *     definition).
@@ -173,20 +179,20 @@ export async function parityCheck(
   state: ArchitectGraphState,
   deps: ParityDeps = defaultDeps,
 ): Promise<ParityResult> {
-  if (!state.virtualizationSnapshot?.hasBusinessConnection) {
-    return { violation: null, passed: true };
-  }
   const featurePath = state.context?.featurePath;
   if (!featurePath) {
     return { violation: null, passed: true };
   }
 
+  // Activation is driven by the LIVE disk scan below, NOT the resolve-time
+  // `virtualizationSnapshot` flag (which defaults `true` for greenfield
+  // before any `.env.example` exists — see the header). By the verification
+  // phase `setup` has written the file, so the live scan is authoritative.
   const connections = await deps.loadBusinessConnections(state);
   if (connections.length === 0) {
-    // virtualizationSnapshot says yes but on-disk scan returned no
-    // concrete connections. Happens when annotation grammar drifted or
-    // the env file moved between resolve-time scan and parity-time
-    // scan. Treat as "no observation" rather than failing the cycle.
+    // No concrete `business` `@connection` on disk — either a genuinely
+    // SV-less project, or the annotation grammar drifted / the env file
+    // moved. Treat as "no observation" rather than failing the cycle.
     return { violation: null, passed: true };
   }
 

@@ -7,9 +7,11 @@ import {
   VirtualizationStrategy,
 } from '../../../../../../../core/ports/portRegistry';
 import { formatDisplayName, overrideWithEnvFile, parseEnvLine } from './utils';
-import { deriveToggleVar, parseResolutionModifier } from './parseModifiers';
-
-const ANNOTATION_REGEX = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?:\s+(.+))?/;
+import { parseResolutionModifier } from './parseModifiers';
+import {
+  parseAnnotationLine,
+  deriveToggleVar,
+} from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Parse `@connection` annotations from `<projectPath>[/<subdir>]/.env.example`.
@@ -42,12 +44,12 @@ export function detectFromAnnotations(projectPath: string, subdir?: string): Ser
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].trim().match(ANNOTATION_REGEX);
-    if (!match) continue;
+    const annotation = parseAnnotationLine(lines[i]);
+    if (!annotation) continue;
 
-    const category = match[1] as ServiceCategory;
-    const name = match[2];
-    const modifier = match[3]?.trim();
+    const category = annotation.category as ServiceCategory;
+    const name = annotation.name;
+    const modifier = annotation.modifier?.trim();
 
     const nextLine = findNextEnvLine(lines, i + 1);
     if (!nextLine) continue;
