@@ -49,18 +49,24 @@ export function deriveToggleVar(name: string): string {
 
 const MASTER_TOGGLE = 'USE_MOCK';
 
+/**
+ * Client-bundle visibility prefix per framework. Single source for both the
+ * per-framework lookup (`frameworkTogglePrefix`) and the prefix-agnostic
+ * resolution set (`ALL_TOGGLE_PREFIXES`), so adding a bundler touches one place.
+ */
+const FRAMEWORK_TOGGLE_PREFIX: Record<DeployFramework, string> = {
+  next: 'NEXT_PUBLIC_',
+  vite: 'VITE_',
+  cra: 'REACT_APP_',
+  other: '',
+};
+
+/** Distinct prefixes a toggle may carry (bare `''` + each bundler prefix). */
+const ALL_TOGGLE_PREFIXES = [...new Set(Object.values(FRAMEWORK_TOGGLE_PREFIX))];
+
 /** Client-bundle visibility prefix for the given framework (bare when none). */
 export function frameworkTogglePrefix(framework: DeployFramework | undefined): string {
-  switch (framework) {
-    case 'next':
-      return 'NEXT_PUBLIC_';
-    case 'vite':
-      return 'VITE_';
-    case 'cra':
-      return 'REACT_APP_';
-    default:
-      return '';
-  }
+  return framework ? FRAMEWORK_TOGGLE_PREFIX[framework] : '';
 }
 
 export interface FrameworkAwareToggles {
@@ -89,14 +95,29 @@ export function frameworkAwareToggleVars(
   };
 }
 
-/** Per-connection toggle > master broadcast > false. */
+/**
+ * Resolve mock activation for a connection's bare toggle against an env map:
+ * per-connection toggle > master broadcast > false.
+ *
+ * Framework-prefix-agnostic — checks the bare name AND every client prefix
+ * (`NEXT_PUBLIC_` / `VITE_` / `REACT_APP_`), because a Next.js / Vite / CRA app
+ * writes its toggle with the bundler prefix. A bare-only check silently
+ * resolved every prefixed-toggle frontend to `false` (real); the `.env`-scanning
+ * detector relies on this prefix-agnostic behavior.
+ */
 export function resolveActivation(
-  toggleEnvVar: string,
+  bareToggle: string,
   envMap: Map<string, string>,
 ): boolean {
-  const per = envMap.get(toggleEnvVar);
-  if (per !== undefined) return per === 'true';
-  return envMap.get(MASTER_TOGGLE) === 'true';
+  for (const prefix of ALL_TOGGLE_PREFIXES) {
+    const per = envMap.get(`${prefix}${bareToggle}`);
+    if (per !== undefined) return per === 'true';
+  }
+  for (const prefix of ALL_TOGGLE_PREFIXES) {
+    const master = envMap.get(`${prefix}${MASTER_TOGGLE}`);
+    if (master !== undefined) return master === 'true';
+  }
+  return false;
 }
 
 // ── bounded root + depth-2 monorepo scan (one shared radius) ──────────────

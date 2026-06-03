@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
+import { resolveActivation } from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Parse a single `KEY=VALUE` line from a .env file.
@@ -41,7 +42,9 @@ export function formatDisplayName(name: string): string {
  *      sees the live URL the runtime will consume).
  *   2. For every connection with `virtualization` (= every business
  *      connection), compute `virtualization.active` using the priority
- *      chain `USE_MOCK_<NAME>` > master `USE_MOCK` > `false`.
+ *      chain per-connection > master > `false`, framework-prefix-agnostic
+ *      (`[NEXT_PUBLIC_|VITE_|REACT_APP_]USE_MOCK_<NAME>` / `…USE_MOCK`) so a
+ *      Next.js / Vite / CRA client toggle is not silently read as `false`.
  */
 export function overrideWithEnvFile(
   connections: ServiceConnection[],
@@ -64,8 +67,6 @@ export function overrideWithEnvFile(
     if (key) envMap.set(key, value);
   }
 
-  const masterUseMock = envMap.get('USE_MOCK') === 'true';
-
   for (const conn of connections) {
     const actualValue = envMap.get(conn.envVar);
     if (actualValue !== undefined) {
@@ -76,8 +77,10 @@ export function overrideWithEnvFile(
     }
 
     if (conn.virtualization) {
-      const perPort = envMap.get(conn.virtualization.toggleEnvVar);
-      conn.virtualization.active = perPort !== undefined ? perPort === 'true' : masterUseMock;
+      conn.virtualization.active = resolveActivation(
+        conn.virtualization.toggleEnvVar,
+        envMap,
+      );
     }
   }
 }

@@ -8,6 +8,8 @@ Blind-spot reminders for pre-training gaps. Verify current behaviour via `search
 
 The App Router root entry is the group-less pair `app/page.tsx` + `app/layout.tsx` (or under `src/app/` when the codebase uses the `src/` convention). Route groups `(group)/page.tsx` route to `/` semantically, but they are organizational layers (group-scoped `layout`/`loading`/`error`), not substitutes for the root entry — emitting only `(group)/page.tsx` and omitting `app/page.tsx` leaves the framework root coordinate empty even when `/` superficially serves traffic. The `integration` band task owns both literal coordinates; route groups attach in addition, not instead.
 
+A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/page.tsx` is served at `/login`, NOT `/auth/login`. Navigation targets (`router.push`/`replace`, `<Link href>`, `redirect()`, middleware rewrites) MUST equal the URL the route tree produces — every parenthesized segment dropped — derived from the route folders, not from intent. If a segment must appear in the URL, use a plain folder (`app/auth/login/`), not a group.
+
 ## Forbidden Patterns
 
 - `typeof window` / `document` guards that change JSX between server render and client initial render → hydration mismatch.

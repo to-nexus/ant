@@ -231,4 +231,48 @@ describe('connection annotation Service Virtualization auto-attach', () => {
     expect(deriveToggleVar('multi-word-name')).toBe('USE_MOCK_MULTI_WORD_NAME');
     expect(deriveToggleVar('already_snake')).toBe('USE_MOCK_ALREADY_SNAKE');
   });
+
+  // -----------------------------------------------------------------
+  // Framework-prefix-aware resolution (regression: "auto-detect → real").
+  //
+  // A Next.js / Vite / CRA client app writes its toggle with the framework
+  // prefix the bundler requires. The bare-only resolver read NONE of them and
+  // resolved every frontend connection to `active=false` (real). These lock
+  // the prefix-agnostic chain.
+  // -----------------------------------------------------------------
+  it('case 13: per-port NEXT_PUBLIC_USE_MOCK_X=true flips active to true', () => {
+    const root = setupProject({
+      '.env.example': ['# @connection business stripe-api', 'STRIPE_API_KEY='].join('\n'),
+      '.env': 'NEXT_PUBLIC_USE_MOCK_STRIPE_API=true',
+    });
+    expect(detectFromAnnotations(root)[0].virtualization?.active).toBe(true);
+  });
+
+  it('case 14: prefixed master NEXT_PUBLIC_USE_MOCK=true broadcasts (per-port name mismatch falls through to master)', () => {
+    // Mirrors the classboard app: connection `backend-api` (derived
+    // USE_MOCK_BACKEND_API) but the app authored NEXT_PUBLIC_USE_MOCK_API +
+    // a prefixed master. The per-connection toggle does not match; the
+    // prefixed master must still activate the mock.
+    const root = setupProject({
+      '.env.example': ['# @connection business backend-api', 'NEXT_PUBLIC_API_BASE_URL='].join('\n'),
+      '.env': ['NEXT_PUBLIC_API_BASE_URL=', 'NEXT_PUBLIC_USE_MOCK=true'].join('\n'),
+    });
+    expect(detectFromAnnotations(root)[0].virtualization?.active).toBe(true);
+  });
+
+  it('case 15: VITE_ prefixed per-port toggle is read', () => {
+    const root = setupProject({
+      '.env.example': ['# @connection business stats-api', 'VITE_STATS_BASE_URL='].join('\n'),
+      '.env': 'VITE_USE_MOCK_STATS_API=true',
+    });
+    expect(detectFromAnnotations(root)[0].virtualization?.active).toBe(true);
+  });
+
+  it('case 16: prefixed per-port USE_MOCK_X=false still wins over prefixed master=true', () => {
+    const root = setupProject({
+      '.env.example': ['# @connection business stripe-api', 'STRIPE_API_KEY='].join('\n'),
+      '.env': ['NEXT_PUBLIC_USE_MOCK_STRIPE_API=false', 'NEXT_PUBLIC_USE_MOCK=true'].join('\n'),
+    });
+    expect(detectFromAnnotations(root)[0].virtualization?.active).toBe(false);
+  });
 });

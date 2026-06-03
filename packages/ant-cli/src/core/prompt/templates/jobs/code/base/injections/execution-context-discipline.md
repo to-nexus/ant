@@ -57,6 +57,7 @@ A shared symbol's **surface** — its exact name, the members of an enum/union, 
 - Before using any symbol defined by another task or a shared package, **read its authoritative definition first** — `search_code` to locate it, `read_file` to see the exact surface — and bind to exactly what is declared.
 - Do **not** invent or guess any part of that surface: not an enum/literal value, not a field name, not an object shape, not a required prop, not an identifier's spelling/casing, not an import subpath. If you have not read it, you do not know it.
 - A value that merely *looks* plausible from prior experience is not a substitute for the declared surface — recalling a shape from memory instead of reading it is the drift source.
+- This extends to **stringly-typed vocabularies with no import edge**: a URL/route path another file's routing produces, the class/selector names and root-container class a stylesheet defines, an event/storage/message key another module emits. The compiler cannot link these, so a guessed value fails silently at runtime, not at build. Derive each from its authoritative producer (the route tree, the stylesheet, the emitter) and bind to exactly that — a platform convention that reshapes the value (e.g. a path segment the framework excludes from the URL) is part of the surface you must read, not assume.
 
 ### Why this exists
 
