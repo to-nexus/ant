@@ -164,6 +164,18 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 
 **Constraint**: Build commands must NOT deposit compiled artifacts in the source tree. If a tsconfig enables emit (explicitly or implicitly), output must be directed outside the source tree or suppressed entirely.
 
+### Multi-package workspace: tsconfig composition
+
+If your workspace is multi-package (a root workspace setup task **plus** per-package setup tasks — see §0), the single-package example above is not the whole picture: tsconfig is **composed** across a root base and per-package files. Author the half that matches your task's scope.
+
+**Root base tsconfig** (root setup task): the shared `compilerOptions` baseline — `target` / `module` / `moduleResolution` / `strict` / `esModuleInterop` / `skipLibCheck`. It MAY also carry options that are inert where unused (a `jsx` setting does nothing for a member that compiles no JSX), so a baseline `jsx` is acceptable — the base is a shared baseline, not a "no member-specific options" rule.
+
+**Per-package tsconfig** (per-package setup task): `extends` the root base via a relative path that **actually resolves** to it, then add or override only what this member needs beyond the baseline. Before authoring, observe the real base (`list_files` / `read_file` at the `codebase` root — the root setup runs first, so the base already exists) so you extend a path that exists and know which options are **actually inherited**; do not guess the path or assume an option is present.
+
+⚠️ **Blind spot — the effective config must carry what the member compiles**: a member that compiles JSX / `.tsx` must end up with `jsx` set in its **effective** config (own + inherited) — inherited from a base that carries it, OR declared in the member when the base does not. The failure mode is `jsx` absent from **both** base and member because inheritance was assumed but never provided — then every JSX file errors. The same holds for the DOM `lib` a browser member needs. Verify the effective config; do not assume inheritance.
+
+**Cross-package references**: when one member imports another workspace member, set `composite: true` on the **referenced** member's tsconfig and list it under the consumer's `references`. How to invoke the type-check/build for a referenced/composite layout is the verification phase's concern — author the config here, not the build command.
+
 ## 3. Build Tool Configuration
 
 **Constraint**: Every build framework has a native config file. This config file MUST be created during setup -- it is not optional.

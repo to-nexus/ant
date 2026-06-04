@@ -56,3 +56,29 @@ describe('결함4 — pnpm allowBuilds boolean-only', () => {
     expect(configMd).toMatch(/never placeholder/i);
   });
 });
+
+describe('결함5 — monorepo tsconfig composition (base + per-package extends)', () => {
+  it('config.md teaches base-vs-per-package composition via extends', () => {
+    expect(configMd).toMatch(/Multi-package workspace: tsconfig composition/);
+    expect(configMd).toMatch(/Root base tsconfig/);
+    expect(configMd).toMatch(/Per-package tsconfig/);
+    // per-package extends a path that actually resolves to the base
+    expect(configMd).toMatch(/extends/);
+    expect(configMd).toMatch(/actually resolves/i);
+  });
+
+  it('config.md states the effective-config invariant (no assumed jsx inheritance)', () => {
+    // The west-beating-shelf cascade fix: jsx must be in the effective
+    // (own + inherited) config, not assumed inherited from a base lacking it.
+    expect(configMd).toMatch(/effective/);
+    expect(configMd).toMatch(/do not assume inheritance/i);
+    expect(configMd).toMatch(/jsx/);
+  });
+
+  it('config.md keeps cross-package references authoring out of build invocation', () => {
+    expect(configMd).toMatch(/composite/);
+    expect(configMd).toMatch(/references/);
+    // invocation is deferred to the verification phase, not restated here
+    expect(configMd).toMatch(/verification phase/i);
+  });
+});
