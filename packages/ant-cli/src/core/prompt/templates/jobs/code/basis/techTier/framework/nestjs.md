@@ -4,7 +4,9 @@ Blind-spot reminders. Pre-training gap only.
 
 ## Entry-Point Topology
 
-Routing/wiring is a **central registry**: feature modules register into the root `AppModule` (`imports: [...]`), and the DI container resolves providers. The root module composition is an **`integration`-band-owned** file — many features register there. Controllers/services are authored in the **feature band** (so the module can import them); do not let feature tasks each edit the root module's `imports` in parallel — the integration band consolidates module registration.
+{{> jobs/code/basis/techTier/framework/_entry-points-shared-registry}}
+
+For NestJS, the central registry is the root `AppModule` composition (`imports: [...]`) resolved by the DI container — that module composition is the `integration`-owned host entry; controllers / services / feature modules are authored in the feature band so the module can import them.
 
 ## Forbidden Patterns
 

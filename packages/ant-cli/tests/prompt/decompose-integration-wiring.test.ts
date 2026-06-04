@@ -81,11 +81,11 @@ describe('decompose integration wiring prompt contract', () => {
   it('rules.md shared integration points section uses per-point fan-in wording', () => {
     const src = read(DECOMPOSE_RULES_PATH);
 
-    // Topology-aware rewrite: integration points are app-shell/registry only
-    // (per-screen routes are not on this list). Per-point fan-in contract preserved.
-    expect(src).toContain('Which app-shell/registry integration points exist');
+    // Neutral host-entry vocabulary: integration points are host entries only
+    // (per-unit entries are not on this list). Per-point fan-in contract preserved.
+    expect(src).toContain('Which host-entry integration points exist');
     expect(src).toContain('create exactly ONE dedicated integration task');
-    expect(src).toContain('If the project has multiple independent app-shell/registry points');
+    expect(src).toContain('If the project has multiple independent host entries');
 
     // Legacy singleton phrasing should not reappear.
     expect(src).not.toContain(

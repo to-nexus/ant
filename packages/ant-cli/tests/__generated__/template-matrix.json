@@ -681,6 +681,16 @@
       "basis-registry"
     ]
   },
+  "jobs/code/basis/techTier/framework/_entry-points-file-per-route": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/_entry-points-shared-registry": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/code/basis/techTier/framework/_react-core": {
     "sources": [
       "partial-ref"
@@ -753,6 +763,31 @@
   "jobs/code/domain/service": {
     "sources": [
       "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/decompose/injections/framework/gin": {
+    "sources": [
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/decompose/injections/framework/nestjs": {
+    "sources": [
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/decompose/injections/framework/nextjs": {
+    "sources": [
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/decompose/injections/framework/react-native": {
+    "sources": [
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/decompose/injections/framework/react": {
+    "sources": [
+      "manifest"
     ]
   },
   "jobs/code/nodes/decompose/variants/default/base": {

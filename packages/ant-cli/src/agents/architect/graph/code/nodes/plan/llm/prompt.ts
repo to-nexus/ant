@@ -23,7 +23,7 @@
 import { TextContentBlock } from "../../../../../../../core/ports/llm";
 import { ArchitectGraphState } from "../../../state";
 import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
-import { getTechTier, entryPointTopology, type ResolvedArtifact } from "@ant/shared";
+import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
 import { TEMPLATE_PATHS } from "../../../../../../../core/prompt/builder/templatePaths";
 import {
@@ -207,15 +207,9 @@ export async function buildPlanPrompt(
   // correctly. Non-feature task types do not carry a band; the template
   // defaults to the foundation/no-band branch in that case.
   const taskBand = task.type === 'feature' ? (task as FeatureCodeTask).band : undefined;
-  // Entry-point topology (Axis 1) — per-task, derived from THIS task's
-  // framework. Gates per-screen route ownership in `plan/rules.md` entry-point
-  // guidance (file-per-route → author owns its per-screen route; shared-registry
-  // → registry owned by integration). undefined for frameworkless tasks.
-  const taskEntryPointTopology = entryPointTopology(taskTechTiers[0]?.framework);
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
-    entryPointTopology: taskEntryPointTopology,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`
     // partial is included at the top of `plan/base.md`; this var is what
     // makes the gate evaluate against the user's detected language so
