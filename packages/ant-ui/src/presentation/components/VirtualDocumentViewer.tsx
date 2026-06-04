@@ -6,7 +6,7 @@ import { createMarkdownComponents } from '@/presentation/components/markdown/cre
 import { StreamingStatusChip } from '@/presentation/components/streaming/StreamingStatusChip';
 import { splitPathForEditorHeader } from '@/shared/utils/path-utils';
 import { VirtualSourceChip } from './VirtualSourceChip';
-import type { EditorSource } from './FileEditorPanel/types';
+import { EDITOR_BODY_SURFACE, type EditorSource } from './FileEditorPanel/types';
 
 const MARKDOWN_COMPONENTS = createMarkdownComponents({
   paragraphTag: 'p',
@@ -15,17 +15,6 @@ const MARKDOWN_COMPONENTS = createMarkdownComponents({
 interface VirtualDocumentViewerProps {
   tab: EditorTab;
 }
-
-// Body surface intentionally has NO solid background — the file-editor slot
-// wrapper in MainContentArea owns the canvas tone (var(--bg-canvas)). Painting
-// a solid var(--bg-surface-2) here caused a visual fragmentation between the
-// streaming view (purple solid) and the post-streaming FileEditorPanel view
-// (transparent over canvas). Keep the border + radius for the document framing.
-const PREVIEW_SURFACE: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid var(--border-1)',
-  borderRadius: 'var(--r-lg)',
-};
 
 export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
   const body = tab.streamPreviewContent ?? tab.content ?? '';
@@ -100,14 +89,14 @@ export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
         {isLikelyMarkdown ? (
           <div
             className="h-full overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4"
-            style={PREVIEW_SURFACE}
+            style={EDITOR_BODY_SURFACE}
           >
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
               {body}
             </ReactMarkdown>
           </div>
         ) : (
-          <div className="h-full overflow-auto p-4" style={PREVIEW_SURFACE}>
+          <div className="h-full overflow-auto p-4" style={EDITOR_BODY_SURFACE}>
             <pre
               className="text-xs whitespace-pre-wrap break-words"
               style={{

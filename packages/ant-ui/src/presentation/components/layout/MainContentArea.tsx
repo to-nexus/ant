@@ -147,16 +147,16 @@ export function MainContentArea({
           />
         </div>
       ) : (activeTab === 'fileEdit' || isEditorTabId(activeTab)) && openTabs.fileEdit ? (
-        // Background SSOT for the file editor slot lives HERE — on the
-        // MainContentArea wrapper that owns the file-edit tab area. Inner
-        // panels (FileEditorPanel / VirtualDocumentViewer) are rendered
-        // mutually-exclusively into this slot and MUST NOT paint their own
-        // `--bg-canvas`; they inherit it via this wrapper. Centralising the
-        // background here prevents visual drift between the two viewers
-        // when one is restyled in isolation. The streaming-routing condition
-        // below (`shouldRenderStreamingPreView`) is the single source of
-        // truth — FileEditorPanel no longer carries a parallel
-        // `isStreamingPreviewTab` branch.
+        // This wrapper paints the canvas tone (`--bg-canvas`) as the margin
+        // around the editor body. The inner panels (FileEditorPanel /
+        // VirtualDocumentViewer) are rendered mutually-exclusively into this
+        // slot and each paints its document body with the shared
+        // `EDITOR_BODY_SURFACE` (a solid `--bg-surface` fill that LIFTS off
+        // this canvas) — see FileEditorPanel/types.ts. Both viewers reference
+        // that one constant so their body tone cannot drift apart. The
+        // streaming-routing condition below (`shouldRenderStreamingPreView`)
+        // is the single source of truth — FileEditorPanel no longer carries a
+        // parallel `isStreamingPreviewTab` branch.
         <div
           className="flex-1 h-full overflow-hidden flex flex-col"
           style={{ background: 'var(--bg-canvas)' }}

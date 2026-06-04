@@ -13,7 +13,8 @@ interface LineNumberedEditorProps {
  * Same DOM + ResizeObserver-based per-line height measurement as the
  * pre-Aurora flat-file implementation, re-skinned with design tokens.
  * Focus surfaces an Aurora violet ring (`var(--violet-500)`) instead of
- * the legacy blue ring; gutter uses `var(--bg-surface)` + `var(--text-4)`.
+ * the legacy blue ring; body uses `var(--bg-surface)` (shared editor body
+ * fill) and the gutter recesses to `var(--bg-surface-2)` + `var(--text-4)`.
  */
 export function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,7 +84,7 @@ export function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEd
       ref={containerRef}
       className="flex flex-1 overflow-hidden"
       style={{
-        background: 'var(--bg-surface-2)',
+        background: 'var(--bg-surface)',
         border: '1px solid var(--border-1)',
         borderRadius: 'var(--r-lg)',
         boxShadow: focused ? '0 0 0 2px var(--violet-500)' : 'none',
@@ -106,7 +107,7 @@ export function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEd
         className="flex-shrink-0 overflow-hidden select-none"
         style={{
           width: lineNumberWidth,
-          background: 'var(--bg-surface)',
+          background: 'var(--bg-surface-2)',
           borderRight: '1px solid var(--border-1)',
         }}
       >

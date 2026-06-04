@@ -30,6 +30,7 @@ import { getSmartEditConfig } from '../smartEdit/config';
 import { SmartEditEditor } from '../smartEdit/SmartEditEditor';
 import { LineNumberedEditor } from './LineNumberedEditor';
 import { EditorLangChip } from './EditorLangChip';
+import { EDITOR_BODY_SURFACE } from './types';
 
 interface FileEditorPanelProps {
   onClose?: () => void;
@@ -432,11 +433,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     );
   };
 
-  const previewSurface: React.CSSProperties = {
-    background: 'var(--bg-surface-2)',
-    border: '1px solid var(--border-1)',
-    borderRadius: 'var(--r-lg)',
-  };
+  const previewSurface = EDITOR_BODY_SURFACE;
 
   return (
     <div className="w-full px-3 pt-1.5 pb-3 flex flex-col h-full">
