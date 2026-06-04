@@ -2,6 +2,10 @@
 
 Blind-spot reminders. Pre-training gap only.
 
+## Entry-Point Topology
+
+Routing/wiring is a **central registry**: feature modules register into the root `AppModule` (`imports: [...]`), and the DI container resolves providers. The root module composition is an **`integration`-band-owned** file — many features register there. Controllers/services are authored in the **feature band** (so the module can import them); do not let feature tasks each edit the root module's `imports` in parallel — the integration band consolidates module registration.
+
 ## Forbidden Patterns
 
 - `process.env.X` in services instead of `ConfigService.get('X')` → fails under `ConfigModule.forFeature` schema.

@@ -2,6 +2,10 @@
 
 Blind-spot reminders. Pre-training gap only.
 
+## Entry-Point Topology
+
+Navigation is a **central registry**: screens are registered in a navigator config (React Navigation `Stack.Screen` / `Tab.Screen` declarations). That navigator is an **`integration`-band-owned** file — many screens register into it. Screen *components* are authored in the **feature band** (so the navigator can reference them); a ui/restyle task refines an existing screen, it does NOT add a navigator entry. Feature tasks must not each edit the navigator config in parallel — the integration band consolidates registration.
+
 ## Forbidden Patterns
 
 - Web-only primitives (`<div>`, `<span>`, `<p>`, `<button>`) as JSX tags — runtime rejects them, not TS compile.

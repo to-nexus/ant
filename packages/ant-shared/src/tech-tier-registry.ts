@@ -160,6 +160,41 @@ export const SUPPORTED_FRAMEWORKS = {
 } as const satisfies Record<LanguageVariant, readonly string[]>;
 
 // ============================================
+// Entry-point topology — SSOT for per-screen route ownership
+//
+// `file-per-route`: each route is its own file with no central registry
+//   (Next.js App/Pages Router file-system routing). A per-screen route file
+//   (`app/**/page.tsx`) is non-shared → owned by the consumer-band task that
+//   authors that screen, NOT the integration band.
+// `shared-registry`: many screens register into one central file (React Router
+//   `<Routes>`, React Navigation navigator, NestJS modules, Gin route table).
+//   The registry is owned by the integration band; screen *creation* stays in
+//   the feature band so registered components exist before integration runs.
+//
+// Consumed by decompose / plan / execute to gate entry-point-ownership
+// guidance. Returns undefined for frameworkless tasks (type-only packages,
+// docs) and unknown/'none' frameworks → topology branches stay inert and the
+// pre-existing ownership behavior is preserved.
+// ============================================
+
+export type EntryPointTopology = 'file-per-route' | 'shared-registry';
+
+const ENTRY_POINT_TOPOLOGY: Record<string, EntryPointTopology> = {
+  nextjs: 'file-per-route',
+  react: 'shared-registry',
+  'react-native': 'shared-registry',
+  nestjs: 'shared-registry',
+  gin: 'shared-registry',
+};
+
+export function entryPointTopology(
+  framework: string | undefined | null,
+): EntryPointTopology | undefined {
+  if (!framework) return undefined;
+  return ENTRY_POINT_TOPOLOGY[framework];
+}
+
+// ============================================
 // Template Path Functions
 // ============================================
 

@@ -31,7 +31,7 @@ const ALLOWED_FRAMEWORK = ['nextjs', 'react', 'react-native', 'nestjs', 'gin'];
 const ALLOWED_LANGUAGE = ['typescript-browser', 'typescript-node', 'go'];
 
 const ALLOWED_SECTIONS = [
-  '## Root Entry Coordinates',
+  '## Entry-Point Topology',
   '## Forbidden Patterns',
   '## Symptom → Upstream Cues',
   '## Version Notes',
