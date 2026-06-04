@@ -1,6 +1,7 @@
 {
   "name": "@ant/auth-client",
   "version": "1.0.0",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Unified browser auth client for ant-site and ant-ui (fetch /auth/me, signout, broadcaster, OAuth URLs, logout/mount procedures). Source-resolvable: consumers (Vite, Vitest, Next.js transpilePackages) read TS source directly — no separate build step.",
   "main": "./src/index.ts",
