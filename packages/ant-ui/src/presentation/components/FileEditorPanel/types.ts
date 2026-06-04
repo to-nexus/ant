@@ -38,3 +38,16 @@ export type IdeLifecycleState =
  * `'chat'`, or (c) the fallback path maps an undefined source to `'code'`.
  */
 export type EditorSource = 'design' | 'plan' | 'code' | 'chat';
+
+/**
+ * Editor body solid surface — shared SSOT for the streaming
+ * (VirtualDocumentViewer) and non-streaming (FileEditorPanel /
+ * LineNumberedEditor) views. A solid fill that LIFTS off the canvas
+ * wrapper for readability. Both views reference this one constant so the
+ * tone cannot drift apart again (cf. commit a2f57eda which split them).
+ */
+export const EDITOR_BODY_SURFACE: import('react').CSSProperties = {
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border-1)',
+  borderRadius: 'var(--r-lg)',
+};
