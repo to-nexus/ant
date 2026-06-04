@@ -40,7 +40,9 @@ import { toUrlKeyWithService, fromUrlKey, isUrlKey, packageSlug, parseUrlKey } f
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
-import { setEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import { setToggleEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import { detectFramework } from '../deploy';
+import { toToggleFramework } from '../../core/prompt/builder/serviceVirtualization/connectionModel';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
 import { sendErrorResponse } from '../../periphery/adapters/http/routes/helpers/errorResponse';
 import { REDIS_KEYS } from '../../core/constants/redis';
@@ -719,10 +721,18 @@ export class PreviewServer {
         }
 
         const subdir = target.source && target.source !== '*' ? target.source : '';
-        const envFilePath = subdir
-          ? path.join(workspacePath, subdir, '.env')
-          : path.join(workspacePath, '.env');
-        setEnvValue(envFilePath, target.virtualization.toggleEnvVar, active ? 'true' : 'false');
+        // Detect the framework on the CONSUMING package dir (monorepo: the root
+        // package.json lacks the bundler dep and would mis-detect) so the toggle
+        // is written under the client-visible prefix the app actually reads.
+        const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+        const envFilePath = path.join(pkgDir, '.env');
+        const framework = toToggleFramework(detectFramework(pkgDir));
+        const writtenVar = setToggleEnvValue(
+          envFilePath,
+          target.virtualization.toggleEnvVar,
+          framework,
+          active ? 'true' : 'false',
+        );
 
         const updatedConnections = connections.map(c =>
           c.id === connectionId && c.virtualization
@@ -738,7 +748,7 @@ export class PreviewServer {
         );
 
         logger.info(
-          `[PreviewServer] Virtualization toggle: ${projectId}/${feature} ${target.virtualization.toggleEnvVar}=${active}`,
+          `[PreviewServer] Virtualization toggle: ${projectId}/${feature} ${writtenVar}=${active}`,
           { component: 'PreviewServer' },
         );
         res.json({ success: true, connections: updatedConnections });

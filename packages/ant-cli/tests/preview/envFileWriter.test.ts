@@ -2,7 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as os from 'node:os';
-import { setEnvValue } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import {
+  setEnvValue,
+  setToggleEnvValue,
+} from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import { toToggleFramework } from '../../src/core/prompt/builder/serviceVirtualization/connectionModel';
 
 let workdir = '';
 
@@ -92,5 +96,106 @@ describe('envFileWriter — setEnvValue', () => {
     overrideWithEnvFile(conns, workdir);
 
     expect(conns[0].virtualization.active).toBe(true);
+  });
+});
+
+describe('envFileWriter — setToggleEnvValue (framework-prefix aware)', () => {
+  it('REGRESSION: updates the prefixed line in place, never appends a bare orphan', () => {
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+    writeFileSync(envPath, 'NEXT_PUBLIC_USE_MOCK_STRIPE_API=true\n', 'utf-8');
+
+    const written = setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'false');
+
+    const lines = readFileSync(envPath, 'utf-8').split('\n');
+    expect(written).toBe('NEXT_PUBLIC_USE_MOCK_STRIPE_API');
+    expect(lines).toContain('NEXT_PUBLIC_USE_MOCK_STRIPE_API=false');
+    // The defect: a bare USE_MOCK_STRIPE_API orphan must NOT be appended.
+    expect(lines.filter(l => l.startsWith('USE_MOCK_STRIPE_API='))).toEqual([]);
+  });
+
+  it('heals an already-polluted .env so resolveActivation reads the intended value', async () => {
+    const { overrideWithEnvFile } = await import(
+      '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/utils'
+    );
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+    // Post-bug state: prefixed=true and bare orphan=false disagree.
+    writeFileSync(
+      envPath,
+      'NEXT_PUBLIC_USE_MOCK_STRIPE_API=true\nUSE_MOCK_STRIPE_API=false\n',
+      'utf-8',
+    );
+
+    // User clicks "Real" → false. The prefixed line (read first) must converge.
+    setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'false');
+
+    const conns = [{
+      id: 'stripe-api',
+      name: 'Stripe API',
+      category: 'business' as const,
+      envVar: 'STRIPE_API_KEY',
+      value: '',
+      resolution: { type: 'url' as const, url: '' },
+      virtualization: { toggleEnvVar: 'USE_MOCK_STRIPE_API', active: true },
+    }];
+    overrideWithEnvFile(conns, workdir);
+    expect(conns[0].virtualization.active).toBe(false);
+  });
+
+  it('creates exactly the prefixed name when the file is missing (next)', () => {
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+
+    setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'true');
+
+    expect(readFileSync(envPath, 'utf-8')).toBe('NEXT_PUBLIC_USE_MOCK_STRIPE_API=true\n');
+  });
+
+  it('uses the bare name for non-bundler frameworks (other), updating an existing bare line', () => {
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+    writeFileSync(envPath, 'USE_MOCK_NOTIFICATION_SERVICE=true\n', 'utf-8');
+
+    const written = setToggleEnvValue(envPath, 'USE_MOCK_NOTIFICATION_SERVICE', 'other', 'false');
+
+    expect(written).toBe('USE_MOCK_NOTIFICATION_SERVICE');
+    expect(readFileSync(envPath, 'utf-8')).toBe('USE_MOCK_NOTIFICATION_SERVICE=false\n');
+  });
+
+  it('updates an existing bare line in place even when framework is a bundler (no prefixed orphan)', () => {
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+    // Server-only connection in a Next app: initial gen wrote the bare form.
+    writeFileSync(envPath, 'USE_MOCK_BACKEND_API=true\n', 'utf-8');
+
+    const written = setToggleEnvValue(envPath, 'USE_MOCK_BACKEND_API', 'next', 'false');
+
+    expect(written).toBe('USE_MOCK_BACKEND_API');
+    expect(readFileSync(envPath, 'utf-8')).toBe('USE_MOCK_BACKEND_API=false\n');
+  });
+
+  it('is idempotent on repeated toggles', () => {
+    workdir = mkdtempSync(join(os.tmpdir(), 'ant-env-toggle-'));
+    const envPath = join(workdir, '.env');
+    setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'true');
+    setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'false');
+    setToggleEnvValue(envPath, 'USE_MOCK_STRIPE_API', 'next', 'true');
+
+    const occurrences = readFileSync(envPath, 'utf-8')
+      .split('\n')
+      .filter(l => l.includes('USE_MOCK_STRIPE_API='));
+    expect(occurrences).toEqual(['NEXT_PUBLIC_USE_MOCK_STRIPE_API=true']);
+  });
+});
+
+describe('toToggleFramework — deploy enum → SV prefix enum', () => {
+  it('maps every deploy framework value', () => {
+    expect(toToggleFramework('nextjs')).toBe('next');
+    expect(toToggleFramework('vite')).toBe('vite');
+    expect(toToggleFramework('cra')).toBe('cra');
+    expect(toToggleFramework('static')).toBe('other');
+    expect(toToggleFramework('unknown')).toBe('other');
+    expect(toToggleFramework(undefined)).toBe('other');
   });
 });
