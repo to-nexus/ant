@@ -16,11 +16,11 @@
   Branch axis: `taskBand` (SBS gate axis).
 --}}
 {{~#if (eq taskBand "integration")~}}
-All files belong to YOUR task scope; shared entry points / cross-cutting wirings the parent owns appear in `create`/`modify` at the literal path pinned by the tech-tier partial (sibling coordinates are not substitutes); mount platform-provided services, do not author them
+You own app-shell + registry entries (shared frame: root layout / provider tree / global nav; central route table / DI container) at the literal app-shell path pinned by the tech-tier partial (sibling coordinates are not substitutes); a per-screen route that mounts ONE screen is NOT yours (it belongs to that screen's author); mount platform-provided services, do not author them
 {{~else if (eq taskBand "platform")~}}
-You own a shared runtime service consumed by many features: define its access contract AND its producer here (contract + implementation) so consumers bind instead of hand-constructing; entry-point mounting belongs to the integration band
+You own a shared runtime service consumed by many features: define its access contract AND its producer here (contract + implementation) so consumers bind instead of hand-constructing; app-shell/registry mounting belongs to the integration band
 {{~else if (eq taskBand "foundation")~}}
-You own pure contracts (types/interfaces) only — shared runtime services/state belong to the `platform` band, shared entry points to the `integration` band
+You own pure contracts (types/interfaces) only — shared runtime services/state belong to the `platform` band, app-shell/registry entries to the `integration` band
 {{~else~}}
-All files belong to YOUR task scope (no shared entry points — those are owned by the `integration` band task); obtain any shared runtime value from its `platform` access contract, never hand-construct it with empty/placeholder fields to satisfy a type
+All files belong to YOUR task scope{{#if (eq entryPointTopology "file-per-route")}}, including the per-screen route file that mounts a screen you author — create AND wire it in the same task, never leave a placeholder{{/if}} (app-shell frame / central registry are NOT yours — those are the `integration` band's); obtain any shared runtime value from its `platform` access contract, never hand-construct it with empty/placeholder fields to satisfy a type
 {{~/if~}}

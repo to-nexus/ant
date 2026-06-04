@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES, entryPointTopology } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -409,6 +409,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasUi,
     uiSource,
     uiArtifactPaths,
+    // Entry-point topology (Axis 1) — gates per-screen route ownership in the
+    // decompose "Shared Integration Points" rules. Derived from the FRONTEND
+    // framework: routes/screens are a FE concern, BE route tables are always
+    // shared-registry. file-per-route (nextjs) → per-screen page belongs in the
+    // screen task's create-list (no route-integration task); shared-registry →
+    // screen creation stays in feature band, registry owned by integration.
+    // undefined for BE-only / frameworkless → topology branch stays inert.
+    entryPointTopology: entryPointTopology(state.resolvedAction?.basis?.techTier?.frontend?.framework),
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     assetsHint,
     resolvedAction: state.resolvedAction,

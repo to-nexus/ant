@@ -822,27 +822,38 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ## Shared Integration Points
 
-**Principle**: When multiple parallel tasks produce components that must be registered in shared integration point(s) (application entry point, route registry, dependency wiring), dedicated integration task(s) must consolidate them. This is divide-and-conquer: integration itself is a task.
+**Principle**: An **integration point** is an *app-shell* entry (the shared frame: framework root layout, provider/host tree, global navigation) OR a *central registry* many components register into (a single route table, a DI/module container). These — and ONLY these — are consolidated by a dedicated `integration` task. A **per-screen route entry** (a file that mounts exactly ONE screen) is NOT an integration point: it is owned by the task that *authors* that screen, and it does NOT get a dedicated integration task.
 
-**Observation target**: Which shared integration points exist, and does each integration point need imports/wiring from multiple feature tasks?
+**Routable-surface ownership by topology** (frontend):
+{{#if (eq entryPointTopology "file-per-route")}}
+- This project's frontend is **file-per-route** (each route is its own file, no central route registry). Each screen's own route file goes in the `create` list of the task that **authors that screen** — including the home `/` route. Do NOT emit a dedicated integration task to wire per-screen routes.
+- The `integration` task owns ONLY the app-shell (root layout, provider tree, global navigation) — never per-screen pages.
+{{else if (eq entryPointTopology "shared-registry")}}
+- This project's frontend uses a **central registry** (route table / navigator). Screen *creation* goes in the **feature band** (priority < 600) so components exist before registration; ui tasks restyle existing screens and do NOT add routes. ONE `integration` task owns the central registry and registers the feature-band screens into it.
+{{/if}}
+- Backend route tables / module containers are always a central registry → owned by their `integration` task regardless of the frontend topology.
+
+**Closure (mandatory)**: Every routable surface MUST have exactly one task that creates AND wires its mounting entry. Do NOT emit a task whose entry is a placeholder or a `TODO: another task wires this up` — the entry and its content close in the same task. A routable surface with no task creating its mounting entry is a dead, unreachable screen.
+
+**Observation target**: Which app-shell/registry integration points exist, and does each receive imports/wiring from multiple feature tasks?
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Integration point inventory** | Which app/package entry roots or registries receive outputs from this split? |
-| **Per-point fan-in** | For each integration point, will multiple feature tasks produce handlers, routes, or modules that must be registered there? |
+| **Integration point inventory** | Which app-shell frames or central registries receive outputs from this split? (per-screen pages are not on this list) |
+| **Per-point fan-in** | For each app-shell/registry point, will multiple feature tasks register handlers/routes/modules there? |
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
-**Constraint**: For each shared integration point where multiple parallel feature tasks fan in, create exactly ONE dedicated integration task:
+**Constraint**: For each app-shell or central-registry point where multiple parallel feature tasks fan in, create exactly ONE dedicated integration task:
 - `type: "feature"`, priority 600 (after all feature tasks, before test-code/doc/verification)
 - Assign `parallelGroup` following the same scoping rules as other feature tasks
-- Description: wire all feature outputs into that integration point
-- Feature tasks MUST NOT create or modify integration point files themselves
+- Description: wire feature outputs into that app-shell/registry point
+- Feature/ui tasks MUST NOT create or modify the app-shell/registry files themselves — but they DO own their own per-screen route files (those are not integration points)
 
-**Constraint**: If the project has multiple independent integration points (for example, separate app/package entry roots), emit one integration task per point. Do NOT collapse unrelated integration points into one global wiring task.
+**Constraint**: If the project has multiple independent app-shell/registry points (for example, separate app/package roots), emit one integration task per point. Do NOT collapse unrelated points into one global wiring task.
 
-**Constraint**: Do NOT assign entry point responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
+**Constraint**: Do NOT assign app-shell/registry responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
 
-**Blind spot**: Integration conflicts are EASILY CAUSED when parallel feature tasks independently create their own entry point files. If 2+ parallel groups contribute to the same integration point, an integration task is almost certainly needed.
+**Blind spot**: Integration conflicts are EASILY CAUSED when parallel feature tasks independently edit the same app-shell/registry file. If 2+ parallel groups register into the same app-shell/registry point, an integration task is almost certainly needed. (Per-screen pages do not cause this — each is owned by one authoring task.)
 
 ---
 

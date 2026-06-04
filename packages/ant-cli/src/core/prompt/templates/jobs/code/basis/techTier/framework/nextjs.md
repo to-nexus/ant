@@ -4,9 +4,14 @@
 
 Blind-spot reminders for pre-training gaps. Verify current behaviour via `search_code` / `read_file` on `node_modules/next/**` when an error cites Next.js internals.
 
-## Root Entry Coordinates
+## Entry-Point Topology
 
-The App Router root entry is the group-less pair `app/page.tsx` + `app/layout.tsx` (or under `src/app/` when the codebase uses the `src/` convention). Route groups `(group)/page.tsx` route to `/` semantically, but they are organizational layers (group-scoped `layout`/`loading`/`error`), not substitutes for the root entry — emitting only `(group)/page.tsx` and omitting `app/page.tsx` leaves the framework root coordinate empty even when `/` superficially serves traffic. The `integration` band task owns both literal coordinates; route groups attach in addition, not instead.
+Next.js (App & Pages Router) is **file-per-route**: each route is its own file, there is NO central route registry. This decides who owns each entry file:
+
+- **Per-screen entries — owned by the task that AUTHORS that screen, NOT the `integration` band**: every page file and `route.ts`, **including the root `/` page `app/page.tsx`**. The task that creates a screen creates AND wires its own page file in the same task; it does not leave a placeholder for a later task, and it does not wait for `integration` to mount it. A later restyle/ui task refines an existing screen, it does not re-create its route.
+- **App-shell entries — owned by the `integration` band**: the root `app/layout.tsx` (or `src/app/layout.tsx` under the `src/` convention), the provider/host tree, and global navigation. These are the shared frame — they mount no single screen.
+
+The framework still REQUIRES the root coordinate `app/page.tsx` to exist. Route groups `(group)/page.tsx` route to `/` semantically but are organizational layers (group-scoped `layout`/`loading`/`error`), **not substitutes** for the literal `app/page.tsx` — omitting it leaves `/` empty even when traffic superficially serves. Because `app/page.tsx` is the home `/` screen's per-screen entry, its **home-screen author** owns and MUST create it (closure: no placeholder); `integration` owns `app/layout.tsx` only.
 
 A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/page.tsx` is served at `/login`, NOT `/auth/login`. Navigation targets (`router.push`/`replace`, `<Link href>`, `redirect()`, middleware rewrites) MUST equal the URL the route tree produces — every parenthesized segment dropped — derived from the route folders, not from intent. If a segment must appear in the URL, use a plain folder (`app/auth/login/`), not a group.
 
