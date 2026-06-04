@@ -317,19 +317,19 @@ export function ElapsedTimeBadge({
   return (
     <Tooltip content={tooltipContent} placement="bottom">
       <div
-        className={cn(sizeClass, 'cursor-pointer')}
+        className={cn(sizeClass, 'rounded-full cursor-pointer')}
         style={{
-          background: 'var(--bg-surface)',
+          background: 'var(--status-todo-bg)',
           border: '1px solid var(--border-1)',
-          borderRadius: 'var(--r-sm)',
-          color: 'var(--violet-500)',
+          boxShadow: 'var(--shadow-xs)',
+          color: 'var(--status-todo-fg)',
         }}
       >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <CircleDot className={iconSize} style={{ color: 'var(--violet-500)' }} />
+          <CircleDot className={iconSize} style={{ color: 'var(--status-todo-fg)' }} />
           <span
             className={cn(textSize, 'font-medium leading-none')}
-            style={{ color: 'var(--violet-500)' }}
+            style={{ color: 'var(--status-todo-fg)' }}
           >
             {formattedTime}
           </span>
@@ -606,18 +606,19 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
   return (
     <Tooltip content={tooltipContent} placement="bottom">
       <div
-        className={cn(sizeClass, 'cursor-pointer')}
+        className={cn(sizeClass, 'rounded-full cursor-pointer')}
         style={{
-          background: 'var(--bg-surface)',
+          background: 'var(--status-progress-bg)',
           border: '1px solid var(--border-1)',
-          borderRadius: 'var(--r-sm)',
+          boxShadow: 'var(--shadow-xs)',
+          color: 'var(--status-progress-fg)',
         }}
       >
         <div className={cn('flex items-center justify-center', innerSize)}>
-          <Zap className={iconSize} style={{ color: 'var(--orange-500)' }} />
+          <Zap className={iconSize} style={{ color: 'var(--status-progress-fg)' }} />
           <span
             className={cn(textSize, 'font-mono font-medium leading-none whitespace-nowrap')}
-            style={{ color: 'var(--orange-500)' }}
+            style={{ color: 'var(--status-progress-fg)' }}
           >
             {hasTokenData
               ? `${formatTokenCount(effective.billableInputTokens)}↑·${formatTokenCount(effective.outputTokens)}↓`
