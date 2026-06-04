@@ -93,9 +93,13 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         initial.previousFileCount = session.state.previousFileCount;
         initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
         initial.recursionCount = 0;  // Reset per invoke (must match LangGraph's per-invoke recursionLimit)
-        // ✅ Use the HIGHER of session limit vs current env limit
-        // Prevents stale low limits from old sessions overriding a raised RECURSION_LIMIT
-        initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
+        // ✅ Current env/job-derived limit is authoritative on resume.
+        // finalLimit = loadRecursionLimit() re-derives the env (and any job-specific
+        // override) every resume, so a stale LOW session value cannot cap a raised
+        // RECURSION_LIMIT — while a stale HIGH session value (e.g. 800 carried from an
+        // older run) no longer sticks over a lowered env. The previous Math.max ratchet
+        // only ever raised, so a stale ceiling overrode the lowered .env=200.
+        initial.recursionLimit = finalLimit;
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
         
@@ -265,7 +269,7 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,
-            recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
+            recursionLimit: finalLimit,  // env/job-derived limit is authoritative on resume (see note above)
             ...(session.state.profile && { profile: session.state.profile }),
             ...(session.state.jobId && { jobId: session.state.jobId }),
             ...(restoredJobTiming && { jobTiming: restoredJobTiming }),
