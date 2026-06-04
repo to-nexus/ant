@@ -44,10 +44,12 @@ packages:
 
 **Critical rules (multi-package):**
 - ✅ Create `pnpm-workspace.yaml` first; include only the globs the structure actually uses.
-- Use scoped package names: `@project/<app-or-lib-name>` (e.g. `@project/admin`, `@project/shared`).
-- Cross-package refs: `"@project/shared": "workspace:*"` (not `"*"`).
-- Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`.
+- **Package names use ONE scope, applied uniformly to every member**: `@<scope>/<member-dir>`. The scope is a single value chosen once for the whole workspace — it MUST NOT vary per member. Each member's `package.json` `name` is the SSOT for that package's identity.
+- Cross-package refs use that exact name: `"@<scope>/shared": "workspace:*"` (not `"*"`).
+- Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`. **Every `--filter` target MUST equal a member's `package.json` `name` VERBATIM** — never a placeholder, a re-typed guess, or a different scope. A `--filter` target that matches no member silently runs nothing.
 - ❌ Do NOT use npm workspaces (slower, less strict).
+
+**pnpm native-build gate (`allowBuilds`)**: pnpm gates dependency `postinstall` build scripts behind an explicit allowlist in `pnpm-workspace.yaml` → `allowBuilds` (per-package BOOLEAN). Do NOT emit speculative or placeholder entries — a non-boolean value (e.g. `pkg: set this to true or false`) is read as not-allowed and silently skips the native build. Rule: list a dependency `true` ONLY when it has a runtime-critical `postinstall` (a binary the app needs at runtime); otherwise OMIT the `allowBuilds` block entirely (build-time-only or JS-fallback deps do not need it). When uncertain, omit — never placeholder.
 
 ### Dependency Classification Protocol
 
@@ -71,12 +73,15 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 | Category | Version known? | Action |
 |----------|---------------|--------|
 | **Workspace-local** (Step 1 = YES) | N/A | `"workspace:*"` |
-| **External** — version in design doc or LLM training data | YES | Semver range (e.g., `"^1.10.1"`) |
-| **External** — version unknown | NO | `"latest"` |
+| **External leaf** — version in design doc or LLM training data | YES | Semver range (e.g., `"^1.10.1"`) |
+| **External leaf** — version unknown | NO | `"latest"` |
+| **Meta-framework + the renderer/runtime it peer-depends on** | — | Decide as ONE set — see below |
+
+**Set-coherence principle (framework ↔ runtime)**: A meta-framework and the renderer/runtime it peer-depends on are a single version-decision unit. Apply ONE strategy to the whole set — either all `"latest"` (resolves to a mutually compatible release at install) OR all pinned to a compatible release. NEVER split the set (one member `"latest"`, another a fixed older range): that yields a peer mismatch that passes install but breaks at runtime.
 
 **Principle**: `"latest"` is a valid npm dist-tag that all package managers resolve to the most recent published version during install. The lockfile pins the resolved version for reproducibility. If a specific version is required, it should be specified in the design document.
 
-**Constraint**: Do NOT invent version numbers for packages you do not know. Use `"latest"` — the package manager resolves it correctly. Guessing a wrong version causes `pnpm install` failure.
+**Constraint**: Do NOT invent version numbers for packages you do not know. Use `"latest"` — the package manager resolves it correctly. When a framework↔runtime set's version is unknown, apply `"latest"` to the WHOLE set, never to one member. Guessing a wrong version causes `pnpm install` failure.
 
 #### Design-Prescribed Dependency API Discovery
 
@@ -130,6 +135,7 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 - Include `@types/xxx` for type definitions
 - `"type": "module"` for ES modules
 - Match build tool in scripts
+- This example is **Vite + React**; its `react`/`react-dom` versions are illustrative. For a meta-framework (e.g. Next.js), the renderer version follows the framework as ONE set (see §0 Step 2 set-coherence) — do NOT transplant this example's fixed `react` range onto a `"latest"` framework.
 
 ## 2. tsconfig.json ⭐⭐⭐
 
@@ -198,6 +204,9 @@ Configure as needed for project (styling framework, ESLint, etc).
 ❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
 ❌ Using `"workspace:*"` for external packages not present in `pnpm-workspace.yaml` (same-org scope does NOT mean workspace-local)
 ❌ Inventing version numbers for design-prescribed packages (use `"latest"` — the package manager resolves it; a wrong guess causes install failure)
+❌ Splitting a framework↔runtime set across version strategies (e.g. `"next": "latest"` + `"react": "^18.2.0"`) — a meta-framework and its renderer are ONE version decision; mixing `latest` with a fixed older range causes a peer mismatch that breaks at runtime
+❌ Root `--filter` targets that do not match a member `package.json` `name` verbatim (placeholder scope, typo, or a scope the members don't use) — the filter silently matches nothing
+❌ Emitting speculative `allowBuilds` placeholder entries (`pkg: set this to true or false`) — values must be booleans; list runtime-critical native deps `true`, otherwise omit the block
 ❌ Guessing function names or type signatures for unfamiliar packages (read `.d.ts` files from `node_modules` to observe the actual API first)
 ❌ Omitting private/organization packages from `package.json` based on assumptions about authentication (always include — the environment may have credentials configured)
 ❌ Running `pnpm` / `npm` commands without `working_directory: "codebase"` (default cwd is feature root, not codebase — `package.json` not found)

@@ -61,9 +61,37 @@ export interface PreviewServerOptions {
 }
 
 /**
+ * Rewrite an inbound upgrade request's raw header pairs for replay to the
+ * upstream. `Host` and `Origin` are normalized to the upstream so the dev
+ * server sees a same-origin handshake — otherwise cross-origin protection
+ * (e.g. Next.js `allowedDevOrigins`) rejects the HMR socket. Other headers
+ * pass through unchanged. Exported for unit coverage.
+ */
+export function rewriteUpgradeHeaders(
+  rawHeaderPairs: readonly string[],
+  targetHost: string,
+  targetPort: number,
+): string[] {
+  const rawHeaders: string[] = [];
+  for (let i = 0; i < rawHeaderPairs.length; i += 2) {
+    const key = rawHeaderPairs[i];
+    const value = rawHeaderPairs[i + 1];
+    const lower = key.toLowerCase();
+    if (lower === 'host') {
+      rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
+    } else if (lower === 'origin') {
+      rawHeaders.push(`Origin: http://${targetHost}:${targetPort}`);
+    } else {
+      rawHeaders.push(`${key}: ${value}`);
+    }
+  }
+  return rawHeaders;
+}
+
+/**
  * Open a raw TCP tunnel between an inbound WebSocket Upgrade and an upstream
- * dev/static server, replaying the original HTTP request with the Host header
- * rewritten. Shared by the preview and deploy upgrade branches.
+ * dev/static server, replaying the original HTTP request with Host and Origin
+ * normalized to the upstream. Shared by the preview and deploy upgrade branches.
  */
 function openRawTunnel(
   req: IncomingMessage,
@@ -74,17 +102,7 @@ function openRawTunnel(
   targetPath: string,
 ): void {
   const proxySocket = net.connect(targetPort, targetHost, () => {
-    const rawHeaders: string[] = [];
-    const rawHeaderPairs = req.rawHeaders;
-    for (let i = 0; i < rawHeaderPairs.length; i += 2) {
-      const key = rawHeaderPairs[i];
-      const value = rawHeaderPairs[i + 1];
-      if (key.toLowerCase() === 'host') {
-        rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
-      } else {
-        rawHeaders.push(`${key}: ${value}`);
-      }
-    }
+    const rawHeaders = rewriteUpgradeHeaders(req.rawHeaders, targetHost, targetPort);
 
     const upgradeReq =
       `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
