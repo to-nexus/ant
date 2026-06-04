@@ -35,9 +35,9 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
-import { parsePreviewKey } from '../state/redisKeyUtils';
-import { toUrlKeyWithService, fromUrlKey, isUrlKey, packageSlug, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { toUrlKeyWithService, isUrlKey, packageSlug, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
+import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { setToggleEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
@@ -1114,24 +1114,33 @@ export class PreviewServer {
             return;
           }
 
-          const internalKey = fromUrlKey(firstSegment);
-          const parsed = parsePreviewKey(internalKey);
+          // Parse the FULL segment (keeps the optional 5th serviceName) so the
+          // HMR socket is routed per-package — matching the HTTP proxy. The
+          // Redis lookup key itself stays 4-part.
+          const parsed = parseUrlKey(firstSegment);
           if (!parsed) {
             socket.destroy();
             return;
           }
 
-          const { tenantId, userId, projectId, feature } = parsed;
+          const { tenantId, userId, projectId, feature, serviceName } = parsed;
           const mapping = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
           if (!mapping) {
             socket.destroy();
             return;
           }
 
-          const targetHost = mapping.host || 'localhost';
-          const targetPort = mapping.port;
+          // Per-package routing by slug (5-part urlKey); 4-part or unmatched
+          // slug falls back to the entry frontend. Without this, a non-entry
+          // frontend's HMR socket tunnels to the entry dev server, whose
+          // basePath does not match the requested prefix → the upgrade is
+          // rejected and HMR fails.
+          const target = resolvePreviewTarget(mapping, serviceName, firstSegment);
+          const targetHost = target?.targetHost ?? (mapping.host || 'localhost');
+          const targetPort = target?.targetPort ?? mapping.port;
 
-          // All frameworks use native base path — always keep the prefix
+          // Frontend keeps the urlKey prefix (its basePath equals the urlKey),
+          // and the HMR socket is always a frontend `_next/webpack-hmr` socket.
           const targetPath = urlPath;
 
           logger.debug(`[PreviewServer] WS upgrade: ${urlPath} → ${targetHost}:${targetPort}${targetPath}`, {

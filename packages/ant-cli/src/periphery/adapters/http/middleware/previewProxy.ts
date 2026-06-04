@@ -18,7 +18,8 @@
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey, packageSlug } from '../services/PreviewService/utils/serverKeyUtils';
+import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
+import { resolvePreviewTarget } from './previewRouting';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
   escapeRegExp as sharedEscapeRegExp,
@@ -306,27 +307,19 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
     }
     
-    // (2) 5-part urlKey: service-specific routing by slug
-    if (!serviceRouted && serviceName && previewPackages.length) {
-      // Defensive normalization: any caller that didn't pre-slugify
-      // `serviceName` is rescued here so URL `apps/web` (impossible at this
-      // point — `/` would have been a path delimiter) and historical raw
-      // names match the SSOT slug.
-      const wantedSlug = packageSlug(serviceName);
-      const targetPkg = previewPackages.find((p) => p.slug === wantedSlug);
-      if (targetPkg) {
-        targetPort = targetPkg.port;
-        if (targetPkg.type === 'frontend') {
-          // Frontend has its own basePath equal to the 5-part urlKey — keep prefix.
-          targetPath = req.url;
-        } else {
-          // Backend/other: strip prefix, dev server expects bare paths.
-          targetPath = stripPrefix(req.url);
-        }
+    // (2) 5-part urlKey: service-specific routing by slug.
+    // Slug-match decision is shared with the WS upgrade handler via
+    // `resolvePreviewTarget` (SSOT) so the two paths cannot drift. The
+    // prefix keep-vs-strip rule stays here (HTTP-only concern).
+    if (!serviceRouted && serviceName) {
+      const svc = resolvePreviewTarget({ host: previewHost, packages: previewPackages }, serviceName, urlKey);
+      if (svc) {
+        targetPort = svc.targetPort;
+        // Frontend has its own basePath equal to the 5-part urlKey — keep
+        // prefix. Backend/other: strip prefix, dev server expects bare paths.
+        targetPath = svc.isFrontend ? req.url : stripPrefix(req.url);
         serviceRouted = true;
-        logger.debug(`Routing to service '${wantedSlug}' (${targetPkg.type}) -> port ${targetPkg.port}`, { component: 'PreviewProxy' });
-      } else {
-        logger.warn(`Service '${serviceName}' not found in packages, falling back to entry`, { component: 'PreviewProxy' });
+        logger.debug(`Routing to service '${serviceName}' (${svc.isFrontend ? 'frontend' : 'backend/other'}) -> port ${svc.targetPort}`, { component: 'PreviewProxy' });
       }
     }
     
