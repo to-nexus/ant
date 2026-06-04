@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseEnvLine } from './utils';
+import {
+  frameworkTogglePrefix,
+  type DeployFramework,
+} from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Set a single `KEY=value` entry in the project `.env` file. Companion to
@@ -56,4 +60,50 @@ export function setEnvValue(
   }
 
   fs.writeFileSync(envFilePath, next, 'utf-8');
+}
+
+/** First candidate (in preference order) already declared in the `.env` file. */
+function findExistingKey(envFilePath: string, candidates: string[]): string | undefined {
+  const present = new Set<string>();
+  for (const line of fs.readFileSync(envFilePath, 'utf-8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const [k] = parseEnvLine(trimmed);
+    if (k) present.add(k);
+  }
+  return candidates.find(c => present.has(c));
+}
+
+/**
+ * Framework-prefix-aware companion to `setEnvValue` for the mock-toggle var.
+ *
+ * The toggle is client-visible, so a bundled frontend reads it under its
+ * framework prefix (`NEXT_PUBLIC_` / `VITE_` / `REACT_APP_`) while a server
+ * consumer reads the bare name. A bare-only write (the previous behaviour)
+ * appends an orphan `USE_MOCK_X` next to an existing `NEXT_PUBLIC_USE_MOCK_X`,
+ * which `resolveActivation` then shadows (prefix scanned first) — the toggle
+ * silently fails to stick.
+ *
+ * Strategy: update whichever variant already exists IN PLACE (prefixed first),
+ * and only create the framework-preferred name when none exists. Reuses
+ * `setEnvValue` for the write — no second writer. Returns the key written.
+ */
+export function setToggleEnvValue(
+  envFilePath: string,
+  bareToggle: string,
+  framework: DeployFramework | undefined,
+  value: string,
+): string {
+  // `bareToggle` is already `USE_MOCK_<NAME>`; just apply the client prefix.
+  const prefix = frameworkTogglePrefix(framework);
+  // Prefer the framework-prefixed name; fall back to bare.
+  const preference = prefix ? [`${prefix}${bareToggle}`, bareToggle] : [bareToggle];
+
+  const existing = fs.existsSync(envFilePath)
+    ? findExistingKey(envFilePath, preference)
+    : undefined;
+  const targetKey = existing ?? preference[0];
+
+  setEnvValue(envFilePath, targetKey, value);
+  return targetKey;
 }

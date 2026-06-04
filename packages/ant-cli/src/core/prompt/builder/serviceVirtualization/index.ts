@@ -51,6 +51,7 @@ export {
   deriveToggleVar,
   frameworkTogglePrefix,
   frameworkAwareToggleVars,
+  toToggleFramework,
   resolveActivation,
   anyInScanRadius,
   collectInScanRadius,

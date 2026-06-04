@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import type { DeployFramework as BuildFramework } from '@ant/shared';
 
 export type ConnectionCategory = 'business' | 'infrastructure';
 
@@ -93,6 +94,25 @@ export function frameworkAwareToggleVars(
     toggles: prefix ? [bare, `${prefix}${bare}`] : [bare],
     masters: prefix ? [MASTER_TOGGLE, `${prefix}${MASTER_TOGGLE}`] : [MASTER_TOGGLE],
   };
+}
+
+/**
+ * Normalize the build/deploy framework enum (`@ant/shared`) to the SV
+ * toggle-prefix enum. The two diverge (`nextjs`↔`next`, `static`/`unknown`↔
+ * `other`); this is the single seam between `detectFramework` and the prefix
+ * SSOT above, so the divergence is converted in exactly one place.
+ */
+export function toToggleFramework(f: BuildFramework | undefined): DeployFramework {
+  switch (f) {
+    case 'nextjs':
+      return 'next';
+    case 'vite':
+      return 'vite';
+    case 'cra':
+      return 'cra';
+    default:
+      return 'other';
+  }
 }
 
 /**
