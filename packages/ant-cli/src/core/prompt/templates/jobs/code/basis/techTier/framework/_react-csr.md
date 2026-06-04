@@ -4,7 +4,9 @@ Blind-spot reminders for client-rendered React on Vite-style toolchains (non-SSR
 
 ## Entry-Point Topology
 
-Routing is a **central registry**: routes are declared in one place (a React Router `<Routes>` / `createBrowserRouter` config, usually in the app root). That registry is an **`integration`-band-owned** file — many screens register into it. Screen *components* are authored in the **feature band** (so they exist before the registry wires them); a ui/restyle task refines an existing screen, it does NOT add a new route. Feature tasks must not each edit the central route config in parallel (write-contention) — the integration band consolidates registration.
+{{> jobs/code/basis/techTier/framework/_entry-points-shared-registry}}
+
+For React Router (CSR), the central registry is the `<Routes>` / `createBrowserRouter` config (usually at the app root) — that config is the `integration`-owned host entry; screen components are authored in the feature band so they exist before the registry wires them.
 
 ## Forbidden Patterns
 

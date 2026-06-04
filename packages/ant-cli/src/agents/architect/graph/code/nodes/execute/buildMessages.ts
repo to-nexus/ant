@@ -31,7 +31,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { detectImageMimeFromBuffer, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { selectArtifacts, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
-import { effectiveTechTier, getTechTier, entryPointTopology, getRACDocuments, getModelContextWindow, type ResolvedArtifact } from "@ant/shared";
+import { effectiveTechTier, getTechTier, getRACDocuments, getModelContextWindow, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
 import {
@@ -430,11 +430,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       taskBand: state.currentTask?.type === 'feature'
         ? (state.currentTask as FeatureTask).band
         : undefined,
-      // Entry-point topology (Axis 1) — per-task, from THIS task's framework.
-      // Gates per-screen route ownership in the entry-point-ownership partial
-      // identically at execute and plan time. undefined for frameworkless tasks
-      // → topology branch stays inert (pre-existing behavior).
-      entryPointTopology: entryPointTopology(effectiveTechTier(taskTechTiers).framework),
       // R1 template dispatch — the final-verification guard in templates
       // (previously `{{#unless (eq currentTask.priority 1000)}}`) now reads
       // `currentTaskIsFinal` so the verification bundle's classify is the

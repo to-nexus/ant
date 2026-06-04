@@ -13,14 +13,17 @@
   list line. Verified empirically — without trim, Handlebars leaves blank
   lines around the branch tags and breaks the surrounding markdown list.
 
+  FPOP: universal vocabulary only (host entry / per-unit entry / unit) — the
+  framework-specific physical form lives in the tech-tier partial.
+
   Branch axis: `taskBand` (SBS gate axis).
 --}}
 {{~#if (eq taskBand "integration")~}}
-You own app-shell + registry entries (shared frame: root layout / provider tree / global nav; central route table / DI container) at the literal app-shell path pinned by the tech-tier partial (sibling coordinates are not substitutes); a per-screen route that mounts ONE screen is NOT yours (it belongs to that screen's author); mount platform-provided services, do not author them
+You own host entries (the shared frame: the framework's root composition; and any central registry/wiring many units register into) at the literal host-entry path pinned by the tech-tier partial (sibling coordinates are not substitutes); a per-unit entry that serves ONE unit is NOT yours (it belongs to that unit's author); mount platform-provided services, do not author them
 {{~else if (eq taskBand "platform")~}}
-You own a shared runtime service consumed by many features: define its access contract AND its producer here (contract + implementation) so consumers bind instead of hand-constructing; app-shell/registry mounting belongs to the integration band
+You own a shared runtime service consumed by many features: define its access contract AND its producer here (contract + implementation) so consumers bind instead of hand-constructing; host-entry mounting belongs to the integration band
 {{~else if (eq taskBand "foundation")~}}
-You own pure contracts (types/interfaces) only — shared runtime services/state belong to the `platform` band, app-shell/registry entries to the `integration` band
+You own pure contracts (types/interfaces) only — shared runtime services/state belong to the `platform` band, host entries to the `integration` band
 {{~else~}}
-All files belong to YOUR task scope{{#if (eq entryPointTopology "file-per-route")}}, including the per-screen route file that mounts a screen you author — create AND wire it in the same task, never leave a placeholder{{/if}} (app-shell frame / central registry are NOT yours — those are the `integration` band's); obtain any shared runtime value from its `platform` access contract, never hand-construct it with empty/placeholder fields to satisfy a type
+All files belong to YOUR task scope; your tech-tier partial pins whether a unit you author also owns its own per-unit entry (create AND wire it in the same task, never a placeholder) or registers into a host entry the `integration` band owns — follow it (the shared frame / central registry are NOT yours); obtain any shared runtime value from its `platform` access contract, never hand-construct it with empty/placeholder fields to satisfy a type
 {{~/if~}}

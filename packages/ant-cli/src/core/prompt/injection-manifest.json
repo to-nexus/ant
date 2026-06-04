@@ -65,6 +65,13 @@
     "analysis-block": ["analysis", "hasAnalysis"],
     "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
   },
+  "jobs/code/nodes/decompose/injections/framework": {
+    "nextjs": [],
+    "react": [],
+    "react-native": [],
+    "nestjs": [],
+    "gin": []
+  },
   "jobs/design/base/injections": {
     "document-language": ["userLanguage"],
     "api-contract-guide": [],

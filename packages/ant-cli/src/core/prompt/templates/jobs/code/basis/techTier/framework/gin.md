@@ -4,7 +4,9 @@ Blind-spot reminders. Pre-training gap only.
 
 ## Entry-Point Topology
 
-Routing is a **central registry**: routes are registered on the router in one setup function (`r.GET(...)` / route-group registration). That router setup is an **`integration`-band-owned** file — many handlers register there. Handlers are authored in the **feature band** (so the router can reference them); do not let feature tasks each edit the central router setup in parallel (write-contention) — the integration band consolidates route registration.
+{{> jobs/code/basis/techTier/framework/_entry-points-shared-registry}}
+
+For Gin, the central registry is the router setup function (`r.GET(...)` / route-group registration) — that router setup is the `integration`-owned host entry; handlers are authored in the feature band so the router can reference them.
 
 ## Forbidden Patterns
 

@@ -55,7 +55,7 @@ describe('platform band — entry-point-ownership-rule branches', () => {
     const out = await adapter.render(RULE, { taskBand: 'platform' });
     expect(out).toMatch(/`platform` band task/);
     expect(out).toMatch(/access contract.*AND its.*implementation/i);
-    expect(out).toMatch(/do NOT also own framework app-shell entries/i);
+    expect(out).toMatch(/do NOT also own host entries/i);
   });
 
   it('integration branch: mounts platform services, does not author them', async () => {

@@ -6,12 +6,14 @@ Blind-spot reminders for pre-training gaps. Verify current behaviour via `search
 
 ## Entry-Point Topology
 
-Next.js (App & Pages Router) is **file-per-route**: each route is its own file, there is NO central route registry. This decides who owns each entry file:
+{{> jobs/code/basis/techTier/framework/_entry-points-file-per-route}}
 
-- **Per-screen entries — owned by the task that AUTHORS that screen, NOT the `integration` band**: every page file and `route.ts`, **including the root `/` page `app/page.tsx`**. The task that creates a screen creates AND wires its own page file in the same task; it does not leave a placeholder for a later task, and it does not wait for `integration` to mount it. A later restyle/ui task refines an existing screen, it does not re-create its route.
-- **App-shell entries — owned by the `integration` band**: the root `app/layout.tsx` (or `src/app/layout.tsx` under the `src/` convention), the provider/host tree, and global navigation. These are the shared frame — they mount no single screen.
+Next.js (App & Pages Router) concrete coordinates:
 
-The framework still REQUIRES the root coordinate `app/page.tsx` to exist. Route groups `(group)/page.tsx` route to `/` semantically but are organizational layers (group-scoped `layout`/`loading`/`error`), **not substitutes** for the literal `app/page.tsx` — omitting it leaves `/` empty even when traffic superficially serves. Because `app/page.tsx` is the home `/` screen's per-screen entry, its **home-screen author** owns and MUST create it (closure: no placeholder); `integration` owns `app/layout.tsx` only.
+- **Per-unit entries (authoring task owns)**: every page file and `route.ts`, **including the root `/` page `app/page.tsx`**.
+- **Host entry (`integration` band owns)**: the root `app/layout.tsx` (or `src/app/layout.tsx` under the `src/` convention), the provider/host tree, and global navigation — the shared frame.
+
+The framework still REQUIRES the root coordinate `app/page.tsx` to exist. Route groups `(group)/page.tsx` route to `/` semantically but are organizational layers (group-scoped `layout`/`loading`/`error`), **not substitutes** for the literal `app/page.tsx` — omitting it leaves `/` empty even when traffic superficially serves. Because `app/page.tsx` is the home `/` route's per-unit entry, its **author** owns and MUST create it (closure: no placeholder); `integration` owns `app/layout.tsx` only.
 
 A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/page.tsx` is served at `/login`, NOT `/auth/login`. Navigation targets (`router.push`/`replace`, `<Link href>`, `redirect()`, middleware rewrites) MUST equal the URL the route tree produces — every parenthesized segment dropped — derived from the route folders, not from intent. If a segment must appear in the URL, use a plain folder (`app/auth/login/`), not a group.
 
