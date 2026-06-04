@@ -44,20 +44,25 @@
 
 ---
 
-### Verification Order
+### Type-Check Invocation
 
-**Principle**: Static type checking and dynamic build are two distinct verification steps that must both pass independently.
+**Principle**: The type-check command must match the project's configured shape — the same shape you already observed in Build Order. A check that ignores that shape either misses code or conflates one upstream fault with its downstream cascade.
 
-**Required execution order** (each step only runs if the previous step passed):
-1. `tsc --noEmit` — static type check (surfaces ALL type errors in one pass)
-2. Project build command — dynamic build (catches bundler-specific issues beyond type errors)
-3. Test command — only if build passes
+| Configured shape | Type-check invocation |
+|---|---|
+| **Single package** (default) | `tsc --noEmit` |
+| **Project `references` / `composite`** | `tsc --build` — it type-checks the referenced graph in dependency order |
+| **Multi-package workspace without `references`** | Check each package against its own `tsconfig` (e.g. `tsc -p <package>/tsconfig.json`) or run each package's configured type-check script. A single root `tsc --noEmit` does not represent the per-package configs and is not a substitute. |
 
-**Constraint**: If `tsc --noEmit` fails, do NOT run the project build command. Framework build CLIs embed type checking internally and will fail with the same type errors. Produce the remediation plan from the tsc error output.
+**Constraint**: Run the standalone type-check before the framework build. Framework build CLIs embed type checking and abort after the first few errors, so a build-first approach hides the rest of the type errors. Produce the remediation plan from the type-check output; if it fails, do NOT proceed to the build command.
 
-**Constraint**: Do NOT skip any step. Even if `tsc --noEmit` passes, the project build command must still run — it catches bundler-specific issues that static type checking cannot detect.
+⚠️ **Blind spot**: A single root `tsc --noEmit` in a workspace is the trap that drowns one upstream config fault under hundreds of cascaded leaf errors. Choose the invocation by the configured shape above, not by reflex.
 
-⚠️ **Blind spot**: Framework CLIs often abort after the first few errors. Running `tsc --noEmit` first ensures ALL type errors are collected at once for comprehensive batch remediation.
+### Cascade Root Cause
+
+**Principle**: In a configured TypeScript workspace, a large error count usually traces to a **single upstream config/contract fault** — a missing `compilerOptions` flag (e.g. `jsx`), a wrong `extends` path, or an absent `@types/*` — cascading across many files. The leaf errors are symptoms, not independent defects.
+
+**Constraint**: Diagnose that upstream fault as the **single root-cause `batches[]` entry**. The cascaded count collapses after that sub-task lands and the gates re-run — do NOT enumerate the cascaded errors as separate fix entries.
 
 ---
 
