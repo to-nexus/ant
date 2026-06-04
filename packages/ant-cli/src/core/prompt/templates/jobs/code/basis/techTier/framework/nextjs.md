@@ -23,6 +23,7 @@ A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/pa
 
 ## Version Notes
 
+- `next` + `react` + `react-dom` are ONE version set — pin all three with the same strategy (all `"latest"`, or all pinned to a compatible release). Never pair `"next": "latest"` with a fixed older `"react"`/`"react-dom"` range (e.g. `^18`): the peer mismatch passes `pnpm install` but breaks hydration at runtime, with no build or type error. (Reference: `next@15` ⇒ React 19, `next@14` ⇒ React 18.)
 - Next.js 15: `headers()`, `cookies()`, `params`, `searchParams` are async — sync destructuring throws.
 - Next.js 14: `next.config.ts` unsupported — use `.mjs` / `.js` / `.cjs`.
 
