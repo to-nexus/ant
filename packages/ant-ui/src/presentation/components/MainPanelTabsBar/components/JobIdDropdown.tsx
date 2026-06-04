@@ -101,10 +101,17 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
       if (e.key === 'Escape') setOpen(false);
     };
     const onScroll = (e: Event) => {
-      // Close on ancestor scroll; ignore scrolls inside the menu itself.
+      // Ignore scrolls inside the menu itself.
       const target = e.target as Node;
       if (menuRef.current && menuRef.current.contains(target)) return;
-      setOpen(false);
+      // Close only when an ancestor of the trigger scrolls (the chip actually
+      // moves). window/page scroll has target===document and
+      // document.contains(trigger)===true, so it still closes. Unrelated
+      // sibling scroll containers — e.g. the chat history's virtual scroller —
+      // do NOT contain the trigger, so streaming chat no longer dismisses it.
+      if (triggerRef.current && target.contains(triggerRef.current)) {
+        setOpen(false);
+      }
     };
     const onResize = () => setOpen(false);
 
