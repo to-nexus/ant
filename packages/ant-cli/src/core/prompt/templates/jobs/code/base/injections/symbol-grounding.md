@@ -1,0 +1,19 @@
+### Ground Every Reference to an Already-Defined Symbol
+
+**Principle**: When code references a symbol defined elsewhere — a function or method, a type, an enum, an interface/struct, an exported component — that symbol's defining file is the single source of truth for its shape. The shape includes the parameters it accepts, the members/fields it requires, and the exact set of literal values it permits. Read the defining file to verify the shape before writing the reference; if your assumption and the defining file disagree, the defining file wins.
+
+**Observation target**: Before calling the symbol, constructing a value that must satisfy its type, or passing arguments/props into it, locate and read its defining file. Copy its members, required fields, and permitted literals exactly as defined.
+
+| Reference shape | What to ground in the defining file |
+|---|---|
+| Calling a function / method | parameter list and types, return shape |
+| Constructing a value of an external type | every required member, and the permitted literal set of any enumerated field |
+| Passing arguments / props into an external symbol or component | only the accepted parameters/props, in their declared types |
+
+**Constraint**: Do NOT supply a value from memory, analogy, or plausibility. A literal that "looks like a valid status / role / code" is a guess until confirmed against the defining file. A required field omitted because it "seems optional" is a defect.
+
+**Constraint**: Do NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted from the defining file's shape. The defining file wins.
+
+**Constraint**: This applies equally to references you introduce yourself — test fixtures, mock data, default objects, sample payloads — not only to references named in the plan. A constructed value that must conform to an external type is bound by that type just as a call site is bound by a signature.
+
+⚠️ **Blind spot**: When the referenced type lives one module/package away (a shared contract package, a shared component library), its import line is visible at the call site but its permitted values and required members are NOT — they sit in the defining file. Follow the import to that file and read it before constructing the value; the import statement alone is not enough to ground the shape.

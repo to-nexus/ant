@@ -47,7 +47,8 @@
     "response-language": ["userLanguage"],
     "entry-point-ownership-rule": ["taskBand"],
     "entry-point-ownership-checklist": ["taskBand"],
-    "execution-context-discipline": []
+    "execution-context-discipline": [],
+    "symbol-grounding": []
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],

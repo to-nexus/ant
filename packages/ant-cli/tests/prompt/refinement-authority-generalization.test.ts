@@ -58,6 +58,19 @@ const PLAN_TOOLS_BATCH = readFileSync(
   ),
   'utf8',
 );
+// The defining-file SSOT grounding mechanic was lifted out of Section 1-1
+// into a shared injection so the test-code / error execute variants (which
+// are full replacements lacking Section 1-1) inherit it, and so the rule
+// generalizes to self-introduced references (fixtures, mocks, props). The
+// plan-authority framing (sketch / frozen direction / parentReasoning) stays
+// inline in Section 1-1; the grounding sentences now live in the partial.
+const SYMBOL_GROUNDING = readFileSync(
+  path.resolve(
+    __dirname,
+    '../../src/core/prompt/templates/jobs/code/base/injections/symbol-grounding.md',
+  ),
+  'utf8',
+);
 
 describe('execute Section 1-1 — generalized to all tasks (no parentReasoning gate)', () => {
   it('renamed Section 1-1 from "Pre-Planned Sub-Task" to "Plan Application & Refinement Authority"', () => {
@@ -65,17 +78,25 @@ describe('execute Section 1-1 — generalized to all tasks (no parentReasoning g
     expect(EXECUTE_RULES).not.toMatch(/Pre-Planned Sub-Task/);
   });
 
-  it('opens with the defining-file SSOT Principle, not the parentReasoning gate', () => {
+  it('opens with the plan-authority Principle and wires in the grounding partial', () => {
     expect(EXECUTE_RULES).toMatch(/The plan is a sketch of WHAT and WHERE/);
-    expect(EXECUTE_RULES).toMatch(/the defining file wins/);
+    // The defining-file SSOT mechanic now lives in the shared partial,
+    // included by Section 1-1 so the rendered rules still carry it.
+    expect(EXECUTE_RULES).toMatch(/\{\{>\s*jobs\/code\/base\/injections\/symbol-grounding\s*\}\}/);
+    expect(SYMBOL_GROUNDING).toMatch(/the defining file wins/);
     // The gate phrase that previously restricted the section is gone.
     expect(EXECUTE_RULES).not.toMatch(/If the plan JSON contains a top-level `parentReasoning` field, this task is/);
   });
 
-  it('explicitly tells execute NOT to mimic drifted earlier callers in the codebase', () => {
-    expect(EXECUTE_RULES).toMatch(
-      /do NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted/,
+  it('grounding partial tells execute NOT to mimic drifted earlier callers in the codebase', () => {
+    expect(SYMBOL_GROUNDING).toMatch(
+      /[Dd]o NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted/,
     );
+  });
+
+  it('grounding partial extends the rule to self-introduced references (fixtures / props)', () => {
+    expect(SYMBOL_GROUNDING).toMatch(/test fixtures, mock data/);
+    expect(SYMBOL_GROUNDING).toMatch(/permitted literal set of any enumerated field/);
   });
 
   it('preserves the ✅/❌ refinement-authority table verbatim under the new title', () => {
