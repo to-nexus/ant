@@ -1,16 +1,16 @@
-## Fullstack Environment — Monorepo-Specific Rules
+## Fullstack Environment — Frontend↔Backend Boundary Rules
 
 **Context**: This project contains BOTH a backend server (Express, NestJS, etc.) AND a frontend application as **separate packages** in the same repository.
 
 **Important**: This is NOT for SSR frameworks (Next.js, Remix). SSR frameworks are "browser" environment, not "fullstack". This applies ONLY to separate BE + FE monorepos.
 
-**Note**: Browser-specific and backend-specific rules are injected separately. This file contains ONLY fullstack monorepo-specific rules (package boundaries, shared code constraints).
+**Note**: Browser-specific and backend-specific rules are injected separately. This file contains ONLY rules specific to the frontend↔backend runtime boundary. General multi-package / shared-library structure is **stack-agnostic** and is owned by the setup member-placement rule — it is NOT re-stated or narrowed here.
 
 ---
 
 ### Project Structure Patterns
 
-A fullstack project is a multi-package workspace with at least three members: the backend app, the frontend app, and a shared package for cross-boundary types. Each member is a separate workspace package with its own `package.json`. Which directory each member lives in (deployable app vs shared library) follows the **setup member-placement rule** — this is a stack-agnostic monorepo convention, not a fullstack-specific layout, so it is not re-stated here.
+A fullstack project spans both a server runtime and a browser runtime. How many workspace members exist, and which directory each lives in (deployable app vs shared library), follows the **setup member-placement rule** — a stack-agnostic monorepo convention owned elsewhere, not re-stated here. Do NOT assume a fixed member count (e.g. "one backend + one frontend"): the design may describe several applications on either side plus any shared libraries they consume. This file covers ONLY what is specific to the frontend↔backend runtime boundary.
 
 ---
 
@@ -31,9 +31,9 @@ A fullstack project is a multi-package workspace with at least three members: th
 
 ---
 
-### Shared Code (Common Package)
+### Cross-Boundary Types (Frontend↔Backend)
 
-**Principle**: Shared packages exist exclusively for cross-boundary type sharing. They MUST remain environment-agnostic.
+**Principle**: A type shared **across the frontend↔backend boundary** (consumed by both a server-runtime member and a browser-runtime member) MUST live in an environment-agnostic package — pure TypeScript, no Node- or browser-specific APIs. This constraint scopes to *cross-boundary types*; it is NOT a definition of shared packages in general. A foundation shared only among frontend members (e.g. a design system / component library) is browser-runtime code and is NOT subject to this purity rule.
 
 **Constraints**:
 - Must be pure TypeScript (no Node.js or browser-specific APIs)
