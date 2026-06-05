@@ -135,6 +135,8 @@ The two tier decisions are independent:
 - **Frontend split**: Each entry in `fePackages` → `fe-system-{package}.md`
 - Tiers not split keep their `*-main.md` file. Splits can coexist in a fullstack project.
 
+**Constraint — sibling FE topology consistency**: When `fePackages` has 2+ entries on the same stack, every `fe-system-{package}` task description MUST carry the directive: *if feature grouping + explicit layers are chosen (frontend-guide §1.2 Dimension 3), use a composition topology (feature-primary vs layer-primary) consistent with sibling FE packages of the same stack, unless this package's stated complexity difference justifies divergence.* (These docGen tasks run in parallel and cannot read each other, so this anchors them to the same default; the coding phase enforces the final consistency.)
+
 ### Priority Assignment
 
 All document types use the same priority range (200-249). Tasks targeting different files run in parallel; tasks targeting the same file run sequentially within their `parallelGroup`.

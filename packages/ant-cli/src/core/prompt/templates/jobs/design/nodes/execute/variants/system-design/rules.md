@@ -483,7 +483,7 @@ Before generating output, verify:
 
 ### Directory Structure Output Guardrail
 - When a framework augmentation guide is injected above, the design document MUST include a **Directory Structure & Boundary Mapping** section or subsection covering:
-  - Boundary-to-directory mapping principle (which architecture boundary maps to which top-level directory)
+  - Boundary-to-directory mapping principle (which architecture boundary maps to which top-level directory), including the 1st-order composition axis (feature-primary vs layer-primary) when both a feature axis and explicit layers were selected
   - Dependency/import direction rules between boundaries
   - Coding phase directives (a concise checklist for the coding phase to enforce structural constraints)
 - **Constraint**: Output directory structure at the principle level only. Do NOT produce a full file tree, specific filenames, or component names. State the invariant and let the coding phase fill in details.
