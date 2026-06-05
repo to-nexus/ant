@@ -1,5 +1,6 @@
 ### § Overview
 - System purpose, architecture decisions per dimension with rationale (reference observations from §1.1)
+- Composition topology when both a feature axis and explicit layers were chosen: name the 1st-order axis (`feature-primary` or `layer-primary`) with the one-line §1.2 Dimension-3 rationale
 - PRD constraints relevant to architecture (platform, integrations, prohibitions)
 
 ### § Architecture Boundaries
@@ -34,6 +35,6 @@
 - Development independence per adapter with external dependencies (production + mock implementation strategies per Infrastructure Independence Guardrail)
 
 ### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
-- Boundary-to-directory mapping principle
+- Boundary-to-directory mapping principle, including the 1st-order composition axis (feature-primary vs layer-primary) when both a feature axis and explicit layers were selected — invariant only, no file tree, no feature names
 - Import direction enforcement rules
 - Coding phase directives

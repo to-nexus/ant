@@ -30,7 +30,15 @@ Architecture is not a single label — it is the combination of independent desi
 - Observe: presence of domain logic vs. pure display, need for external dependency substitution, test independence requirements
 - Principle: If no domain logic exists, a flat internal structure suffices. If framework conventions naturally enforce separation, follow them. If domain logic must be isolated from infrastructure, define explicit boundaries with dependency rules. The observed complexity must justify the separation level.
 
-**Constraint**: Do NOT default to the most complex option in either dimension. Observed complexity must justify the decision.
+**Dimension 3 — Composition Topology**: Dimension 1 (organization axis) and Dimension 2 (internal structure) are complementary, not alternatives — Dimension 1 picks the 1st-order grouping, and Dimension 2's structure repeats inside each 1st-order unit. When BOTH a feature axis (Dimension 1) AND explicit internal layers (Dimension 2) are chosen, state which axis is the 1st-order directory boundary; otherwise the layout is underdetermined and the coding phase picks one arbitrarily.
+- Observe: change locality (does a typical change touch one feature across all its layers, or one layer across all features?), the dominant growth axis, expected collaboration / frequency of feature-level change.
+- Two compositions (name one):
+  - **feature-primary** — each feature owns its layer subtree (the layer set repeats inside every feature). Feature-Sliced Design (FSD) is the named instance of this composition.
+  - **layer-primary** — each layer owns its feature subtree (the feature set repeats inside every layer).
+- Principle: Neither is the default. Choose feature-primary when features are the dominant growth axis and the project expects collaboration or frequent feature-level change; choose layer-primary when cross-feature layer reasoning dominates. A unit small enough that grouping adds no value needs neither.
+
+**Constraint**: Do NOT default to the most complex option in any dimension. Observed complexity must justify the decision.
+**Constraint**: When Dimension 1 = feature grouping AND Dimension 2 = explicit layers, the composition (Dimension 3) MUST be stated with rationale. Stating the two dimensions without their composition is an incomplete decision.
 **Constraint**: Each dimension's decision MUST be stated with rationale in the design document.
 **Constraint**: If the user names a specific architecture (e.g., "Clean Architecture"), decompose it into these dimensions and evaluate each against observed complexity. Do NOT adopt the name as-is.
 **Constraint**: Do NOT output a single architecture label as the decision.

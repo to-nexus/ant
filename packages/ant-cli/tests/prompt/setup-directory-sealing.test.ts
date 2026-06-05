@@ -197,6 +197,61 @@ describe('setup-directory-sealing partial', () => {
     // signals the abstraction level the partial actually sits at.
     expect(out).toMatch(/boundary direct(ory|ories)|module roots?/i);
   });
+
+  it('enforces one-authority member-name binding (bind, do NOT re-derive a renamed sibling)', async () => {
+    const out = await adapter.render(
+      'jobs/code/base/injections/setup-directory-sealing',
+      {},
+    );
+
+    // A later member setup binds to the upstream-sealed directory rather than
+    // re-deriving a divergent name (the `contracts` vs `contract` defect).
+    expect(out).toMatch(/one authority per member directory name/i);
+    expect(out).toMatch(/MUST NOT create a sibling member under a renamed variant/i);
+    expect(out).toMatch(/bind|populates that EXACT directory/i);
+    // Stays framework-agnostic — neutral "workspace manifest", not a tool file.
+    expect(out).toMatch(/workspace manifest/i);
+    expect(out).not.toMatch(/pnpm-workspace\.yaml/);
+  });
+
+  it('reconciles a stranded `.gitkeep`-only near-miss orphan via delete_file', async () => {
+    const out = await adapter.render(
+      'jobs/code/base/injections/setup-directory-sealing',
+      {},
+    );
+
+    expect(out).toMatch(/reconcile a stranded near-miss orphan/i);
+    expect(out).toMatch(/delete_file/);
+    // Strict guard — only a `.gitkeep`-only directory may be removed.
+    expect(out).toMatch(/nothing but `?\.gitkeep`?/i);
+    expect(out).toMatch(/never touch a directory holding source/i);
+  });
+});
+
+describe('frontend-guide §1.2 — composition topology (Dimension 3)', () => {
+  let adapter: FilePromptAdapter;
+
+  beforeAll(async () => {
+    await initPartials(TEMPLATES_DIR);
+    adapter = new FilePromptAdapter(TEMPLATES_DIR);
+  });
+
+  it('names feature-primary / layer-primary compositions and requires stating the 1st-order axis', async () => {
+    const out = await adapter.render(
+      'jobs/design/base/injections/frontend-guide',
+      {},
+    );
+
+    expect(out).toMatch(/Composition Topology/i);
+    expect(out).toMatch(/feature-primary/);
+    expect(out).toMatch(/layer-primary/);
+    // FSD cited as the named instance of feature-primary, not a monolithic label.
+    expect(out).toMatch(/Feature-Sliced Design \(FSD\)/);
+    // Parity, not default — neither composition is the default.
+    expect(out).toMatch(/Neither is the default/i);
+    // Composition MUST be stated when both dimensions are chosen.
+    expect(out).toMatch(/composition \(Dimension 3\) MUST be stated/i);
+  });
 });
 
 describe('execute/variants/default/base.md — setup task wiring', () => {
