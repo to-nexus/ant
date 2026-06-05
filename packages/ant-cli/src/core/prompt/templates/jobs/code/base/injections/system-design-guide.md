@@ -61,7 +61,7 @@
 
 **How to use (Frontend only):**
 - ✅ Follow architecture patterns described here
-- ✅ Architecture boundaries MUST be reflected as directory-level boundaries — but "boundary" here means the design document's ORGANIZATIONAL identity (e.g. an `fe-system-{name}.md` document's concern), NOT a leaf path name. The directory LEAF follows monorepo conventions (`apps/{name}`, `packages/{name}`) with pure names — never carry the `fe-` prefix from the document filename into a directory path.
+- ✅ Architecture boundaries MUST be reflected as directory-level boundaries — but "boundary" here means the design document's ORGANIZATIONAL identity (e.g. an `fe-system-{name}.md` document's concern), NOT a leaf path name. The directory LEAF is the member's own name — an application's identity, a shared library's purpose — under monorepo conventions (`apps/<name>`, `packages/<name>`); it is NOT the document's filename token, and never carries the `fe-` prefix from the filename into a directory path.
 - ✅ Framework wiring and architecture boundaries are complementary; neither substitutes for the other
 - ✅ For integration details, always check Layer 0 first
 - ❌ Don't let architecture preferences override API specifications
@@ -86,7 +86,7 @@
 
 **How to use (Backend only):**
 - ✅ Follow architecture patterns described here
-- ✅ Architecture boundaries MUST be reflected as directory-level boundaries — but "boundary" here means the design document's ORGANIZATIONAL identity (e.g. a `be-system-{name}.md` document's concern), NOT a leaf path name. The directory LEAF follows monorepo conventions (`apps/{name}`, `packages/{name}`) with pure names — never carry the `be-` prefix from the document filename into a directory path.
+- ✅ Architecture boundaries MUST be reflected as directory-level boundaries — but "boundary" here means the design document's ORGANIZATIONAL identity (e.g. a `be-system-{name}.md` document's concern), NOT a leaf path name. The directory LEAF is the member's own name — an application's identity, a shared library's purpose — under monorepo conventions (`apps/<name>`, `packages/<name>`); it is NOT the document's filename token, and never carries the `be-` prefix from the filename into a directory path.
 - ✅ Framework wiring and architecture boundaries are complementary; neither substitutes for the other
 - ✅ For API specifications, always check Layer 0 first
 - ❌ Don't let architecture preferences override API specifications
