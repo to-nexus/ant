@@ -20,6 +20,7 @@ import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import type { ArchitectGraphState } from '../../../state';
 import type { CodeTask } from '../../../../../types/task';
 import { isVerifyModeActive } from '../../../tasks/_shared/verify';
+import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import { dispatchBatchSplit } from './queueDispatch';
 import { tracePlanFinalize, type PlanEmptyOrigin } from './trace';
 
@@ -78,7 +79,13 @@ export function finalizePlanOutcome(
   //
   // verify-mode는 isRemediationTask 채널로 trace에 별도로 보존된다.
   const verifyMode = isVerifyModeActive(state);
-  const noOpComplete = planText === '' && !batchSplitOccurred;
+  // doc renders its output in execute (docgen) and produces no plan body —
+  // it must NOT be caught by the empty-`planText` no-op sentinel (which is a
+  // tool-loop "nothing to fix" signal). `skipPlanRunExecute` declares this;
+  // the type stays blind here (R1) — we read the published flag, not a literal.
+  const skipPlanRunExecute =
+    hooksForTaskType(nextTask.type)?.plan?.skipPlanRunExecute === true;
+  const noOpComplete = planText === '' && !batchSplitOccurred && !skipPlanRunExecute;
   const isDone = batchSplitOccurred || noOpComplete;
 
   tracePlanFinalize(state, nextTask, {

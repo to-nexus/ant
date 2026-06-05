@@ -19,6 +19,13 @@
  * 새 contract: planText === '' && !batchSplitOccurred → isDone:true,
  *             task.type 무관 / verify-mode 진입 무관.
  *
+ * 단 하나의 명시적 예외 (`ancient-eagle`): plan body 를 생산하지 않고 execute
+ * 에서 산출물을 직접 렌더하는 task type (doc → docgen) 은 `plan.skipPlanRunExecute:
+ * true` 를 선언한다. 이 type 의 빈 planText 는 no-op 완료가 아니라 "plan body
+ * 없음 — execute 로 진행" 신호이므로 isDone:false 로 execute 라우팅된다. finalize
+ * 는 type 리터럴을 보지 않고 published 플래그만 읽는다 (R1). explain 은 execute
+ * 변종이 없어 이 플래그를 set 하지 않는다 (별도 latent 과제).
+ *
  * verify-mode 여부는 `isRemediationTask` trace 채널로 별도로 보존된다 (
  * downstream 노드의 task-type 분기에는 영향 없음).
  */
@@ -142,6 +149,28 @@ describe('finalizePlanOutcome — empty-plan sentinel 게이트 (solar-coming-bo
     });
 
     expect(result.llmResponse?.done).toBe(true);
+  });
+
+  it('doc 태스크 (skipPlanRunExecute) + 빈 planText → isDone:false, execute로 라우팅 (ancient-eagle)', () => {
+    // doc 은 plan body 를 생산하지 않고 docgen execute 에서 README/docs 를
+    // 직접 렌더한다. 빈 planText 가 no-op 완료로 오판되면 execute(docgen)에
+    // 진입조차 못 해 문서가 한 줄도 안 써진다 (관측된 결함). skipPlanRunExecute
+    // 플래그가 finalize 의 noOpComplete 게이트를 막아 execute 로 라우팅한다.
+    const task = makeTask({
+      id: 'doc-root',
+      type: 'doc',
+      priority: 800,
+      selfVerifyOnDone: undefined as any,
+    });
+    const state = makeState({ _verifyEntered: false, currentTask: task });
+
+    const result = finalizePlanOutcome(state, task, {
+      preSplitPlanText: '',
+      callSite: 'plan-index',
+      skipBatchSplit: true,
+    });
+
+    expect(result.llmResponse?.done).toBe(false);
   });
 
   it('non-empty planText (실제 fix plan) → isDone:false, planText 보존 (execute로 라우팅)', () => {

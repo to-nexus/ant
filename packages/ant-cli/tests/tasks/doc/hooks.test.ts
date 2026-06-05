@@ -51,14 +51,17 @@ describe('tasks/_shared/registry — doc entry', () => {
     // (and forces the author to justify it in index.ts).
     //
     // `plan` carries ONLY the R1 dispatch flags (`requiresPlanText` /
-    // `usesToolLoop`) — the SSOT replacement for the legacy
-    // `isDocTask(task)` predicate inside
+    // `usesToolLoop` / `skipPlanRunExecute`) — the SSOT replacement for the
+    // legacy `isDocTask(task)` predicate inside
     // `nodes/plan/llm/requiresPlan.ts`. No buildPrompt / extraTemplateVars
     // / variant template, since doc still flows through the generic
-    // plan base path.
+    // plan base path. `skipPlanRunExecute` tells `outcome/finalize.ts` that
+    // doc's empty plan body is NOT a no-op completion — execute (docgen)
+    // must still run to write the docs.
     expect(docBundle.plan).toEqual({
       requiresPlanText: false,
       usesToolLoop: false,
+      skipPlanRunExecute: true,
     });
     expect(docBundle.decompose).toBeUndefined();
     expect(docBundle.check).toBeUndefined();

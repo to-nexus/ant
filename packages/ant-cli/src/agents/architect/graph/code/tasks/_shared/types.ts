@@ -175,6 +175,23 @@ export interface TaskPlanHook {
    */
   usesToolLoop?: boolean;
   /**
+   * Skip plan-text generation but STILL route to execute (do NOT treat the
+   * empty plan as a no-op completion). Default `false`.
+   *
+   * The empty-`planText` "no-op complete" sentinel in `outcome/finalize.ts`
+   * originates from the plan↔tool loop emitting a parseable no-op JSON
+   * (verification / Tier-2 self-verify: "nothing left to fix" ⇒ done). A
+   * task type whose plan phase produces no body precisely because it renders
+   * its output directly in execute (doc → docgen narrative) must NOT be
+   * caught by that sentinel — it has real execute work to run.
+   *
+   * Set `true` ONLY for types that combine `requiresPlanText:false +
+   * usesToolLoop:false` AND own an execute hook. `explain` is intentionally
+   * NOT set here: it has no execute variant, so routing it to execute would
+   * fall back to the default code-execution rules (see plan §ancient-eagle).
+   */
+  skipPlanRunExecute?: boolean;
+  /**
    * When `task.exclusive === true`, does this task type activate the
    * paths-only RAG fast path? Verification publishes `true` so its plan
    * loads only config files + entry points (source surface is the build
