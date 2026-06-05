@@ -37,6 +37,7 @@ import {
   describeInjection,
 } from '../../../../utils/commandInject';
 import { shouldSkipInstall } from './invalidationScope';
+import { capTestRunnerConcurrency, buildSpawnEnv } from './commandResourceLimits';
 import { enforceManifestPinPolicyForInstall } from './manifestPinPolicy';
 import { checkOrchestratorPortSafeguard } from '../runCommandSafeguards';
 import { detectCacheReplay } from '../../../architect/graph/code/tasks/_shared/verify/cacheReplay';
@@ -475,7 +476,10 @@ async function executeCommandLogic(
   ctx: ToolExecutionContext,
   args: { command: string; working_directory?: string; keep_running?: boolean; oneshot?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
-  const { command, working_directory, keep_running, oneshot, verifies } = args;
+  const { working_directory, keep_running, oneshot, verifies } = args;
+  // `command` is reassigned once below to apply test-runner concurrency caps;
+  // all downstream uses (cardId, classification, spawn) see the capped form.
+  let command = args.command;
   // Mutually exclusive intent flags: keep_running ("long-running server, leave
   // alive") and oneshot ("must exit after output"). When both are set, prefer
   // keep_running so the server contract is preserved.
@@ -516,6 +520,15 @@ async function executeCommandLogic(
     );
   }
 
+  // Bound test-runner concurrency at the spawn boundary so an unbounded
+  // multi-package `vitest run` cannot exhaust the pod and stall the worker.
+  // No-op for non-test commands. See commandResourceLimits.ts (RCA: worker_stalled).
+  const cappedCommand = capTestRunnerConcurrency(command);
+  if (cappedCommand !== command) {
+    console.log(`   🧵 [RunCommand] Capped test-runner concurrency: ${cappedCommand}`);
+    command = cappedCommand;
+  }
+
   const featureRootPath = fileSystem.getRootPath();
 
   // Bare-install skip guard — unified with plan-node `recomputeInstallNeeded`
@@ -535,7 +548,9 @@ async function executeCommandLogic(
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
   const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
-  const installEnv = (isInstallCommand && !hasShellOperators) ? { CI: 'true' } : undefined;
+  // CI=true (non-install, or install w/o shell operators) + opt-in NODE_OPTIONS
+  // heap cap. See commandResourceLimits.ts.
+  const spawnEnv = buildSpawnEnv({ isInstallCommand, hasShellOperators });
 
   const projectPath = featureRootPath;
   refreshGoPrivateEnv(command, projectPath);
@@ -654,7 +669,7 @@ async function executeCommandLogic(
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
       signal: controller.signal,
-      env: installEnv,
+      env: spawnEnv,
       onStdout: (chunk: string) => {
         streamedStdout += chunk;
         console.log(chunk);
