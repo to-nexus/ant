@@ -162,17 +162,19 @@ export interface PhaseTokenUsage {
 // Three orthogonal observers (see `AGENTS.md` "Three-Axis Task Modeling
 // SSOT"):
 //   - `task.type`     — LLM observer: "what to do" (action mode)
-//   - `task.band`     — Orchestrator observer: scheduling sub-classification,
-//                       type-bound to FeatureTask (foundation/integration/
-//                       undefined). Other types' scheduling role is already
-//                       fully expressed by their `type` alone.
+//   - `task.band`     — Orchestrator observer: scheduling sub-classification
+//                       by dependency position. On FeatureTask: foundation /
+//                       platform / integration / undefined. On SetupTask:
+//                       'root' (project/framework/workspace-level setup that
+//                       precedes every package setup) / undefined (a package
+//                       setup that owns only its own member). Other types'
+//                       scheduling role is fully expressed by their `type`.
 //   - `task.priority` — TaskQueue observer: integer sort key. Semantic
 //                       comparison is BANNED outside the decompose
 //                       priority→band mapping site.
 
 /**
- * Scheduling-axis sub-classification. Type-bound to {@link FeatureTask} —
- * other types do NOT carry band (their `type` alone determines scheduling).
+ * Feature-scheduling bands. Carried by {@link FeatureTask} only.
  *
  *   - `'foundation'`  — shared types / interfaces / pure contracts. Decompose
  *                       maps priority band [SHARED_FOUNDATION, FOUNDATION_MAX)
@@ -197,7 +199,34 @@ export interface PhaseTokenUsage {
  * `undefined` = an ordinary feature task (the common case) — a CONSUMER of
  * foundation contracts and platform services.
  */
-export type TaskBand = 'foundation' | 'platform' | 'integration';
+export type FeatureBand = 'foundation' | 'platform' | 'integration';
+
+/**
+ * Setup-scheduling band. Carried by {@link SetupTask} only.
+ *
+ *   - `'root'`  — project/framework/workspace-level setup. The SOLE owner of
+ *                 root-level artifacts (in a monorepo: workspace manifest +
+ *                 member glob + root tsconfig base + .gitignore + workspace
+ *                 infra; in a monolith: the lone package.json + tooling
+ *                 config). It creates NO member directory or member name.
+ *                 Exactly one per job, at `priority === SETUP_PROJECT` (the
+ *                 lowest priority → dequeues first). Activates the
+ *                 root-setup-first ordering for every package setup.
+ *
+ * `undefined` = a package/member setup — owns exactly ONE member fully (its
+ * directory + manifest/name + source skeleton). In a monolith, the single
+ * package's setup (owns only the `src/` skeleton; the lone manifest is the
+ * `'root'` band's).
+ */
+export type SetupBand = 'root';
+
+/**
+ * Union of all scheduling bands. `deriveBandFromPriority` (the single
+ * priority→band site) returns this; each task variant narrows to the bands
+ * legal for its `type` ({@link FeatureBand} for feature, {@link SetupBand}
+ * for setup).
+ */
+export type TaskBand = FeatureBand | SetupBand;
 
 interface BaseTaskCommon {
   id: string;
@@ -253,9 +282,9 @@ interface BaseTaskCommon {
   supersededBy?: string[];
 }
 
-export type FeatureTask       = BaseTaskCommon & { type: 'feature'; band?: TaskBand };
+export type FeatureTask       = BaseTaskCommon & { type: 'feature'; band?: FeatureBand };
 export type ErrorTask         = BaseTaskCommon & { type: 'error' };
-export type SetupTask         = BaseTaskCommon & { type: 'setup' };
+export type SetupTask         = BaseTaskCommon & { type: 'setup'; band?: SetupBand };
 export type UiTask            = BaseTaskCommon & { type: 'ui' };
 export type DesignSystemTask  = BaseTaskCommon & { type: 'design-system' };
 export type VerificationTask  = BaseTaskCommon & { type: 'verification' };
@@ -264,10 +293,13 @@ export type DocTask           = BaseTaskCommon & { type: 'doc' };
 export type ExplainTask       = BaseTaskCommon & { type: 'explain' };
 
 /**
- * Discriminated union over `type`. Compile-time gate prevents `band` from
- * appearing on non-feature variants — narrowing `task.type === 'verification'`
- * proves no `band` field. The decompose priority→band mapping site is the
- * one location that may write `band` (only on feature tasks).
+ * Discriminated union over `type`. Compile-time gate keeps `band` off every
+ * variant except feature (FeatureBand) and setup (SetupBand=`'root'`):
+ * narrowing `task.type === 'verification'` proves no `band` field, and a
+ * feature task can never carry `'root'` nor a setup task `'foundation'`. The
+ * decompose priority→band mapping site (`deriveBandFromPriority`) is the one
+ * location that writes `band` (feature priorities → feature bands;
+ * `SETUP_PROJECT` → `'root'`).
  */
 export type BaseTask =
   | FeatureTask
