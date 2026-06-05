@@ -2,22 +2,26 @@
  * commandResourceLimits — bound the resource footprint of agent-issued
  * subprocess commands at the command-execution boundary.
  *
- * Why this exists (RCA: `level-housing-kneel` worker_stalled): a verification
- * task ran a multi-package `vitest run`. In a container, vitest/jest size their
- * worker pool from `os.cpus()` (host core count, cgroup-unaware), so the pool
- * over-spawns and exhausts the pod's memory + CPU. That freezes BOTH the
- * job-runner child (its run_command watchdog) and the parent ant-job worker
- * (its BullMQ lock renewal), so the only liveness backstop — the 5-minute lock
- * — expires and BullMQ flags the worker as crashed/stalled.
+ * Why (RCA: `level-housing-kneel` worker_stalled): in a cgroup-limited pod a
+ * verification task ran a multi-package `vitest`. Vitest sizes its pool from
+ * `os.availableParallelism()` (cpuset, NOT the CFS quota) and the heap was
+ * unbounded, so the pod thrashed/OOMed and starved the JobWorker parent's lock
+ * renewal → `worker_stalled`. The earlier string-rewrite fix (`--maxWorkers=2`
+ * appended to the LAST shell segment) silently no-op'd on the heavy commands
+ * because the agent pipes test output (`... | tail -80`) — the last segment was
+ * `tail`, not the runner.
  *
- * The durable fix bounds concurrency where the command is spawned, regardless
- * of task type (R1-safe — no task.type branches):
- *   1. (primary) cap test-runner worker count via arg forwarding.
- *   2. (backstop, opt-in) per-process V8 heap cap via NODE_OPTIONS.
- *   3. (hygiene) CI=true for non-install commands.
+ * The fix hands the runner the pod's TRUE CPU count (cgroup quota, via
+ * cgroupLimits.ts) instead of the host core count it would otherwise read, in a
+ * version-MECE way:
+ *   - vitest 2.x → VITEST_MAX/MIN_FORKS/THREADS env (shape-proof: inherited
+ *     regardless of pipes/wrappers/runner);
+ *   - vitest 4 (ignores pool env) → `appendVitestMaxWorkers`, a pipe-AWARE CLI
+ *     booster that injects `--maxWorkers` into the runner's OWN segment;
+ *   - hygiene: CI=true for non-install commands.
  */
 
-const DEFAULT_TEST_MAX_WORKERS = 2;
+export { deriveTestWorkers, logResourceCapsOnce, readCgroupCpuLimit } from '../../../../periphery/system/cgroupLimits';
 
 /** Already-present concurrency/pool flags we must not double-inject or override. */
 const EXISTING_WORKER_FLAG_RE =
@@ -28,67 +32,66 @@ const EXISTING_WORKER_FLAG_RE =
 const DIRECT_TEST_RUNNER_RE = /(?:^|\s)(?:vitest|jest)(?:\s|$)/;
 
 /** Package-manager test script: `pnpm test`, `npm run test`, `pnpm -r test`, … */
-const WRAPPER_TEST_RE =
-  /(?:^|\s)(?:npm|pnpm|yarn)\s+(?:[^\s&|;]+\s+)*?(?:run\s+)?test\b/;
+const WRAPPER_TEST_RE = /(?:^|\s)(?:npm|pnpm|yarn)\s+(?:[^\s&|;]+\s+)*?(?:run\s+)?test\b/;
 
-/** Runners that reject `--maxWorkers` (playwright uses `--workers`, etc.). When
- *  one is named in the command we must not inject — covers `pnpm playwright test`. */
+/** Runners that reject `--maxWorkers` (playwright uses `--workers`, etc.). */
 const INCOMPATIBLE_RUNNER_RE = /\b(?:playwright|cypress|mocha|ava|tape|uvu)\b/;
 
-/** Resolve the configured worker cap. `0` (explicit) disables capping. */
-export function resolveTestMaxWorkers(
-  raw: string | undefined = process.env.ANT_CMD_TEST_MAX_WORKERS,
-): number {
-  if (raw === undefined) return DEFAULT_TEST_MAX_WORKERS;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 0) return DEFAULT_TEST_MAX_WORKERS;
-  return n; // 0 → disabled
-}
+/** Split into [segment, separator, segment, …] preserving separators so the
+ *  command can be rebuilt verbatim after injecting into one segment. */
+const SHELL_SEGMENT_SPLIT_RE = /(\s*(?:&&|\|\||\||;)\s*)/;
 
 /**
- * Cap a vitest/jest worker pool by appending `--maxWorkers=<N>`. Only the last
- * shell segment is inspected, so `cd x && pnpm test` is capped but a runner that
- * is not last (`pnpm test && echo`) is left untouched (conservative). No-op on:
- * existing worker/pool flag, incompatible runner, N=0, or no runner detected.
- * Direct runners get the flag verbatim; wrappers get it forwarded after `--`.
+ * Pipe-AWARE concurrency cap: inject `--maxWorkers=<n>` into the shell segment
+ * that actually invokes vitest/jest, wherever it sits in a pipeline. Fixes the
+ * old last-segment-only bypass (`pnpm test 2>&1 | tail -80` is now capped).
+ * No-op on: n<=0, an existing worker/pool flag, an incompatible runner, or no
+ * runner segment. Direct runners get the flag verbatim; package-manager wrappers
+ * get it forwarded after `--`.
  */
-export function capTestRunnerConcurrency(
-  command: string,
-  maxWorkers: number = resolveTestMaxWorkers(),
-): string {
-  if (maxWorkers <= 0) return command;
+export function appendVitestMaxWorkers(command: string, n: number): string {
+  if (n <= 0) return command;
   if (EXISTING_WORKER_FLAG_RE.test(command)) return command;
   if (INCOMPATIBLE_RUNNER_RE.test(command)) return command;
 
-  // Inspect only the final segment so we don't append past a trailing command.
-  const segments = command.split(/&&|\|\|?|;/);
-  const lastSegment = segments[segments.length - 1]?.trim() ?? '';
-  if (!lastSegment) return command;
-
-  const isWrapper = WRAPPER_TEST_RE.test(lastSegment);
-  const isDirect = !isWrapper && DIRECT_TEST_RUNNER_RE.test(lastSegment);
-  if (!isWrapper && !isDirect) return command;
-
-  if (isWrapper) {
-    // Forward into the underlying script. Reuse an existing `--` separator if
-    // the command already forwards args, otherwise introduce one.
-    const sep = /\s--(?:\s|$)/.test(command) ? '' : ' --';
-    return `${command}${sep} --maxWorkers=${maxWorkers}`;
+  const parts = command.split(SHELL_SEGMENT_SPLIT_RE);
+  // Even indices are segments, odd indices are separators.
+  for (let i = 0; i < parts.length; i += 2) {
+    const injected = injectIntoSegment(parts[i], n);
+    if (injected !== null) {
+      parts[i] = injected;
+      return parts.join('');
+    }
   }
-  return `${command} --maxWorkers=${maxWorkers}`;
+  return command;
+}
+
+/** Inject the cap into one segment, or return null if it holds no test runner. */
+function injectIntoSegment(segment: string, n: number): string | null {
+  const isWrapper = WRAPPER_TEST_RE.test(segment);
+  const isDirect = !isWrapper && DIRECT_TEST_RUNNER_RE.test(segment);
+  if (!isWrapper && !isDirect) return null;
+
+  // Wrappers need `-- ` to forward into the underlying script (reuse an existing
+  // separator). Append before any trailing whitespace so rejoin stays clean.
+  const sep = isWrapper ? (/\s--(?:\s|$)/.test(segment) ? ' ' : ' -- ') : ' ';
+  const append = `${sep}--maxWorkers=${n}`;
+  return segment.replace(/\s*$/, (ws) => `${append}${ws}`);
 }
 
 /**
- * Extra spawn env, or undefined when nothing applies:
+ * Spawn env (or undefined). Single SSOT for the env passed to every command:
  * - CI=true for non-install commands (and installs without shell operators —
  *   preserving prior install-only behavior). Keeps runners non-interactive.
- * - NODE_OPTIONS heap cap, opt-in via ANT_CMD_MAX_OLD_SPACE_MB: a per-process
- *   backstop, APPENDED to inherited NODE_OPTIONS (skipped if a cap already set).
- *   Opt-in so a low cap can't silently fail a large single build — worker-count
- *   capping is the primary OOM lever.
+ * - VITEST_*_FORKS/THREADS = `workers` — shape-proof worker cap for vitest 2.x
+ *   (inherited regardless of command shape; harmless no-op on v4). `0` disables.
+ * - NODE_OPTIONS heap cap — opt-in only via `ANT_CMD_MAX_OLD_SPACE_MB` (no cgroup
+ *   memory read), an escape hatch for pods with an abnormal CPU/memory ratio.
+ *   Appended to inherited NODE_OPTIONS, skipped if a cap is already set.
  */
 export function buildSpawnEnv(
   opts: { isInstallCommand: boolean; hasShellOperators: boolean },
+  workers: number,
   env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> | undefined {
   const extra: Record<string, string> = {};
@@ -97,14 +100,19 @@ export function buildSpawnEnv(
     extra.CI = 'true';
   }
 
-  const rawMb = env.ANT_CMD_MAX_OLD_SPACE_MB;
-  const mb = rawMb !== undefined ? Number.parseInt(rawMb, 10) : 0;
+  if (workers > 0) {
+    const w = String(workers);
+    extra.VITEST_MAX_FORKS = w;
+    extra.VITEST_MIN_FORKS = w;
+    extra.VITEST_MAX_THREADS = w;
+    extra.VITEST_MIN_THREADS = w;
+  }
+
+  const mb = Number.parseInt(env.ANT_CMD_MAX_OLD_SPACE_MB ?? '', 10);
   if (Number.isFinite(mb) && mb > 0) {
     const inherited = env.NODE_OPTIONS ?? '';
     if (!/--max-old-space-size\b/.test(inherited)) {
-      extra.NODE_OPTIONS = [inherited, `--max-old-space-size=${mb}`]
-        .filter(Boolean)
-        .join(' ');
+      extra.NODE_OPTIONS = [inherited, `--max-old-space-size=${mb}`].filter(Boolean).join(' ');
     }
   }
 
