@@ -24,12 +24,18 @@ import { getPendingChoice } from '@/domain/store/selectors/chat';
  * react-virtuoso's alignToBottom mode uses internal CSS (e.g. display:table)
  * that can interfere with native text drag-selection. Explicitly setting
  * userSelect: 'text' on the scroller overrides this.
+ *
+ * overflowX:'hidden' closes the horizontal boundary of the chat's sole
+ * scroll surface. Virtuoso injects overflow-y:auto, and per CSS the other
+ * axis (left visible) then computes to auto — so any sub-pixel child
+ * overflow would surface as a panel-wide horizontal scrollbar. Intended
+ * horizontal scroll (wide tables / code) is handled by inner wrappers.
  */
 const ScrollerWithTextSelect = forwardRef<HTMLDivElement, React.ComponentPropsWithRef<'div'>>(
   ({ style, ...props }, ref) => (
     <div
       ref={ref}
-      style={{ ...style, userSelect: 'text', WebkitUserSelect: 'text' }}
+      style={{ ...style, overflowX: 'hidden', userSelect: 'text', WebkitUserSelect: 'text' }}
       {...props}
     />
   )
