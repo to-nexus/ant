@@ -585,6 +585,16 @@ export function createJobRoutes(deps: {
     // is best-effort and the pub/sub path is primary.
     await deps.stateStore.markUserStopped(jobId);
 
+    // Poison the job BEFORE the worker can act on the STOP signal, so the
+    // child's onCheckpoint (code/graph.ts, design/session/checkpoint.ts) skips
+    // its late session write during the SIGTERM grace and cannot resurrect
+    // unmarked runningTasks over cleanupJobState's projection — the root cause
+    // of stopped tasks staying "in-progress" on refresh. Mirrors the
+    // stalled/crash path (JobWorker / BullMQJobQueue). Released on resume
+    // (this router's /resume handler) and pauseJob. Best-effort: a Redis blip
+    // must not delay the kill.
+    await deps.stateStore.acquireLock(`ant:job-poisoned:${jobId}`, 600).catch(() => false);
+
     // Publish STOP signal — primary mechanism for the worker to kill its child.
     await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
       jobId,

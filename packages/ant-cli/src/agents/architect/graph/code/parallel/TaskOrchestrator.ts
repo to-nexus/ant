@@ -970,6 +970,14 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   private broadcastKanban(): void {
+    // Once interrupted, the API-server's session-mode final broadcast is the
+    // authoritative terminal state — every in-flight task is projected to
+    // `todo` with `interrupted:true`. Any further LIVE broadcast here (the
+    // handleInterruption emit + worker wind-down emits) would re-show those
+    // tasks in `inProgress` and clobber the board back to "in-progress".
+    // Suppress for ALL interruption reasons (user_stopped / stalled / drain).
+    if (this.hasInterruptedTasks) return;
+
     const currentTasks = Array.from(this.runningTasks.values());
     const queue = this.taskQueue.getAll();
 
