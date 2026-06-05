@@ -612,6 +612,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/symbol-grounding": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/system-design-guide": {
     "sources": [
       "partial-ref",

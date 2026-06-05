@@ -12,6 +12,8 @@
 
 {{> jobs/code/base/injections/batch-gather}}
 
+{{> jobs/code/base/injections/symbol-grounding}}
+
 **Error apply phase specific**: Emit every `edit_file` for the remediation plan as separate tool_use blocks within ONE response. Sequential per-file fixing across multiple turns is the failure mode — the orchestrator runs all edits as one batch in a single turn.
 
 ---

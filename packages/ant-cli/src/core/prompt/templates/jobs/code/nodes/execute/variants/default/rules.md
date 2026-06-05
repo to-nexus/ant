@@ -56,7 +56,9 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 ────────────────────────────────────────────────────────────────────────────────
 ### 1-1. Plan Application & Refinement Authority
 
-**Principle**: The plan is a sketch of WHAT and WHERE; current codebase files are the SSOT for HOW the citations realize. The plan typically points you at the defining file via an inline path in the citing entry's `purpose` / `changes`. Read that file to verify the exact signature and call shape before writing the call site — if plan prose and defining file disagree on shape, the defining file wins. If the plan cites an identifier without a defining-file path, locate the file via `search_code` / `list_files` before writing the call; do NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted from the defining file's signature. Plan's structural decisions (decomposition, file allocation, intent) remain frozen; your refinement authority is limited to the realization axis (signatures, call shapes, type shapes, conventions discovered while reading).
+**Principle**: The plan is a sketch of WHAT and WHERE; current codebase files are the SSOT for HOW the citations realize. The plan typically points you at the defining file via an inline path in the citing entry's `purpose` / `changes`; where it does not, locate the file via `search_code` / `list_files`. Ground every symbol reference in its defining source per the rule below before writing the call site or the value. Plan's structural decisions (decomposition, file allocation, intent) remain frozen; your refinement authority is limited to the realization axis (signatures, call shapes, type shapes, conventions discovered while reading).
+
+{{> jobs/code/base/injections/symbol-grounding}}
 
 **Constraint — Solution direction is FROZEN**:
 

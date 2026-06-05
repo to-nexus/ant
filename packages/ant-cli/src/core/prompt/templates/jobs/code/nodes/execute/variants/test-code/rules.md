@@ -8,6 +8,8 @@
 
 {{> jobs/code/base/injections/batch-execution}}
 
+{{> jobs/code/base/injections/symbol-grounding}}
+
 ## MANDATORY: Observe Before Writing
 
 **Constraint**: Your FIRST actions MUST be observing the codebase structure and source code.
