@@ -19,6 +19,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isVerifyModeActive } from '../../tasks/_shared/verify';
+import { allowsPersistentProcesses } from '../../tasks/_shared/verify/persistentProcessGate';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 const registry = createCodeToolRegistry();
@@ -94,6 +95,13 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // guards use this to differentiate apply-phase callers from
       // verification cycles (Go build allow-list, etc.).
       verifyModeActive: isVerifyModeActive(state),
+      // Persistent-process / http_request gate — SSOT predicate (error task or
+      // runtime-error verification). Defence-in-depth: the http_request handler
+      // hard-rejects when false, mirroring the tool selectors that hide it.
+      allowPersistentProcesses: allowsPersistentProcesses(state),
+      // Read-only snapshot so the http_request handler can auto-target the
+      // most-recent keep_running server's port without importing graph state.
+      runningServers: state.runningServers,
       retries: state.retries,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,

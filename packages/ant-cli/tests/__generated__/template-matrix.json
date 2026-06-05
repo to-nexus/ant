@@ -672,6 +672,11 @@
       "render-call"
     ]
   },
+  "jobs/code/base/tools/http_request": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/code/base/tools/run_command": {
     "sources": [
       "render-call"

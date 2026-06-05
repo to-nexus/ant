@@ -155,7 +155,7 @@ export const ARCHITECT_TOOLS = {
         },
         keep_running: {
           type: 'boolean',
-          description: 'For dev/preview/watch servers (next dev, vite dev, npm run start, cargo run, go run). Default false: spawn → startup window (5s normal / 30s compile-run) → 1 HTTP probe → auto-kill. Set true when you need to probe multiple paths or query the server across multiple run_command rounds; you MUST explicitly kill the PID returned in this tool result before <done>. Do NOT background via `&` / `nohup` — use this flag instead so the runtime tracks the PID and can act as a safety net. See persistent-process-policy injection.',
+          description: 'For dev/preview/watch servers (next dev, vite dev, npm run start, cargo run, go run). Default false: spawn → startup window (5s normal / 30s compile-run) → 1 HTTP probe of "/" → auto-kill. Set true to keep the server alive across rounds; the result reports server_pid + server_url, and you then use the `http_request` tool to verify specific routes/methods. You MUST explicitly kill the server_pid before <done>. Do NOT background via `&` / `nohup` — use this flag so the runtime tracks the PID/port and can act as a safety net. See persistent-process-policy injection.',
         },
         oneshot: {
           type: 'boolean',
@@ -170,7 +170,43 @@ export const ARCHITECT_TOOLS = {
       required: ['command'],
     },
   },
-  
+
+  http_request: {
+    name: 'http_request',
+    description: 'Make an HTTP request to a running dev server route. See tool description.', // Loaded from template
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Absolute URL, OR a path beginning with "/" (e.g. "/api/auth/callback?code=x") which is resolved against the most-recently-started keep_running dev server. Required.',
+        },
+        method: {
+          type: 'string',
+          enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
+          description: 'HTTP method (default GET).',
+        },
+        headers: {
+          type: 'object' as const,
+          description: 'Request headers as a string→string map (e.g. {"content-type":"application/json"}).',
+        },
+        body: {
+          type: 'string',
+          description: 'Raw request body (e.g. a JSON string). Omit for GET/HEAD.',
+        },
+        port: {
+          type: 'number',
+          description: 'Override the auto-resolved dev-server port (only when url is a path).',
+        },
+        follow_redirects: {
+          type: 'boolean',
+          description: 'Follow 3xx Location chains (default false — the redirect chain is returned as facts so you can judge).',
+        },
+      },
+      required: ['url'],
+    },
+  },
+
   search_reference_code: {
     name: 'search_reference_code',
     description: 'Search reference project using semantic search (vector DB). This is the ONLY way to access reference project code since you don\'t know the file paths. Describe what you need and relevant files will be returned with their content.',
@@ -327,7 +363,7 @@ export const ARCHITECT_TOOLS = {
 /**
  * Tools that have template files for their descriptions
  */
-const TOOLS_WITH_TEMPLATES = ['run_command'] as const;
+const TOOLS_WITH_TEMPLATES = ['run_command', 'http_request'] as const;
 
 /**
  * Get tools by names

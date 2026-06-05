@@ -149,6 +149,42 @@ function applyInstallLocalityGuard(
 }
 
 /**
+ * Manual dev-server backgrounding guard.
+ *
+ * When persistent processes are unlocked (error / runtime-error verify), the
+ * LLM should start dev servers via `run_command keep_running:true` (the runtime
+ * tracks the PID + port and reaps survivors) and verify routes via the
+ * `http_request` tool — NOT by shell-backgrounding (`&` / `nohup` / `disown` /
+ * `setsid`), which orphans the process (no PID tracking, http_probe skipped) and
+ * is the exact pattern that stalled the `dark-crafting-adder` cycle.
+ *
+ * Narrow by construction: fires only when BOTH a dev-server token and a
+ * backgrounding token are present, so legitimate `cmd & wait` pipelines and
+ * non-server background jobs are untouched.
+ */
+const DEV_SERVER_TOKEN = /\b(next|vite|nuxt|remix|astro)\b[^\n]*\bdev\b|\b(npm|pnpm|yarn|bun)\b[^\n]*\b(dev|start|serve|preview)\b/;
+const BACKGROUNDING_TOKEN = /(^|[^&])&(?!&)|\bnohup\b|\bdisown\b|\bsetsid\b/;
+
+function applyDevBackgroundingGuard(
+  ctx: ToolExecutionContext,
+  args: { command: string },
+): ToolResult | null {
+  if (ctx.allowPersistentProcesses !== true) return null;
+  const { command } = args;
+  if (!DEV_SERVER_TOKEN.test(command) || !BACKGROUNDING_TOKEN.test(command)) return null;
+  console.warn(`   ⛔ [RunCommand] Blocked manual dev-server backgrounding: ${command}`);
+  return makeRejection(
+    command,
+    `⛔ BLOCKED: ${command}\n\n` +
+    `Do NOT background a dev server with \`&\` / \`nohup\` / \`disown\` / \`setsid\` — it orphans the ` +
+    `process (the runtime can't track its PID/port and won't reap it).\n\n` +
+    `✅ Start it with \`run_command\` and \`keep_running: true\` (the result reports server_pid + ` +
+    `server_url), then verify specific routes with the \`http_request\` tool (it auto-targets the ` +
+    `running server's port). Kill server_pid before <done>.`,
+  );
+}
+
+/**
  * Apply Code-specific policy guards before executing a command.
  * Returns a ToolResult if the command is rejected, or null if it should proceed.
  */
@@ -179,6 +215,11 @@ export function applyCodeCommandPolicy(
   // of the lockfile-race message when both apply.
   const localityRejection = applyInstallLocalityGuard(ctx, args);
   if (localityRejection) return localityRejection;
+
+  // Manual dev-server backgrounding guard — redirect to keep_running +
+  // http_request. Fires only where persistent processes are unlocked.
+  const backgroundingRejection = applyDevBackgroundingGuard(ctx, args);
+  if (backgroundingRejection) return backgroundingRejection;
 
   // Task-type-specific guards.
   return hooksForTaskType(taskType as TaskType | undefined)?.command?.guard(ctx, args as any) ?? null;

@@ -564,6 +564,7 @@ export interface ArchitectGraphState extends TriageableState {
     pid: number;
     command: string;
     workingDir: string;
+    port?: number;
     startedAt: number;
   }>;
 

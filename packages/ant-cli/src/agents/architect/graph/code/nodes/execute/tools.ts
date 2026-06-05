@@ -21,6 +21,7 @@ import { getToolsByNamesWithTemplates, TOOL_SETS, ToolName } from "../../../../.
 import { isUiTask } from "../../tasks/ui/model/is";
 import { isFeatureTask } from "../../tasks/feature/model/is";
 import { isDesignSystemTask } from "../../tasks/design-system/model/is";
+import { allowsPersistentProcesses } from "../../tasks/_shared/verify/persistentProcessGate";
 
 /**
  * Remove `fileKey` from a Figma tool schema so the LLM doesn't need to supply it.
@@ -61,6 +62,13 @@ export async function getTools(state: ArchitectGraphState): Promise<ToolDefiniti
 
   if (hasReferences) {
     toolNames.push(ToolName.SEARCH_REFERENCE);
+  }
+
+  // Runtime route-verification tool — only when persistent processes are
+  // unlocked (error / runtime-error verify). R1: gate via the shared SSOT
+  // predicate, never `task.type`.
+  if (allowsPersistentProcesses(state)) {
+    toolNames.push(ToolName.HTTP_REQUEST);
   }
 
   // Figma MCP tools surface iff the RAC's UiSource resolved to 'figma'.

@@ -208,7 +208,7 @@ const TEMPLATE_VAR_EXPANSIONS: Record<string, string[]> = {
   lang: ['typescript', 'go'],
   fallbackLanguage: ['typescript', 'go'],
   primaryLang: ['typescript', 'go'],
-  'tool.name': ['run_command'],
+  'tool.name': ['run_command', 'http_request'],
 };
 
 function collectRenderCallPaths(tsFiles: string[]): Set<string> {

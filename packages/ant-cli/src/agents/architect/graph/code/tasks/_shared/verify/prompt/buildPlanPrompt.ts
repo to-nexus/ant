@@ -19,6 +19,7 @@ import { TEMPLATE_PATHS } from '../../../../../../../../core/prompt/builder/temp
 import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { renderPriorErrorTasks } from './priorErrorTasks';
 import { containsRuntimeErrorPattern } from '../../../../../../../../core/utils/runtimeErrorPattern';
+import { allowsPersistentProcesses } from '../persistentProcessGate';
 
 /**
  * Compact verification banner. Always rendered (the absence of a banner
@@ -143,11 +144,12 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
-    // Reproducer permission gates on the same SSOT flag — persistent
-    // processes are unlocked iff this verification cycle is grounded by a
-    // user-reported runtime error (initial directive OR prior error
-    // sub-tasks present).
-    allowPersistentProcesses: hasUserRuntimeErrorContext,
+    // Reproducer permission gates on the SSOT predicate — persistent
+    // processes (and the http_request tool) are unlocked iff this is an error
+    // task OR the cycle is grounded by a user-reported runtime error (initial
+    // directive OR prior error sub-tasks). Same predicate the tool selectors +
+    // command-policy guard read, so all three never drift.
+    allowPersistentProcesses: allowsPersistentProcesses(state),
     // Conversation History Discipline gate. True iff NODE_EXECUTE is being
     // carried into messages on this reverify entry.
     hasPriorExecuteHistory,
