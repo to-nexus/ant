@@ -61,15 +61,27 @@ export interface PreviewServerOptions {
 }
 
 /**
+ * Loopback host used for the replayed upgrade `Host`/`Origin`. A dev server's
+ * cross-origin protection (Next.js `allowedDevOrigins`, Vite `allowedHosts`)
+ * trusts loopback by default, so a loopback handshake is accepted in every
+ * environment. The upstream's reachable address (a pod IP in cloud) is NOT a
+ * trusted origin and must never appear in these headers — it is used only for
+ * the TCP connect in `openRawTunnel`.
+ */
+const LOOPBACK_HOST = '127.0.0.1';
+
+/**
  * Rewrite an inbound upgrade request's raw header pairs for replay to the
- * upstream. `Host` and `Origin` are normalized to the upstream so the dev
- * server sees a same-origin handshake — otherwise cross-origin protection
- * (e.g. Next.js `allowedDevOrigins`) rejects the HMR socket. Other headers
- * pass through unchanged. Exported for unit coverage.
+ * upstream. `Host` and `Origin` are normalized to loopback so the dev server
+ * sees a same-origin handshake — otherwise cross-origin protection (e.g.
+ * Next.js `allowedDevOrigins`) rejects the HMR socket. Deliberately loopback
+ * and NOT the connect host: in cloud the upstream is reached via a pod IP,
+ * which Next.js does not trust, so stamping it here is exactly what blocked
+ * HMR in preview while working locally (where the connect host was loopback).
+ * Other headers pass through unchanged. Exported for unit coverage.
  */
 export function rewriteUpgradeHeaders(
   rawHeaderPairs: readonly string[],
-  targetHost: string,
   targetPort: number,
 ): string[] {
   const rawHeaders: string[] = [];
@@ -78,9 +90,9 @@ export function rewriteUpgradeHeaders(
     const value = rawHeaderPairs[i + 1];
     const lower = key.toLowerCase();
     if (lower === 'host') {
-      rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
+      rawHeaders.push(`Host: ${LOOPBACK_HOST}:${targetPort}`);
     } else if (lower === 'origin') {
-      rawHeaders.push(`Origin: http://${targetHost}:${targetPort}`);
+      rawHeaders.push(`Origin: http://${LOOPBACK_HOST}:${targetPort}`);
     } else {
       rawHeaders.push(`${key}: ${value}`);
     }
@@ -91,7 +103,9 @@ export function rewriteUpgradeHeaders(
 /**
  * Open a raw TCP tunnel between an inbound WebSocket Upgrade and an upstream
  * dev/static server, replaying the original HTTP request with Host and Origin
- * normalized to the upstream. Shared by the preview and deploy upgrade branches.
+ * normalized to loopback. The TCP connect uses `targetHost` (a pod IP in
+ * cloud); the replayed headers do not — see `rewriteUpgradeHeaders`. Shared by
+ * the preview and deploy upgrade branches.
  */
 function openRawTunnel(
   req: IncomingMessage,
@@ -102,7 +116,7 @@ function openRawTunnel(
   targetPath: string,
 ): void {
   const proxySocket = net.connect(targetPort, targetHost, () => {
-    const rawHeaders = rewriteUpgradeHeaders(req.rawHeaders, targetHost, targetPort);
+    const rawHeaders = rewriteUpgradeHeaders(req.rawHeaders, targetPort);
 
     const upgradeReq =
       `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
