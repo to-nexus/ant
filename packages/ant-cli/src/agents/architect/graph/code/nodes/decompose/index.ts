@@ -33,7 +33,7 @@ import {
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
-import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary } from "./responseParser";
+import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, deriveBandFromPriority } from "./responseParser";
 import { computeRacScope } from "./racGate";
 import { saveAnalysisForDebug } from "./saveAnalysisText";
 import type { BaseTask, TaskType } from "@ant/shared";
@@ -688,6 +688,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       raw.stack === 'frontend' || raw.stack === 'backend' ? raw.stack : undefined;
     const exclusive = typeof raw.exclusive === 'boolean' ? raw.exclusive : undefined;
     const parallelGroup = typeof raw.parallelGroup === 'string' ? raw.parallelGroup : undefined;
+    // Three-Axis SSOT: derive `band` for streaming feature cards via the same
+    // `deriveBandFromPriority` the canonical `createTaskQueue` uses, so the band
+    // badge appears as cards stream in (not only once the final queue overwrites
+    // the board). band lives on FeatureTask only — conditional spread.
+    const band = type === 'feature' ? deriveBandFromPriority(priority) : undefined;
     const minimal: BaseTask = {
       id,
       name,
@@ -697,6 +702,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       ...(stack && { stack }),
       ...(exclusive !== undefined && { exclusive }),
       ...(parallelGroup && { parallelGroup }),
+      ...(type === 'feature' && band ? { band } : {}),
     };
     accumulatedTasks = [...accumulatedTasks, minimal];
     console.log(`📋 [Decompose] Streaming task → Kanban: ${id} (${type}, p${priority})`);
