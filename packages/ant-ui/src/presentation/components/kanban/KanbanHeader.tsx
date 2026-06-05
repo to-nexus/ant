@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleDot, Zap } from 'lucide-react';
+import { CircleDot, Zap, type LucideIcon } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage, PhaseTokenUsage } from '@/domain/models/types';
@@ -95,6 +95,102 @@ function calculateTasksWallClock(
   return merged.reduce((sum, [s, e]) => sum + (e - s), 0);
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+   Popover presentation — the elapsed-time / token badges and their detail
+   popovers share the chat "Actions CTA" glass look (ChatPanel.ActionsCTA): a
+   faint translucent tint over the surface, a tinted border, 8px radius, no
+   shadow/gradient/blur. Token = orange, time = violet (same look, hue only).
+
+   POPOVER_ACCENT is the single source for each one's color identity — trigger
+   badge, Tooltip shell, and content accents all read from one entry. `surface`
+   layers the CTA's 14% tint over an opaque `--bg-surface` so the floating
+   popover stays readable; `text`/`subtext` are the CTA's exact Tailwind text
+   classes (title / subtitle) so accent text matches the action badge in both
+   themes (darkMode = [data-theme="dark"] reaches portaled content).
+   ──────────────────────────────────────────────────────────────────────── */
+const POPOVER_ACCENT = {
+  time: {
+    surface: 'linear-gradient(oklch(from var(--violet-300) l c h / 0.14), oklch(from var(--violet-300) l c h / 0.14)), var(--bg-surface)',
+    border: 'oklch(from var(--violet-400) l c h / 0.35)',
+    text: 'text-violet-700 dark:text-violet-200',
+    subtext: 'text-violet-700/80 dark:text-violet-200/85',
+  },
+  token: {
+    surface: 'linear-gradient(oklch(from var(--orange-300) l c h / 0.14), oklch(from var(--orange-300) l c h / 0.14)), var(--bg-surface)',
+    border: 'oklch(from var(--orange-400) l c h / 0.35)',
+    text: 'text-orange-700 dark:text-orange-200',
+    subtext: 'text-orange-700/80 dark:text-orange-200/85',
+  },
+} as const;
+
+/** Header row (제목): icon + label in the accent's title text class. */
+function PopoverTitle({ icon: Icon, label, textClass }: { icon: LucideIcon; label: string; textClass: string }) {
+  return (
+    <div className={cn('flex items-center gap-1.5 text-xs font-semibold', textClass)}>
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </div>
+  );
+}
+
+/** Hairline-divided section on the tinted surface (no fill). */
+function Section({ children }: { children: ReactNode }) {
+  return (
+    <div className="pt-2 space-y-1" style={{ borderTop: '1px solid var(--border-1)' }}>
+      {children}
+    </div>
+  );
+}
+
+/** Uppercase section label (소제목). Defaults to neutral; pass accent subtext. */
+function CardLabel({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('text-[11px] font-semibold uppercase tracking-wide', className ?? 'text-[color:var(--text-2)]')}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Label/value row. Neutral rows pass labelColor/valueColor (inline CSS color).
+ * Accent rows pass `accentClass` (Tailwind text class) for both spans instead.
+ */
+function StatRow({
+  label,
+  value,
+  labelColor = 'var(--text-2)',
+  valueColor = 'var(--text-1)',
+  strong,
+  title,
+  accentClass,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  labelColor?: string;
+  valueColor?: string;
+  strong?: boolean;
+  title?: string;
+  accentClass?: string;
+}) {
+  return (
+    <div className="flex justify-between items-center gap-3 text-xs">
+      <span
+        className={cn('min-w-0 flex-1 truncate', strong && 'font-semibold', accentClass)}
+        style={accentClass ? undefined : { color: labelColor }}
+        title={title}
+      >
+        {label}
+      </span>
+      <span
+        className={cn('font-mono whitespace-nowrap shrink-0', strong && 'font-semibold', accentClass)}
+        style={accentClass ? undefined : { color: valueColor }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 interface ElapsedTimeBadgeProps {
   jobTiming?: JobTiming;
   completedTasks?: Array<{
@@ -176,133 +272,112 @@ export function ElapsedTimeBadge({
   const parallelSaved = tasksSequentialSum - tasksTotal;
   
   // Build tooltip content
+  const accent = POPOVER_ACCENT.time;
   const tooltipContent = (
     <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
-      <div className="font-semibold pb-1.5" style={{ borderBottom: '1px solid var(--border-1)', color: 'var(--text-1)' }}>
-        {t('header.timeBreakdown')}
-      </div>
+      <PopoverTitle icon={CircleDot} label={t('header.timeBreakdown')} textClass={accent.text} />
 
       {/* Total */}
-      <div className="flex justify-between items-center">
-        <span className="font-semibold" style={{ color: 'var(--text-1)' }}>{t('header.total')}</span>
-        <span className="font-mono font-semibold text-lg" style={{ color: 'var(--text-1)' }}>
-          {formattedTime}
-        </span>
+      <div className="flex justify-between items-baseline px-0.5">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>{t('header.total')}</span>
+        <span className="font-mono font-semibold text-lg" style={{ color: 'var(--text-1)' }}>{formattedTime}</span>
       </div>
 
       {/* Estimating Phase */}
-      <div className="pl-2" style={{ borderLeft: '2px solid var(--violet-500)' }}>
-        <div className="flex justify-between items-center font-semibold">
-          <span style={{ color: 'var(--text-1)' }}>{t('header.estimatingPhase')}</span>
-          <span className="font-mono" style={{ color: 'var(--text-1)' }}>
-            {isEstimatingFinalized
-              ? formatElapsedTime(estimatingTime, true)
-              : estimatingActivity?.startedAt
-                ? <LiveElapsedTime startedAt={jobTiming.startedAt} />
-                : formatElapsedTime(estimatingTime, true)
-            }
-          </span>
-        </div>
-        {/* Phase breakdown detail */}
+      <Section>
+        <StatRow
+          strong
+          accentClass={accent.subtext}
+          label={t('header.estimatingPhase')}
+          value={isEstimatingFinalized
+            ? formatElapsedTime(estimatingTime, true)
+            : estimatingActivity?.startedAt
+              ? <LiveElapsedTime startedAt={jobTiming.startedAt} />
+              : formatElapsedTime(estimatingTime, true)}
+        />
         {jobTiming.phaseBreakdown && Object.keys(jobTiming.phaseBreakdown).length > 0 && (
-          <div className="pl-2 space-y-0.5 mt-1">
+          <div className="space-y-0.5 pl-1">
             {Object.entries(jobTiming.phaseBreakdown).map(([phase, ms]) => (
-              <div key={phase} className="flex justify-between items-center text-xs">
-                <span className="capitalize" style={{ color: 'var(--text-3)' }}>• {phase}</span>
-                <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                  {formatElapsedTime(ms, true)}
-                </span>
-              </div>
+              <StatRow
+                key={phase}
+                labelColor="var(--text-3)"
+                valueColor="var(--text-3)"
+                label={<span className="capitalize">{phase}</span>}
+                value={formatElapsedTime(ms, true)}
+              />
             ))}
           </div>
         )}
-        {/* Live estimating node activity (when phase breakdown not yet available) */}
         {!isEstimatingFinalized && estimatingActivity && (
-          <div className="pl-2 mt-1">
-            <div className="flex justify-between items-center text-xs">
-              <span style={{ color: 'var(--violet-500)' }}>
-                • {estimatingActivity.label}
-              </span>
-              <span className="font-mono" style={{ color: 'var(--violet-500)' }}>
-                <LiveElapsedTime startedAt={estimatingActivity.startedAt} />
-              </span>
-            </div>
+          <div className="pl-1">
+            <StatRow
+              accentClass={accent.subtext}
+              label={estimatingActivity.label}
+              value={<LiveElapsedTime startedAt={estimatingActivity.startedAt} />}
+            />
           </div>
         )}
-      </div>
+      </Section>
 
       {/* Tasks */}
       {taskCount > 0 && (
-        <div className="pl-2" style={{ borderLeft: '2px solid var(--violet-500)' }}>
-          <div className="flex justify-between items-center font-semibold">
-            <span style={{ color: 'var(--text-1)' }}>{t('header.tasksCount', { count: taskCount })}</span>
-            <span className="font-mono" style={{ color: 'var(--text-1)' }}>
-              {formatElapsedTime(tasksTotal, true)}
-            </span>
-          </div>
-          <div className="pl-2 space-y-1 mt-1">
-            {/* In-progress tasks (real-time) */}
+        <Section>
+          <StatRow
+            strong
+            label={t('header.tasksCount', { count: taskCount })}
+            value={formatElapsedTime(tasksTotal, true)}
+          />
+          <div className="space-y-0.5 pl-1">
             {inProgressTasks?.map(task => (
-              <div key={task.id} className="flex justify-between items-center text-sm">
-                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'var(--violet-500)' }}>
-                  • {task.name}
-                </span>
-                <span className="font-mono" style={{ color: 'var(--violet-500)' }}>
-                  {task.timing?.startedAt
-                    ? <LiveElapsedTime startedAt={task.timing.startedAt} />
-                    : '0s'}
-                </span>
-              </div>
-            ))}
-            {/* Completed tasks */}
-            {completedTasks?.map((task) => (
-              <div
+              <StatRow
                 key={task.id}
-                className="flex justify-between items-center text-sm"
-              >
-                <span className="truncate max-w-[200px]" title={task.name} style={{ color: 'var(--text-2)' }}>
-                  • {task.name}
-                </span>
-                <span className="font-mono" style={{ color: 'var(--text-2)' }}>
-                  {task.timing?.elapsedTime
-                    ? formatElapsedTime(task.timing.elapsedTime, true)
-                    : '0s'}
-                </span>
-              </div>
+                title={task.name}
+                accentClass={accent.subtext}
+                label={task.name}
+                value={task.timing?.startedAt ? <LiveElapsedTime startedAt={task.timing.startedAt} /> : '0s'}
+              />
             ))}
-            {/* Parallel execution breakdown */}
+            {completedTasks?.map(task => (
+              <StatRow
+                key={task.id}
+                title={task.name}
+                labelColor="var(--text-2)"
+                valueColor="var(--text-2)"
+                label={task.name}
+                value={task.timing?.elapsedTime ? formatElapsedTime(task.timing.elapsedTime, true) : '0s'}
+              />
+            ))}
             {parallelSaved > 1000 && (
               <div className="space-y-0.5 pt-1 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
-                <div className="flex justify-between items-center text-xs">
-                  <span style={{ color: 'var(--text-3)' }}>
-                    {t('header.parallelTotal')}
-                  </span>
-                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                    {formatElapsedTime(tasksSequentialSum, true)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-semibold" style={{ color: 'var(--status-done-fg)' }}>
-                    {t('header.parallelSaved')}
-                  </span>
-                  <span className="font-mono font-semibold" style={{ color: 'var(--status-done-fg)' }}>
-                    -{formatElapsedTime(parallelSaved, true)}
-                  </span>
-                </div>
+                <StatRow
+                  labelColor="var(--text-3)"
+                  valueColor="var(--text-3)"
+                  label={t('header.parallelTotal')}
+                  value={formatElapsedTime(tasksSequentialSum, true)}
+                />
+                <StatRow
+                  strong
+                  labelColor="var(--status-done-fg)"
+                  valueColor="var(--status-done-fg)"
+                  label={t('header.parallelSaved')}
+                  value={`-${formatElapsedTime(parallelSaved, true)}`}
+                />
               </div>
             )}
           </div>
-        </div>
+        </Section>
       )}
 
       {/* Paused Duration */}
       {jobTiming.totalPausedDuration > 0 && (
-        <div className="pt-1.5 mt-1.5 text-xs" style={{ borderTop: '1px solid var(--border-1)' }}>
-          <div className="flex justify-between">
-            <span style={{ color: 'var(--text-2)' }}>{t('header.paused')}</span>
-            <span className="font-mono" style={{ color: 'var(--text-2)' }}>{formatElapsedTime(jobTiming.totalPausedDuration, true)}</span>
-          </div>
-        </div>
+        <Section>
+          <StatRow
+            labelColor="var(--text-2)"
+            valueColor="var(--text-2)"
+            label={t('header.paused')}
+            value={formatElapsedTime(jobTiming.totalPausedDuration, true)}
+          />
+        </Section>
       )}
     </div>
   );
@@ -315,22 +390,18 @@ export function ElapsedTimeBadge({
   const textSize = compact ? 'text-[10px]' : 'text-xs';
 
   return (
-    <Tooltip content={tooltipContent} placement="bottom">
+    <Tooltip content={tooltipContent} placement="bottom" surface={accent.surface} borderColor={accent.border}>
       <div
-        className={cn(sizeClass, 'rounded-full cursor-pointer')}
+        className={cn(sizeClass, 'cursor-pointer')}
         style={{
-          background: 'var(--status-todo-bg)',
-          border: '1px solid var(--border-1)',
-          boxShadow: 'var(--shadow-xs)',
-          color: 'var(--status-todo-fg)',
+          background: accent.surface,
+          border: `1px solid ${accent.border}`,
+          borderRadius: 'var(--r-sm)',
         }}
       >
-        <div className={cn('flex items-center justify-center', innerSize)}>
-          <CircleDot className={iconSize} style={{ color: 'var(--status-todo-fg)' }} />
-          <span
-            className={cn(textSize, 'font-medium leading-none')}
-            style={{ color: 'var(--status-todo-fg)' }}
-          >
+        <div className={cn('flex items-center justify-center', innerSize, accent.text)}>
+          <CircleDot className={iconSize} />
+          <span className={cn(textSize, 'font-medium leading-none')}>
             {formattedTime}
           </span>
         </div>
@@ -410,182 +481,138 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
   const hasTokenData = effective.billableInputTokens > 0 || effective.outputTokens > 0;
   const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
 
+  const accent = POPOVER_ACCENT.token;
   const tooltipContent = (
     <div className="space-y-2 w-[480px] max-h-[80vh] overflow-y-auto">
-      <div className="font-semibold pb-1.5" style={{ borderBottom: '1px solid var(--border-1)', color: 'var(--text-1)' }}>
-        {t('header.tokenUsage')}
-      </div>
+      <PopoverTitle icon={Zap} label={t('header.tokenUsage')} textClass={accent.text} />
 
       {hasTokenData ? (
         <>
-          {/* ━━ Section 1: Billing (input + output) ━━ */}
-          <div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
-                {t('tokenStats.input')} <span className="text-xs font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.inputDescription')}</span>
-              </span>
-              <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
-                {formatTokenCount(effective.billableInputTokens)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center mt-1">
-              <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
-                {t('tokenStats.output')} <span className="text-xs font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.outputDescription')}</span>
-              </span>
-              <span className="font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
-                {formatTokenCount(effective.outputTokens)}
-              </span>
-            </div>
-          </div>
+          {/* Billing (input + output) */}
+          <Section>
+            <StatRow
+              strong
+              label={<>{t('tokenStats.input')} <span className="font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.inputDescription')}</span></>}
+              value={formatTokenCount(effective.billableInputTokens)}
+            />
+            <StatRow
+              strong
+              label={<>{t('tokenStats.output')} <span className="font-normal italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.outputDescription')}</span></>}
+              value={formatTokenCount(effective.outputTokens)}
+            />
+          </Section>
 
-          {/* ━━ Section 2: Cache Efficiency (only when cache active) ━━ */}
+          {/* Cache Efficiency (only when cache active) */}
           {effective.hasCache && (
-            <div className="pt-1.5 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-1)' }}>{t('tokenStats.cacheEfficiency')}</div>
-              <div className="pl-2 text-xs space-y-0.5">
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.totalProcessed')}</span>
-                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                    {formatTokenCount(effective.totalInputProcessed)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.newCacheMiss')}</span>
-                  <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                    {formatTokenCount(effective.newInputTokens)}
-                  </span>
-                </div>
-                {effective.cacheReadTokens > 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.cacheHit')}</span>
-                    <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                      {formatTokenCount(effective.cacheReadTokens)}
-                    </span>
-                  </div>
-                )}
-                {effective.cacheCreationTokens > 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--text-3)' }}>{t('tokenStats.cacheCreated')}</span>
-                    <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                      {formatTokenCount(effective.cacheCreationTokens)}
-                    </span>
-                  </div>
-                )}
-                {effective.cacheHitRate > 0 && (
-                  <div className="flex justify-between pt-0.5" style={{ color: 'var(--status-done-fg)' }}>
-                    <span className="font-semibold">{t('tokenStats.cacheHitRate')}</span>
-                    <span className="font-mono font-semibold">
-                      {formatPercent(effective.cacheHitRate)}
-                    </span>
-                  </div>
-                )}
-                {effective.inputSavingsPercent > 0 && (
-                  <div className="flex justify-between" style={{ color: 'var(--status-done-fg)' }}>
-                    <span className="font-semibold">{t('tokenStats.savings')}</span>
-                    <span className="font-mono font-semibold">
-                      ~{formatPercent(effective.inputSavingsPercent)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <Section>
+              <CardLabel>{t('tokenStats.cacheEfficiency')}</CardLabel>
+              <StatRow labelColor="var(--text-3)" valueColor="var(--text-3)" label={t('tokenStats.totalProcessed')} value={formatTokenCount(effective.totalInputProcessed)} />
+              <StatRow labelColor="var(--text-3)" valueColor="var(--text-3)" label={t('tokenStats.newCacheMiss')} value={formatTokenCount(effective.newInputTokens)} />
+              {effective.cacheReadTokens > 0 && (
+                <StatRow labelColor="var(--text-3)" valueColor="var(--text-3)" label={t('tokenStats.cacheHit')} value={formatTokenCount(effective.cacheReadTokens)} />
+              )}
+              {effective.cacheCreationTokens > 0 && (
+                <StatRow labelColor="var(--text-3)" valueColor="var(--text-3)" label={t('tokenStats.cacheCreated')} value={formatTokenCount(effective.cacheCreationTokens)} />
+              )}
+              {effective.cacheHitRate > 0 && (
+                <StatRow strong labelColor="var(--status-done-fg)" valueColor="var(--status-done-fg)" label={t('tokenStats.cacheHitRate')} value={formatPercent(effective.cacheHitRate)} />
+              )}
+              {effective.inputSavingsPercent > 0 && (
+                <StatRow strong labelColor="var(--status-done-fg)" valueColor="var(--status-done-fg)" label={t('tokenStats.savings')} value={`~${formatPercent(effective.inputSavingsPercent)}`} />
+              )}
+            </Section>
           )}
 
-          {/* ━━ Section 3: Phase Breakdown ━━ */}
+          {/* Phase Breakdown */}
           {(tokenUsage || taskCount > 0 || (phaseTokenUsages && phaseTokenUsages.length > 0)) && (
-            <div className="pt-1.5 mt-1" style={{ borderTop: '1px solid var(--border-1)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-1)' }}>{t('tokenStats.byPhase')}</div>
+            <Section>
+              <CardLabel className={accent.subtext}>{t('tokenStats.byPhase')}</CardLabel>
 
-              {/* Phase-based breakdown (visual/plan jobs) */}
               {phaseTokenUsages && phaseTokenUsages.length > 0 ? (
-                <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid var(--violet-500)' }}>
+                <div className="space-y-0.5">
                   {phaseTokenUsages.map((p) => {
                     const m = getTokenUsageMetrics(p.tokenUsage);
                     return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
-                      <div key={p.phase} className="flex justify-between items-center text-xs">
-                        <span className="capitalize truncate max-w-[260px]" title={p.label || p.phase} style={{ color: 'var(--text-2)' }}>
-                          {p.label || p.phase}
-                        </span>
-                        <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                          {formatTokenCount(m.billableInputTokens)} in · {formatTokenCount(m.outputTokens)} out
-                        </span>
-                      </div>
+                      <StatRow
+                        key={p.phase}
+                        title={p.label || p.phase}
+                        labelColor="var(--text-2)"
+                        valueColor="var(--text-3)"
+                        label={<span className="capitalize">{p.label || p.phase}</span>}
+                        value={`${formatTokenCount(m.billableInputTokens)} in · ${formatTokenCount(m.outputTokens)} out`}
+                      />
                     ) : null;
                   })}
-                  {/* Overhead row: difference between job total and sum of phases */}
                   {(() => {
                     const phaseSum = sumTokenUsages(phaseTokenUsages.map(p => p.tokenUsage));
                     const phaseSumMetrics = getTokenUsageMetrics(phaseSum);
                     const overheadIn = Math.max(0, effective.billableInputTokens - phaseSumMetrics.billableInputTokens);
                     const overheadOut = Math.max(0, effective.outputTokens - phaseSumMetrics.outputTokens);
                     return (overheadIn > 100 || overheadOut > 100) ? (
-                      <div className="flex justify-between items-center text-xs opacity-60">
-                        <span className="italic" style={{ color: 'var(--text-3)' }}>{t('tokenStats.overhead', 'Overhead')}</span>
-                        <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                          {formatTokenCount(overheadIn)} in · {formatTokenCount(overheadOut)} out
-                        </span>
+                      <div className="opacity-60">
+                        <StatRow
+                          labelColor="var(--text-3)"
+                          valueColor="var(--text-3)"
+                          label={<span className="italic">{t('tokenStats.overhead', 'Overhead')}</span>}
+                          value={`${formatTokenCount(overheadIn)} in · ${formatTokenCount(overheadOut)} out`}
+                        />
                       </div>
                     ) : null;
                   })()}
                 </div>
               ) : (
-                <>
-                  {/* Planning Phase (task-queue jobs) */}
+                <div className="space-y-1">
                   {tokenUsage && (
-                    <div className="pl-2 mb-1" style={{ borderLeft: '2px solid var(--violet-500)' }}>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{t('tokenStats.estimating')}</span>
-                        <span className="font-mono" style={{ color: 'var(--text-2)' }}>
-                          {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
-                        </span>
-                      </div>
-                    </div>
+                    <StatRow
+                      strong
+                      labelColor="var(--text-2)"
+                      valueColor="var(--text-2)"
+                      label={t('tokenStats.estimating')}
+                      value={`${formatTokenCount(estimatingInput)} in · ${formatTokenCount(estimatingOutput)} out`}
+                    />
                   )}
-
-                  {/* Tasks (task-queue jobs) */}
                   {taskCount > 0 && (
-                    <div className="pl-2 space-y-0.5" style={{ borderLeft: '2px solid var(--violet-500)' }}>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-semibold" style={{ color: 'var(--text-2)' }}>
-                          {t('header.tasksCount', { count: taskCount })}
-                        </span>
-                        <span className="font-mono" style={{ color: 'var(--text-2)' }}>
-                          {formatTokenCount(tasks.billableInputTokens)} in · {formatTokenCount(tasks.outputTokens)} out
-                        </span>
-                      </div>
-                      <div className="pl-2 space-y-0.5">
+                    <div className="space-y-0.5">
+                      <StatRow
+                        strong
+                        labelColor="var(--text-2)"
+                        valueColor="var(--text-2)"
+                        label={t('header.tasksCount', { count: taskCount })}
+                        value={`${formatTokenCount(tasks.billableInputTokens)} in · ${formatTokenCount(tasks.outputTokens)} out`}
+                      />
+                      <div className="space-y-0.5 pl-1">
                         {inProgressTasks?.filter(t => t.tokenUsage).map(task => {
                           const m = getTokenUsageMetrics(task.tokenUsage!);
                           return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
-                            <div key={task.id} className="flex justify-between items-center text-xs">
-                              <span className="truncate max-w-[300px]" title={task.name} style={{ color: 'var(--text-3)' }}>
-                                • {task.name}
-                              </span>
-                              <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                                {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
-                              </span>
-                            </div>
+                            <StatRow
+                              key={task.id}
+                              title={task.name}
+                              labelColor="var(--text-3)"
+                              valueColor="var(--text-3)"
+                              label={task.name}
+                              value={`${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}`}
+                            />
                           ) : null;
                         })}
                         {completedTasks?.map((task) => {
                           const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
                           return (
-                            <div key={task.id} className="flex justify-between items-center text-xs">
-                              <span className="truncate max-w-[300px]" title={task.name} style={{ color: 'var(--text-3)' }}>
-                                • {task.name}
-                              </span>
-                              <span className="font-mono" style={{ color: 'var(--text-3)' }}>
-                                {m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
-                              </span>
-                            </div>
+                            <StatRow
+                              key={task.id}
+                              title={task.name}
+                              labelColor="var(--text-3)"
+                              valueColor="var(--text-3)"
+                              label={task.name}
+                              value={m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
+                            />
                           );
                         })}
                       </div>
                     </div>
                   )}
-                </>
+                </div>
               )}
-            </div>
+            </Section>
           )}
         </>
       ) : (
@@ -604,22 +631,18 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
   const textSize = compact ? 'text-[10px]' : 'text-xs';
 
   return (
-    <Tooltip content={tooltipContent} placement="bottom">
+    <Tooltip content={tooltipContent} placement="bottom" surface={accent.surface} borderColor={accent.border}>
       <div
-        className={cn(sizeClass, 'rounded-full cursor-pointer')}
+        className={cn(sizeClass, 'cursor-pointer')}
         style={{
-          background: 'var(--status-progress-bg)',
-          border: '1px solid var(--border-1)',
-          boxShadow: 'var(--shadow-xs)',
-          color: 'var(--status-progress-fg)',
+          background: accent.surface,
+          border: `1px solid ${accent.border}`,
+          borderRadius: 'var(--r-sm)',
         }}
       >
-        <div className={cn('flex items-center justify-center', innerSize)}>
-          <Zap className={iconSize} style={{ color: 'var(--status-progress-fg)' }} />
-          <span
-            className={cn(textSize, 'font-mono font-medium leading-none whitespace-nowrap')}
-            style={{ color: 'var(--status-progress-fg)' }}
-          >
+        <div className={cn('flex items-center justify-center', innerSize, accent.text)}>
+          <Zap className={iconSize} />
+          <span className={cn(textSize, 'font-mono font-medium leading-none whitespace-nowrap')}>
             {hasTokenData
               ? `${formatTokenCount(effective.billableInputTokens)}↑·${formatTokenCount(effective.outputTokens)}↓`
               : '0'}

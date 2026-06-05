@@ -30,6 +30,18 @@ export interface TooltipProps {
    * semantics unchanged.
    */
   trigger?: 'click' | 'hover';
+  /**
+   * Shell background (and matching arrow fill) as a CSS color value.
+   * Defaults to the neutral `var(--bg-surface)`; pass a status-token bg to
+   * tint the popover to its trigger (e.g. badge detail popovers). Theme flip
+   * is automatic when a CSS var is passed.
+   */
+  surface?: string;
+  /**
+   * Shell + arrow border color. Defaults to `var(--border-1)`; pass a tinted
+   * border to pair with a tinted `surface`.
+   */
+  borderColor?: string;
 }
 
 /**
@@ -61,6 +73,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
   placement = 'top',
   className = '',
   trigger = 'click',
+  surface = 'var(--bg-surface)',
+  borderColor = 'var(--border-1)',
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -230,20 +244,18 @@ export const Tooltip: React.FC<TooltipProps> = ({
       onMouseEnter={isHover ? openHover : undefined}
       onMouseLeave={isHover ? scheduleHoverClose : undefined}
       className={`fixed z-[9999] px-3 py-2 text-sm rounded-lg shadow-2xl transition-opacity duration-200 whitespace-normal ${className}
-        bg-[color:var(--status-progress-bg)]
-        text-[color:var(--text-1)]
-        border-2 border-[color:var(--border-2)]`}
+        text-[color:var(--text-1)] border`}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
+        background: surface,
+        borderColor,
       }}
     >
       {content}
       <div
-        className={`absolute w-2 h-2 transform rotate-45 ${getArrowPositionClass(placement)}
-          bg-[color:var(--status-progress-bg)]
-          border-[color:var(--border-2)]`}
-        style={getArrowBorderStyle(placement)}
+        className={`absolute w-2 h-2 transform rotate-45 ${getArrowPositionClass(placement)}`}
+        style={{ ...getArrowBorderStyle(placement), background: surface, borderColor }}
       />
     </div>
   );
