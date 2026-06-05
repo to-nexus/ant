@@ -56,6 +56,12 @@ export const hooks: TaskHooks = {
     // `isDocTask(task)` predicate in `taskRequiresPlan`.
     requiresPlanText: false,
     usesToolLoop: false,
+    // Without this, the empty-`planText` no-op sentinel in
+    // `outcome/finalize.ts` would mark the doc task `done` at the plan
+    // phase and short-circuit to checkTaskStatus — the docgen `executeHook`
+    // (which writes README / docs) would never run. This flag tells finalize
+    // the empty plan body is expected and execute must still run.
+    skipPlanRunExecute: true,
   },
 };
 
