@@ -167,6 +167,36 @@ describe('handleLongRunningCommand fact report', () => {
     expect(r.output).toContain('Error: Port 30001 already in use');
   });
 
+  it('keep_running server left alive: label is still-running (not killed-after-verification) + server_pid/server_url surfaced + serverPort returned', async () => {
+    const child = new MockChild();
+    await freshSpawnMock(child);
+
+    vi.spyOn(readiness, 'probeHttp').mockResolvedValue({ ok: true, status: 404 });
+
+    const ctx = makeCtx();
+    // keepRunning = true → the child is NOT killed after the probe window.
+    const promise = handleLongRunningCommand(ctx, 'pnpm dev', '/tmp', undefined, true);
+
+    await flushSpawn(child);
+    child.stdout.emit('data', Buffer.from('- Local: http://localhost:30000\n✓ Ready\n'));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.runAllTimersAsync();
+
+    const r = await promise;
+
+    // 404 < 500 → probeOk → success → server kept alive + tracked.
+    expect(r.success).toBe(true);
+    expect(r.serverPid).toBe(12345);
+    expect(r.serverPort).toBe(30000);
+    expect(child.killed).toBe(false);
+    // The proximate-cause fix: a live server must NOT be labeled "killed".
+    expect(r.output).toContain('exit: still-running (keep_running)');
+    expect(r.output).not.toContain('killed-after-verification');
+    expect(r.output).toContain('server_pid: 12345');
+    expect(r.output).toContain('server_url: http://localhost:30000');
+  });
+
   it('clean-exit zero (e.g. one-shot build): success=true even without probe', async () => {
     const child = new MockChild();
     await freshSpawnMock(child);

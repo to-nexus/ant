@@ -20,6 +20,7 @@
 
 // Predicate + state helper
 export { requiresVerification } from './predicate';
+export { allowsPersistentProcesses } from './persistentProcessGate';
 export {
   markVerifyEntered,
   isVerifyEntered,

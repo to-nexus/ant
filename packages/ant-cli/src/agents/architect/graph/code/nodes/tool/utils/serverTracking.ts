@@ -52,6 +52,7 @@ export function recordServerStarted(
     pid,
     command: effect.command,
     workingDir: effect.workingDir,
+    port: effect.port,
     startedAt: Date.now(),
   });
 }

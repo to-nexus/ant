@@ -86,8 +86,13 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
-    // Error tasks always operate on a user-reported failure scenario;
-    // the persistent-process partial unlocks reproducer commands here.
+    // Error tasks always operate on a user-reported failure scenario, so the
+    // persistent-process partial is unlocked here. This is the error-task
+    // branch of the `allowsPersistentProcesses` SSOT predicate made explicit:
+    // this hook's authoritative task is the `task` parameter (an error task by
+    // dispatch), not `state.currentTask`, so the literal `true` is the exact
+    // truth — the predicate (which reads `state.currentTask`) is for phase
+    // nodes / tool ctx / verification prompt where that field is the reference.
     allowPersistentProcesses: true,
     // Tier 3 cross-task analysis brief (sealed by Decompose). Wired
     // identically to the generic `buildPlanPrompt` (`plan/llm/prompt.ts`)

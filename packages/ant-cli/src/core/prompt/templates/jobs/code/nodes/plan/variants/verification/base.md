@@ -96,10 +96,10 @@ Compare the build output with the user's report. The build output is the ground 
 
 **Reproducer requirement** — the failing scenario above is the success criterion of this verification cycle. A passing build/typecheck/test alone is NOT sufficient evidence that the user's error is fixed. You MUST observe BOTH:
 
-1. The reproducer command (the same scenario the user reported — e.g. `pnpm dev` + an HTTP request to the failing route, or the same script that produced the error trace) exits 0 (or yields the expected runtime output), AND
-2. The original error pattern from the directive above is NOT present in the reproducer output.
+1. The reproducer exercises the same scenario the user reported and yields the expected runtime behaviour. When the failure is a server route, start the app with `run_command` (`keep_running: true`) and then exercise the failing route with the `http_request` tool; for a non-server failure, run the same script that produced the error trace and confirm it exits 0.
+2. The original error pattern from the directive above is NOT present in the reproducer output (response body/status for a route, or the script output).
 
-If you have NOT yet observed both conditions in this verification cycle, the no-errors sentinel plan is FORBIDDEN even when typecheck/build/test all pass. Either run the reproducer now (`run_command` permits persistent background processes here — see the persistent-process policy section), or include a `repro` step in your plan describing how the apply phase / next cycle will run it.
+If you have NOT yet observed both conditions in this verification cycle, the no-errors sentinel plan is FORBIDDEN even when typecheck/build/test all pass. Either run the reproducer now (`run_command` permits persistent background processes here, and `http_request` verifies routes — see the persistent-process policy section), or include a `repro` step in your plan describing how the apply phase / next cycle will run it.
 {{/if}}
 
 {{#if runTests}}

@@ -13,9 +13,9 @@ Every dev server, watcher, or other long-lived process you spawn with `keep_runn
 
 | Step | Action | Tool call |
 |------|--------|-----------|
-| 1 | **Spawn** the process | `run_command` with `keep_running: true` (e.g. `npm run dev`) |
-| 2 | **Probe** the running process to confirm the failing scenario reproduces or the fix works | `run_command` (`curl ...`, `tail -n N path/to/log`, etc.) |
-| 3 | **Stop** every process you spawned in step 1 | `run_command` with `kill <pid>` or the framework's stop command. Use the PID returned by step 1. |
+| 1 | **Spawn** the process | `run_command` with `keep_running: true` (e.g. `npm run dev`). The result reports `server_pid` and `server_url` — note both. |
+| 2 | **Probe** the running server to confirm the failing scenario reproduces or the fix works | `http_request` against the failing route (it auto-targets the running server's port, so you need not know it). For log/process inspection use `run_command` (`tail -n N path/to/log`, etc.). |
+| 3 | **Stop** every process you spawned in step 1 | `run_command` with `kill <server_pid>` (the PID reported by step 1) or the framework's stop command. |
 | 4 | **Verify** no spawned process is still alive (only when more than one was spawned, to guard against partial cleanup) | `run_command` with `pgrep -f next` or equivalent — expect empty output |
 | 5 | **Emit `<done>`** only after step 3 (and step 4 if applicable) succeeds | `<done>true</done>` |
 

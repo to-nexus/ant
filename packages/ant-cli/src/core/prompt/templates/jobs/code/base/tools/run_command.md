@@ -35,6 +35,8 @@ For one-shot operations whose only purpose is producing observable output and th
 
 Do NOT set `oneshot: true` on commands intended to keep running, to emit progress over a long compute, or to compute silently for tens of seconds. Use `keep_running: true` for long-running servers — these flags are mutually exclusive.
 
+To verify a server route at runtime: start the server with `keep_running: true` (the result reports `server_pid` + `server_url`), then use the `http_request` tool to exercise the specific route/method — it auto-targets the running server's port. Do NOT background a server with `&` / `nohup` and do NOT reach for `curl`; `http_request` returns the status/headers/body as structured facts. Kill `server_pid` when done.
+
 ⚠️ SILENT-SLOW COMMANDS — prefer dedicated tools:
 The watchdog terminates commands that produce no output for >60s. For codebase exploration, the following commands scale unpredictably and almost always hit the watchdog — use scoped tools instead:
 

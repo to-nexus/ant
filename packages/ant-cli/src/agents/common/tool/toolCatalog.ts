@@ -49,6 +49,7 @@ export enum ToolName {
 
   // ── Execute ──
   RUN_COMMAND          = 'run_command',
+  HTTP_REQUEST         = 'http_request',
 
   // ── Fetch / Download ──
   DOWNLOAD_ASSET       = 'download_asset',
@@ -100,6 +101,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.MKDIR]:                '📁 Creating directory',
   // Execute
   [ToolName.RUN_COMMAND]:          '⚙️ Running command',
+  [ToolName.HTTP_REQUEST]:         '🌐 HTTP request',
   // Fetch / Download
   [ToolName.DOWNLOAD_ASSET]:       '📥 Downloading asset',
   [ToolName.FIGMA_DESIGN_CTX]:     '🎨 Fetching Figma design',
@@ -172,6 +174,9 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.WRITE_FILE,    // shadow alias
     // Execute — (*) wrapped with CodeCommandPolicy
     ToolName.RUN_COMMAND,
+    // Runtime route verification — only surfaced when persistent processes are
+    // allowed (error / runtime-error verify); see plan/execute tool selectors.
+    ToolName.HTTP_REQUEST,
     // Fetch (Figma)
     ...FIGMA_TOOLS,
   ],
@@ -337,6 +342,7 @@ import {
   handleSearchWeb,
   handleSearchReferenceCode,
   handleRunCommand,
+  handleHttpRequest,
   handleFigmaTool,
 } from './handlers';
 
@@ -350,6 +356,7 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.EDIT_FILE,        handleEditFile],
     [ToolName.CREATE_FILE,      handleCreateFile],
     [ToolName.RUN_COMMAND,      handleRunCommand],
+    [ToolName.HTTP_REQUEST,     handleHttpRequest],
     [ToolName.SEARCH_WEB,       handleSearchWeb],
     [ToolName.SEARCH_REFERENCE, handleSearchReferenceCode],
     // Figma: handler needs tool name argument, so we use a factory

@@ -221,6 +221,29 @@ export interface ToolExecutionContext {
   verifyModeActive?: boolean;
   retries?: number;
 
+  /**
+   * `true` when persistent background processes (and thus the `http_request`
+   * route-verification tool) are unlocked for the active state — i.e. error
+   * tasks or runtime-error-grounded verification cycles. SSOT predicate:
+   * `tasks/_shared/verify/persistentProcessGate.ts::allowsPersistentProcesses`.
+   * Defence-in-depth: the `http_request` handler hard-rejects when this is not
+   * `true`, mirroring how the selectors hide the tool.
+   */
+  allowPersistentProcesses?: boolean;
+  /**
+   * Read-only snapshot of `state.runningServers` so the `http_request` handler
+   * can auto-target the most-recently-started keep_running dev server's port
+   * without importing graph state (keeps the 2-layer tool architecture intact,
+   * same pattern as {@link assetsRoot} / {@link figmaFileKey}).
+   */
+  runningServers?: ReadonlyArray<{
+    pid: number;
+    command: string;
+    workingDir: string;
+    port?: number;
+    startedAt: number;
+  }>;
+
   /** Phase 3-15 — number of `search_web` calls already executed in the current
    *  plan-toolLoop session. Handlers reject further calls once this reaches
    *  the configured limit to prevent runaway web-search expansion. */
@@ -275,7 +298,7 @@ export type ToolSideEffect =
   | { type: 'fileDeleted'; path: string }
   | { type: 'fileNotChanged'; path: string }
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate; cacheReplayed?: boolean }
-  | { type: 'serverStarted'; pid: number; command: string; workingDir: string }
+  | { type: 'serverStarted'; pid: number; command: string; workingDir: string; port?: number }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
   | { type: 'figmaSuccess' }
   | {

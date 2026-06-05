@@ -12,6 +12,7 @@ export { handleMkdir } from './mkdir';
 export { handleSearchWeb, executeSearchWeb } from './searchWeb';
 export { handleSearchReferenceCode } from './searchReferenceCode';
 export { handleRunCommand } from './runCommand';
+export { handleHttpRequest } from './httpProbe';
 export { handleFigmaTool } from './figma';
 export { applyCodeCommandPolicy } from './codeCommandPolicy';
 export { resolveToolPath, resolveToolDirectory, prependFixMessage } from './pathResolver';

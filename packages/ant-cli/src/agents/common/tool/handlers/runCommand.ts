@@ -637,7 +637,7 @@ async function executeCommandLogic(
         verifies,
       }));
       if (r.serverPid) {
-        sideEffects.push({ type: 'serverStarted', pid: r.serverPid, command, workingDir });
+        sideEffects.push({ type: 'serverStarted', pid: r.serverPid, command, workingDir, port: r.serverPort });
       }
       return { content: r.output, sideEffects };
     }
@@ -865,6 +865,7 @@ export async function handleLongRunningCommand(
   exitCode: number | null;
   httpProbe?: { ok: boolean; status?: number; error?: string };
   serverPid?: number;
+  serverPort?: number;
 }> {
   const { spawn } = await import('child_process');
   const startedAt = Date.now();
@@ -914,23 +915,41 @@ export async function handleLongRunningCommand(
     let resolved = false;
     let httpProbe: { ok: boolean; status?: number; error?: string } | undefined;
     let exitSignal: NodeJS.Signals | null = null;
+    let resolvedPort: number | undefined;
 
-    const buildOutput = (exit: number | null) => [
-      `command: ${command}`,
-      `duration_ms: ${Date.now() - startedAt}`,
-      `exit: ${exit !== null ? String(exit) : (exitSignal ? `signal:${exitSignal}` : 'killed-after-verification')}`,
-      `http_probe: ${
-        httpProbe
-          ? (httpProbe.ok
-              ? `${httpProbe.status}`
-              : `failed: ${httpProbe.error ?? `HTTP ${httpProbe.status ?? '?'}`}`)
-          : 'skipped'
-      }`,
-      `stdout:`,
-      stdout.slice(0, 8000),
-      `stderr:`,
-      stderr.slice(0, 4000),
-    ].join('\n');
+    // `alive` is non-null only when the child was intentionally left running
+    // (keepRunning && exit===null). In that case the label MUST NOT claim
+    // `killed-after-verification` — the server is up and the LLM needs its
+    // PID/URL to probe routes (http_request) and to kill it before <done>.
+    const buildOutput = (exit: number | null, alive: { pid?: number; port?: number } | null) => {
+      const lines = [
+        `command: ${command}`,
+        `duration_ms: ${Date.now() - startedAt}`,
+        `exit: ${
+          exit !== null
+            ? String(exit)
+            : alive
+              ? 'still-running (keep_running)'
+              : (exitSignal ? `signal:${exitSignal}` : 'killed-after-verification')
+        }`,
+      ];
+      if (alive?.pid) lines.push(`server_pid: ${alive.pid}`);
+      if (alive?.port) lines.push(`server_url: http://localhost:${alive.port}`);
+      lines.push(
+        `http_probe: ${
+          httpProbe
+            ? (httpProbe.ok
+                ? `${httpProbe.status}`
+                : `failed: ${httpProbe.error ?? `HTTP ${httpProbe.status ?? '?'}`}`)
+            : 'skipped'
+        }`,
+        `stdout:`,
+        stdout.slice(0, 8000),
+        `stderr:`,
+        stderr.slice(0, 4000),
+      );
+      return lines.join('\n');
+    };
 
     const finalize = async (exit: number | null, opts: { kill: boolean }) => {
       if (resolved) return;
@@ -960,14 +979,19 @@ export async function handleLongRunningCommand(
       const exitOk = exit === null || exit === 0;
       const probeOk = httpProbe?.ok ?? true;
       const success = exitOk && probeOk && !addressInUse;
-      const output = buildOutput(exit);
+      const serverPid = keepRunning && success && !addressInUse ? child.pid : undefined;
+      // Left alive iff keepRunning and the child didn't exit on its own — the
+      // auto-kill path only runs when !keepRunning (see finalize opts.kill).
+      const alive = keepRunning && exit === null ? { pid: serverPid, port: resolvedPort } : null;
+      const output = buildOutput(exit, alive);
       await ctx.chatStatus.commandComplete(command, success, exit ?? -1, output);
       resolve({
         success,
         output,
         exitCode: exit,
         httpProbe,
-        serverPid: keepRunning && success && !addressInUse ? child.pid : undefined,
+        serverPid,
+        serverPort: resolvedPort,
       });
     };
 
@@ -1041,6 +1065,7 @@ export async function handleLongRunningCommand(
       console.log(`\n   🔎 Verifying server response...`);
       const portMatch = stdout.match(/localhost:(\d+)|port\s+(\d+)|:(\d{4,5})\b/i);
       const port = portMatch ? parseInt(portMatch[1] || portMatch[2] || portMatch[3], 10) : 3000;
+      resolvedPort = port;
       try {
         httpProbe = await probeHttp('localhost', port, '/', 15_000);
       } catch (err) {
