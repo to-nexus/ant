@@ -37,7 +37,13 @@ import {
   describeInjection,
 } from '../../../../utils/commandInject';
 import { shouldSkipInstall } from './invalidationScope';
-import { capTestRunnerConcurrency, buildSpawnEnv } from './commandResourceLimits';
+import {
+  appendVitestMaxWorkers,
+  buildSpawnEnv,
+  deriveTestWorkers,
+  readCgroupCpuLimit,
+  logResourceCapsOnce,
+} from './commandResourceLimits';
 import { enforceManifestPinPolicyForInstall } from './manifestPinPolicy';
 import { checkOrchestratorPortSafeguard } from '../runCommandSafeguards';
 import { detectCacheReplay } from '../../../architect/graph/code/tasks/_shared/verify/cacheReplay';
@@ -520,10 +526,16 @@ async function executeCommandLogic(
     );
   }
 
-  // Bound test-runner concurrency at the spawn boundary so an unbounded
-  // multi-package `vitest run` cannot exhaust the pod and stall the worker.
-  // No-op for non-test commands. See commandResourceLimits.ts (RCA: worker_stalled).
-  const cappedCommand = capTestRunnerConcurrency(command);
+  // Size the test-runner pool to the pod's REAL CPU count (cgroup quota, not the
+  // host cores vitest would otherwise read), reserving a core for the heartbeat.
+  // Computed once and reused for the spawn env + long-running path below.
+  // See commandResourceLimits.ts / cgroupLimits.ts (RCA: worker_stalled).
+  const cgroupCpu = readCgroupCpuLimit();
+  const testWorkers = deriveTestWorkers({ effectiveCpu: cgroupCpu });
+  logResourceCapsOnce(testWorkers, cgroupCpu);
+  // Pipe-AWARE concurrency cap for vitest 4 (vitest 2.x is capped via spawn env).
+  // No-op for non-test commands.
+  const cappedCommand = appendVitestMaxWorkers(command, testWorkers);
   if (cappedCommand !== command) {
     console.log(`   🧵 [RunCommand] Capped test-runner concurrency: ${cappedCommand}`);
     command = cappedCommand;
@@ -548,9 +560,9 @@ async function executeCommandLogic(
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
   const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
-  // CI=true (non-install, or install w/o shell operators) + opt-in NODE_OPTIONS
-  // heap cap. See commandResourceLimits.ts.
-  const spawnEnv = buildSpawnEnv({ isInstallCommand, hasShellOperators });
+  // CI=true (non-install, or install w/o shell operators) + vitest pool env sized
+  // to testWorkers (+ opt-in heap cap). See commandResourceLimits.ts.
+  const spawnEnv = buildSpawnEnv({ isInstallCommand, hasShellOperators }, testWorkers);
 
   const projectPath = featureRootPath;
   refreshGoPrivateEnv(command, projectPath);
@@ -615,7 +627,7 @@ async function executeCommandLogic(
         );
       }
       const r = await handleLongRunningCommand(
-        ctx, command, workingDir, cardId, Boolean(keep_running),
+        ctx, command, workingDir, cardId, Boolean(keep_running), spawnEnv,
       );
       sideEffects.push(makeCommandExecuted({
         exitCode: r.exitCode ?? (r.success ? 0 : 1),
@@ -846,6 +858,7 @@ export async function handleLongRunningCommand(
   workingDir: string,
   _cardId: string | undefined,
   keepRunning: boolean,
+  spawnEnv?: Record<string, string>,
 ): Promise<{
   success: boolean;
   output: string;
@@ -880,7 +893,10 @@ export async function handleLongRunningCommand(
     const child = spawn(shell, shellArgs, {
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: cleanCommandEnv(),
+      // Same cgroup-derived spawn env (CI + heap cap + vitest pool) as the
+      // standard path — long-running dev servers / smoke gates were previously
+      // unbounded. See commandResourceLimits.ts.
+      env: cleanCommandEnv(spawnEnv),
       detached: process.platform !== 'win32',
     });
 
