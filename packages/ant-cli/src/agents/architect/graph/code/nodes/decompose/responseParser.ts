@@ -27,14 +27,23 @@ import { isWithinRacWhitelist, type RacScope } from './racGate';
  * for feature scheduling (the orchestrator never reads `priority` for
  * scheduling decisions).
  *
+ *   - priority === SETUP_PROJECT (100)                        → 'root'
  *   - priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX] (200–299) → 'foundation'
  *   - priority ∈ [INTEGRATION_MIN,   INTEGRATION_MAX] (600–649) → 'integration'
- *   - everything else → undefined (ordinary feature)
+ *   - everything else → undefined (ordinary feature / package setup)
  *
- * Only invoked for feature tasks. Verification tasks DO NOT carry band
- * (their type alone is the discriminator).
+ * Invoked for feature tasks (→ feature bands) AND setup tasks (→ 'root' for
+ * the project/framework/workspace-level root setup; undefined for a package
+ * setup at 101+). Other types DO NOT carry band (their type alone is the
+ * discriminator). `'root'` is the lowest priority (SETUP_PROJECT=100), so a
+ * root setup always dequeues before any band-absent setup (101+).
  */
 export function deriveBandFromPriority(priority: number): TaskBand | undefined {
+  // Root setup: the unique SETUP_PROJECT-priority task. Lowest priority in the
+  // queue → first to dequeue; owns root-level artifacts only (never a member).
+  if (priority === TASK_PRIORITIES.SETUP_PROJECT) {
+    return 'root';
+  }
   // Platform is a sub-range carved from the TOP of the foundation window:
   // [PLATFORM_MIN, PLATFORM_MAX] ⊂ [SHARED_FOUNDATION, FOUNDATION_MAX]. Checked
   // FIRST so a feature task in [280, 299] derives 'platform', leaving the
@@ -544,10 +553,13 @@ export function createTaskQueue(
 
     const resolvedPriority = task.priority || TASK_PRIORITIES.FEATURE_NORMAL;
     // Three-Axis SSOT: feature tasks carry an explicit `band` derived from
-    // the priority window. After decompose, scheduling reads `task.band`
+    // the priority window; setup tasks carry 'root' for the SETUP_PROJECT
+    // root setup. After decompose, scheduling reads `task.band`
     // (deadlock-immune across batch-split priority decrements).
     const band: TaskBand | undefined =
-      resolvedType === 'feature' ? deriveBandFromPriority(resolvedPriority) : undefined;
+      resolvedType === 'feature' || resolvedType === 'setup'
+        ? deriveBandFromPriority(resolvedPriority)
+        : undefined;
     const errorFields = (task as any) as { errors?: string[]; category?: string };
 
     const normalizedTask: CodeTask = {
@@ -562,7 +574,11 @@ export function createTaskQueue(
       exclusive: exclusive || undefined,
       parallelGroup,
       selfVerifyOnDone,
-      ...(resolvedType === 'feature' ? { band } : {}),
+      // band lives on feature (foundation/platform/integration) and setup
+      // ('root' for the SETUP_PROJECT root setup); only spread when derived.
+      ...(band !== undefined && (resolvedType === 'feature' || resolvedType === 'setup')
+        ? { band }
+        : {}),
       ...(resolvedType === 'error'
         ? { errors: errorFields.errors, category: errorFields.category }
         : {}),

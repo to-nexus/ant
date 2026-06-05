@@ -691,8 +691,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // Three-Axis SSOT: derive `band` for streaming feature cards via the same
     // `deriveBandFromPriority` the canonical `createTaskQueue` uses, so the band
     // badge appears as cards stream in (not only once the final queue overwrites
-    // the board). band lives on FeatureTask only — conditional spread.
-    const band = type === 'feature' ? deriveBandFromPriority(priority) : undefined;
+    // the board). band lives on feature (foundation/platform/integration) and
+    // setup ('root' for the SETUP_PROJECT root setup) — conditional spreads,
+    // narrowed so each variant only carries the bands legal for its type.
+    const band = type === 'feature' || type === 'setup' ? deriveBandFromPriority(priority) : undefined;
     const minimal: BaseTask = {
       id,
       name,
@@ -702,7 +704,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       ...(stack && { stack }),
       ...(exclusive !== undefined && { exclusive }),
       ...(parallelGroup && { parallelGroup }),
-      ...(type === 'feature' && band ? { band } : {}),
+      ...(type === 'feature' && band !== undefined && band !== 'root' ? { band } : {}),
+      ...(type === 'setup' && band === 'root' ? { band } : {}),
     };
     accumulatedTasks = [...accumulatedTasks, minimal];
     console.log(`📋 [Decompose] Streaming task → Kanban: ${id} (${type}, p${priority})`);

@@ -46,7 +46,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Project: .gitignore, README.md, index.html (entry point only)
 - Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Docker: Dockerfile, docker-compose.yml (see Infrastructure Services below)
-- **Directory skeleton** — create the top-level source directory tree reflecting architecture boundaries from system design (or framework convention if no system design exists). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files` as the structural context.
+- **Directory skeleton** — create the top-level source directory tree for the unit YOU own, reflecting architecture boundaries from system design (or framework convention if no system design exists). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files` as the structural context. **Scope by band**: a `band:'root'` setup in a multi-package workspace creates the workspace manifest + member glob + shared config ONLY — it does NOT create any member/package directory or skeleton (the glob discovers members). A band-absent (package) setup creates its own member's directory + skeleton. In a single-package project the band-absent setup seals the app's source tree.
 
 **❌ DON'T CREATE (Application source files)**
 - Application source files: main.ts, App.tsx, server.ts, index.tsx
@@ -100,7 +100,7 @@ If a CSS utility framework's source scan paths don't cover the directories where
 | Checkpoint | Observation Target |
 |------------|-------------------|
 | **External services** | Does the design document specify services that require a running server process? |
-| **Scope** | Is this a root/workspace-level setup or a package-level setup? |
+| **Scope** | Is this a `band:'root'` workspace-level setup or a band-absent package-level setup? (root owns workspace manifest + glob + shared infra; package owns its own member only) |
 | **Environment** | Is this project frontend-only (no backend in this workspace)? |
 
 **Principle**: Infrastructure provisioning belongs to the **root workspace level**, not individual packages.

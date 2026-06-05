@@ -44,7 +44,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Environment (TOML alternative): `config.example.toml` (template with `@connection env:VAR` annotations) AND `config.toml` (active copy with localhost defaults). Use when design document specifies TOML-based configuration.
 - Infrastructure: docker-compose.yml (see Infrastructure Services below)
 - Documentation: README.md
-- **Directory skeleton** — create the top-level source directory tree reflecting architecture boundaries from system design (or Go convention default: `cmd/`, `internal/`, `pkg/`). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files` as the structural context.
+- **Directory skeleton** — create the top-level source directory tree for the unit YOU own, reflecting architecture boundaries from system design (or Go convention default: `cmd/`, `internal/`, `pkg/`). Use empty `.gitkeep` files to preserve directories without source yet. Sibling and future tasks bind to this via `list_files`. **Single-service (monolith)**: the band-absent setup seals this app source tree. **MSA `band:'root'` setup**: creates `go.work` + workspace files ONLY — NO service source tree (each service's tree is its own service setup's job, below).
 
 **✅ CREATE (Configuration layer — MSA service setup)**
 - Module: services/{svc}/go.mod
@@ -57,7 +57,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 **Constraint**: Create configuration files AND the directory skeleton (with `.gitkeep`). Do NOT create .go source files — feature tasks own those.
 
-**MSA Root vs Service Setup Constraint**: In multi-service projects, the root setup task creates workspace-level files (`go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, `.env`). Service-level setup tasks create ONLY `services/{svc}/go.mod` and `services/{svc}/Makefile`. Do NOT create `docker-compose.yml`, `.env.example`, or `.gitignore` inside service directories.
+**MSA Root vs Service Setup Constraint** (band-mapped): In multi-service projects, the **`band:'root'` setup** (priority 100) creates workspace-level files ONLY (`go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, `.env`) and NO service directory. Each **band-absent service setup** (priority 101+) creates ONLY its own `services/{svc}/go.mod` + `services/{svc}/Makefile` + that service's directory skeleton. Do NOT create `docker-compose.yml`, `.env.example`, or `.gitignore` inside service directories, and the root setup never creates a `services/{svc}/` tree.
 
 ### Workspace Version Consistency (Multi-Module Projects)
 

@@ -17,6 +17,21 @@ import { describe, it, expect } from 'vitest';
 import { deriveBandFromPriority } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
 import { TASK_PRIORITIES } from '../../src/agents/architect/graph/code/state';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
+import type { SetupTask, FeatureTask } from '@ant/shared';
+
+describe('band discriminated-union compile guard (setup=root only, feature=feature bands only)', () => {
+  it('per-variant band constraint holds at the type level', () => {
+    const common = { name: 'n', description: 'd' };
+    const rootSetup: SetupTask = { id: 's', priority: 100, type: 'setup', band: 'root', ...common };
+    const pkgSetup: SetupTask = { id: 's2', priority: 101, type: 'setup', ...common }; // band-absent
+    const foundationFeat: FeatureTask = { id: 'f', priority: 200, type: 'feature', band: 'foundation', ...common };
+    // @ts-expect-error setup tasks may only carry band:'root', never a feature band
+    const badSetup: SetupTask = { id: 'b', priority: 100, type: 'setup', band: 'foundation', ...common };
+    // @ts-expect-error feature tasks may not carry the setup 'root' band
+    const badFeat: FeatureTask = { id: 'b2', priority: 300, type: 'feature', band: 'root', ...common };
+    expect([rootSetup, pkgSetup, foundationFeat, badSetup, badFeat]).toHaveLength(5);
+  });
+});
 
 describe('platform band — deriveBandFromPriority (priority→band SSOT)', () => {
   it('maps [200,279] → foundation, [280,299] → platform', () => {
@@ -34,6 +49,18 @@ describe('platform band — deriveBandFromPriority (priority→band SSOT)', () =
     expect(deriveBandFromPriority(599)).toBeUndefined();
     expect(deriveBandFromPriority(600)).toBe('integration');
     expect(deriveBandFromPriority(649)).toBe('integration');
+  });
+
+  it("maps SETUP_PROJECT(100) → 'root' (unique workspace-level setup); package setups 101+ → undefined", () => {
+    // The root setup is the lowest priority in the queue and dequeues first.
+    expect(deriveBandFromPriority(TASK_PRIORITIES.SETUP_PROJECT)).toBe('root');
+    expect(deriveBandFromPriority(100)).toBe('root');
+    // Band-absent (package/member) setups occupy 101..SETUP_MAX — no band.
+    expect(deriveBandFromPriority(101)).toBeUndefined();
+    expect(deriveBandFromPriority(150)).toBeUndefined();
+    expect(deriveBandFromPriority(TASK_PRIORITIES.SETUP_MAX)).toBeUndefined();
+    // 'root' is strictly the lowest priority → ahead of every band-absent setup.
+    expect(TASK_PRIORITIES.SETUP_PROJECT).toBeLessThan(101);
   });
 
   it('FOUNDATION_MAX stays 299 (design-job doc classifier window untouched)', () => {

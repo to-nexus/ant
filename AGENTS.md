@@ -142,7 +142,7 @@ different actors:
 | Axis            | Observer       | Decides                                             | Domain                                 |
 |-----------------|----------------|-----------------------------------------------------|----------------------------------------|
 | `task.type`     | LLM            | "What action mode is this task in"                  | `feature` / `error` / `verification` / `ui` / `design-system` / `test-code` / `doc` / `setup` / `explain` |
-| `task.band`     | Orchestrator   | Scheduling position within the feature type         | `'foundation'` / `'integration'` / `undefined` |
+| `task.band`     | Orchestrator   | Scheduling position by dependency order             | feature: `'foundation'` / `'platform'` / `'integration'` / `undefined` · setup: `'root'` (project/framework/workspace-level, priority 100) / `undefined` (package setup) |
 | `task.priority` | TaskQueue      | Sort order in the queue                             | Integer — sort comparison only         |
 
 **`task.priority` may be compared only inside `TaskQueue.push()`'s sort
@@ -150,12 +150,23 @@ callback.** Phase nodes, routers, parallel scheduling, classification, and
 type decisions MUST NOT compare priority semantically. The single legal
 priority-to-meaning translation lives in
 `decompose/responseParser.ts::deriveBandFromPriority` — that helper attaches
-`band` to feature tasks based on the priority the LLM emitted; everything
-downstream reads `task.band` (for features) or `task.type` (for everything
-else).
+`band` to feature tasks (priority window → feature band) and to setup tasks
+(`priority === SETUP_PROJECT` (100) → `'root'`, the unique workspace-level
+setup that dequeues first; 101+ → band-absent package setup); everything
+downstream reads `task.band` (features/setup) or `task.type` (everything else).
 
-`band` is type-bound to `FeatureTask` via discriminated union — attempting
-`{ type: 'verification', band: 'foundation', ... }` is a compile error.
+`band` is carried only by `FeatureTask` (`FeatureBand` = foundation / platform
+/ integration) and `SetupTask` (`SetupBand` = `'root'`) via discriminated
+union — `{ type: 'verification', band: 'root', ... }`, `{ type: 'feature',
+band: 'root', ... }`, and `{ type: 'setup', band: 'foundation', ... }` are all
+compile errors.
+
+A `band:'root'` setup owns ONLY root-level artifacts (workspace manifest +
+member glob + shared config + infra in a monorepo; the lone manifest + tooling
+config in a monolith) and creates **no** member directory or name. Every other
+member is created and named by its own band-absent setup — the workspace glob
+discovers it. This is the structural fix for stranded "husk" package
+directories (two setups naming the same boundary differently).
 
 ---
 
