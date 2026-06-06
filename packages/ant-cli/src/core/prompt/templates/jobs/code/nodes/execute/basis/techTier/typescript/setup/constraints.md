@@ -4,14 +4,13 @@
 
 ## 🎨 DESIGN TOKENS (IMPORTANT!)
 
-**If you see a `# DESIGN TOKENS` section in this prompt:**
-- The tokens are ALREADY LOADED from `visual/ui/ant/ui-tokens.json`
-- DO NOT attempt to read `ui-tokens.json` from disk (e.g., `visual/ui/ant/`) — use the injected tokens directly
-- Use the token values from the prompt directly to configure the styling framework's theme
+**If design-token values are injected into this prompt (a context block carrying token values):**
+- Use those values directly to configure the styling framework's theme
+- Do NOT re-read token files from disk — the injected values are authoritative for this task
 
-**If NO `# DESIGN TOKENS` section but visual tier policies exist in the basis:**
+**If no design-token values are present in this prompt:**
 - Create a minimal styling framework config with sensible defaults (standard theme)
-- The design-system task (running after setup) will derive the full theme from visual tier policies
+- A later design-system task derives the full theme from the design source (the UI document or, when none, the visual-tier policies in the basis)
 - Do NOT attempt to derive the full token set in setup — keep configuration generic
 
 ## 📁 PATH CONVENTION (CRITICAL!)

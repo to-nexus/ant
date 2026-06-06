@@ -98,14 +98,13 @@ Details not specified by Plan are your decision:
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Design Tokens Integration
 
-**⚠️ IMPORTANT: Design tokens are INJECTED into this prompt, NOT in the file system.**
-- If you see a `# DESIGN TOKENS` section below, use those values directly
-- DO NOT attempt to read `ui-tokens.json` from disk (e.g., `visual/ui/ant/`) — use the injected tokens directly
-- The tokens are loaded from `visual/ui/ant/ui-tokens.json` and provided here
+**⚠️ IMPORTANT: When design-token values are injected into this prompt, they live in the prompt — not the file system.**
+- If a design-token block is present in this prompt, use those values directly
+- Do NOT re-read token files from disk — the injected values are authoritative for this task
 
 When design tokens are provided in this prompt:
 
-1. **Detect** the project's styling approach (`list_files` → look for tailwind.config, theme.ts, globals.css, etc.)
+1. **Detect** the project's styling approach (`list_files` → look for the styling framework's config / theme / global stylesheet)
 2. **Configure** tokens in the framework's theme/config system
 3. **Use** configured tokens in code, NEVER hardcode values
 
@@ -114,22 +113,13 @@ When design tokens are provided in this prompt:
 **Principle**: Never hardcode color/spacing/typography values. Always use configured token classes.
 
 **Constraint**: 
-- Observe the DESIGN TOKENS section in this prompt
+- Observe the injected design-token block in this prompt
 - Find matching token for each visual property
 - Use token class name, NOT raw values
 
-**Token Lookup:** DESIGN TOKENS section → Find matching token → Use token class name
+**Token Lookup:** injected design-token block → Find matching token → Use token class name
 
-> **Note:** For framework-specific configuration syntax (Tailwind, CSS Variables, etc.), see environment-specific rules.
-
-────────────────────────────────────────────────────────────────────────────────
-### 3-1. UI Task Spec Fidelity (when ui-doc exists)
-
-**Constraint**: A token name in ui-spec IS the class name. `gap: "space-3"` means `gap-3`. Do NOT substitute with a visually similar alternative.
-
-**Constraint**: When ui-spec defines `visibleWhen` on a component, the parent MUST enforce that condition. Do NOT render unconditionally.
-
-**Constraint**: All interactive elements defined in ui-spec `interactionStates` (preset buttons, toggles, conditional content) MUST be implemented.
+> **Note:** For framework-specific configuration syntax, see environment-specific rules. For the interpretation contract of the active UI source (ant / figma / handoff), see the injected UI-source partial.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. Additions Beyond Plan
