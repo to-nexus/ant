@@ -24,3 +24,11 @@ Component STRUCTURE comes from the code skeleton (or refs). Component STYLE come
 ### Observable
 
 Every token key, asset key, and spec section injected into the pool is observable text. Values that are not observable (not listed in any injected section) must not be invented — fall back to VisualTier defaults or framework conventions instead.
+
+### Constraint (Spec fidelity)
+
+When a `ui-spec` section is present, each declared field is a direct constraint on the rendered view:
+
+- A token name in `ui-spec` IS the class/variable name — use it verbatim. Do NOT substitute a visually similar alternative.
+- When `ui-spec` defines `visibleWhen` on a component, the parent MUST enforce that condition. Do NOT render unconditionally.
+- All interactive elements declared in `ui-spec` `interactionStates` MUST be implemented.
