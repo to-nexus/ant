@@ -158,10 +158,10 @@ export async function runPlanLLMWithTools(
   if (result.kind === 'planText') {
     const planText = result.planText;
     // Empty-plan sentinel은 task type과 무관한 일관 계약이다 —
-    // base.md/rules.md (기본), variants/error / variants/test-code /
-    // variants/verification (오버라이드) 모두 "investigation이 자기 surface
-    // 에서 no-op 을 확인하면 빈 implementation JSON을 emit하라" 를 메인
-    // 흐름에서 가르친다. LLM이 그 sentinel JSON을 emit하면 여기서 ''로
+    // base.md/rules.md (기본, test-code 의 test-code-protocol 오버레이 포함),
+    // variants/error / variants/verification (오버라이드) 모두 "investigation
+    // 이 자기 surface 에서 no-op 을 확인하면 빈 implementation JSON을 emit하라"
+    // 를 메인 흐름에서 가르친다. LLM이 그 sentinel JSON을 emit하면 여기서 ''로
     // 변환해 finalize의 noOpComplete 게이트가 즉시 done 처리하도록 한다.
     //
     // 두 RCA가 이 단일 게이트에 모인다:

@@ -59,12 +59,15 @@
     "port-management": [],
     "backend-safety": [],
     "chunked-emission": [],
-    "attestation": []
+    "attestation": [],
+    "test-code-task": ["prePlanText"],
+    "test-code-rules": []
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"],
     "analysis-block": ["analysis", "hasAnalysis"],
-    "parent-pre-plan": ["prePlanText", "hasPrePlanText"]
+    "parent-pre-plan": ["prePlanText", "hasPrePlanText"],
+    "test-code-protocol": ["hasPrePlanText", "hasPackageManager", "packageManager", "hasLanguageHints", "languageHints"]
   },
   "jobs/code/nodes/decompose/injections/framework": {
     "nextjs": [],

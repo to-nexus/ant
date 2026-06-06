@@ -162,7 +162,11 @@ export class AutoInjectionResolver {
       }
 
       if (isTestCode && language && job === 'code') {
-        injections.push(`jobs/${job}/nodes/execute/variants/test-code/basis/techTier/${language}/hints`);
+        // Non-forking: test-code execute language hints live under the
+        // shared `nodes/execute/basis/techTier/{lang}/test-code/` path
+        // (mirrors setup's `.../{lang}/setup/constraints`), not under a
+        // variant directory — test-code has no execute variant.
+        injections.push(`jobs/${job}/nodes/execute/basis/techTier/${language}/test-code/hints`);
       }
 
       if (job === 'code' && !isVerification && !isDoc && hasBackend) {

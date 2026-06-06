@@ -225,7 +225,7 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
       expect((finalVerifications[0] as any).resumeState).toBeUndefined();
     });
 
-    it('test-code parent: drops original, spawns test-code sub-tasks with minimal shape, enqueues Final Verification', () => {
+    it('test-code parent: drops original, spawns test-code sub-tasks with slim shape, enqueues Final Verification', () => {
       const state = makeState();
       const task = makeTask({
         type: 'test-code',
@@ -270,12 +270,15 @@ describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {
         expect(sub.type).toBe('test-code');
         expect(sub.prePlanText).toBeTruthy();
         const parsed = JSON.parse(sub.prePlanText);
-        expect(parsed.implementation).toBeTruthy();
-        expect(Array.isArray(parsed.implementation.create)).toBe(true);
-        expect(Array.isArray(parsed.implementation.modify)).toBe(true);
+        // Slim-shape (featureBatchShape): the parent declares the slice
+        // boundary; the child re-authors its own implementation. No
+        // implementation block, no `slice`/`diagnostics`/`rootCauseSelfCheck`.
+        expect(parsed.implementation).toBeUndefined();
+        expect(parsed.slice).toBeUndefined();
         expect(parsed.diagnostics).toBeUndefined();
         expect(parsed.rootCauseSelfCheck).toBeUndefined();
-        expect(parsed.slice).toBeTruthy();
+        expect(parsed.goal).toBeTruthy();
+        expect(parsed.rationale).toBeTruthy();
         expect(sub.remediationMode).toBeUndefined();
         expect(sub.parallelGroup).toBeTruthy();
         expect(sub.exclusive).toBe(false);

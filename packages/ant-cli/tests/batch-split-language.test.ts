@@ -99,8 +99,11 @@ describe('Fix C — response-language partial render contract', () => {
     expect(text).toMatch(/{{>\s*jobs\/code\/base\/injections\/response-language\s*}}/);
   });
 
-  it('is wired into all plan variants (error / verification / test-code)', async () => {
-    for (const variant of ['error', 'verification', 'test-code']) {
+  it('is wired into the forking plan variants (error / verification)', async () => {
+    // test-code is no longer a forking variant — it rides the generic
+    // `jobs/code/nodes/plan/base.md` (asserted above), which already
+    // includes the response-language partial.
+    for (const variant of ['error', 'verification']) {
       const text = await fs.readFile(
         join(
           TEMPLATES_DIR,

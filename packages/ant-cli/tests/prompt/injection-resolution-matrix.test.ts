@@ -253,7 +253,8 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute node)', () =
   // test-code hints
   it('test-code: language-specific hints included', () => {
     const injections = resolveAutoInjections({ job: 'code', taskType: 'test-code', techTier: feTS });
-    expect(injections).toContain('jobs/code/nodes/execute/variants/test-code/basis/techTier/typescript/hints');
+    // Non-forking: hints live under the shared basis/techTier path, not a variant.
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/typescript/test-code/hints');
   });
 
   it('feature: NO test-code hints', () => {

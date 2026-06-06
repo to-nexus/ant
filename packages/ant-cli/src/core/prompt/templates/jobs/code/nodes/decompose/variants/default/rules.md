@@ -405,9 +405,9 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Why**: Feature-slice granularity varies by codebase — a three-package project with one package containing five feature directories needs a 3×5 parallelism fan-out, which decompose cannot observe from the design document alone. The test-code parent, running in the plan phase, already has codebase read access (`read_file` / `list_files`) and can decide slicing against the actual directory structure.
 
-**Mechanism**: The test-code plan variant (`jobs/code/nodes/plan/variants/test-code/base.md`) prompts the parent to either:
+**Mechanism**: The test-code plan prompt (the `test-code-protocol` overlay plus the shared FAN-OUT rubric) prompts the parent to either:
 - Emit a single plan (no `batches[]`) — parent writes every test file itself in execute.
-- Emit a batched plan (`batches[]` with ≥2 entries) — the framework drops the parent and spawns one parallel sub-task per batch with disjoint file scopes. Each sub-task fast-paths through the plan phase and only writes the files listed in its batch.
+- Emit a batched plan (`batches[]`) — the framework drops the parent and spawns one parallel sub-task per batch with disjoint test-file scopes. Each sub-task re-plans its own slice (authoring its own `implementation`) and writes those test files.
 
 **Decompose contract**: Emit **one parent per package boundary** with a priority-700 `test-code` type. Do NOT emit `batches[]` at decompose time — the parent's plan phase owns that decision. Do NOT attempt to pre-slice within a package at decompose time.
 

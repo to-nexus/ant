@@ -344,4 +344,8 @@ CodeGen will verify exact paths using `list_files` tool.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
+{{#if (eq taskType "test-code")}}
+{{> jobs/code/nodes/plan/injections/test-code-protocol }}
+{{/if}}
+
 {{> jobs/code/nodes/plan/rules}}

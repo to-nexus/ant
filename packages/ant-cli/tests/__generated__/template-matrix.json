@@ -890,6 +890,12 @@
       "basis-registry"
     ]
   },
+  "jobs/code/nodes/execute/basis/techTier/go/test-code/hints": {
+    "sources": [
+      "auto-injection",
+      "render-call"
+    ]
+  },
   "jobs/code/nodes/execute/basis/techTier/typescript/setup/config": {
     "sources": [
       "auto-injection",
@@ -902,6 +908,12 @@
       "auto-injection",
       "render-call",
       "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/execute/basis/techTier/typescript/test-code/hints": {
+    "sources": [
+      "auto-injection",
+      "render-call"
     ]
   },
   "jobs/code/nodes/execute/injections/attestation": {
@@ -965,6 +977,18 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/execute/injections/test-code-rules": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/test-code-task": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/execute/variants/default/base": {
     "sources": [
       "build-callsite",
@@ -996,30 +1020,6 @@
     ]
   },
   "jobs/code/nodes/execute/variants/error/rules": {
-    "sources": [
-      "build-callsite",
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/execute/variants/test-code/base": {
-    "sources": [
-      "build-callsite",
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/execute/variants/test-code/basis/techTier/go/hints": {
-    "sources": [
-      "auto-injection",
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/execute/variants/test-code/basis/techTier/typescript/hints": {
-    "sources": [
-      "auto-injection",
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/execute/variants/test-code/rules": {
     "sources": [
       "build-callsite",
       "render-call"
@@ -1061,6 +1061,12 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/plan/injections/test-code-protocol": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/plan/injections/ui-source-inventory": {
     "sources": [
       "partial-ref",
@@ -1082,12 +1088,6 @@
     ]
   },
   "jobs/code/nodes/plan/variants/error/base": {
-    "sources": [
-      "build-callsite",
-      "render-call"
-    ]
-  },
-  "jobs/code/nodes/plan/variants/test-code/base": {
     "sources": [
       "build-callsite",
       "render-call"
