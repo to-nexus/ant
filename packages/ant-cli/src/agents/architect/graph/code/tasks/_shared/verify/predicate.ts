@@ -34,9 +34,9 @@ interface TaskShape {
 
 /**
  * True when this task owns a verification cycle (will run gates and
- * complete only when `Session.isComplete()` is satisfied). Drives every
- * dispatch in `composeBundle` and the phase-layer predicate
- * generalisations.
+ * complete only when the LLM judges every required gate clean and emits
+ * `<done>`). Drives every dispatch in `composeBundle` and the phase-layer
+ * predicate generalisations.
  *
  * Two qualifying paths:
  *   - `isVerificationTask(task)` — Tier 3/4 dedicated verification task

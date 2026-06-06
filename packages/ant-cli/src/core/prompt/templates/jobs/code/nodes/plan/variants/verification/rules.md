@@ -28,13 +28,13 @@
 
 **Grounding Principle**: When the error references a library symbol, version boundary, or framework API (e.g., `Cannot find namespace 'JSX'`, `ERR_REQUIRE_ESM`, `next/font requires SWC`), verify the real contract in the installed library rather than guessing from pre-training knowledge. Use `search_code` with `include_dependencies: true` or `read_file` on `node_modules/@types/*.d.ts`, `node_modules/<pkg>/package.json`, or the package's actual source. One focused library lookup is cheaper than five rounds of speculative fixes.
 
-### Gate Re-run Principle
+{{> jobs/code/base/injections/gate-validity-principle}}
 
-**Principle**: A verification gate's output is a pure function of the source tree's current state. Re-running the same gate without a source-file change since its last observation produces identical output.
+### Gate Re-run Principle (diagnostic phase)
 
-**Constraints**:
+**Constraints** (applying Gate Validity above to the diagnostic plan cycle):
 - After observing a gate's failure, proceed directly to producing the remediation `<plan>` from that output. Do NOT re-run the same gate in the same plan cycle to "double check" or "confirm" — it wastes a tool slot and cannot change the result.
-- When the conversation history shows a gate already passed in this cycle and no source file has changed since, do not re-run it. Move to the next gate in the ordering.
+- When the conversation history shows a gate already passed in this cycle and no input it consumes has changed since, do not re-run it. Move to the next gate in the ordering.
 
 ### Cache Replay Detection
 
@@ -150,6 +150,6 @@ Use `read_file` on the project root's configuration files to determine the corre
 
 ### Verification Cycle Discipline
 
-**Principle**: The runtime no longer caches gate-pass observations across the cycle. You decide when to re-run a verification command based on the evidence visible in your conversation history (prior `run_command` outputs, files changed since).
+**Principle**: Gate observations are not cached by the runtime — you are the sole judge of gate validity (see Gate Validity above), reading the evidence in your conversation history (prior `run_command` outputs, files changed since).
 
-**Constraint**: Do not re-run a verification command (typecheck / build / test) without a reason — re-running a passing gate after no source-file change wastes a tool slot. When every required gate has been observed to pass and no later edit invalidates them, emit the no-errors sentinel plan and signal completion.
+**Constraint**: When every required gate has been observed to pass and no later edit changed an input any of them consumes, emit the no-errors sentinel plan and signal completion.

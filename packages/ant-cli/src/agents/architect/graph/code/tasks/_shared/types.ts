@@ -23,10 +23,9 @@
  * model/` and supporting types (retired with the hook slots above):
  * `tasks/error/model/ErrorTaskData` (`readErrorData` / `hasPrePlanText`
  * / `ErrorTaskData` / `RemediationMode` — every phase consumer read
- * the four fields directly off `CodeTask` instead) and
- * `tasks/_shared/verify/gates.GateConfig` (no importer since the
- * interface was introduced; `Session` holds the three sets as private
- * fields rather than a combined value).
+ * the four fields directly off `CodeTask` instead). The gate-state
+ * Session (formerly `tasks/_shared/verify/gates`) was retired entirely:
+ * the LLM is the sole judge of when a gate passes / needs re-running.
  *
  * T6b-α follow-up (plan-node decomposition, `nodes/plan/parts/*`)
  * narrowed six file-local helpers from `export` to module-scope because

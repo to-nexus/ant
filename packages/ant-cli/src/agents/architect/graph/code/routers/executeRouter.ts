@@ -1,18 +1,20 @@
 /**
  * Execute Router - execute 응답 분석해서 다음 노드 결정
  *
- * 라우팅 로직:
+ * 라우팅 로직 (평가 순서):
  * 0. File errors → checkTaskStatus (self-healing, tool 불필요)
+ * B. 최근 5분 내 tool 실패 5회 이상 → checkTaskStatus 강제 (실패 tool 루프 차단)
  * 1. Tool calls → tool 노드
  * 2. Done → verification 책임자는 plan 재검증, 그 외 checkTaskStatus
+ * A. Final task recursion budget 부족 AND tool/done 없음 → checkTaskStatus (graceful drain)
  * 3. 그 외 → execute 노드 (재추론)
  *
- * Safety Nets:
- * A. Final task가 recursion limit에 근접 → checkTaskStatus 강제
- * B. 최근 5분 내 tool 실패 5회 이상 → checkTaskStatus 강제
+ * Safety Net B는 toolCalls 검사 *위*에 둔다(실패 batch가 매번 tool로 라우팅되어 무력화되지
+ * 않도록). Safety Net A는 toolCalls·done 검사 *아래*에 둔다(대기 중 gate-rerun / `<done>` 을
+ * 폐기하지 않도록 — A는 진짜 비생산 turn 에서만 발동).
  */
 
-import { ArchitectGraphState } from '../state';
+import { ArchitectGraphState, RECURSION_DRAIN_THRESHOLD } from '../state';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
@@ -75,45 +77,12 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   console.log(`   planTextLen: ${state.planText?.length ?? 0}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   
-  // Safety Net A: Check recursion limit for final task
-  if (isFinalTask && state.recursionLimit && state.recursionCount) {
-    const remaining = state.recursionLimit - state.recursionCount;
+  // Safety Net A (recursion-budget drain) is evaluated LAST — after the
+  // toolCalls and done checks below — so a pending gate-rerun or a `<done>`
+  // is never discarded. It fires only on a genuinely non-productive turn
+  // (no tool call, no done) near budget exhaustion. See the block before the
+  // final `execute` fallback.
 
-    if (remaining < 50) {
-      console.warn(`⚠️  [Router] Final task recursion limit approaching (${state.recursionCount}/${state.recursionLimit})`);
-      console.warn(`   🚨 Forcing checkTaskStatus regardless of LLM response`);
-
-      const _taskId = currentTask?.id || 'unknown';
-      const _lastText = (response as any).lastTextSnippet || '';
-      if (state.context?.featurePath && state._httpJobId) {
-        // Static import + synchronous writeQueue update — see
-        // executionLogger contract (vast-curling-perch C-3 RCA).
-        const execLogger = getExecutionLogger({
-          featurePath: state.context.featurePath,
-          jobId: state._httpJobId,
-          jobType: 'code',
-        });
-        void execLogger.logRecursionBudgetWarning(_taskId, {
-          taskName: currentTask?.name || 'unknown',
-          current: state.recursionCount!,
-          limit: state.recursionLimit!,
-          remaining,
-          forcedNode: 'checkTaskStatus',
-        }).catch(() => { /* non-blocking */ });
-        if (!response.done && _lastText) {
-          void execLogger.logExecuteInterrupted(_taskId, {
-            taskName: currentTask?.name || 'unknown',
-            callIndex: state._executeCallIndex || 0,
-            lastResponseSnippet: _lastText.slice(0, 200),
-            reason: 'recursion_limit',
-          }).catch(() => { /* non-blocking */ });
-        }
-      }
-
-      return 'checkTaskStatus';
-    }
-  }
-  
   // Safety Net B: Check for repeated tool failures
   if (isFinalTask || isCurrentErrorTask) {
     const recentFailures = detectRecentToolFailures(state);
@@ -167,6 +136,51 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     return 'checkTaskStatus';
   }
   
+  // Safety Net A: recursion-budget drain for a final task that is neither
+  // calling a tool nor done — i.e. a genuinely non-productive re-reasoning
+  // turn near budget exhaustion. Evaluated here (after toolCalls/done) so a
+  // pending gate-rerun or `<done>` is honoured first. Threshold is the shared
+  // RECURSION_DRAIN_THRESHOLD, matching the checkTaskStatus drains in
+  // routing.ts / workerGraph.ts so there is no dead-band where this forces
+  // checkTaskStatus but the drain cannot catch it.
+  if (isFinalTask && state.recursionLimit && state.recursionCount) {
+    const remaining = state.recursionLimit - state.recursionCount;
+
+    if (remaining < RECURSION_DRAIN_THRESHOLD) {
+      console.warn(`⚠️  [Router] Final task recursion budget low (${state.recursionCount}/${state.recursionLimit}), no pending tool/done`);
+      console.warn(`   🚨 Forcing checkTaskStatus → graceful drain`);
+
+      const _taskId = currentTask?.id || 'unknown';
+      const _lastText = (response as any).lastTextSnippet || '';
+      if (state.context?.featurePath && state._httpJobId) {
+        // Static import + synchronous writeQueue update — see
+        // executionLogger contract (vast-curling-perch C-3 RCA).
+        const execLogger = getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'code',
+        });
+        void execLogger.logRecursionBudgetWarning(_taskId, {
+          taskName: currentTask?.name || 'unknown',
+          current: state.recursionCount!,
+          limit: state.recursionLimit!,
+          remaining,
+          forcedNode: 'checkTaskStatus',
+        }).catch(() => { /* non-blocking */ });
+        if (!response.done && _lastText) {
+          void execLogger.logExecuteInterrupted(_taskId, {
+            taskName: currentTask?.name || 'unknown',
+            callIndex: state._executeCallIndex || 0,
+            lastResponseSnippet: _lastText.slice(0, 200),
+            reason: 'recursion_limit',
+          }).catch(() => { /* non-blocking */ });
+        }
+      }
+
+      return 'checkTaskStatus';
+    }
+  }
+
   // 3. 그 외 → execute 노드 (재추론 - 드물지만 가능)
   console.log(`🔄 [Router] Continue reasoning → execute node`);
   return 'execute';

@@ -528,6 +528,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/gate-validity-principle": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/monorepo-install-locality": {
     "sources": [
       "partial-ref",
