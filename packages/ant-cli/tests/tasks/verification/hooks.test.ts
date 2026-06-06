@@ -108,7 +108,13 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
         deps: { promptBuilder } as any,
         resolvedAction: { basis: { techTier: { stack: 'ts' } } } as any,
         directive: 'ship diagnostics',
-      }),
+        // Realistic verification cycle: a fresh verification task enters
+        // verify-mode on cycle 1 (handleFreshTaskEntry sets _verifyEntered),
+        // and state.currentTask is the verification task — both are read by
+        // allowsPersistentProcesses(state).
+        currentTask: task('v1') as any,
+        _verifyEntered: true,
+      } as any),
       task: task('v1'),
       codeContext: { files: [{ path: 'src/a.ts' }] },
       violationsText: undefined,
@@ -125,13 +131,15 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base).toBeDefined();
-    // Plain non-error directive → runtime-error context flag stays false,
-    // persistent processes remain disallowed. The legacy `isErrorTask`
-    // template gate has been retired in favour of hasUserRuntimeErrorContext;
-    // the `directive` prompt variable name itself is preserved (system-wide
-    // standard naming used by every other render call).
+    // Decoupling: a plain (non-runtime-error) directive keeps the
+    // user-report reproducer mandate OFF (hasUserRuntimeErrorContext=false),
+    // but verify-mode RCA still unlocks the reproduction set
+    // (allowPersistentProcesses=true via _verifyEntered) so the diagnostic
+    // plan may boot+probe route failures before committing the split. The
+    // legacy `isErrorTask` template gate has been retired; the `directive`
+    // prompt variable name is preserved (system-wide standard naming).
     expect(base?.vars.hasUserRuntimeErrorContext).toBe(false);
-    expect(base?.vars.allowPersistentProcesses).toBe(false);
+    expect(base?.vars.allowPersistentProcesses).toBe(true);
     expect(base?.vars.directive).toBe('ship diagnostics');
     expect(base?.vars.isErrorTask).toBeUndefined();
     expect(base?.vars.runTests).toBe(true);

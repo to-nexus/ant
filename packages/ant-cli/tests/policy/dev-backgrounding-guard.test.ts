@@ -24,8 +24,13 @@ describe('dev-server backgrounding guard', () => {
     expect(applyCodeCommandPolicy(ctx(true), { command: 'pnpm dev' })).toBeNull();
   });
 
-  it('does NOT fire when persistent processes are locked', () => {
-    expect(applyCodeCommandPolicy(ctx(false), { command: 'pnpm dev &' })).toBeNull();
+  it('also fires when persistent processes are locked, pointing to the bounded keep_running:false probe', () => {
+    const r = applyCodeCommandPolicy(ctx(false), { command: 'pnpm dev &' });
+    expect(r).not.toBeNull();
+    expect(r!.content).toContain('[Policy]');
+    expect(r!.content).toContain('keep_running: false');
+    // Locked message must NOT advertise http_request (it is unavailable here).
+    expect(r!.content).not.toContain('http_request');
   });
 
   it('does NOT misfire on a chained `&&` dev command', () => {
@@ -34,5 +39,23 @@ describe('dev-server backgrounding guard', () => {
 
   it('does NOT misfire on a non-server background job like `make build & wait`', () => {
     expect(applyCodeCommandPolicy(ctx(true), { command: 'make build & wait' })).toBeNull();
+  });
+});
+
+describe('persistent keep_running gate (set-gated with http_request)', () => {
+  it('rejects keep_running:true when persistent processes are locked, pointing to the bounded probe', () => {
+    const r = applyCodeCommandPolicy(ctx(false), { command: 'pnpm dev', keep_running: true });
+    expect(r).not.toBeNull();
+    expect(r!.content).toContain('[Policy]');
+    expect(r!.content).toContain('keep_running: false');
+  });
+
+  it('allows keep_running:true when persistent processes are unlocked', () => {
+    expect(applyCodeCommandPolicy(ctx(true), { command: 'pnpm dev', keep_running: true })).toBeNull();
+  });
+
+  it('allows the bounded keep_running:false probe regardless of the gate', () => {
+    expect(applyCodeCommandPolicy(ctx(false), { command: 'pnpm dev', keep_running: false })).toBeNull();
+    expect(applyCodeCommandPolicy(ctx(true), { command: 'pnpm dev', keep_running: false })).toBeNull();
   });
 });

@@ -151,12 +151,14 @@ function applyInstallLocalityGuard(
 /**
  * Manual dev-server backgrounding guard.
  *
- * When persistent processes are unlocked (error / runtime-error verify), the
- * LLM should start dev servers via `run_command keep_running:true` (the runtime
- * tracks the PID + port and reaps survivors) and verify routes via the
- * `http_request` tool — NOT by shell-backgrounding (`&` / `nohup` / `disown` /
- * `setsid`), which orphans the process (no PID tracking, http_probe skipped) and
- * is the exact pattern that stalled the `dark-crafting-adder` cycle.
+ * Shell-backgrounding a dev server (`&` / `nohup` / `disown` / `setsid`) orphans
+ * the process — the runtime can't track its PID/port and won't reap it (the exact
+ * pattern that stalled the `dark-crafting-adder` cycle). This is wrong regardless
+ * of whether persistent processes are unlocked, so the guard fires in BOTH states
+ * and only the recovery instruction adapts:
+ *   - unlocked → start it with `keep_running: true` + probe via `http_request`
+ *   - locked   → persistent servers aren't available here; use the bounded
+ *     `keep_running: false` probe instead
  *
  * Narrow by construction: fires only when BOTH a dev-server token and a
  * backgrounding token are present, so legitimate `cmd & wait` pipelines and
@@ -169,18 +171,51 @@ function applyDevBackgroundingGuard(
   ctx: ToolExecutionContext,
   args: { command: string },
 ): ToolResult | null {
-  if (ctx.allowPersistentProcesses !== true) return null;
   const { command } = args;
   if (!DEV_SERVER_TOKEN.test(command) || !BACKGROUNDING_TOKEN.test(command)) return null;
   console.warn(`   ⛔ [RunCommand] Blocked manual dev-server backgrounding: ${command}`);
+  const recovery = ctx.allowPersistentProcesses === true
+    ? `✅ Start it with \`run_command\` and \`keep_running: true\` (the result reports server_pid + ` +
+      `server_url), then verify specific routes with the \`http_request\` tool (it auto-targets the ` +
+      `running server's port). Kill server_pid before <done>.`
+    : `✅ Persistent servers + route probing aren't available in this context. For a one-shot "does it ` +
+      `boot" check, run the same command with \`run_command\` and \`keep_running: false\` (the default) — ` +
+      `it spawns, waits the startup window, probes \`/\` once, and auto-kills.`;
   return makeRejection(
     command,
     `⛔ BLOCKED: ${command}\n\n` +
     `Do NOT background a dev server with \`&\` / \`nohup\` / \`disown\` / \`setsid\` — it orphans the ` +
     `process (the runtime can't track its PID/port and won't reap it).\n\n` +
-    `✅ Start it with \`run_command\` and \`keep_running: true\` (the result reports server_pid + ` +
-    `server_url), then verify specific routes with the \`http_request\` tool (it auto-targets the ` +
-    `running server's port). Kill server_pid before <done>.`,
+    recovery,
+  );
+}
+
+/**
+ * Persistent keep_running gate.
+ *
+ * `keep_running: true` (persist the server alive across tool calls) is the other
+ * half of the runtime-reproduction set paired with `http_request`; both are gated
+ * by the same `allowPersistentProcesses` SSOT. When that gate is closed, a request
+ * to keep a server alive is rejected with an explicit pointer to the bounded
+ * `keep_running: false` probe (which stays ungated — cheap and self-cleaning). No
+ * silent downgrade: the contract is kept explicit so the LLM learns the boundary.
+ */
+function applyPersistentKeepRunningGate(
+  ctx: ToolExecutionContext,
+  args: { command: string; keep_running?: boolean },
+): ToolResult | null {
+  if (args.keep_running !== true) return null;
+  if (ctx.allowPersistentProcesses === true) return null;
+  console.warn(`   ⛔ [RunCommand] Blocked keep_running:true outside a reproduction context: ${args.command}`);
+  return makeRejection(
+    args.command,
+    `⛔ BLOCKED: keep_running: true\n\n` +
+    `Keeping a server alive across tool calls (and probing it with \`http_request\`) is available only ` +
+    `in a reproduction context — an error task or a verification / self-verify RCA cycle. This is an ` +
+    `apply phase, so the persistent-process set is locked.\n\n` +
+    `✅ For a one-shot "does it boot" check, re-run with \`keep_running: false\` (the default): it spawns, ` +
+    `waits the startup window, probes \`/\` once, and auto-kills. Leave route-level verification to the ` +
+    `following verification cycle.`,
   );
 }
 
@@ -190,7 +225,7 @@ function applyDevBackgroundingGuard(
  */
 export function applyCodeCommandPolicy(
   ctx: ToolExecutionContext,
-  args: { command: string; verifies?: string; working_directory?: string },
+  args: { command: string; verifies?: string; working_directory?: string; keep_running?: boolean },
 ): ToolResult | null {
   const { command } = args;
   const taskType = ctx.currentTaskType;
@@ -216,10 +251,16 @@ export function applyCodeCommandPolicy(
   const localityRejection = applyInstallLocalityGuard(ctx, args);
   if (localityRejection) return localityRejection;
 
-  // Manual dev-server backgrounding guard — redirect to keep_running +
-  // http_request. Fires only where persistent processes are unlocked.
+  // Manual dev-server backgrounding guard — never background a dev server;
+  // recovery instruction adapts to whether persistent processes are unlocked.
   const backgroundingRejection = applyDevBackgroundingGuard(ctx, args);
   if (backgroundingRejection) return backgroundingRejection;
+
+  // Persistent keep_running gate — `keep_running:true` is set-gated with
+  // `http_request` behind `allowPersistentProcesses`; locked contexts get the
+  // bounded `keep_running:false` probe instead.
+  const keepRunningRejection = applyPersistentKeepRunningGate(ctx, args);
+  if (keepRunningRejection) return keepRunningRejection;
 
   // Task-type-specific guards.
   return hooksForTaskType(taskType as TaskType | undefined)?.command?.guard(ctx, args as any) ?? null;
