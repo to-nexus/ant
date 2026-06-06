@@ -53,16 +53,21 @@ below before authoring the seed:
   entry surface's shape and simulate the external leg's outcome inside
   the closed system (rooted in `service-virtualization-contract`).
 - Do NOT let the mocked authorization step hand back an entry point that
-  navigates to an external or unreachable host. The authorization entry
-  point a mocked external leg produces MUST resolve to the application's
-  OWN surface — its own callback entry on its own origin — carrying the
-  synthesized outcome (the simulated grant). An entry point whose host is
-  not the application's own origin sends the user OUT of the closed system
-  with no path back: the redirect target is dead, the callback never
-  fires, and the demo is unenterable. Observable check: the host of the
-  authorization/redirect target equals the app's own origin. If it points
-  anywhere else, it is not a virtualized leg — it is a live external
-  dependency wearing a mock's name.
+  navigates to an external or unreachable host, or that the runtime cannot
+  navigate to at all. When the authorization call is handed a redirect /
+  callback URI (the application's own callback entry), the mocked leg MUST
+  build its returned entry point by REUSING that supplied URI and appending
+  the synthesized outcome (e.g. the granted `code` / `state`). It MUST NOT
+  discard the supplied URI and fabricate its own entry point, and MUST NOT
+  invent a non-standard URI scheme — a fabricated or non-navigable target
+  cannot be opened, so the callback never fires and the demo is unenterable.
+  The returned entry point MUST resolve to the application's OWN surface —
+  its own callback entry on its own origin — carrying the synthesized grant.
+  Observable check: the returned entry point is a standard, navigable URL
+  whose host equals the app's own origin (in practice, the very redirect /
+  callback URI the call was handed). If it points anywhere else, or uses a
+  scheme with no registered handler, it is not a virtualized leg — it is a
+  live external dependency wearing a mock's name.
 - Do NOT call the production backend from the mock adapter to fetch or
   persist session state — the simulated world is owned end-to-end by the
   adapter and its chosen persistence layer.

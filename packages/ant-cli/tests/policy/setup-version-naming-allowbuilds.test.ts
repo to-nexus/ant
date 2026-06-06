@@ -38,6 +38,30 @@ describe('결함1 — framework↔runtime version set coherence', () => {
     expect(nextjsMd).toContain('react-dom');
     expect(nextjsMd).toMatch(/ONE version set/i);
   });
+
+  // proud-flowing-rivet (Fix V): the framework↔runtime set is peer-coupled, so it
+  // must be pinned to its LATEST STABLE release — never the floating `"latest"`
+  // tag (which silently jumps majors on a later install). Decoupled from preview
+  // (Fix A owns that). Unifies the framework set with the existing "don't force
+  // latest" stance (6638054e), WITHOUT forcing a stale "previous major".
+  it('config.md pins the framework set to latest-stable, not floating latest, framework-led', () => {
+    expect(configMd).toMatch(/latest stable/i);
+    expect(configMd).toMatch(/framework-led/i);
+    expect(configMd).toMatch(/floating `"latest"`/);
+    // must NOT force a stale previous major for the app framework set
+    expect(configMd).not.toMatch(/previous stable major/i);
+  });
+
+  it('nextjs.md pins the set to latest-stable (never floating latest, never split, no previous-major, no preview rationale)', () => {
+    expect(nextjsMd).toMatch(/latest stable release/i);
+    expect(nextjsMd).toMatch(/floating `"latest"`/);
+    expect(nextjsMd).not.toMatch(/previous stable major/i);
+    // version policy must not be justified by the preview cross-origin enforcement
+    // (that is Fix A's job). `allowedDevOrigins` must not appear in the version note.
+    expect(nextjsMd).not.toMatch(/allowedDevOrigins/);
+    // must no longer offer "all latest" as a sanctioned strategy for the set
+    expect(nextjsMd).not.toMatch(/all `"latest"`/);
+  });
 });
 
 describe('결함3 — package naming SSOT', () => {

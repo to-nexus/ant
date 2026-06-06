@@ -45,6 +45,15 @@ exactly that name. Do not invent or shorten it (`USE_MOCK_API`,
 - A virtualized adapter that diverges from the production adapter's DTO
   shape, error mapping, or status code mapping is a contract defect — both
   adapters MUST return the identical observable shape
+- A returned value that satisfies the interface TYPE but is not USABLE for
+  what the consumer does with it is still a contract defect — type-conformance
+  alone is not enough. A value the consumer navigates to, fetches,
+  dereferences, or parses MUST actually work in that operation (a URL the
+  consumer can navigate to or fetch; an id that resolves to a record; a token
+  the consumer accepts) — not merely a string of the right type. The
+  virtualized adapter is the consumer's only proof the path works before the
+  real dependency arrives; a value that typechecks but cannot be acted on
+  leaves the consumer dead-ended.
 
 ### Blind Spot
 

@@ -78,11 +78,11 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 | **External leaf** — version unknown | NO | `"latest"` |
 | **Meta-framework + the renderer/runtime it peer-depends on** | — | Decide as ONE set — see below |
 
-**Set-coherence principle (framework ↔ runtime)**: A meta-framework and the renderer/runtime it peer-depends on are a single version-decision unit. Apply ONE strategy to the whole set — either all `"latest"` (resolves to a mutually compatible release at install) OR all pinned to a compatible release. NEVER split the set (one member `"latest"`, another a fixed older range): that yields a peer mismatch that passes install but breaks at runtime.
+**Set-coherence principle (framework ↔ runtime)**: A meta-framework and the renderer/runtime it peer-depends on are a single version-decision unit, decided **framework-led**. Do NOT use the floating `"latest"` tag for the set — a peer-coupled set needs concrete, coherent versions, and floating `"latest"` silently jumps majors on a later install (breaking the peer match). Instead pin the set to its **latest stable release** (concrete version ranges), with the renderer following the framework's peer requirement for that major. NEVER split the set (one member `"latest"`, or a major different from the one the framework requires): that yields a peer mismatch that passes install but breaks at runtime.
 
-**Principle**: `"latest"` is a valid npm dist-tag that all package managers resolve to the most recent published version during install. The lockfile pins the resolved version for reproducibility. If a specific version is required, it should be specified in the design document.
+**Principle**: For a **generic external leaf**, `"latest"` is a valid npm dist-tag that package managers resolve to the most recent published version at install (the lockfile pins it for reproducibility). The framework↔runtime set is the exception — it does NOT use floating `"latest"` (see the set-coherence rule above). If a specific version is required, it should be specified in the design document.
 
-**Constraint**: Do NOT invent version numbers for packages you do not know. Use `"latest"` — the package manager resolves it correctly. When a framework↔runtime set's version is unknown, apply `"latest"` to the WHOLE set, never to one member. Guessing a wrong version causes `pnpm install` failure.
+**Constraint**: Do NOT invent version numbers for packages you do not know. For a generic external leaf, use `"latest"` — the package manager resolves it correctly. For a framework↔runtime set whose version is unknown, do NOT use floating `"latest"`; apply the set-coherence rule above (pin the set to its latest stable release, renderer following its peer) to the WHOLE set, never split. Guessing a wrong version causes `pnpm install` failure.
 
 #### Design-Prescribed Dependency API Discovery
 
@@ -136,7 +136,7 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 - Include `@types/xxx` for type definitions
 - `"type": "module"` for ES modules
 - Match build tool in scripts
-- This example is **Vite + React**; its `react`/`react-dom` versions are illustrative. For a meta-framework (e.g. Next.js), the renderer version follows the framework as ONE set (see §0 Step 2 set-coherence) — do NOT transplant this example's fixed `react` range onto a `"latest"` framework.
+- This example is **Vite + React**; its `react`/`react-dom` versions are illustrative. For a meta-framework (e.g. Next.js), the renderer version follows the framework as ONE set (see §0 Step 2 set-coherence): pin the set to its latest stable release and let the renderer follow its peer — do NOT use floating `"latest"` for the set, and do NOT split majors across it.
 
 ## 2. tsconfig.json ⭐⭐⭐
 
@@ -217,6 +217,7 @@ Configure as needed for project (styling framework, ESLint, etc).
 ❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
 ❌ Using `"workspace:*"` for external packages not present in `pnpm-workspace.yaml` (same-org scope does NOT mean workspace-local)
 ❌ Inventing version numbers for design-prescribed packages (use `"latest"` — the package manager resolves it; a wrong guess causes install failure)
+❌ Using the floating `"latest"` tag for the framework↔runtime set — pin its latest stable release instead; floating `latest` silently jumps majors on a later install and breaks the peer match
 ❌ Splitting a framework↔runtime set across version strategies (e.g. `"next": "latest"` + `"react": "^18.2.0"`) — a meta-framework and its renderer are ONE version decision; mixing `latest` with a fixed older range causes a peer mismatch that breaks at runtime
 ❌ Root `--filter` targets that do not match a member `package.json` `name` verbatim (placeholder scope, typo, or a scope the members don't use) — the filter silently matches nothing
 ❌ Emitting speculative `allowBuilds` placeholder entries (`pkg: set this to true or false`) — values must be booleans; list runtime-critical native deps `true`, otherwise omit the block

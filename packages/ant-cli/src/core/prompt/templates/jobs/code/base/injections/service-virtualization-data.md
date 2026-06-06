@@ -32,6 +32,12 @@ before authoring the body:
   already declares one — reuse the existing pathway
 - Do NOT randomize per render — that breaks reproducibility for any
   end-to-end demo built on the virtualized adapter
+- A fake value MUST satisfy the CONSUMER's own validation, not just look
+  domain-plausible: a value the consumer parses, formats, matches against an
+  allowed set, or range-checks MUST pass that check — a date the consumer's
+  formatter accepts, a value within the set the consumer switches on, a number
+  inside the consumer's valid range, an id whose shape the consumer's lookup or
+  route accepts. Domain-plausible but consumer-invalid still renders as broken.
 - The fake body table is part of the virtualized adapter's source — NOT a
   separate runtime fixture loaded from disk at boot
 

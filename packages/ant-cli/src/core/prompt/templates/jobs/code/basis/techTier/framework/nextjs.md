@@ -30,7 +30,7 @@ A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/pa
 
 ## Version Notes
 
-- `next` + `react` + `react-dom` are ONE version set — pin all three with the same strategy (all `"latest"`, or all pinned to a compatible release). Never pair `"next": "latest"` with a fixed older `"react"`/`"react-dom"` range (e.g. `^18`): the peer mismatch passes `pnpm install` but breaks hydration at runtime, with no build or type error. (Reference: `next@15` ⇒ React 19, `next@14` ⇒ React 18.)
+- `next` + `react` + `react-dom` are ONE version set, decided **framework-led** (see `config.md §0` set-coherence). Do NOT use the floating `"latest"` tag for the set — the set is peer-coupled, and floating `"latest"` silently jumps majors on a later install, breaking the peer match. Instead pin the set to its **latest stable release** (concrete ranges): pin `next` to its current stable major (e.g. `next@^16`) and let `react`/`react-dom` follow Next's peer requirement for that major as ONE set (`next@16` ⇒ `react@^19` + `react-dom@^19`). ⚠️ Never split majors across the set — pinning `next` with a fixed older `"react"`/`"react-dom"` (e.g. `^18`) passes `pnpm install` but breaks hydration at runtime with no build or type error; the renderer major is dictated by the chosen Next major, not chosen independently. (Reference: `next@16`/`next@15` ⇒ React 19; `next@14` ⇒ React 18 + no `next.config.ts`.)
 - Next.js 15: `headers()`, `cookies()`, `params`, `searchParams` are async — sync destructuring throws.
 - Next.js 14: `next.config.ts` unsupported — use `.mjs` / `.js` / `.cjs`.
 

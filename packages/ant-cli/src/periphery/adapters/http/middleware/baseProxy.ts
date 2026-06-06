@@ -8,7 +8,7 @@
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { fetchWithTransportRetry } from './proxyForwarding';
+import { fetchWithTransportRetry, isDevResourceRequest } from './proxyForwarding';
 
 export interface BaseProxyConfig {
   portRegistry: PortRegistryPort;
@@ -228,15 +228,23 @@ export abstract class BaseProxyMiddleware {
       // (shared with previewProxy / deployProxy). Upstream 5xx responses are
       // passed through verbatim — masking them with retries would hide genuine
       // code-server failures that the readinessProbe is supposed to surface.
+      const upstreamHeaders: Record<string, any> = {
+        ...req.headers,
+        host: `${targetHost}:${targetPort}`,
+        'accept-encoding': 'identity',
+        'if-none-match': undefined,
+        'if-modified-since': undefined
+      };
+      // Dev-resource cross-origin protection: a dev server trusts only its own
+      // self-origin (`localhost`) for `/_next` + `/__nextjs`. Stamp it for those
+      // requests so chunks/HMR aren't 403'd; leave app/Server-Action Origin alone.
+      if (req.headers['origin'] !== undefined && isDevResourceRequest(req.url)) {
+        upstreamHeaders['origin'] = `http://localhost:${targetPort}`;
+      }
+
       const response = await fetchWithTransportRetry(targetUrl, {
         method: req.method,
-        headers: {
-          ...req.headers,
-          host: `${targetHost}:${targetPort}`,
-          'accept-encoding': 'identity',
-          'if-none-match': undefined,
-          'if-modified-since': undefined
-        } as any,
+        headers: upstreamHeaders as any,
         ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
       } as RequestInit);
 
