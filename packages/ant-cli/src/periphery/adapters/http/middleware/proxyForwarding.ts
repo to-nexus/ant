@@ -78,6 +78,19 @@ export function extractForwardingContext(req: Request): ForwardingContext {
 }
 
 /**
+ * True when the request targets a framework dev-resource endpoint subject to
+ * cross-origin dev-resource protection — Next.js `/_next` (chunks, HMR) and
+ * `/__nextjs` (middleware). The prefix match survives the preview basePath
+ * (`/{urlKey}/_next/…`) because we test `includes`, mirroring Next's own
+ * `isInternalEndpoint`. App routes, API, and Server Actions are NOT dev
+ * resources, so their `Origin` is left untouched.
+ */
+export function isDevResourceRequest(url: string | undefined): boolean {
+  if (!url) return false;
+  return url.includes('/_next') || url.includes('/__nextjs');
+}
+
+/**
  * Build the headers for an upstream fetch.
  *
  *   - Drop hop-by-hop and conditional headers.
@@ -86,6 +99,9 @@ export function extractForwardingContext(req: Request): ForwardingContext {
  *   - Override `host` so the upstream sees its own bind address.
  *   - Force `accept-encoding: identity` so the upstream doesn't compress
  *     (we re-stream the raw bytes and can't repackage gzip on the fly).
+ *   - For internal dev-resource requests (`/_next`, `/__nextjs`), rewrite
+ *     `Origin` to the dev server's trusted self-origin (`localhost`) — see
+ *     `isDevResourceRequest`.
  *   - Inject X-Forwarded-* when a context is supplied, preserving values
  *     already set by an upstream proxy.
  */
@@ -105,6 +121,17 @@ export function buildCleanHeaders(
 
   headers['host'] = `${targetHost}:${targetPort}`;
   headers['accept-encoding'] = 'identity';
+
+  // A dev server (Next 16, Vite, …) 403s its OWN dev resources when the
+  // forwarded `Origin` is not its trusted self-origin. Next's block applies
+  // ONLY to internal endpoints (`/_next`, `/__nextjs`) and trusts the literal
+  // hostname `localhost` — not the public preview host, not a pod IP, not even
+  // `127.0.0.1`. Scoping the rewrite to those paths leaves app routes / API /
+  // Server Actions (which POST to page routes, never `/_next`) on their real
+  // `Origin`, so production CSRF is unaffected. Only rewrite a present Origin.
+  if (headers['origin'] !== undefined && isDevResourceRequest(req.url)) {
+    headers['origin'] = `http://localhost:${targetPort}`;
+  }
 
   if (ctx) {
     if (ctx.externalHost && !headers['x-forwarded-host']) {

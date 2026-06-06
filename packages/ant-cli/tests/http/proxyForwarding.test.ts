@@ -4,6 +4,7 @@ import {
   buildCleanHeaders,
   extractForwardingContext,
   forwardRequestBody,
+  isDevResourceRequest,
   rewriteLocation,
   rewriteSetCookiePath,
   streamUpstreamResponse,
@@ -68,6 +69,44 @@ describe('buildCleanHeaders', () => {
     const h = buildCleanHeaders(req, '10.0.0.5', 30002);
     expect(h['host']).toBe('10.0.0.5:30002');
     expect(h['accept-encoding']).toBe('identity');
+  });
+
+  // Dev-resource cross-origin protection (Next 16 403s `_next/*` unless the
+  // Origin is its trusted self-origin `localhost`). The proxy rewrites Origin
+  // to localhost ONLY for `/_next` + `/__nextjs`, leaving app/Server-Action
+  // requests on their real Origin. The pod-IP/public-host upstream is reached
+  // via the connect target, never stamped into Origin.
+  it('rewrites Origin to localhost for a /_next dev-resource request (with basePath prefix)', () => {
+    const req = mockReq({
+      url: '/to.nexus--probe--classboard--apps-app/_next/static/chunks/main.js',
+      headers: { origin: 'https://ant-preview.crosstoken.io' },
+    });
+    const h = buildCleanHeaders(req, '10.0.28.196', 30000);
+    expect(h['origin']).toBe('http://localhost:30000');
+    expect(h['origin']).not.toContain('127.0.0.1');
+    expect(h['origin']).not.toContain('ant-preview');
+  });
+
+  it('rewrites Origin to localhost for /__nextjs middleware requests', () => {
+    const req = mockReq({
+      url: '/k/__nextjs_original-stack-frame',
+      headers: { origin: 'https://ant-preview.crosstoken.io' },
+    });
+    expect(buildCleanHeaders(req, '10.0.0.5', 30001)['origin']).toBe('http://localhost:30001');
+  });
+
+  it('leaves Origin untouched for app routes / Server Actions (not a dev resource)', () => {
+    const req = mockReq({
+      method: 'POST',
+      url: '/k/dashboard',
+      headers: { origin: 'https://ant-preview.crosstoken.io' },
+    });
+    expect(buildCleanHeaders(req, '10.0.0.5', 30001)['origin']).toBe('https://ant-preview.crosstoken.io');
+  });
+
+  it('does not synthesize an Origin for a dev-resource request that had none', () => {
+    const req = mockReq({ url: '/k/_next/static/chunks/main.js', headers: {} });
+    expect(buildCleanHeaders(req, '10.0.0.5', 30001)['origin']).toBeUndefined();
   });
 
   it('drops non-string header values without crashing', () => {
@@ -357,5 +396,18 @@ describe('streamUpstreamResponse', () => {
     const res = mockRes();
     await streamUpstreamResponse(upstream, res, { cacheControl: 'no-cache, no-store, must-revalidate' });
     expect(res.headers['cache-control']).toBe('no-cache, no-store, must-revalidate');
+  });
+});
+
+describe('isDevResourceRequest', () => {
+  it('matches /_next and /__nextjs anywhere in the path (basePath-prefixed)', () => {
+    expect(isDevResourceRequest('/k/_next/static/x.js')).toBe(true);
+    expect(isDevResourceRequest('/_next/webpack-hmr')).toBe(true);
+    expect(isDevResourceRequest('/k/__nextjs_original-stack-frame')).toBe(true);
+  });
+  it('does not match app routes / API / undefined', () => {
+    expect(isDevResourceRequest('/k/dashboard')).toBe(false);
+    expect(isDevResourceRequest('/api/me')).toBe(false);
+    expect(isDevResourceRequest(undefined)).toBe(false);
   });
 });

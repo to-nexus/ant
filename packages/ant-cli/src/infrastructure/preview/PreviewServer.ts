@@ -61,24 +61,26 @@ export interface PreviewServerOptions {
 }
 
 /**
- * Loopback host used for the replayed upgrade `Host`/`Origin`. A dev server's
- * cross-origin protection (Next.js `allowedDevOrigins`, Vite `allowedHosts`)
- * trusts loopback by default, so a loopback handshake is accepted in every
- * environment. The upstream's reachable address (a pod IP in cloud) is NOT a
- * trusted origin and must never appear in these headers — it is used only for
- * the TCP connect in `openRawTunnel`.
+ * Trusted dev-server host stamped into the replayed upgrade `Host`/`Origin`.
+ * A dev server's cross-origin protection trusts its OWN self-origin hostname,
+ * which is the literal `localhost` — Next.js hardcodes `['localhost', '*.localhost', …]`
+ * in its dev allowlist, and Vite's default `allowedHosts` likewise trusts it.
+ * It does NOT trust the loopback IP `127.0.0.1`: Next 16 returns 403 on
+ * `_next/*` dev resources whose Origin is `127.0.0.1` — the exact reason the
+ * earlier `127.0.0.1` rewrite still failed ("Blocked … from 127.0.0.1"). So we
+ * stamp `localhost`, never the IP, and never the upstream's reachable address
+ * (a pod IP in cloud — used only for the TCP connect in `openRawTunnel`).
  */
-const LOOPBACK_HOST = '127.0.0.1';
+const LOOPBACK_HOST = 'localhost';
 
 /**
  * Rewrite an inbound upgrade request's raw header pairs for replay to the
- * upstream. `Host` and `Origin` are normalized to loopback so the dev server
- * sees a same-origin handshake — otherwise cross-origin protection (e.g.
- * Next.js `allowedDevOrigins`) rejects the HMR socket. Deliberately loopback
- * and NOT the connect host: in cloud the upstream is reached via a pod IP,
- * which Next.js does not trust, so stamping it here is exactly what blocked
- * HMR in preview while working locally (where the connect host was loopback).
- * Other headers pass through unchanged. Exported for unit coverage.
+ * upstream. `Host` and `Origin` are normalized to the dev server's trusted
+ * self-origin (`localhost`) so it sees a same-origin handshake — otherwise
+ * cross-origin protection (e.g. Next.js dev-resource block) rejects the HMR
+ * socket. Deliberately `localhost` (the trusted name) and NOT the connect host
+ * (a pod IP in cloud) nor the loopback IP `127.0.0.1` (which Next 16 does not
+ * trust). Other headers pass through unchanged. Exported for unit coverage.
  */
 export function rewriteUpgradeHeaders(
   rawHeaderPairs: readonly string[],
