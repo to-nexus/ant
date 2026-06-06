@@ -54,9 +54,15 @@
 | **Project `references` / `composite`** | `tsc --build` — it type-checks the referenced graph in dependency order |
 | **Multi-package workspace without `references`** | Check each package against its own `tsconfig` (e.g. `tsc -p <package>/tsconfig.json`) or run each package's configured type-check script. A single root `tsc --noEmit` does not represent the per-package configs and is not a substitute. |
 
-**Constraint**: Run the standalone type-check before the framework build. Framework build CLIs embed type checking and abort after the first few errors, so a build-first approach hides the rest of the type errors. Produce the remediation plan from the type-check output; if it fails, do NOT proceed to the build command.
+**Constraint**: Prefer running the standalone type-check before the framework build — it reveals the full set of type errors, whereas a framework build CLI aborts after the first few. This ordering is an efficiency preference, NOT a license to skip the build: the build is a distinct required gate (see Build Invocation below). Type-check green does not discharge it.
 
 ⚠️ **Blind spot**: A single root `tsc --noEmit` in a workspace is the trap that drowns one upstream config fault under hundreds of cascaded leaf errors. Choose the invocation by the configured shape above, not by reflex.
+
+### Build Invocation
+
+**Constraint**: Once the type-check is green, run the project's actual build — a green type-check does NOT discharge the build gate (gate completeness is owned by rules.md "Verification Gate Ordering"). In a workspace, build via the recursive workspace build (the root build script / `<pm> -r build`) so every member assembles: each application's framework build AND each library's build (e.g. a bundler emitting `.d.ts`).
+
+⚠️ **Blind spot**: The build performs checks `tsc --noEmit` never runs, so `tsc --noEmit` green + tests green does NOT imply the build is green. TS/JS build-time-only failures include a framework refusing to collect its route tree (e.g. a duplicate dynamic-route slug name) and a bundler declaration (`.d.ts`) config fault (e.g. `composite` colliding with the bundler's dts pass).
 
 ### Cascade Root Cause
 

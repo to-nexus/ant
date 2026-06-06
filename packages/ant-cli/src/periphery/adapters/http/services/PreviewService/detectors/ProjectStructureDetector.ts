@@ -495,8 +495,13 @@ export class ProjectStructureDetector {
             pkgType = 'backend';
           }
           
-          // Only include packages with dev script
-          if (pkgJson.scripts?.dev || pkgJson.scripts?.start) {
+          // Include packages with a dev/start script, EXCEPT library packages
+          // whose dev script is a bundler watcher (tsup/rollup -w/tsc -w/...).
+          // A build-watcher serves no port — spawning it as a frontend dev
+          // server yields a useless preview entry (regression: packages/ui).
+          // Exclusion-based: apps with non-standard dev servers stay included.
+          const devOrStart = pkgJson.scripts?.dev || pkgJson.scripts?.start;
+          if (devOrStart && !this.packageDetector.isBundlerWatchScript(devOrStart)) {
             packages.push({
               name: pkgName,
               path: wsPath,

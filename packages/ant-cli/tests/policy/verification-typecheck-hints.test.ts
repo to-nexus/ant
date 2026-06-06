@@ -62,4 +62,24 @@ describe('verification typescript hints — shape-matched type-check + cascade r
     // rules.md "Verification Gate Ordering" — it must be gone.
     expect(out).not.toMatch(/Required execution order/i);
   });
+
+  // RCA `lucky-jumping-apple`: the prior hint framed the framework build as
+  // redundant ("Framework build CLIs embed type checking … do NOT proceed to
+  // the build command"), so a green type-check let the LLM skip `next build` /
+  // `tsup` — and the route-slug collision + tsup DTS fault (build-only errors)
+  // shipped green. The fix removes that override and mandates a distinct build
+  // gate. The universal "type-check ≠ build" principle lives in rules.md; this
+  // file carries only the TS-specific build-only failure classes.
+  it('removes the build-is-redundant / skip-build override and mandates a distinct build gate', async () => {
+    const out = await adapter.render(TEMPLATE, {});
+    // rogue override removed
+    expect(out).not.toMatch(/embed type checking/i);
+    expect(out).not.toMatch(/do NOT proceed to the build command/i);
+    expect(out).not.toMatch(/Produce the remediation plan from the type-check output/i);
+    // build mandated as its own gate, TS-specific failure classes present
+    expect(out).toMatch(/Build Invocation/);
+    expect(out).toMatch(/run the project's actual build/i);
+    expect(out).toMatch(/does NOT discharge the build gate/i);
+    expect(out).toMatch(/recursive workspace build/i);
+  });
 });

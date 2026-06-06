@@ -784,9 +784,13 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **`parallelGroup: "<group-id>"`** -- Tasks with the SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
-**Principle**: Maximize parallelism by assigning different group IDs to tasks that modify independent scopes (different directories, different modules, different layers).
+**Principle**: Maximize parallelism by assigning different group IDs to tasks whose scopes are genuinely independent — they share NO source file AND NO structural namespace (see the shared-structural-namespace constraint below). A shared parent path that imposes a naming / layout decision is NOT independent.
 
-**Constraint**: Only assign the SAME group ID when tasks are likely to modify the SAME source files.
+**Constraint**: Assign the SAME group ID when tasks are likely to modify the SAME source files, OR when they co-locate outputs under a shared structural namespace (below).
+
+**Constraint — shared structural namespace (co-located outputs must agree on structure)**: When two tasks write into a shared structural namespace — the SAME dynamic path segment (a parameterized path position whose name both must agree on), OR a parent structure one task establishes and the other directly populates — they cannot observe each other's structural choices while running concurrently. Place them in the SAME `parallelGroup` so they serialize, AND give the task that ESTABLISHES the shared structure (the parent path/segment owner, the directory skeleton) the EARLIER priority **within the same band** so the later task observes and conforms to it. Scope this NARROWLY: an arbitrary common ancestor directory is NOT a shared structural namespace — over-grouping needlessly collapses parallelism.
+
+⚠️ **Blind spot**: A dynamic path segment's parameter name MUST be identical across sibling tasks that share that path position. Two tasks independently naming the same position differently produces a structural collision that fails the build even though the files do not overlap. Serialize them and let the establishing task fix the segment name.
 
 **Observation target**: For each pair of feature tasks, check if they share a persistence boundary.
 

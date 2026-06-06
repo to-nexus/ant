@@ -95,6 +95,14 @@ If a CSS utility framework's source scan paths don't cover the directories where
 
 ⚠️ **Blind spot**: TypeScript / Node engine mismatches between workspace root and module files are invisible until build or toolchain resolution fails. Verify alignment at creation time.
 
+### Shared-Library Package Packaging
+
+**Applicability**: A workspace member consumed by other members (a shared library, typically under `packages/<name>`) that exposes built artifacts via a `package.json` `exports` map and/or emits its own type declarations.
+
+**Constraint — `exports` condition order**: In a conditional `exports` entry, the `types` condition MUST come BEFORE `import` / `require` / `default`. Node resolves conditions top-down and uses the FIRST match — a `types` condition placed after `import`/`require` is never reached, so consumers silently receive no types (the bundler warns "the condition … will never be used"). Order: `types` first, then `import`, then `require`, `default` last.
+
+**Constraint — one declaration emitter**: A package's `.d.ts` declarations have exactly ONE emitter. If a bundler emits the declarations (e.g. a `dts: true` build), do NOT also set `"composite": true` in that package's `tsconfig.json` WITHOUT matching project `references` — `composite` targets the `tsc --build` project-reference graph and its file-list validation collides with the bundler's declaration pass (TS6307). Choose one: the bundler emits declarations (no `composite` on that package) OR a `tsc --build` references graph does (no bundler dts). A correctly-wired `composite` + `references` setup is fine — the fault is `composite` *without* references alongside a bundler dts.
+
 ## Infrastructure Services (Observe Design Document)
 
 | Checkpoint | Observation Target |
