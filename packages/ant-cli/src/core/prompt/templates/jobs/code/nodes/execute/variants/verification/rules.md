@@ -38,7 +38,7 @@
 
 | Rule | Effect |
 |------|--------|
-| **Order** | `typecheck → build → test`. Run the next gate only when the previous passed. |
+| **Order** | `typecheck → build → test` is the efficient sequence (don't build past a failing type-check). Sequencing is your judgment; completeness — every required gate observed green — is not optional. |
 | **Already-passed** | A gate already green in this session is auto-rejected — do not re-run it. |
 | **Deep-diagnostic mode** | Ordering is relaxed; you may probe out of order when the Session has entered deep mode. |
 

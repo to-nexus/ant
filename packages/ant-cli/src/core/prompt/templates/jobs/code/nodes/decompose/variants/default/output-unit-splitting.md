@@ -24,7 +24,7 @@ You receive the Development Source (ref artifacts or directive). Apply the split
 
 ### Per-unit task emission
 
-When the splitting principle above indicates separation, emit ONE `feature` task per identified output unit. Each per-unit task uses a DISTINCT `parallelGroup` (per-unit output files do not overlap, so distinct groups enable parallel execution); none is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
+When the splitting principle above indicates separation, emit ONE `feature` task per identified output unit. Each per-unit task uses a DISTINCT `parallelGroup` **UNLESS two units co-locate outputs under a shared structural namespace** (the same parameterized path segment, or a parent structure one unit establishes and the other populates) — those share a `parallelGroup` (serialized; the establishing unit takes the earlier priority) per the Parallel Execution "shared structural namespace" rule. Distinct output files alone do NOT guarantee independence: a shared dynamic path segment collides even when the files differ. None is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
 
 **Constraint**: When the Development Source surfaces multiple independent integration points (different app/package entry roots, separate route registries), partition by integration point and evaluate each cluster separately.
 

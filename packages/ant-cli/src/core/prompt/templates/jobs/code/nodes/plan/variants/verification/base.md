@@ -77,7 +77,7 @@ This project uses **{{packageManager}}**. All dependency install and script comm
 ### Step 1: Verify Build
 
 {{#if hasLanguageHints}}
-Language-specific verification hints are provided below. They define the required verification commands and their execution order for this project. Build is not considered verified until every step defined in those hints has been executed and observed to pass.
+Language-specific verification hints are provided below. They define the required verification gates (type-check AND build) for this project. The build gate is NOT considered verified until the build invocation defined in those hints has been executed and observed to pass — a green type-check does not discharge the build.
 {{else}}
 Observe the project's build system from the pre-loaded context (config files, directory tree).
 Execute the project's primary build command using `run_command`.

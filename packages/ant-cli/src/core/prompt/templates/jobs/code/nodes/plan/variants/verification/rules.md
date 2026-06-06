@@ -58,9 +58,9 @@
 
 ### Verification Gate Ordering
 
-**Principle**: Verification gates are observed in dependency order — type-check, build, test. Each gate's output informs whether the next gate is meaningful.
+**Principle**: Verification gates validate DIFFERENT failure classes — type-check (do the types resolve), build (does the project assemble: bundling, code generation, artifact/manifest validation that type-checking never exercises), test (does it behave). A green type-check does NOT establish a green build; they are independent gates.
 
-**Constraint**: Do NOT skip a required gate. Run them in order; do not jump straight to test before build/typecheck have been observed.
+**Constraint**: Do NOT skip a required gate — every required gate (type-check, build, test) MUST be observed clean before completion. Observing them in dependency order (type-check → build → test) is the efficient sequence (a build aborts early on type errors), but the sequencing is your judgment; completeness is not. Do not declare success while any required gate is unobserved (or has been invalidated by a later edit).
 
 {{/if}}
 
@@ -101,7 +101,13 @@ Priority ordering:
 
 **Principle**: Some build tools abort after the first error or first few errors. A dedicated type checker or linter may reveal the full scope of errors in one pass.
 
-**Constraint**: When language-specific hints are provided, follow their defined verification order. The order is designed to surface all errors comprehensively before producing the remediation plan.
+**Constraint**: When language-specific hints are provided, follow their defined verification gates. They are designed to surface errors comprehensively before producing the remediation plan.
+
+### Silent-Drop Warnings
+
+**Principle**: A warning that a declared setting will never take effect — a "silent drop" ("… will never be used", an unreachable config condition, a silently-ignored key) — is a real defect, not cosmetic noise. The author declared an intent the tool silently discards, so the intended behaviour does not happen.
+
+**Constraint**: Treat a silent-drop warning as fix-worthy (include it in the remediation plan) even when the command exit code is 0. Do NOT promote EVERY warning — deprecation / peer-dependency notices are not defects; only warnings signalling a declared setting is ignored or unreachable qualify.
 
 ### Plan Completeness
 

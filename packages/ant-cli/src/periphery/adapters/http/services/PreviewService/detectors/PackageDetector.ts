@@ -67,15 +67,39 @@ export class PackageDetector {
     ];
     
     const hasBackend = backendFrameworks.some(fw => deps[fw]);
-    
+
     // Check dev script
     const devScript = packageJson.scripts?.dev || '';
-    const isBackendScript = devScript.includes('tsx') || 
-                           devScript.includes('nodemon') || 
+    const isBackendScript = devScript.includes('tsx') ||
+                           devScript.includes('nodemon') ||
                            devScript.includes('ts-node') ||
                            devScript.includes('nest start');
-    
+
     return hasBackend || isBackendScript;
+  }
+
+  /**
+   * Is this package's dev/start script a bundler running in --watch mode
+   * (a library being rebuilt on change) rather than an actual dev server?
+   *
+   * Such a package serves no port — it only re-emits build artifacts. The
+   * preview server must NOT spawn it as a runnable frontend (regression:
+   * `packages/ui` with `dev: "tsup --watch"` was launched as a fake dev
+   * server). Exclusion-based by design: only known bundler-watch shapes are
+   * excluded, so apps with non-standard dev servers stay included.
+   */
+  isBundlerWatchScript(devScript: string | undefined): boolean {
+    if (!devScript) return false;
+    const s = devScript.toLowerCase();
+    // `--watch` long form, or a short-flag cluster containing `w` (e.g. `-w`, `-cw`).
+    const watch = /(--watch\b|-[a-z]*w[a-z]*\b)/;
+    return (
+      /\btsup\b/.test(s) ||
+      (/\brollup\b/.test(s) && watch.test(s)) ||
+      (/\btsc\b/.test(s) && watch.test(s)) ||
+      (/\besbuild\b/.test(s) && watch.test(s)) ||
+      /\bbuild\b[^&|]*--watch/.test(s)
+    );
   }
   
   /**
