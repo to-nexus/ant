@@ -29,25 +29,25 @@ Example 2: Directive Identifies Problem
 
 Example 3: Directive + Design Document
 
-**Directive**: "Add error handling to DataDisplay"
-**Design Document**: "Use ErrorBoundary pattern for all data-fetching components"
+**Directive**: "Add error handling to the data-display component"
+**Design Document**: "Use a centralized error-handling wrapper for all data-fetching components"
 
 **Response**:
-1. Follow Design Document's architectural pattern (ErrorBoundary)
-2. Import ErrorBoundary component
-3. Wrap the data display with ErrorBoundary
-4. Use fallback UI as specified
+1. Follow the Design Document's architectural pattern (the centralized error-handling wrapper)
+2. Import the wrapper defined by the design
+3. Wrap the data-fetching component with it
+4. Use the fallback presentation as specified
 
 ────────────────────────────────────────────────────────────────────────────────
 
 Example 4: Feedback Statement
 
-**Directive**: "Don't use inline styles, use Tailwind classes"
+**Directive**: "Don't use inline styles, use the project's styling convention"
 
 **Response**:
 1. Acknowledge the constraint
-2. Replace inline `style=\{{...}}` with Tailwind utility classes
-3. Explain the mapping (padding → p-4, border-radius → rounded-lg, etc.)
+2. Replace inline styles with the project's established styling mechanism (whatever the codebase already uses)
+3. Apply it consistently across the affected elements
 
 ────────────────────────────────────────────────────────────────────────────────
 

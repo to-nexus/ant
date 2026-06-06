@@ -76,6 +76,9 @@ For binding rules with regression-guard test names, see
 - [35-token-usage-tracking.md](35-token-usage-tracking.md)
 - [36-output-tag-matrix.md](36-output-tag-matrix.md)
 - [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)
+- [37-auth-unified-procedure.md](37-auth-unified-procedure.md)
+- [38-service-virtualization.md](38-service-virtualization.md)
+- [39-code-job-prompt-injection-matrix.md](39-code-job-prompt-injection-matrix.md)
 
 ### Layout
 
