@@ -206,7 +206,7 @@ export interface ToolDefinition {
       /**
        * JSON-schema `enum` constraint. Used by tools whose argument is a
        * closed vocabulary — e.g. `run_command.verifies` (gate vocabulary
-       * derived from `tasks/_shared/verify/gates.GATE_ORDER`),
+       * `GATE_ORDER` in `agents/common/tool/toolSchemas.ts`),
        * `discovery_tool.scope`, etc. Optional; non-enum properties omit it.
        */
       enum?: readonly string[];

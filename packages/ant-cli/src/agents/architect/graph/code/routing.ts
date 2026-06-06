@@ -2,7 +2,7 @@
  * Code Graph Routing — Conditional edge functions extracted from graph.ts
  */
 
-import { ArchitectGraphState } from './state';
+import { ArchitectGraphState, RECURSION_DRAIN_THRESHOLD } from './state';
 import { getTaskConcurrency } from './parallel/types';
 import { isDirectTier } from '../../../../core/executionTier';
 
@@ -136,7 +136,7 @@ export function routeAfterCheckTaskStatus(state: ArchitectGraphState): string {
   }
 
   const remaining = (state.recursionLimit || 200) - (state.recursionCount || 0);
-  if (remaining < 20) {
+  if (remaining < RECURSION_DRAIN_THRESHOLD) {
     console.warn(`⚠️  Insufficient recursion budget (${remaining}) for retry — moving to learn`);
     return 'learn';
   }

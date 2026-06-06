@@ -9,7 +9,6 @@ import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types'
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import {
-  decideInvalidationScope,
   isDepManifestPath,
   DEP_MANIFEST_INSTALL_HINT,
 } from './invalidationScope';
@@ -158,20 +157,8 @@ export async function handleEditFile(
       };
     }
 
-    // Scope the invalidation based on what was touched (invalidationScope.ts).
-    // F2 — pass the pre/post content so dependency manifests narrow their
-    // scope based on which fields actually changed.
-    const decision = decideInvalidationScope(resolved.displayPath, {
-      oldContent: originalContentForCompare,
-      newContent: modifiedContent,
-    });
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileModified', path: resolved.displayPath },
-      {
-        type: 'verificationInvalidated',
-        scope: decision.scope,
-        reason: decision.reason,
-      },
     ];
 
     const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';

@@ -4,7 +4,7 @@
  * Terminology (Axis terminology):
  *   - Command Executor = this module. Responsible for spawning shell processes,
  *     streaming stdout/stderr, detecting long-running servers, and emitting
- *     structured side effects (commandExecuted, verificationInvalidated, etc.).
+ *     structured side effects (commandExecuted, serverStarted, etc.).
  *   - Command Sequencer = the LLM driving the plan node's tool loop. It
  *     decides WHICH commands to run and in what ORDER; it does NOT spawn
  *     anything directly.

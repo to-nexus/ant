@@ -29,6 +29,7 @@
     "antrules": ["antrulesContent"],
     "setup-directory-sealing": [],
     "dep-self-contained": [],
+    "gate-validity-principle": [],
     "monorepo-install-locality": ["monorepoActive", "monorepoRootPath", "monorepoManagerLabel", "monorepoRootMarker", "monorepoMembersSummary"],
     "persistent-process-policy": ["allowPersistentProcesses"],
     "workspace-dep-snapshot": ["hasWorkspaceDepSnapshot", "workspaceDepSnapshot"],

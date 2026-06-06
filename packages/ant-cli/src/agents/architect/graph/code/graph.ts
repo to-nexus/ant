@@ -61,10 +61,14 @@ function classifyOrchestratorFailure(
     };
   }
 
+  // "during parallel execution" was misleading: exclusive/final tasks (e.g. the
+  // final verification) run alone through the shared orchestrator, so a single
+  // failure read as "parallel" when nothing parallel happened. The lead is now
+  // count-only; the per-task lines carry the actual cause.
   return {
     reason: 'tasks_failed',
     message: [
-      `${failedTasks.length} task(s) failed during parallel execution`,
+      `${failedTasks.length} task(s) failed:`,
       ...lines,
     ].join('\n'),
   };
@@ -710,7 +714,6 @@ export const CodeGraphChannels = {
         default: () => undefined,
       }),
       _supersededByBatchSplit: Annotation<any>,
-      verifiedTasks: Annotation<any>,
       _verifyEntered: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
         default: () => false,

@@ -14,7 +14,9 @@
  * The flag was retired entirely. The replacement signal
  * `_lastToolBatchMutatedFiles` is **turn-scoped**: tool node always emits
  * it (not "only when true") for execute-phase batches, and execute resets
- * it to false on every return. This locks both invariants:
+ * it to false on every return. The trigger is any filesystem-mutating side
+ * effect (`fileModified` / `fileCreated` / `fileDeleted`) — the retired
+ * `verificationInvalidated` side effect is no longer emitted. This locks:
  *   1. Execute-phase tool batch with file-mutating side effect →
  *      `_lastToolBatchMutatedFiles: true`
  *   2. Execute-phase tool batch without file mutation →
@@ -77,8 +79,9 @@ function buildNode(registry: ToolRegistry) {
     },
     buildReturn(state, { executionEvents }) {
       // Mirror of the production `nodes/tool/index.ts` buildReturn signal.
+      const MUTATION_SIDE_EFFECTS = new Set(['fileModified', 'fileCreated', 'fileDeleted']);
       const touchedFiles = state._activePhase !== 'plan' && executionEvents.some(e =>
-        (e.result.sideEffects || []).some(ef => ef.type === 'verificationInvalidated'),
+        (e.result.sideEffects || []).some(ef => MUTATION_SIDE_EFFECTS.has(ef.type)),
       );
       return {
         recursionCount: (state.recursionCount || 0) + 1,
@@ -91,12 +94,11 @@ function buildNode(registry: ToolRegistry) {
 }
 
 describe('tool node — _lastToolBatchMutatedFiles commit', () => {
-  it('emits _lastToolBatchMutatedFiles=true on execute-phase tool batch with verificationInvalidated', async () => {
+  it('emits _lastToolBatchMutatedFiles=true on execute-phase tool batch that mutated a file', async () => {
     const node = buildNode(makeRegistry({
       content: 'ok',
       sideEffects: [
         { type: 'fileModified', path: 'codebase/src/foo.ts' } as any,
-        { type: 'verificationInvalidated', scope: 'all', reason: 'fileModified' } as any,
       ],
     }));
 
@@ -108,6 +110,22 @@ describe('tool node — _lastToolBatchMutatedFiles commit', () => {
     });
 
     expect(out._lastToolBatchMutatedFiles).toBe(true);
+  });
+
+  it('emits true for fileCreated / fileDeleted as well', async () => {
+    for (const type of ['fileCreated', 'fileDeleted']) {
+      const node = buildNode(makeRegistry({
+        content: 'ok',
+        sideEffects: [{ type, path: 'codebase/src/bar.ts' } as any],
+      }));
+      const out = await node({
+        _activePhase: 'execute',
+        _lastToolBatchMutatedFiles: false,
+        llmResponse: { toolCalls: [{ id: 'c1', name: 'create_file', args: {} }] },
+        conversations: {},
+      });
+      expect(out._lastToolBatchMutatedFiles).toBe(true);
+    }
   });
 
   it('emits _lastToolBatchMutatedFiles=false on execute-phase tool batch without file mutation', async () => {
@@ -134,7 +152,7 @@ describe('tool node — _lastToolBatchMutatedFiles commit', () => {
     const node = buildNode(makeRegistry({
       content: 'ok',
       sideEffects: [
-        { type: 'verificationInvalidated', scope: 'all', reason: 'fileModified' } as any,
+        { type: 'fileModified', path: 'codebase/src/foo.ts' } as any,
       ],
     }));
 

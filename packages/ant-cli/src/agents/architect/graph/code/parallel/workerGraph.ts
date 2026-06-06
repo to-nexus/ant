@@ -10,6 +10,7 @@
 
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import type { ArchitectGraphState } from '../state';
+import { RECURSION_DRAIN_THRESHOLD } from '../state';
 import { CodeGraphChannels } from '../graph';
 import { plan } from '../nodes/plan';
 import { execute } from '../nodes/execute/index';
@@ -100,7 +101,7 @@ function buildWorkerSubgraph() {
 
       if (hasViolations) {
         const remaining = (s.recursionLimit || 200) - (s.recursionCount || 0);
-        if (remaining < 20) {
+        if (remaining < RECURSION_DRAIN_THRESHOLD) {
           console.warn(`⚠️  Worker: insufficient recursion budget (${remaining}) for retry — moving to learn`);
           return 'learn';
         }

@@ -34,20 +34,21 @@
 - Do NOT read source files, test files, or other files "for context" — the plan already contains all necessary context
 - Do NOT explore the project structure with `list_files` or `search_code` unless the plan instructs it
 
+{{> jobs/code/base/injections/gate-validity-principle}}
+
 ### Validation Order
 
 | Rule | Effect |
 |------|--------|
 | **Order** | `typecheck → build → test` is the efficient sequence (don't build past a failing type-check). Sequencing is your judgment; completeness — every required gate observed green — is not optional. |
-| **Already-passed** | A gate already green in this session is auto-rejected — do not re-run it. |
-| **Deep-diagnostic mode** | Ordering is relaxed; you may probe out of order when the Session has entered deep mode. |
+| **Re-run discipline** | Re-run a gate only when an edit changed an input it consumes (see Gate Validity above). A gate already green whose inputs are unchanged does not need re-running. |
 
 ### Verification Gate Declaration
 
 **Principle**: Each verification gate command (typecheck / build / test)
 declares its intent via the `verifies` argument on `run_command` so the
-diagnostic cycle records gate completion by exit code rather than by
-command-string heuristics.
+execution log records which gate the command exercised (by exit code
+rather than command-string heuristics).
 
 **Observation target**: Which verification gate this command exercises —
 independent of which form the command takes (`tsc --noEmit`,
@@ -58,10 +59,10 @@ independent of which form the command takes (`tsc --noEmit`,
 Omit the field for non-gate commands (install, ls, cat, edits, log
 inspections).
 
-⚠️ **Blind spot**: A verification gate command run without `verifies`
-succeeds in the shell but does NOT flip the verification cycle's gate.
-The next gate then blocks with "prior gate not passed" and the
-verification cycle wastes a retry round.
+⚠️ **Blind spot**: `verifies` is an observational label only — it does not
+gate or block anything. Omitting it on a gate command still runs the
+command and its result, but leaves the execution log unable to attribute
+that result to a gate. Set it on gate commands; omit it elsewhere.
 
 ### Verification-Specific Constraints
 
@@ -156,7 +157,7 @@ Example — deviation found:
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
-| `run_command` | Shell commands including validation (`tsc`, build, test) and environment setup. Gate commands are policed by the Session's `passed` state — an already-passed gate is rejected automatically. |
+| `run_command` | Shell commands including validation (`tsc`, build, test) and environment setup. |
 | `mkdir` | Create directory |
 
 ### edit_file: Exact Match Principle

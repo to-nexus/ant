@@ -79,7 +79,7 @@ After applying fixes, validate the next unsatisfied gate only. Gate order:
 
 | Observation | Action |
 |-------------|--------|
-| Gate has already passed this session | It will be auto-rejected on retry — skip to the next gate. |
+| Gate already passed and its inputs are unchanged since | Skip it — re-running cannot change the result; move to the next gate. |
 | Next gate passes | Move to the following gate. |
 | Next gate fails on an error covered by the current plan's `modify`/`create`/`delete` targets | Re-read those targets, correct within that file scope, re-run. |
 | Next gate fails on a NEW root cause (new file, new symptom, new dependency not in the plan) | Output `<done>true</done>` immediately. Do NOT patch outside plan scope — the plan phase will re-diagnose and emit a fresh plan for the new root cause. |

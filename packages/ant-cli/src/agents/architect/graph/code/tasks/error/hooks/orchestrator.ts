@@ -7,11 +7,11 @@
  *   - Tier 2 error task (decompose-time `selfVerifyOnDone:true`): runs
  *     a two-cycle apply→reverify lifecycle within the same task. The
  *     reverify cycle uses the shared `_shared/verify/` infrastructure
- *     (Session, plan/execute/command/check/router) to enforce gates.
- *     By the time `onTaskComplete` fires, all gates have already passed
- *     (the task only completes after `Session.isComplete()`). No
- *     subsequent Final Verification is needed, and this hook is a NOOP
- *     for Tier 2 tasks (gated by the `selfVerifyOnDone` check below).
+ *     (plan/execute/command/check/router hooks) to drive gate runs.
+ *     By the time `onTaskComplete` fires, the LLM has already judged all
+ *     gates clean and emitted `<done>`. No subsequent Final Verification
+ *     is needed, and this hook is a NOOP for Tier 2 tasks (gated by the
+ *     `selfVerifyOnDone` check below).
  *   - Tier 2 escalate / Tier 3+ error batch-split (batchSplit Path B):
  *     `batchSplit.ts` drops the original task and enqueues N sub-tasks
  *     (type inherits parent for Tier 2 escalate, 'error' for Tier 3+
@@ -69,8 +69,8 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
   // Tier-Verification Alignment: Tier 2 error tasks own a two-cycle
   // apply→reverify lifecycle within the same task (verify-mode dispatched
   // through `_shared/verify/` after `executeRouter.routeAfterDone` flips
-  // `_verifyEntered=true`). By the time onTaskComplete fires the task has
-  // already passed every gate via `Session.isComplete()` — auto-enqueueing
+  // `_verifyEntered=true`). By the time onTaskComplete fires the LLM has
+  // already judged every gate clean and emitted `<done>` — auto-enqueueing
   // a Final Verification would double-verify the same single-unit work
   // and violate the "tasks.length === 1" invariant of Tier 2. NEVER fire
   // for Tier 2 (detected via selfVerifyOnDone — the decompose-time marker).

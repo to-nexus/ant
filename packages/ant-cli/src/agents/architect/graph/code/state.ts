@@ -53,6 +53,22 @@ export type ViolationType =
   | 'other';                    // fallback for unclassified errors — _common/errorHandler.ts
 
 /**
+ * Recursion-budget drain threshold (single SSOT).
+ *
+ * When a task's remaining recursion budget (`recursionLimit - recursionCount`)
+ * drops below this, the graph stops attempting new work and drains to `learn`
+ * (best-effort completion) rather than starting another plan/execute cycle.
+ *
+ * Consumed by the three sites that gate on near-exhaustion so they agree on one
+ * boundary (no dead-band): `routers/executeRouter.ts` Safety Net A,
+ * `routing.ts` (sequential checkTaskStatus drain), and
+ * `parallel/workerGraph.ts` (worker checkTaskStatus drain). Safety Net A only
+ * fires once the LLM has emitted neither a tool call nor `<done>` — i.e. a
+ * genuinely non-productive turn — so a pending gate-rerun is never discarded.
+ */
+export const RECURSION_DRAIN_THRESHOLD = 20;
+
+/**
  * Task Priority Mapping
  * Lower number = higher priority (executed first).
  * Each phase occupies a 100-boundary for clean separation.
@@ -301,9 +317,9 @@ export interface ArchitectGraphState extends TriageableState {
    * Turn-scoped signal: did the most recent tool batch (the one that ran
    * just before the current execute turn) mutate any files?
    *
-   * SSOT writer: `nodes/tool/index.ts buildReturn` — sets to the result of
-   * `executionEvents.some(... 'verificationInvalidated' ...)` on every
-   * execute-phase tool batch return.
+   * SSOT writer: `nodes/tool/index.ts buildReturn` — sets to whether any
+   * execute-phase tool batch emitted a `fileModified` / `fileCreated` /
+   * `fileDeleted` side effect.
    *
    * Reader: `nodes/execute/index.ts` `isStuckLooping` — combined with
    * `streamedInThisCall.length === 0` to suppress "stuck" classification on
@@ -372,7 +388,6 @@ export interface ArchitectGraphState extends TriageableState {
   featureTasks?: Map<string, CodeTask>;   // Original feature tasks (for tracking completion)
   completedTasks?: string[];          // Task IDs that finished successfully
   completedTasksDetails?: CodeTask[];     // ✅ NEW: Full task objects of completed tasks (with timing, etc.)
-  verifiedTasks?: Map<string, { passed: boolean; timestamp: string; errors?: string[] }>;  // ✅ Verification cache
   resolvedCategories?: ErrorCategory[]; // Categories with 0 errors (successfully resolved)
   
   // Failed-task SSOT — markers live on `taskQueue[i]._failed` / `._failureReason`;

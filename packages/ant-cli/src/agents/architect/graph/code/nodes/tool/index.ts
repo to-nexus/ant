@@ -262,25 +262,22 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     });
 
     // SSOT for `_lastToolBatchMutatedFiles` (turn-scoped): any execute-phase
-    // tool invocation whose side effects include `verificationInvalidated`
-    // (emitted by file-mutating handlers: edit_file / create_file /
-    // delete_file) flips the flag for the *single* execute turn that
-    // immediately follows. Execute reads it in its `isStuckLooping`
-    // computation and resets it to `false` on every return so a tool batch
-    // that mutated files only counts once. Plan-phase tool batches never
-    // set this signal — file mutations during plan-tool-loop are not
-    // execute-turn progress.
+    // tool invocation that mutated the filesystem (edit_file / create_file /
+    // delete_file → `fileModified` / `fileCreated` / `fileDeleted` side
+    // effects) flips the flag for the *single* execute turn that immediately
+    // follows. Execute reads it in its `isStuckLooping` computation and
+    // resets it to `false` on every return so a tool batch that mutated
+    // files only counts once. Plan-phase tool batches never set this signal
+    // — file mutations during plan-tool-loop are not execute-turn progress.
     //
     // Replaces the retired `_executeModifiedFiles` sticky flag whose dual
     // role (cross-cycle file change tracking AND turn-progress signal)
-    // caused the `urban-fronting-faith` p2 reverify-branch lockout: the
-    // retry/reverify entry handlers reset it to `false`, which then made
-    // `routeAfterDone`'s `madeFileChanges` always read `false` and routed
-    // to checkTaskStatus instead of plan(reverify). The sticky cross-cycle
-    // semantics are now handled exclusively by `Session.passed()` /
-    // `session.isComplete()` plus the `batch_cycle_limit` fail-safe.
+    // caused the `urban-fronting-faith` p2 reverify-branch lockout. The
+    // cross-cycle semantics are now owned by LLM gate judgment plus the
+    // `batch_cycle_limit` fail-safe.
+    const MUTATION_SIDE_EFFECTS = new Set(['fileModified', 'fileCreated', 'fileDeleted']);
     const touchedFiles = state._activePhase !== 'plan' && executionEvents.some(e =>
-      (e.result.sideEffects || []).some(ef => ef.type === 'verificationInvalidated'),
+      (e.result.sideEffects || []).some(ef => MUTATION_SIDE_EFFECTS.has(ef.type)),
     );
 
     const base: Partial<ArchitectGraphState> = {

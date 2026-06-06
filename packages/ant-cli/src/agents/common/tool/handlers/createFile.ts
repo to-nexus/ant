@@ -9,7 +9,6 @@ import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types'
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import {
-  decideInvalidationScope,
   isDepManifestPath,
   DEP_MANIFEST_INSTALL_HINT,
 } from './invalidationScope';
@@ -119,19 +118,8 @@ export async function handleCreateFile(
       `</file>`,
     ].join('\n');
 
-    // F2 — new files have no prior content to diff against; decideInvalidationScope
-    // treats an undefined oldContent as "conservative fallback" for manifests.
-    const decision = decideInvalidationScope(resolved.displayPath, {
-      oldContent: undefined,
-      newContent: content,
-    });
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileCreated', path: resolved.displayPath },
-      {
-        type: 'verificationInvalidated',
-        scope: decision.scope,
-        reason: decision.reason,
-      },
     ];
 
     const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';

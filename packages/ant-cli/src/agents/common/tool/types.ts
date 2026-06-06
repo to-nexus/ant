@@ -283,15 +283,6 @@ export interface ToolExecutionContext {
 // ToolResult + ToolSideEffect — handler return types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * Scope of verification invalidation triggered by a file change.
- * Scope hint (see handlers/invalidationScope.ts) — lets the tracker retain
- * already-passed steps when the edited file
- * cannot logically affect them (e.g. changing a test file should not reset
- * typecheck/build status).
- */
-export type InvalidationScope = 'typecheck' | 'build' | 'test' | 'all';
-
 export type ToolSideEffect =
   | { type: 'fileModified'; path: string }
   | { type: 'fileCreated'; path: string }
@@ -300,12 +291,7 @@ export type ToolSideEffect =
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate; cacheReplayed?: boolean }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string; port?: number }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
-  | { type: 'figmaSuccess' }
-  | {
-      type: 'verificationInvalidated';
-      scope: InvalidationScope;
-      reason: string;
-    };
+  | { type: 'figmaSuccess' };
 
 export interface ToolResult {
   content: string | any[];

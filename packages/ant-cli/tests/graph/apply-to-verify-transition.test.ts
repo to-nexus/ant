@@ -195,3 +195,61 @@ describe('apply→verify transition — Tier-2 self-verify (ultra-fusing-scone r
     expect(state._verifyEntered).toBe(true);
   });
 });
+
+describe('executeRouter Safety Net A — recursion-budget drain (proud-flowing-rivet regression)', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  // remaining = recursionLimit - recursionCount. 185/200 → remaining 15 (< 20).
+  function verifState(over: Partial<ArchitectGraphState>): ArchitectGraphState {
+    return {
+      currentTask: {
+        id: 'final-verification',
+        name: '최종 검증',
+        description: 'tier 3 dedicated verification task',
+        type: 'verification',
+        priority: 1000,
+      } as any,
+      _activePhase: 'execute',
+      llmResponse: { done: false, thinking: '', textResponse: '', toolCalls: [] } as any,
+      recursionCount: 185,
+      recursionLimit: 200,
+      commandHistory: [],
+      context: { featurePath: undefined, featureFolder: undefined } as any,
+      _httpJobId: undefined,
+      ...over,
+    } as any;
+  }
+
+  it('does NOT discard a pending gate-rerun near budget exhaustion — routes to "tool" (the silver bullet)', () => {
+    // The proud-flowing-rivet death spiral: Safety Net A sat at the top of the
+    // router and force-routed to checkTaskStatus the moment remaining < 50,
+    // discarding the build/typecheck re-run the LLM had just emitted. With the
+    // reorder, a pending tool call wins.
+    const state = verifState({
+      llmResponse: {
+        done: false, thinking: '', textResponse: '',
+        toolCalls: [{ id: 'c1', name: 'run_command', args: { command: 'pnpm -r build', verifies: 'build' } }],
+      } as any,
+    });
+    expect(routeAfterExecute(state)).toBe('tool');
+  });
+
+  it('fires only when there is no pending tool/done — non-productive turn near budget → checkTaskStatus', () => {
+    const state = verifState({}); // done:false, no toolCalls, remaining 15
+    expect(routeAfterExecute(state)).toBe('checkTaskStatus');
+  });
+
+  it('does not fire in the former [20,50) dead-band — remaining 30 with no pending work re-reasons (no forced drain)', () => {
+    const state = verifState({ recursionCount: 170 }); // remaining 30
+    expect(routeAfterExecute(state)).toBe('execute');
+  });
+});
