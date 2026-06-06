@@ -53,10 +53,11 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/code/nodes/plan/rules-keyword',
     system: 'jobs/code/base/system',
   },
-  // codePlanError / codePlanTestCode intentionally lack a `rules` slot —
-  // their variant directories ship only `base.md`. The rules layer for
-  // error / test-code plan flows comes from the default plan rules
-  // partial included inside the variant base.md.
+  // codePlanError intentionally lacks a `rules` slot — its variant
+  // directory ships only `base.md`. The rules layer for the error plan
+  // flow comes from the default plan rules partial included inside the
+  // variant base.md. (test-code is non-forking — it has no plan variant
+  // and rides codePlanDefault.)
   codePlanError: {
     base: 'jobs/code/nodes/plan/variants/error/base',
     system: 'jobs/code/base/system',
@@ -64,10 +65,6 @@ export const TEMPLATE_PATHS = {
   codePlanVerification: {
     base: 'jobs/code/nodes/plan/variants/verification/base',
     rules: 'jobs/code/nodes/plan/variants/verification/rules',
-    system: 'jobs/code/base/system',
-  },
-  codePlanTestCode: {
-    base: 'jobs/code/nodes/plan/variants/test-code/base',
     system: 'jobs/code/base/system',
   },
   codeExecuteDefault: {
@@ -83,11 +80,6 @@ export const TEMPLATE_PATHS = {
   codeExecuteVerification: {
     base: 'jobs/code/nodes/execute/variants/verification/base',
     rules: 'jobs/code/nodes/execute/variants/verification/rules',
-    system: 'jobs/code/base/system',
-  },
-  codeExecuteTestCode: {
-    base: 'jobs/code/nodes/execute/variants/test-code/base',
-    rules: 'jobs/code/nodes/execute/variants/test-code/rules',
     system: 'jobs/code/base/system',
   },
   codeExecuteDocgen: {

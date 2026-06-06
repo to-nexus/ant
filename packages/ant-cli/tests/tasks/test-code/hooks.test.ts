@@ -82,12 +82,14 @@ describe('tasks/_shared/registry — test-code entry', () => {
     expect(hooks?.scheduling?.blocksDoc).toBe(true);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
     expect(hooks?.check?.evaluate).toBe(checkEvaluate);
-    // test-code batch-split promotion publishes `plan.buildPrompt` and
-    // `command.guard`. The plan variant owns test-runner install + feature-
-    // slice decision; the command guard rejects install verbs issued by
-    // batch-split sub-tasks to prevent lockfile races.
-    expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
-    expect(hooks?.plan?.toolLoopLogTemplate).toBe('jobs/code/nodes/plan/variants/test-code/base');
+    // test-code is NON-forking: it rides the shared plan/execute templates,
+    // so it publishes `plan.extraTemplateVars` (type-specific vars) NOT
+    // `plan.buildPrompt`, and NO `toolLoopLogTemplate`. The command guard is
+    // preserved — it rejects install verbs issued by batch-split sub-tasks to
+    // prevent lockfile races.
+    expect(hooks?.plan?.buildPrompt).toBeUndefined();
+    expect(hooks?.plan?.extraTemplateVars).toBe(planHook.extraTemplateVars);
+    expect(hooks?.plan?.toolLoopLogTemplate).toBeUndefined();
     expect(hooks?.command?.guard).toBe(commandHook.guard);
   });
 
@@ -101,9 +103,11 @@ describe('tasks/_shared/registry — test-code entry', () => {
     // check.evaluate is published; but noDoneSignalHint is NOT —
     // generic "Break down the task scope" is correct for test-code.
     expect(testCodeBundle.check?.noDoneSignalHint).toBeUndefined();
-    // plan.buildPrompt is published (test-code variant); extraTemplateVars
-    // is not — the variant template has a self-contained var set.
-    expect(testCodeBundle.plan?.extraTemplateVars).toBeUndefined();
+    // NON-forking: extraTemplateVars is published; buildPrompt is NOT —
+    // test-code composes the shared `jobs/code/nodes/plan/base` template
+    // (like ui/design-system) and only contributes type-specific vars.
+    expect(testCodeBundle.plan?.buildPrompt).toBeUndefined();
+    expect(testCodeBundle.plan?.extraTemplateVars).toBe(planHook.extraTemplateVars);
   });
 
   it('scheduling exposes only testgen-consumer + doc-producer — no other flags', () => {
@@ -287,64 +291,58 @@ describe('tasks/test-code/hooks/command.guard', () => {
   });
 });
 
-describe('templates/jobs/code/nodes/(plan|execute)/variants/test-code — Test Script wiring SSOT', () => {
-  // Defense for the test-script wiring SSOT split:
+describe('templates test-code overlays (non-forking) — Test Script wiring SSOT', () => {
+  // After the non-forking conversion the test-code-specific content lives in
+  // gated overlay partials, NOT in self-contained variant templates:
+  //   - plan: `nodes/plan/injections/test-code-protocol.md`
+  //   - execute: `nodes/execute/injections/test-code-task.md`
+  // Invariants preserved across the move:
   //   - parent plan phase OWNS manifest test-run entry wiring (Step 2.5)
-  //   - execute variant must NOT carry a duplicate `## Test Script` section
-  //     that would (a) be visible to batch-split sub-tasks (where manifest
-  //     edits are forbidden — lockfile race) and (b) duplicate the parent
-  //     plan's responsibility (MECE violation).
-  // Regression scenario: Format-B parent installs the runner but no phase
-  // wires `scripts.test`, causing verification's first cycle to fail with
-  // "Missing script: test" and burn retry budget on a one-line fix.
-  const planBase = path.join(
+  //   - the manifest must never enter a batch slice
+  //   - sub-tasks (prePlanText) are forbidden from editing the manifest
+  //     (lockfile race) — the OTHER half of the MECE split.
+  const planOverlay = path.join(
     __dirname,
-    '../../../src/core/prompt/templates/jobs/code/nodes/plan/variants/test-code/base.md',
+    '../../../src/core/prompt/templates/jobs/code/nodes/plan/injections/test-code-protocol.md',
   );
-  const executeBase = path.join(
+  const executeOverlay = path.join(
     __dirname,
-    '../../../src/core/prompt/templates/jobs/code/nodes/execute/variants/test-code/base.md',
+    '../../../src/core/prompt/templates/jobs/code/nodes/execute/injections/test-code-task.md',
   );
 
-  it('plan base template carries Step 2.5 — Wire Test-Run Entry block', () => {
-    const text = fs.readFileSync(planBase, 'utf8');
-    expect(text).toMatch(/Step 2\.5\s*[—\-]\s*Wire Test-Run Entry/);
-    // Responsibility framing — owner is the parent plan phase, not sub-tasks.
-    expect(text).toMatch(/parent plan phase['’]?s? exclusive responsibility/i);
+  it('plan overlay carries the Step 2.5 — Wire test-run entry block (parent-owned)', () => {
+    const text = fs.readFileSync(planOverlay, 'utf8');
+    expect(text).toMatch(/Step 2\.5\s*[—\-]\s*Wire the test-run entry/i);
+    // Parent-owned framing.
+    expect(text).toMatch(/belong to the parent/i);
     // Tool boundary — manifest wiring uses edit_file, not run_command.
-    expect(text).toMatch(/Use `edit_file`/);
+    expect(text).toMatch(/`edit_file`/);
+    expect(text).toMatch(/not via `run_command`/);
   });
 
-  it('plan base template still forbids application source modification (constraint preserved)', () => {
-    const text = fs.readFileSync(planBase, 'utf8');
-    expect(text).toMatch(/Do NOT modify application source code/);
-    // The exception MUST be named explicitly so LLM cannot read the
-    // constraint as banning the new Step 2.5 wiring edit.
-    expect(text).toMatch(/single permitted manifest-write exception/i);
+  it('plan overlay carries the install-vs-entry blind-spot reminder', () => {
+    const text = fs.readFileSync(planOverlay, 'utf8');
+    expect(text).toMatch(/Installing the runner is not sufficient/i);
   });
 
-  it('plan base template warns that wiring must NOT enter the batches[] payload', () => {
-    const text = fs.readFileSync(planBase, 'utf8');
-    expect(text).toMatch(/Do NOT include the manifest in any `batches\[\]`/);
+  it('plan overlay forbids placing a manifest / shared config into a slice', () => {
+    const text = fs.readFileSync(planOverlay, 'utf8');
+    expect(text).toMatch(/Never place a dependency manifest or shared test config/i);
   });
 
-  it('plan base template carries the install-vs-entry blind-spot reminder', () => {
-    const text = fs.readFileSync(planBase, 'utf8');
-    expect(text).toMatch(/Installing the runner alone is not sufficient/i);
+  it('plan overlay sub-task branch tells the child to author its own implementation (slim-shape)', () => {
+    const text = fs.readFileSync(planOverlay, 'utf8');
+    // slim-shape: the parent declares the boundary; the child authors impl.
+    expect(text).toMatch(/Author your own `implementation`/i);
+    // and must NOT install / edit the manifest.
+    expect(text).toMatch(/Do NOT propose installing/i);
   });
 
-  it('execute base template no longer carries a `## Test Script` section', () => {
-    const text = fs.readFileSync(executeBase, 'utf8');
-    expect(text).not.toMatch(/^## Test Script\s*$/m);
-    // Also no leftover checkpoint row pointing to the deleted section.
-    expect(text).not.toMatch(/\*\*Test script\*\*\s*\|\s*Does the project config/);
-  });
-
-  it('execute base template preserves the sub-task manifest-edit prohibition (lockfile race defence)', () => {
-    const text = fs.readFileSync(executeBase, 'utf8');
-    // The prePlanText (sub-task) branch MUST keep its strict manifest list
-    // — that is the OTHER half of the MECE split with the plan-phase wiring.
-    expect(text).toMatch(/Do NOT modify `package\.json`/);
+  it('execute overlay preserves the sub-task manifest-edit prohibition (lockfile race defence)', () => {
+    const text = fs.readFileSync(executeOverlay, 'utf8');
+    // The prePlanText (sub-task) branch keeps the manifest-edit prohibition.
+    expect(text).toMatch(/Do NOT modify any dependency manifest/i);
+    expect(text).toMatch(/`package\.json`/);
   });
 });
 

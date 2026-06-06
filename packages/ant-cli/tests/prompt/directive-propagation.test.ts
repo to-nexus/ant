@@ -25,7 +25,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { join } from 'path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const ROOT = join(__dirname, '../..');
 const TEMPLATES_DIR = join(ROOT, 'src/core/prompt/templates');
@@ -61,12 +61,12 @@ describe('directive propagation — user message → every task', () => {
       expect(body).toMatch(/\{\{directive\}\}/);
     });
 
-    it('test-code plan variant includes directive', () => {
-      const body = read(
-        join(TEMPLATES_DIR, 'jobs/code/nodes/plan/variants/test-code/base.md'),
-      );
-      expect(body).toMatch(/\{\{#if directive\}\}/);
-      expect(body).toMatch(/\{\{directive\}\}/);
+    it('test-code is non-forking — gets directive via the generic plan base (no variant)', () => {
+      // test-code no longer has its own plan variant; it rides
+      // jobs/code/nodes/plan/base.md (asserted above to carry {{directive}}).
+      expect(
+        existsSync(join(TEMPLATES_DIR, 'jobs/code/nodes/plan/variants/test-code/base.md')),
+      ).toBe(false);
     });
   });
 

@@ -74,7 +74,9 @@ describe('hidden-mooring-rivet Fix 2: empty-plan-as-done in default rules.md', (
 
 describe('hidden-mooring-rivet Fix 2: empty-plan main flow in every variant', () => {
   const ERROR = read('variants/error/base.md');
-  const TESTCODE = read('variants/test-code/base.md');
+  // test-code is non-forking — its empty-plan flow lives in the gated
+  // protocol overlay, not in a self-contained variant.
+  const TESTCODE = read('injections/test-code-protocol.md');
   const VERIFY = read('variants/verification/base.md');
 
   it('error variant has Step 3 Recognize Already-Resolved State in protocol', () => {
@@ -90,11 +92,11 @@ describe('hidden-mooring-rivet Fix 2: empty-plan main flow in every variant', ()
     expect(ERROR).toMatch(/downstream verification\s+task owns that gate/);
   });
 
-  it('test-code variant has Step 3.5 and Format C for empty plan', () => {
-    expect(TESTCODE).toMatch(/Recognize Already-Sufficient Coverage \(non-negotiable\)/);
-    expect(TESTCODE).toMatch(/Format C: Empty Plan/);
-    expect(TESTCODE).toMatch(/Emit the\s+empty plan in the Output Format section below and stop/);
+  it('test-code protocol overlay teaches recognize-sufficient-coverage → empty plan', () => {
+    expect(TESTCODE).toMatch(/Recognize already-sufficient coverage/i);
+    expect(TESTCODE).toMatch(/emit an\s+empty plan/i);
     expect(TESTCODE).toMatch(/Do NOT run the test suite/);
+    expect(TESTCODE).toMatch(/verification task owns that gate/i);
   });
 
   it('verification variant empty-plan is mandatory and consistent with siblings', () => {

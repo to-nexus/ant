@@ -135,9 +135,9 @@ Inside a `batches[]` entry, ONLY `name`, `rationale`, and (optional) `requiredFi
 
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
-{{#if (or (eq taskType "feature") (eq taskType "ui") (eq taskType "design-system"))}}
+{{#if (or (eq taskType "feature") (eq taskType "ui") (eq taskType "design-system") (eq taskType "test-code"))}}
 ────────────────────────────────────────────────────────────────────────────────
-## 🌿 FAN-OUT AT PLAN TIME (feature / ui / design-system)
+## 🌿 FAN-OUT AT PLAN TIME (feature / ui / design-system / test-code)
 ────────────────────────────────────────────────────────────────────────────────
 
 Decomposition chose the task **set** blind to the code; that boundary stands — you do NOT re-decide which tasks exist. What you own now, having observed the actual codebase, is this one task's **internal unit structure**: whether it is a single unit or several. Your investigation can reveal either that the work resolves into multiple independent units, or that its involvement scope is too large for one execute cycle — neither of which decomposition could see. When **either** holds, fan out via `batches[]`. The two rubrics below are the test: the first (separability) decides whether the work is several independent units worth splitting; the second (single-session capacity) decides whether its involvement scope is too large for one cycle. A **split conclusion from either is sufficient** — capacity can mandate a split the separability rubric alone would bundle (small independent slices still bundle per the separability rubric, but an oversized scope splits regardless).

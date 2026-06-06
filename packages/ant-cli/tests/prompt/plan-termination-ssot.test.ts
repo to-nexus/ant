@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const TEMPLATES_DIR = join(
@@ -104,16 +104,27 @@ describe('plan-phase termination SSOT', () => {
     expect(ssot).toContain('{{remainingRecursionBudget}}');
   });
 
-  it('test-code variant carries the re-split escape hatch (≥ 8 files OR 4+ modules)', () => {
-    const variant = readFileSync(
-      join(TEMPLATES_DIR, 'nodes/plan/variants/test-code/base.md'),
+  it('test-code re-split is governed by the shared FAN-OUT rubric (non-forking), not a numeric hatch', () => {
+    // test-code is now non-forking: its split / re-split decision comes from
+    // the shared FAN-OUT section (task-split-rubric + plan-batch-capacity) in
+    // plan/rules.md, gated to include test-code. The old variant-local numeric
+    // escape hatch ("≥ 8 files OR 4+ modules") was removed — it contradicted
+    // plan-batch-capacity's no-numeric-ceiling principle.
+    const rules = readFileSync(
+      join(TEMPLATES_DIR, 'nodes/plan/rules.md'),
       'utf8',
     );
-    expect(variant).toContain('Re-split escape hatch');
-    expect(variant).toContain('8 distinct test files');
-    expect(variant).toContain('4+ disjoint module groupings');
-    expect(variant).toContain('{{batchSplitCount}}');
-    // The previous unconditional block must be gone.
-    expect(variant).not.toMatch(/Do NOT propose\s+`batches\[\]`\s+again/);
+    expect(rules).toMatch(
+      /{{#if \(or \(eq taskType "feature"\) \(eq taskType "ui"\) \(eq taskType "design-system"\) \(eq taskType "test-code"\)\)}}/,
+    );
+    // The protocol overlay must NOT re-introduce the numeric hatch.
+    const overlay = readFileSync(
+      join(TEMPLATES_DIR, 'nodes/plan/injections/test-code-protocol.md'),
+      'utf8',
+    );
+    expect(overlay).not.toContain('8 distinct test files');
+    expect(overlay).not.toContain('4+ disjoint module groupings');
+    // And the dead variant is gone.
+    expect(existsSync(join(TEMPLATES_DIR, 'nodes/plan/variants/test-code/base.md'))).toBe(false);
   });
 });

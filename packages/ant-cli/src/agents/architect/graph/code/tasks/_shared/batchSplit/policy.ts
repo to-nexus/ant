@@ -35,17 +35,6 @@ export function diagnosticBatchShape(ctx: BatchPlanShapeCtx): string {
   });
 }
 
-export function testCodeBatchShape(ctx: BatchPlanShapeCtx): string {
-  return JSON.stringify({
-    task: { id: `batch-${ctx.batchIndex}`, goal: ctx.batch.name },
-    slice: ctx.batch.rationale || ctx.batch.name,
-    implementation: {
-      modify: ctx.batch.modify || [],
-      create: ctx.batch.create || [],
-    },
-  });
-}
-
 /**
  * Feature batch shape — slim slice declaration. Emitted by feature / ui /
  * design-system plans when the work fans out into N physically-isolated
@@ -111,10 +100,16 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     populateRemediationMode: true,
     appendFinalVerification: true,
   },
+  // test-code is a NON-forking slim-shape participant (like feature/ui/ds):
+  // the parent declares feature-slice boundaries (name/rationale/scheduling)
+  // and each child re-plans its own test `implementation` with a fresh
+  // budget. Disjoint test-file surfaces per slice are enforced by the shared
+  // FAN-OUT scope-conservation + the test-code-protocol slice note, not by
+  // batch-level file lists (those no longer exist under slim-shape).
   'test-code': {
     kind: 'drop-and-replace',
     subType: 'test-code',
-    shape: testCodeBatchShape,
+    shape: featureBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,
   },

@@ -398,8 +398,9 @@ describe('Template Smoke Tests', () => {
 
   const DEP_PARTIAL_HEADER = '## Self-Contained Dependency Principle';
   const DEP_VARIANTS_INCLUDED = [
+    // test-code is non-forking — it rides default/base (already listed), which
+    // carries the dep-self-contained partial.
     'jobs/code/nodes/execute/variants/default/base',
-    'jobs/code/nodes/execute/variants/test-code/base',
     'jobs/code/nodes/execute/variants/verification/base',
     'jobs/code/nodes/execute/variants/error/base',
     'jobs/code/nodes/plan/base',

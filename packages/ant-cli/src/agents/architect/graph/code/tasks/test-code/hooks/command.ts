@@ -5,14 +5,14 @@
  * design: sub-tasks spawned from a parent test-code's `batches[]` MUST
  * NOT install dependencies or otherwise mutate the shared dependency
  * manifest. The parent already installed the test runner during its
- * plan phase (see `plan/variants/test-code/base.md`) and dropped itself;
+ * plan phase (see the `test-code-protocol` plan overlay) and dropped itself;
  * the sub-tasks run in parallel with distinct `parallelGroup`s and
  * `blocksTestgen=false`, so two siblings simultaneously issuing
  * `npm install` would race on `package-lock.json` and either corrupt
  * the lockfile or stall each other behind the package-manager's global
  * mutex.
  *
- * The prompt variant (execute/variants/test-code/base.md) also carries
+ * The execute prompt (the `test-code-task` overlay) also carries
  * this constraint in natural-language form for the LLM to read, but the
  * guard here is the hardware-level defence — a prompt can be misread or
  * overridden by retry violations, this cannot.

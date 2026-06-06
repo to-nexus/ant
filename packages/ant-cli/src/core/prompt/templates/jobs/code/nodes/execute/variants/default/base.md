@@ -465,6 +465,14 @@ Static analysis cannot validate behavioral correctness.
 
 ════════════════════════════════════════════════════════════════════════════════
 
+{{#if currentTask}}
+{{#if (eq currentTask.type "test-code")}}
+{{> jobs/code/nodes/execute/injections/test-code-task }}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+{{/if}}
+
 {{#if referenceRequests}}
 ## 📚 REFERENCE PROJECTS
 

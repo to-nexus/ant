@@ -78,9 +78,18 @@ describe('plan/rules.md — REQUIRED markers on LLM-authored semantic fields', (
 });
 
 describe('plan/rules.md — fan-out is LLM-explicit, default is bundle', () => {
-  it('section heading covers feature / ui / design-system — no legacy variants', () => {
-    expect(RULES).toMatch(/##\s+🌿\s+FAN-OUT AT PLAN TIME \(feature \/ ui \/ design-system\)/);
+  it('section heading covers feature / ui / design-system / test-code — no legacy variants', () => {
+    expect(RULES).toMatch(/##\s+🌿\s+FAN-OUT AT PLAN TIME \(feature \/ ui \/ design-system \/ test-code\)/);
     expect(RULES).not.toMatch(/##\s+🌿\s+(OPTIONAL|PROACTIVE) FAN-OUT/);
+  });
+
+  it('fan-out gate includes test-code so it receives the capacity rubric (non-forking)', () => {
+    // test-code is now a non-forking batch-capable type: the gate that wraps
+    // the FAN-OUT section (task-split-rubric + plan-batch-capacity) must
+    // include test-code, otherwise the original recursion-limit bug recurs.
+    expect(RULES).toMatch(
+      /{{#if \(or \(eq taskType "feature"\) \(eq taskType "ui"\) \(eq taskType "design-system"\) \(eq taskType "test-code"\)\)}}/,
+    );
   });
 
   it('plan-time single-session-capacity partial is rendered alongside the shared rubric', () => {

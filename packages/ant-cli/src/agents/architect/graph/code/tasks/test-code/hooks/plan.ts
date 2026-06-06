@@ -1,40 +1,38 @@
 /**
- * test-code/hooks/plan.ts — TaskPlanHook.buildPrompt
+ * test-code/hooks/plan.ts — TaskPlanHook.extraTemplateVars
  *
- * Test-code parents own two decisions in the plan phase:
- *   1. Install the test runner via `run_command` inside the tool-loop.
- *   2. Optionally feature-slice split via `<plan>.batches[]`; downstream
- *      `processDiagnosticBatchSplit` (see `BATCH_SPLIT_POLICY['test-code']`)
- *      drops the parent and spawns N parallel sub-tasks.
+ * Test-code is a NON-forking task type: it flows through the shared
+ * `jobs/code/nodes/plan/base` template (which gate-includes the
+ * `test-code-protocol` overlay and the shared FAN-OUT / capacity rubric)
+ * exactly like feature / ui / design-system. This hook only contributes the
+ * type-specific template vars the generic path does not already compute:
+ *   - workspace-dep-snapshot (shared with ui/setup),
+ *   - `packageManager` (install command in the test-code protocol overlay),
+ *   - `languageHints` (ecosystem test-runner hints, reused from the
+ *     verification basis hints tree).
  *
  * R2 — no imports from `nodes/` / `routers/` / `parallel/`.
  */
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';
-import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
-import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import type { PlanPromptCtx } from '../../_shared/types';
+import { mapLang } from '../../_shared/helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
-import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 
-export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
-  const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
-  const promptBuilder = state.deps?.promptBuilder;
-  if (!promptBuilder) {
-    throw new Error('[Plan] PromptBuilder not available');
-  }
+export async function extraTemplateVars(ctx: PlanPromptCtx): Promise<Record<string, unknown>> {
+  const { state, task } = ctx;
   const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
   const techTier = task.techTiers?.length
     ? effectiveTechTier(task.techTiers)
     : getTechTier(state);
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-  const fmtCtx = formatCodeContext(codeContext);
 
-  // Share the verification / error language-hints surface so a new test-code
-  // variant doesn't force a duplicate hint tree per language. The hints are
-  // framework-agnostic enough to be reused here.
+  // Reuse the verification / error language-hints surface so a new test-code
+  // hint tree is not required; the hints are framework-agnostic enough.
   let languageHints = '';
-  if (techTier?.language) {
+  const promptBuilder = state.deps?.promptBuilder;
+  if (techTier?.language && promptBuilder) {
     try {
       languageHints = await promptBuilder.render(
         `jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`,
@@ -43,65 +41,11 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     } catch { /* no hints */ }
   }
 
-  const taskTechTiers = task.techTiers?.length
-    ? task.techTiers
-    : (getTechTier(state) ? [getTechTier(state)!] : []);
-
-  const _testCodeSlot = state.resolvedAction?.intent
-    ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
-    : undefined;
-  const basisSection = await promptBuilder.renderBasis(
-    state.resolvedAction?.basis,
-    'code',
-    taskTechTiers,
-    state.resolvedAction?.domain,
-    _testCodeSlot,
-  );
-
-  // Surface `prePlanText` from batch-split sub-tasks so the
-  // `parent-pre-plan` partial gates its drift-detection guidance. Test-code
-  // sub-tasks share the same plan-tool-loop INPUT contract as feature / ui
-  // (the generic `plan/base` path passes the same vars).
-  const prePlanTextRaw = task.prePlanText;
-  const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
-
-  const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanTestCode.base, {
-    taskId: task.id,
-    taskName: task.name,
-    taskDescription: task.description,
-    directive: state.directive || '',
-    // See `nodes/plan/llm/prompt.ts` — same response-language SSOT plumbing.
-    userLanguage: state.context?.userLanguage || 'en',
-    projectCodeContext: fmtCtx,
-    directoryTree: (codeContext as any)?.directoryTree || '',
-    violationsText,
-    isRetry: !!violationsText,
-    hasTools: options?.hasTools ?? false,
-    languageHints,
-    hasLanguageHints: !!languageHints,
+  return {
+    ...depSnapshot,
     packageManager,
     hasPackageManager: !!packageManager,
-    antrulesContent,
-    resolvedAction: state.resolvedAction,
-    prePlanText: hasPrePlanText ? prePlanTextRaw : '',
-    hasPrePlanText,
-    // Tier 3 cross-task analysis brief (sealed by Decompose).
-    analysis: state.analysis ?? '',
-    hasAnalysis: !!state.analysis,
-    ...depSnapshot,
-  });
-
-  const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
-  return {
-    text,
-    vars: {
-      hasLanguageHints: !!languageHints,
-      hasPackageManager: !!packageManager,
-      packageManager,
-      hasViolationsText: !!violationsText,
-      violationsTextLen: violationsText?.length ?? 0,
-      hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
-    },
+    languageHints,
+    hasLanguageHints: !!languageHints,
   };
 }
-

@@ -17,21 +17,24 @@
  *                                    `CONV_KEYS.NODE_EXECUTE`).
  *   - check.evaluate               — async disk scan for real test files
  *                                    via `detectTestFilesFromDisk`.
- *   - execute                      — test-code-specific execute template
- *                                    variant and skipExamples flag.
- *   - plan.buildPrompt             — test-code-variant plan prompt that
- *                                    owns the two decisions unique to
- *                                    test-code parents (install test
- *                                    runner deps, decide feature-slice
- *                                    batch-split). Sub-tasks (with
- *                                    `prePlanText` set) enter the same
- *                                    plan-tool-loop with the parent's
- *                                    slice surfaced as INPUT via
- *                                    `nodes/plan/injections/parent-pre-plan`
- *                                    so the LLM verifies file existence
- *                                    and export names against actual
- *                                    sibling outputs before emitting
- *                                    `planText`.
+ *   - execute                      — skipExamples flag only (NON-forking:
+ *                                    no templatePaths swap; rides the shared
+ *                                    default execute template whose
+ *                                    `test-code-task` / `test-code-rules`
+ *                                    overlays are gated on
+ *                                    `currentTask.type === 'test-code'`).
+ *   - plan.extraTemplateVars       — type-specific template vars only
+ *                                    (workspace-dep-snapshot, packageManager,
+ *                                    languageHints) merged into the shared
+ *                                    `jobs/code/nodes/plan/base` render. The
+ *                                    install/observe/wire protocol lives in
+ *                                    the gated `test-code-protocol` overlay;
+ *                                    the split decision comes from the shared
+ *                                    FAN-OUT rubric (task-split-rubric +
+ *                                    plan-batch-capacity). Sub-tasks receive
+ *                                    slim `prePlanText` (featureBatchShape)
+ *                                    and re-author their own implementation
+ *                                    via `nodes/plan/injections/parent-pre-plan`.
  *   - command.guard                — lockfile-race defence: reject install
  *                                    commands issued by batch-split sub-
  *                                    tasks. Parent test-code tasks (no
@@ -65,23 +68,24 @@ import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { evaluate } from './hooks/check';
 import { executeHook } from './hooks/execute';
-import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
-import { buildPrompt as planBuildPrompt } from './hooks/plan';
+import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { guard as commandGuard } from './hooks/command';
 
+// Non-forking: test-code rides the shared `jobs/code/nodes/plan/base` and
+// `execute/variants/default` templates (which gate-include the
+// `test-code-protocol` plan overlay + `test-code-task` / `test-code-rules`
+// execute overlays, and the shared FAN-OUT / capacity rubric). The plan hook
+// only contributes type-specific template vars; there is no `plan.buildPrompt`
+// override and no execute `templatePaths` swap. Sub-tasks receive slim
+// `prePlanText` from batch-split (featureBatchShape) and re-author their own
+// implementation — see `nodes/plan/injections/parent-pre-plan.md`.
 export const hooks: TaskHooks = {
   scheduling: { preTestgenBarrier, blocksDoc },
   conversations: { convKey },
   check: { evaluate },
   execute: executeHook,
   plan: {
-    buildPrompt: planBuildPrompt,
-    toolLoopLogTemplate: TEMPLATE_PATHS.codePlanTestCode.base,
-    // Sub-tasks receive `prePlanText` from batch-split; it is surfaced as
-    // input to the plan-tool-loop (see
-    // `nodes/plan/injections/parent-pre-plan.md`) so the LLM verifies the
-    // slice boundary + sibling exports before emitting `planText`. NO
-    // identity-shortcut — drift detection is mandatory.
+    extraTemplateVars: planExtraTemplateVars,
   },
   command: { guard: commandGuard },
 };
