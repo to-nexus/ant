@@ -36,4 +36,26 @@ describe('allowsPersistentProcesses', () => {
       allowsPersistentProcesses(s({ currentTask: { type: 'feature' }, completedTasksDetails: [] })),
     ).toBe(false);
   });
+
+  it('verification task in verify-mode (RCA cycle, _verifyEntered) → true', () => {
+    expect(
+      allowsPersistentProcesses(s({ currentTask: { type: 'verification' }, _verifyEntered: true })),
+    ).toBe(true);
+  });
+
+  it('self-verify task in reverify (_verifyEntered) → true', () => {
+    expect(
+      allowsPersistentProcesses(
+        s({ currentTask: { type: 'feature', selfVerifyOnDone: true }, _verifyEntered: true }),
+      ),
+    ).toBe(true);
+  });
+
+  it('self-verify task in apply phase (_verifyEntered false) → false', () => {
+    expect(
+      allowsPersistentProcesses(
+        s({ currentTask: { type: 'feature', selfVerifyOnDone: true }, completedTasksDetails: [] }),
+      ),
+    ).toBe(false);
+  });
 });

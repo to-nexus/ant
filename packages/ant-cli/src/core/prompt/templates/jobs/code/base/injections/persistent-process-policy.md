@@ -1,7 +1,7 @@
 {{#if allowPersistentProcesses}}
 ### Persistent Process Policy — ENABLED
 
-**`run_command` allows long-running background processes** in this context (error task or verification cycle grounded by a runtime-error directive). Use them ONLY to reproduce or probe the directive's failing scenario.
+**`run_command` allows long-running background processes** in this context (an error task, a runtime-error directive, or a verification / self-verify RCA cycle). Use them ONLY to reproduce or probe a route/runtime-shaped failure surfaced by your gates or the directive — not to start unrelated services.
 
 #### The single rule
 
@@ -23,7 +23,8 @@ The five steps are **mutually exclusive** (each does one thing) and **collective
 
 #### Constraints
 
-- Spawn ONLY what's needed to reproduce the directive's failing scenario. Do NOT start unrelated services.
+- Spawn ONLY what's needed to reproduce the failing scenario. Do NOT start unrelated services.
+- Probe ONLY routes that execute server code — API routes, server-rendered pages, server actions. A 200 from a client-rendered (CSR) shell proves nothing about whether the page renders; an HTTP probe never runs the page's JavaScript. Do NOT treat a shell 200 as evidence the page works.
 - Do NOT background processes by appending `&` or running through `nohup` — use `keep_running: true` so the runtime knows about the PID and can act as the safety net described above.
 - Persistent process freedom does NOT relax the typecheck/build/test gate ordering — those still run in their normal sequence; the reproducer is an additional verification step, not a substitute.
 - The kill in step 3 must target the PID returned by the spawning `run_command` (it is surfaced in that command's output). Killing by port number works too — `lsof -ti :PORT | xargs kill` — but the PID-based form is preferred because it survives port reallocation.
@@ -31,8 +32,8 @@ The five steps are **mutually exclusive** (each does one thing) and **collective
 {{else}}
 ### Persistent Process Policy — DISABLED
 
-**`run_command` does NOT permit persistent background processes** (database servers, message queues, dev servers) in this context. The verification gates (typecheck/build/test) close out as one-shot commands and the runtime cannot manage long-lived child processes outside an error / runtime-error verification context.
+**`run_command` does NOT permit persistent background processes** (database servers, message queues, dev servers) in this context. This is an apply phase (applying fixes / writing code), not a reproduction context — the runtime manages long-lived child processes only inside an error task, a runtime-error-grounded context, or a verification / self-verify RCA cycle. The verification gates (typecheck/build/test) the following cycle runs close out as one-shot commands.
 
-If a reproducer is genuinely required, the task should be reclassified as an error task or the directive should describe a runtime error scenario.
+A bounded boot smoke check is still available everywhere via `run_command` with `keep_running: false` (the default): it spawns the server, waits the startup window, probes `/` once, and auto-kills. If a persistent reproducer is genuinely required, defer it to the verification cycle.
 
 {{/if}}

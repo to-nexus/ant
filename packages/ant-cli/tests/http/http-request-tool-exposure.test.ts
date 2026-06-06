@@ -25,11 +25,16 @@ describe('http_request tool exposure (gated by persistent processes)', () => {
     expect(await names(getExecuteTools(explainState))).not.toContain('http_request');
   });
 
-  it('plan: included when runtime-error directive grounds the cycle', async () => {
+  it('plan: included for verify-mode RCA and when a runtime-error directive grounds the cycle; absent for a locked apply task', async () => {
     const verState: any = { currentTask: { type: 'verification' }, directive: 'page throws TypeError at runtime' };
-    const plainState: any = { currentTask: { type: 'verification' }, completedTasksDetails: [] };
+    // A fresh verification task enters verify-mode on cycle 1 (handleFreshTaskEntry
+    // sets _verifyEntered), so its diagnostic RCA plan exposes http_request.
+    const verifyModeState: any = { currentTask: { type: 'verification' }, _verifyEntered: true };
+    // A plain feature apply task (not in a verify cycle) stays locked.
+    const lockedState: any = { currentTask: { type: 'feature' }, completedTasksDetails: [] };
     expect(await names(getPlanTools(verState))).toContain('http_request');
-    expect(await names(getPlanTools(plainState))).not.toContain('http_request');
+    expect(await names(getPlanTools(verifyModeState))).toContain('http_request');
+    expect(await names(getPlanTools(lockedState))).not.toContain('http_request');
   });
 });
 
