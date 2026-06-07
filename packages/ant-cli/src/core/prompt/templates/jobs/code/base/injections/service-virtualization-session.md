@@ -54,20 +54,32 @@ below before authoring the seed:
   the closed system (rooted in `service-virtualization-contract`).
 - Do NOT let the mocked authorization step hand back an entry point that
   navigates to an external or unreachable host, or that the runtime cannot
-  navigate to at all. When the authorization call is handed a redirect /
-  callback URI (the application's own callback entry), the mocked leg MUST
-  build its returned entry point by REUSING that supplied URI and appending
-  the synthesized outcome (e.g. the granted `code` / `state`). It MUST NOT
-  discard the supplied URI and fabricate its own entry point, and MUST NOT
-  invent a non-standard URI scheme — a fabricated or non-navigable target
-  cannot be opened, so the callback never fires and the demo is unenterable.
-  The returned entry point MUST resolve to the application's OWN surface —
-  its own callback entry on its own origin — carrying the synthesized grant.
-  Observable check: the returned entry point is a standard, navigable URL
-  whose host equals the app's own origin (in practice, the very redirect /
-  callback URI the call was handed). If it points anywhere else, or uses a
-  scheme with no registered handler, it is not a virtualized leg — it is a
-  live external dependency wearing a mock's name.
+  navigate to at all. The virtualized leg emulates ONLY the external
+  authority's own contribution — exactly what the real external party would
+  add to the redirect / callback URI it was handed, which is the grant it
+  issues (authorization `code` / `state` / token) and nothing more. So when
+  the authorization call is handed a redirect / callback URI (the
+  application's OWN callback entry, already carrying whatever routing
+  parameters the app itself placed on it), treat that URI as OPAQUE and
+  preserve it verbatim, then append ONLY that issued grant. Do NOT re-derive,
+  echo, or re-stamp a parameter the supplied URI already carries (the app put
+  it there for its own routing; the external authority would never duplicate
+  it), do NOT discard the supplied URI and fabricate your own entry point,
+  and do NOT invent a non-standard URI scheme — a fabricated or non-navigable
+  target cannot be opened, so the callback never fires and the demo is
+  unenterable. The returned entry point MUST resolve to the application's OWN
+  surface — its own callback entry on its own origin — carrying that grant.
+  This is NOT a divergence from `service-virtualization-contract`'s
+  identical-observable-shape rule: shape parity is met at the DTO + consumer-
+  usability level (the URL is navigable and the callback actually fires), NOT
+  by replicating the production authorization URL's internal query parameters
+  — that production URL is the very external dependency being virtualized
+  away. Observable check: the returned URL is the handed redirect / callback
+  URI verbatim plus only the issued grant parameters; its host equals the
+  app's own origin, and every parameter the app placed on the URI appears
+  exactly once, exactly as the app placed it. If it points elsewhere, uses a
+  scheme with no registered handler, or stamps any parameter twice, it is not
+  a virtualized leg — it is a live external dependency wearing a mock's name.
 - Do NOT call the production backend from the mock adapter to fetch or
   persist session state — the simulated world is owned end-to-end by the
   adapter and its chosen persistence layer.
