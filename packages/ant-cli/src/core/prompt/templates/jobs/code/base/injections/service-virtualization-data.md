@@ -19,7 +19,7 @@ before authoring the body:
 
 | Axis | Question | Constraint |
 |---|---|---|
-| Domain fit | What category does this entity belong to in the directive / design doc? | Mock names / labels / shapes mirror the project's domain vocabulary |
+| Domain fit | What category does this entity belong to in the directive / design doc? | Fake names / labels / shapes mirror the project's domain vocabulary |
 | Determinism | Does re-rendering the same scenario yield the same data? | Derive values from a stable seed (entity id / index / hash) — never `Math.random()` per render |
 | Quantity coverage | What state coverage does the surface need? | Provide enough fake records to render: empty / one / a handful / a long list — match the surface that consumes them |
 | Cross-entity invariant | Do entities reference each other? | Foreign-key style invariants MUST hold (an order's user reference resolves to an actual user record) |

@@ -19,22 +19,18 @@ a master broadcast variable as fallback when the per-connection toggle is
 unset. Default (both unset) is `false` — production adapter active.
 
 **The concrete env var name follows the framework-aware naming rule in
-`preview-env-contract.md §4.5`.** SV adapter selection code reads from
-exactly that name. Do not invent or shorten it (`USE_MOCK_API`,
-`MOCK_BACKEND`, ad-hoc abbreviations, etc. are defects).
+`preview-env-contract.md §4.5`** (form `USE_MOCK_<NAME>`; an adapter
+selected in client-bundled code requires that runtime's client-exposure
+prefix). The adapter selection code reads from exactly that name. A toggle
+name not derived from the connection name, or missing the client-exposure
+prefix where the adapter is selected in client code, is a defect — it
+inlines as undefined and the production adapter activates silently.
 
 ### .env / .env.example Discipline
 
-- Every `business` `@connection` MUST have its toggle line declared in
-  `.env.example` with a comment describing what the virtualized adapter
-  provides — exact toggle name per `preview-env-contract.md §4.5`
-- The master broadcast toggle MAY be present in `.env.example` to
-  default-broadcast every business connection that lacks a per-connection
-  override — same naming rule applies
-- `.env` MUST mirror `.env.example` keys (per existing
-  `preview-env-contract` invariant)
-- Adapter-specific config that ONLY the virtualized adapter reads MUST
-  also appear in `.env.example` so the contract is self-documenting
+Toggle declaration, the master-broadcast fallback, the `.env` ↔
+`.env.example` mirror, and any adapter-specific config the virtualized
+adapter reads are all governed by `preview-env-contract.md §4.5`.
 
 ### Constraints
 

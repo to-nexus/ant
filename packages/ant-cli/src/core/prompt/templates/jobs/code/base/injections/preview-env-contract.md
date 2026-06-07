@@ -214,7 +214,7 @@ Before completing any task that creates or modifies `.env.example`, verify:
 ## 4.5) Service Virtualization (business connections)
 
 ### Principle
-**Every `business` `@connection` declares an external dependency that the project MUST be able to virtualize.** No additional annotation token is required — the `business` category itself is the virtualization signal. Each business connection MUST be reachable through a port whose production and virtualized (mock / fake) adapters are wired side-by-side. The runtime selects the active adapter via env var; both adapters satisfy the SAME interface contract.
+**Every `business` `@connection` declares an external dependency that the project MUST be able to virtualize.** No additional annotation token is required — the `business` category itself is the virtualization signal. Each business connection MUST be reachable through a port whose production and virtualized adapters are wired side-by-side, with the runtime selecting the active adapter via env var. The adapter-pair shape, the identical-interface / consumer-usability contract, and the closed-system rule are specified by the Service Virtualization Contract (injected alongside this section whenever business connections exist); this section owns only the concrete env-var mechanics below.
 
 This is the implementation of Service Virtualization (Mountebank / WireMock-class pattern) at the code-job level. `infrastructure` connections are NOT virtualization targets — local infra (DB / cache / queue via docker-compose) is real, not virtualized.
 
@@ -247,7 +247,7 @@ does the bare `USE_MOCK_<NAME>` apply.
 
 ### .env / .env.example Discipline
 
-Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. The master broadcast toggle MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys (per the existing invariant).
+Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. The master broadcast toggle MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys (per the existing invariant). Adapter-specific config that ONLY the virtualized adapter reads MUST also appear in `.env.example` so the contract is self-documenting.
 
 Examples:
 
@@ -275,12 +275,11 @@ NEXT_PUBLIC_USE_MOCK=true
 ### Constraints
 - Annotation grammar carries NO virtualization token — the `business` category alone is the contract. Adding a `mock:*` token to an annotation has no effect (and is a syntax error in future grammar revisions).
 - The toggle line (per the framework-aware naming table above) MUST appear in `.env.example` for every business connection — without it, the toggle is invisible to the runtime.
-- The virtualized adapter MUST satisfy the SAME interface contract as the production adapter — divergence is a defect, not a benign warning.
 - `infrastructure` connections never declare virtualization. Toggle env vars attached to infrastructure variable rows have no effect.
 - Per-connection toggle and master broadcast in the same `.env.example` MUST share the same framework prefix. Mixing (e.g., `NEXT_PUBLIC_USE_MOCK_STRIPE_API` alongside bare `USE_MOCK`) is a defect because the master broadcast becomes invisible to client code.
 
 ### Blind Spot
-**The adapter pair is EASILY FORGOTTEN when the focus is the production path.** Every business external-dependency port = pair of adapters + toggle var documented in `.env.example`. If the design document declares a business external dependency without a virtualized adapter story, the resulting code cannot run end-to-end before the real backend is available — and that gap surfaces structurally during verification (every business connection is exercised in both modes).
+**The toggle line is EASILY OMITTED from `.env.example`** — without it the per-connection toggle is invisible to the runtime and the virtualized adapter never activates. (The adapter-pair-completeness blind spot itself is owned by the Service Virtualization Contract; verification exercises every business connection in both modes, so a missing toggle line or virtualized adapter surfaces there.)
 
 ---
 
