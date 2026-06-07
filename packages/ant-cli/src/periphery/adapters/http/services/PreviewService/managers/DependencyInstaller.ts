@@ -2,6 +2,7 @@ import { spawn, execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
+import { detectPackageManager, buildInstallCommand, type PackageManager } from '../../../../../../utils/packageManager';
 import type { LogCallback } from '../types';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
@@ -261,24 +262,12 @@ export class DependencyInstaller {
   ): Promise<void> {
     const projectRoot = this.findProjectRoot(packagePath);
     const pm = this.detectPackageManager(projectRoot);
-    
+
     onLog('stdout', `📦 Installing dependencies for ${relativePath}...`);
     logger.info(`Running ${pm} install in: ${packagePath}`, { component: 'DependencyInstaller' });
-    
-    let command: string;
-    let args: string[];
-    
-    if (pm === 'pnpm') {
-      command = 'pnpm';
-      args = ['install', '--config.confirm-modules-purge=false'];
-    } else if (pm === 'yarn') {
-      command = 'yarn';
-      args = ['install'];
-    } else {
-      command = 'npm';
-      args = ['install', '--include=dev'];
-    }
-    
+
+    const { command, args } = buildInstallCommand(pm);
+
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(new Error('Installation cancelled'));
@@ -436,14 +425,8 @@ export class DependencyInstaller {
   /**
    * Detect package manager for a project
    */
-  detectPackageManager(projectPath: string): 'pnpm' | 'yarn' | 'npm' {
-    if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) {
-      return 'pnpm';
-    }
-    if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) {
-      return 'yarn';
-    }
-    return 'npm';
+  detectPackageManager(projectPath: string): PackageManager {
+    return detectPackageManager(projectPath);
   }
 
   /**

@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
+import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 
 export interface BuildResult {
   success: boolean;
@@ -86,18 +87,9 @@ function buildEnvWithBasePath(basePath: string, framework: DeployFramework): Rec
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
 
 /**
- * Detect package manager by lockfile presence.
- */
-function detectPackageManager(workspacePath: string): 'pnpm' | 'yarn' | 'npm' {
-  if (fs.existsSync(path.join(workspacePath, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (fs.existsSync(path.join(workspacePath, 'yarn.lock'))) return 'yarn';
-  return 'npm';
-}
-
-/**
  * Ensure dependencies (including devDependencies) are installed before building.
- * Uses --include=dev for npm to guarantee devDependencies are present even when
- * NODE_ENV=production is set in the server environment.
+ * The install always includes devDependencies (build tools like typescript live
+ * there) regardless of NODE_ENV — see utils/packageManager.buildInstallCommand.
  *
  * Fast path: in the deploy workspace, `node_modules` is a symlink pointing
  * at the dev codebase's already-installed `node_modules` (see
@@ -130,19 +122,7 @@ async function ensureDependencies(
   }
 
   const pm = detectPackageManager(workspacePath);
-  let command: string;
-  let args: string[];
-
-  if (pm === 'pnpm') {
-    command = 'pnpm';
-    args = ['install'];
-  } else if (pm === 'yarn') {
-    command = 'yarn';
-    args = ['install'];
-  } else {
-    command = 'npm';
-    args = ['install', '--include=dev'];
-  }
+  const { command, args } = buildInstallCommand(pm);
 
   onLog?.(`📦 Installing dependencies (${pm})...`);
 
