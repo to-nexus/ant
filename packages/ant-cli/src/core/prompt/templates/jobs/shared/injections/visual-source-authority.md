@@ -22,6 +22,7 @@ The three sources NEVER coexist — RAC resolution rejects mixed selections. The
 ### Cross-source rules (always apply)
 
 - **PRD / system-design** wins for component behaviour and responsibility (WHAT it does); the active UI source wins for HOW it looks.
+- **PRD / system-design also defines SCOPE** — which screens, states, and elements must EXIST (distinct from the behaviour/looks split above). The active UI source is the visual authority only for the surfaces it COVERS. A required surface the source does NOT cover MUST still be built (its visual details fall back per the hierarchy below); a missing asset never removes a required surface from scope.
 - **If a visual detail is not specified by the active source** — apply VisualTier policy if available, otherwise framework best practices and WCAG 2.1 AA accessibility defaults.
 
 ### Fallback hierarchy when no UI source is selected
@@ -32,6 +33,6 @@ The three sources NEVER coexist — RAC resolution rejects mixed selections. The
 
 ### Constraints
 
-- **If not observed in the active source, do NOT add.** Do not invent visual properties.
+- **If a visual PROPERTY is not observed in the active source, do NOT invent it** (fall back per the hierarchy above). This bounds VALUES, not SCOPE — it never licenses omitting a required surface because the source lacks an asset for it.
 - **Each container decides layout independently.** Do not assume parent layout affects child alignment.
 - **Cross-axis alignment is REQUIRED** — observe actual position, do not default to center.

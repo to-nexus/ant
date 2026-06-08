@@ -618,7 +618,11 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 
 **Principle**: Task descriptions for UI tasks should provide DIRECTION, not DETAILS. The Plan stage reads design documents to extract complete requirements.
 
-**Constraint**: Do NOT enumerate specific components, counts, or layout details in the description. Use: `"<ui> Implement [section/area] based on design specifications"`.
+**Principle**: The requirement set (PRD / system design / spec) defines WHICH renderable surfaces exist. The UI-source manifest shape only informs how to GROUP ui tasks for the surfaces the source COVERS — it does NOT cap the set. A renderable surface required by the requirements but absent from the UI-source manifest STILL gets its feature (+ paired ui) task; a missing asset never removes a required surface from scope.
+
+⚠️ **Blind spot**: Keying ui-task creation off the manifest shape alone silently drops required-but-undesigned screens. Cross-check the requirement set, not just the asset inventory. (Entry surfaces implied by an auth/identity boundary rather than enumerated as requirements are covered by the auth/identity boundary closure rule.)
+
+**Constraint**: Do NOT enumerate specific components, counts, or layout details in the description. Use: `"Implement [section/area] based on design specifications"`.
 
 **Constraint**: Do NOT create a separate task for copying assets. UI tasks handle asset integration as part of their implementation.
 
@@ -835,6 +839,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Principle**: An **integration point** is a *host entry* — the shared frame (the framework's root composition) OR a central registry/wiring many units register into (a single route table, a DI/module container). These — and ONLY these — are consolidated by a dedicated `integration` task. A **per-unit entry** (one that serves exactly ONE unit) is NOT an integration point: it is owned by the task that *authors* that unit, and it does NOT get a dedicated integration task. How your framework physically expresses per-unit entries (their own files vs registrations into a host entry) is pinned by the per-framework entry-point guidance injected for this split — follow it; do not re-derive it here.
 
 **Closure (mandatory)**: Every routable surface MUST have exactly one task that creates AND wires its mounting entry. Do NOT emit a task whose entry is a placeholder or a `TODO: another task wires this up` — the entry and its content close in the same task. A routable surface with no task creating its mounting entry is a dead, unreachable surface.
+
+**Constraint — auth/identity boundary closure**: When the split includes an authentication / identity boundary whose production flow has an **interactive sign-in entry** (OAuth / SSO / magic-link / passkey / credential form — NOT a non-interactive scheme like API-key / header / mTLS), that boundary is not complete at its adapter / session-identity context / guard alone. The **entry-path surfaces that drive the sign-in flow** — the sign-in entry and the grant-return (callback) surface — are routable surfaces of that boundary; by the Closure rule above a task MUST own them. Whether they are per-app units or a single sign-in flow shared across apps follows the package-boundary rules (shared consumption → shared library; otherwise per-app). Do NOT schedule the guard / adapter / context while leaving the flow's entry surfaces unscheduled — a gate with no scheduled entry path is a dead, unenterable surface. (A surface listed in the requirements but absent from a UI source is a separate case — see the UI Task Descriptions coverage rule.)
 
 **Observation target**: Which host-entry integration points exist, and does each receive imports/wiring from multiple feature tasks?
 

@@ -27,7 +27,7 @@ below before authoring the seed:
 | Axis | Question | Constraint |
 |---|---|---|
 | Inhabitants | Which identities exist at boot, and are they discoverable on the entry surface? | At least one identity per role-shape the surface gates on, surfaced through a platform-appropriate selection mechanism on the entry surface |
-| Authorization graph | Which roles / organizations / permissions do those identities carry? | At least one identity passes every gate that the in-scope surfaces enforce; no identity exists with a role no surface admits |
+| Authorization graph | Which roles / organizations / permissions do those identities carry? | At least one identity passes every gate that the in-scope surfaces enforce; no identity exists with a role no surface admits. The leg that issues the session MUST return a **usable** session body — a seeded identity carrying a role the gate admits — even before / independent of any consuming entry UI (cf. `service-virtualization-contract`: a type-conformant-but-inert value is a defect); an empty / inert auth response makes the gate unpassable by **anyone** |
 | Cross-body coherence | When the same id appears across endpoints, do they resolve to the same entity? | The seed is one shared world — every reference (ownership, membership, embed) resolves to the same record across endpoints |
 | Multi-endpoint cardinality | Across all key navigation surfaces, are any of them empty for the seeded inhabitant? | Every key surface a chosen inhabitant can reach has at least one record visible; "empty state coverage" is the responsibility of `service-virtualization-data` for a single body, not a license to leave the whole demo empty |
 | Mutation persistence | Do write operations survive subsequent reads and the surface's expected lifetime? | Writes are visible to the very next read; survival horizon (per-render / per-tab / per-origin / per-device) matches the surface's expectation in production |
@@ -35,6 +35,10 @@ below before authoring the seed:
 
 ### Constraints
 
+- Do NOT treat the demo as a single surface when several independent ones
+  exist. With multiple independently-gated surfaces (separate apps in a
+  monorepo, each with its own gate), apply every axis above **per surface** —
+  one surface's working session does NOT satisfy another's gate.
 - Do NOT use filler or generic placeholder identities — names, emails,
   and ids follow the same domain-fit discipline `data` applies to bodies.
 - Do NOT bury seeded credentials in documentation or log output only —
@@ -92,3 +96,8 @@ mode they are not deferred — they are the user's only path into the
 running app. A session with no inhabitants, no admitted roles, or no
 visible content is not a partial demo; it is an unenterable demo. Plan
 the session before claiming the surface complete.
+
+This is most often missed when the gate, the entry path, and the
+session-issuing adapter leg are authored by **different tasks** — each
+sees only its half and assumes the rest is done. Whichever half you
+author, verify the WHOLE path closes; a half-built gate is unenterable.
