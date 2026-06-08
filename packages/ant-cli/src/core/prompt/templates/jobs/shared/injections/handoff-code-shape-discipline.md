@@ -28,13 +28,21 @@ an implementation source.
 
 ### Constraint (Do NOT transplant)
 
-- Do NOT verbatim copy markup, classNames, imports, hooks, library calls,
+- Do NOT verbatim copy markup, imports, hooks, library calls,
   or framework-specific syntax from a handoff code-shaped file into output.
 - Do NOT add a dependency to the manifest solely because a handoff file
   used it — depend only on libraries the target codebase already chose or
   the task explicitly requires.
 - Do NOT preserve the handoff file's directory structure, file-name
   casing, or export style — match siblings in the target codebase instead.
+
+Exception — style-selector tokens are the binding key between markup and
+the styling system, NOT framework-specific syntax. They are governed by the
+project's styling source (per the reference-grounding rule): apply only
+selector names that source defines. Do NOT paraphrase a project-defined
+selector name into another framework's naming convention. (Framework-specific
+*syntax* — imports, hooks, library calls — is still re-derived per the rule
+above.)
 
 ### Authority composition (complement to Visual Source Authority)
 
