@@ -97,4 +97,4 @@
 
 ⚠️ **Blind spot — Error responses**: Error responses (4xx, 5xx) are commonly returned without security headers because they bypass normal handler logic. Router-level middleware ensures headers are present on every response path.
 
-⚠️ **Blind spot — Frontend framework apps**: Response Hardening applies to custom backend servers you build (Express, Fastify, etc.). For frontend framework apps (Next.js, Vite, Nuxt), the framework and deployment platform handle security headers. Do NOT manually add `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy` headers in frontend apps — these break popup-based authentication flows (OAuth, Wallet SDKs like Coinbase Wallet, WalletConnect).
+⚠️ **Blind spot — Scope**: Response Hardening applies to the custom backend server you build. Apply the security headers at the server's router-level middleware so every response path is covered.
