@@ -76,6 +76,10 @@ from the summary.
 {{> jobs/code/base/injections/system-design-guide}}
 {{/if}}
 
+{{#if hasFrontend}}
+{{> jobs/shared/injections/visual-source-authority}}
+{{/if}}
+
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}

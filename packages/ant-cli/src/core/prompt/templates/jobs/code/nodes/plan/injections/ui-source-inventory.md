@@ -58,6 +58,8 @@
 
 > Task-type boundary: token-level infrastructure (design tokens, theme config, global CSS) is the **design-system task's** responsibility. A ui task may **reference** token values from the source but MUST NOT (re-)author the token output — assume the design-system task has already produced it or will produce it in parallel.
 
+> ⚠️ Blind spot: this inventory enumerates what the source COVERS — it is not the scope ceiling. A surface, state, or element required by the requirement set but absent from the source is STILL planned here (its visual details fall back per **Visual Source Authority**); a missing asset never drops a required surface from the plan.
+
 {{#if (eq uiSource 'ant')}}
 **ASSET INVENTORY**
 - Search ui-assets.json for assets related to this task

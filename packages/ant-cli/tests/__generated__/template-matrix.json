@@ -1681,6 +1681,7 @@
       "auto-injection",
       "policy-map",
       "render-call",
+      "partial-ref",
       "manifest"
     ]
   },

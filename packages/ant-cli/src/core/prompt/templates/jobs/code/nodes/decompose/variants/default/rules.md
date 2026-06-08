@@ -283,7 +283,7 @@ CRITICAL:
 
 **Principle** — `"design-system"` priority ladder (REQUIRED when visualTier or ui-docs exist):
 - **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
-- **201+**: Shared UI components + framework wiring (import chain, framework bridge, component library). Only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no ui-spec path for component library).
+- **201+**: Shared UI components + framework wiring (import chain, framework bridge, component library). Only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no UI design source to drive a component library).
 - Both share `parallelGroup: "design-system"` — same group serializes so token infrastructure (200) completes before wiring/components (201+).
 
 **Constraint — design-system package identity is owned by its own setup, not by the design-system task**: In a multi-package workspace where ≥ 2 applications consume the design system, it is a **shared-library package** — its directory and `package.json` name are created and named once by **its own band-absent setup task** (priority 101+), exactly like any other member (the `band:'root'` setup does NOT enumerate or name it; see the design-doc-guide Setup task mapping). The `design-system` content task(s) at 200/201+ then populate the directory that member's setup created: reference it by its **exact name** (the executor will `list_files` the member parents at run time) — do NOT create the package, do NOT rename it, do NOT invent a package name or `@scope/name`. In a single-application workspace there is no shared package; the design-system output lives inside that one app's source tree (current behavior).
@@ -298,7 +298,7 @@ CRITICAL:
 
 **Constraint**: `"design-system"` scope is visual infrastructure ONLY — token files, CSS generation, framework theme config, and shared UI components. Entity models, API clients, ports, and shared domain logic are `"feature"` type at priority 200–299 — NEVER `"design-system"`.
 
-**Constraint**: `"design-system"` description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE, not a component inventory.
+**Constraint**: `"design-system"` description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes the active UI design source at runtime to determine which shared components to create. Description should define SCOPE, not a component inventory.
 
 {{#if hasUi}}
 {{#if (eq uiSource 'ant')}}
@@ -327,7 +327,7 @@ The design-system task handles token / theme infrastructure; ui tasks handle com
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
 {{#if visualTierActive}}
-**Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `include` field (no ui-docs to inject). Do NOT create 201+ tasks — those require ui-spec.
+**Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `include` field (no ui-docs to inject). Do NOT create 201+ tasks — those require a UI design source.
 {{else}}
 **Constraint**: Neither ui-docs nor visualTier policy is active — do NOT create `"design-system"` tasks. Priority 200–299 tasks are `"feature"` only.
 {{/if}}

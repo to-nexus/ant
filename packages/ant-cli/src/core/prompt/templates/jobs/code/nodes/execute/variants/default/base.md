@@ -321,7 +321,7 @@ Sub-role is determined by priority:
 
 **priority 200 (Token Infrastructure)**
 {{#if hasUi}}
-- **Scope**: ui-tokens.json → CSS custom properties / styling framework config / **runtime integration**
+- **Scope**: the active UI source's design tokens → CSS custom properties / styling framework config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Completeness**: Token files without import chain are incomplete. Scope includes:
   1. Token CSS file generation (custom properties)
@@ -333,7 +333,7 @@ Sub-role is determined by priority:
 {{else}}
 {{#if visualTierActive}}
 - **Scope**: Derive concrete design tokens from visual tier policies in the basis section.
-- **Token source**: No ui-tokens.json available. Observe each visual tier policy layer in the basis section and translate its constraints into concrete token values.
+- **Token source**: No UI source is available. Observe each visual tier policy layer in the basis section and translate its constraints into concrete token values.
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Constraint**: Do NOT invent values outside what the policy constraints permit. If a visual tier layer is absent, skip that token category.
 - **Completeness**: Token files without import chain are incomplete. Scope includes token file generation, global CSS entry file with framework initialization, and framework theme config extension.
@@ -348,9 +348,9 @@ Sub-role is determined by priority:
 - **Scope**: Reusable DS components OR external DS library configuration
 - **Constraint**: No page-specific logic. Token infrastructure (priority 200) completes before this task runs.
 - **Constraint**: Components must be generic and reusable.
-- **Principle**: Observe ui-spec `components` section for shared component definitions (variants, interactionStates, sizes). If `components` section exists, implement components matching those specs.
-- **Principle**: If `components` section is absent or incomplete, observe page `sections` in ui-spec for repeated UI patterns. Extract and generalize into shared components. This is a fallback — explicit `components` specs take precedence.
-- **Constraint**: Do NOT rely on task description for component inventory. The task description defines scope; the ui-spec defines WHAT to build.
+- **Principle**: Observe the active UI source (per the UI Source section above) for explicitly-defined reusable components and their variants, states, and sizes. When the source declares discrete shared components, implement matching them.
+- **Principle**: When the source declares no discrete shared components, observe its surfaces for repeated UI patterns and generalize those into shared components. This is a fallback — an explicit shared-component definition in the source takes precedence.
+- **Constraint**: Do NOT derive the component inventory from a loose task description — observe the active UI source (per the UI Source section above) for the components it defines and implement each, without substituting a visually similar alternative. Scope, however, is set by the requirement set, not by the active UI source: a component required by the requirements but absent from the source is still in scope (fall back per the visual hierarchy for its visual details). See **Visual Source Authority**.
 
 {{!-- Per-UiSource guidance is delivered via `ui-source-dispatch` above.
      Keep only the taskType-level actions here. --}}
