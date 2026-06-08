@@ -26,8 +26,8 @@ below before authoring the seed:
 
 | Axis | Question | Constraint |
 |---|---|---|
-| Inhabitants | Which identities exist at boot, and are they discoverable on the entry surface? | At least one identity per role-shape the surface gates on, surfaced through a platform-appropriate selection mechanism on the entry surface |
-| Authorization graph | Which roles / organizations / permissions do those identities carry? | At least one identity passes every gate that the in-scope surfaces enforce; no identity exists with a role no surface admits. The leg that issues the session MUST return a **usable** session body — a seeded identity carrying a role the gate admits — even before / independent of any consuming entry UI (cf. `service-virtualization-contract`: a type-conformant-but-inert value is a defect); an empty / inert auth response makes the gate unpassable by **anyone** |
+| Inhabitants | Which identities exist at boot, and are they discoverable on the entry surface? | At least one identity per role-shape the surface gates on, surfaced as an explicit selection affordance on the entry surface — a login attempt resolves by presenting these seeded identities to choose from, never by silently binding to one default identity |
+| Authorization graph | Which roles / organizations / permissions do those identities carry? | At least one identity passes every gate that the in-scope surfaces enforce; no identity exists with a role no surface admits. The leg that issues the session MUST return a **usable** session body — a seeded identity carrying a role the gate admits — even before / independent of any consuming entry UI (cf. `service-virtualization-contract`: a type-conformant-but-inert value is a defect); an empty / inert auth response makes the gate unpassable by **anyone**. Where more than one role-shape is gated, each is independently selectable so every gated path is exercisable in one run |
 | Cross-body coherence | When the same id appears across endpoints, do they resolve to the same entity? | The seed is one shared world — every reference (ownership, membership, embed) resolves to the same record across endpoints |
 | Multi-endpoint cardinality | Across all key navigation surfaces, are any of them empty for the seeded inhabitant? | Every key surface a chosen inhabitant can reach has at least one record visible; "empty state coverage" is the responsibility of `service-virtualization-data` for a single body, not a license to leave the whole demo empty |
 | Mutation persistence | Do write operations survive subsequent reads and the surface's expected lifetime? | Writes are visible to the very next read; survival horizon (per-render / per-tab / per-origin / per-device) matches the surface's expectation in production |
@@ -84,6 +84,18 @@ below before authoring the seed:
   exactly once, exactly as the app placed it. If it points elsewhere, uses a
   scheme with no registered handler, or stamps any parameter twice, it is not
   a virtualized leg — it is a live external dependency wearing a mock's name.
+- Do NOT collapse a login attempt into instant, silent binding to one
+  identity. The virtualized authentication leg MUST surface the seeded
+  identities as an explicit choice — mirroring how a real external authority
+  presents an account-selection affordance — so the authentication event is
+  observable and the resulting identity is the chooser's deliberate
+  selection, not a hidden default.
+- Do NOT make the chosen identity terminal for the run, and do NOT make
+  every identity observe the same world. Returning to the selection
+  affordance and switching identity MUST require no source or environment
+  edit; and where the surface gates capabilities or scopes records by
+  identity, each seeded identity MUST observe its own admitted surfaces and
+  its own scoped records — otherwise multi-role seeding is inert.
 - Do NOT call the production backend from the mock adapter to fetch or
   persist session state — the simulated world is owned end-to-end by the
   adapter and its chosen persistence layer.

@@ -206,6 +206,13 @@ describe('service-virtualization partials — body discipline', () => {
     }
   });
 
+  it('session: requires an observable identity-selection step + per-identity scoping (SBS)', () => {
+    const src = read(PARTIAL_SESSION);
+    expect(src).toMatch(/selection affordance/i); // chooser, not silent bind
+    expect(src).toMatch(/switching identity|re-select/i); // role re-selectable in one run
+    expect(src).toMatch(/scoped records|scopes records/i); // per-identity data visibility
+  });
+
   it('contract: cites the per-connection toggle env var grammar (USE_MOCK_<NAME>)', () => {
     const src = read(PARTIAL_CONTRACT);
     expect(src).toMatch(/USE_MOCK_/);
