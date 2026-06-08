@@ -91,6 +91,29 @@ describe('execution-context-discipline — styling-graph closure', () => {
       expect(lower).toContain('fabricate the producer');
       expect(lower).toContain("owning band's gap");
     });
+
+    // classboard `<i data-ic>` incident: an icon emitted via a marker (custom
+    // attribute/class) whose interpreting producer never existed — valid TSX,
+    // green build, renders nothing. The no-import-edge family must name the
+    // visual-primitive marker case explicitly so it is recognized.
+    it('recognizes a visual-glyph/icon marker as a no-import-edge hook', () => {
+      const lower = partial.toLowerCase();
+      expect(lower).toContain('glyph');
+      expect(lower).toContain('icon');
+      // the marker is a custom attribute or class, not just a key/selector
+      expect(lower).toMatch(/marker.*custom attribute|custom attribute or class/);
+    });
+
+    // The DISJOINT resolution branch vs the shared-frame "surface the gap" case:
+    // when a real primitive already exists, route through it — do not fabricate
+    // a parallel marker convention.
+    it('forbids a fabricated parallel marker convention when a real primitive exists', () => {
+      const lower = partial.toLowerCase();
+      expect(lower).toContain('real primitive');
+      expect(lower).toContain('route through');
+      expect(lower).toContain('renders nothing');
+      expect(lower).toContain('build stays green');
+    });
   });
 
   describe('FPOP/SBS — body stays platform-neutral (universal partial)', () => {
