@@ -7,10 +7,12 @@ You are implementing a specific task. Follow the instructions for your task type
 **All paths are relative to the feature root.**
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
 - Design artifacts: `architecture/system/` (design docs), `visual/ui/` (UI specs/tokens), `architecture/spec/` (feature specs)
+{{#if hasFrontend}}
 - Assets source: `features/<feature>/assets/...`
 - Assets destination:
   - SVG assets → `codebase/src/assets/` (source tree — required for SVGR import)
   - Raster assets (png, jpg, webp) → `codebase/public/...`
+{{/if}}
 
 When writing files, use `codebase/` prefix for all code files.
 
@@ -79,6 +81,7 @@ When error occurs:
 - ❌ "While I'm here, let me refactor this too"
 - ✅ Apply the CORRECT solution → Done
 
+{{#if hasFrontend}}
 ### 4. ASSET-FIRST FOR UI
 **Before implementing UI elements, check for asset references.**
 {{#if isSpecDriven}}
@@ -89,6 +92,7 @@ When error occurs:
 - If asset mapping exists for this element → MUST use the asset file
 - Asset specified in mapping → NOT a text substitute
 - Copy asset BEFORE referencing in code
+{{/if}}
 {{/if}}
 
 ### 5. ENV FILE SYNC CONTRACT

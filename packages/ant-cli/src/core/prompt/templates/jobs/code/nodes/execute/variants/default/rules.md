@@ -95,6 +95,7 @@ Details not specified by Plan are your decision:
 
 **References:** Existing code patterns, design documents, design tokens, project structure
 
+{{#if hasFrontend}}
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Design Tokens Integration
 
@@ -120,6 +121,7 @@ When design tokens are provided in this prompt:
 **Token Lookup:** injected design-token block → Find matching token → Use token class name
 
 > **Note:** For framework-specific configuration syntax, see environment-specific rules. For the interpretation contract of the active UI source (ant / figma / handoff), see the injected UI-source partial.
+{{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. Additions Beyond Plan
