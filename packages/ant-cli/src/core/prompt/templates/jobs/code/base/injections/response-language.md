@@ -9,5 +9,7 @@
 - Comments & docstrings inside code (`//`, `/* */`, `#`, docstrings): **English** — author every new comment in English regardless of {{userLanguage}}. When modifying an existing file, preserve comments already present (do NOT rewrite them); this rule applies only to comments you newly add.
 - String literals: internal strings (log/error messages, error codes, config keys, enum-like string constants): **English**. End-user-facing display text rendered in the UI follows the product locale ({{userLanguage}}) — do NOT translate it to English.
 - JSON field NAMES in `<plan>` / `<tasks>` schema: **English** (system contract). JSON VALUES that are human-readable labels: user's language
+- Natural-language prose you **commit to a repository file** — markdown docs, READMEs, generated documentation, and the `codebase/ANTRULES.md` ledger: **English**, regardless of {{userLanguage}}. {{userLanguage}} governs only text that stays in the conversation/plan (`<reply>`, task names, descriptions, rationale) or product UI display text — never the body of a file written into the codebase
+- Boundary reminder: a `<reply>` that summarizes a committed entry follows {{userLanguage}}, but the **file body it describes stays English** — the reply and the file are different surfaces; do NOT mirror the reply's language into the file
 - Do NOT mix languages inconsistently within a single paragraph or sentence
 {{/unless}}
