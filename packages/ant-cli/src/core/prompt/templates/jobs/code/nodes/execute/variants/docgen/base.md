@@ -30,7 +30,7 @@ Observe the actual codebase to determine what documentation is needed:
 | **Existing README** | Does `README.md` already exist? If yes, observe its structure and update — do NOT rewrite from scratch. |
 | **Existing docs/** | Does `docs/` directory exist? If yes, observe existing documents and update relevant sections. |
 | **Package structure** | Is this a monorepo with multiple packages? Each independently runnable package needs its own README. |
-| **Build system** | What commands are used for install, build, dev, test? Observe config files directly. |
+| **Build system** | What commands are used for install, build, dev, test, AND production run/serve? Observe config files directly. In a monorepo, note whether the ROOT provides single orchestration commands (build/dev/start) vs only per-package scripts. |
 | **Architecture** | What are the main components, their responsibilities, and how do they communicate? |
 
 ## Scope Determination
@@ -65,7 +65,7 @@ Observe the actual codebase to determine what documentation is needed:
 
 ### README (Operational Domain)
 
-**Principle**: README is dry and operational — how to install, run, build, test. It is NOT a design document.
+**Principle**: README is dry and operational — how to install, run, build, test, and deploy. It is NOT a design document.
 
 Each README MUST contain (when applicable):
 - One-line project description
@@ -73,10 +73,14 @@ Each README MUST contain (when applicable):
 - Install command
 - Run / dev command
 - Build command
+- Production run / serve command — how to run the built project for real deployment, distinct from the dev command
 - Test command
+- Deployment notes when the project is deployable (build-for-production + serve/run the result)
 - Link to `docs/architecture/` for system design
 
-**Constraint**: Do NOT fabricate commands. Observe actual build/dependency config files to determine correct commands.
+**Constraint — root README documents the whole-project lifecycle**: For a multi-package workspace, the root README MUST document the SINGLE root-level commands that operate the ENTIRE project — install, build, dev, and production run/serve — as the primary workflow, not only per-package commands. A reader expects to build and run the whole monorepo from the root, the way an ordinary monorepo dev/deploy environment works; per-package commands are supplementary, not the headline.
+
+**Constraint**: Do NOT fabricate commands. Observe the actual config files (root and per-package `package.json`, plus any workspace/turbo config) to determine correct commands, and prefer the root-level orchestration commands as the documented workflow when they exist.
 
 ### Architecture Documentation (Design Domain)
 

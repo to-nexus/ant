@@ -50,6 +50,19 @@ packages:
 - **Root `dev` over multiple long-running servers**: when ≥ 2 members run a long-running dev server that defaults to the SAME port, a broadcast root `dev` (`--filter='*' dev` / `-r dev` / `--parallel dev`) starts them concurrently and they collide on that port — the second fails to bind or silently steals the first's traffic, so a single `pnpm dev` at the root cannot launch the project. Observable: count members whose `dev` binds a default port; if > 1, give each member a distinct port (or have the root `dev` start one entry member) so one root command boots cleanly. A broadcast root `dev` is safe only when at most one member is a port-binding server.
 - ❌ Do NOT use npm workspaces (slower, less strict).
 
+### Root orchestration & shared-package consumption (multi-package) ⭐⭐⭐
+
+**Principle**: A multi-package workspace MUST be operable from ONE place. The root `package.json` owns the whole-project lifecycle — a developer, and a real git-based deployment, expects a single root command to build, to run in dev, and to run in production, NOT a manual per-package sequence. This is owned by the `band:'root'` setup task (the one that owns the root manifest) and authored before any member exists.
+
+**Required root scripts** (root `package.json`):
+- `build` — builds every member in dependency order. Use a graph-driven runner (`turbo` with `"dependsOn": ["^build"]`, or `pnpm -r` resolving the workspace graph topologically) so a member builds only after the members it depends on. Graph-driven means it MUST NOT enumerate member names — members added later are covered automatically.
+- `dev` — boots the whole project with one command. Honor the port rule above: if ≥ 2 members bind a long-running server, give each a distinct port so a concurrent root `dev` does not collide.
+- A production run path — a build + serve route for real deployment (framework-native, e.g. a root `start` that serves each built app via `next start`). The Ant preview runs only `dev`, so it will NOT exercise this path; the project MUST nonetheless be buildable and serveable for deployment outside Ant (see the "runs outside Ant" principle in `preview-env-contract`).
+
+**Shared-package consumption — prefer source consumption**: When an application consumes a workspace library (`"@scope/lib": "workspace:*"`), prefer consuming the library's SOURCE over a build artifact, so the application starts WITHOUT a separate library pre-build step. Configure the consumer to transpile the workspace package (Next.js `transpilePackages`; or the library's `package.json` `exports`/`main` pointing at source; Vite resolves workspace source by default). Only when a library genuinely requires its own build (a bundler-specific transform with no source-consumption path) does the application rely on the dependency-ordered root `build` above to produce that artifact first.
+
+⚠️ **Blind spot**: A shared library that must be hand-built before any app can start — with no root script ordering it and no source-consumption configured — leaves the apps unrunnable from a clean checkout. Either make the library source-consumable, or guarantee the root `build`/`dev` orders it ahead of its consumers; never both-absent.
+
 **pnpm native-build gate (`allowBuilds`)**: pnpm gates dependency `postinstall` build scripts behind an explicit allowlist in `pnpm-workspace.yaml` → `allowBuilds` (per-package BOOLEAN). Do NOT emit speculative or placeholder entries — a non-boolean value (e.g. `pkg: set this to true or false`) is read as not-allowed and silently skips the native build. Rule: list a dependency `true` ONLY when it has a runtime-critical `postinstall` (a binary the app needs at runtime); otherwise OMIT the `allowBuilds` block entirely (build-time-only or JS-fallback deps do not need it). When uncertain, omit — never placeholder.
 
 ### Dependency Classification Protocol
@@ -230,6 +243,8 @@ Configure as needed for project (styling framework, ESLint, etc).
 ❌ Wrong `"module"` setting (use "ESNext" not "CommonJS")
 ❌ Not setting `"type": "module"` in package.json
 ❌ tsconfig that emits compiled output (`.js`, `.d.ts`) into the source tree (verify every `tsconfig*.json` — implicit emit flags are easy to miss)
+❌ Multi-package workspace with no root `build` / `dev` / production-serve script — forcing a manual per-package sequence (a monorepo MUST boot from one root command, and ship a build + serve path for deployment)
+❌ A shared workspace library consumed as a build artifact with neither root build-ordering nor source consumption (`transpilePackages` / `exports`→src) — apps cannot start from a clean checkout until the library is hand-built first
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

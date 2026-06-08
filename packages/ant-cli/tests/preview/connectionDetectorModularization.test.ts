@@ -251,4 +251,60 @@ describe('ConnectionDetector — modularization deep-equal lock', () => {
       active: false,
     });
   });
+
+  it('downgrades a self-resolved business connection to url when the workspace has packages but no backend (Defect 1b)', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business backend-api self',
+        'VITE_API_BASE_URL=',
+      ].join('\n'),
+    });
+
+    // Populated package list, all frontend/other — no backend package exists
+    // (the classboard FE-only-monorepo shape: apps + shared libs, no server).
+    const structure: ProjectStructure = {
+      type: 'monorepo',
+      packages: [
+        { name: '@repo/app', path: join(root, 'apps/app'), type: 'frontend' },
+        { name: '@repo/ui', path: join(root, 'packages/ui'), type: 'other' },
+      ],
+    };
+    const result = new ConnectionDetector().detect(root, structure, SERVER_KEY);
+
+    expect(result).toHaveLength(1);
+    // self → url (no dead ant:// route); virtualization still attached so the
+    // SV mock stands in for the absent backend.
+    expect(result[0].resolution).toEqual({ type: 'url', url: '' });
+    expect(result[0].virtualization).toEqual({
+      toggleEnvVar: 'USE_MOCK_BACKEND_API',
+      active: false,
+    });
+  });
+
+  it('preserves a self-resolved business connection as ant-project when a backend package exists (fullstack — no false downgrade)', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business backend-api self',
+        'VITE_API_BASE_URL=',
+      ].join('\n'),
+    });
+
+    const structure: ProjectStructure = {
+      type: 'fullstack',
+      packages: [
+        { name: '@repo/web', path: join(root, 'apps/web'), type: 'frontend' },
+        { name: '@repo/api', path: join(root, 'apps/api'), type: 'backend' },
+      ],
+    };
+    const result = new ConnectionDetector().detect(root, structure, SERVER_KEY);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].resolution).toEqual({
+      type: 'ant-project',
+      projectId: 'my-proj',
+      feature: 'main',
+      serviceName: undefined,
+      resolvedUrlKey: 'org--user--my-proj--main',
+    });
+  });
 });

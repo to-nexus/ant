@@ -82,7 +82,7 @@ export class ConnectionDetector {
     }
 
     enrichWithCompose(allConnections, projectPath);
-    enrichInternalConnections(allConnections, serverKey);
+    enrichInternalConnections(allConnections, serverKey, structure);
 
     // Dedup by source:envVar (first wins). Different packages can legitimately
     // share an envVar name (e.g. DATABASE_URL appearing in two services).

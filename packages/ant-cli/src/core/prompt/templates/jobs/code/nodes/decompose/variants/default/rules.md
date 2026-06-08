@@ -542,6 +542,7 @@ Two orthogonal per-task fields. `include` decides WHICH documents the task sees;
 **Authoring principles** (declare paths, never invent files that are not in the pool):
 - A task implementing against a system-design boundary includes that boundary's design-doc path.
 - A cross-tier task (one that must honor an API contract shared between tiers) includes the api-contract path.
+- A task that authors code against an auth or API surface — calling or defining backend endpoints, or implementing a sign-in / identity flow — includes the api-contract path, **even on a single-stack (frontend-only or backend-only) job**. The contract enumerates which endpoints exist and which authentication mechanism is canonical; without it in scope the task tends to invent endpoints or fall back to a stereotyped auth mechanism the contract excludes. (This is narrower than "every task": a purely presentational task that touches no endpoint does not need it. It complements the auth/identity boundary-closure rule — that rule schedules the entry surfaces; this one ensures the task owning them actually sees the contract.)
 - A spec-driven task includes the active spec path.
 - A task that needs no pre-injected document (the directive + on-demand reads suffice) omits `include` or sets it to `[]`.
 - `include` entries are path prefixes — a directory prefix selects every artifact beneath it; an exact path selects one file.

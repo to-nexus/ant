@@ -146,7 +146,7 @@ Categories:
 
 Modifier (optional, determines resolution):
 - **(none)** -- default `url` resolution. Use for external services, third-party APIs, or infrastructure with a direct URL.
-- **`self`** -- `ant-project` resolution targeting another package within the same project (e.g., frontend connecting to its own backend in a fullstack project, or backend-A connecting to backend-B in a monorepo). The platform auto-resolves to the correct internal proxy path at runtime.
+- **`self`** -- `ant-project` resolution targeting another package within the same project (e.g., frontend connecting to its own backend in a fullstack project, or backend-A connecting to backend-B in a monorepo). The platform auto-resolves to the correct internal proxy path at runtime. **Precondition — `self` is legal ONLY when a runnable backend sibling package actually exists in THIS workspace**: the package the connection resolves to must be present and serve the endpoint. A frontend-only workspace whose backend is virtualized (there is NO backend package in the workspace) MUST use the default (no modifier) `url` resolution and let the Service Virtualization mock stand in for the absent external backend — tagging such a connection `self` resolves to an internal proxy path that points at nothing (a dead route in the preview's connection view). This mirrors the existence precondition the `ant-project:` modifier already carries.
 - **`ant-project:{projectId}:{feature}`** -- `ant-project` resolution targeting a **different Ant project**. Use when the specification explicitly names another project as a dependency (e.g., a frontend project that uses a separately managed backend project). The platform auto-resolves to the target project's proxy path at runtime. Optionally append **`:{serviceName}`** to target a specific service within a multi-package project (e.g., `ant-project:my-be:main:api`). When omitted, the platform routes to the project's default entry service.
 
 Examples:
@@ -206,7 +206,7 @@ Without annotation, a connection variable cannot be managed.
 **`@connection` annotation is EASILY FORGOTTEN.**
 Before completing any task that creates or modifies `.env.example`, verify:
 - Every environment variable with a connection URL has `# @connection` above it
-- Same-project internal connections use the `self` keyword
+- Same-project internal connections **to a runnable sibling package that exists in this workspace** use the `self` keyword; a virtualized or otherwise absent backend (no backend package present) uses NO modifier (`url`)
 - Cross-project connections use `ant-project:{projectId}:{feature}[:{serviceName}]` when the specification names a specific target project
 
 ---

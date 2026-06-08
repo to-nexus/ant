@@ -81,7 +81,15 @@ below before authoring the seed:
   away. Observable check: the returned URL is the handed redirect / callback
   URI verbatim plus only the issued grant parameters; its host equals the
   app's own origin, and every parameter the app placed on the URI appears
-  exactly once, exactly as the app placed it. If it points elsewhere, uses a
+  exactly once, exactly as the app placed it. Derive that returned URL from
+  the redirect / callback URI you were actually handed (equivalently, the
+  running app's own origin at request time) — do NOT hardcode a fixed host
+  literal (a constant `http://localhost:PORT`, a deployment domain, or any
+  baked-in origin). A hardcoded origin is correct only on the one machine it
+  names and breaks the instant the app is served from a different origin (a
+  remote preview, a teammate's machine, production); the same URL must resolve
+  correctly wherever the app runs, which only the handed URI / runtime origin
+  guarantees. If it points elsewhere, uses a
   scheme with no registered handler, or stamps any parameter twice, it is not
   a virtualized leg — it is a live external dependency wearing a mock's name.
 - Do NOT collapse a login attempt into instant, silent binding to one
@@ -89,7 +97,22 @@ below before authoring the seed:
   identities as an explicit choice — mirroring how a real external authority
   presents an account-selection affordance — so the authentication event is
   observable and the resulting identity is the chooser's deliberate
-  selection, not a hidden default.
+  selection, not a hidden default. Where the production entry is a
+  redirect / hosted-authority flow (OAuth / SSO), the natural home for that
+  choice is the step the external authority would own — the virtualized leg
+  presents the account selection before it issues the grant. But any surface
+  that lets the user pick which seeded identity to enter as, before a session
+  is issued, satisfies this — the mechanism is yours to choose; the explicit
+  choice is not optional. Observable: from a fresh state, reaching an
+  authenticated session requires at least one deliberate identity selection,
+  and the selected identity determines the session.
+- Do NOT conflate a first-time role/profile-completion step with the identity
+  choice. Selecting a role during initial sign-up (which role a brand-new
+  identity will hold) is a DIFFERENT event from choosing which already-seeded
+  identity to authenticate as. Implementing only the sign-up role step leaves
+  a returning user silently bound to one default identity — the defect this
+  constraint exists to prevent. The returning-user path MUST also reach the
+  seeded-identity choice, not a silent bind.
 - Do NOT make the chosen identity terminal for the run, and do NOT make
   every identity observe the same world. Returning to the selection
   affordance and switching identity MUST require no source or environment

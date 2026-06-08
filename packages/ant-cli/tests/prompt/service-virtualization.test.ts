@@ -213,6 +213,21 @@ describe('service-virtualization partials — body discipline', () => {
     expect(src).toMatch(/scoped records|scopes records/i); // per-identity data visibility
   });
 
+  it('session: auth leg must derive the return URL from the handed redirectUri / runtime origin, not a hardcoded host (Defect 1a)', () => {
+    const src = read(PARTIAL_SESSION);
+    // derive from what the app handed / its runtime origin
+    expect(src).toMatch(/you were actually handed|runtime origin|own origin at request time/i);
+    // explicit prohibition on hardcoding a fixed host
+    expect(src).toMatch(/hardcode a fixed host|baked-in origin/i);
+  });
+
+  it('session: disambiguates signup role-selection from login identity-selection (Defect 4)', () => {
+    const src = read(PARTIAL_SESSION);
+    expect(src).toMatch(/sign-up/i); // the first-time role step
+    expect(src).toMatch(/returning[ -]user/i); // returning path must also reach the choice
+    expect(src).toMatch(/identity choice|seeded-identity choice/i);
+  });
+
   it('contract: cites the per-connection toggle env var grammar (USE_MOCK_<NAME>)', () => {
     const src = read(PARTIAL_CONTRACT);
     expect(src).toMatch(/USE_MOCK_/);
