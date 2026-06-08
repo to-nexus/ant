@@ -153,6 +153,31 @@ The design doc (when present) named the port, the two strategy labels, and the
 toggle env var; the code job filled in the adapters, the fixtures, and the
 factory.
 
+### 5.1 Multi-port projects — one owner for the shared demo world
+
+For a single-port app the one feature task that owns the port also owns its
+`fixtures.ts`, so the demo world is coherent by construction. When **two or
+more `business` external dependencies** are authored by **different feature
+tasks**, the world those adapters must agree on — the canonical inhabitants,
+the entity store every endpoint resolves against, and the authorization edges
+entry surfaces gate on — is no longer owned by any single task, and the same
+id can resolve to different entities across endpoints (the cross-task failure
+the `session` partial names explicitly).
+
+Decompose assigns that world a single owner: a **platform-band feature task
+(priority 280–299)** — the "Shared Runtime Services" band the decompose rules
+already teach (`nodes/decompose/variants/default/rules.md`). It depends on the
+foundation entity/data-shape declarations (the foundation Schema at 200–279,
+ordered before it by the exclusive-Schema barrier), **not** on the adapters.
+Per-port adapter tasks (300+) bind to this seed and project their own response
+bodies (the `data` partial) from its canonical entities rather than re-seeding
+their own identities and ids. Ownership boundary: the seed owns the
+**cross-port world**; each adapter still owns the realism of **its own
+bodies**. This is a decompose-prompt convention only — no gate or partial
+changes, since the seed task is `type: 'feature'` and therefore already
+receives the `session` and `data` partials. In a multi-package workspace with
+separately gated apps, emit one seed task per app package.
+
 ---
 
 ## 6. Runtime mock-boot guarantee (preview)
@@ -201,8 +226,11 @@ preventive.
 
 SV correctness is instead pursued where it has leverage: **generation** (the
 design structure + code partials produce a coherent adapter pair and mock
-data) and **runtime boot** (§6). A general whole-workspace compile gate and
-generation-time contract-drift prevention are tracked as separate work.
+data) and **runtime boot** (§6). Single-owner seed generation for multi-port
+projects (§5.1) is part of this generation-time half — a structural fix that
+makes cross-task incoherence less likely, not a reactive gate. A general
+whole-workspace compile gate and generation-time contract-drift prevention are
+tracked as separate work.
 
 ---
 

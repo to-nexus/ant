@@ -249,11 +249,23 @@ test is dependency POSITION — *consumed by many feature units, built on
 foundation* — not any particular framework mechanism. Examples across
 stacks: a shared session / identity / authorization-context accessor, a
 configuration service, a shared client / transport singleton, shared
-dependency registration. Such a service runs after foundation contracts
+dependency registration, and — when the design document enumerates two or
+more `business` external dependencies whose virtualized adapters land in
+different feature tasks — the seeded demo world those adapters present in
+common: the canonical inhabitants, the entity store every endpoint resolves
+against, and the authorization edges the entry surfaces gate on. This seed
+binds to the shared entity / data-shape declarations (the foundation Schema)
+and populates concrete canonical records — it depends on those types, NOT on
+any adapter; per-port adapter tasks then bind to this seed and project their
+own response bodies from its canonical entities rather than re-seeding their
+own identities and ids. Such a service runs after foundation contracts
 (200–279) and before ordinary feature work (300+), so feature consumers
 bind to its single access contract instead of constructing the shared value
 locally. When the inputs imply no such cross-feature shared service, emit
-none — 280–299 stays empty.
+none — 280–299 stays empty. Likewise, when only one `business` external
+dependency exists, or all virtualized adapters live in a single feature
+task, the demo world is coherent by construction — emit no separate seed
+task.
 {{/unless}}
 
 CRITICAL:
