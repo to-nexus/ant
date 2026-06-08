@@ -391,6 +391,30 @@ Project and feature lifecycles share three policies:
 Rules for authoring Handlebars prompt templates under
 `packages/ant-cli/src/core/prompt/templates/`.
 
+### Enforcement status (read first)
+
+Not all policies below are equal. Some fail a build when broken; some are
+only reviewer judgement. Treat that difference as load-bearing — a rule with
+no automated guard is a **guideline**, not a contract, and must not be cited
+as if it were one.
+
+| Policy | Enforced? | Guard |
+|--------|-----------|-------|
+| MECE / locality / partition gates | ✅ CI | `service-virtualization-vocabulary`, `domain-branching-locality`, `genre-coreloop-matrix`, `basis-partial-invariant`, `motion-locality`, … |
+| WHAT / HOW split (§1) | ⚠️ Guideline | reviewer judgement (transitional — legacy violations tolerated) |
+| FPOP (§4) | ⚠️ Guideline | reviewer judgement only — no CI lock |
+| SBS (§5) | ⚠️ Guideline | soft sanity grep only — not a build gate |
+
+These authoring policies read as four orthogonal failure-mode axes:
+**specificity = activation scope** (SBS + FPOP "Universal over Specific"),
+**single home / collectively-exhaustive partition** (MECE + WHAT/HOW),
+**falsifiable constraints** (FPOP "Observable" / "Constraints over
+Instructions"), and **self-contained runtime** (a prompt the model reads
+should not reference internal vocabulary it was never given — acronyms,
+decision IDs, incident codenames). The last axis and "no rule without a
+guard" are currently unenforced; they are kept as conscious guidelines, not
+pretended contracts. FPOP / SBS / MECE are retained as the names above.
+
 ### 1. WHAT / HOW separation
 
 | Prefix       | Role | Content                                    |
@@ -434,7 +458,7 @@ All prompt templates are **English only**. No project-specific examples
 Ant supports frontend / backend / fullstack across multiple languages.
 Prompts must not assume a stack.
 
-### 4. FPOP — First-Principles Observation Prompting
+### 4. FPOP — First-Principles Observation Prompting — guideline (not CI-enforced)
 
 Every prompt follows six principles:
 
@@ -447,7 +471,7 @@ Every prompt follows six principles:
 | Constraints over Instructions    | "Do this way"                       | "Do NOT assume"                          |
 | Reminders for Blind Spots        | generic list                        | "⚠️ Cross-axis REQUIRED"                 |
 
-### 5. SBS — Scope-Bound Specificity
+### 5. SBS — Scope-Bound Specificity — guideline (soft sanity grep only)
 
 A prompt fragment's required abstraction level is bounded by its activation
 scope. **Gated templates** (techTier / intent / taskType / mode / role /
