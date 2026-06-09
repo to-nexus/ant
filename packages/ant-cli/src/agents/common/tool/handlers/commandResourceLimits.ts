@@ -21,7 +21,16 @@
  *   - hygiene: CI=true for non-install commands.
  */
 
-export { deriveTestWorkers, logResourceCapsOnce, readCgroupCpuLimit } from '../../../../periphery/system/cgroupLimits';
+export {
+  deriveTestWorkers,
+  logResourceCapsOnce,
+  readCgroupCpuLimit,
+  readCgroupMemoryLimit,
+  readCgroupMemoryUsage,
+  deriveDefaultHeapMb,
+} from '../../../../periphery/system/cgroupLimits';
+
+import { deriveDefaultHeapMb } from '../../../../periphery/system/cgroupLimits';
 
 /** Already-present concurrency/pool flags we must not double-inject or override. */
 const EXISTING_WORKER_FLAG_RE =
@@ -36,6 +45,14 @@ const WRAPPER_TEST_RE = /(?:^|\s)(?:npm|pnpm|yarn)\s+(?:[^\s&|;]+\s+)*?(?:run\s+
 
 /** Runners that reject `--maxWorkers` (playwright uses `--workers`, etc.). */
 const INCOMPATIBLE_RUNNER_RE = /\b(?:playwright|cypress|mocha|ava|tape|uvu)\b/;
+
+/** True when the command runs a test runner (direct vitest/jest, or a
+ *  package-manager `test` script). Test runners fork worker processes, so the
+ *  heap cap divides the budget across `workers+1`; single-process tsc/build use
+ *  divisor 1. (RCA `tight-drafting-lever` — see resolveHeapCapMb.) */
+export function isTestCommand(command: string): boolean {
+  return DIRECT_TEST_RUNNER_RE.test(command) || WRAPPER_TEST_RE.test(command);
+}
 
 /** Split into [segment, separator, segment, …] preserving separators so the
  *  command can be rebuilt verbatim after injecting into one segment. */
@@ -80,19 +97,42 @@ function injectIntoSegment(segment: string, n: number): string | null {
 }
 
 /**
+ * Resolve the `--max-old-space-size` (MiB) for a command, or undefined for none.
+ * `ANT_CMD_MAX_OLD_SPACE_MB` (opt-in) wins; otherwise a default is derived from
+ * the cgroup memory budget. The divisor is the worst-case count of Node procs
+ * that inherit the cap at once: a test runner spawns `workers` forks + itself,
+ * a single-process tsc/build is 1 (RCA `tight-drafting-lever`: a (workers+1)
+ * divisor on tsc starved it into spurious JS-OOM).
+ */
+export function resolveHeapCapMb(
+  opts: { isTestCommand?: boolean },
+  workers: number,
+  cgroupMemBytes: number | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { mb: number; source: 'optin' | 'derived' } | undefined {
+  const optin = Number.parseInt(env.ANT_CMD_MAX_OLD_SPACE_MB ?? '', 10);
+  if (Number.isFinite(optin) && optin > 0) return { mb: optin, source: 'optin' };
+  const divisor = opts.isTestCommand ? workers + 1 : 1;
+  const derived = deriveDefaultHeapMb(cgroupMemBytes, divisor);
+  return derived === undefined ? undefined : { mb: derived, source: 'derived' };
+}
+
+/**
  * Spawn env (or undefined). Single SSOT for the env passed to every command:
  * - CI=true for non-install commands (and installs without shell operators —
  *   preserving prior install-only behavior). Keeps runners non-interactive.
  * - VITEST_*_FORKS/THREADS = `workers` — shape-proof worker cap for vitest 2.x
  *   (inherited regardless of command shape; harmless no-op on v4). `0` disables.
- * - NODE_OPTIONS heap cap — opt-in only via `ANT_CMD_MAX_OLD_SPACE_MB` (no cgroup
- *   memory read), an escape hatch for pods with an abnormal CPU/memory ratio.
- *   Appended to inherited NODE_OPTIONS, skipped if a cap is already set.
+ * - NODE_OPTIONS heap cap — `ANT_CMD_MAX_OLD_SPACE_MB` (opt-in) else a default
+ *   derived from `cgroupMemBytes` (when passed). Appended to inherited
+ *   NODE_OPTIONS, skipped if a cap is already set. `cgroupMemBytes` undefined →
+ *   no default cap (prior behavior preserved).
  */
 export function buildSpawnEnv(
-  opts: { isInstallCommand: boolean; hasShellOperators: boolean },
+  opts: { isInstallCommand: boolean; hasShellOperators: boolean; isTestCommand?: boolean },
   workers: number,
   env: NodeJS.ProcessEnv = process.env,
+  cgroupMemBytes?: number,
 ): Record<string, string> | undefined {
   const extra: Record<string, string> = {};
 
@@ -108,11 +148,11 @@ export function buildSpawnEnv(
     extra.VITEST_MIN_THREADS = w;
   }
 
-  const mb = Number.parseInt(env.ANT_CMD_MAX_OLD_SPACE_MB ?? '', 10);
-  if (Number.isFinite(mb) && mb > 0) {
+  const cap = resolveHeapCapMb(opts, workers, cgroupMemBytes, env);
+  if (cap) {
     const inherited = env.NODE_OPTIONS ?? '';
     if (!/--max-old-space-size\b/.test(inherited)) {
-      extra.NODE_OPTIONS = [inherited, `--max-old-space-size=${mb}`].filter(Boolean).join(' ');
+      extra.NODE_OPTIONS = [inherited, `--max-old-space-size=${cap.mb}`].filter(Boolean).join(' ');
     }
   }
 

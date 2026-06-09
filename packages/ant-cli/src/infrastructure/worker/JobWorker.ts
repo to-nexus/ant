@@ -32,6 +32,7 @@ import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchU
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
 import type { InterruptionReason } from '@ant/shared';
+import { readCgroupMemoryLimit, readCgroupMemoryUsage } from '../../periphery/system/cgroupLimits';
 import * as fs from 'fs';
 
 // ESM: derive __dirname from import.meta.url
@@ -63,6 +64,28 @@ const GRACEFUL_INTERRUPTION_REASONS: ReadonlySet<InterruptionReason> = new Set([
   'system_sleep',
   'lock_expired',
 ]);
+
+/**
+ * Classify a child exit for diagnostics (RCA `tight-drafting-lever`). A cgroup
+ * OOM-kill arrives as `signal=SIGKILL, code=null` and leaves NO JS heap-OOM
+ * error, so it was previously logged only as the silent `code: null`. Naming it
+ * turns the silent failure into an actionable error line. Pure — unit-tested.
+ */
+export function classifyChildExit(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): { level: 'error' | 'warn'; message: string } | null {
+  if (code !== null || !signal) return null; // normal/known-code exit — existing logs cover it
+  if (signal === 'SIGKILL') {
+    return {
+      level: 'error',
+      message:
+        'Child terminated by SIGKILL (code=null) — probable OOM / external kill ' +
+        '(cgroup SIGKILL leaves no JS heap-OOM error); check pod memory limits',
+    };
+  }
+  return { level: 'warn', message: `Child terminated by signal=${signal} (code=null)` };
+}
 
 export interface JobWorkerOptions {
   redisUrl: string;
@@ -569,6 +592,15 @@ export class JobWorker {
     let consecutiveLockFailures = 0;
     let lastExtensionTime = Date.now();
 
+    // Memory-pressure pre-warning (RCA `tight-drafting-lever`): a cgroup OOM-kill
+    // is silent (SIGKILL, no JS error) AND it kills the parent's lock-renewal
+    // timer, so nothing logs the cause post-mortem. Sampling cgroup memory on
+    // THIS timer emits the only signal that ships to logs BEFORE the kill.
+    // `undefined` limit (non-cgroup host) → guard skips, zero cost.
+    const cgroupMemLimit = readCgroupMemoryLimit();
+    const MEMORY_PRESSURE_FRACTION = 0.85;
+    let memoryPressureWarned = false;
+
     timers.push(setInterval(async () => {
       const now = Date.now();
       const elapsed = now - lastExtensionTime;
@@ -609,6 +641,23 @@ export class JobWorker {
           `msSinceLastExtendSuccess=${msSinceLastSuccess}): ${jobId}`,
           { component: 'JobWorker', jobId }
         );
+      }
+
+      if (cgroupMemLimit !== undefined) {
+        const used = readCgroupMemoryUsage();
+        if (used !== undefined && used >= cgroupMemLimit * MEMORY_PRESSURE_FRACTION) {
+          if (!memoryPressureWarned) {
+            memoryPressureWarned = true;
+            const pct = Math.round((used / cgroupMemLimit) * 100);
+            logger.warn(
+              `Cgroup memory pressure: used=${Math.round(used / 1048576)}/${Math.round(cgroupMemLimit / 1048576)}MiB (${pct}%) — ` +
+              `OOM-kill risk; correlate with loop_p99 / lock-extension-late warnings: ${jobId}`,
+              { component: 'JobWorker', jobId }
+            );
+          }
+        } else {
+          memoryPressureWarned = false; // re-arm once pressure subsides
+        }
       }
 
       lastExtensionTime = now;
@@ -911,7 +960,7 @@ export class JobWorker {
         }
       });
 
-      child.on('close', (code: number | null) => {
+      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         // Drain any lines queued but not yet pumped, so RESULT (queued
         // just before exit) is parsed before we resolve.
         drainQueueSync();
@@ -926,6 +975,13 @@ export class JobWorker {
 
         cleanup();
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
+
+        // Name a signal-kill (SIGKILL+code=null = probable cgroup OOM) before the
+        // resolve branching — pure diagnostics, does not alter control flow.
+        const exitClass = classifyChildExit(code, signal);
+        if (exitClass) {
+          logger[exitClass.level](`${exitClass.message}: ${jobId}`, { component: 'JobWorker', jobId });
+        }
 
         let parsedResult: any = { success: code === 0 };
         try {
@@ -976,7 +1032,7 @@ export class JobWorker {
         }
 
         logger.error(
-          `Job runner failed (exitCode=${code}${reason ? `, reason=${reason}` : ''}): ${stderr || 'No stderr'}`,
+          `Job runner failed (exitCode=${code}${signal ? `, signal=${signal}` : ''}${reason ? `, reason=${reason}` : ''}): ${stderr || 'No stderr'}`,
           { component: 'JobWorker', jobId }
         );
         if (parsedResult.output) {

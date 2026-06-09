@@ -42,6 +42,10 @@ import {
   buildSpawnEnv,
   deriveTestWorkers,
   readCgroupCpuLimit,
+  readCgroupMemoryLimit,
+  readCgroupMemoryUsage,
+  resolveHeapCapMb,
+  isTestCommand,
   logResourceCapsOnce,
 } from './commandResourceLimits';
 import { enforceManifestPinPolicyForInstall } from './manifestPinPolicy';
@@ -395,9 +399,28 @@ function isLikelyBuildCommand(command: string): boolean {
 
 const ONESHOT_POST_OUTPUT_IDLE_MS = 3_000;
 
-function resolveThresholds(command: string, opts: { oneshot: boolean }): SupervisorThresholds {
+// memoryBudget fires when sampled container memory crosses this fraction of the
+// cgroup limit — below the kernel's 100% OOM-kill so the watchdog aborts the
+// command first. Tune via ANT_CMD_MEMORY_HIGH_PCT (percent, e.g. 85).
+const MEMORY_HIGH_FRACTION_DEFAULT = 0.85;
+
+function memoryHighFraction(env: NodeJS.ProcessEnv = process.env): number {
+  const pct = Number.parseInt(env.ANT_CMD_MEMORY_HIGH_PCT ?? '', 10);
+  return Number.isFinite(pct) && pct > 0 && pct < 100 ? pct / 100 : MEMORY_HIGH_FRACTION_DEFAULT;
+}
+
+function resolveThresholds(
+  command: string,
+  opts: { oneshot: boolean; cgroupMemBytes?: number },
+): SupervisorThresholds {
   const isInstall = isLikelyInstallCommand(command);
   const isBuild = !isInstall && isLikelyBuildCommand(command);
+  // Arm the memory watchdog only for heavy (build/test) commands on a
+  // cgroup-limited host — light commands (ls/cat/grep) never start the poll.
+  const memoryBudgetBytes =
+    (isBuild || isTestCommand(command)) && opts.cgroupMemBytes !== undefined
+      ? Math.floor(opts.cgroupMemBytes * memoryHighFraction())
+      : undefined;
   return {
     serverDetectionMs: readPositiveInt(process.env.ANT_SERVER_DETECTION_MS, DEFAULT_SERVER_DETECTION_MS),
     serverOutputPattern: SERVER_OUTPUT_PATTERNS,
@@ -413,6 +436,7 @@ function resolveThresholds(command: string, opts: { oneshot: boolean }): Supervi
     ),
     hardTimeoutMs: isInstall ? HARD_TIMEOUT_INSTALL_MS : HARD_TIMEOUT_DEFAULT_MS,
     postOutputIdleMs: opts.oneshot ? ONESHOT_POST_OUTPUT_IDLE_MS : undefined,
+    memoryBudgetBytes,
   };
 }
 
@@ -532,7 +556,17 @@ async function executeCommandLogic(
   // See commandResourceLimits.ts / cgroupLimits.ts (RCA: worker_stalled).
   const cgroupCpu = readCgroupCpuLimit();
   const testWorkers = deriveTestWorkers({ effectiveCpu: cgroupCpu });
-  logResourceCapsOnce(testWorkers, cgroupCpu);
+  // Memory budget: default heap cap (spawn env) + watchdog budget (below).
+  const cgroupMemBytes = readCgroupMemoryLimit();
+  const cmdIsTest = isTestCommand(command);
+  const heapCap = resolveHeapCapMb({ isTestCommand: cmdIsTest }, testWorkers, cgroupMemBytes);
+  logResourceCapsOnce(
+    testWorkers,
+    cgroupCpu,
+    cgroupMemBytes,
+    readCgroupMemoryUsage(),
+    heapCap ? (heapCap.source === 'optin' ? `optin-${heapCap.mb}` : heapCap.mb) : undefined,
+  );
   // Pipe-AWARE concurrency cap for vitest 4 (vitest 2.x is capped via spawn env).
   // No-op for non-test commands.
   const cappedCommand = appendVitestMaxWorkers(command, testWorkers);
@@ -561,8 +595,14 @@ async function executeCommandLogic(
   const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
   // CI=true (non-install, or install w/o shell operators) + vitest pool env sized
-  // to testWorkers (+ opt-in heap cap). See commandResourceLimits.ts.
-  const spawnEnv = buildSpawnEnv({ isInstallCommand, hasShellOperators }, testWorkers);
+  // to testWorkers + default/opt-in heap cap (sized from cgroupMemBytes). See
+  // commandResourceLimits.ts.
+  const spawnEnv = buildSpawnEnv(
+    { isInstallCommand, hasShellOperators, isTestCommand: cmdIsTest },
+    testWorkers,
+    process.env,
+    cgroupMemBytes,
+  );
 
   const projectPath = featureRootPath;
   refreshGoPrivateEnv(command, projectPath);
@@ -675,7 +715,8 @@ async function executeCommandLogic(
     const controller = new AbortController();
     const supervisor = new ProgressSupervisor({
       command,
-      thresholds: resolveThresholds(command, { oneshot: oneshotEffective }),
+      thresholds: resolveThresholds(command, { oneshot: oneshotEffective, cgroupMemBytes }),
+      sampleMemoryBytes: () => readCgroupMemoryUsage(),
     });
 
     const commandPromise = commandPort.execute(command, {
@@ -869,6 +910,10 @@ export async function handleLongRunningCommand(
 }> {
   const { spawn } = await import('child_process');
   const startedAt = Date.now();
+  // Separate function scope from the short-running path — read the (memoized)
+  // cgroup memory limit here so the memoryBudget watchdog arms for long-running
+  // build/test commands too.
+  const cgroupMemBytes = readCgroupMemoryLimit();
 
   // SSOT: ant-cli's DevProcessControl handles dev-server cleanup, descendant
   // discovery (pgrep BFS), and framework lock files (.next/dev/server.json).
@@ -908,8 +953,9 @@ export async function handleLongRunningCommand(
     // canonical "is this a real server?" signal for long-running commands.
     const supervisor = new ProgressSupervisor({
       command,
-      thresholds: resolveThresholds(command, { oneshot: false }),
-      enabledSignals: ['repeatedSignature', 'noOutput', 'hardTimeout'] as const,
+      thresholds: resolveThresholds(command, { oneshot: false, cgroupMemBytes }),
+      sampleMemoryBytes: () => readCgroupMemoryUsage(),
+      enabledSignals: ['repeatedSignature', 'noOutput', 'hardTimeout', 'memoryBudget'] as const,
     });
 
     let resolved = false;
