@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   appendVitestMaxWorkers,
   buildSpawnEnv,
+  resolveHeapCapMb,
+  isTestCommand,
 } from '../../src/agents/common/tool/handlers/commandResourceLimits';
+
+const GiB = 1024 * 1024 * 1024;
 
 // Regression guard for the `level-housing-kneel` worker_stalled incident:
 // the test runner must be concurrency-capped EVEN when piped (the old
@@ -139,5 +143,83 @@ describe('buildSpawnEnv', () => {
       NODE_OPTIONS: '--max-old-space-size=4096',
     });
     expect(already?.NODE_OPTIONS).toBeUndefined();
+  });
+});
+
+// Regression guard for `tight-drafting-lever` (recurrence of `level-housing-kneel`):
+// per-process heap was unbounded → cgroup OOM. A default cap is now derived from
+// the pod memory budget, divided across the worst-case concurrent Node procs.
+describe('buildSpawnEnv — derived heap cap from cgroup memory', () => {
+  it('derives a per-fork cap for test commands (divisor = workers+1)', () => {
+    // 8 GiB, workers 3 → divisor 4 → 1446 MB (see resolveHeapCapMb math).
+    const out = buildSpawnEnv(
+      { isInstallCommand: false, hasShellOperators: false, isTestCommand: true },
+      3,
+      {},
+      8 * GiB,
+    );
+    expect(out?.NODE_OPTIONS).toBe('--max-old-space-size=1446');
+  });
+
+  it('gives single-process commands (tsc/build) the whole budget (divisor 1, clamped)', () => {
+    // 8 GiB, divisor 1 → ~5785 MB → clamped to MAX 4096.
+    const out = buildSpawnEnv(
+      { isInstallCommand: false, hasShellOperators: false, isTestCommand: false },
+      3,
+      {},
+      8 * GiB,
+    );
+    expect(out?.NODE_OPTIONS).toBe('--max-old-space-size=4096');
+  });
+
+  it('injects NO default cap when cgroup memory is unreadable (prior behavior preserved)', () => {
+    const out = buildSpawnEnv(
+      { isInstallCommand: false, hasShellOperators: false, isTestCommand: true },
+      3,
+      {},
+      undefined,
+    );
+    expect(out?.NODE_OPTIONS).toBeUndefined();
+  });
+
+  it('lets the explicit ANT_CMD_MAX_OLD_SPACE_MB override win over the derived default', () => {
+    const out = buildSpawnEnv(
+      { isInstallCommand: false, hasShellOperators: false, isTestCommand: true },
+      3,
+      { ANT_CMD_MAX_OLD_SPACE_MB: '2048' },
+      8 * GiB,
+    );
+    expect(out?.NODE_OPTIONS).toBe('--max-old-space-size=2048');
+  });
+
+  it('skips the derived cap when inherited NODE_OPTIONS already sets one', () => {
+    const out = buildSpawnEnv(
+      { isInstallCommand: false, hasShellOperators: false, isTestCommand: true },
+      3,
+      { NODE_OPTIONS: '--max-old-space-size=512' },
+      8 * GiB,
+    );
+    expect(out?.NODE_OPTIONS).toBeUndefined();
+  });
+});
+
+describe('resolveHeapCapMb', () => {
+  it('reports source=optin for the explicit override, source=derived otherwise', () => {
+    expect(resolveHeapCapMb({ isTestCommand: true }, 3, 8 * GiB, { ANT_CMD_MAX_OLD_SPACE_MB: '999' }))
+      .toEqual({ mb: 999, source: 'optin' });
+    expect(resolveHeapCapMb({ isTestCommand: true }, 3, 8 * GiB, {}))
+      .toEqual({ mb: 1446, source: 'derived' });
+    expect(resolveHeapCapMb({ isTestCommand: true }, 3, undefined, {})).toBeUndefined();
+  });
+});
+
+describe('isTestCommand', () => {
+  it('matches direct runners and package-manager test scripts, not tsc/build', () => {
+    expect(isTestCommand('vitest run')).toBe(true);
+    expect(isTestCommand('cd apps/app && pnpm test 2>&1 | tail -80')).toBe(true);
+    expect(isTestCommand('jest')).toBe(true);
+    expect(isTestCommand('tsc --noEmit')).toBe(false);
+    expect(isTestCommand('pnpm build')).toBe(false);
+    expect(isTestCommand('cat vitest.config.mts')).toBe(false);
   });
 });

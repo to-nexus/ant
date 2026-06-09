@@ -437,6 +437,42 @@ describe('ProgressSupervisor', () => {
 
     expect(signal.kind).toBe('hardTimeout');
   });
+
+  // Regression guard for `tight-drafting-lever`: memoryBudget aborts THIS
+  // command (not the job) before a cgroup OOM-kill of the whole pod.
+  it('fires memoryBudget when the sampler crosses the budget', async () => {
+    let used = 100;
+    const sup = new ProgressSupervisor({
+      command: 'pnpm test',
+      thresholds: { ...baseThresholds, memoryBudgetBytes: 1_000, memoryPollMs: 2_000 },
+      enabledSignals: ['memoryBudget', 'hardTimeout'],
+      sampleMemoryBytes: () => used,
+    });
+
+    const sigPromise = sup.signal();
+    await vi.advanceTimersByTimeAsync(2_000); // under budget — no fire
+    used = 1_200; // cross the budget
+    await vi.advanceTimersByTimeAsync(2_000);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('memoryBudget');
+    expect((signal as Extract<ProgressSignal, { kind: 'memoryBudget' }>).rssBytes).toBe(1_200);
+  });
+
+  it('does NOT arm memoryBudget without both a budget and a sampler', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'pnpm test',
+      // budget set but no sampler → disarmed; hardTimeout is the only escape.
+      thresholds: { ...baseThresholds, memoryBudgetBytes: 1_000, hardTimeoutMs: 5_000 },
+      enabledSignals: ['memoryBudget', 'hardTimeout'],
+    });
+
+    const sigPromise = sup.signal();
+    await vi.advanceTimersByTimeAsync(5_000);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('hardTimeout');
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -499,6 +535,20 @@ describe('ProgressSupervisor.renderTermination', () => {
     expect(r.success).toBe(false);
     expect(r.content).toContain('Hard cap');
     expect(r.content).toContain('10m');
+  });
+
+  it('memoryBudget → exit 137, frames it as a RESOURCE abort (not a code defect)', () => {
+    const sig: ProgressSignal = {
+      kind: 'memoryBudget',
+      rssBytes: 7 * 1024 * 1024 * 1024,
+      budgetBytes: 6 * 1024 * 1024 * 1024,
+      elapsedMs: 42_000,
+    };
+    const r = ProgressSupervisor.renderTermination(sig, ctx);
+    expect(r.exitCode).toBe(137);
+    expect(r.success).toBe(false);
+    expect(r.content).toContain('NOT a test/compile failure');
+    expect(r.content).toContain('narrower scope');
   });
 
   it('embeds the output tail honouring tailChars', () => {

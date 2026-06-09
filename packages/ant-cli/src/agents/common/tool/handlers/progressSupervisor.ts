@@ -9,6 +9,10 @@
  *   - noOutput             : silent for N seconds → slow filesystem walk
  *                            (find / grep -r / npm ls / git blame / tar / du)
  *   - hardTimeout          : absolute ceiling (10m / 20m for installs)
+ *   - memoryBudget         : pod memory near the cgroup limit → abort THIS
+ *                            command (not the job) before a whole-pod OOM-kill
+ *                            (RCA `tight-drafting-lever`). Armed only for
+ *                            build/test commands; samples cgroup memory.current.
  *
  * Termination is signalled exactly once via the promise returned by signal().
  * Callers race the supervisor.signal() against the command's completion
@@ -57,6 +61,9 @@ export const DEFAULT_REPEAT_GRACE_MS = 60_000;
 export const DEFAULT_REPEAT_THRESHOLD = 3;
 export const DEFAULT_NO_OUTPUT_MS = 60_000;
 export const DEFAULT_SERVER_DETECTION_MS = 60_000;
+// Memory must sample far tighter than noOutput (which can be 45s for builds) —
+// a runaway vitest/tsc OOMs in seconds. One tiny /sys read per tick = negligible.
+export const DEFAULT_MEMORY_POLL_MS = 2_000;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Public types
@@ -66,13 +73,15 @@ export type ProgressSignalKind =
   | 'serverStartedPattern'
   | 'repeatedSignature'
   | 'noOutput'
-  | 'hardTimeout';
+  | 'hardTimeout'
+  | 'memoryBudget';
 
 export type ProgressSignal =
   | { kind: 'serverStartedPattern'; output: string }
   | { kind: 'repeatedSignature'; signature: string; repeat: number; elapsedMs: number }
   | { kind: 'noOutput'; silentMs: number; hadOutputBeforeSilence: boolean }
-  | { kind: 'hardTimeout'; elapsedMs: number };
+  | { kind: 'hardTimeout'; elapsedMs: number }
+  | { kind: 'memoryBudget'; rssBytes: number; budgetBytes: number; elapsedMs: number };
 
 export interface SupervisorThresholds {
   serverDetectionMs: number;
@@ -86,6 +95,11 @@ export interface SupervisorThresholds {
    *  gate that defends silent-from-start commands. Caller declares this
    *  via the `oneshot` tool arg — the system does not infer it. */
   postOutputIdleMs?: number;
+  /** When set (build/test commands on a cgroup-limited host), fire memoryBudget
+   *  once sampled memory ≥ this many bytes. Undefined → memory signal disarmed. */
+  memoryBudgetBytes?: number;
+  /** memoryBudget sample interval (ms). Defaults to DEFAULT_MEMORY_POLL_MS. */
+  memoryPollMs?: number;
 }
 
 export interface ProgressSupervisorOptions {
@@ -94,6 +108,10 @@ export interface ProgressSupervisorOptions {
   enabledSignals?: ReadonlyArray<ProgressSignalKind>;
   /** Injectable clock for tests. Defaults to Date.now. */
   now?: () => number;
+  /** Samples current container memory (bytes). Prod = readCgroupMemoryUsage;
+   *  tests inject a fake. memoryBudget arms only when this AND
+   *  thresholds.memoryBudgetBytes are both present. */
+  sampleMemoryBytes?: () => number | undefined;
 }
 
 export interface TerminationRender {
@@ -133,6 +151,7 @@ const ALL_SIGNALS: ReadonlyArray<ProgressSignalKind> = [
   'repeatedSignature',
   'noOutput',
   'hardTimeout',
+  'memoryBudget',
 ];
 
 export class ProgressSupervisor {
@@ -140,6 +159,7 @@ export class ProgressSupervisor {
   private readonly thresholds: SupervisorThresholds;
   private readonly enabledSignals: Set<ProgressSignalKind>;
   private readonly now: () => number;
+  private readonly sampleMemoryBytes?: () => number | undefined;
   private readonly startedAt: number;
 
   private stallMap = new Map<string, number>();
@@ -157,6 +177,7 @@ export class ProgressSupervisor {
     this.thresholds = opts.thresholds;
     this.enabledSignals = new Set(opts.enabledSignals ?? ALL_SIGNALS);
     this.now = opts.now ?? (() => Date.now());
+    this.sampleMemoryBytes = opts.sampleMemoryBytes;
     this.startedAt = this.now();
     this.lastOutputAt = this.startedAt;
   }
@@ -275,6 +296,31 @@ export class ProgressSupervisor {
       }, pollMs);
       this.cleanupFns.push(() => clearInterval(id));
     }
+
+    // Memory budget — dedicated tight poll (separate from the noOutput/repeat
+    // poll, which can be 45s for builds). Armed only when both a budget and a
+    // sampler are present (caller gates this to build/test commands).
+    const budget = this.thresholds.memoryBudgetBytes;
+    if (
+      this.enabledSignals.has('memoryBudget') &&
+      budget != null &&
+      this.sampleMemoryBytes
+    ) {
+      const sampler = this.sampleMemoryBytes;
+      const memId = setInterval(() => {
+        if (this.resolved) return;
+        const rss = sampler();
+        if (rss !== undefined && rss >= budget) {
+          this.fire({
+            kind: 'memoryBudget',
+            rssBytes: rss,
+            budgetBytes: budget,
+            elapsedMs: this.now() - this.startedAt,
+          });
+        }
+      }, this.thresholds.memoryPollMs ?? DEFAULT_MEMORY_POLL_MS);
+      this.cleanupFns.push(() => clearInterval(memId));
+    }
   }
 
   private fire(signal: ProgressSignal): void {
@@ -353,6 +399,15 @@ export class ProgressSupervisor {
         detail = `Hard cap of ${min}m reached.`;
         elapsed = `${min}m`;
         action = 'Inspect output below. If this command class is legitimately long, narrow its scope or raise the timeout threshold.';
+        break;
+      }
+      case 'memoryBudget': {
+        const rssMb = Math.round(signal.rssBytes / (1024 * 1024));
+        const budgetMb = Math.round(signal.budgetBytes / (1024 * 1024));
+        elapsed = `${Math.round(signal.elapsedMs / 1000)}s`;
+        detail = `Container memory reached ${rssMb}MiB of the ${budgetMb}MiB watchdog budget (near the cgroup limit). This is NOT a test/compile failure — the command was aborted to prevent an OOM-kill of the whole pod.`;
+        action = 'Do NOT treat this as a code defect. Re-run with a narrower scope so peak memory stays bounded: one package/app at a time (e.g. `cd apps/app && pnpm test`), and run typecheck separately from tests.';
+        exitCode = 137;
         break;
       }
     }
