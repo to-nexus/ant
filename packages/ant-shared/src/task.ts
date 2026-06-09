@@ -272,6 +272,16 @@ interface BaseTaskCommon {
    */
   uiSource?: UiSource;
   /**
+   * Derived (NOT LLM-authored): true when this task's output renders a
+   * user-visible visual surface. Set by `createTaskQueue` from ui-pairing —
+   * a `ui` task, and a feature task paired with a ui task (same `parallelGroup`,
+   * which includes navigation-chrome hosts that earn a paired ui pass), are
+   * renderable; a headless feature with no paired ui is not. Drives the SV
+   * session body-lifecycle gate (every data-bearing visual surface). Because it
+   * is code-derived, not LLM-emitted, it is actualize-proof.
+   */
+  renderable?: boolean;
+  /**
    * Set when this task was finalised by `batchSplit` Path B (drop-and-replace) —
    * the parent task's lifecycle ends here even though it never produced its
    * own files. The array carries the spawned sub-task IDs so the UI / debug

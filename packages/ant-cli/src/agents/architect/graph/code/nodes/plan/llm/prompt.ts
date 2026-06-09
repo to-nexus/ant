@@ -31,6 +31,9 @@ import {
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
+  isSvWorldSeedActive,
+  isSvBodyLifecycleActive,
+  isSvAuthFlowActive,
 } from "../../../../../../../core/prompt/builder/serviceVirtualization";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../../core/artifact/antrules";
@@ -258,7 +261,24 @@ export async function buildPlanPrompt(
       domain: state.resolvedAction?.domain,
       taskType: task.type,
     }),
+    // Session partial split into three blocks (band → world-seed,
+    // renderable → body-lifecycle, taskType → auth-flow narrowed in-body).
     serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      taskType: task.type,
+      band: taskBand,
+      renderable: (task as { renderable?: boolean }).renderable,
+    }),
+    svWorldSeedActive: isSvWorldSeedActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      taskType: task.type,
+      band: taskBand,
+    }),
+    svBodyLifecycleActive: isSvBodyLifecycleActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      renderable: (task as { renderable?: boolean }).renderable,
+    }),
+    svAuthFlowActive: isSvAuthFlowActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       taskType: task.type,
     }),

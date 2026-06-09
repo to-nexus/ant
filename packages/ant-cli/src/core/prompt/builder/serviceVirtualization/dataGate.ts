@@ -6,12 +6,14 @@
  * adapters. The gate combines the "virtualization is in scope" axis with
  * the body-authoring task types:
  *
- *   hasBusinessConnection × (taskType ∈ { feature, ui, design-system })
+ *   hasBusinessConnection × (taskType ∈ { feature, ui })
  *
- * Body-authoring task types are the ones that can plausibly emit data
- * shapes consumed by UI / FE code. Other task types (verification, error,
- * setup, test-code, doc, explain) do NOT author fake bodies and so do
- * not trigger this partial.
+ * Body-authoring task types are the ones that emit / render data shapes
+ * consumed by UI / FE code. `design-system` is excluded — token / shared-
+ * primitive infrastructure authors no fake response body (it is presentational
+ * and data-shape-agnostic; placeholder imagery is covered by the imagery
+ * partial). Other task types (verification, error, setup, test-code, doc,
+ * explain) likewise do NOT author fake bodies and so do not trigger this partial.
  */
 
 export interface ServiceVirtualizationDataGateInput {
@@ -24,15 +26,11 @@ export interface ServiceVirtualizationDataGateInput {
 
 /**
  * @returns `true` iff `hasBusinessConnection === true` AND `taskType` is
- *          one of the body-authoring types (feature / ui / design-system).
+ *          one of the body-authoring types (feature / ui).
  */
 export function isServiceVirtualizationDataActive(
   input: ServiceVirtualizationDataGateInput,
 ): boolean {
   if (input.hasBusinessConnection !== true) return false;
-  return (
-    input.taskType === 'feature' ||
-    input.taskType === 'ui' ||
-    input.taskType === 'design-system'
-  );
+  return input.taskType === 'feature' || input.taskType === 'ui';
 }

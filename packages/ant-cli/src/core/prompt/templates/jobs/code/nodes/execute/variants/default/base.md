@@ -307,7 +307,7 @@ MODIFY: app/page.tsx - Add import and render new component
 {{> jobs/code/nodes/execute/injections/attestation}}
 {{/if}}
 
-**Actions:** Write code → Modify as planned → Verify consistency →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
+**Actions:** Write code → Modify as planned → Verify consistency → **Functional-completeness check (REQUIRED before `<done>`): every interactive control you rendered is bound to its handler/state, and every navigation target you emitted resolves to a route that actually exists** →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
 
 ⛔ **NEVER** run build, dev, or start commands in feature tasks (e.g., `npm run build`, `go build`, `cargo build`, `make build`, etc.)
 
@@ -400,7 +400,7 @@ Sub-role is determined by priority:
 {{> jobs/code/nodes/execute/injections/attestation}}
 {{/if}}
 
-**Actions:** Read the functionally-complete component files → implement the visual enhancement (styling, plus any supporting logic/extraction it requires) while preserving functional behavior →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
+**Actions:** Read the functionally-complete component files → implement the visual enhancement (styling, plus any supporting logic/extraction it requires) while preserving functional behavior → **Functional non-regression check (REQUIRED before `<done>`): every binding the feature task wired — handlers, data read/write, navigation targets, role-gated branches, form submit/validation — still works** →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
 
 {{/if}}
 {{/if}}
