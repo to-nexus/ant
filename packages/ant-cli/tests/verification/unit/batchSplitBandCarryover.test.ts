@@ -241,6 +241,82 @@ describe('batchSplit — Three-Axis SSOT priority + band semantics', () => {
     }
   });
 
+  it('Path B (renderable feature parent): renderable=true carries to feature children', () => {
+    // A Tier-2 renderable feature that escalates to a batch split keeps
+    // building the same rendered surface — its sub-tasks must remain
+    // renderable so the SV session body-lifecycle gate stays lit.
+    const state = makeState();
+    const parent: CodeTask = {
+      id: 'feat-screen',
+      name: 'dashboard screen',
+      type: 'feature',
+      priority: 400,
+      renderable: true,
+      description: '',
+    } as CodeTask;
+    const plan = JSON.stringify({
+      batches: [
+        { name: 'a', rationale: 'unit a', modify: [{ target: 'a.tsx' }], create: [], delete: [] },
+        { name: 'b', rationale: 'unit b', modify: [{ target: 'b.tsx' }], create: [], delete: [] },
+      ],
+    });
+
+    processDiagnosticBatchSplit(state, plan, parent);
+
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+    expect(subs.length).toBe(2);
+    for (const s of subs) {
+      expect((s as any).renderable).toBe(true);
+    }
+  });
+
+  it('Path B (non-renderable feature parent): children carry NO renderable field', () => {
+    const state = makeState();
+    const parent: CodeTask = {
+      id: 'feat-hook',
+      name: 'data hook',
+      type: 'feature',
+      priority: 400,
+      description: '',
+    } as CodeTask;
+    const plan = JSON.stringify({
+      batches: [
+        { name: 'a', rationale: 'unit a', modify: [{ target: 'a.ts' }], create: [], delete: [] },
+      ],
+    });
+
+    processDiagnosticBatchSplit(state, plan, parent);
+
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'feature');
+    expect(subs.length).toBe(1);
+    expect(Object.prototype.hasOwnProperty.call(subs[0] as object, 'renderable')).toBe(false);
+  });
+
+  it('Path B (renderable error parent guard): error children NEVER carry renderable', () => {
+    // Even if a parent somehow surfaced renderable, an `error` sub-type
+    // applies fixes and renders nothing — renderable must not leak onto it.
+    const state = makeState();
+    const parent: CodeTask = {
+      id: 'err-1',
+      name: 'fix errors',
+      type: 'error',
+      priority: 905,
+      renderable: true,
+      description: '',
+    } as CodeTask;
+    const plan = JSON.stringify({
+      batches: [
+        { name: 'fix a', rationale: 'error in a', modify: [{ target: 'a.ts' }] },
+      ],
+    });
+
+    processDiagnosticBatchSplit(state, plan, parent);
+
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+    expect(subs.length).toBe(1);
+    expect(Object.prototype.hasOwnProperty.call(subs[0] as object, 'renderable')).toBe(false);
+  });
+
   it('non-feature sub-tasks (error parent → error children) MUST NOT carry band', () => {
     // Three-Axis SSOT: band is type-bound to FeatureCodeTask. Non-
     // feature sub-tasks must not surface a `band` field, even if the

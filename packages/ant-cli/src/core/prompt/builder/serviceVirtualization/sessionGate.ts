@@ -1,56 +1,108 @@
 /**
- * service-virtualization-session activation gate (SBS SSOT).
+ * service-virtualization-session activation gates (SBS SSOT).
  *
- * The `service-virtualization-session` partial governs the cross-body,
- * across-time coherence of a virtualized adapter — the running demo
- * session that emerges when many requests are answered out of the same
- * simulated world. Whereas `data` governs ONE response body and
- * `contract` governs system boundary, `session` governs:
+ * The `service-virtualization-session` partial governs cross-body, across-time
+ * coherence of a virtualized adapter. It is split into THREE decision blocks,
+ * each gated by a DIFFERENT existing signal (no new task type, no new band
+ * value — `band` is read-only):
  *
- *   - Seeded identities (inhabitants) exposed on entry surfaces
- *   - Authorization graph (role / organization edges) reachable per
- *     inhabitant
- *   - Cross-body entity coherence (same id resolves to same entity
- *     across endpoints)
- *   - Multi-endpoint cardinality (every key navigation surface seeded
- *     non-empty)
- *   - Mutation persistence (writes survive subsequent reads and the
- *     surface's expected lifetime — refresh / multi-tab / cross-device)
- *   - Surface discoverability (entry surfaces expose seeded inhabitants
- *     and entities through a platform-appropriate mechanism)
+ *   - World seed     — the shared demo world (inhabitants / authorization
+ *                      graph / cross-body entity coherence). Owned by the
+ *                      platform-band shared-service feature task, or by setup
+ *                      that scaffolds the seed. Gate: (feature ∧ band=platform)
+ *                      ∨ setup.
+ *   - Body lifecycle — empty-surface avoidance, mutation persistence, seed
+ *                      reference: every data-bearing VISUAL SURFACE. Gate:
+ *                      `renderable` (the ui-pairing-derived task flag — a ui
+ *                      task, or a feature paired with a ui task incl. a chrome
+ *                      host). A headless feature with no rendered surface is
+ *                      excluded — taskType alone (feature/ui) would wrongly
+ *                      include headless hooks, so the precise signal is
+ *                      `renderable`, not the task type.
+ *   - Auth-flow      — account selection / picked=linked authority / redirect
+ *                      opaqueness. No infrastructure signal distinguishes an
+ *                      auth/identity task from a data task (same root as the
+ *                      platform-internal auth-vs-backend split), so the block
+ *                      is narrowed by an in-body LLM-self condition rather than
+ *                      a precise gate (see plan §후순위). Gate: feature ∨ ui ∨
+ *                      setup.
  *
- * Gate axes:
- *
- *   hasBusinessConnection × (taskType ∈ { feature, ui, design-system, setup })
- *
- * The taskType set mirrors `data` plus `setup`. Setup is included
- * because seed code (initial fixtures, `.env.example`, adapter
- * scaffolding) is frequently authored during setup tasks; excluding it
- * would force the LLM to re-discover the session contract one task
- * later and risk producing seed code that violates it.
+ * `hasBusinessConnection` is the common precondition. `design-system` (token
+ * infrastructure) is intentionally in NONE of the blocks — tokens author no
+ * demo world, response body, or auth flow.
  */
 
 export interface ServiceVirtualizationSessionGateInput {
   /** True when the codebase declares at least one `business` connection. */
   hasBusinessConnection: boolean;
   /** Task type at the call site (`currentTask.type` for execute, plan-side
-   *  task type for plan). Callers pass the resolved string. */
-  taskType: string | undefined;
+   *  task type for plan). Optional because the body-lifecycle block keys on
+   *  `renderable` alone; world-seed / auth-flow callers always pass it. */
+  taskType?: string | undefined;
+  /** Scheduling band of the current task (read-only). Used ONLY to route the
+   *  World-seed block to the platform-band shared-service owner; never written. */
+  band?: string | undefined;
+  /** ui-pairing-derived flag (`task.renderable`): the current task renders a
+   *  user-visible visual surface. Read-only; routes the body-lifecycle block to
+   *  every data-bearing surface (screens, ui, chrome) while excluding headless. */
+  renderable?: boolean | undefined;
 }
 
 /**
- * @returns `true` iff `hasBusinessConnection === true` AND `taskType` is
- *          one of the session-authoring types
- *          (feature / ui / design-system / setup).
+ * World-seed block: the shared demo world owned by the platform-band shared
+ * service (or seeded by setup).
  */
-export function isServiceVirtualizationSessionActive(
+export function isSvWorldSeedActive(
+  input: ServiceVirtualizationSessionGateInput,
+): boolean {
+  if (input.hasBusinessConnection !== true) return false;
+  return (
+    (input.taskType === 'feature' && input.band === 'platform') ||
+    input.taskType === 'setup'
+  );
+}
+
+/**
+ * Body-lifecycle block: every data-bearing VISUAL SURFACE, gated by the
+ * ui-pairing-derived `renderable` flag (screens, ui, chrome hosts). A headless
+ * feature, `design-system`, and `setup` are excluded — they render no body.
+ */
+export function isSvBodyLifecycleActive(
+  input: ServiceVirtualizationSessionGateInput,
+): boolean {
+  if (input.hasBusinessConnection !== true) return false;
+  return input.renderable === true;
+}
+
+/**
+ * Auth-flow block: surfaced to SV-authoring task types; an in-body LLM-self
+ * condition narrows it to sign-in/identity work.
+ */
+export function isSvAuthFlowActive(
   input: ServiceVirtualizationSessionGateInput,
 ): boolean {
   if (input.hasBusinessConnection !== true) return false;
   return (
     input.taskType === 'feature' ||
     input.taskType === 'ui' ||
-    input.taskType === 'design-system' ||
     input.taskType === 'setup'
+  );
+}
+
+/**
+ * Include gate for the `service-virtualization-session` partial — true iff
+ * ANY of the three blocks is active. `design-system` is excluded (all three
+ * blocks are false for it).
+ *
+ * @returns `true` iff `hasBusinessConnection === true` AND at least one block
+ *          (world-seed / body-lifecycle / auth-flow) activates for this task.
+ */
+export function isServiceVirtualizationSessionActive(
+  input: ServiceVirtualizationSessionGateInput,
+): boolean {
+  return (
+    isSvWorldSeedActive(input) ||
+    isSvBodyLifecycleActive(input) ||
+    isSvAuthFlowActive(input)
   );
 }

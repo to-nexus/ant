@@ -14,7 +14,7 @@ You receive the Development Source (ref artifacts or directive). Apply the split
 
 | Category | Observable pattern |
 |---|---|
-| **visual unit** | A section, route, screen, modal, or page that renders independently and lives in its own source file |
+| **visual unit** | A unit whose output renders a user-visible visual surface and lives in its own source file — an independent section / route / screen / modal / page, OR a shared frame / navigation chrome that wraps them |
 | **command** | A subcommand or action with its own entry-point surface |
 | **worker** | A single-purpose event handler bound to one trigger (webhook, cron, queue consumer) |
 | **exported symbol cluster** | A public API group with a distinct responsibility inside a library or module |
@@ -44,7 +44,7 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 **Observation target**: For each feature task emitted by this rubric or by Task Scope Constraint, is its output RENDERABLE — i.e. a file that renders user-visible UI?
 
-**Principle — renderable categories**: Only the `visual unit` category produces renderable output. The other categories (`command`, `worker`, `exported symbol cluster`, `pipeline stage`) are non-renderable. Among feature tasks that do NOT fall under those five categories, wiring tasks (priority 600–649, composition-only), shared foundation tasks (priority 200–299, types / schema / utilities), data-fetching / state-management tasks, and server-side handler tasks are also non-renderable.
+**Principle — renderable is decided by output NATURE, not task category**: A task is renderable iff its output produces a **user-visible visual surface**. The `visual unit` category always qualifies. Critically, a host-entry / integration task ALSO qualifies for the portion that renders **navigation chrome** (a frame the user sees — global nav, sidebar, local nav) — composition is not its only output when it also paints a visible frame. Only outputs with **no visual surface** are non-renderable: pure composition wiring (provider / route mount that renders no chrome), shared foundation (priority 200–299, types / schema / utilities), data-fetching / state-management, server-side handlers, and the `command` / `worker` / `exported symbol cluster` / `pipeline stage` categories.
 
 **Principle — pairing**: UI work mirrors the renderable subset of feature splitting. For each RENDERABLE feature task, emit exactly one per-unit ui task that pairs with it. For each NON-RENDERABLE feature task, emit NO ui task.
 
@@ -60,7 +60,7 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 ⚠️ **Blind spot**: "Always created" in Task Type Rules means "one ui task per renderable feature when renderable features exist" — NOT "a ui task must exist in every project". Backend-only / CLI-only / library-only projects have zero renderable features and therefore ZERO ui tasks.
 
-⚠️ **Blind spot**: Wiring tasks compose (import + mount) but do not style. They are NON-renderable in the ui-pairing sense even though their output file is a page/route component. Page-level visual styling (smooth-scroll, section landmarks, global transitions) is the `design-system` task's concern, not a ui task's.
+⚠️ **Blind spot**: A host-entry task that ONLY composes (provider / route mount, renders no chrome) is non-renderable. But when a host-entry renders navigation chrome the user sees (a global nav / sidebar / local nav — including a per-section bar with title / back / search / notification), that chrome IS a visual surface → the task is renderable and earns a paired ui task like any screen. Do NOT let navigation chrome fall through as "just wiring" — that is exactly how a designed frame ends up unstyled or omitted. Only truly global page-level concerns with no owning surface (smooth-scroll, global transitions) remain the `design-system` task's concern.
 
 ⚠️ **Blind spot**: A ui task paired with its feature task via the same `parallelGroup` is the natural placement. Putting the ui task in a separate `parallelGroup` (e.g. `"ui-main"`) lets it run concurrently with the feature task, causing a file-write race on the shared component file.
 

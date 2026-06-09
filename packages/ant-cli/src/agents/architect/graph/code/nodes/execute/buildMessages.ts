@@ -39,6 +39,9 @@ import {
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
+  isSvWorldSeedActive,
+  isSvBodyLifecycleActive,
+  isSvAuthFlowActive,
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
@@ -468,7 +471,26 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         domain: state.resolvedAction?.domain,
         taskType,
       }),
+      // Session partial is split into three blocks, each gated by a different
+      // signal: band → world-seed (platform shared service / setup),
+      // renderable → body-lifecycle (data-bearing visual surface),
+      // taskType → auth-flow (narrowed in-body by an LLM-self condition).
       serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+        taskType,
+        band: (state.currentTask as { band?: string }).band,
+        renderable: (state.currentTask as { renderable?: boolean }).renderable,
+      }),
+      svWorldSeedActive: isSvWorldSeedActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+        taskType,
+        band: (state.currentTask as { band?: string }).band,
+      }),
+      svBodyLifecycleActive: isSvBodyLifecycleActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+        renderable: (state.currentTask as { renderable?: boolean }).renderable,
+      }),
+      svAuthFlowActive: isSvAuthFlowActive({
         hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         taskType,
       }),

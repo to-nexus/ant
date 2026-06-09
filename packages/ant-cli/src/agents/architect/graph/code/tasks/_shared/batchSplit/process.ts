@@ -398,6 +398,15 @@ export function processDiagnosticBatchSplit(
         ...(nextTask.stack ? { stack: nextTask.stack } : {}),
         ...(subInclude?.length ? { include: subInclude } : {}),
         ...(subType === 'feature' ? { band: parentBand } : {}),
+        // `renderable` mirrors createTaskQueue's derivation across the split:
+        // a `ui` sub-task always renders; a `feature` sub-task inherits the
+        // parent's renderable verdict (the split cannot re-derive ui-pairing,
+        // and the sub-tasks continue the parent's rendered work). Other sub
+        // types (error fix-appliers) never render. Without this the SV session
+        // body-lifecycle gate goes dark on a Tier-2 escalate / Path-B split.
+        ...(subType === 'ui' || (subType === 'feature' && nextTask.renderable === true)
+          ? { renderable: true }
+          : {}),
       } as CodeTask;
       if (taskPolicy?.populateRemediationMode !== false) {
         (subTask as { remediationMode?: 'patch' | 'upstream' | 'refactor' }).remediationMode = planMode;

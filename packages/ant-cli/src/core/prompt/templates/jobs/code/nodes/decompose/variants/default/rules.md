@@ -197,6 +197,8 @@ First, analyze step by step (think through):
   - **Tier 4 (refs-grounded)** — the reference document IS the solution; enumerate every work unit it lists. Solution-prescribing in `description` is fine here because the source of truth is the document.
   - What are the main features to implement?
   - What is the optimal task breakdown?
+  - **Shared decisions** (see Shared Decisions): Is there any choice multiple units must resolve identically — a navigation / addressing scheme, a shared SV demo-world seed, a base-URL policy, screen↔chrome metadata? Materialize each as exactly ONE producer task at the band its dependency position implies (a shared SV demo-world seed is a platform-band `feature` task; see the Shared Runtime Services note). Do NOT let each unit decide it locally.
+  - **Renderable surfaces** (see Independent Output Unit Splitting): Which units render a user-visible visual surface — an independent screen OR navigation chrome (global frame / per-section local nav)? Each renderable unit gets a `feature` + paired `ui` task. Navigation chrome that paints a visible frame is renderable too — do NOT let it fall through as composition-only wiring (that is how a designed frame ends up unstyled or omitted).
   - Does test-code apply? (see Test Generation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
   - Does doc apply? (see Documentation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
   - Always include a final verification task (`type: "verification"`, `priority: 1000`) — MANDATORY at Tier 3/4.

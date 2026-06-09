@@ -478,6 +478,22 @@ export function createTaskQueue(
     console.log(`✅ [createTaskQueue] Tier 2 Exploratory — inline selfVerifyOnDone owns verification`);
   }
 
+  // renderable derive (ui-pairing) — SSOT for task.renderable. A `ui` task
+  // renders; a feature task sharing a ui task's parallelGroup is styled by that
+  // ui pass and therefore renders a visual surface (this includes navigation-
+  // chrome hosts, which earn a paired ui pass under the renderable-by-nature
+  // rule). A headless feature with no paired ui does NOT render. Drives the SV
+  // session body-lifecycle gate; code-derived (not LLM-emitted) = actualize-proof.
+  const uiParallelGroups = new Set<string>(
+    tasks
+      .filter(
+        (t) =>
+          (t.type || DEFAULT_TASK_TYPE) === 'ui' &&
+          typeof (t as any).parallelGroup === 'string',
+      )
+      .map((t) => (t as any).parallelGroup as string),
+  );
+
   tasks.forEach(task => {
     // Determine exclusive flag:
     // - Explicit from LLM takes precedence
@@ -562,6 +578,16 @@ export function createTaskQueue(
         : undefined;
     const errorFields = (task as any) as { errors?: string[]; category?: string };
 
+    // Derived renderable flag (see uiParallelGroups above). ui always renders;
+    // a feature paired with a ui task (same parallelGroup) renders too.
+    const renderable: boolean | undefined =
+      resolvedType === 'ui' ||
+      (resolvedType === 'feature' &&
+        typeof parallelGroup === 'string' &&
+        uiParallelGroups.has(parallelGroup))
+        ? true
+        : undefined;
+
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
@@ -574,6 +600,7 @@ export function createTaskQueue(
       exclusive: exclusive || undefined,
       parallelGroup,
       selfVerifyOnDone,
+      ...(renderable ? { renderable } : {}),
       // band lives on feature (foundation/platform/integration) and setup
       // ('root' for the SETUP_PROJECT root setup); only spread when derived.
       ...(band !== undefined && (resolvedType === 'feature' || resolvedType === 'setup')

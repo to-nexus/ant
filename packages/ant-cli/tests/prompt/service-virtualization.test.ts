@@ -332,6 +332,9 @@ import {
   isServiceVirtualizationDataActive,
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
+  isSvWorldSeedActive,
+  isSvBodyLifecycleActive,
+  isSvAuthFlowActive,
 } from '../../src/core/prompt/builder/serviceVirtualization';
 
 describe('isServiceVirtualizationContractActive — gate truth table', () => {
@@ -347,7 +350,7 @@ describe('isServiceVirtualizationDataActive — gate truth table', () => {
   const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
     { name: 'business + feature', has: true, t: 'feature', expected: true },
     { name: 'business + ui', has: true, t: 'ui', expected: true },
-    { name: 'business + design-system', has: true, t: 'design-system', expected: true },
+    { name: 'business + design-system', has: true, t: 'design-system', expected: false },
     { name: 'business + setup', has: true, t: 'setup', expected: false },
     { name: 'business + verification', has: true, t: 'verification', expected: false },
     { name: 'business + error', has: true, t: 'error', expected: false },
@@ -369,7 +372,7 @@ describe('isServiceVirtualizationSessionActive — gate truth table', () => {
   const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
     { name: 'business + feature', has: true, t: 'feature', expected: true },
     { name: 'business + ui', has: true, t: 'ui', expected: true },
-    { name: 'business + design-system', has: true, t: 'design-system', expected: true },
+    { name: 'business + design-system', has: true, t: 'design-system', expected: false },
     { name: 'business + setup', has: true, t: 'setup', expected: true },
     { name: 'business + verification', has: true, t: 'verification', expected: false },
     { name: 'business + error', has: true, t: 'error', expected: false },
@@ -384,6 +387,61 @@ describe('isServiceVirtualizationSessionActive — gate truth table', () => {
     it(c.name, () => {
       expect(
         isServiceVirtualizationSessionActive({ hasBusinessConnection: c.has, taskType: c.t }),
+      ).toBe(c.expected);
+    });
+  }
+});
+
+describe('isSvWorldSeedActive — block gate (band-routed)', () => {
+  const cases: Array<{ name: string; has: boolean; t: string | undefined; band?: string; expected: boolean }> = [
+    { name: 'business + feature @platform', has: true, t: 'feature', band: 'platform', expected: true },
+    { name: 'business + feature @ordinary(undefined)', has: true, t: 'feature', band: undefined, expected: false },
+    { name: 'business + feature @foundation', has: true, t: 'feature', band: 'foundation', expected: false },
+    { name: 'business + feature @integration', has: true, t: 'feature', band: 'integration', expected: false },
+    { name: 'business + setup', has: true, t: 'setup', expected: true },
+    { name: 'business + ui', has: true, t: 'ui', expected: false },
+    { name: 'business + design-system', has: true, t: 'design-system', expected: false },
+    { name: 'no business + feature @platform', has: false, t: 'feature', band: 'platform', expected: false },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        isSvWorldSeedActive({ hasBusinessConnection: c.has, taskType: c.t, band: c.band }),
+      ).toBe(c.expected);
+    });
+  }
+});
+
+describe('isSvBodyLifecycleActive — block gate (renderable-routed)', () => {
+  const cases: Array<{ name: string; has: boolean; renderable?: boolean; expected: boolean }> = [
+    { name: 'business + renderable=true', has: true, renderable: true, expected: true },
+    { name: 'business + renderable=false', has: true, renderable: false, expected: false },
+    { name: 'business + renderable=undefined', has: true, renderable: undefined, expected: false },
+    { name: 'no business + renderable=true', has: false, renderable: true, expected: false },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        isSvBodyLifecycleActive({ hasBusinessConnection: c.has, renderable: c.renderable }),
+      ).toBe(c.expected);
+    });
+  }
+});
+
+describe('isSvAuthFlowActive — block gate (taskType, narrowed in-body)', () => {
+  const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
+    { name: 'business + feature', has: true, t: 'feature', expected: true },
+    { name: 'business + ui', has: true, t: 'ui', expected: true },
+    { name: 'business + setup', has: true, t: 'setup', expected: true },
+    { name: 'business + design-system', has: true, t: 'design-system', expected: false },
+    { name: 'business + verification', has: true, t: 'verification', expected: false },
+    { name: 'business + undefined', has: true, t: undefined, expected: false },
+    { name: 'no business + feature', has: false, t: 'feature', expected: false },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        isSvAuthFlowActive({ hasBusinessConnection: c.has, taskType: c.t }),
       ).toBe(c.expected);
     });
   }
