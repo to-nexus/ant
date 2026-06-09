@@ -38,6 +38,8 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 **Constraint**: When only one unit exists, OR units do not share an integration point, DO NOT emit a wiring task.
 
+**Constraint — shared decisions beyond the integration-point file**: A host-entry file is only ONE shape of shared decision. A shared decision that is not a single file — an addressing / navigation scheme, an access contract, a cross-unit vocabulary (see *Shared Decisions* in the rules) — is likewise owned by ONE producer task (at the band its dependency position implies) and consumed by the per-unit tasks. Do NOT let each per-unit task decide it locally; route it to a producer the same way a host entry routes to a wiring task.
+
 ### UI pairing rule
 
 **Observation target**: For each feature task emitted by this rubric or by Task Scope Constraint, is its output RENDERABLE — i.e. a file that renders user-visible UI?
@@ -48,11 +50,11 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 **Constraint — count**: The ui task count equals the renderable feature task count. If zero renderable features exist (backend-only, CLI-only, library-only project), emit ZERO ui tasks — do NOT create a ceremonial ui task.
 
-**Constraint — pairing via parallelGroup**: Each per-unit ui task shares its `parallelGroup` with its paired renderable feature task. Same `parallelGroup` serializes them on the same output file (feature emits the skeleton first; ui restyles it second).
+**Constraint — pairing via parallelGroup**: Each per-unit ui task shares its `parallelGroup` with its paired renderable feature task. Same `parallelGroup` serializes them on the same output file: the feature task emits a functionally complete but visually unstyled component first (all interactive behavior present and working — "unstyled" means missing visual polish, NOT a non-functional stub); the ui task then enhances it second.
 
 **Constraint — priority**: Per-unit ui tasks use priority in the 650–699 range. Distinguishability between ui tasks comes from `parallelGroup` (which matches the paired feature), not from priority.
 
-**Constraint — globals exclusion**: Per-unit ui tasks MUST NOT touch global style layer files (project-wide CSS, theme config, token infrastructure). Those files are owned by the `design-system` task at priority 200. If global styling gaps are observed, extend the `design-system` task rather than absorbing them into a ui task.
+**Constraint — do not redefine the shared style foundation**: The `design-system` task (priority 200) owns the token / style FOUNDATION (project-wide tokens, theme config). A per-unit ui task MUST NOT fork or redefine that foundation. It MAY, when an enhancement genuinely requires it, extend shared or global style layers and touch sibling / other-package presentation for integration — building ON the foundation, not redeclaring it. If a token-level gap is observed, extend the `design-system` task rather than redefining tokens locally.
 
 ⚠️ **Blind spot**: The singular phrasing "A corresponding ui task" in UI Task Descriptions describes a per-renderable-feature pairing, NOT a per-project singleton. Reading it as "one ui task per project" collapses N renderable units into one ui task and erases the parallelism the feature split gained.
 
@@ -60,7 +62,7 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 ⚠️ **Blind spot**: Wiring tasks compose (import + mount) but do not style. They are NON-renderable in the ui-pairing sense even though their output file is a page/route component. Page-level visual styling (smooth-scroll, section landmarks, global transitions) is the `design-system` task's concern, not a ui task's.
 
-⚠️ **Blind spot**: A ui task paired with its feature task via the same `parallelGroup` is the natural placement. Putting the ui task in a separate `parallelGroup` (e.g. `"ui-main"`) lets it run concurrently with the feature task, causing a file-write race on the skeleton file.
+⚠️ **Blind spot**: A ui task paired with its feature task via the same `parallelGroup` is the natural placement. Putting the ui task in a separate `parallelGroup` (e.g. `"ui-main"`) lets it run concurrently with the feature task, causing a file-write race on the shared component file.
 
 ### Description shape
 

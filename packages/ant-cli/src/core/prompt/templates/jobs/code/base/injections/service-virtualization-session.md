@@ -119,6 +119,19 @@ below before authoring the seed:
   edit; and where the surface gates capabilities or scopes records by
   identity, each seeded identity MUST observe its own admitted surfaces and
   its own scoped records — otherwise multi-role seeding is inert.
+- Do NOT collapse distinct selectable external authorities into one hardcoded
+  outcome. When the entry surface offers a choice among several external
+  authorities (the selection affordance presents more than one), the session the
+  virtualized leg issues MUST reflect the authority the chooser actually picked —
+  the linked-authority attribute on the resulting session equals the selected
+  authority, not a fixed default; any authority value the surface extracts from
+  the chosen flow MUST flow through to the issued session rather than being
+  discarded for a constant. Seeding one authority's outcome and binding every
+  choice to it is the silent-default defect the identity-choice constraint
+  forbids, one level down — the choice is observable but inert. Observable:
+  selecting one authority yields a session linked to that authority; selecting a
+  different one yields a session linked to the different one; no selection
+  resolves to an authority the chooser did not pick.
 - Do NOT call the production backend from the mock adapter to fetch or
   persist session state — the simulated world is owned end-to-end by the
   adapter and its chosen persistence layer.

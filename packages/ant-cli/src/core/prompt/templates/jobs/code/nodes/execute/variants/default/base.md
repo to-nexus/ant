@@ -251,6 +251,16 @@ Follow the framework/language-specific setup instructions from:
 - Copy assets if needed
 - If your feature requires new environment variables, update both `.env.example` and `.env`
 
+### Functional Completeness
+
+**Principle**: A feature task delivers behavior that is functionally COMPLETE for the unit's requirements — not a structural stub. The paired ui task enhances presentation only; it does not supply missing behavior, so any functional gap you leave persists into the running app.
+
+**Constraint — wire every interactive control**: Each input, control, or actionable element you render MUST be bound to the state or handler that makes it do its job — an input to its value and change handler, an action element to its action. A control rendered with no binding is inert: it looks interactive but does nothing, and the result reads as broken regardless of styling.
+
+**Constraint — implement permission/role-gated rendering**: When the requirements restrict an action or surface to certain roles/permissions and the current identity's role/permission is available to the unit, render that action/surface CONDITIONALLY on it — a restricted control appears only to identities the requirement admits. Rendering a restricted action unconditionally is a functional defect, not a styling concern; the gate is behavior the feature task owns.
+
+**Observable**: From the running unit, every control changes state or triggers its action when actuated, and a role-restricted action is present for an admitting identity and absent for a non-admitting one.
+
 ### Sibling-Convention Observation
 
 **Principle**: Before creating a new source file, observe at least one existing sibling file in the same directory. Match the observed export style, import style, file-name casing, and type-annotation style exactly.
@@ -372,13 +382,13 @@ Sub-role is determined by priority:
 
 {{#if currentTask}}
 {{#if (eq currentTask.type "ui")}}
-## 🖌️ UI TASK: Visual Styling Pass
+## 🖌️ UI TASK: Visual Enhancement Pass
 
-**Scope**: Apply visual styling to skeleton files. Create and modify only the files listed in the plan.
+**Scope**: Enhance the visual presentation of the functionally-complete component files the paired feature task produced. Create and modify the files listed in the plan; when an enhancement genuinely requires it you MAY add supporting modules, dependencies, or logic, extract sub-components, and touch shared / sibling presentation for integration (see "Converge on existing infrastructure" below).
 
-**DOM contract**: Preserve the skeleton's element structure. Adding visual attributes (classes, inline styles, data attributes) is allowed. Adding, removing, or renaming DOM elements is NOT allowed.
+**Functional non-regression**: The component you receive is functionally complete — its functional behavior is the contract you MUST NOT regress. Every binding whose removal would break a user-facing requirement (an event handler, data read/write wiring, a routing/navigation target, a permission/role-gated branch, a form submission/validation) keeps working. You are NOT limited to visual attributes: an enhancement goal MAY legitimately add presentational logic, hooks, state, or dependencies — animation, transition, hover/focus/scroll interactivity, layout measurement, responsive behavior — add what the enhancement needs. Replacing an implementation with an equivalent one that preserves the same functional behavior is allowed; silently dropping, no-op-ing, or breaking existing behavior is not. If a visual goal seems to require removing a functional binding, that is out of scope — style around it.
 
-**File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
+**Converge on existing infrastructure**: Before adding anything, observe what the project already provides — both shared visual primitives and shared logic — and build on it; do NOT re-invent a local copy or stand up a duplicate path (that fragments the codebase). Do NOT fork or redefine the design-system token foundation — extend it.
 
 {{#if hasUi}}
 **Visual source**: Interpreted per the UI Source section above (ant / figma / handoff). Apply the source-specific reading rules defined there.
@@ -390,7 +400,7 @@ Sub-role is determined by priority:
 {{> jobs/code/nodes/execute/injections/attestation}}
 {{/if}}
 
-**Actions:** Read skeleton files → implement styles and component extractions per plan →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
+**Actions:** Read the functionally-complete component files → implement the visual enhancement (styling, plus any supporting logic/extraction it requires) while preserving functional behavior →{{#if requiresAttestation}} Attest contracts →{{/if}} Output `<done>true</done>`
 
 {{/if}}
 {{/if}}

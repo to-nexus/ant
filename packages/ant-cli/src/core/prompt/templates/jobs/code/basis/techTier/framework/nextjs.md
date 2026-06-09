@@ -17,6 +17,8 @@ The framework still REQUIRES the root coordinate `app/page.tsx` to exist. Route 
 
 A `(group)` segment is **excluded from the URL**: a page at `app/(auth)/login/page.tsx` is served at `/login`, NOT `/auth/login`. Navigation targets (`router.push`/`replace`, `<Link href>`, `redirect()`, middleware rewrites) MUST equal the URL the route tree produces — every parenthesized segment dropped — derived from the route folders, not from intent. If a segment must appear in the URL, use a plain folder (`app/auth/login/`), not a group.
 
+A `(group)` also decides which `layout.tsx` wraps a route. A route authored OUTSIDE a group does NOT receive that group's layout — so placing a detail/create route at `app/boards/[id]/sessions/new/page.tsx` while its parent list lives under `app/(app)/boards/page.tsx` renders it WITHOUT the `(app)` group's shared shell (side nav, app frame), and navigating into it visibly unmounts that shell. A nested or detail/create route MUST live under the SAME group as its parent surface (e.g. `app/(app)/boards/[board_id]/sessions/[session_id]/page.tsx`) so the shared layout persists across navigation. A navigation target whose path has NO route file does not fail at build: it silently falls through to a sibling dynamic segment that happens to match (a target `/boards/new` with no `boards/new/page.tsx` resolves `boards/[board_id]` with `board_id = "new"`) or 404s at runtime — so a route a target points at must actually exist, and entity routes are keyed by id, never a display name (`/boards/{boardId}`, not `/boards/{boardName}`).
+
 ## Forbidden Patterns
 
 - `typeof window` / `document` guards that change JSX between server render and client initial render → hydration mismatch.

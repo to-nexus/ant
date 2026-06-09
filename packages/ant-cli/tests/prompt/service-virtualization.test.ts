@@ -551,6 +551,22 @@ describe('service-virtualization — legacy artifacts removed', () => {
   });
 });
 
+describe('service-virtualization — request-responsiveness + per-authority fidelity (RCA: green-basing-helix)', () => {
+  it('data partial mandates the read endpoint applies request inputs to the seeded dataset', () => {
+    const src = fs.readFileSync(PARTIAL_DATA, 'utf-8');
+    expect(src).toMatch(/Request-responsiveness/i);
+    expect(src.toLowerCase()).toContain('seeded dataset');
+    expect(src).toMatch(/filter, search, sort, pagination/i);
+    expect(src).toMatch(/changing a selecting input changes the returned set/i);
+  });
+
+  it('session partial mandates per-authority fidelity (linked authority equals the chooser pick)', () => {
+    const src = fs.readFileSync(PARTIAL_SESSION, 'utf-8');
+    expect(src).toMatch(/linked-authority|linked authority/i);
+    expect(src).toMatch(/the chooser actually picked|did not pick/i);
+  });
+});
+
 function walk(dir: string, visit: (file: string) => void): void {
   if (!fs.existsSync(dir)) return;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

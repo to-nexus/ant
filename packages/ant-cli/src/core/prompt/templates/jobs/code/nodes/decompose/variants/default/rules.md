@@ -282,10 +282,10 @@ CRITICAL:
 | Type | Principle | When to use |
 |------|-----------|-------------|
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
-| `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
+| `"feature"` | Something **new** — headless | Source code, logic, APIs. Delivers functionally complete behavior in visually unstyled form — all interactive behavior present and working; "unstyled" is missing visual polish, NOT a non-functional stub |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
-| `"ui"` | Visual **implementation** | Apply styles to a renderable feature skeleton. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–699). See UI pairing rule in Independent Output Unit Splitting. |
+| `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–699). See UI pairing rule in Independent Output Unit Splitting. |
 | `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 700). See Test Generation Task section for inclusion rubric. |
 | `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 800). See Documentation Task section. |
 | `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
@@ -874,6 +874,22 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Constraint**: Do NOT assign host-entry responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
 
 **Blind spot**: Integration conflicts are EASILY CAUSED when parallel feature tasks independently edit the same host-entry file. If 2+ parallel groups register into the same host entry, an integration task is almost certainly needed. (Per-unit entries do not cause this — each is owned by one authoring task.)
+
+---
+
+## Shared Decisions
+
+The integration points above are ONE kind of a broader class. A **shared decision** is any choice that more than one unit must resolve identically for the system to cohere. Integrating into a host-entry file is the case where the shared thing is a physical file; but many shared decisions are not a single file — an addressing scheme, an access contract, a cross-unit vocabulary — and these diverge silently when each unit decides locally, because nothing forces convergence and no compiler flags the mismatch.
+
+**Principle**: A decision that multiple units must agree on is NOT a per-unit decision. It is owned by exactly ONE producer task and consumed by the rest. Assign the producer to the band its dependency POSITION implies — a pure contract many units type against is `foundation`; a shared runtime surface many units build on is `platform`; reconciling already-built units is `integration`. An ordinary consumer task never decides locally what a sibling must match; it consumes the producer's decision. Where the shared owner does not yet exist, that is a missing producer to surface and schedule — not a thing to re-decide independently in each unit. (The host-entry integration task and the hoist-shared-adapters-to-foundation blind spot above are both instances of this principle.)
+
+**Recognition is a TEST, not a list**: Before treating any choice as local, apply one test — *would another unit have to make the SAME choice for the system to cohere?* If yes, it is a shared decision and belongs to a single owner. This test governs; the forms below are common shapes it takes, NOT a closed checklist — apply the test to any surface, including kinds not named here (for example a shared message/event convention, a permission/role model, an error/status convention). Identify each by its dependency RELATION — *one unit produces it, others depend on it* — never by a specific file or class name:
+
+- units that point at one another through a shared **addressing / navigation scheme** — one unit's address is referenced by another;
+- units that read or write through a shared **access contract / boundary** — one unit's boundary is called or consumed by another (bypassing your own boundary, or absorbing another unit's responsibility into yours, is the same divergence);
+- units that render or compose through a shared **cross-unit vocabulary / primitive** — one unit's definition is referenced by another.
+
+**Observable**: every shared decision resolves to exactly one producer the others consume; no two units carry their own divergent copy of the same cross-unit choice.
 
 ---
 
