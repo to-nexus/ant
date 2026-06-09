@@ -24,6 +24,7 @@ before authoring the body:
 | Quantity coverage | What state coverage does the surface need? | Provide enough fake records to render: empty / one / a handful / a long list — match the surface that consumes them |
 | Cross-entity invariant | Do entities reference each other? | Foreign-key style invariants MUST hold (an order's user reference resolves to an actual user record) |
 | Temporal plausibility | Are timestamps and durations human-believable? | Bound dates to a recent window, durations to plausible ranges; do NOT emit zero-epoch values |
+| Request-responsiveness | Does the operation take inputs that select or shape which records it returns (filter, search, sort, pagination)? | The returned set is a FUNCTION of those inputs applied to the seeded dataset — a filter narrows it, a search matches within it, a sort orders it, a page bounds it. Returning the whole dataset regardless of the inputs makes every such control on the consuming surface inert |
 
 ### Constraints
 
@@ -38,6 +39,14 @@ before authoring the body:
   formatter accepts, a value within the set the consumer switches on, a number
   inside the consumer's valid range, an id whose shape the consumer's lookup or
   route accepts. Domain-plausible but consumer-invalid still renders as broken.
+- A virtualized READ operation MUST apply the request's selecting / shaping
+  inputs (filter, search, sort, pagination parameters) to the seeded dataset
+  before responding — the production endpoint filters, so the virtualized one
+  filters. Pattern-matching the path while discarding the query inputs returns a
+  static dump that makes every filter, search, and sort control on the consuming
+  surface inert. Observable: changing a selecting input changes the returned set
+  (a narrower filter yields fewer records; a search term yields only matches; a
+  different sort reorders; a page returns that slice).
 - The fake body table is part of the virtualized adapter's source — NOT a
   separate runtime fixture loaded from disk at boot
 

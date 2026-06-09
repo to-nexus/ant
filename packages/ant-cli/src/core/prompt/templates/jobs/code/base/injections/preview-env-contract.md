@@ -31,6 +31,14 @@
 - All generated URLs (routes, assets, images) must include this prefix
 - Both server-rendered and client-rendered content must produce identical URLs
 
+### Manually-constructed absolute URLs
+
+**Principle**: The framework auto-prefixes the base path ONLY for URLs produced by its native navigation primitives (declarative links, the router's navigate/push, framework-resolved asset references). A URL string you assemble yourself does NOT pass through that mechanism, so it does NOT receive the prefix automatically.
+
+**Constraint**: Any URL your code constructs by hand MUST include the base-path prefix explicitly, read from the same environment variable the framework config uses (the variable in the Contract table above for the active framework). This applies to — but is not limited to — a same-origin URL built from the runtime origin plus a path, a redirect / callback target (an OAuth `redirect_uri`, an SSO return URL) handed to an external authority, and any programmatic full-page navigation to a string you composed. Concatenating the runtime origin with a bare path (omitting the prefix) yields a URL that resolves only when the app is served at the root and breaks the instant it is served under a path prefix — which every Ant-managed preview is.
+
+⚠️ **Blind spot**: The framework prefixing its own links creates the false impression that ALL URLs are prefixed. The escape hatch is exactly the hand-built absolute URL — most commonly an authority redirect / callback URI assembled from `origin + "/<path>"`. Build it as `origin + <basePath> + "/<path>"`, reading `<basePath>` from the framework's base-path variable in the Contract table.
+
 ### Platform-Injected Variables
 
 **Constraint**: Base path variables (`NEXT_PUBLIC_BASE_PATH`, `VITE_BASE_PATH`, `ANT_BASE_PATH`) are injected by the platform at dev server startup. Do NOT include them in `.env.example` or `.env`. Do NOT list them in task descriptions as environment file targets.

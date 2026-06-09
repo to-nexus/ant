@@ -308,8 +308,10 @@ describe('Template Smoke Tests', () => {
     expect(output).toContain('renderable feature');
     // Zero-ui case (backend-only / CLI-only / library-only) is allowed
     expect(output).toContain('ZERO ui tasks');
-    // Globals exclusion: ui tasks never touch global style layer
-    expect(output).toContain('MUST NOT touch global style layer');
+    // Foundation discipline: ui tasks may extend shared/global styles for
+    // enhancement but MUST NOT fork or redefine the design-system token foundation
+    expect(output).toContain('do not redefine the shared style foundation');
+    expect(output).toContain('MUST NOT fork or redefine that foundation');
     // Pairing via parallelGroup (not priority)
     expect(output).toContain('shares its `parallelGroup` with its paired renderable feature');
 
@@ -326,7 +328,7 @@ describe('Template Smoke Tests', () => {
     expect(partialOnly).toContain('UI pairing rule');
     expect(partialOnly).toContain('DISTINCT `parallelGroup`');
     expect(partialOnly).toContain('ui task count equals the renderable feature task count');
-    expect(partialOnly).toContain('globals exclusion');
+    expect(partialOnly).toContain('do not redefine the shared style foundation');
   });
 
   it('setup ANTRULES guidance — 3-condition filter, no forbidden prohibitions (F0 + dep-self-contained refactor)', async () => {
