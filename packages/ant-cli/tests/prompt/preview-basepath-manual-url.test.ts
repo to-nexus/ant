@@ -39,6 +39,14 @@ describe('Axis 4 — preview-env-contract manually-constructed absolute URLs', (
     expect(out).toMatch(/redirect_uri/);
   });
 
+  // iterative-mango 2-4: classboard admin `<SectionHead href="/logs">` rendered a
+  // raw <a href="/logs"> in a shared package, dropping the preview path prefix.
+  // §1's enumeration was imperative-only; it must also name the declarative literal.
+  it('covers declarative literal absolute paths (raw anchor href / asset src)', () => {
+    expect(out).toMatch(/declarative link or asset reference/i);
+    expect(out).toMatch(/anchor `href`/);
+  });
+
   it('stays English-only (no Hangul)', () => {
     expect(out).not.toMatch(/[가-힣]/);
   });

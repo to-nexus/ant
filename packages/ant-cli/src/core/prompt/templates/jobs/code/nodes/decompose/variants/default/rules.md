@@ -889,7 +889,9 @@ The integration points above are ONE kind of a broader class. A **shared decisio
 
 - units that point at one another through a shared **addressing / navigation scheme** — one unit's address is referenced by another;
 - units that read or write through a shared **access contract / boundary** — one unit's boundary is called or consumed by another (bypassing your own boundary, or absorbing another unit's responsibility into yours, is the same divergence);
-- units that render or compose through a shared **cross-unit vocabulary / primitive** — one unit's definition is referenced by another.
+- units that render or compose through a shared **cross-unit vocabulary / primitive** — one unit's definition is referenced by another;
+- a **navigation-capable primitive shared across apps/packages** — a framework-agnostic shared component cannot reach the consuming framework's router / link primitive, so the navigation mechanism (a link component, or a base-path-aware target the consumer injects) is the shared decision the consumer owns; the shared component MUST NOT emit a raw literal absolute path that bypasses the consumer's base-path-aware navigation;
+- a **sign-in / identity entry an identity-gated app depends on** — when any surface gates on identity, a reachable sign-in entry unit (the normal authority-selection → identity-choice flow) is the shared decision that app depends on; schedule it as a producer unit rather than letting the app silently skip it by auto-binding a default identity.
 
 **Observable**: every shared decision resolves to exactly one producer the others consume; no two units carry their own divergent copy of the same cross-unit choice.
 
