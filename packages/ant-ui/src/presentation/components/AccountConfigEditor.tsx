@@ -344,9 +344,7 @@ export function AccountConfigEditor({
           : []),
         { id: 'c3a-owners', label: t('account.tocOwners'), icon: 'Users' },
         { id: 'c3a-figma', label: t('account.tocFigma'), icon: 'Palette' },
-        ...(userOrgKind === 'individual' || userOrgKind === 'team'
-          ? [{ id: 'c3a-billing', label: t('account.tocBilling', 'Billing'), icon: 'CreditCard' as const }]
-          : []),
+        { id: 'c3a-billing', label: t('account.tocBilling', 'Billing'), icon: 'CreditCard' as const },
         {
           id: 'c3a-danger',
           label: t('account.tocDanger'),
@@ -881,9 +879,9 @@ export function AccountConfigEditor({
           />
 
           {/* ============================
-              Billing & Usage (individual / team only — local has no billing)
+              Billing & Usage (all modes incl. local — transparent usage/cost)
               ============================ */}
-          {(userOrgKind === 'individual' || userOrgKind === 'team') && <BillingUsageSection />}
+          <BillingUsageSection />
 
           {/* ============================
               Section 4 — Danger Zone
