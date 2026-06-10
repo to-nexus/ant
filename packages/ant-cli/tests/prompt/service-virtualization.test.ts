@@ -625,6 +625,48 @@ describe('service-virtualization — request-responsiveness + per-authority fide
   });
 });
 
+describe('service-virtualization — navigable-target reachability owned by the always-on contract (RCA: misty-bringing-novel)', () => {
+  // Root cause: the rule that rejects an external/placeholder authorize URL
+  // lived ONLY in the gated + self-narrowed session auth-flow block, so it was
+  // never on the reasoning path when `postOAuthAuthorize` was authored as one
+  // method among many on an omnibus data adapter. The always-on contract layer
+  // (parity + usability) was satisfied by the external placeholder. Fix lifts
+  // the closed-system reachability DEFINITION into the always-on usability rule
+  // so it binds every adapter method; session defers to it (matching the
+  // partial's own "closed-system invariant" defer-to-contract row).
+
+  it('contract: defines a navigable target as resolving within the closed system at the app own origin', () => {
+    const src = read(PARTIAL_CONTRACT);
+    expect(src).toMatch(/navigable target/i);
+    expect(src).toMatch(/closed system/i);
+    expect(src).toMatch(/own runtime origin|own origin/i);
+    // the external/placeholder host is named as the defect
+    expect(src).toMatch(/external or placeholder host|\*\.example/i);
+  });
+
+  it('contract: the reachability requirement is unconditional — every adapter method, not only a dedicated auth/redirect adapter', () => {
+    const src = read(PARTIAL_CONTRACT);
+    expect(src).toMatch(/unconditional/i);
+    expect(src).toMatch(/every method of\s+every virtualized adapter/i);
+    // explicitly targets the omnibus-adapter blind spot
+    expect(src).toMatch(/folded among many data methods/i);
+  });
+
+  it('contract: parity rule is bounded — identical observable shape excludes mirroring an external host', () => {
+    const src = read(PARTIAL_CONTRACT);
+    expect(src).toMatch(/"Observable shape"/);
+    expect(src).toMatch(/resolves INSIDE the closed system/);
+    expect(src).toMatch(/never by\s+mirroring the external host/i);
+  });
+
+  it('session: auth-entry defers to the contract navigable-target rule and names the no-op-redirect defect', () => {
+    const src = read(PARTIAL_SESSION);
+    expect(src).toMatch(/navigable-target rule|navigable target/i);
+    expect(src).toMatch(/service-virtualization-contract/);
+    expect(src).toMatch(/no-op/i);
+  });
+});
+
 function walk(dir: string, visit: (file: string) => void): void {
   if (!fs.existsSync(dir)) return;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
