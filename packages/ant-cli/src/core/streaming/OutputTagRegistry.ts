@@ -585,7 +585,7 @@ register({
   },
   extract: (text) => extractTagBody(text, 'antrules-decision'),
   promptContract:
-    'Emit `<antrules-decision>none|write|update</antrules-decision>` followed by a `<reply>` justification (≥10 chars) before `<done>true</done>` on Tier 3/4 final verification. `none` = no 3-condition entry found; `write` = file did not exist + new entry found; `update` = file exists + new entry found.',
+    'Emit `<antrules-decision>none|write|update</antrules-decision>` as text in your reply (NOT a callable tool — never issue it as a tool call) followed by a `<reply>` justification (≥10 chars) before `<done>true</done>` on Tier 3/4 final verification. `none` = no 3-condition entry found; `write` = file did not exist + new entry found; `update` = file exists + new entry found.',
 });
 
 // ── decision axis ──────────────────────────────────────────────────────────

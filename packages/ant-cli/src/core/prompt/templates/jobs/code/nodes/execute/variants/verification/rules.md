@@ -101,6 +101,8 @@ Matrix — apply the filter to the kind of deviation at hand:
 
 ### Mandatory decision emit before `<done>true</done>`
 
+`<antrules-decision>` is an XML output tag you **emit as literal text in your reply** — same family as `<reply>` and `<done>`. It is NOT a callable tool and is absent from the tool list; never issue it as a tool call.
+
 Before emitting `<done>true</done>`, you MUST emit exactly one `<antrules-decision>` tag followed by one `<reply>` justification of ≥10 characters. This makes the filter-result explicit so the gate sees that the check ran (preventing silent skip).
 
 Valid values:
@@ -131,7 +133,7 @@ Example — deviation found:
 <done>true</done>
 ```
 
-**Constraint**: Omitting the `<antrules-decision>` tag, providing a justification under 10 characters, or using a value outside `none|write|update` fails the verification gate (within the existing retry budget).
+**Constraint**: Emit `<antrules-decision>` as text in the reply — do NOT call it as a tool (it is not a tool; a tool call returns "Unknown tool" and wastes the turn). Omitting the tag, providing a justification under 10 characters, or using a value outside `none|write|update` fails the verification gate (within the existing retry budget).
 
 ---
 

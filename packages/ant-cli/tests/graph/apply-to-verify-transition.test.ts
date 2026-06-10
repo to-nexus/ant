@@ -253,3 +253,63 @@ describe('executeRouter Safety Net A — recursion-budget drain (proud-flowing-r
     expect(routeAfterExecute(state)).toBe('execute');
   });
 });
+
+describe('executeRouter Safety Net B — tool-dispatch failure coverage (tight-drafting-lever regression)', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  // Mirrors what the tool node now records when the model calls the
+  // `<antrules-decision>` TAG as a (non-existent) tool: each "Unknown tool"
+  // failure lands in commandHistory so detectRecentToolFailures sees it.
+  function toolFailures(n: number, command = 'tool:antrules-decision') {
+    const now = Date.now();
+    return Array.from({ length: n }, (_, i) => ({
+      command,
+      timestamp: now - i * 1000,
+      success: false,
+      exitCode: 1,
+      errorSnippet: 'Unknown tool',
+    }));
+  }
+  function verifStateWithHistory(history: any[]): ArchitectGraphState {
+    return {
+      currentTask: {
+        id: 'final-verification',
+        name: '최종 검증',
+        description: 'tier 3 dedicated verification task',
+        type: 'verification',
+        priority: 1000,
+      } as any,
+      _activePhase: 'execute',
+      // Pending tool call present → without Safety Net B this routes to 'tool'
+      // (the execute↔tool loop). Safety Net B (checked first) must win at ≥5.
+      llmResponse: {
+        done: false, thinking: '', textResponse: '',
+        toolCalls: [{ id: 'c1', name: 'antrules-decision', args: {} }],
+      } as any,
+      recursionCount: 5,
+      recursionLimit: 200,
+      commandHistory: history,
+      context: { featurePath: undefined, featureFolder: undefined } as any,
+      _httpJobId: undefined,
+    } as any;
+  }
+
+  it('breaks the antrules-decision tag-as-tool loop: 5 recorded tool-dispatch failures + pending tool call → checkTaskStatus', () => {
+    const state = verifStateWithHistory(toolFailures(5));
+    expect(routeAfterExecute(state)).toBe('checkTaskStatus');
+  });
+
+  it('does not fire below threshold: 4 failures + pending tool call → tool (loop continues until recorded failures reach 5)', () => {
+    const state = verifStateWithHistory(toolFailures(4));
+    expect(routeAfterExecute(state)).toBe('tool');
+  });
+});
