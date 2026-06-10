@@ -225,6 +225,20 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
           }
         }
       }
+
+      // Safety Net B coverage (RCA `tight-drafting-lever`): non-run_command
+      // tool failures (e.g. "Unknown tool" from a tag-as-tool call) emit no
+      // `commandExecuted` side-effect, so they evaded detectRecentToolFailures
+      // and let the execute↔tool loop burn to recursion_limit. Record them too
+      // (run_command already recorded above → skip to avoid double counting).
+      if (event.result.error && !effects.some(e => e.type === 'commandExecuted')) {
+        updateCommandHistory(
+          state,
+          { command: `tool:${event.toolName}`, success: false, exitCode: 1 },
+          event.result.error,
+          event.result.content,
+        );
+      }
     },
 
     afterBatch(state, events): Partial<ArchitectGraphState> {
