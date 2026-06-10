@@ -35,6 +35,7 @@
  */
 export const RESERVED_ORG_NAMES: ReadonlySet<string> = new Set([
   'local',
+  'individual', // shared individual-kind org id — system-owned, not a team name
   'system',
   'admin',
   'ant',

@@ -79,6 +79,7 @@ For binding rules with regression-guard test names, see
 - [37-auth-unified-procedure.md](37-auth-unified-procedure.md)
 - [38-service-virtualization.md](38-service-virtualization.md)
 - [39-code-job-prompt-injection-matrix.md](39-code-job-prompt-injection-matrix.md)
+- [40-org-model.md](40-org-model.md) — kind axis, shared `individual` org, account switch, visibility
 
 ### Layout
 

@@ -3,10 +3,27 @@
  * consumed by both ant-site and ant-ui.
  */
 
+/**
+ * Org kind discriminator. MUST stay in lockstep with `@ant/shared`
+ * `OrganizationKind` — mirrored locally because this package is standalone
+ * (no `@ant/shared` dependency; consumed by ant-site too).
+ */
+export type OrgKind = 'local' | 'individual' | 'team';
+
+/** One org the user belongs to (account switcher / `/auth/me` envelope). */
+export interface OrgMembership {
+  organizationId: string;
+  kind: OrgKind;
+  name: string;
+  role: 'owner' | 'member';
+}
+
 export interface AuthUser {
   email: string;
   userId: string;
   organization: string;
+  /** Active org kind. Optional — absent from pre-kind servers. */
+  orgKind?: OrgKind;
   name?: string;
   picture?: string;
 }
@@ -31,6 +48,10 @@ export type AuthMeResult =
   | {
       kind: 'user';
       user: AuthUser;
+      /** Active org context. `null` from pre-envelope servers. */
+      activeOrg: { id: string; kind: OrgKind; name: string } | null;
+      /** All orgs the user belongs to (length 1 = individual-only today). */
+      memberships: OrgMembership[];
       needsOnboarding: boolean;
       suggestedOrganizationName: string | null;
     }

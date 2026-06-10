@@ -18,7 +18,8 @@
  *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir, pruneFileTreeForWorkspaceDomain, uiSourceOfPath, normalizeUiSourceRefs, pickDefaultUiSourceRefs
  *   - artifact-dir-policy.ts: ARTIFACT_DIR_POLICIES, getArtifactDirPolicy, validateFileForDir
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
- *   - deploy.ts             : DeployConfig
+ *   - deploy.ts             : DeployConfig, DeployVisibility
+ *   - org.ts                : OrganizationKind, INDIVIDUAL_ORG_ID, deriveKindFromOrgId
  *   - git.ts                : GitSnapshot, GitUserOperation, GitOperationState, GitPatState, FileChange
  *   - file-resource.ts      : FileResource, FileResourceMeta, FileNode, TemplateReason
  */
@@ -43,6 +44,7 @@ export * from './tier-matrix';
 export * from './rac';
 export * from './prompt-policy-matrix';
 export * from './deploy';
+export * from './org';
 export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';

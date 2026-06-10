@@ -34,9 +34,47 @@ import {
   fetchWithTransportRetry,
   forwardRequestAbort,
   forwardRequestBody,
+  parseCookieHeader,
   streamUpstreamResponse,
 } from './proxyForwarding';
 import { resolveDeployTarget } from './deployRouting';
+
+/**
+ * Minimal JWT-verify surface the gate needs. `undefined` in local mode
+ * (single tenant) → private deploys are owner-accessible by definition.
+ */
+export interface DeployProxyJwtService {
+  verify(token: string): { org: string; sub: string };
+  cookieName?: string;
+}
+
+/**
+ * Decide whether a request may access a private deploy. The owner is the
+ * `(tenantId, userId)` baked into the urlKey; authorization requires a valid
+ * session cookie whose `org`/`sub` match. Local mode (no jwtService) is
+ * always authorized. Any failure returns `false` → caller emits a 404
+ * identical to the genuine-not-found response (no existence leak).
+ *
+ * Team extension point: replace the `payload.sub === userId` check with a
+ * team-membership lookup when team orgs ship.
+ */
+export function isAuthorizedForPrivateDeploy(
+  req: Request,
+  jwtService: DeployProxyJwtService | undefined,
+  cookieName: string,
+  tenantId: string,
+  userId: string,
+): boolean {
+  if (!jwtService) return true; // local mode: single tenant, owner-accessible
+  const token = parseCookieHeader(req.headers.cookie)[cookieName];
+  if (!token) return false;
+  try {
+    const payload = jwtService.verify(token);
+    return payload.org === tenantId && payload.sub === userId;
+  } catch {
+    return false;
+  }
+}
 
 export interface DeployProxyDeps {
   /**
@@ -82,9 +120,18 @@ export interface DeployProxyDeps {
     feature: string,
     status: { phase: string; error?: string },
   ): Promise<void>;
+
+  /**
+   * JWT verifier for the private-deploy access gate. `undefined` in local
+   * mode → private deploys are always owner-accessible.
+   */
+  jwtService?: DeployProxyJwtService;
+  /** Session cookie name (e.g. `JwtService.cookieName`). */
+  cookieName?: string;
 }
 
 export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
+  const cookieName = deps.cookieName ?? 'ant_session';
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const pathAfterDeploy = req.path; // Already has /deploy/ stripped by app.use('/deploy/', ...)
     const segments = pathAfterDeploy.split('/').filter(Boolean);
@@ -107,6 +154,17 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
     // meta.json. Returns null when the deploy is truly unavailable.
     const deployState = await deps.ensureRunning(tenantId, userId, projectId, feature);
     if (!deployState) {
+      res.status(404).json({ error: 'Deploy unavailable' });
+      return;
+    }
+
+    // Private-deploy access gate. On any failure return a 404 IDENTICAL to the
+    // genuine-not-found response above — never 403 — so a private deploy's
+    // existence is not leaked.
+    if (
+      deployState.visibility === 'private' &&
+      !isAuthorizedForPrivateDeploy(req, deps.jwtService, cookieName, tenantId, userId)
+    ) {
       res.status(404).json({ error: 'Deploy unavailable' });
       return;
     }

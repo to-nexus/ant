@@ -12,25 +12,30 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { extractUserContext, isLocalServerMode } from './helpers/userContext';
+import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
 import { OrgConfig } from '../../../../core/types/orgConfig';
-
-/**
- * User-level configuration (per-user overrides)
- * Stored at: {workspaces}/{orgId}/{userId}/.ant/user-config.json
- */
-interface UserConfig {
-  github?: {
-    /** User-level override for default GitHub owner. Takes precedence over org config. null = clear override. */
-    ownerOverride?: string | null;
-  };
-}
+import {
+  UserConfig,
+  getUserConfigPath,
+  readUserConfig,
+  writeUserConfig,
+  readUserVisibility,
+} from './helpers/userConfigStore';
 
 export interface OrgRoutesDeps {
   workspaceResolver: any;
+}
+
+/** Validate an email param: lowercase, single `@`, no path separators. */
+function normalizeEmailParam(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const email = raw.trim().toLowerCase();
+  if (!/^[^\s@:/\\]+@[^\s@:/\\]+\.[^\s@:/\\]+$/.test(email)) return null;
+  if (email.includes('..')) return null;
+  return email;
 }
 
 /**
@@ -38,36 +43,6 @@ export interface OrgRoutesDeps {
  */
 function getOrgConfigPath(workspacesPath: string, orgId: string): string {
   return path.join(workspacesPath, orgId, '.ant', 'org-config.json');
-}
-
-/**
- * Get user config file path
- */
-function getUserConfigPath(workspacesPath: string, orgId: string, userId: string): string {
-  return path.join(workspacesPath, orgId, userId, '.ant', 'user-config.json');
-}
-
-/**
- * Read user config from disk
- */
-async function readUserConfig(workspacesPath: string, orgId: string, userId: string): Promise<UserConfig> {
-  const configPath = getUserConfigPath(workspacesPath, orgId, userId);
-  try {
-    const data = await fs.promises.readFile(configPath, 'utf-8');
-    return JSON.parse(data) as UserConfig;
-  } catch {
-    return {}; // Return empty config if not found
-  }
-}
-
-/**
- * Write user config to disk
- */
-async function writeUserConfig(workspacesPath: string, orgId: string, userId: string, config: UserConfig): Promise<void> {
-  const configPath = getUserConfigPath(workspacesPath, orgId, userId);
-  const dir = path.dirname(configPath);
-  await fs.promises.mkdir(dir, { recursive: true });
-  await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
 }
 
 /**
@@ -98,22 +73,46 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
   const { workspaceResolver } = deps;
 
   /**
+   * Whether the caller may drill into a target member's tree.
+   * - self → always.
+   * - team → same-org peer.
+   * - individual → only when the target's account is public.
+   * - local → self only.
+   */
+  async function canAccessTarget(
+    kind: string,
+    selfUserId: string,
+    targetUserId: string,
+    orgId: string,
+  ): Promise<boolean> {
+    if (targetUserId === selfUserId) return true;
+    if (kind === 'team') return true;
+    if (kind === 'individual') {
+      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+      return (await readUserVisibility(workspacesPath, orgId, targetUserId)) === 'public';
+    }
+    return false;
+  }
+
+  /**
    * GET /api/org/members
-   * List organization members.
+   * List organization members — dispatched by org kind (data-driven, not
+   * server mode):
    *
-   * Cloud mode: enumerates the workspace directory tree under the
-   *   authenticated user's organization, so any sibling user folder
-   *   becomes a transfer recipient candidate.
-   * Local mode: returns the caller alone (`{isSelf:true}`). Local mode
-   *   has no organization concept — even if the workspace happens to
-   *   contain extra user folders (e.g. someone copied another tenant
-   *   tree in), they are NOT members and MUST NOT be eligible recipients.
+   * - `team`: enumerate the workspace directory tree under the org, so any
+   *   sibling user folder becomes a transfer recipient candidate.
+   * - `individual`: self only. The `individual` org is SHARED across every
+   *   cloud user — enumerating it would leak the entire user base. Cross-user
+   *   reach goes through the exact-email `GET /org/members/lookup` instead.
+   * - `local`: self only (no organization concept).
    */
   router.get('/org/members', async (req: Request, res: Response) => {
     try {
       const userContext = extractUserContext(req);
+      const kind = userContext.organizationKind ?? 'local';
 
-      if (isLocalServerMode()) {
+      if (kind !== 'team') {
+        // individual + local: self only.
         return res.json({
           members: [{ userId: userContext.userId, isSelf: true }],
         });
@@ -142,6 +141,45 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
   });
 
   /**
+   * GET /api/org/members/lookup?email=<full-email>
+   * Exact-email recipient lookup for `individual` orgs (file-transfer
+   * search). Returns a candidate ONLY when the target workspace exists AND
+   * that account's visibility is `public`. A miss (not found OR private)
+   * returns an INDISTINGUISHABLE `{ member: null }` so a private account's
+   * existence is never leaked.
+   */
+  router.get('/org/members/lookup', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const kind = userContext.organizationKind ?? 'local';
+      if (kind !== 'individual') {
+        // team uses the browse list; local has no peers.
+        return res.status(400).json({ error: 'Lookup is only available for individual accounts.' });
+      }
+
+      const email = normalizeEmailParam(req.query.email);
+      if (!email) {
+        return res.status(400).json({ error: 'A valid email is required.' });
+      }
+
+      const orgId = userContext.organizationId; // 'individual'
+      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+      const userPath = path.join(workspacesPath, orgId, email);
+
+      const exists = fs.existsSync(userPath);
+      const visibility = exists ? await readUserVisibility(workspacesPath, orgId, email) : 'private';
+      if (!exists || visibility !== 'public') {
+        // Indistinguishable miss — do not reveal whether the account exists.
+        return res.json({ member: null });
+      }
+
+      res.json({ member: { userId: email, isSelf: email === userContext.userId } });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'Org');
+    }
+  });
+
+  /**
    * GET /api/org/members/:userId/projects
    * List a member's projects. In local mode only the caller can be
    * queried — other user ids are rejected (no organization concept).
@@ -150,8 +188,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const targetUserId = req.params.userId;
-      if (isLocalServerMode() && targetUserId !== userContext.userId) {
-        return res.status(404).json({ error: 'Member not found in local mode.' });
+      const kind = userContext.organizationKind ?? 'local';
+      if (!(await canAccessTarget(kind, userContext.userId, targetUserId, userContext.organizationId))) {
+        return res.status(404).json({ error: 'Member not found.' });
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
@@ -180,8 +219,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const { userId: targetUserId, projectId } = req.params;
-      if (isLocalServerMode() && targetUserId !== userContext.userId) {
-        return res.status(404).json({ error: 'Member not found in local mode.' });
+      const kind = userContext.organizationKind ?? 'local';
+      if (!(await canAccessTarget(kind, userContext.userId, targetUserId, userContext.organizationId))) {
+        return res.status(404).json({ error: 'Member not found.' });
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
@@ -212,8 +252,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const { userId: targetUserId, projectId, featureId } = req.params;
-      if (isLocalServerMode() && targetUserId !== userContext.userId) {
-        return res.status(404).json({ error: 'Member not found in local mode.' });
+      const kind = userContext.organizationKind ?? 'local';
+      if (!(await canAccessTarget(kind, userContext.userId, targetUserId, userContext.organizationId))) {
+        return res.status(404).json({ error: 'Member not found.' });
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
@@ -269,6 +310,16 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     try {
       const userContext = extractUserContext(req);
       const orgId = userContext.organizationId;
+
+      // Individual accounts have no org-level config — there is no shared
+      // org to own a default repo owner (only the personal owner applies).
+      if ((userContext.organizationKind ?? 'local') === 'individual') {
+        return res.status(403).json({
+          error: 'INDIVIDUAL_NO_ORG_CONFIG',
+          message: 'Individual accounts have no organization-level configuration.',
+        });
+      }
+
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
 
       // Read existing config and deep merge
@@ -328,6 +379,10 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
           ...existing.github,
           ...updates.github,
         },
+        account: {
+          ...existing.account,
+          ...updates.account,
+        },
       };
 
       // Clean up undefined values
@@ -336,6 +391,12 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
       if (merged.github && Object.keys(merged.github).length === 0) {
         delete merged.github;
+      }
+      if (merged.account && merged.account.visibility == null) {
+        delete merged.account.visibility;
+      }
+      if (merged.account && Object.keys(merged.account).length === 0) {
+        delete merged.account;
       }
 
       await writeUserConfig(workspacesPath, userContext.organizationId, userContext.userId, merged);

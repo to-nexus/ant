@@ -10,11 +10,19 @@
  * forward compatibility now).
  */
 
+import type { OrganizationKind } from '@ant/shared';
+
 export interface Organization {
   /** Slugified organization id — primary key. */
   id: string;
   /** Original user-supplied display name (preserves casing/whitespace). */
   name: string;
+  /**
+   * Org kind discriminator. Optional for forward/backward compatibility with
+   * records written before the kind axis existed — readers fall back to
+   * `deriveKindFromOrgId(id)`.
+   */
+  kind?: OrganizationKind;
   /** Owner user id — null in the current "free join" model. */
   ownerId: string | null;
   /** ISO-8601 timestamp. */

@@ -2,11 +2,21 @@ import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
+import type { OrganizationKind } from '@ant/shared';
+import type { OrgMembership } from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
   setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
-  setUser: (email: string, organization: string, name?: string, picture?: string) => void;
+  setUser: (
+    email: string,
+    organization: string,
+    name?: string,
+    picture?: string,
+    userId?: string,
+    orgKind?: OrganizationKind,
+    memberships?: OrgMembership[],
+  ) => void;
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
   /**
@@ -36,6 +46,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   userOrganization: undefined,
   userName: undefined,
   userPicture: undefined,
+  userId: undefined,
+  userOrgKind: undefined,
+  memberships: [],
   authStatus: initialAuthStatus,
   needsOnboarding: false,
   suggestedOrganizationName: null,
@@ -111,18 +124,22 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     }
   },
 
-  setUser: (email, organization, name, picture) => {
+  setUser: (email, organization, name, picture, userId, orgKind, memberships) => {
     set({
       userEmail: email,
       userOrganization: organization,
       userName: name,
       userPicture: picture,
+      userId,
+      userOrgKind: orgKind,
+      memberships: memberships ?? [],
       authStatus: 'verified',
     });
     saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
     saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
-    // `userName` / `userPicture` are derived from the JWT and replayed on every
-    // `/auth/me`, so we intentionally skip localStorage persistence.
+    // `userName` / `userPicture` / `userId` / `userOrgKind` / `memberships` are
+    // derived from the JWT and replayed on every `/auth/me`, so we intentionally
+    // skip localStorage persistence.
   },
 
   setAuthStatus: (status) => set({ authStatus: status }),
@@ -145,6 +162,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       userOrganization: undefined,
       userName: undefined,
       userPicture: undefined,
+      userId: undefined,
+      userOrgKind: undefined,
+      memberships: [],
       authStatus: 'expired',
       needsOnboarding: false,
       suggestedOrganizationName: null,

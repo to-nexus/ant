@@ -20,6 +20,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { DeployFramework } from '../../core/ports/portRegistry';
+import type { DeployVisibility } from '@ant/shared';
 
 export interface DeployMetaPackage {
   /** Original package name (e.g. "apps/web"). UI display value. */
@@ -53,6 +54,12 @@ export interface DeployMeta {
   feature: string;
   workspacePath: string;
   packages: DeployMetaPackage[];
+  /**
+   * Access visibility for this deploy build. Absent on records written
+   * before the visibility field existed — `read()` defaults them to
+   * `'public'` (the historical, always-served behavior).
+   */
+  visibility?: DeployVisibility;
   createdAt: string;
   updatedAt: string;
 }
@@ -106,6 +113,7 @@ function liftV1(meta: DeployMetaV1): DeployMeta {
         urlKey: meta.urlKey,
       },
     ],
+    visibility: 'public', // v1 deploys predate visibility — served publicly.
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
   };
@@ -124,7 +132,11 @@ export class DeployMetaStore {
     try {
       const raw = await fs.readFile(metaPath(workspacePath), 'utf8');
       const parsed = JSON.parse(raw) as DeployMeta | DeployMetaV1;
-      if (parsed.version === 2) return parsed;
+      if (parsed.version === 2) {
+        // Records written before the visibility field default to public.
+        if (parsed.visibility == null) parsed.visibility = 'public';
+        return parsed;
+      }
       if (parsed.version === 1) return liftV1(parsed);
       // Unknown / future version → ignore (caller will treat as "no meta").
       return null;

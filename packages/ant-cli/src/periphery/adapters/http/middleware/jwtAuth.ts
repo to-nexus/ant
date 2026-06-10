@@ -17,6 +17,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { JwtService, JwtPayload } from '../../../../infrastructure/auth/JwtService';
 import { logger } from '../../../../utils/logger';
+import { deriveKindFromOrgId } from '@ant/shared';
 
 export interface JwtAuthMiddlewareOptions {
   jwtService: JwtService;
@@ -74,6 +75,7 @@ export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
       req.organization = {
         id: payload.org,
         name: payload.org,
+        kind: payload.kind ?? deriveKindFromOrgId(payload.org),
       };
 
       next();

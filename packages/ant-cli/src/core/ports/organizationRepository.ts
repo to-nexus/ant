@@ -14,10 +14,12 @@
  */
 
 import type { Organization, Membership, MembershipRole, UserRecord } from '../auth/types';
+import type { OrganizationKind } from '@ant/shared';
 
 export interface OrganizationSummary {
   id: string;
   name: string;
+  kind?: OrganizationKind;
 }
 
 export interface OrganizationRepositoryPort {
@@ -34,14 +36,17 @@ export interface OrganizationRepositoryPort {
   getOrCreateOrganization(input: {
     id: string;
     name: string;
+    /** Org kind — defaults to `deriveKindFromOrgId(id)` when omitted. */
+    kind?: OrganizationKind;
     /** Pre-Future-A migration this is always null. */
     ownerId?: string | null;
   }): Promise<Organization>;
 
   /**
    * Substring + case-insensitive search across BOTH the org id and the
-   * display name. Returns `{ id, name }` projections only — no
-   * `ownerId` / `createdAt` leakage to the FE.
+   * display name. Returns `{ id, name, kind }` projections only — no
+   * `ownerId` / `createdAt` leakage to the FE. The shared `individual`
+   * org is NEVER returned (it is not a joinable team).
    */
   searchOrganizations(query: string, limit: number): Promise<OrganizationSummary[]>;
 
@@ -63,6 +68,12 @@ export interface OrganizationRepositoryPort {
 
   /** Every org this user belongs to. Order is unspecified. */
   listUserOrganizations(userId: string): Promise<Organization[]>;
+
+  /**
+   * Every membership of this user (org id + role), for the account
+   * switcher / `/auth/me` envelope. Order is unspecified.
+   */
+  listMembershipsByUser(userId: string): Promise<Membership[]>;
 
   // -------- Users --------
 

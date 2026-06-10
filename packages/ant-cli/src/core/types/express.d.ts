@@ -26,6 +26,7 @@ declare global {
       organization?: {
         id: string;
         name: string;
+        kind?: import('@ant/shared').OrganizationKind;
       };
     }
   }

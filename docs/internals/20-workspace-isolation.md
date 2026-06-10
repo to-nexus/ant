@@ -53,9 +53,13 @@ Feature 디렉토리 구조의 SSOT는 `@ant/shared/canonical.ts`이다. 모든 
 
 `{ANT_WORKSPACE_BASE_PATH}/{tenantId}/` 디렉토리로 물리적 분리. 조직 A는 조직 B의 파일에 접근 불가.
 
+`{tenantId}` 는 org 의 kind 에 따라 `local` / `individual` / `{team-id}` 중 하나다 (org 모델 SSOT: [40-org-model.md](40-org-model.md)). 로컬 모드는 `local/` 만, 클라우드 모드는 active org 에 따라 `individual/` **또는** `{team-id}/` 중 하나만 단독 사용한다 — 두 패밀리는 한 실행에서 공존하지 않는다.
+
 ### 사용자 (User) 레벨
 
 `.../{tenantId}/{userId}/` 디렉토리로 분리. 같은 조직이어도 alice는 bob의 파일에 접근 불가.
+
+클라우드에서 `{userId}` 는 **전체 소문자 이메일**이다 (공유 `individual` org 에서 email-local-part 가 충돌하므로, 그리고 active org 전환 시 신원이 안정적이어야 하므로). 로컬 모드는 `local`. email 의 `@`/`.` 는 모든 대상 FS 에서 안전하며 `:` 를 포함하지 않아 `:`-구분 Redis/세션키도 안전하다 (`assertColonFreeUserId` 가 단일 ingress 에서 강제). 멤버 경로 파라미터는 path-traversal 방어로 `..`/`/`/`:` 를 거부한다.
 
 ### 프로젝트 (Project) 레벨
 

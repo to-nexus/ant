@@ -43,6 +43,21 @@ export function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Parse a raw `Cookie` request header into a name→value map. Used by the
+ * deploy proxy (HTTP gate) and the WS upgrade gate, both of which run BEFORE
+ * `cookie-parser`, so they cannot rely on `req.cookies`.
+ */
+export function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) return {};
+  return Object.fromEntries(
+    cookieHeader.split(';').map((c) => {
+      const [k, ...v] = c.trim().split('=');
+      return [k, v.join('=')];
+    }),
+  );
+}
+
 export interface ForwardingContext {
   externalHost?: string;
   externalProto?: string;

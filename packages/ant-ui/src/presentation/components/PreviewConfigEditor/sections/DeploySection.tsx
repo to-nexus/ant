@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -7,10 +8,13 @@ import {
   ArrowRight,
   Moon,
   Box,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
-import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
+import type { DeployStatus, DeployLogEntry, DeployVisibility } from '@/infrastructure/http/api';
 import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
+import { BoardViewModeToggle } from '@/presentation/components/aurora/BoardViewModeToggle';
 import {
   SectionCard,
   SignalRing,
@@ -132,7 +136,7 @@ export function DeploySection({
    */
   canDeploy: boolean;
   disabledReason: DeployDisabledReason | undefined;
-  onDeploy: () => void;
+  onDeploy: (visibility: DeployVisibility) => void;
   onStopDeploy: () => void;
   /**
    * Open a deploy URL in a new tab.
@@ -143,6 +147,12 @@ export function DeploySection({
   onOpenDeployUrl: (url?: string) => void;
 }) {
   const { t } = useTranslation('explorer');
+
+  // Visibility chosen for the NEXT deploy. Seeds from the current deploy's
+  // visibility (so a re-deploy keeps the prior choice), default public.
+  const [selectedVisibility, setSelectedVisibility] = useState<DeployVisibility>(
+    deployStatus?.visibility ?? 'public',
+  );
 
   const phase = deployStatus?.phase;
 
@@ -215,10 +225,30 @@ export function DeploySection({
           flexWrap: 'wrap',
         }}
       >
+        {!isDeployActive && (
+          <BoardViewModeToggle<DeployVisibility>
+            value={selectedVisibility}
+            onChange={setSelectedVisibility}
+            options={[
+              { id: 'public', label: t('preview.deploy.visibility.public', 'Public'), icon: Globe },
+              { id: 'private', label: t('preview.deploy.visibility.private', 'Private'), icon: Lock },
+            ]}
+            ariaLabel={t('preview.deploy.visibility.label', 'Deploy visibility')}
+          />
+        )}
+        {(isRunning || isHibernated) && deployStatus?.visibility === 'private' && (
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: 'var(--text-3)' }}
+            title={t('preview.deploy.visibility.privateHint', 'Only you can access this deploy')}
+          >
+            <Lock size={12} strokeWidth={2} />
+            {t('preview.deploy.visibility.private', 'Private')}
+          </span>
+        )}
         {!isDeployActive ? (
           <button
             type="button"
-            onClick={onDeploy}
+            onClick={() => onDeploy(selectedVisibility)}
             disabled={isDeployLoading || !canDeploy}
             title={disabledTooltip}
             style={

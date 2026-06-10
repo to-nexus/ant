@@ -124,6 +124,7 @@ describe('Local-mode cross-user isolation', () => {
         organization: 'to.nexus',
         userId: 'probe',
         name: 'Local User',
+        kind: 'local',
       });
     });
 

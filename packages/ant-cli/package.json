@@ -24,7 +24,8 @@
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
     "init:feature": "tsx src/cli/init-cli.ts feature",
     "resume-job": "tsx src/cli/resume-job-cli.ts",
-    "scenario": "tsx scripts/verify-scenario.ts"
+    "scenario": "tsx scripts/verify-scenario.ts",
+    "migrate:individual-org": "tsx scripts/migrate-individual-org.ts"
   },
   "keywords": [],
   "author": "",

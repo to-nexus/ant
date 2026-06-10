@@ -9,11 +9,13 @@
  */
 
 import * as crypto from 'crypto';
+import type { OrganizationKind } from '@ant/shared';
 
 export interface JwtPayload {
-  sub: string;        // userId
+  sub: string;        // userId (full lowercased email in cloud; 'local' in local mode)
   email: string;      // full email
-  org: string;        // organizationId
+  org: string;        // organizationId (active org)
+  kind?: OrganizationKind; // active org kind — optional for BC with pre-kind tokens
   name?: string;      // display name
   picture?: string;   // profile picture URL
   iat: number;        // issued at (epoch seconds)

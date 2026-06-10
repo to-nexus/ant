@@ -3,6 +3,7 @@ import { UserContext } from '../../../../../core/types/user';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver';
+import { INDIVIDUAL_ORG_ID, LOCAL_ORG_ID, deriveKindFromOrgId } from '@ant/shared';
 
 /**
  * Single sink for "is the BE running in local mode?". Reading
@@ -38,7 +39,13 @@ export function inferLocalDefaultTenant(): { organizationId: string; userId: str
       .readdirSync(base, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
-      .filter((name) => name !== 'local' && name !== '.ide-homes' && !name.startsWith('.'));
+      .filter(
+        (name) =>
+          name !== LOCAL_ORG_ID &&
+          name !== INDIVIDUAL_ORG_ID &&
+          name !== '.ide-homes' &&
+          !name.startsWith('.'),
+      );
 
     // If there is exactly one org folder, and exactly one user folder inside it,
     // use that as the implicit default tenant for local development.
@@ -132,6 +139,7 @@ export function extractUserContext(req: Request): UserContext {
     return {
       userId: req.user.id,
       organizationId: req.organization.id,
+      organizationKind: req.organization.kind ?? deriveKindFromOrgId(req.organization.id),
     };
   }
 
@@ -140,7 +148,8 @@ export function extractUserContext(req: Request): UserContext {
     throw new Error('Authentication required: no valid JWT token');
   }
 
-  // Local mode: filesystem inference fallback
+  // Local mode: filesystem inference fallback. Local server mode is local-kind
+  // by definition regardless of which org folder the inference lands on.
   const projectIdFromParams =
     (req.params as any)?.id ||
     (req.params as any)?.projectId ||
@@ -151,6 +160,7 @@ export function extractUserContext(req: Request): UserContext {
   return {
     userId: inferred?.userId || 'local',
     organizationId: inferred?.organizationId || 'local',
+    organizationKind: 'local',
   };
 }
 

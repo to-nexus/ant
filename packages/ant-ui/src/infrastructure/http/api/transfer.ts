@@ -32,9 +32,15 @@ export function transferArtifact(params: {
   return apiPost(`${API_BASE()}/artifacts/transfer`, params);
 }
 
-/** Cross-user transfer request (requires approval) */
+/**
+ * Cross-user transfer request (requires approval).
+ *
+ * `recipient` is addressed by `userId` (team browse) OR `email` (individual
+ * exact-email lookup) — individual identity IS the full email, so the BE
+ * resolves either form to a workspace.
+ */
 export function requestTransfer(params: {
-  recipient: { userId: string; orgId?: string };
+  recipient: { userId?: string; email?: string; orgId?: string };
   source: { projectId: string; featureId: string; path: string };
   destination: { projectId: string; featureId: string; path: string };
 }): Promise<TransferRequest> {

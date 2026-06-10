@@ -23,6 +23,7 @@ import type {
   MembershipRole,
   UserRecord,
 } from '../../core/auth/types';
+import { deriveKindFromOrgId } from '@ant/shared';
 
 const PENDING_ORG_SENTINEL = '_pending';
 
@@ -60,7 +61,11 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     const raw = await this.redis.get(this.orgKey(orgId));
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as Organization;
+      const org = JSON.parse(raw) as Organization;
+      // Records written before the kind axis lack `kind` — derive it so
+      // every caller sees a populated kind.
+      if (!org.kind) org.kind = deriveKindFromOrgId(org.id);
+      return org;
     } catch (err) {
       logger.warn(`[OrgRepo] Corrupt org record for ${orgId}; dropping`, { component: 'OrgRepo' }, err);
       return null;
@@ -70,6 +75,7 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
   async getOrCreateOrganization(input: {
     id: string;
     name: string;
+    kind?: import('@ant/shared').OrganizationKind;
     ownerId?: string | null;
   }): Promise<Organization> {
     const existing = await this.getOrganization(input.id);
@@ -78,6 +84,7 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     const record: Organization = {
       id: input.id,
       name: input.name,
+      kind: input.kind ?? deriveKindFromOrgId(input.id),
       ownerId: input.ownerId ?? null,
       createdAt: nowIso(),
     };
@@ -108,15 +115,12 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     // index grows past ~10k orgs, swap in a RediSearch / Postgres
     // ILIKE backend without changing this port's contract.
     for (const id of orgIds) {
-      if (id.toLowerCase().includes(q)) {
-        const org = await this.getOrganization(id);
-        if (org) matches.push({ id: org.id, name: org.name });
-      } else {
-        const org = await this.getOrganization(id);
-        if (org && org.name.toLowerCase().includes(q)) {
-          matches.push({ id: org.id, name: org.name });
-        }
-      }
+      const org = await this.getOrganization(id);
+      if (!org) continue;
+      // The shared individual org is never a joinable team — exclude it.
+      if (org.kind === 'individual') continue;
+      const hit = id.toLowerCase().includes(q) || org.name.toLowerCase().includes(q);
+      if (hit) matches.push({ id: org.id, name: org.name, kind: org.kind });
       if (matches.length >= cappedLimit) break;
     }
 
@@ -165,6 +169,15 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     if (orgIds.length === 0) return [];
     const orgs = await Promise.all(orgIds.map((id) => this.getOrganization(id)));
     return orgs.filter((o): o is Organization => o !== null);
+  }
+
+  async listMembershipsByUser(userId: string): Promise<Membership[]> {
+    const orgIds = await this.redis.smembers(this.userOrgsKey(userId));
+    if (orgIds.length === 0) return [];
+    const memberships = await Promise.all(
+      orgIds.map((orgId) => this.getMembership(userId, orgId)),
+    );
+    return memberships.filter((m): m is Membership => m !== null);
   }
 
   // -------- Users --------

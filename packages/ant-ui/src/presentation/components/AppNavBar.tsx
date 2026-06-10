@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
 import { useStore } from '@/domain/store';
-import { OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
-import { selectServerMode } from '@/domain/store/selectors/auth';
+import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
+import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +35,8 @@ export function AppNavBar({}: AppNavBarProps) {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
+  const orgDisplayLabel = useStore((state) => selectOrgDisplayLabel(state));
+  const memberships = useStore((state) => state.memberships);
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
@@ -90,6 +92,23 @@ export function AppNavBar({}: AppNavBarProps) {
         );
       },
     });
+  };
+
+  // Switch active org. The active org changes the workspace root, so a full
+  // reload re-runs the mount auth flow + fetches the new org's projects
+  // cleanly. Only reachable with >1 membership (team join — deferred today).
+  const handleSwitchOrg = async (organizationId: string) => {
+    if (organizationId === userOrganization) {
+      setShowUserMenu(false);
+      return;
+    }
+    try {
+      await switchOrg(organizationId);
+      window.location.reload();
+    } catch (err) {
+      console.warn('[Auth] switch-org failed:', err);
+      setShowUserMenu(false);
+    }
   };
 
   // Handle Editor mode switch
@@ -438,7 +457,7 @@ export function AppNavBar({}: AppNavBarProps) {
                           className="hidden md:inline text-xs font-medium"
                           style={{ color: 'var(--text-3)' }}
                         >
-                          {userOrganization}
+                          {orgDisplayLabel}
                         </span>
                         {userPicture ? (
                           <img
@@ -473,6 +492,30 @@ export function AppNavBar({}: AppNavBarProps) {
                           boxShadow: 'var(--shadow-md)',
                         }}
                       >
+                        {memberships.length > 1 && (
+                          <>
+                            <div className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
+                              {t('auth.switchAccount', 'Switch account')}
+                            </div>
+                            {memberships.map((m) => (
+                              <button
+                                key={m.organizationId}
+                                onClick={() => handleSwitchOrg(m.organizationId)}
+                                className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                                style={{ color: 'var(--text-2)' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                <User className="w-4 h-4" />
+                                <span className="truncate">{m.kind === 'individual' ? 'Individual' : m.name}</span>
+                                {m.organizationId === userOrganization && (
+                                  <Check className="w-3.5 h-3.5 ml-auto" style={{ color: 'var(--violet-500)' }} />
+                                )}
+                              </button>
+                            ))}
+                            <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
+                          </>
+                        )}
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);
