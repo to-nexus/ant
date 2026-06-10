@@ -27,6 +27,7 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_CHANNELS } from '../state/redisConstants';
 import { LOCK_DURATION, LOCK_EXTENSION_INTERVAL, STALLED_INTERVAL, CANCELLATION_POLL_INTERVAL } from '../queue/constants';
 import { logger } from '../../utils/logger';
+import { holdIdleSleepAssertion } from './sleepAssertion';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../../core/config/WorkspacePathResolver';
 import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
@@ -573,6 +574,16 @@ export class JobWorker {
     logger.info(`Child process spawned with PID: ${child.pid}`, { component: 'JobWorker', jobId });
 
     this.runningProcesses.set(jobId, child);
+
+    // Hold an OS idle-sleep assertion for this child's lifetime so the host
+    // doesn't suspend mid-job (which would lapse the lock → `system_sleep`
+    // teardown). No-op off macOS/Windows; the watchdog auto-exits with the
+    // child. Kept OUT of runningProcesses — it must stay invisible to the
+    // lock-extension / stalled / kill logic and the stdout line protocol.
+    if (child.pid) {
+      const sleepGuard = holdIdleSleepAssertion(child.pid);
+      if (sleepGuard) extraCleanups.push(() => sleepGuard.kill());
+    }
 
     // --- Diagnostic counters (Change 5) ---
     // Owned by spawnJobProcess so they survive the entire child lifecycle and
