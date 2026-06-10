@@ -36,8 +36,16 @@ import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths
 import type { FeatureContext } from '../../../../../core/context/featureContextBuilder';
 import type { WorkspaceState } from '../triage/types.js';
 import type { DetectResult, MissingPrerequisites, SuggestedAlternative } from './types.js';
-import type { Domain, IntentId } from '@ant/shared';
-import { resolveToRAC, getConfigSlotsForDomain } from '@ant/shared';
+import * as fs from 'fs';
+import * as path from 'path';
+import type { Domain, IntentId, UiSource } from '@ant/shared';
+import {
+  resolveToRAC,
+  getConfigSlotsForDomain,
+  pickUiSourceSubgroupDir,
+  isUiTreeParentPath,
+  ARTIFACT_PREFIX,
+} from '@ant/shared';
 import { ARCHITECT_TOOLS } from '../../../tool/toolSchemas';
 import { buildDetectWhitelist, isWithinDetectWhitelist } from './detectWhitelist.js';
 import { parseDetectResponse, isEmptyDetectResponse } from './parseDetectResponse.js';
@@ -79,10 +87,25 @@ export async function inferRacWithTools(
     throw new Error(`[detect:inferRacWithTools] No matrix entry for intentId="${intentId}"`);
   }
 
+  // `ui-source` slots declare the PARENT dir `visual/ui` and carry the three
+  // hard-exclusive subgroups in `.uiSources`. Resolve each to its single valid
+  // subgroup dir (mirroring the FE `pickDefaultUiSourceRefs`) so the parent dir
+  // never seeds the whitelist / slot summaries — a parent ref would
+  // directory-walk across ant/figma/handoff and produce a mixed pool. Cached
+  // per slot object so slotDirs + summaries + post-parse narrowing agree.
+  const uiSourceDirCache = new Map<unknown, string | null>();
+  const resolveSlotDir = (s: SlotLike): string | null => {
+    if (s.type !== 'ui-source') return s.path ?? null;
+    if (!uiSourceDirCache.has(s)) {
+      uiSourceDirCache.set(s, resolveUiSourceDir(s, featurePath, input.workspaceState));
+    }
+    return uiSourceDirCache.get(s) ?? null;
+  };
+
   const slotDirs = [
-    ...slots.refs.map(s => s.path).filter(Boolean),
-    ...slots.context.map(s => s.path).filter(Boolean),
-  ];
+    ...slots.refs.map(resolveSlotDir),
+    ...slots.context.map(resolveSlotDir),
+  ].filter((d): d is string => !!d);
   // target.dir is only present for the 'generate' kind; revise / chat-only /
   // codebase have no static target directory to seed the whitelist.
   if (slots.target.kind === 'generate' && slots.target.dir) {
@@ -96,7 +119,7 @@ export async function inferRacWithTools(
   // PromptBuilder.render auto-enriches Codebase Channel vars; the
   // Feature Context Universal Channel only fires through PromptBuilder.build,
   // so we pass featureContext explicitly here to keep the SSOT.
-  const slotSummaries = renderSlotSummaries(slots);
+  const slotSummaries = renderSlotSummaries(slots, resolveSlotDir);
   const vars = {
     intentId,
     domain: input.domain ?? 'service',
@@ -187,12 +210,23 @@ export async function inferRacWithTools(
   }
 
   // ── 6. proceed → RAC + load artifacts ──
+  // Deterministic guarantee: even if the LLM echoes the un-narrowed parent
+  // `visual/ui` (the slot summary path it was originally shown), rewrite it to
+  // the single valid subgroup dir before the RAC is built. `normalizeUiSourceRefs`
+  // inside resolveToRAC cannot do this — a parent path classifies as null and
+  // slips through, then directory-walks across all subgroups (mixed-pool throw).
+  const uiSourceDir =
+    [...slots.refs, ...slots.context]
+      .filter(s => s.type === 'ui-source')
+      .map(resolveSlotDir)
+      .find(d => d != null) ?? null;
+
   const resolvedAction = resolveToRAC(
     intentId,
     {
       target: parsedResp.target,
-      refs: parsedResp.refs,
-      context: parsedResp.context,
+      refs: narrowUiTreeParents(parsedResp.refs, uiSourceDir),
+      context: narrowUiTreeParents(parsedResp.context, uiSourceDir),
       domain: input.domain,
     },
     'infer',
@@ -291,11 +325,13 @@ interface SlotSummary {
   kind?: string;
 }
 
-function renderSlotSummaries(slots: ReturnType<typeof getConfigSlotsForDomain> extends infer R
-  ? R extends null
-    ? never
-    : R
-  : never): SlotSummary[] {
+type ConfigSlots = NonNullable<ReturnType<typeof getConfigSlotsForDomain>>;
+type SlotLike = ConfigSlots['refs'][number];
+
+function renderSlotSummaries(
+  slots: ConfigSlots,
+  resolveDir: (s: SlotLike) => string | null,
+): SlotSummary[] {
   if (!slots) return [];
   const out: SlotSummary[] = [];
   // target — `kind: 'generate'` exposes `dir`; revise / chat-only do not.
@@ -333,22 +369,94 @@ function renderSlotSummaries(slots: ReturnType<typeof getConfigSlotsForDomain> e
     });
   }
   for (const s of slots.refs) {
+    const dir = resolveDir(s);
+    // ui-source slot with no valid subgroup → drop (don't surface the parent dir).
+    if (s.type === 'ui-source' && !dir) continue;
     out.push({
       role: 'refs',
-      path: s.path,
+      path: dir ?? s.path,
       label: s.label.en,
       required: s.required,
       kind: s.type,
     });
   }
   for (const s of slots.context) {
+    const dir = resolveDir(s);
+    if (s.type === 'ui-source' && !dir) continue;
     out.push({
       role: 'context',
-      path: s.path,
+      path: dir ?? s.path,
       label: s.label.en,
       required: s.required,
       kind: s.type,
     });
+  }
+  return out;
+}
+
+/**
+ * Resolve a `type: 'ui-source'` slot to its single valid subgroup directory
+ * (ant > figma > handoff, gated by on-disk validity), or `null` when no
+ * subgroup holds valid files. Validity mirrors the FE / workspaceAnalyzer:
+ *   - ant     → `workspaceState.hasVisualUi`   (ui-tokens/assets/spec.json present)
+ *   - figma   → `workspaceState.hasFigmaConfig` (figma.json populated with a fileKey —
+ *               the scaffolded empty stub is invalid, so it never beats handoff)
+ *   - handoff → `visual/ui/handoff/` holds at least one file
+ */
+function resolveUiSourceDir(
+  slot: SlotLike,
+  featurePath: string | undefined,
+  workspaceState: WorkspaceState | undefined,
+): string | null {
+  const subs = slot.uiSources;
+  if (!subs?.length) return null;
+  const handoffValid =
+    !!featurePath && dirHasAnyFile(path.join(featurePath, ARTIFACT_PREFIX.UI_HANDOFF));
+  const triples = subs.map((s: { id: UiSource; dir: string }) => ({
+    id: s.id,
+    dir: s.dir,
+    hasValidFiles:
+      s.id === 'ant'
+        ? !!workspaceState?.hasVisualUi
+        : s.id === 'figma'
+          ? !!workspaceState?.hasFigmaConfig
+          : s.id === 'handoff'
+            ? handoffValid
+            : false,
+  }));
+  return pickUiSourceSubgroupDir(triples);
+}
+
+/** Recursively test whether a directory contains at least one file. */
+function dirHasAnyFile(dirAbs: string): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const e of entries) {
+    if (e.isFile()) return true;
+    if (e.isDirectory() && dirHasAnyFile(path.join(dirAbs, e.name))) return true;
+  }
+  return false;
+}
+
+/**
+ * Rewrite any un-narrowed UI-tree parent path (`visual/ui`) in a ref/context
+ * list to the single valid subgroup dir; drop it when there is no valid
+ * subgroup. Classified paths (`visual/ui/handoff/...`) and non-UI paths pass
+ * through unchanged. Output is deduped to keep the RAC list clean.
+ */
+function narrowUiTreeParents(
+  paths: string[] | undefined,
+  uiSourceDir: string | null,
+): string[] | undefined {
+  if (!paths?.length) return paths;
+  const out: string[] = [];
+  for (const p of paths) {
+    const next = isUiTreeParentPath(p) ? uiSourceDir : p;
+    if (next && !out.includes(next)) out.push(next);
   }
   return out;
 }

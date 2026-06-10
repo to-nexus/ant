@@ -95,8 +95,26 @@ function appendPath(
   }
 
   if (stat.isDirectory()) {
+    // Defense-in-depth for the hard-exclusive UiSource invariant: a directory
+    // ref must never span more than one subgroup. `validateUiSourceExclusivity`
+    // checks RAC paths only and is blind to an un-narrowed parent `visual/ui`
+    // (which classifies as null) — but walking it sweeps ant/figma/handoff into
+    // one pool. Narrowing is owned upstream (inferRacWithTools /
+    // pickUiSourceSubgroupDir); this throw fires only if a caller bypassed it.
+    const seenUiSources = new Set<UiSource>();
     for (const child of walkDir(absolute)) {
       const rel = path.relative(featurePath, child).split(path.sep).join('/');
+      const childSrc = uiSourceOfPath(rel);
+      if (childSrc) {
+        seenUiSources.add(childSrc);
+        if (seenUiSources.size > 1) {
+          throw new Error(
+            `loadResolvedArtifacts: directory ref "${relativePath}" spans multiple UI sources ` +
+              `(${Array.from(seenUiSources).join(', ')}); a ui-source ref must be narrowed to one ` +
+              `subgroup before RAC resolution (see inferRacWithTools / pickUiSourceSubgroupDir).`,
+          );
+        }
+      }
       if (isHandoffPath(rel)) {
         try {
           const s = fs.statSync(child);

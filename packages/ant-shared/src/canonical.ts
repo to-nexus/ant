@@ -506,6 +506,45 @@ export function pickDefaultUiSourceRefs<F>(
 }
 
 /**
+ * Pick the single valid UiSource subgroup *directory* for a `type: 'ui-source'`
+ * slot — the BE infer-path counterpart of `pickDefaultUiSourceRefs` (which
+ * returns file entries for the FE). Walks `UI_SOURCE_PRIORITY` (ant > figma >
+ * handoff) and returns the first subgroup whose `hasValidFiles` is true, else
+ * `null`.
+ *
+ * `null` means "no valid UI subgroup" — callers MUST drop the slot and NEVER
+ * fall back to the parent `visual/ui` directory: a parent ref is unclassifiable
+ * by `uiSourceOfPath`, so it escapes `normalizeUiSourceRefs` and gets
+ * directory-walked across all three subgroups → mixed-pool throw at
+ * `ArtifactPoolView.uiSource()`. Validity is decided by the caller (disk truth);
+ * this function owns only the priority decision, co-located with
+ * `pickDefaultUiSourceRefs` so a future priority change touches one symbol.
+ */
+export function pickUiSourceSubgroupDir(
+  subgroups: readonly { id: UiSource; dir: string; hasValidFiles: boolean }[] | undefined,
+): string | null {
+  if (!subgroups?.length) return null;
+  for (const id of UI_SOURCE_PRIORITY) {
+    const sg = subgroups.find(s => s.id === id && s.hasValidFiles);
+    if (sg) return sg.dir;
+  }
+  return null;
+}
+
+/**
+ * Whether a path is inside the UI tree but NOT under a specific UiSource
+ * subgroup — i.e. the un-narrowed parent `visual/ui` (or `visual/ui/`). Such a
+ * path is unclassifiable (`uiSourceOfPath` returns null) yet directory-walks
+ * across ant/figma/handoff. The infer path rewrites these to a single subgroup
+ * directory before they reach the RAC; everything classified (e.g.
+ * `visual/ui/handoff/...`) returns false and passes through untouched.
+ */
+export function isUiTreeParentPath(p: string): boolean {
+  const inUiTree = p === ARTIFACT_PREFIX.UI.replace(/\/$/, '') || p.startsWith(ARTIFACT_PREFIX.UI);
+  return inUiTree && uiSourceOfPath(p) === null;
+}
+
+/**
  * Classify a path into its game-art sub-source. Returns null if the path is
  * not under the game-art tree. Mirrors `uiSourceOfPath` shape (D24-revised).
  *
