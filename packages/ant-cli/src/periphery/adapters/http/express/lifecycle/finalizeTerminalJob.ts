@@ -177,6 +177,45 @@ export async function finalizeTerminalJob(
     );
   }
 
+  // 3b. Billing settle — MUST run BEFORE sealJobRedisState (which DELs the
+  //     taskQueue snapshot that carries the per-model usage). Reads the final
+  //     per-model token usage, computes precise USD at list price, debits
+  //     credits (markup applied inside the ledger), and releases the hold.
+  //     Idempotent per jobId; non-fatal (never blocks teardown). Recording is
+  //     always on; only the enqueue 402 gate is flag-guarded.
+  try {
+    if (userContext?.organizationId && userContext?.userId) {
+      const ledger = getInfrastructureFactory().getCreditLedger();
+      const snapshot = await stateStore.getTaskQueue(jobId);
+      const byModel = snapshot?.tokenUsageByModel;
+      if (byModel && Object.keys(byModel).length > 0) {
+        const { computeJobCostUsd, computeModelCostBreakdownUsd } = await import('@ant/shared');
+        const { usd, unknownModelIds } = computeJobCostUsd(byModel as Record<string, any>);
+        await ledger.settle({
+          jobId,
+          orgId: userContext.organizationId,
+          userId: userContext.userId,
+          usdCost: usd,
+          modelBreakdown: computeModelCostBreakdownUsd(byModel as Record<string, any>),
+          projectId,
+          featureName,
+          ...(unknownModelIds.length > 0 && {
+            note: `unknown model fallback: ${unknownModelIds.join(', ')}`,
+          }),
+        });
+      } else {
+        // No usage to debit (e.g. reflex/no-LLM job) — still release any hold.
+        await ledger.releaseHold(jobId);
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `billing settle failed during finalize — proceeding to seal`,
+      { component: COMPONENT, jobId },
+      err,
+    );
+  }
+
   // 4. Seal Redis only. Disk debug artifacts are preserved here and are
   //    scrubbed only in explicit destructive flows (job delete/reset/delete feature).
   await sealJobRedisState(

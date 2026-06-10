@@ -15,6 +15,7 @@ import { createTransferSlice, TransferSlice } from './slices/transferSlice';
 import { createDeploySlice, DeploySlice } from './slices/deploySlice';
 import { createProjectDeletionSlice, ProjectDeletionSlice } from './slices/projectDeletionSlice';
 import { createFeatureDeletionSlice, FeatureDeletionSlice } from './slices/featureDeletionSlice';
+import { createBillingSlice, BillingSlice } from './slices/billingSlice';
 import { createGitWorldSlice, type GitWorldSlice } from '../git-world';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
 
@@ -35,7 +36,8 @@ export type Store = ProjectSlice &
   ResetSlice &
   ChatSlice &
   FeatureLogSlice &
-  TransferSlice;
+  TransferSlice &
+  BillingSlice;
 
 // Initialize persistent state from localStorage
 function initializePersistentState() {
@@ -83,7 +85,8 @@ export const useStore = create<Store>((set, get, store) => {
     ...createDeploySlice(set, get, store),
     ...createProjectDeletionSlice(set, get, store),
     ...createFeatureDeletionSlice(set, get, store),
-    
+    ...createBillingSlice(set, get, store),
+
     // Override with persistent state
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
     mainView: persistent.mainView,

@@ -10,5 +10,6 @@ export type {
   JobTiming,
   TaskTiming,
   TaskTokenUsage,
+  TokenUsageByModel,
   PhaseTokenUsage,
 } from '@ant/shared';

@@ -25,7 +25,7 @@ export type {
 } from '@ant/shared';
 
 // Re-import for local use in this file
-import type { BaseTask, TaskTokenUsage, DecomposableJobType, SessionableJobType, KanbanData } from '@ant/shared';
+import type { BaseTask, TaskTokenUsage, TokenUsageByModel, DecomposableJobType, SessionableJobType, KanbanData } from '@ant/shared';
 
 // ============================================
 // Task Queue Snapshot (Backend-only: Redis Storage)
@@ -45,6 +45,8 @@ export interface TaskQueueSnapshot {
   recursionCount: number;
   recursionLimit: number;
   tokenUsage?: TaskTokenUsage;
+  /** Per-model job-level usage — billing settle SSOT (priced per model). */
+  tokenUsageByModel?: TokenUsageByModel;
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   currentPhaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];

@@ -36,7 +36,9 @@
     "estimating": "계획:",
     "outputDescription": "과금 · 캐시 불가",
     "noTokenData": "토큰 사용 데이터 없음",
-    "overhead": "기타"
+    "overhead": "기타",
+    "creditsConsumed": "사용 크레딧",
+    "estimatedCost": "비용 (USD)"
   },
   "task": {
     "paused": "일시정지",

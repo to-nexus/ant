@@ -12,7 +12,7 @@
  */
 
 import { BaseTask, TaskTokenUsage } from '../types/task';
-import type { JobTiming, PhaseTokenUsage } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel } from '@ant/shared';
 
 export interface TaskQueueUpdatePort {
   /**
@@ -63,6 +63,14 @@ export interface TaskQueueUpdatePort {
    * (triage, detect, decompose) so the frontend badge updates in real-time.
    */
   updateTokenUsage?(tokenUsage: TaskTokenUsage): void;
+
+  /**
+   * Update the per-model job-level token usage breakdown. Cached and included
+   * in every subsequent broadcast + persisted Redis snapshot so the billing
+   * settle hook can price each model's tokens at its own rate. SSOT for
+   * accurate cost — `tokenUsage` is the model-agnostic sum.
+   */
+  updateTokenUsageByModel?(byModel: TokenUsageByModel): void;
 
   /**
    * Snapshot estimating phase token usage (detect + decompose, before tasks).

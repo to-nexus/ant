@@ -170,7 +170,7 @@ export async function generatePlanText(
     }
   }
 
-  const { logTokenUsageToFile } = await import('../../../../../../common/graph/llmHelpers');
+  const { logTokenUsageToFile, resolveModelIdSafe } = await import('../../../../../../common/graph/llmHelpers');
   if (capturedUsage) {
     logTokenUsageToFile(
       state.context?.featurePath,
@@ -181,6 +181,7 @@ export async function generatePlanText(
         taskName: state.currentTask?.name || 'unknown',
         node: 'plan-planGen',
         callIndex: 0,
+        modelId: resolveModelIdSafe(state),
         nodeHistoryLength: 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: 0,

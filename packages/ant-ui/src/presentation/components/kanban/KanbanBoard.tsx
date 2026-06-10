@@ -83,6 +83,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <TokenUsageBadge 
               jobId={kanbanData.jobId}
               tokenUsage={kanbanData.tokenUsage}
+              tokenUsageByModel={kanbanData.tokenUsageByModel}
               estimatingTokenUsage={kanbanData.estimatingTokenUsage}
               completedTasks={kanbanData.completed?.map(task => ({
                 id: task.id || task.name,
@@ -143,6 +144,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <TokenUsageBadge 
             jobId={kanbanData.jobId}
             tokenUsage={kanbanData.tokenUsage}
+            tokenUsageByModel={kanbanData.tokenUsageByModel}
             estimatingTokenUsage={kanbanData.estimatingTokenUsage}
             phaseTokenUsages={kanbanData.phaseTokenUsages}
             completedTasks={kanbanData.completed?.map(task => ({

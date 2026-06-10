@@ -139,7 +139,7 @@ export async function generateTaskKeywords(
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
-    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../../common/graph/llmHelpers');
+    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage, resolveModelIdSafe } = await import('../../../../../../common/graph/llmHelpers');
     const beforeUsage = getTaskTokenUsage(state);
     const response = await invokeWithTracking(
       llm,
@@ -166,6 +166,7 @@ export async function generateTaskKeywords(
         taskName: state.currentTask?.name || 'unknown',
         node: 'plan-keyword',
         callIndex: 0,
+        modelId: resolveModelIdSafe(state),
         nodeHistoryLength: 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: beforeUsage.inputTokens,

@@ -6,6 +6,7 @@ import { LocalUserBadge } from './auth/LocalUserBadge';
 import { useStore } from '@/domain/store';
 import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
+import { formatCredits } from '@/shared/utils/tokenUtils';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +38,9 @@ export function AppNavBar({}: AppNavBarProps) {
   const userOrganization = useStore((state) => state.userOrganization);
   const orgDisplayLabel = useStore((state) => selectOrgDisplayLabel(state));
   const memberships = useStore((state) => state.memberships);
+  const userOrgKind = useStore((state) => state.userOrgKind);
+  const billingBalance = useStore((state) => state.billingBalance);
+  const refreshBalance = useStore((state) => state.refreshBalance);
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
@@ -48,6 +52,12 @@ export function AppNavBar({}: AppNavBarProps) {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
+
+  // Refresh credit balance when signed in to a billed tenant (individual/team).
+  const isBilledTenant = userOrgKind === 'individual' || userOrgKind === 'team';
+  useEffect(() => {
+    if (isBilledTenant && userEmail) void refreshBalance();
+  }, [isBilledTenant, userEmail, refreshBalance]);
 
   // Close language menu on outside click
   useEffect(() => {
@@ -437,6 +447,20 @@ export function AppNavBar({}: AppNavBarProps) {
                   </div>
                 ) : (
                   // Signed in - Show user info with dropdown
+                  <>
+                  {isBilledTenant && billingBalance.data && (
+                    <span
+                      className="hidden sm:inline-flex items-center text-xs font-mono font-medium px-2 py-1 mr-1"
+                      title="Credit balance"
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        borderRadius: 'var(--r-md)',
+                        color: 'var(--text-2)',
+                      }}
+                    >
+                      {formatCredits(billingBalance.data.credits)} cr
+                    </span>
+                  )}
                   <div className="relative">
                     <button
                       onClick={() => setShowUserMenu(!showUserMenu)}
@@ -560,6 +584,7 @@ export function AppNavBar({}: AppNavBarProps) {
                       </div>
                     )}
                   </div>
+                  </>
                 )}
               </>
             )}

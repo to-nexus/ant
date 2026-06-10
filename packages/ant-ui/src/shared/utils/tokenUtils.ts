@@ -17,6 +17,14 @@
  */
 
 import { TaskTokenUsage } from '@/domain/models/types';
+import {
+  computeJobCostUsd,
+  computeCallCostUsdSafe,
+  usdToMicroCredits,
+  microCreditsToCredits,
+  MARKUP_DEFAULT,
+  type TokenUsageByModel,
+} from '@ant/shared';
 
 // ============================================
 // Anthropic Cache Pricing Multipliers
@@ -186,6 +194,52 @@ export function formatTokenCount(tokens: number): string {
  */
 export function formatPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(1)}%`;
+}
+
+// ============================================
+// Cost & Credit (precise, per-model)
+// ============================================
+//
+// SSOT: `@ant/shared/pricing` (rate card) + `@ant/shared/billing` (markup /
+// credit conversion). BE and FE share the same functions so the displayed
+// USD cost and credit figure cannot drift from what the ledger debits. The
+// legacy `billableInputTokens` (above) stays for the cache-efficiency gauge
+// but is NOT the cost source — it was model-agnostic and ignored output rate.
+
+/**
+ * Precise USD list cost from a per-model breakdown (job-level). Prefer this
+ * over the aggregate path — each model is priced at its own rate. Returns
+ * undefined when no per-model data is available.
+ */
+export function costUsdFromByModel(byModel?: TokenUsageByModel | null): number | undefined {
+  if (!byModel || Object.keys(byModel).length === 0) return undefined;
+  return computeJobCostUsd(byModel).usd;
+}
+
+/** Precise USD list cost for ONE phase's usage at its model's rate. */
+export function costUsdFromUsage(
+  modelId: string | undefined,
+  usage?: TaskTokenUsage | null,
+): number | undefined {
+  if (!usage || !modelId) return undefined;
+  return computeCallCostUsdSafe(modelId, usage).usd;
+}
+
+/** Customer-facing credits consumed for a given USD list cost (markup applied). */
+export function creditsFromUsd(usd: number): number {
+  return microCreditsToCredits(usdToMicroCredits(usd, MARKUP_DEFAULT));
+}
+
+/** Format a USD amount — sub-cent shows 4 decimals, else 2. */
+export function formatUsd(usd: number): string {
+  if (usd > 0 && usd < 0.01) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+/** Format a credit amount compactly (e.g. "1.2K"). */
+export function formatCredits(credits: number): string {
+  if (credits > 0 && credits < 1) return credits.toFixed(2);
+  return formatTokenCount(Math.round(credits));
 }
 
 /**

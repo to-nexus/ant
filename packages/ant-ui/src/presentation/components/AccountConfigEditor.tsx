@@ -17,6 +17,7 @@ import { useStore } from '@/domain/store';
 import { STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { Spinner } from './common/async';
 import { DangerZoneSection } from './common/DangerZoneSection';
+import { BillingUsageSection } from './billing/BillingUsageSection';
 import { DesktopConnectModal } from './DesktopConnectModal';
 import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
 import {
@@ -46,6 +47,7 @@ const SECTION_IDS = [
   'c3a-account',
   'c3a-owners',
   'c3a-figma',
+  'c3a-billing',
   'c3a-danger',
 ] as const;
 
@@ -342,6 +344,9 @@ export function AccountConfigEditor({
           : []),
         { id: 'c3a-owners', label: t('account.tocOwners'), icon: 'Users' },
         { id: 'c3a-figma', label: t('account.tocFigma'), icon: 'Palette' },
+        ...(userOrgKind === 'individual' || userOrgKind === 'team'
+          ? [{ id: 'c3a-billing', label: t('account.tocBilling', 'Billing'), icon: 'CreditCard' as const }]
+          : []),
         {
           id: 'c3a-danger',
           label: t('account.tocDanger'),
@@ -874,6 +879,11 @@ export function AccountConfigEditor({
             tDownloadFigmaDesktop={t('figma.downloadFigmaDesktop')}
             tRefresh={t('figma.refresh')}
           />
+
+          {/* ============================
+              Billing & Usage (individual / team only — local has no billing)
+              ============================ */}
+          {(userOrgKind === 'individual' || userOrgKind === 'team') && <BillingUsageSection />}
 
           {/* ============================
               Section 4 — Danger Zone

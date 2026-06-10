@@ -13,7 +13,7 @@
  * - AsyncMutex for shared state access
  */
 
-import type { BaseTask, TaskTokenUsage } from '@ant/shared';
+import type { BaseTask, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
 import { TaskTimingHelper } from '../state';
 import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
@@ -181,6 +181,9 @@ export class TaskOrchestrator<T extends BaseTask> {
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
   };
+  /** Per-model job-level accumulation, merged from each worker's per-task
+   *  breakdown. Billing settle SSOT (priced per model). */
+  private accumulatedTokenUsageByModel: TokenUsageByModel = {};
 
   // Worker management
   private workers = new Map<number, TaskWorker<T>>();
@@ -325,7 +328,7 @@ export class TaskOrchestrator<T extends BaseTask> {
   /**
    * Report successful task completion.
    */
-  async reportCompletion(workerId: number, task: T, tokenUsage?: TaskTokenUsage): Promise<void> {
+  async reportCompletion(workerId: number, task: T, tokenUsage?: TaskTokenUsage, tokenUsageByModel?: TokenUsageByModel): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
 
@@ -352,6 +355,9 @@ export class TaskOrchestrator<T extends BaseTask> {
 
       if (tokenUsage) {
         this.addTokenUsage(tokenUsage);
+      }
+      if (tokenUsageByModel) {
+        this.addTokenUsageByModel(tokenUsageByModel);
       }
 
       this.callbacks.onTaskComplete?.(task, workerId);
@@ -997,6 +1003,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       [...queue, ...failedAsQueue] as T[],
       this.completedTasks,
       this.accumulatedTokenUsage,
+      this.accumulatedTokenUsageByModel,
     );
   }
 
@@ -1004,10 +1011,25 @@ export class TaskOrchestrator<T extends BaseTask> {
     this.accumulatedTokenUsage.inputTokens += usage.inputTokens;
     this.accumulatedTokenUsage.outputTokens += usage.outputTokens;
     this.accumulatedTokenUsage.totalTokens += usage.totalTokens;
-    this.accumulatedTokenUsage.cacheReadTokens = 
+    this.accumulatedTokenUsage.cacheReadTokens =
       (this.accumulatedTokenUsage.cacheReadTokens || 0) + (usage.cacheReadTokens || 0);
-    this.accumulatedTokenUsage.cacheCreationTokens = 
+    this.accumulatedTokenUsage.cacheCreationTokens =
       (this.accumulatedTokenUsage.cacheCreationTokens || 0) + (usage.cacheCreationTokens || 0);
+  }
+
+  /** Merge one worker's per-task per-model breakdown into the job-level map. */
+  private addTokenUsageByModel(byModel: TokenUsageByModel): void {
+    for (const [modelId, u] of Object.entries(byModel)) {
+      const e = (this.accumulatedTokenUsageByModel[modelId] ??= {
+        inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, callCount: 0,
+      });
+      e.inputTokens += u.inputTokens;
+      e.outputTokens += u.outputTokens;
+      e.totalTokens += u.totalTokens;
+      e.cacheReadTokens = (e.cacheReadTokens || 0) + (u.cacheReadTokens || 0);
+      e.cacheCreationTokens = (e.cacheCreationTokens || 0) + (u.cacheCreationTokens || 0);
+      e.callCount = (e.callCount || 0) + (u.callCount || 0);
+    }
   }
 
   // ============================================

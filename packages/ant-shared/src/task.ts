@@ -110,6 +110,16 @@ export interface TaskTokenUsage {
 }
 
 /**
+ * Token usage attributed to ONE model. A single job legitimately mixes models
+ * across nodes (e.g. plan=Opus, execute=Sonnet), so a model-agnostic summed
+ * {@link TaskTokenUsage} cannot be costed accurately. The billing pipeline
+ * aggregates a `Record<modelId, TaskTokenUsage>` (see
+ * {@link KanbanData.tokenUsageByModel}) and prices each entry at its own
+ * model's rate via `pricing.ts`.
+ */
+export type TokenUsageByModel = Record<string, TaskTokenUsage>;
+
+/**
  * Phase-snapshot source mode.
  *
  *   - `live`        — numbers came from an LLM API response (`usage_partial`
@@ -145,6 +155,14 @@ export interface PhaseTokenUsage {
    * not collapse into a single hardcoded constant.
    */
   contextWindow: number;
+  /**
+   * Model id that produced this phase's tokens (e.g. `claude-opus-4-8`).
+   * Carried so the cost/credit display can price the phase at its own model's
+   * rate — a phase running Opus and a phase running Sonnet must not collapse
+   * into one blended cost. Optional for backward compatibility with snapshots
+   * that predate billing.
+   */
+  modelId?: string;
   /**
    * Worker identity (only set when the snapshot originated inside a parallel
    * worker subgraph). Undefined for the main graph / sequential execution.
@@ -361,6 +379,14 @@ export interface KanbanData {
 
   // Token usage (job-level aggregate)
   tokenUsage?: TaskTokenUsage;
+
+  /**
+   * Per-model job-level token usage. SSOT for accurate cost: the billing
+   * settle hook and the FE cost/credit display price each model's tokens at
+   * its own rate. Sums to {@link KanbanData.tokenUsage} in raw tokens but
+   * NOT in cost (rates differ per model). Populated alongside `tokenUsage`.
+   */
+  tokenUsageByModel?: TokenUsageByModel;
 
   // Estimating phase token usage (decompose + detectEnvironment, before tasks)
   estimatingTokenUsage?: TaskTokenUsage;

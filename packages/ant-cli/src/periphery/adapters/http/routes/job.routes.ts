@@ -15,6 +15,8 @@ import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { getConfigSlots } from '@ant/shared';
+import { isBillingEnforced } from '../../../../core/config/billingConfig';
+import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
@@ -249,7 +251,59 @@ export function createJobRoutes(deps: {
 
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
-      
+
+      // Billing pre-flight gate (opt-in via ANT_BILLING_ENABLED). Estimate a
+      // conservative credit floor from the baseline estimator and reject with
+      // 402 when the balance can't cover it. Fail-OPEN on estimator errors so a
+      // count-tokens outage never blocks legitimate work. The ACTUAL debit
+      // happens at settle (finalizeTerminalJob) from real per-model usage.
+      if (isBillingEnforced() && actionMetadata?.intent) {
+        try {
+          const ledger = getInfrastructureFactory().getCreditLedger();
+          const { credits } = await ledger.getBalance(userContext.organizationId, userContext.userId);
+          let requiredCredits = 0;
+          try {
+            const { estimateBaseline } = await import('../../../../core/baselineEstimate/estimator');
+            const { computeCallCostUsdSafe, usdToMicroCredits, microCreditsToCredits } = await import('@ant/shared');
+            const modelId = process.env.AI_MODEL_NAME || 'claude-opus-4-8';
+            const OUTPUT_CEILING = 16_000; // conservative single-call output headroom
+            const est = await estimateBaseline({
+              intent: actionMetadata.intent as any,
+              featurePath,
+              refs: actionMetadata.refs ?? [],
+              context: actionMetadata.context ?? [],
+              draftText: overrideDirective ?? '',
+              modelId,
+              tenantScope: { orgId: userContext.organizationId, userId: userContext.userId, projectId, featureName },
+              stateStore: deps.stateStore,
+            });
+            const { usd } = computeCallCostUsdSafe(est.modelId, { inputTokens: est.total, outputTokens: OUTPUT_CEILING });
+            requiredCredits = microCreditsToCredits(usdToMicroCredits(usd));
+          } catch {
+            requiredCredits = 0; // fail-open: estimator unavailable
+          }
+          if (requiredCredits > 0 && credits < requiredCredits) {
+            await emitConflictAssistantMessage(
+              projectId,
+              featureName,
+              seedTurnId,
+              `credits-${seedTurnId ?? Date.now()}`,
+              userContext,
+              `❌ 크레딧이 부족합니다. (보유 ${Math.floor(credits)} / 필요 약 ${Math.ceil(requiredCredits)})`,
+            );
+            return res.status(402).json({
+              error: 'Insufficient credits for this action.',
+              code: 'insufficient-credits',
+              balance: credits,
+              required: requiredCredits,
+            });
+          }
+        } catch (err) {
+          // Billing infra failure must not block work — log and proceed.
+          logger.warn(`Billing pre-flight gate errored — proceeding`, { component: 'JobRoute' }, err as Error);
+        }
+      }
+
       const resolvedAgent = agent || resolveAgentForJobType(jobType);
       
       const params: ExecuteJobParams = {

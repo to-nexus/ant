@@ -2,10 +2,11 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleDot, Zap, type LucideIcon } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
-import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
-import { JobTiming, TaskTokenUsage, PhaseTokenUsage } from '@/domain/models/types';
+import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages, costUsdFromByModel, creditsFromUsd, formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
+import { JobTiming, TaskTokenUsage, TokenUsageByModel, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
+import { selectCanViewUsdCost } from '@/domain/store/selectors/auth';
 import { cn } from '@/shared/utils/design-system';
 
 /**
@@ -413,6 +414,8 @@ export function ElapsedTimeBadge({
 interface TokenUsageBadgeProps {
   jobId?: string;
   tokenUsage?: TaskTokenUsage;
+  /** Per-model job usage — enables precise USD/credit cost (priced per model). */
+  tokenUsageByModel?: TokenUsageByModel;
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: PhaseTokenUsage[];
   completedTasks?: Array<{
@@ -447,8 +450,12 @@ interface TokenUsageBadgeProps {
  *   2. Cache Efficiency — volume, hit rate, savings (when cache active)
  *   3. Phase Breakdown — planning + individual tasks
  */
-export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks, compact = false }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks, compact = false }: TokenUsageBadgeProps) {
   const { t } = useTranslation('kanban');
+  const canViewUsd = useStore(selectCanViewUsdCost);
+  // Precise cost from per-model usage (priced per model). Credits always shown;
+  // USD gated to operators via `selectCanViewUsdCost`.
+  const costUsd = costUsdFromByModel(tokenUsageByModel);
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
     ...(inProgressTasks?.map(t => t.tokenUsage) || []),
@@ -501,6 +508,25 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
               value={formatTokenCount(effective.outputTokens)}
             />
           </Section>
+
+          {/* Cost & Credit — precise per-model cost. Credits always; USD gated. */}
+          {costUsd !== undefined && costUsd > 0 && (
+            <Section>
+              <StatRow
+                strong
+                label={t('tokenStats.creditsConsumed', 'Credits used')}
+                value={formatCredits(creditsFromUsd(costUsd))}
+              />
+              {canViewUsd && (
+                <StatRow
+                  labelColor="var(--text-3)"
+                  valueColor="var(--text-3)"
+                  label={t('tokenStats.estimatedCost', 'Cost (USD)')}
+                  value={formatUsd(costUsd)}
+                />
+              )}
+            </Section>
+          )}
 
           {/* Cache Efficiency (only when cache active) */}
           {effective.hasCache && (

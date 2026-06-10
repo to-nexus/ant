@@ -127,7 +127,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {
-        const { accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../common/graph/llmHelpers');
+        const { accumulateTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import('../../../../common/graph/llmHelpers');
         accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true });
         if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
           state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
@@ -142,6 +142,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
             taskName: 'revise',
             node: 'revise',
             callIndex: 0,
+            modelId: resolveModelIdSafe(state),
           }
         );
       }

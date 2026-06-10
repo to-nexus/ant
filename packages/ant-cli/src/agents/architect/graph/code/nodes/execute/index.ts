@@ -372,7 +372,7 @@ export async function execute(
         isDone = true;
 
         // ✅ Extract token usage and accumulate to task-level
-        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
+        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true });
@@ -390,6 +390,7 @@ export async function execute(
               taskName: state.currentTask?.name || 'unknown',
               node: 'execute',
               callIndex: callIdx,
+              modelId: resolveModelIdSafe(state),
               nodeHistoryLength: nodeExecute.length,
               estimatedPromptChars: 0,
               taskCumulativeInput: (taskUsage?.inputTokens || 0) - (capturedUsage.inputTokens || 0),
