@@ -5,6 +5,8 @@
  * Used by API Server, Job Worker, and Realtime Server.
  */
 
+import { CREDIT_LEDGER_MAX_ENTRIES } from '@ant/shared';
+
 // ============================================
 // Base Prefixes
 // ============================================
@@ -383,8 +385,8 @@ export const REDIS_TTL = {
     HOLD: 6 * 60 * 60,            // 6 hours
     /** Debit idempotency lock — long enough to outlast any finalize retry. */
     DEBIT_LOCK: 24 * 60 * 60,     // 24 hours
-    /** Max ledger entries kept per account (LTRIM). */
-    LEDGER_MAX_ENTRIES: 1000,
+    /** Max ledger entries kept per account (LTRIM). SSOT: @ant/shared. */
+    LEDGER_MAX_ENTRIES: CREDIT_LEDGER_MAX_ENTRIES,
   },
 } as const;
 
