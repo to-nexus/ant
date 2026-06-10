@@ -116,6 +116,15 @@ export interface PurchaseOutcome {
 export const MOCK_SUCCESS_CARD = '4242424242424242';
 export const MOCK_DECLINE_CARD = '4000000000000002';
 
+/**
+ * Hard cap on retained ledger entries per (org,user). The Redis ledger is
+ * `LTRIM`-bounded to this size, so it is also the ceiling for a usage fetch —
+ * the activity modal can request the entire ledger in one call. Single source
+ * for both the trim cap (BE) and the fetch ceiling (route + FE), so they never
+ * drift.
+ */
+export const CREDIT_LEDGER_MAX_ENTRIES = 1000;
+
 export type CreditTransactionKind =
   | 'grant' // monthly included-credit grant
   | 'debit' // job consumption

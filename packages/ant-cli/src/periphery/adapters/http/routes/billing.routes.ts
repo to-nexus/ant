@@ -13,7 +13,7 @@ import type { CreditLedgerPort } from '../../../../core/ports/creditLedger';
 import type { PaymentProviderPort } from '../../../../core/ports/paymentProvider';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 import type { UsageHistoryResponse, PaymentMethodInput } from '@ant/shared';
-import { getCreditPackage } from '@ant/shared';
+import { getCreditPackage, CREDIT_LEDGER_MAX_ENTRIES } from '@ant/shared';
 import { logger } from '../../../../utils/logger';
 
 export interface BillingRoutesDeps {
@@ -44,7 +44,7 @@ export function createBillingRoutes(deps: BillingRoutesDeps): Router {
   router.get('/billing/usage', async (req: Request, res: Response) => {
     try {
       const { userId, organizationId } = extractUserContext(req);
-      const limit = Math.max(1, Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 500));
+      const limit = Math.max(1, Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, CREDIT_LEDGER_MAX_ENTRIES));
       const txs = await deps.creditLedger.listTransactions(organizationId, userId, limit);
       const body: UsageHistoryResponse = { transactions: txs, canViewUsd: true };
       res.json(body);

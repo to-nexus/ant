@@ -1,9 +1,11 @@
 /**
  * BillingUsageSection — Account config "Billing & Usage" section.
  *
- * Customer surface: shows the credit balance + tier + recent usage in credits.
- * USD cost columns appear only when the BE marks the caller an operator
- * (`billingCanViewUsd`). Top-up goes through the (stub) payment provider.
+ * Customer surface: shows the credit balance + tier + a "Buy credits" flow.
+ * The full charge/usage ledger is intentionally NOT inlined here — it grows
+ * with every purchase and job, so it lives behind a "View activity" button
+ * that opens <BillingActivityModal>. The section height stays fixed regardless
+ * of how many transactions accumulate.
  *
  * Rendered only for individual / team tenants — `local` has no billing.
  */
@@ -14,24 +16,22 @@ import { useStore } from '@/domain/store';
 import { SectionCard } from '../ConfigEditor/aurora';
 import { Spinner } from '../common/async';
 import { formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
-import { microCreditsToCredits, CREDIT_PACKAGES, type CreditPackage } from '@ant/shared';
+import { CREDIT_PACKAGES, type CreditPackage } from '@ant/shared';
 import { CreditPurchaseModal } from './CreditPurchaseModal';
+import { BillingActivityModal } from './BillingActivityModal';
 
 export function BillingUsageSection() {
   const { t } = useTranslation('config');
   const balance = useStore((s) => s.billingBalance);
-  const usage = useStore((s) => s.billingUsage);
   const refreshBalance = useStore((s) => s.refreshBalance);
-  const refreshUsage = useStore((s) => s.refreshUsage);
   const [selectedPkg, setSelectedPkg] = useState<CreditPackage | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     void refreshBalance();
-    void refreshUsage();
-  }, [refreshBalance, refreshUsage]);
+  }, [refreshBalance]);
 
   const snap = balance.data;
-  const txs = usage.data ?? [];
 
   return (
     <SectionCard
@@ -100,46 +100,22 @@ export function BillingUsageSection() {
           </div>
         </div>
 
-        {/* Usage history */}
+        {/* Full ledger lives behind the detail modal */}
         <div>
-          <div className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
-            {t('account.recentUsage', 'Recent usage')}
-          </div>
-          {usage.status === 'loading' ? (
-            <Spinner />
-          ) : txs.length === 0 ? (
-            <div className="text-xs italic" style={{ color: 'var(--text-3)' }}>
-              {t('account.noUsage', 'No usage yet')}
-            </div>
-          ) : (
-            <div className="space-y-0.5 max-h-64 overflow-y-auto">
-              {txs.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between text-[11px] tabular-nums py-0.5"
-                  style={{ color: 'var(--text-2)' }}
-                >
-                  <span className="truncate mr-2" style={{ color: 'var(--text-3)' }}>
-                    {tx.kind}
-                    {tx.featureName ? ` · ${tx.featureName}` : ''}
-                  </span>
-                  <span className="flex items-center gap-2 whitespace-nowrap">
-                    <span style={{ color: tx.microCredits < 0 ? 'var(--text-2)' : 'var(--status-done-fg)' }}>
-                      {tx.microCredits < 0 ? '−' : '+'}
-                      {formatCredits(Math.abs(microCreditsToCredits(tx.microCredits)))}
-                    </span>
-                    {tx.usdCost !== undefined && (
-                      <span style={{ color: 'var(--text-3)' }}>{formatUsd(tx.usdCost)}</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            onClick={() => setActivityOpen(true)}
+            className="text-xs rounded px-3 py-1.5 transition-colors"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
+          >
+            {t('account.viewActivity', 'View activity →')}
+          </button>
         </div>
       </div>
 
       <CreditPurchaseModal pkg={selectedPkg} onClose={() => setSelectedPkg(null)} />
+      <BillingActivityModal isOpen={activityOpen} onClose={() => setActivityOpen(false)} />
     </SectionCard>
   );
 }
