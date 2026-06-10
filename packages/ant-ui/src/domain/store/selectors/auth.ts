@@ -1,5 +1,20 @@
-import type { ServerMode } from '@ant/shared';
+import type { ServerMode, OrganizationKind } from '@ant/shared';
 import type { StoreState } from '../types';
+
+/** Active org kind for the current identity (undefined until `/auth/me` lands). */
+export function selectUserOrgKind(state: StoreState): OrganizationKind | undefined {
+  return state.userOrgKind;
+}
+
+/**
+ * Human label for the active account in the nav bar. Individual orgs show a
+ * fixed "Individual" label (the raw `'individual'` id is not user-facing);
+ * team/local show the org id/name.
+ */
+export function selectOrgDisplayLabel(state: StoreState): string | undefined {
+  if (state.userOrgKind === 'individual') return 'Individual';
+  return state.userOrganization;
+}
 
 /**
  * BE-derived server mode getter. Returns the resolved `ServerMode` once

@@ -139,7 +139,15 @@ describe('RedisOrganizationRepository', () => {
       expect(byId.map((o) => o.id).sort()).toEqual(['acme', 'acme-team']);
 
       const byName = await repo.searchOrganizations('zeta', 10);
-      expect(byName).toEqual([{ id: 'zeta', name: 'Zeta Corp' }]);
+      expect(byName).toEqual([{ id: 'zeta', name: 'Zeta Corp', kind: 'team' }]);
+    });
+
+    it('searchOrganizations excludes the shared individual org', async () => {
+      await repo.getOrCreateOrganization({ id: 'individual', name: 'Individual', kind: 'individual' });
+      await repo.getOrCreateOrganization({ id: 'indie-co', name: 'Individual Co' });
+      const results = await repo.searchOrganizations('indi', 10);
+      // `individual` (kind=individual) is filtered; only the team org remains.
+      expect(results.map((o) => o.id)).toEqual(['indie-co']);
     });
 
     it('searchOrganizations respects limit cap', async () => {
@@ -181,6 +189,17 @@ describe('RedisOrganizationRepository', () => {
 
       const orgs = await repo.listUserOrganizations('user-1');
       expect(orgs.map((o) => o.id).sort()).toEqual(['acme', 'beta']);
+    });
+
+    it('listMembershipsByUser returns role-carrying membership rows (account switcher)', async () => {
+      await repo.getOrCreateOrganization({ id: 'individual', name: 'Individual', kind: 'individual' });
+      await repo.getOrCreateOrganization({ id: 'acme', name: 'Acme', kind: 'team' });
+      await repo.attachMembership({ userId: 'bob@x.com', organizationId: 'individual', role: 'member' });
+      await repo.attachMembership({ userId: 'bob@x.com', organizationId: 'acme', role: 'owner' });
+
+      const rows = await repo.listMembershipsByUser('bob@x.com');
+      expect(rows.map((m) => m.organizationId).sort()).toEqual(['acme', 'individual']);
+      expect(rows.find((m) => m.organizationId === 'acme')?.role).toBe('owner');
     });
 
     it('membership populates BOTH org→users and user→orgs indices', async () => {

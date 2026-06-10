@@ -145,6 +145,9 @@ function AppShell() {
             result.user.organization,
             result.user.name,
             result.user.picture,
+            result.user.userId,
+            result.user.orgKind,
+            result.memberships,
           );
           useStore.getState().setOnboardingState(
             result.needsOnboarding,
@@ -204,6 +207,9 @@ function AppShell() {
           result.user.organization,
           result.user.name,
           result.user.picture,
+          result.user.userId,
+          result.user.orgKind,
+          result.memberships,
         );
         if (!hadEmail) {
           if (!result.needsOnboarding) {

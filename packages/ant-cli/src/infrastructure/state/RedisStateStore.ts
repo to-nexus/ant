@@ -975,7 +975,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async updateDeploy(
     tenantId: string, userId: string, projectId: string, feature: string,
-    update: Partial<Pick<DeployState, 'phase' | 'host' | 'podId' | 'error' | 'buildLog' | 'workspacePath' | 'packages' | 'lastAccessedAt'>>
+    update: Partial<Pick<DeployState, 'phase' | 'host' | 'podId' | 'error' | 'buildLog' | 'workspacePath' | 'packages' | 'lastAccessedAt' | 'visibility'>>
   ): Promise<void> {
     const deployKey = createDeployKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);

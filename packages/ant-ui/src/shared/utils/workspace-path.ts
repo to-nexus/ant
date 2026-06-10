@@ -84,9 +84,11 @@ export interface UserContext {
  */
 function getUserContext(): UserContext {
   try {
-    const { userEmail, userOrganization } = useStore.getState();
-    if (userEmail && userOrganization) {
-      const userId = userEmail.split('@')[0];
+    const { userId, userOrganization } = useStore.getState();
+    // `userId` is the server-side identity (full email in cloud) — NEVER
+    // re-derive it from the email here. The workspace dir is keyed by the
+    // exact userId, so `userEmail.split('@')[0]` would point at the wrong path.
+    if (userId && userOrganization) {
       return {
         organization: userOrganization,
         userId,

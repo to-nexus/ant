@@ -12,6 +12,11 @@ export interface UserConfig {
     /** User-level override for default GitHub owner. null = clear override. */
     ownerOverride?: string | null;
   };
+  /** Account-level org settings (individual orgs). */
+  account?: {
+    /** Discoverability in transfer search. Default `'public'` when absent. */
+    visibility?: 'public' | 'private';
+  };
 }
 
 export function fetchOrgConfig(): Promise<OrgConfig> {
@@ -55,17 +60,31 @@ export function fetchOrgMembers(): Promise<{
   return apiGet(`${API_BASE()}/org/members`);
 }
 
+/**
+ * Exact full-email recipient lookup (individual orgs). Returns the resolved
+ * member only if the target exists AND is public; otherwise `null` (a private
+ * or missing account is indistinguishable — no existence leak).
+ */
+export async function lookupAccountByEmail(
+  email: string,
+): Promise<{ userId: string; isSelf: boolean } | null> {
+  const res = await apiGet<{ member: { userId: string; isSelf: boolean } | null }>(
+    `${API_BASE()}/org/members/lookup?email=${encodeURIComponent(email)}`,
+  );
+  return res.member;
+}
+
 export function fetchMemberProjects(
   userId: string,
 ): Promise<{ projects: Array<{ projectId: string }> }> {
-  return apiGet(`${API_BASE()}/org/members/${userId}/projects`);
+  return apiGet(`${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects`);
 }
 
 export function fetchMemberFeatures(
   userId: string,
   projectId: string,
 ): Promise<{ features: Array<{ featureId: string }> }> {
-  return apiGet(`${API_BASE()}/org/members/${userId}/projects/${projectId}/features`);
+  return apiGet(`${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects/${projectId}/features`);
 }
 
 export function fetchMemberDirectories(
@@ -74,6 +93,6 @@ export function fetchMemberDirectories(
   featureId: string,
 ): Promise<{ directories: string[] }> {
   return apiGet(
-    `${API_BASE()}/org/members/${userId}/projects/${projectId}/features/${featureId}/directories`,
+    `${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects/${projectId}/features/${featureId}/directories`,
   );
 }

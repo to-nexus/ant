@@ -42,6 +42,20 @@ export type DeployPhase =
 export type DeployFramework = 'vite' | 'cra' | 'nextjs' | 'static' | 'unknown';
 
 /**
+ * Deploy-build access visibility. Applies to BOTH individual and team orgs.
+ *
+ * - `public`  — the static build is served without authentication (the
+ *               historical behavior; treat `undefined` from old BE builds
+ *               as `'public'`).
+ * - `private` — only the owning tenant/user may access; unauthorized
+ *               requests get an indistinguishable 404 (never 403).
+ *
+ * Visibility is a deploy-level concept keyed on `(tenant,user,project,feature)`,
+ * NOT per-package — it lives on the aggregate `DeployStatus`.
+ */
+export type DeployVisibility = 'public' | 'private';
+
+/**
  * One deployed package within a multi-package deploy.
  *
  * Single-package deploys produce a single-element array. Multi-package
@@ -83,6 +97,11 @@ export interface DeployStatus {
    * old BE builds.
    */
   packages?: DeployStatusPackage[];
+  /**
+   * Access visibility for this deploy build. `undefined` from old BE builds
+   * — treat as `'public'`.
+   */
+  visibility?: DeployVisibility;
   error?: string;
 }
 

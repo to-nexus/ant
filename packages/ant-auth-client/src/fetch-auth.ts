@@ -1,4 +1,28 @@
-import type { AuthMeResult, AuthUser } from './types';
+import type { AuthMeResult, AuthUser, OrgKind, OrgMembership } from './types';
+
+const ORG_KINDS: ReadonlySet<string> = new Set(['local', 'individual', 'team']);
+
+function asOrgKind(v: unknown): OrgKind | undefined {
+  return typeof v === 'string' && ORG_KINDS.has(v) ? (v as OrgKind) : undefined;
+}
+
+function parseMemberships(v: unknown): OrgMembership[] {
+  if (!Array.isArray(v)) return [];
+  const out: OrgMembership[] = [];
+  for (const m of v) {
+    if (typeof m !== 'object' || m === null) continue;
+    const r = m as Record<string, unknown>;
+    const kind = asOrgKind(r.kind);
+    if (typeof r.organizationId !== 'string' || !kind) continue;
+    out.push({
+      organizationId: r.organizationId,
+      kind,
+      name: typeof r.name === 'string' ? r.name : r.organizationId,
+      role: r.role === 'owner' ? 'owner' : 'member',
+    });
+  }
+  return out;
+}
 
 export interface FetchAuthOptions {
   /** Absolute API base, e.g. `https://ant-server.crosstoken.io/api` or `/api`. */
@@ -57,6 +81,8 @@ export async function fetchAuthMeDetailed(
   const envelope = data as {
     needsOnboarding?: unknown;
     suggestedOrganizationName?: unknown;
+    activeOrg?: unknown;
+    memberships?: unknown;
   };
   const needsOnboarding = envelope.needsOnboarding === true;
   const suggestedOrganizationName =
@@ -64,15 +90,31 @@ export async function fetchAuthMeDetailed(
       ? envelope.suggestedOrganizationName
       : null;
 
+  const orgKind = asOrgKind((u as { kind?: unknown }).kind);
+  const memberships = parseMemberships(envelope.memberships);
+
+  let activeOrg: { id: string; kind: OrgKind; name: string } | null = null;
+  const ao = envelope.activeOrg;
+  if (typeof ao === 'object' && ao !== null) {
+    const r = ao as Record<string, unknown>;
+    const kind = asOrgKind(r.kind);
+    if (typeof r.id === 'string' && kind) {
+      activeOrg = { id: r.id, kind, name: typeof r.name === 'string' ? r.name : r.id };
+    }
+  }
+
   return {
     kind: 'user',
     user: {
       email: u.email,
       userId: u.userId,
       organization: u.organization,
+      orgKind,
       name: u.name,
       picture: u.picture,
     },
+    activeOrg,
+    memberships,
     needsOnboarding,
     suggestedOrganizationName,
   };

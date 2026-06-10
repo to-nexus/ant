@@ -13,7 +13,7 @@ import {
   getDeployStatus,
   PREVIEW_BASE,
 } from '@/infrastructure/http/api';
-import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
+import type { DeployStatus, DeployLogEntry, DeployVisibility } from '@/infrastructure/http/api';
 
 /**
  * Reason the Deploy button must stay disabled, or undefined when deploy is
@@ -30,7 +30,9 @@ export interface UseDeployManagerResult {
   isLoading: boolean;
   canDeploy: boolean;
   disabledReason: DeployDisabledReason | undefined;
-  deploy: () => Promise<void>;
+  /** Current deploy visibility (from status; defaults to `'public'`). */
+  visibility: DeployVisibility;
+  deploy: (visibility?: DeployVisibility) => Promise<void>;
   stop: () => Promise<void>;
   /**
    * Open a deployed package's URL in a new tab.
@@ -162,7 +164,7 @@ export function useDeployManager(
     };
   }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus, setDeployLoading, appendDeployLog]);
 
-  const deploy = useCallback(async () => {
+  const deploy = useCallback(async (visibility: DeployVisibility = 'public') => {
     if (!selectedProject || !selectedFeature || !featureKey) return;
     // Local guard mirrors the backend validation (400 base-branch /
     // 409 code-job-active). The UI should not optimistically enter
@@ -171,10 +173,10 @@ export function useDeployManager(
 
     setDeployLoading(featureKey, true);
     clearDeployLogs(featureKey);
-    setDeployStatus(featureKey, { phase: 'building' });
+    setDeployStatus(featureKey, { phase: 'building', visibility });
 
     try {
-      const result = await startDeploy(selectedProject, selectedFeature);
+      const result = await startDeploy(selectedProject, selectedFeature, visibility);
       if (!result.success) {
         setDeployStatus(featureKey, { phase: 'error', error: result.message });
         setDeployLoading(featureKey, false);
@@ -221,6 +223,7 @@ export function useDeployManager(
     isLoading: isDeployLoading,
     canDeploy,
     disabledReason,
+    visibility: deployStatus?.visibility ?? 'public',
     deploy,
     stop,
     openDeployUrl,

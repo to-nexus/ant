@@ -176,8 +176,8 @@ export interface PreviewState {
 // Deploy Types (SSOT: @ant/shared)
 // ============================================
 
-export type { DeployPhase, DeployFramework } from '@ant/shared';
-import type { DeployPhase, DeployFramework } from '@ant/shared';
+export type { DeployPhase, DeployFramework, DeployVisibility } from '@ant/shared';
+import type { DeployPhase, DeployFramework, DeployVisibility } from '@ant/shared';
 
 /**
  * One deployed frontend package.
@@ -255,6 +255,13 @@ export interface DeployState {
 
   /** One entry per built frontend. Always non-empty after `startDeploy`. */
   packages: DeployPackage[];
+
+  /**
+   * Access visibility (default `'public'`). `'private'` gates the deploy
+   * proxy: only the owning tenant/user may access, else an indistinguishable
+   * 404. Persisted in `.deploy/meta.json` so it survives rehydration.
+   */
+  visibility: DeployVisibility;
 
   error?: string;
   buildLog?: string[];

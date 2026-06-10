@@ -1,14 +1,15 @@
 import { PREVIEW_BASE, apiGet, apiPost } from './client';
-import type { DeployStatus } from '@ant/shared';
-export type { DeployStatus, DeployLogEntry, DeployPhase, DeployFramework } from '@ant/shared';
+import type { DeployStatus, DeployVisibility } from '@ant/shared';
+export type { DeployStatus, DeployLogEntry, DeployPhase, DeployFramework, DeployVisibility } from '@ant/shared';
 
 export function startDeploy(
   projectId: string,
   feature?: string,
+  visibility: DeployVisibility = 'public',
 ): Promise<{ success: boolean; url?: string; message: string }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/deploy`,
-    { feature: feature || 'main' },
+    { feature: feature || 'main', visibility },
   );
 }
 

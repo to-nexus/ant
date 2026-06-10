@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
-import { selectServerMode } from '@/domain/store/selectors/auth';
+import { selectServerMode, selectUserOrgKind } from '@/domain/store/selectors/auth';
 import { useGitSnapshot, useGitPat, useGitPatDispatch, useGitDispatch } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
@@ -89,6 +89,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Store ──
   const projects = useStore((s) => s.projects);
   const features = useStore((s) => s.features);
+  const isIndividual = useStore((s) => selectUserOrgKind(s)) === 'individual';
   const snapshot = useGitSnapshot();
   // PAT state flows through the git-world hook — no direct slice peeking.
   // The slice is primed on open via `fetchGitPat` in the effect below.
@@ -148,7 +149,11 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         fetchUserConfig().catch(() => ({} as any)),
       ]);
       if (cancelled) return;
-      const orgOwner = userCfg?.github?.ownerOverride || orgCfg?.github?.owner;
+      // Individual accounts have no org owner — only the personal owner is
+      // selectable, so leave `orgOwner` undefined (hides the Organization pill).
+      const orgOwner = isIndividual
+        ? undefined
+        : (userCfg?.github?.ownerOverride || orgCfg?.github?.owner);
       setOwnerInfo((prev) => ({ orgOwner, personalOwner: prev.personalOwner }));
     })();
     return () => { cancelled = true; };

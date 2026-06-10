@@ -12,7 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { selectServerMode } from '@/domain/store/selectors/auth';
+import { selectServerMode, selectUserOrgKind } from '@/domain/store/selectors/auth';
 import { UI_VISIBLE_TOP_LEVEL_DIRS, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
@@ -23,6 +23,7 @@ import {
   cancelTransferRequest,
   deleteTransferRequest,
   fetchOrgMembers,
+  lookupAccountByEmail,
   fetchMemberProjects,
   fetchMemberFeatures,
   fetchFileTree,
@@ -47,6 +48,7 @@ export function SendSubTab() {
   const storedSendTarget = useStore((s) => s.sendTarget);
   const setSendTarget = useStore((s) => s.setSendTarget);
   const serverMode = useStore((s) => selectServerMode(s));
+  const userOrgKind = useStore((s) => selectUserOrgKind(s));
   // Local mode has no organization → cross-user transfer is impossible.
   // Force self-target regardless of any persisted preference; the
   // "다른 사람" toggle is hidden below.
@@ -232,6 +234,30 @@ export function SendSubTab() {
     // If no member selected, revert to "나"
     if (!targetUserId) {
       setSendTarget('self');
+    }
+  };
+
+  // Individual orgs: recipients are reached by EXACT full email (no browse).
+  const [emailQuery, setEmailQuery] = useState('');
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const handleEmailLookup = async () => {
+    const email = emailQuery.trim().toLowerCase();
+    if (!email) return;
+    setIsLookingUp(true);
+    try {
+      const found = await lookupAccountByEmail(email);
+      if (found) {
+        handleMemberSelect(found.userId);
+      } else {
+        // Indistinguishable miss (not found OR private).
+        setTargetUserId('');
+        setOtherUserNotFound(true);
+        setSendTarget('other');
+      }
+    } catch {
+      setOtherUserNotFound(true);
+    } finally {
+      setIsLookingUp(false);
     }
   };
 
@@ -422,13 +448,42 @@ export function SendSubTab() {
               </button>
             </div>
             {sendTarget === 'other' && (
-              <MemberPicker
-                members={otherMembers}
-                selectedUserId={targetUserId}
-                onSelect={handleMemberSelect}
-                onDismiss={handleMemberDismiss}
-                placeholder={t('send.selectMember')}
-              />
+              userOrgKind === 'individual' ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="email"
+                    value={emailQuery}
+                    onChange={(e) => { setEmailQuery(e.target.value); setOtherUserNotFound(false); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleEmailLookup(); }}
+                    placeholder={t('send.recipientEmail', 'recipient@example.com')}
+                    className="px-2.5 py-1.5 text-sm rounded-md bg-[color:var(--bg-surface-2)] border border-[color:var(--border-2)] text-[color:var(--text-1)] w-[220px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleEmailLookup}
+                    disabled={isLookingUp || !emailQuery.trim()}
+                    className={cn(
+                      'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                      isLookingUp || !emailQuery.trim()
+                        ? 'bg-[color:var(--bg-surface-2)] text-[color:var(--text-4)]'
+                        : 'bg-[color:var(--violet-600)] text-white hover:bg-[color:var(--violet-700)]'
+                    )}
+                  >
+                    {t('send.find', 'Find')}
+                  </button>
+                  {targetUserId && (
+                    <span className="text-xs text-[color:var(--text-3)] truncate max-w-[160px]">{targetUserId}</span>
+                  )}
+                </div>
+              ) : (
+                <MemberPicker
+                  members={otherMembers}
+                  selectedUserId={targetUserId}
+                  onSelect={handleMemberSelect}
+                  onDismiss={handleMemberDismiss}
+                  placeholder={t('send.selectMember')}
+                />
+              )
             )}
           </div>
         )}

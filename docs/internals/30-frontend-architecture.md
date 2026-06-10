@@ -39,7 +39,7 @@ Presentation -> Application -> Domain <- Infrastructure
 | git-world (`domain/git-world`) | Git SSOT — `snapshot: AsyncFields<GitSnapshot>`, `operation: GitOperationState` (FSM), `pat: AsyncFields<GitPatState>`. writer 3개 (`fetchGitWorldState`, `runGitOperation`, `savePat/deletePat`). 세부는 [24-git-operations.md §0](24-git-operations.md#0-git-world-계약-greenfield-ssot) |
 | projectConfigSlice | `.ant/config.json` 내용 (`AsyncFields<ProjectConfig>`) |
 | previewSlice | Preview 상태 |
-| authSlice | 인증 상태 |
+| authSlice | 인증 상태 (`userEmail` / `userOrganization` / `userId` / `userOrgKind` / `memberships`). `userId`·`userOrgKind`·`memberships` 는 `/auth/me` 매 마운트 재공급(비영속). `selectUserOrgKind` / `selectOrgDisplayLabel` 로 kind 분기·표시. AppNavBar 가 active 계정 인디케이터 + (멤버십>1 시) 스위처(`switchOrg`). 전체 모델: [40-org-model.md](40-org-model.md) |
 | configSlice | 시스템 설정 (`serverMode: AsyncFields<'local'\|'cloud'>` from `/system/config`, localBackendPort, recursionLimit) |
 | chatSlice | 채팅 메시지 |
 | transferSlice | 전송 상태 |

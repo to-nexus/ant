@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Trash2 } from 'lucide-react';
+import { Check, Trash2, Globe, Lock } from 'lucide-react';
 import { useGitPat, useGitPatDispatch } from '@/domain/git-world';
 import {
   fetchOrgConfig,
@@ -10,6 +10,8 @@ import {
   updateUserConfig,
   resetUserAccount,
 } from '@/infrastructure/http/api';
+import { selectUserOrgKind } from '@/domain/store/selectors/auth';
+import { BoardViewModeToggle } from './aurora/BoardViewModeToggle';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
 import { STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
@@ -41,6 +43,7 @@ interface AccountConfigEditorProps {
 
 const SECTION_IDS = [
   'c3a-identity',
+  'c3a-account',
   'c3a-owners',
   'c3a-figma',
   'c3a-danger',
@@ -70,6 +73,12 @@ export function AccountConfigEditor({
   const [savedUserOverride, setSavedUserOverride] = useState('');
   const [isLoadingOwnerConfig, setIsLoadingOwnerConfig] = useState(true);
   const [isSavingOverride, setIsSavingOverride] = useState(false);
+
+  // Account visibility (individual orgs). Default public.
+  const userOrgKind = useStore((s) => selectUserOrgKind(s));
+  const isIndividual = userOrgKind === 'individual';
+  const [accountVisibility, setAccountVisibility] = useState<'public' | 'private'>('public');
+  const [isSavingVisibility, setIsSavingVisibility] = useState(false);
 
   // Bridge state from global store (single source of truth)
   const bridgeConnected = useStore((s) => s.bridgeConnected);
@@ -122,6 +131,7 @@ export function AccountConfigEditor({
         const override = userConfig.github?.ownerOverride || '';
         setUserOwnerOverride(override);
         setSavedUserOverride(override);
+        setAccountVisibility(userConfig.account?.visibility ?? 'public');
       } catch (error) {
         console.error('Failed to load owner configs:', error);
       } finally {
@@ -178,6 +188,21 @@ export function AccountConfigEditor({
       showError(error.message || t('github.saveFailed'));
     } finally {
       setIsSavingPAT(false);
+    }
+  };
+
+  const handleChangeVisibility = async (next: 'public' | 'private') => {
+    if (next === accountVisibility || isSavingVisibility) return;
+    const prev = accountVisibility;
+    setAccountVisibility(next); // optimistic
+    setIsSavingVisibility(true);
+    try {
+      await updateUserConfig({ account: { visibility: next } });
+    } catch (error: any) {
+      setAccountVisibility(prev); // revert on failure
+      showError(error.message || t('account.visibilitySaveFailed', 'Failed to update visibility'));
+    } finally {
+      setIsSavingVisibility(false);
     }
   };
 
@@ -312,6 +337,9 @@ export function AccountConfigEditor({
     <TocNav
       items={[
         { id: 'c3a-identity', label: t('account.tocIdentity'), icon: 'Lock' },
+        ...(isIndividual
+          ? [{ id: 'c3a-account', label: t('account.tocVisibility', 'Visibility'), icon: 'Globe' as const }]
+          : []),
         { id: 'c3a-owners', label: t('account.tocOwners'), icon: 'Users' },
         { id: 'c3a-figma', label: t('account.tocFigma'), icon: 'Palette' },
         {
@@ -564,6 +592,32 @@ export function AccountConfigEditor({
           </SectionCard>
 
           {/* ============================
+              Section — Account Visibility (individual only)
+              ============================ */}
+          {isIndividual && (
+            <SectionCard
+              id="c3a-account"
+              icon="Globe"
+              title={t('account.visibilityTitle', 'Account Visibility')}
+              description={t(
+                'account.visibilityDescription',
+                'Public accounts can be found by their full email for file transfers. Private accounts are not discoverable.',
+              )}
+              accent="aurora"
+            >
+              <BoardViewModeToggle<'public' | 'private'>
+                value={accountVisibility}
+                onChange={handleChangeVisibility}
+                options={[
+                  { id: 'public', label: t('account.visibilityPublic', 'Public'), icon: Globe },
+                  { id: 'private', label: t('account.visibilityPrivate', 'Private'), icon: Lock },
+                ]}
+                ariaLabel={t('account.visibilityTitle', 'Account Visibility')}
+              />
+            </SectionCard>
+          )}
+
+          {/* ============================
               Section 2 — Owners
               ============================ */}
           <SectionCard
@@ -580,7 +634,10 @@ export function AccountConfigEditor({
                 gap: 18,
               }}
             >
-              {/* Organization (editable override) */}
+              {/* Organization (editable override) — team only. Individual
+                  accounts have no shared org to set a default owner for; only
+                  the personal owner applies. */}
+              {!isIndividual && (
               <div>
                 <FieldLabel
                   action={
@@ -731,6 +788,7 @@ export function AccountConfigEditor({
                   )}
                 </div>
               </div>
+              )}
 
               {/* Personal Owner (auto-detected from PAT) */}
               <div>

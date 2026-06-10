@@ -14,9 +14,15 @@ import { logger } from '../../../../utils/logger';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import {
   resolveOrganizationId,
-  suggestOrganizationName,
+  resolveOrgIdentity,
 } from '../../../../core/auth/resolveOrganizationId';
 import { InvalidOrganizationNameError } from '../../../../core/auth/slugify';
+import {
+  INDIVIDUAL_ORG_ID,
+  LOCAL_ORG_ID,
+  deriveKindFromOrgId,
+  type OrganizationKind,
+} from '@ant/shared';
 
 const OIDC_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
 const OIDC_STATE_KEY_PREFIX = 'ant:oidc:state:';
@@ -82,7 +88,7 @@ export function createAuthRoutes(deps: {
     email: string,
     userId: string,
   ): Promise<{
-    authContext: { user: { id: string; email: string; organizationId: string }; organization: { id: string; name: string } };
+    authContext: { user: { id: string; email: string; organizationId: string }; organization: { id: string; name: string; kind?: OrganizationKind } };
     workspacePath: string;
   }> {
     const authContext = await authService.authenticate({ email, userId });
@@ -134,6 +140,7 @@ export function createAuthRoutes(deps: {
       sub: string;
       email: string;
       org: string;
+      kind?: OrganizationKind;
       name?: string;
       picture?: string;
     },
@@ -149,59 +156,42 @@ export function createAuthRoutes(deps: {
     );
   }
 
-  /**
-   * Shared post-OAuth completion for "returning user" and "disk-fallback
-   * backfill" branches — refresh the repo user record, ensure the
-   * workspace directory exists, mint a real JWT cookie, and redirect
-   * back to the SPA. Centralised so both call-sites stay in lockstep
-   * (otherwise the two branches drift on subtle details like cookie
-   * options or returnTo handling).
-   */
-  async function issueSettledSessionAndRedirect(args: {
-    res: Response;
-    req: Request;
-    organizationRepository: OrganizationRepositoryPort;
-    workspaceResolver: WorkspaceResolver;
-    stableId: string;
-    username: string;
-    email: string;
-    name?: string;
-    picture?: string;
+  /** A single membership projection for the `/auth/me` + switch envelopes. */
+  type MembershipView = {
     organizationId: string;
-    frontendUrl: string;
-    returnTo: string;
-    fallbackPath: string;
-  }): Promise<void> {
-    const workspacePath = args.workspaceResolver.getWorkspacePath({
-      userId: args.username,
-      organizationId: args.organizationId,
-    });
-    try {
-      await fs.promises.access(workspacePath);
-    } catch {
-      await fs.promises.mkdir(workspacePath, { recursive: true });
-    }
+    kind: OrganizationKind;
+    name: string;
+    role: 'owner' | 'member';
+  };
 
-    await args.organizationRepository.upsertUser({
-      id: args.stableId,
-      email: args.email,
-      name: args.name,
-      picture: args.picture,
-      currentOrganizationId: args.organizationId,
+  /**
+   * Build the account-context envelope (active org + all memberships) for
+   * the `/auth/me` and `/auth/switch-org` responses. The active org is
+   * always present even if its membership row is momentarily missing.
+   */
+  async function buildAccountEnvelope(
+    repo: OrganizationRepositoryPort,
+    userId: string,
+    activeOrgId: string,
+  ): Promise<{ activeOrg: { id: string; kind: OrganizationKind; name: string }; memberships: MembershipView[] }> {
+    const rows = await repo.listMembershipsByUser(userId);
+    const orgs = await Promise.all(rows.map((m) => repo.getOrganization(m.organizationId)));
+    const memberships: MembershipView[] = rows.map((m, i) => {
+      const org = orgs[i];
+      return {
+        organizationId: m.organizationId,
+        kind: org?.kind ?? deriveKindFromOrgId(m.organizationId),
+        name: org?.name ?? m.organizationId,
+        role: m.role,
+      };
     });
-
-    issueJwtCookie(args.req, args.res, {
-      sub: args.username,
-      email: args.email,
-      org: args.organizationId,
-      name: args.name,
-      picture: args.picture,
-    });
-
-    const redirectUrl = args.returnTo.startsWith('/app')
-      ? `${args.frontendUrl}${args.returnTo}${args.returnTo.includes('?') ? '&' : '?'}auth=success`
-      : `${args.frontendUrl}${args.returnTo}`;
-    args.res.redirect(redirectUrl);
+    const active = memberships.find((v) => v.organizationId === activeOrgId);
+    return {
+      activeOrg: active
+        ? { id: active.organizationId, kind: active.kind, name: active.name }
+        : { id: activeOrgId, kind: deriveKindFromOrgId(activeOrgId), name: activeOrgId },
+      memberships,
+    };
   }
 
   // ========================================
@@ -297,132 +287,77 @@ export function createAuthRoutes(deps: {
         return res.redirect(`${frontendUrl}${fallbackPath}?error=auth_config_error`);
       }
 
-      // Phase 3 — onboarding-aware branch.
-      //
-      // Identity decomposition:
-      //   - `username` (= email-local-part) is the JWT.sub claim AND the
-      //     workspace directory name. This preserves the pre-Phase-3
-      //     topology `{workspaces}/{orgId}/{username}/` so existing
-      //     on-disk projects remain reachable for returning users.
-      //   - `stableId` (= OAuth `sub`) is the OrganizationRepository
-      //     primary key — durable across email rotations and unique
-      //     across providers. The JWT does NOT carry it; downstream
-      //     repo lookups go through `getUserByEmail(payload.email)`.
+      // Org model: identity is the full lowercased email (org-independent,
+      // collision-free in the shared `individual` org and stable across an
+      // active-org switch). Every cloud signup joins `individual`; the
+      // active org defaults to it (team join is deferred). No onboarding
+      // round-trip — the org is decided at signup.
       if (organizationRepository) {
-        const username = oidcUser.email.split('@')[0];
-        const stableId = oidcUser.sub;
-        const existing = await organizationRepository.getUser(stableId);
+        const userId = oidcUser.email.toLowerCase();
+        const existing = await organizationRepository.getUser(userId);
 
-        const settledOrgId =
-          existing &&
-          existing.currentOrganizationId &&
+        // Honor a previously-chosen active org only if it is a real
+        // membership; otherwise fall back to the shared individual org.
+        let activeOrgId = INDIVIDUAL_ORG_ID;
+        if (
+          existing?.currentOrganizationId &&
           existing.currentOrganizationId !== PENDING_ORG_SENTINEL
-            ? existing.currentOrganizationId
-            : null;
-
-        if (settledOrgId) {
-          // Returning user — skip onboarding, mint real JWT with stored org.
-          await issueSettledSessionAndRedirect({
-            res,
-            req,
-            organizationRepository,
-            workspaceResolver,
-            stableId,
-            username,
-            email: oidcUser.email,
-            name: oidcUser.name,
-            picture: oidcUser.picture,
-            organizationId: settledOrgId,
-            frontendUrl,
-            returnTo,
-            fallbackPath,
-          });
-          return;
-        }
-
-        // Disk-fallback backfill (Defect 3 fix) — when a workspace already
-        // exists at `{org-derived-from-email}/{username}/` from pre-Phase-3
-        // operation, treat the user as returning: create the repo records
-        // inline and skip onboarding. Without this, every legacy user
-        // would be forced through onboarding and orphan their existing
-        // workspace tree.
-        const legacyOrgId = resolveOrganizationId(oidcUser.email, undefined, stableId);
-        const legacyWorkspacePath = workspaceResolver.getWorkspacePath({
-          userId: username,
-          organizationId: legacyOrgId,
-        });
-        const legacyWorkspaceExists = await fs.promises
-          .access(legacyWorkspacePath)
-          .then(() => true)
-          .catch(() => false);
-
-        if (legacyWorkspaceExists) {
-          await organizationRepository.getOrCreateOrganization({
-            id: legacyOrgId,
-            name: legacyOrgId,
-            ownerId: null,
-          });
-          await organizationRepository.attachMembership({
-            userId: stableId,
-            organizationId: legacyOrgId,
-            role: 'member',
-          });
-          await organizationRepository.upsertUser({
-            id: stableId,
-            email: oidcUser.email,
-            name: oidcUser.name,
-            picture: oidcUser.picture,
-            currentOrganizationId: legacyOrgId,
-          });
-          logger.info(
-            `[Auth] Backfilled legacy workspace for ${oidcUser.email} → org=${legacyOrgId}`,
-            { component: 'Auth' },
+        ) {
+          const mem = await organizationRepository.getMembership(
+            userId,
+            existing.currentOrganizationId,
           );
-
-          await issueSettledSessionAndRedirect({
-            res,
-            req,
-            organizationRepository,
-            workspaceResolver,
-            stableId,
-            username,
-            email: oidcUser.email,
-            name: oidcUser.name,
-            picture: oidcUser.picture,
-            organizationId: legacyOrgId,
-            frontendUrl,
-            returnTo,
-            fallbackPath,
-          });
-          return;
+          if (mem) activeOrgId = existing.currentOrganizationId;
         }
+        const activeKind = deriveKindFromOrgId(activeOrgId);
 
-        // New user OR existing user with sentinel org — onboarding required.
+        // Every user is a member of the shared individual org.
+        await organizationRepository.getOrCreateOrganization({
+          id: INDIVIDUAL_ORG_ID,
+          name: 'Individual',
+          kind: 'individual',
+          ownerId: null,
+        });
+        await organizationRepository.attachMembership({
+          userId,
+          organizationId: INDIVIDUAL_ORG_ID,
+          role: 'member',
+        });
         await organizationRepository.upsertUser({
-          id: stableId,
+          id: userId,
           email: oidcUser.email,
           name: oidcUser.name,
           picture: oidcUser.picture,
-          currentOrganizationId: PENDING_ORG_SENTINEL,
+          currentOrganizationId: activeOrgId,
         });
+
+        const workspacePath = workspaceResolver.getWorkspacePath({
+          userId,
+          organizationId: activeOrgId,
+        });
+        try {
+          await fs.promises.access(workspacePath);
+        } catch {
+          await fs.promises.mkdir(workspacePath, { recursive: true });
+        }
 
         issueJwtCookie(req, res, {
-          sub: username,
+          sub: userId,
           email: oidcUser.email,
-          org: PENDING_ORG_SENTINEL,
+          org: activeOrgId,
+          kind: activeKind,
           name: oidcUser.name,
           picture: oidcUser.picture,
         });
 
-        // Redirect into the SPA with onboarding flag — the FE
-        // onboardingRouter detects this and renders
-        // OrganizationOnboardingScreen.
-        const targetPath = returnTo.startsWith('/app') ? returnTo : fallbackPath;
-        const sep = targetPath.includes('?') ? '&' : '?';
-        return res.redirect(`${frontendUrl}${targetPath}${sep}onboarding=true`);
+        const redirectUrl = returnTo.startsWith('/app')
+          ? `${frontendUrl}${returnTo}${returnTo.includes('?') ? '&' : '?'}auth=success`
+          : `${frontendUrl}${returnTo}`;
+        return res.redirect(redirectUrl);
       }
 
-      // Legacy path — no repository wired. Preserve pre-Phase-3 behavior.
+      // Legacy path — no repository wired. AuthService resolves identity
+      // (sub=email, org=individual, kind=individual).
       const { authContext, workspacePath } = await validateAndGetWorkspace(oidcUser.email, oidcUser.sub);
 
       try {
@@ -436,6 +371,7 @@ export function createAuthRoutes(deps: {
         sub: authContext.user.id,
         email: authContext.user.email,
         org: authContext.organization.id,
+        kind: authContext.organization.kind,
         name: oidcUser.name,
         picture: oidcUser.picture,
       });
@@ -473,7 +409,7 @@ export function createAuthRoutes(deps: {
    *   carries the `_pending` sentinel; `suggestedOrganizationName` is
    *   filled from `suggestOrganizationName(email)` in that case (Phase 3).
    */
-  router.get('/auth/me', (req: Request, res: Response) => {
+  router.get('/auth/me', async (req: Request, res: Response) => {
     res.set('Cache-Control', 'private, no-store');
 
     if (isLocalServerMode()) {
@@ -484,7 +420,12 @@ export function createAuthRoutes(deps: {
           organization: organizationId,
           userId,
           name: 'Local User',
+          kind: 'local' as OrganizationKind,
         },
+        activeOrg: { id: organizationId, kind: 'local' as OrganizationKind, name: organizationId },
+        memberships: [
+          { organizationId, kind: 'local' as OrganizationKind, name: organizationId, role: 'member' as const },
+        ],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -506,6 +447,8 @@ export function createAuthRoutes(deps: {
     if (!token) {
       return res.json({
         user: null,
+        activeOrg: null,
+        memberships: [],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -513,10 +456,19 @@ export function createAuthRoutes(deps: {
 
     try {
       const payload = jwtService.verify(token);
-      const needsOnboarding = payload.org === PENDING_ORG_SENTINEL;
-      const suggestedOrganizationName = needsOnboarding
-        ? suggestOrganizationName(payload.email)
-        : null;
+      const activeKind = payload.kind ?? deriveKindFromOrgId(payload.org);
+
+      // Account envelope (active org + memberships) when the repo is wired;
+      // otherwise synthesize a single-membership view from the JWT.
+      const envelope = organizationRepository
+        ? await buildAccountEnvelope(organizationRepository, payload.sub, payload.org)
+        : {
+            activeOrg: { id: payload.org, kind: activeKind, name: payload.org },
+            memberships: [
+              { organizationId: payload.org, kind: activeKind, name: payload.org, role: 'member' as const },
+            ],
+          };
+
       res.json({
         user: {
           email: payload.email,
@@ -524,13 +476,18 @@ export function createAuthRoutes(deps: {
           name: payload.name,
           picture: payload.picture,
           userId: payload.sub,
+          kind: activeKind,
         },
-        needsOnboarding,
-        suggestedOrganizationName,
+        activeOrg: envelope.activeOrg,
+        memberships: envelope.memberships,
+        needsOnboarding: false,
+        suggestedOrganizationName: null,
       });
     } catch {
       return res.json({
         user: null,
+        activeOrg: null,
+        memberships: [],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -660,6 +617,7 @@ export function createAuthRoutes(deps: {
       sub: payload.sub,
       email: payload.email,
       org: organization.id,
+      kind: organization.kind ?? deriveKindFromOrgId(organization.id),
       name: payload.name,
       picture: payload.picture,
     });
@@ -673,6 +631,87 @@ export function createAuthRoutes(deps: {
         picture: payload.picture,
       },
       needsOnboarding: false,
+    });
+  });
+
+  /**
+   * POST /api/auth/switch-org — change the active org for the current
+   * identity. Foundation for multi-org accounts: validates membership,
+   * updates `currentOrganizationId`, and re-issues the JWT cookie with the
+   * new `org`+`kind`. Today every user has exactly one membership
+   * (`individual`), so the only legal switch is a no-op to self.
+   */
+  router.post('/auth/switch-org', async (req: Request, res: Response) => {
+    if (!jwtService) {
+      return res.status(503).json({ error: 'JWT not configured' });
+    }
+    if (!organizationRepository) {
+      return res.status(503).json({ error: 'Organization repository not configured' });
+    }
+
+    const token = (req as any).cookies?.[JwtService.cookieName];
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    let payload: ReturnType<typeof jwtService.verify>;
+    try {
+      payload = jwtService.verify(token);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    const organizationId =
+      typeof req.body?.organizationId === 'string' ? req.body.organizationId.trim() : '';
+    if (!organizationId) {
+      return res.status(400).json({ error: 'organizationId required' });
+    }
+
+    const userId = payload.sub;
+    const membership = await organizationRepository.getMembership(userId, organizationId);
+    if (!membership) {
+      return res.status(403).json({ error: 'not_a_member', message: 'You are not a member of that organization.' });
+    }
+
+    const org = await organizationRepository.getOrganization(organizationId);
+    const kind = org?.kind ?? deriveKindFromOrgId(organizationId);
+
+    await organizationRepository.upsertUser({
+      id: userId,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      currentOrganizationId: organizationId,
+    });
+
+    const workspacePath = workspaceResolver.getWorkspacePath({ userId, organizationId });
+    try {
+      await fs.promises.access(workspacePath);
+    } catch {
+      await fs.promises.mkdir(workspacePath, { recursive: true });
+    }
+
+    issueJwtCookie(req, res, {
+      sub: userId,
+      email: payload.email,
+      org: organizationId,
+      kind,
+      name: payload.name,
+      picture: payload.picture,
+    });
+
+    const envelope = await buildAccountEnvelope(organizationRepository, userId, organizationId);
+    res.json({
+      user: {
+        userId,
+        email: payload.email,
+        organization: organizationId,
+        name: payload.name,
+        picture: payload.picture,
+        kind,
+      },
+      activeOrg: envelope.activeOrg,
+      memberships: envelope.memberships,
     });
   });
 
@@ -732,7 +771,12 @@ export function createAuthRoutes(deps: {
     try {
       const DESKTOP_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
       const token = jwtService.sign(
-        { sub: user.id, email: user.email || '', org: organization.id },
+        {
+          sub: user.id,
+          email: user.email || '',
+          org: organization.id,
+          kind: organization.kind ?? deriveKindFromOrgId(organization.id),
+        },
         DESKTOP_TOKEN_TTL_SECONDS
       );
 

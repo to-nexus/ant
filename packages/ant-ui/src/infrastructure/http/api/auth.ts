@@ -5,7 +5,8 @@ import {
   type AuthMeResult,
   type AuthUser,
 } from '@ant/auth-client';
-import { API_BASE } from './client';
+import { API_BASE, apiPost } from './client';
+import type { OrgMembership } from '@ant/auth-client/types';
 
 /**
  * Thin app-local shims over `@ant/auth-client`. Both ant-site and ant-ui
@@ -36,4 +37,17 @@ export async function signOut(opts?: {
     apiBase: API_BASE(),
     onError: opts?.onError,
   });
+}
+
+/**
+ * Switch the active org for the current identity. Validates membership
+ * server-side and re-issues the JWT cookie with the new `org`+`kind`.
+ * Callers should re-fetch `/auth/me` and reload workspace-scoped state
+ * afterward (the active org changes the workspace root).
+ */
+export async function switchOrg(organizationId: string): Promise<{
+  activeOrg: { id: string; kind: string; name: string };
+  memberships: OrgMembership[];
+}> {
+  return apiPost(`${API_BASE()}/auth/switch-org`, { organizationId });
 }

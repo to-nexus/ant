@@ -347,6 +347,10 @@ Deploy는 Preview와 별개의 서빙 경로다. 사용자가 "Deploy" 버튼을
 
 Deploy는 Preview와 동일한 멀티 패키지 모델을 따른다 — 슬러그 SSOT(`packageSlug()`), 5-part urlKey, `packages[]` 데이터 모델, 라우팅 우선순위까지 공유한다. 차이는 (1) 정적 산출물을 띄운다는 것, (2) `.deploy/meta.json`이 source of truth라는 점뿐이다.
 
+### Visibility (public / private)
+
+각 배포는 `visibility: 'public' | 'private'` 를 가진다 (기본 `public`, individual·team 공통). `.deploy/meta.json` 과 `DeployState` 에 영속되어 rehydrate 후에도 유지된다. `private` 이면 deploy 프록시가 접근을 게이팅한다 — urlKey 에 박힌 소유자 `(tenantId,userId)` 와 JWT 쿠키의 `org`/`sub` 가 일치할 때만 통과. 불일치/무쿠키/무효 토큰은 **진짜 not-found 와 바이트 동일한 404** 를 반환한다 (403 금지 — 존재 유출 방지). 로컬 모드(jwtService 부재)는 단일 테넌트이므로 owner-accessible 로 간주. HTTP 프록시와 WS 업그레이드 경로 양쪽에 대칭 적용된다. 전체 정책: [40-org-model.md](40-org-model.md).
+
 ### Phase 모델
 
 | Phase | 의미 | 프로세스 | 메타 | 자동 복구 |

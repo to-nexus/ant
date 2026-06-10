@@ -42,6 +42,20 @@ Steps 2-4 run **even when step 1 fails** — the cookie may persist server-side 
 
 Login is **not** broadcast cross-tab — the OAuth redirect already lands the new tab on a state where its own mount-time `/auth/me` will see the cookie. Adding a `login` broadcast would only race with that.
 
+#### Org resolution at login (org model)
+
+The OAuth callback resolves identity via the org model ([40-org-model.md](40-org-model.md)):
+
+- `JWT.sub` = full lowercased email (org-independent identity).
+- Active org = the user's `currentOrganizationId` when it is a valid membership, else the shared `individual` org. Every signup is a member of `individual`. The JWT carries `org` + a new `kind` claim.
+- **No onboarding round-trip** — the org is decided at signup. The `_pending` sentinel / `OrganizationOnboardingScreen` / `POST /auth/onboarding/organization` are the dormant team seam; individual never trips them (`needsOnboarding` is always `false`).
+
+> The `kind` claim (`OrganizationKind`: local/individual/team) is distinct from the session-result `kind` below. `jwtAuth` falls back to `deriveKindFromOrgId(org)` for pre-kind tokens.
+
+#### `/auth/me` envelope + org switch
+
+`/auth/me` returns `{ user{…,kind}, activeOrg{id,kind,name}, memberships[], needsOnboarding:false, suggestedOrganizationName:null }`. The account switcher reads `memberships`; `POST /api/auth/switch-org { organizationId }` validates membership and re-issues the cookie with the new `org`+`kind` (foundation — single-membership today, team join deferred).
+
 ### Mount-time session check
 
 Every mount runs `runMountSessionCheck` which dispatches the discriminated [`AuthMeResult`](../../packages/ant-auth-client/src/types.ts):

@@ -29,7 +29,8 @@ import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middl
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
-import { createJwtServiceFromEnv } from '../auth/JwtService';
+import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
+import { parseCookieHeader } from '../../periphery/adapters/http/middleware/proxyForwarding';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
@@ -368,12 +369,17 @@ export class PreviewServer {
     }));
 
     // 4b. Deploy proxy — serves deployed static builds via /deploy/:urlKey/*
-    // No authentication required: serves user's built static files
+    // Public deploys serve without auth; private deploys gate on the owning
+    // tenant/user via the JWT cookie (undefined jwtService in local mode →
+    // owner-accessible). The proxy runs before cookie-parser, so it parses the
+    // raw Cookie header itself.
     this.app.use('/deploy/', createDeployProxyMiddleware({
       ensureRunning: (t, u, p, f) => this.deployService.ensureRunning(t, u, p, f),
       touchDeploy: (t, u, p, f) => this.stateStore.touchDeploy(t, u, p, f),
       updateDeploy: (t, u, p, f, patch) => this.stateStore.updateDeploy(t, u, p, f, patch as any),
       broadcastStatus: (t, u, p, f, status) => this.deployService.broadcastStatus(t, u, p, f, status as any),
+      jwtService: createJwtServiceFromEnv(),
+      cookieName: JwtService.cookieName,
     }));
 
     // 5. Cookie parser (required for JWT cookie auth)
@@ -921,13 +927,17 @@ export class PreviewServer {
           component: 'PreviewServer'
         });
 
+        // Whitelist the visibility input — never trust the raw body value.
+        const visibility = req.body?.visibility === 'private' ? 'private' : 'public';
+
         const codebasePath = this.resolveWorkspacePath(userContext, projectId, feature);
         const result = await this.deployService.startDeploy(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature,
-          codebasePath
+          codebasePath,
+          visibility
         );
 
         if (result.success) {
@@ -1092,6 +1102,24 @@ export class PreviewServer {
             );
             if (!state) { socket.destroy(); return; }
 
+            // Private-deploy gate — symmetric with the HTTP proxy. Without it,
+            // a private deploy's HMR/runtime assets would tunnel to an
+            // unauthorized client. Failure → silent socket.destroy (no signal).
+            if (state.visibility === 'private') {
+              const jwtService = createJwtServiceFromEnv();
+              if (jwtService) {
+                const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
+                let authorized = false;
+                if (token) {
+                  try {
+                    const payload = jwtService.verify(token);
+                    authorized = payload.org === parsed.tenantId && payload.sub === parsed.userId;
+                  } catch { authorized = false; }
+                }
+                if (!authorized) { socket.destroy(); return; }
+              }
+            }
+
             const target = resolveDeployTarget(state, parsed.serviceName, urlKey);
             if (!target) { socket.destroy(); return; }
 
@@ -1111,14 +1139,7 @@ export class PreviewServer {
           if (isCloudMode) {
             const jwtService = createJwtServiceFromEnv();
             if (jwtService) {
-              const cookieHeader = req.headers.cookie || '';
-              const cookies = Object.fromEntries(
-                cookieHeader.split(';').map(c => {
-                  const [k, ...v] = c.trim().split('=');
-                  return [k, v.join('=')];
-                })
-              );
-              const token = cookies['ant_session'];
+              const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
               if (!token) { socket.destroy(); return; }
               try { jwtService.verify(token); } catch { socket.destroy(); return; }
             }

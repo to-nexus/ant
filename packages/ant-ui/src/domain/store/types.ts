@@ -1,7 +1,8 @@
 import { Session } from '@/domain/models/session';
 import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
-import type { ChatLine } from '@ant/shared';
+import type { ChatLine, OrganizationKind } from '@ant/shared';
+import type { OrgMembership as OrgMembershipView } from '@ant/auth-client/types';
 import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
 import type { ViewMode } from '@/domain/file/viewMode';
 import type { CurrentFileState } from './slices/fileSlice';
@@ -305,6 +306,20 @@ export interface AuthState {
   userOrganization: string | undefined;
   userName: string | undefined;
   userPicture: string | undefined;
+  /**
+   * Server-side userId (full email in cloud; `'local'` locally). Sourced from
+   * `/auth/me` — NOT derived client-side from the email. Used by
+   * `workspace-path` and transfer self-resolution.
+   */
+  userId: string | undefined;
+  /** Active org kind — gates kind-specific UI (individual vs team). */
+  userOrgKind: OrganizationKind | undefined;
+  /**
+   * All orgs the current identity belongs to (account switcher). Length 1
+   * (`individual`) today; the switcher renders as a static label until team
+   * join ships.
+   */
+  memberships: OrgMembershipView[];
   /**
    * Cloud-mode JWT verification status. Mirrors the `systemConfigStatus`
    * pattern (idle/loading/ready/error) but with semantics that match the

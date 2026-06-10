@@ -26,6 +26,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
+import type { DeployVisibility } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
@@ -232,6 +233,7 @@ export class DeployService {
         enriched = {
           packages: state.packages,
           url: this.computeTopLevelDeployUrl(state.packages),
+          visibility: state.visibility ?? 'public',
           ...enriched,
         };
       }
@@ -336,7 +338,8 @@ export class DeployService {
     userId: string,
     projectId: string,
     feature: string,
-    codebasePath: string
+    codebasePath: string,
+    visibility: DeployVisibility = 'public'
   ): Promise<StartDeployResult> {
     // 1) Base branch guard — main is not deployable. Features only.
     if (!feature || feature === 'main') {
@@ -440,6 +443,7 @@ export class DeployService {
       podId: os.hostname(),
       workspacePath: deployWorkspacePath,
       packages: packagesState,
+      visibility,
       startedAt: new Date(),
     };
 
@@ -588,6 +592,7 @@ export class DeployService {
             tenantId, userId, projectId, feature,
             workspacePath,
             packages: metaPackages,
+            visibility: initialState.visibility,
             createdAt: now,
             updatedAt: now,
           });
@@ -810,6 +815,9 @@ export class DeployService {
         podId: os.hostname(),
         workspacePath: meta.workspacePath,
         packages: packagesState,
+        // Preserve the persisted visibility across rehydration so a private
+        // deploy stays private after pod restart / idle eviction.
+        visibility: meta.visibility ?? 'public',
         startedAt: new Date(),
       };
       await this.stateStore.registerDeploy(fullState);
@@ -852,12 +860,14 @@ export class DeployService {
     phase: DeployPhase;
     url?: string | null;
     packages?: DeployPackage[];
+    visibility?: DeployVisibility;
     error?: string;
   }> {
     const key = this.makeKey(tenantId, userId, projectId, feature);
     const state = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
     const active = this.activeDeploys.get(key);
     const selfPod = os.hostname();
+    const stateVisibility: DeployVisibility = state?.visibility ?? 'public';
 
     // 1. Running on this pod and process alive
     if (state?.phase === 'running' && active && state.podId === selfPod) {
@@ -865,6 +875,7 @@ export class DeployService {
         phase: 'running',
         url: this.computeTopLevelDeployUrl(state.packages),
         packages: state.packages,
+        visibility: stateVisibility,
       };
     }
 
@@ -874,6 +885,7 @@ export class DeployService {
         phase: 'running',
         url: this.computeTopLevelDeployUrl(state.packages),
         packages: state.packages,
+        visibility: stateVisibility,
       };
     }
 
@@ -883,6 +895,7 @@ export class DeployService {
         phase: state.phase,
         url: this.computeTopLevelDeployUrl(state.packages),
         packages: state.packages,
+        visibility: stateVisibility,
       };
     }
 
@@ -892,6 +905,7 @@ export class DeployService {
         phase: 'error',
         error: state.error,
         packages: state.packages,
+        visibility: stateVisibility,
       };
     }
 
@@ -917,6 +931,7 @@ export class DeployService {
         phase: 'hibernated',
         url: this.computeTopLevelDeployUrl(synth),
         packages: synth,
+        visibility: meta.visibility ?? 'public',
       };
     }
 
@@ -926,11 +941,12 @@ export class DeployService {
         phase: 'unavailable',
         error: state.error,
         packages: state.packages,
+        visibility: stateVisibility,
       };
     }
 
     // 7. Nothing at all
-    return { phase: 'idle' };
+    return { phase: 'idle', visibility: 'public' };
   }
 
   /**

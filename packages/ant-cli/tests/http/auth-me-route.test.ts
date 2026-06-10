@@ -82,62 +82,49 @@ describe('GET /api/auth/me — cloud mode', () => {
     if (app) await app.close();
   });
 
-  it('returns 200 + { user: null, needsOnboarding: false, suggestedOrganizationName: null } when no cookie', async () => {
+  const NULL_ENVELOPE = {
+    user: null,
+    activeOrg: null,
+    memberships: [],
+    needsOnboarding: false,
+    suggestedOrganizationName: null,
+  };
+
+  it('returns the null envelope when no cookie', async () => {
     app = await startApp(makeJwtService());
     const res = await fetch(`${app.url}/api/auth/me`);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({
-      user: null,
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
-    });
+    expect(await res.json()).toEqual(NULL_ENVELOPE);
   });
 
-  it('returns 200 + user:null envelope when the cookie is malformed', async () => {
+  it('returns the null envelope when the cookie is malformed', async () => {
     app = await startApp(makeJwtService());
     const res = await fetch(`${app.url}/api/auth/me`, {
       headers: { Cookie: `${JwtService.cookieName}=not-a-valid-jwt` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({
-      user: null,
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
-    });
+    expect(await res.json()).toEqual(NULL_ENVELOPE);
   });
 
-  it('returns 200 + user:null envelope when the token signature is wrong', async () => {
+  it('returns the null envelope when the token signature is wrong', async () => {
     const goodService = makeJwtService();
-    const token = goodService.sign({
-      sub: 'user-1',
-      email: 'alice@to.nexus',
-      org: 'to.nexus',
-      name: 'Alice',
-    });
-    const tamperedService = new JwtService({
-      secret: 'a-different-secret-also-at-least-32-chars',
-    });
+    const token = goodService.sign({ sub: 'a@x.com', email: 'a@x.com', org: 'individual', kind: 'individual' });
+    const tamperedService = new JwtService({ secret: 'a-different-secret-also-at-least-32-chars' });
     app = await startApp(tamperedService);
     const res = await fetch(`${app.url}/api/auth/me`, {
       headers: { Cookie: `${JwtService.cookieName}=${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({
-      user: null,
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
-    });
+    expect(await res.json()).toEqual(NULL_ENVELOPE);
   });
 
-  it('returns 200 + user payload + needsOnboarding:false when the cookie is a valid token (settled org)', async () => {
+  it('valid individual token → user.kind + activeOrg + memberships envelope (no repo wired)', async () => {
     const jwtService = makeJwtService();
     const token = jwtService.sign({
-      sub: 'user-42',
-      email: 'alice@to.nexus',
-      org: 'to.nexus',
+      sub: 'alice@gmail.com',
+      email: 'alice@gmail.com',
+      org: 'individual',
+      kind: 'individual',
       name: 'Alice',
       picture: 'https://example.com/avatar.png',
     });
@@ -147,57 +134,31 @@ describe('GET /api/auth/me — cloud mode', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({
-      user: {
-        userId: 'user-42',
-        email: 'alice@to.nexus',
-        organization: 'to.nexus',
-        name: 'Alice',
-        picture: 'https://example.com/avatar.png',
-      },
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
+    expect(body.user).toEqual({
+      userId: 'alice@gmail.com',
+      email: 'alice@gmail.com',
+      organization: 'individual',
+      name: 'Alice',
+      picture: 'https://example.com/avatar.png',
+      kind: 'individual',
     });
+    expect(body.activeOrg).toEqual({ id: 'individual', kind: 'individual', name: 'individual' });
+    expect(body.memberships).toEqual([
+      { organizationId: 'individual', kind: 'individual', name: 'individual', role: 'member' },
+    ]);
+    expect(body.needsOnboarding).toBe(false);
   });
 
-  it('returns needsOnboarding:true + suggestedOrganizationName for business email on _pending JWT', async () => {
-    // Phase 3 contract — OAuth callback emits `org: '_pending'` for new
-    // users so the FE can route them to OrganizationOnboardingScreen.
-    // Business email → second-level domain becomes the prefill.
+  it('kind falls back to deriveKindFromOrgId when the token lacks a kind claim (BC)', async () => {
     const jwtService = makeJwtService();
-    const token = jwtService.sign({
-      sub: 'user-new',
-      email: 'newbie@example.com',
-      org: '_pending',
-      name: 'Newbie',
-    });
+    // personal-* prefix → individual (legacy consumer org BC).
+    const token = jwtService.sign({ sub: 'p@x.com', email: 'p@x.com', org: 'personal-abc' });
     app = await startApp(jwtService);
     const res = await fetch(`${app.url}/api/auth/me`, {
       headers: { Cookie: `${JwtService.cookieName}=${token}` },
     });
-    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.needsOnboarding).toBe(true);
-    expect(body.user).toMatchObject({ userId: 'user-new', organization: '_pending' });
-    expect(body.suggestedOrganizationName).toBe('example');
-  });
-
-  it('returns needsOnboarding:true + null suggestion for consumer email on _pending JWT', async () => {
-    const jwtService = makeJwtService();
-    const token = jwtService.sign({
-      sub: 'user-consumer',
-      email: 'foo@gmail.com',
-      org: '_pending',
-      name: 'Foo',
-    });
-    app = await startApp(jwtService);
-    const res = await fetch(`${app.url}/api/auth/me`, {
-      headers: { Cookie: `${JwtService.cookieName}=${token}` },
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.needsOnboarding).toBe(true);
-    expect(body.suggestedOrganizationName).toBeNull();
+    expect(body.user.kind).toBe('individual');
   });
 
   it('returns 503 when JWT service is not configured (cloud config fault)', async () => {
@@ -259,7 +220,10 @@ describe('GET /api/auth/me — local mode', () => {
         organization: 'local',
         userId: 'local',
         name: 'Local User',
+        kind: 'local',
       },
+      activeOrg: { id: 'local', kind: 'local', name: 'local' },
+      memberships: [{ organizationId: 'local', kind: 'local', name: 'local', role: 'member' }],
       needsOnboarding: false,
       suggestedOrganizationName: null,
     });
@@ -284,6 +248,7 @@ describe('GET /api/auth/me — local mode', () => {
       organization: 'to.nexus',
       userId: 'probe',
       name: 'Local User',
+      kind: 'local',
     });
     expect(body.needsOnboarding).toBe(false);
   });

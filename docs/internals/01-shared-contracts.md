@@ -267,6 +267,14 @@ Feature 디렉토리 구조의 SSOT. 모든 정규 디렉토리/파일이 도메
 | `UI_VISIBLE_FILES` | ArtifactsPanel 에 표시할 파일 이름 (CANONICAL_FILE_DEFS 의 `ui:*` 항목에서 파생). |
 | `isCanonicalDir()` | 상대 경로가 정규 디렉토리인지 O(1) 판정 |
 
+### org.ts
+
+Org 모델 공유 타입. `OrganizationKind` (`local` \| `individual` \| `team`), `INDIVIDUAL_ORG_ID` / `LOCAL_ORG_ID` / `LOCAL_USER_ID` 상수, `deriveKindFromOrgId(orgId)` (kind 부재 토큰용 fallback 분류기). FE/BE 가 kind 분기 + 매직 스트링 정합을 공유한다. 전체 모델: [40-org-model.md](40-org-model.md).
+
+### deploy.ts
+
+배포 공유 타입. `DeployPhase` / `DeployFramework` / `DeployStatus` / `DeployStatusPackage` / `DeployLogEntry` + `DeployVisibility` (`public` \| `private`, 부재=public). visibility 는 `DeployStatus` 집계 레벨에만 존재한다 (per-package 아님).
+
 ## 경계
 
 - 프론트엔드에서의 사용: [30-frontend-architecture.md](30-frontend-architecture.md)

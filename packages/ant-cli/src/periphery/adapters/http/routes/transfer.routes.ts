@@ -14,7 +14,8 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArtifactTransferService } from '../../../../infrastructure/workspace/ArtifactTransferService';
-import { extractUserContext, isLocalServerMode } from './helpers/userContext';
+import { extractUserContext } from './helpers/userContext';
+import { readUserVisibility } from './helpers/userConfigStore';
 import { TRANSFER_ERROR_MESSAGES } from '../../../../core/types/transfer';
 import { RedisStateStore } from '../../../../infrastructure/state/RedisStateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
@@ -197,23 +198,33 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
    * POST /api/artifacts/transfer-request
    * Create a transfer request to another user (requires approval).
    *
-   * Rejected in local mode — local has no organization, so cross-user
-   * transfers are by definition meaningless. Self-transfers go through
-   * `POST /api/artifacts/transfer` instead.
+   * Dispatched by org kind:
+   * - `local`: rejected — no peers.
+   * - `individual`: recipient is addressed by full email; allowed only when
+   *   the target account is `public` (or self).
+   * - `team`: same-org peer by `recipient.userId` (current behavior).
    */
   router.post('/artifacts/transfer-request', async (req: Request, res: Response) => {
     try {
-      if (isLocalServerMode()) {
+      const userContext = extractUserContext(req);
+      const kind = userContext.organizationKind ?? 'local';
+
+      if (kind === 'local') {
         return res.status(400).json({
           error: 'LOCAL_MODE_NO_CROSS_USER',
           message: 'Cross-user transfer is not supported in local mode.',
         });
       }
 
-      const userContext = extractUserContext(req);
       const { recipient, source, destination } = req.body;
 
-      if (!recipient?.userId) {
+      // Individual identity is the full email; team uses the browse userId.
+      const recipientUserId: string | undefined =
+        kind === 'individual'
+          ? (typeof recipient?.email === 'string' ? recipient.email : recipient?.userId)?.trim()?.toLowerCase()
+          : recipient?.userId;
+
+      if (!recipientUserId) {
         return res.status(400).json({ error: 'INVALID_PATH', message: 'recipient 정보가 누락되었습니다.' });
       }
       if (!source?.projectId || !source?.featureId || !source?.path) {
@@ -223,6 +234,25 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
         return res.status(400).json({ error: 'INVALID_PATH', message: 'destination 정보가 누락되었습니다.' });
       }
 
+      // Individual: a cross-user recipient must be public (self is always allowed).
+      if (kind === 'individual' && recipientUserId !== userContext.userId) {
+        if (!workspaceResolver) {
+          return res.status(503).json({ error: 'IO_ERROR', message: 'Workspace resolver unavailable.' });
+        }
+        const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+        const visibility = await readUserVisibility(
+          workspacesPath,
+          userContext.organizationId,
+          recipientUserId,
+        );
+        if (visibility !== 'public') {
+          return res.status(403).json({
+            error: 'RECIPIENT_NOT_PUBLIC',
+            message: '해당 사용자는 파일 수신이 비공개로 설정되어 있습니다.',
+          });
+        }
+      }
+
       const request = await transferService.requestTransfer({
         sender: {
           orgId: userContext.organizationId,
@@ -230,7 +260,7 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
         },
         recipient: {
           orgId: recipient.orgId || userContext.organizationId,
-          userId: recipient.userId,
+          userId: recipientUserId,
         },
         source,
         destination,

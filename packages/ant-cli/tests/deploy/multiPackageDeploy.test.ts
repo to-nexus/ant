@@ -86,6 +86,7 @@ describe('DeployMetaStore v1 → v2 lift', () => {
           urlKey: 'org--user--proj--feat--apps-admin',
         },
       ],
+      visibility: 'public',
       createdAt: '2025-01-01T00:00:00.000Z',
       updatedAt: '2025-01-01T00:00:00.000Z',
     };
@@ -93,6 +94,22 @@ describe('DeployMetaStore v1 → v2 lift', () => {
 
     const read = await store.read(workspacePath);
     expect(read).toEqual(v2);
+  });
+
+  it('defaults absent visibility to public on read (forward-only)', async () => {
+    const dir = path.join(workspacePath, '.deploy');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'meta.json'),
+      JSON.stringify({
+        version: 2,
+        tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat',
+        workspacePath, packages: [],
+        createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z',
+      }),
+    );
+    const read = await store.read(workspacePath);
+    expect(read?.visibility).toBe('public');
   });
 
   it('returns null for a corrupt / future-version meta', async () => {
@@ -125,6 +142,7 @@ describe('DeployMetaStore v1 → v2 lift', () => {
           urlKey: 'org--user--proj--feat',
         },
       ],
+      visibility: 'private',
       createdAt: '2025-01-01T00:00:00.000Z',
       updatedAt: '2025-01-01T00:00:00.000Z',
     };
