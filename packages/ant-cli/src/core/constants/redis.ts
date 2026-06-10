@@ -29,6 +29,8 @@ export const REDIS_DOMAINS = {
   AUTH: `${APP_PREFIX}:auth`,
   /** Compaction-aware baseline-estimate cache (per-tenant + per-(intent, model, RAC, draft)). */
   BASELINE: `${APP_PREFIX}:baseline`,
+  /** Credit billing — balance / ledger / account / in-flight hold (per org+user). */
+  BILLING: `${APP_PREFIX}:billing`,
 } as const;
 
 // ============================================
@@ -283,6 +285,35 @@ export const REDIS_KEYS = {
     ): string =>
       `${REDIS_DOMAINS.BASELINE}:${orgId}:${userId}:${projectId}:${featureName}:${intent}:${modelId}:${racFingerprint}:${draftHash}`,
   },
+
+  /**
+   * Credit billing (ant:billing:*) — per org+user scoped, mirroring the
+   * TRANSFER / BASELINE tenant-scoping convention. For the shared `individual`
+   * org this is effectively per-user; the `team` seam aggregates at org level
+   * later. All values JSON except BALANCE (integer micro-credits for atomic
+   * INCRBY/DECRBY) and LEDGER (Redis LIST of JSON transactions).
+   */
+  BILLING: {
+    /** Integer micro-credit balance - ant:billing:balance:{orgId}:{userId} */
+    BALANCE: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:balance:${org}:${user}`,
+    /** Append-only transaction LIST - ant:billing:ledger:{orgId}:{userId} */
+    LEDGER: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:ledger:${org}:${user}`,
+    /** Subscription + monthly-grant cycle state (JSON) - ant:billing:account:{orgId}:{userId} */
+    ACCOUNT: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:account:${org}:${user}`,
+    /** In-flight reservation hold record (JSON {org,user,micro}) for a running job - ant:billing:hold:{jobId} */
+    HOLD: (jobId: string): string => `${REDIS_DOMAINS.BILLING}:hold:${jobId}`,
+    /** Per-user aggregate held micro-credits across concurrent jobs - ant:billing:held:{orgId}:{userId} */
+    HELD: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:held:${org}:${user}`,
+    /** Per-job debit idempotency lock - ant:billing:debit:{jobId} */
+    DEBIT_LOCK: (jobId: string): string => `${REDIS_DOMAINS.BILLING}:debit:${jobId}`,
+    /** Monthly grant lock (one grant per cycle) - ant:billing:grantLock:{orgId}:{userId} */
+    GRANT_LOCK: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:grantLock:${org}:${user}`,
+  },
 } as const;
 
 // ============================================
@@ -343,6 +374,17 @@ export const REDIS_TTL = {
   /** Baseline estimate cache TTL — 5 minutes. */
   BASELINE: {
     ENTRY: 300,
+  },
+
+  /** Credit billing TTLs. Balance/ledger/account are durable (no TTL). */
+  BILLING: {
+    /** In-flight reservation hold — bounded to a generous job-runtime window
+     *  so an abandoned/crashed job's hold self-clears instead of leaking. */
+    HOLD: 6 * 60 * 60,            // 6 hours
+    /** Debit idempotency lock — long enough to outlast any finalize retry. */
+    DEBIT_LOCK: 24 * 60 * 60,     // 24 hours
+    /** Max ledger entries kept per account (LTRIM). */
+    LEDGER_MAX_ENTRIES: 1000,
   },
 } as const;
 

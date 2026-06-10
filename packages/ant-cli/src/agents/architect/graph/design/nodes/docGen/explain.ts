@@ -114,7 +114,7 @@ export async function renderExplainResponse(
   }
 
   if (capturedUsage) {
-    const { logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+    const { logTokenUsageToFile, updateKanbanTokenUsage, resolveModelIdSafe } = await import('../../../../../common/graph/llmHelpers');
     accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false });
     updateKanbanTokenUsage(state);
     logTokenUsageToFile(
@@ -126,6 +126,7 @@ export async function renderExplainResponse(
         taskName: state.currentTask?.name || 'Explain',
         node: 'docGen-explain',
         callIndex: state._docGenCallIndex || 0,
+        modelId: resolveModelIdSafe(state),
         nodeHistoryLength: priorTurns.length,
         estimatedPromptChars: systemPrompt.length + (state.directive?.length || 0),
         taskCumulativeInput: state._currentTaskTokenUsage?.inputTokens || 0,

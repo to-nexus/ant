@@ -8,7 +8,7 @@
  * the cross-job import (design → code).
  */
 
-import type { BaseTask, TaskTokenUsage } from '@ant/shared';
+import type { BaseTask, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 
 // ============================================
 // Orchestrator Types
@@ -112,6 +112,8 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
     queue: T[],
     completedTasks: T[],
     tokenUsage?: TaskTokenUsage,
+    /** Per-model job-level usage — billing settle SSOT. */
+    tokenUsageByModel?: TokenUsageByModel,
   ) => void;
   /** Called when a worker terminates (no more tasks to process). */
   onWorkerTerminate?: (workerId: number) => void;

@@ -27,12 +27,16 @@ import { JobQueuePort } from '../../core/ports/queue';
 import { IDEOrchestratorPort } from '../../core/ports/ideOrchestrator';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { OrganizationRepositoryPort } from '../../core/ports/organizationRepository';
+import { CreditLedgerPort } from '../../core/ports/creditLedger';
+import { PaymentProviderPort } from '../../core/ports/paymentProvider';
 
 import { RedisStateStore } from '../state/RedisStateStore';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
+import { RedisCreditLedger } from '../billing/RedisCreditLedger';
+import { StubPaymentProvider } from '../billing/StubPaymentProvider';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -65,6 +69,8 @@ export class InfrastructureFactory {
   private jobQueue: JobQueuePort | null = null;
   private ideOrchestrator: IDEOrchestratorPort | null = null;
   private organizationRepository: OrganizationRepositoryPort | null = null;
+  private creditLedger: CreditLedgerPort | null = null;
+  private paymentProvider: PaymentProviderPort | null = null;
   
   // Dependencies (must be set before getting orchestrators)
   private portManager: PortManager | null = null;
@@ -212,6 +218,36 @@ export class InfrastructureFactory {
       });
     }
     return this.organizationRepository;
+  }
+
+  // ============================================
+  // Billing — credit ledger + payment provider
+  // ============================================
+
+  /**
+   * Credit ledger (per org+user balance + transaction history). Shares the
+   * StateStore's Redis connection. No in-memory fallback (Unified Distributed
+   * System Principle) — throws if the StateStore is not Redis-backed.
+   */
+  getCreditLedger(): CreditLedgerPort {
+    if (!this.creditLedger) {
+      const stateStore = this.getStateStore() as RedisStateStore;
+      this.creditLedger = new RedisCreditLedger(stateStore.getRedisClient());
+      logger.info('Using RedisCreditLedger', { component: 'InfrastructureFactory' });
+    }
+    return this.creditLedger;
+  }
+
+  /**
+   * Payment provider. Stub (no real PG) for the current vertical slice —
+   * top-ups credit the ledger directly.
+   */
+  getPaymentProvider(): PaymentProviderPort {
+    if (!this.paymentProvider) {
+      this.paymentProvider = new StubPaymentProvider(this.getCreditLedger());
+      logger.info('Using StubPaymentProvider', { component: 'InfrastructureFactory' });
+    }
+    return this.paymentProvider;
   }
 
   // ============================================

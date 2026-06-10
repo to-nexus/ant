@@ -382,6 +382,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           <TokenUsageBadge
                             jobId={entry.jobId}
                             tokenUsage={snapshot!.tokenUsage}
+                            tokenUsageByModel={snapshot!.tokenUsageByModel}
                             estimatingTokenUsage={snapshot!.estimatingTokenUsage}
                             phaseTokenUsages={snapshot!.phaseTokenUsages}
                             completedTasks={snapshot!.completed}

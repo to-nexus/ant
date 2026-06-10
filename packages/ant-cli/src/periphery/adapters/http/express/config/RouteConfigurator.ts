@@ -7,7 +7,8 @@ import {
   createAuthRoutes,
   createIDERoutes,
   createCloudIDERoutes,
-  createApiRoutes
+  createApiRoutes,
+  createBillingRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
@@ -70,9 +71,26 @@ export class RouteConfigurator {
     this.setupKanbanRoutes(app);
     this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
+    this.setupBillingRoutes(app);
     // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
     // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
+  }
+
+  /**
+   * Billing routes — balance / usage / top-up. Credit ledger + stub payment
+   * provider from the InfrastructureFactory. Org repo (cloud only) drives the
+   * USD-visibility role gate; local treats the caller as operator.
+   */
+  private setupBillingRoutes(app: Express): void {
+    const factory = getInfrastructureFactory();
+    const billingRoutes = createBillingRoutes({
+      creditLedger: factory.getCreditLedger(),
+      paymentProvider: factory.getPaymentProvider(),
+      organizationRepository:
+        this.config.mode === 'cloud' ? factory.getOrganizationRepository() : undefined,
+    });
+    app.use('/api', billingRoutes);
   }
 
   /**

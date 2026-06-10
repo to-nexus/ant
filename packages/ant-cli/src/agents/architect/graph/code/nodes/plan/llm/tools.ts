@@ -95,7 +95,7 @@ export async function runPlanLLMWithTools(
     taskName: task.name,
     jobType: 'code',
     onTokenUsage: async (usage) => {
-      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import(
+      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import(
         '../../../../../../common/graph/llmHelpers'
       );
       accumulateTokenUsage(state, usage, { taskLevel: true, jobLevel: true });
@@ -110,6 +110,7 @@ export async function runPlanLLMWithTools(
           taskName: state.currentTask?.name || 'unknown',
           node: 'plan-toolLoop',
           callIndex: planRound,
+          modelId: resolveModelIdSafe(state),
           nodeHistoryLength: messages.length,
           recursionCount: state.recursionCount,
         },

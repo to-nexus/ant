@@ -121,7 +121,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       taskName: currentTask!.name,
       jobType: 'design',
       onTokenUsage: async (usage) => {
-        const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import(
+        const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import(
           '../../../../../common/graph/llmHelpers'
         );
         accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
@@ -136,6 +136,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
             taskName: currentTask!.name,
             node: 'design-plan',
             callIndex: planRound,
+            modelId: resolveModelIdSafe(state as any),
             nodeHistoryLength: messages.length,
             recursionCount: state.recursionCount,
           },

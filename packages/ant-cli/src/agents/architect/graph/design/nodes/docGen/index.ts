@@ -356,7 +356,7 @@ export async function docGen(
     
     // Accumulate token usage to state
     if (capturedUsage) {
-      const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+      const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage, resolveModelIdSafe } = await import('../../../../../common/graph/llmHelpers');
       accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false });
       updateKanbanTokenUsage(state);
       
@@ -370,6 +370,7 @@ export async function docGen(
           taskName: state.currentTask?.name || 'unknown',
           node: 'docGen',
           callIndex: newCallIndex - 1,
+          modelId: resolveModelIdSafe(state),
           nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
           estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
             if (typeof m.content === 'string') return sum + m.content.length;

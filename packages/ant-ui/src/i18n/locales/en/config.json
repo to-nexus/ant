@@ -173,6 +173,15 @@
     "tocOwners": "Owners",
     "tocFigma": "Figma Bridge",
     "tocDanger": "Danger Zone",
+    "tocBilling": "Billing",
+    "billingTitle": "Billing & Usage",
+    "billingDescription": "Your credit balance and recent usage. Credits are consumed as you run jobs.",
+    "currentBalance": "Current balance",
+    "creditsUnit": "credits",
+    "tier": "Plan",
+    "includedMonthly": "{{n}}/mo included",
+    "recentUsage": "Recent usage",
+    "noUsage": "No usage yet",
     "ownersDescription": "The default owner used in GitHub URLs for new projects."
   },
   "git": {

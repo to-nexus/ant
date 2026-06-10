@@ -235,8 +235,14 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
           }).catch(() => { /* non-blocking */ });
         }
       },
-      onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
+      onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage, tokenUsageByModel) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
+          // Cache the per-model breakdown BEFORE updateTaskQueue — the latter
+          // persists the Redis snapshot the billing settle reads, so caching
+          // after would lag it by one broadcast (final task's tokens lost).
+          if (tokenUsageByModel) {
+            state.deps.kanbanUpdate.updateTokenUsageByModel?.(tokenUsageByModel);
+          }
           state.deps.kanbanUpdate.updateTaskQueue(
             state._httpJobId,
             currentTasks,

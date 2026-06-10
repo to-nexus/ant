@@ -22,7 +22,7 @@ import type {
   KanbanBroadcastMessage,
   DecomposableJobType
 } from '../types/task';
-import type { JobTiming, PhaseTokenUsage } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel } from '@ant/shared';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
@@ -63,6 +63,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedRecursionCount?: number;
   private cachedRecursionLimit?: number;
   private cachedTokenUsage?: TaskTokenUsage;
+  /** Per-model job-level usage — billing settle SSOT. Persisted in the snapshot. */
+  private cachedTokenUsageByModel?: TokenUsageByModel;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
   private cachedPhaseTokenUsages?: PhaseTokenUsage[];
   /**
@@ -214,6 +216,16 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
         })
       );
     }
+  }
+
+  /**
+   * Update the per-model job-level usage breakdown. Cached so it rides along
+   * in every subsequent broadcast + persisted snapshot (no separate
+   * re-broadcast — token-usage updates already trigger one via the live
+   * accumulate path). Billing settle reads this from the Redis snapshot.
+   */
+  updateTokenUsageByModel(byModel: TokenUsageByModel): void {
+    this.cachedTokenUsageByModel = byModel;
   }
 
   /**
@@ -466,6 +478,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionCount: recursionCount ?? 0,
       recursionLimit: recursionLimit ?? 50,
       tokenUsage: effectiveTokenUsage,
+      ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
@@ -501,6 +514,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionCount,
       recursionLimit,
       tokenUsage: effectiveTokenUsage,
+      ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),

@@ -46,6 +46,7 @@ export function AgentWorkflowBoard({ workflowState, kanbanData }: AgentWorkflowB
           <TokenUsageBadge
             jobId={kanbanData.jobId}
             tokenUsage={kanbanData.tokenUsage}
+            tokenUsageByModel={kanbanData.tokenUsageByModel}
             estimatingTokenUsage={kanbanData.estimatingTokenUsage}
             phaseTokenUsages={kanbanData.phaseTokenUsages}
             completedTasks={kanbanData.completed?.map(task => ({

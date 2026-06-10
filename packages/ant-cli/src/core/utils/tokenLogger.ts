@@ -27,6 +27,15 @@ export interface TokenLogEntry {
   callIndex: number;
   timestamp: string;
 
+  /**
+   * Model id that produced this call (e.g. `claude-opus-4-8`). Required for
+   * accurate per-model cost attribution — a job mixes models across nodes
+   * (plan=Opus, execute=Sonnet) so the billing pipeline must price each call
+   * at its own model's rate. `'unknown'` when the call site could not resolve
+   * the model (should not happen on the normal LLM path).
+   */
+  modelId: string;
+
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
@@ -64,6 +73,8 @@ export interface TokenLogContext {
   taskName: string;
   node: string;
   callIndex: number;
+  /** Model id used for this call. Defaults to `'unknown'` when unresolved. */
+  modelId?: string;
   nodeHistoryLength?: number;
   estimatedPromptChars?: number;
   taskCumulativeInput?: number;
@@ -136,6 +147,7 @@ export class TokenLogger {
         node: context.node,
         callIndex: context.callIndex,
         timestamp: new Date().toISOString(),
+        modelId: context.modelId ?? 'unknown',
         inputTokens,
         outputTokens,
         cacheReadTokens,

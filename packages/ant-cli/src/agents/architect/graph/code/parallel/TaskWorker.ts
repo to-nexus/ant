@@ -152,6 +152,10 @@ export class TaskWorker<T extends BaseTask> {
       try {
         const result = await this.executeTask(task);
         const tokenUsage = result?._currentTaskTokenUsage || result?.tokenUsage;
+        // Per-task per-model breakdown (worker state is fresh per task, so
+        // `tokenUsageByModel` holds only this task's per-model usage). The
+        // orchestrator merges it job-level for billing.
+        const tokenUsageByModel = result?.tokenUsageByModel;
         // ✅ Use the enriched task from graph result (has timing + tokenUsage from workerCheckTaskStatus)
         // The original `task` reference lacks timing.completedAt/elapsedTime and tokenUsage
         const completedTask = result?.currentTask || task;
@@ -192,7 +196,7 @@ export class TaskWorker<T extends BaseTask> {
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
           await this.orchestrator.reportFailure(this.workerId, completedTask, err);
         } else {
-          await this.orchestrator.reportCompletion(this.workerId, completedTask, tokenUsage);
+          await this.orchestrator.reportCompletion(this.workerId, completedTask, tokenUsage, tokenUsageByModel);
         }
       } catch (error: any) {
         console.error(`[Worker ${this.workerId}] Task "${task.name}" failed:`, error.message);

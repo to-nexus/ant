@@ -8,7 +8,7 @@
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
-import { TaskTokenUsage, PhaseTokenUsage, getModelContextWindow } from '@ant/shared';
+import { TaskTokenUsage, PhaseTokenUsage, TokenUsageByModel, getModelContextWindow } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
 import { getEstimatingLabel, resolveNodePhaseLabel, type UILocale } from './timing/estimatingLabels';
 
@@ -32,6 +32,15 @@ function resolveModelName(state: TokenTrackingState): string {
 }
 
 /**
+ * Resolve the live model id for debug-log / cost attribution, never throwing.
+ * Returns `'unknown'` when DI has not injected an LLMClient (estimating
+ * pre-RAC nodes, tests). Billing prices `'unknown'` conservatively.
+ */
+export function resolveModelIdSafe(state: { deps?: { llm?: { modelName?: string } | any } | any }): string {
+  return state?.deps?.llm?.modelName ?? 'unknown';
+}
+
+/**
  * Re-export TaskTokenUsage as TokenUsage for convenience
  */
 export type TokenUsage = TaskTokenUsage;
@@ -43,6 +52,14 @@ export type TokenUsage = TaskTokenUsage;
 export interface TokenTrackingState {
   _currentTaskTokenUsage?: TokenUsage;
   tokenUsage?: TokenUsage;  // Job-level token usage
+  /**
+   * Per-model job-level token usage, keyed by `state.deps.llm.modelName`.
+   * Accumulated alongside `tokenUsage` so the billing pipeline can price each
+   * model's tokens at its own rate (a job mixes models across nodes). SSOT for
+   * accurate cost — `tokenUsage` is the model-agnostic sum, this is the
+   * cost-bearing breakdown.
+   */
+  tokenUsageByModel?: TokenUsageByModel;
   /**
    * Latest single LLM-call snapshot of the currently-running graph node.
    * Reset at node entry via `beginNodePhase()`. Overwritten (NOT accumulated)
@@ -94,6 +111,7 @@ export function beginNodePhase(
     tokenUsage: initTokenUsage(),
     mode: 'live',
     contextWindow: getModelContextWindow(modelName),
+    modelId: modelName,
     ...(typeof workerId === 'number' && { workerId }),
     ...(typeof taskName === 'string' && taskName.length > 0 && { taskName }),
   };
@@ -157,6 +175,33 @@ function computeTotal(usage: TokenUsage): number {
 }
 
 /**
+ * Accumulate one LLM call's usage into the per-model job-level breakdown,
+ * keyed by the live model id (`state.deps.llm.modelName`). Resolution failures
+ * are swallowed to `'unknown'` rather than thrown — token tracking must never
+ * abort a job, and the settle hook prices `'unknown'` conservatively.
+ */
+function accumulatePerModelUsage(state: TokenTrackingState, usage: TokenUsage): void {
+  let modelId: string;
+  try {
+    modelId = resolveModelName(state);
+  } catch {
+    modelId = 'unknown';
+  }
+  if (!state.tokenUsageByModel) state.tokenUsageByModel = {};
+  const entry = (state.tokenUsageByModel[modelId] ??= initTokenUsage());
+  entry.inputTokens += usage.inputTokens;
+  entry.outputTokens += usage.outputTokens;
+  entry.totalTokens = computeTotal(entry);
+  entry.callCount = (entry.callCount ?? 0) + 1;
+  if (usage.cacheReadTokens) {
+    entry.cacheReadTokens = (entry.cacheReadTokens || 0) + usage.cacheReadTokens;
+  }
+  if (usage.cacheCreationTokens) {
+    entry.cacheCreationTokens = (entry.cacheCreationTokens || 0) + usage.cacheCreationTokens;
+  }
+}
+
+/**
  * Accumulate token usage from LLM response to state
  * Updates both task-level and job-level counters
  */
@@ -207,9 +252,14 @@ export function accumulateTokenUsage(
         (state.tokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
     }
     if (usage.cacheCreationTokens) {
-      state.tokenUsage.cacheCreationTokens = 
+      state.tokenUsage.cacheCreationTokens =
         (state.tokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
     }
+
+    // Per-model job-level accumulation — keyed by the live model id so the
+    // billing settle hook can price each model's tokens at its own rate.
+    // Mirrors the job-level fields above but partitioned by model.
+    accumulatePerModelUsage(state, usage);
   }
 
   // Current-node snapshot (overwrite, not accumulate).
@@ -445,12 +495,14 @@ export function upsertPhaseTokenUsage(
     }
     if (label) existing.label = label;
   } else {
+    const modelName = resolveModelName(state);
     state.phaseTokenUsages.push({
       phase,
       label,
       tokenUsage: { ...usage, callCount: usage.callCount ?? 1 },
       mode: 'live',
-      contextWindow: getModelContextWindow(resolveModelName(state)),
+      contextWindow: getModelContextWindow(modelName),
+      modelId: modelName,
     });
   }
 }
@@ -619,6 +671,13 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   const queue = taskQueue ? (taskQueue.getRemaining?.() ?? taskQueue.getAll?.() ?? []) : [];
   const completedTasks = state.completedTasksDetails || [];
   
+  // Cache the per-model breakdown BEFORE updateTaskQueue persists the Redis
+  // snapshot the billing settle reads — caching after would lag it by one
+  // broadcast (the last call's tokens would be missing from the final snapshot).
+  if (state.tokenUsageByModel) {
+    state.deps.kanbanUpdate.updateTokenUsageByModel?.(state.tokenUsageByModel);
+  }
+
   state.deps.kanbanUpdate.updateTaskQueue(
     state._httpJobId,
     state.currentTask,
@@ -699,6 +758,12 @@ export function applyEstimatingUsage(
   }
   accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
 
+  // Cache per-model breakdown before the updateTokenUsage broadcast persists
+  // the snapshot — so estimating-only / direct-answer jobs (no task queue)
+  // still carry per-model usage into the snapshot the billing settle reads.
+  if (state.tokenUsageByModel) {
+    state.deps?.kanbanUpdate?.updateTokenUsageByModel?.(state.tokenUsageByModel);
+  }
   if (state.tokenUsage) {
     state.deps?.kanbanUpdate?.updateTokenUsage?.(state.tokenUsage);
   }
@@ -709,6 +774,7 @@ export function applyEstimatingUsage(
     taskName: opts.subNode ?? nodeId,
     node: nodeId,
     callIndex: opts.callIndex ?? 0,
+    modelId: resolveModelIdSafe(state),
     estimatedPromptChars: opts.promptChars ?? 0,
   });
 

@@ -36,7 +36,9 @@
     "estimating": "Planning:",
     "outputDescription": "billable · not cacheable",
     "noTokenData": "No token usage data yet",
-    "overhead": "Overhead"
+    "overhead": "Overhead",
+    "creditsConsumed": "Credits used",
+    "estimatedCost": "Cost (USD)"
   },
   "task": {
     "paused": "Paused",
