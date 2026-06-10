@@ -45,6 +45,12 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   if (data.phaseTokenUsages === undefined && existingKanban?.phaseTokenUsages !== undefined) {
     data = { ...data, phaseTokenUsages: existingKanban.phaseTokenUsages };
   }
+  // Per-model usage drives live cost/credit display. Broadcaster omits it on
+  // low-churn updates (e.g. checkTaskStatus) — preserve so the token popup's
+  // Cost & Credit section and the NavBar effective-balance don't blank mid-job.
+  if (data.tokenUsageByModel === undefined && existingKanban?.tokenUsageByModel !== undefined) {
+    data = { ...data, tokenUsageByModel: existingKanban.tokenUsageByModel };
+  }
   // NOTE: previously preserved `currentPhaseTokenUsages` when an incoming
   // update omitted it, to keep the gauge visible during idle. That sticky
   // was an in-memory-only partial fix (page reload wiped it) and is
@@ -184,6 +190,16 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
     console.log('[Store] 🧹 Cleared localStorage for completed job');
 
     get().refreshFileTree();
+    // Job ended → the backend settle has committed the debit. Reconcile the
+    // stored balance + usage history so the NavBar chip / billing section
+    // reflect the new balance (live in-flight subtraction resets as isRunning
+    // flips false). Without this the chip stays stale despite the debit.
+    // settle (API server, JOB_STATUS_UPDATES) can land slightly after this SSE
+    // completion, so refresh now AND once more after a short delay to catch the
+    // committed balance regardless of the race.
+    get().refreshBalance?.();
+    get().refreshUsage?.();
+    setTimeout(() => { get().refreshBalance?.(); get().refreshUsage?.(); }, 2000);
   }
   else if (isJobRunning && !state.isRunning && currentFeatureKey) {
     if (state.userStoppedJobId === kanbanJobId) {

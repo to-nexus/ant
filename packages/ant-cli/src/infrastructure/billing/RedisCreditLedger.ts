@@ -248,7 +248,6 @@ export class RedisCreditLedger implements CreditLedgerPort {
     const acquired = await this.redis.set(lockKey, '1', 'EX', REDIS_TTL.BILLING.DEBIT_LOCK, 'NX');
     if (!acquired) {
       logger.debug(`settle skipped — already settled (jobId=${jobId})`, { component: COMPONENT });
-      await this.releaseHold(jobId);
       return;
     }
 
@@ -256,7 +255,11 @@ export class RedisCreditLedger implements CreditLedgerPort {
     const microToDebit = usdToMicroCredits(usdCost, account.markup);
 
     if (microToDebit > 0) {
-      await this.adjustBalance(orgId, userId, -microToDebit);
+      // Debit, clamping the balance at 0 — billing never blocks a job, so an
+      // overspend (actual > available) simply floors the balance instead of
+      // going negative. No reservation/hold is taken (blocking is disabled).
+      const next = await this.adjustBalance(orgId, userId, -microToDebit);
+      if (next < 0) await this.redis.set(this.balanceKey(orgId, userId), '0');
     }
     await this.appendTransaction(orgId, userId, {
       id: randomId('debit'),
@@ -270,8 +273,6 @@ export class RedisCreditLedger implements CreditLedgerPort {
       ...(featureName && { featureName }),
       ...(note && { note }),
     });
-
-    await this.releaseHold(jobId);
   }
 
   // ── top-up ───────────────────────────────────────────────────────────

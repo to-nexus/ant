@@ -66,14 +66,11 @@ export function selectActiveUserRole(state: StoreState): 'owner' | 'member' | un
 /**
  * Single visibility seam: may USD cost be shown to this caller?
  *
- * Customer surface speaks credits; USD is operator-facing. Local and
- * individual tenants see their own USD (transparent — their own cost); a
- * `team` member sees credits only unless they are the org owner. The BE
- * enforces the same rule on ledger USD fields (`billingCanViewUsd`); this
- * selector gates the client-side live cost preview (computed from
- * `tokenUsageByModel`, which never round-trips the ledger).
+ * Current phase: fully transparent — token → real USD → credit shown to
+ * everyone regardless of role (per product decision). This is the single
+ * switch to flip later if USD should become operator-only (e.g.
+ * `state.userOrgKind === 'team' ? selectActiveUserRole(state) === 'owner' : true`).
  */
-export function selectCanViewUsdCost(state: StoreState): boolean {
-  if (state.userOrgKind !== 'team') return true;
-  return selectActiveUserRole(state) === 'owner';
+export function selectCanViewUsdCost(_state: StoreState): boolean {
+  return true;
 }

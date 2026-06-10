@@ -6,7 +6,9 @@ import { LocalUserBadge } from './auth/LocalUserBadge';
 import { useStore } from '@/domain/store';
 import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
-import { formatCredits } from '@/shared/utils/tokenUtils';
+import { selectEffectiveCredits, selectLiveJobCreditsConsumed } from '@/domain/store/selectors/billing';
+import { formatCredits, formatUsd } from '@/shared/utils/tokenUtils';
+import { microCreditsToCredits } from '@ant/shared';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
@@ -38,9 +40,13 @@ export function AppNavBar({}: AppNavBarProps) {
   const userOrganization = useStore((state) => state.userOrganization);
   const orgDisplayLabel = useStore((state) => selectOrgDisplayLabel(state));
   const memberships = useStore((state) => state.memberships);
-  const userOrgKind = useStore((state) => state.userOrgKind);
   const billingBalance = useStore((state) => state.billingBalance);
+  const billingUsage = useStore((state) => state.billingUsage);
   const refreshBalance = useStore((state) => state.refreshBalance);
+  const refreshUsage = useStore((state) => state.refreshUsage);
+  const effectiveCredits = useStore(selectEffectiveCredits);
+  const liveJobCredits = useStore(selectLiveJobCreditsConsumed);
+  const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
@@ -50,14 +56,30 @@ export function AppNavBar({}: AppNavBarProps) {
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showCreditMenu, setShowCreditMenu] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
+  const creditMenuRef = useRef<HTMLDivElement>(null);
 
-  // Refresh credit balance when signed in to a billed tenant (individual/team).
-  const isBilledTenant = userOrgKind === 'individual' || userOrgKind === 'team';
+  // Refresh credit balance whenever the identity/mode resolves. Billing shows
+  // in ALL modes (incl. local) for transparency; the slice guards the fetch
+  // via selectIsAuthBlocked, so this is safe to call unconditionally.
   useEffect(() => {
-    if (isBilledTenant && userEmail) void refreshBalance();
-  }, [isBilledTenant, userEmail, refreshBalance]);
+    void refreshBalance();
+  }, [userEmail, serverMode, refreshBalance]);
+
+  // Close credit menu on outside click + refresh usage when opened.
+  useEffect(() => {
+    if (!showCreditMenu) return;
+    void refreshUsage();
+    const handleClick = (e: MouseEvent) => {
+      if (creditMenuRef.current && !creditMenuRef.current.contains(e.target as Node)) {
+        setShowCreditMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showCreditMenu, refreshUsage]);
 
   // Close language menu on outside click
   useEffect(() => {
@@ -448,18 +470,93 @@ export function AppNavBar({}: AppNavBarProps) {
                 ) : (
                   // Signed in - Show user info with dropdown
                   <>
-                  {isBilledTenant && billingBalance.data && (
-                    <span
-                      className="hidden sm:inline-flex items-center text-xs font-mono font-medium px-2 py-1 mr-1"
-                      title="Credit balance"
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        borderRadius: 'var(--r-md)',
-                        color: 'var(--text-2)',
-                      }}
-                    >
-                      {formatCredits(billingBalance.data.credits)} cr
-                    </span>
+                  {billingBalance.data && effectiveCredits !== undefined && (
+                    <div className="relative hidden sm:block mr-1" ref={creditMenuRef}>
+                      <button
+                        onClick={() => setShowCreditMenu((v) => !v)}
+                        className="inline-flex items-center text-xs font-mono font-medium px-2 py-1"
+                        title={t('billing.creditBalance', 'Credit balance')}
+                        style={{
+                          background: 'var(--bg-surface-2)',
+                          borderRadius: 'var(--r-md)',
+                          color: liveJobCredits > 0 ? 'var(--violet-500)' : 'var(--text-2)',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-surface-2)'; }}
+                      >
+                        {formatCredits(effectiveCredits)} cr
+                      </button>
+
+                      {showCreditMenu && (
+                        <div
+                          className="absolute top-full right-0 mt-2 w-72 py-2 z-50"
+                          style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-2)',
+                            borderRadius: 'var(--r-md)',
+                            boxShadow: 'var(--shadow-md)',
+                          }}
+                        >
+                          <div className="px-4 pb-2">
+                            <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
+                              {t('billing.creditBalance', 'Credit balance')}
+                            </div>
+                            <div className="text-xl font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
+                              {formatCredits(effectiveCredits)} cr
+                            </div>
+                            <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                              {billingBalance.data.tier} · {t('billing.includedMonthly', '{{n}}/mo', { n: formatCredits(billingBalance.data.includedCreditsMonthly) })}
+                              {liveJobCredits > 0 && (
+                                <> · <span style={{ color: 'var(--violet-500)' }}>{t('billing.thisJob', 'this job')} −{formatCredits(liveJobCredits)}</span></>
+                              )}
+                            </div>
+                          </div>
+                          <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }} />
+                          <div className="px-4 py-1 max-h-48 overflow-y-auto">
+                            <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--text-4)' }}>
+                              {t('billing.recentUsage', 'Recent usage')}
+                            </div>
+                            {(billingUsage.data ?? []).length === 0 ? (
+                              <div className="text-[11px] italic" style={{ color: 'var(--text-3)' }}>
+                                {t('billing.noUsage', 'No usage yet')}
+                              </div>
+                            ) : (
+                              (billingUsage.data ?? []).slice(0, 6).map((tx) => (
+                                <div key={tx.id} className="flex items-center justify-between text-[11px] tabular-nums py-0.5" style={{ color: 'var(--text-2)' }}>
+                                  <span className="truncate mr-2" style={{ color: 'var(--text-3)' }}>
+                                    {tx.kind}{tx.featureName ? ` · ${tx.featureName}` : ''}
+                                  </span>
+                                  <span className="flex items-center gap-2 whitespace-nowrap">
+                                    <span style={{ color: tx.microCredits < 0 ? 'var(--text-2)' : 'var(--status-done-fg)' }}>
+                                      {tx.microCredits < 0 ? '−' : '+'}{formatCredits(Math.abs(microCreditsToCredits(tx.microCredits)))}
+                                    </span>
+                                    {tx.usdCost !== undefined && (
+                                      <span style={{ color: 'var(--text-3)' }}>{formatUsd(tx.usdCost)}</span>
+                                    )}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }} />
+                          <button
+                            onClick={() => {
+                              setAccountConfigScrollTarget('c3a-billing');
+                              setQuickStartProjectId(undefined);
+                              setOnboardingSkipped(true);
+                              openMainPanelTab('accountConfig');
+                              setShowCreditMenu(false);
+                            }}
+                            className="w-full px-4 py-1.5 text-left text-xs"
+                            style={{ color: 'var(--text-2)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            {t('billing.openSettings', 'Open billing settings →')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                   <div className="relative">
                     <button

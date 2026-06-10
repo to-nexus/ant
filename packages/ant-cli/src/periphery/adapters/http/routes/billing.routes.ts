@@ -25,17 +25,6 @@ export interface BillingRoutesDeps {
 export function createBillingRoutes(deps: BillingRoutesDeps): Router {
   const router = Router();
 
-  /** USD cost is visible to org owners (operators); credits-only otherwise. */
-  async function canViewUsd(userId: string, orgId: string): Promise<boolean> {
-    if (!deps.organizationRepository) return true; // local/dev → operator
-    try {
-      const membership = await deps.organizationRepository.getMembership(userId, orgId);
-      return membership?.role === 'owner';
-    } catch {
-      return false;
-    }
-  }
-
   // GET /billing/balance → { tier, credits, microCredits, includedCreditsMonthly }
   router.get('/billing/balance', async (req: Request, res: Response) => {
     try {
@@ -48,17 +37,15 @@ export function createBillingRoutes(deps: BillingRoutesDeps): Router {
   });
 
   // GET /billing/usage?limit=N → { transactions, canViewUsd }
+  // Fully transparent: USD cost + per-model breakdown are returned to everyone
+  // (token → real USD → credit). The role-gate seam is retained in code
+  // (`canViewUsd` above) for a future tightening, but is not applied now.
   router.get('/billing/usage', async (req: Request, res: Response) => {
     try {
       const { userId, organizationId } = extractUserContext(req);
       const limit = Math.max(1, Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 500));
       const txs = await deps.creditLedger.listTransactions(organizationId, userId, limit);
-      const usdAllowed = await canViewUsd(userId, organizationId);
-      // Strip USD fields for non-operators (customer sees credits only).
-      const transactions = usdAllowed
-        ? txs
-        : txs.map(({ usdCost, modelBreakdown, ...rest }) => rest);
-      const body: UsageHistoryResponse = { transactions, canViewUsd: usdAllowed };
+      const body: UsageHistoryResponse = { transactions: txs, canViewUsd: true };
       res.json(body);
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Billing');

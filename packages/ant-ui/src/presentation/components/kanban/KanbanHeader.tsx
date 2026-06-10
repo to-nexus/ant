@@ -6,7 +6,6 @@ import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages, 
 import { JobTiming, TaskTokenUsage, TokenUsageByModel, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
-import { selectCanViewUsdCost } from '@/domain/store/selectors/auth';
 import { cn } from '@/shared/utils/design-system';
 
 /**
@@ -452,9 +451,8 @@ interface TokenUsageBadgeProps {
  */
 export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks, compact = false }: TokenUsageBadgeProps) {
   const { t } = useTranslation('kanban');
-  const canViewUsd = useStore(selectCanViewUsdCost);
-  // Precise cost from per-model usage (priced per model). Credits always shown;
-  // USD gated to operators via `selectCanViewUsdCost`.
+  // Precise cost from per-model usage (priced per model). Token → USD → credit
+  // shown transparently to everyone (no role gate).
   const costUsd = costUsdFromByModel(tokenUsageByModel);
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
@@ -509,22 +507,21 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
             />
           </Section>
 
-          {/* Cost & Credit — precise per-model cost. Credits always; USD gated. */}
+          {/* Cost & Credit — precise per-model cost. Token → USD → credit,
+              fully transparent (no role gate). */}
           {costUsd !== undefined && costUsd > 0 && (
             <Section>
+              <StatRow
+                labelColor="var(--text-3)"
+                valueColor="var(--text-3)"
+                label={t('tokenStats.estimatedCost', 'Cost (USD)')}
+                value={formatUsd(costUsd)}
+              />
               <StatRow
                 strong
                 label={t('tokenStats.creditsConsumed', 'Credits used')}
                 value={formatCredits(creditsFromUsd(costUsd))}
               />
-              {canViewUsd && (
-                <StatRow
-                  labelColor="var(--text-3)"
-                  valueColor="var(--text-3)"
-                  label={t('tokenStats.estimatedCost', 'Cost (USD)')}
-                  value={formatUsd(costUsd)}
-                />
-              )}
             </Section>
           )}
 

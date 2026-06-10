@@ -22,7 +22,6 @@ export function BillingUsageSection() {
   const { t } = useTranslation('config');
   const balance = useStore((s) => s.billingBalance);
   const usage = useStore((s) => s.billingUsage);
-  const canViewUsd = useStore((s) => s.billingCanViewUsd);
   const refreshBalance = useStore((s) => s.refreshBalance);
   const refreshUsage = useStore((s) => s.refreshUsage);
   const topUp = useStore((s) => s.topUp);
@@ -115,7 +114,7 @@ export function BillingUsageSection() {
                       {tx.microCredits < 0 ? '−' : '+'}
                       {formatCredits(Math.abs(microCreditsToCredits(tx.microCredits)))}
                     </span>
-                    {canViewUsd && tx.usdCost !== undefined && (
+                    {tx.usdCost !== undefined && (
                       <span style={{ color: 'var(--text-3)' }}>{formatUsd(tx.usdCost)}</span>
                     )}
                   </span>
