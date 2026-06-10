@@ -67,10 +67,11 @@ export class WorkspaceService implements WorkspaceServicePort {
       throw new Error(`${name} contains invalid characters: ${id}`);
     }
     
-    // Only allow alphanumeric, hyphen, underscore, colon, dot
-    const validPattern = /^[a-zA-Z0-9_:.-]+$/;
+    // Allow alphanumeric, hyphen, underscore, colon, dot, plus email chars (@ +).
+    // tenantId carries the full lowercased email as identity (org:user); see org model.
+    const validPattern = /^[a-zA-Z0-9_:.@+-]+$/;
     if (!validPattern.test(id)) {
-      throw new Error(`${name} must contain only alphanumeric characters, hyphens, underscores, colons, or dots: ${id}`);
+      throw new Error(`${name} must contain only alphanumeric characters, hyphens, underscores, colons, dots, at-signs, or plus-signs: ${id}`);
     }
   }
   
