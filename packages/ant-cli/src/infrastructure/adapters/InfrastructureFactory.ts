@@ -36,7 +36,7 @@ import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
 import { RedisCreditLedger } from '../billing/RedisCreditLedger';
-import { StubPaymentProvider } from '../billing/StubPaymentProvider';
+import { MockPaymentProvider } from '../billing/MockPaymentProvider';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -239,13 +239,14 @@ export class InfrastructureFactory {
   }
 
   /**
-   * Payment provider. Stub (no real PG) for the current vertical slice —
-   * top-ups credit the ledger directly.
+   * Payment provider. Mock (no real PG) for the current vertical slice —
+   * simulates a card charge and credits the ledger on success. Swap this single
+   * adapter for a real PG (Stripe/Toss) to go live.
    */
   getPaymentProvider(): PaymentProviderPort {
     if (!this.paymentProvider) {
-      this.paymentProvider = new StubPaymentProvider(this.getCreditLedger());
-      logger.info('Using StubPaymentProvider', { component: 'InfrastructureFactory' });
+      this.paymentProvider = new MockPaymentProvider(this.getCreditLedger());
+      logger.info('Using MockPaymentProvider', { component: 'InfrastructureFactory' });
     }
     return this.paymentProvider;
   }

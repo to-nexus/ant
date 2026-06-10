@@ -12,7 +12,8 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import type { CreditLedgerPort } from '../../../../core/ports/creditLedger';
 import type { PaymentProviderPort } from '../../../../core/ports/paymentProvider';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
-import type { UsageHistoryResponse } from '@ant/shared';
+import type { UsageHistoryResponse, PaymentMethodInput } from '@ant/shared';
+import { getCreditPackage } from '@ant/shared';
 import { logger } from '../../../../utils/logger';
 
 export interface BillingRoutesDeps {
@@ -52,23 +53,48 @@ export function createBillingRoutes(deps: BillingRoutesDeps): Router {
     }
   });
 
-  // POST /billing/topup { credits, idempotencyKey } → BalanceSnapshot
-  router.post('/billing/topup', async (req: Request, res: Response) => {
+  // POST /billing/purchase { packageId, paymentMethod, idempotencyKey } → BalanceSnapshot
+  // Price + credits are resolved server-side from the CREDIT_PACKAGES SSOT; the
+  // client-sent body is never trusted for amount/credits.
+  router.post('/billing/purchase', async (req: Request, res: Response) => {
     try {
       const { userId, organizationId } = extractUserContext(req);
-      const credits = Number(req.body?.credits);
-      const idempotencyKey = String(req.body?.idempotencyKey ?? `topup-${Date.now()}`);
-      if (!Number.isFinite(credits) || credits <= 0) {
-        res.status(400).json({ error: 'credits must be a positive number', code: 'invalid-credits' });
+      const packageId = String(req.body?.packageId ?? '');
+      const paymentMethod = req.body?.paymentMethod as PaymentMethodInput | undefined;
+      const idempotencyKey = String(req.body?.idempotencyKey ?? `purchase-${Date.now()}`);
+
+      const pkg = getCreditPackage(packageId);
+      if (!pkg) {
+        res.status(400).json({ error: 'unknown package', code: 'invalid-package' });
         return;
       }
-      const result = await deps.paymentProvider.topUp({ orgId: organizationId, userId, credits, idempotencyKey });
-      if (!result.ok) {
-        res.status(402).json({ error: result.reason ?? 'top-up failed', code: 'topup-failed' });
+      if (!paymentMethod || typeof paymentMethod !== 'object') {
+        res.status(400).json({ error: 'payment method required', code: 'missing-payment-method' });
+        return;
+      }
+
+      const outcome = await deps.paymentProvider.purchaseCredits({
+        orgId: organizationId,
+        userId,
+        packageId: pkg.id,
+        credits: pkg.credits,
+        amountUsd: pkg.priceUsd,
+        paymentMethod,
+        idempotencyKey,
+      });
+      if (!outcome.ok) {
+        res.status(402).json({
+          error: outcome.reason ?? 'payment failed',
+          code: outcome.status,
+          declineCode: outcome.declineCode,
+        });
         return;
       }
       const snapshot = await deps.creditLedger.getBalance(organizationId, userId);
-      logger.info(`top-up ${credits} credits → ${organizationId}:${userId}`, { component: 'Billing' });
+      logger.info(
+        `purchase ${pkg.id} (+${pkg.credits} credits, $${pkg.priceUsd}) → ${organizationId}:${userId}`,
+        { component: 'Billing' },
+      );
       res.json(snapshot);
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Billing');

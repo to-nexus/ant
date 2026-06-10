@@ -64,6 +64,58 @@ export function creditsToMicroCredits(credits: number): number {
   return Math.round(credits * MICRO_PER_CREDIT);
 }
 
+/**
+ * Purchasable credit package. Price is at FACE VALUE (1:1):
+ * `priceUsd === credits × USD_PER_CREDIT`. Margin lives in the consumption
+ * markup ({@link MARKUP_DEFAULT}), not the sale — so prepaid credits sell at
+ * cost while every job burns `list_cost × markup` worth of credits.
+ */
+export interface CreditPackage {
+  id: string;
+  credits: number;
+  priceUsd: number;
+}
+
+export const CREDIT_PACKAGES: readonly CreditPackage[] = [
+  { id: 'starter', credits: 1_000, priceUsd: 10 },
+  { id: 'plus', credits: 5_000, priceUsd: 50 },
+  { id: 'pro', credits: 20_000, priceUsd: 200 },
+];
+
+export function getCreditPackage(id: string): CreditPackage | undefined {
+  return CREDIT_PACKAGES.find((p) => p.id === id);
+}
+
+/**
+ * Payment-method input collected at checkout. For the mock provider this is
+ * raw card data; for a real PG (Stripe/Toss) this becomes a tokenized handle /
+ * client secret and the card never touches our server.
+ */
+export interface PaymentMethodInput {
+  cardNumber: string;
+  expMonth: number;
+  expYear: number;
+  cvc: string;
+}
+
+/** Outcome of a credit purchase. `declined`/`error` carry a surfaceable reason. */
+export interface PurchaseOutcome {
+  ok: boolean;
+  status: 'succeeded' | 'declined' | 'error';
+  transactionId?: string;
+  creditsAdded?: number;
+  amountChargedUsd?: number;
+  declineCode?: string;
+  reason?: string;
+}
+
+/**
+ * Stripe-style test cards so the decline path is exercisable end-to-end.
+ * Any other well-formed card number succeeds in the mock provider.
+ */
+export const MOCK_SUCCESS_CARD = '4242424242424242';
+export const MOCK_DECLINE_CARD = '4000000000000002';
+
 export type CreditTransactionKind =
   | 'grant' // monthly included-credit grant
   | 'debit' // job consumption
