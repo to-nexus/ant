@@ -15,7 +15,7 @@
  *   - workflow.ts           : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo
  *   - figma.ts              : FigmaDataConfig, FigmaExplorationResult
  *   - bridge.ts             : BridgeMessage, BridgeSession
- *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir, pruneFileTreeForWorkspaceDomain, uiSourceOfPath, normalizeUiSourceRefs, pickDefaultUiSourceRefs
+ *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir, pruneFileTreeForWorkspaceDomain, uiSourceOfPath, normalizeUiSourceRefs, pickDefaultUiSourceRefs, pickUiSourceSubgroupDir, isUiTreeParentPath
  *   - artifact-dir-policy.ts: ARTIFACT_DIR_POLICIES, getArtifactDirPolicy, validateFileForDir
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig, DeployVisibility
@@ -56,3 +56,5 @@ export * from './chat-status';
 export * from './chat-events';
 export * from './system-config';
 export * from './baseline';
+export * from './pricing';
+export * from './billing';
