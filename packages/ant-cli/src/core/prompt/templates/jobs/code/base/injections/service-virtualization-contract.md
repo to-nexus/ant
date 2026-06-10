@@ -40,7 +40,13 @@ adapter reads are all governed by `preview-env-contract.md §4.5`.
   interface, Go interface, Python protocol — language equivalent)
 - A virtualized adapter that diverges from the production adapter's DTO
   shape, error mapping, or status code mapping is a contract defect — both
-  adapters MUST return the identical observable shape
+  adapters MUST return the identical observable shape. "Observable shape" is
+  the field / type / error / status contract the consumer branches on — NOT
+  the concrete reachability of a navigable target (next bullet). Where the
+  production value resolves OUTSIDE the closed system (a URL pointing at a
+  third-party host, an externally-issued grant), parity is satisfied by an
+  equivalently-shaped value that resolves INSIDE the closed system — never by
+  mirroring the external host itself
 - A returned value that satisfies the interface TYPE but is not USABLE for
   what the consumer does with it is still a contract defect — type-conformance
   alone is not enough. A value the consumer navigates to, fetches,
@@ -49,7 +55,16 @@ adapter reads are all governed by `preview-env-contract.md §4.5`.
   the consumer accepts) — not merely a string of the right type. The
   virtualized adapter is the consumer's only proof the path works before the
   real dependency arrives; a value that typechecks but cannot be acted on
-  leaves the consumer dead-ended.
+  leaves the consumer dead-ended. For a navigable target specifically,
+  "works" means it RESOLVES WITHIN THE CLOSED SYSTEM: a URL the consumer
+  navigates to MUST point at the running app's own runtime origin (a path the
+  caller itself serves), never an external or placeholder host (a `*.example`
+  literal, a third-party domain, or a fixed `localhost:PORT`) — such a value
+  typechecks and is even syntactically navigable, yet the closed system cannot
+  answer it, so it dead-ends the consumer exactly like a wrong-typed value.
+  This reachability requirement is unconditional: it binds every method of
+  every virtualized adapter — including a single navigable-target method
+  folded among many data methods — not only a dedicated redirect/auth adapter.
 
 ### Blind Spot
 

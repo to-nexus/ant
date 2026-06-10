@@ -27,10 +27,12 @@ import { FilePromptAdapter, initPartials } from '../../src/periphery/adapters/pr
 
 const TEMPLATES_DIR = join(__dirname, '../../src/core/prompt/templates');
 const SESSION = 'jobs/code/base/injections/service-virtualization-session';
+const CONTRACT = 'jobs/code/base/injections/service-virtualization-contract';
 const DECOMPOSE = 'jobs/code/nodes/decompose/variants/default/rules';
 
 describe('iterative-mango — SV session faithfulness rows', () => {
   let session: string;
+  let contract: string;
 
   beforeAll(async () => {
     await initPartials(TEMPLATES_DIR);
@@ -41,6 +43,7 @@ describe('iterative-mango — SV session faithfulness rows', () => {
       svBodyLifecycleActive: true,
       svAuthFlowActive: true,
     });
+    contract = await adapter.render(CONTRACT, {});
   });
 
   it('2-1: Store continuity — ONE shared store instance across mounts/navigations', () => {
@@ -54,9 +57,25 @@ describe('iterative-mango — SV session faithfulness rows', () => {
     expect(session).toMatch(/not from a literal baked into the component/);
   });
 
-  it('2-2: authorize / account-selection entry is served in-app, never an external host', () => {
-    expect(session).toMatch(/authorize \/ account-selection entry is served in-app/i);
-    expect(session).toMatch(/never an external or unreachable host literal/);
+  // 2-2 (RCA misty-bringing-novel): the "authorize URL must be in-app, never an
+  // external host" rule was relocated from the gated session auth-flow block
+  // into the ALWAYS-ON contract usability rule, so it binds every adapter method
+  // (incl. an omnibus-data-adapter method) — not only a self-recognized auth task.
+  // Contract now owns the reachability definition; session defers to it and names
+  // the no-op-redirect failure mode.
+  it('2-2: contract OWNS navigable-target reachability (in-app origin, never external host)', () => {
+    expect(contract).toMatch(/navigable target/i);
+    expect(contract).toMatch(/own runtime origin|own origin/i);
+    expect(contract).toMatch(/external or placeholder host|\*\.example/i);
+    // unconditional — binds every adapter method, not only a dedicated auth adapter
+    expect(contract).toMatch(/every method of\s+every virtualized adapter/i);
+    expect(contract).toMatch(/folded among many data methods/i);
+  });
+
+  it('2-2b: session defers the authorize entry to the contract rule and names the no-op-redirect defect', () => {
+    expect(session).toMatch(/navigable-target rule|navigable target/i);
+    expect(session).toMatch(/service-virtualization-contract/);
+    expect(session).toMatch(/no-op/i);
   });
 
   it('2-6: no-auto-bind is unconditional (applies to ANY identity-gated surface)', () => {
