@@ -1,34 +1,39 @@
 /**
  * PaymentProviderPort
  *
- * Abstraction over the real payment gateway (Stripe / Toss / etc.). Kept
- * deliberately thin — the current vertical slice ships a StubPaymentProvider
- * that credits the ledger directly (no real PG). Swapping in a real provider
- * later requires only a new adapter, not changes to callers.
+ * Abstraction over the real payment gateway (Stripe / Toss / etc.). The current
+ * vertical slice ships a MockPaymentProvider that simulates a card charge and,
+ * on success, credits the ledger. Swapping in a real provider later requires
+ * only a new adapter — callers (route, factory) are unchanged.
+ *
+ * The request is money-aware: `credits` + `amountUsd` are resolved server-side
+ * from the CREDIT_PACKAGES SSOT (never trusted from the client).
  */
 
-export interface TopUpRequest {
+import type { PaymentMethodInput, PurchaseOutcome } from '@ant/shared';
+
+export interface PurchaseRequest {
   orgId: string;
   userId: string;
-  /** Displayed credits to purchase. */
+  /** Package identifier (CREDIT_PACKAGES SSOT). */
+  packageId: string;
+  /** Server-resolved displayed credits to grant on success. */
   credits: number;
+  /** Server-resolved charge amount in USD. */
+  amountUsd: number;
+  /** Collected payment instrument (mock card / future tokenized handle). */
+  paymentMethod: PaymentMethodInput;
   /** Dedupe key for retried purchases. */
   idempotencyKey: string;
 }
 
-export interface TopUpResult {
-  ok: boolean;
-  transactionId?: string;
-  reason?: string;
-}
-
 export interface PaymentProviderPort {
-  /** Purchase credits. Stub credits the ledger immediately. */
-  topUp(req: TopUpRequest): Promise<TopUpResult>;
+  /** Charge the payment method and, on success, credit the ledger. */
+  purchaseCredits(req: PurchaseRequest): Promise<PurchaseOutcome>;
 
-  /** Start/upgrade a subscription tier. Stub is a no-op success. */
+  /** Start/upgrade a subscription tier. Mock is a no-op success. */
   startSubscription(orgId: string, userId: string, tier: string): Promise<{ ok: boolean }>;
 
-  /** Cancel a subscription. Stub is a no-op success. */
+  /** Cancel a subscription. Mock is a no-op success. */
   cancelSubscription(orgId: string, userId: string): Promise<{ ok: boolean }>;
 }

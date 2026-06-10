@@ -8,15 +8,14 @@
  * Rendered only for individual / team tenants — `local` has no billing.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { SectionCard } from '../ConfigEditor/aurora';
 import { Spinner } from '../common/async';
 import { formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
-import { microCreditsToCredits } from '@ant/shared';
-
-const TOP_UP_OPTIONS = [1_000, 5_000, 20_000];
+import { microCreditsToCredits, CREDIT_PACKAGES, type CreditPackage } from '@ant/shared';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
 
 export function BillingUsageSection() {
   const { t } = useTranslation('config');
@@ -24,7 +23,7 @@ export function BillingUsageSection() {
   const usage = useStore((s) => s.billingUsage);
   const refreshBalance = useStore((s) => s.refreshBalance);
   const refreshUsage = useStore((s) => s.refreshUsage);
-  const topUp = useStore((s) => s.topUp);
+  const [selectedPkg, setSelectedPkg] = useState<CreditPackage | null>(null);
 
   useEffect(() => {
     void refreshBalance();
@@ -72,18 +71,33 @@ export function BillingUsageSection() {
           </div>
         </div>
 
-        {/* Top-up */}
-        <div className="flex items-center gap-2">
-          {TOP_UP_OPTIONS.map((credits) => (
-            <button
-              key={credits}
-              onClick={() => void topUp(credits)}
-              className="px-3 py-1.5 text-xs rounded"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
-            >
-              + {formatCredits(credits)}
-            </button>
-          ))}
+        {/* Buy credits — package cards open the checkout modal */}
+        <div>
+          <div className="text-xs mb-1.5" style={{ color: 'var(--text-3)' }}>
+            {t('account.buyCredits', 'Buy credits')}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {CREDIT_PACKAGES.map((pkg) => (
+              <button
+                key={pkg.id}
+                onClick={() => setSelectedPkg(pkg)}
+                className="flex flex-col items-start gap-0.5 rounded p-2.5 text-left transition-colors"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
+              >
+                <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {t(`account.package_${pkg.id}`, pkg.id)}
+                </span>
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                  {formatCredits(pkg.credits)}
+                </span>
+                <span className="text-xs font-mono" style={{ color: 'var(--text-2)' }}>
+                  {formatUsd(pkg.priceUsd)}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Usage history */}
@@ -124,6 +138,8 @@ export function BillingUsageSection() {
           )}
         </div>
       </div>
+
+      <CreditPurchaseModal pkg={selectedPkg} onClose={() => setSelectedPkg(null)} />
     </SectionCard>
   );
 }

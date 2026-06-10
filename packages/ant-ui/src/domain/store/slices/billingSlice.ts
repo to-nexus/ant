@@ -11,8 +11,9 @@ import { StateCreator } from 'zustand';
 import type { AsyncFields } from '@/domain/async';
 import { initialAsyncFields } from '@/domain/async';
 import type { BalanceSnapshot } from '@ant/shared';
-import type { CreditTransaction } from '@ant/shared';
-import { fetchBalance, fetchUsage, topUpCredits } from '@/infrastructure/http/api';
+import type { CreditTransaction, PaymentMethodInput, PurchaseOutcome } from '@ant/shared';
+import { fetchBalance, fetchUsage, purchaseCredits } from '@/infrastructure/http/api';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface BillingSliceState {
@@ -25,7 +26,12 @@ export interface BillingSliceState {
 export interface BillingActions {
   refreshBalance: () => Promise<void>;
   refreshUsage: (limit?: number) => Promise<void>;
-  topUp: (credits: number) => Promise<void>;
+  /**
+   * Purchase a credit package through the payment provider. Resolves to the
+   * outcome (never throws) so the checkout UI can render a decline/error
+   * inline. On success the balance + usage are refreshed.
+   */
+  purchaseCredits: (packageId: string, paymentMethod: PaymentMethodInput) => Promise<PurchaseOutcome>;
 }
 
 export type BillingSlice = BillingSliceState & BillingActions;
@@ -79,10 +85,20 @@ export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set,
     }
   },
 
-  topUp: async (credits: number) => {
-    const data = await topUpCredits(credits);
-    set({ billingBalance: { status: 'ready', data, error: null, refreshing: false } });
-    // Refresh usage so the new top-up row appears.
-    await (get() as BillingActions).refreshUsage();
+  purchaseCredits: async (packageId: string, paymentMethod: PaymentMethodInput): Promise<PurchaseOutcome> => {
+    try {
+      const data = await purchaseCredits(packageId, paymentMethod);
+      set({ billingBalance: { status: 'ready', data, error: null, refreshing: false } });
+      // Refresh usage so the new top-up row appears.
+      await (get() as BillingActions).refreshUsage();
+      return { ok: true, status: 'succeeded' };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        // 402 → declined / error; any other status maps to a generic error.
+        const status: PurchaseOutcome['status'] = error.code === 'declined' ? 'declined' : 'error';
+        return { ok: false, status, reason: error.message };
+      }
+      return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
+    }
   },
 });

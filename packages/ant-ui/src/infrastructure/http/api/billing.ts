@@ -7,7 +7,7 @@
  */
 
 import { API_BASE, apiGet, apiPost } from './client';
-import type { BalanceSnapshot, UsageHistoryResponse } from '@ant/shared';
+import type { BalanceSnapshot, UsageHistoryResponse, PaymentMethodInput } from '@ant/shared';
 
 export type { BalanceSnapshot, UsageHistoryResponse } from '@ant/shared';
 
@@ -21,10 +21,20 @@ export async function fetchUsage(limit = 50): Promise<UsageHistoryResponse> {
   return apiGet<UsageHistoryResponse>(`${API_BASE()}/billing/usage?limit=${limit}`);
 }
 
-/** Purchase credits via the (stub) payment provider. Returns the new balance. */
-export async function topUpCredits(credits: number, idempotencyKey?: string): Promise<BalanceSnapshot> {
-  return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/topup`, {
-    credits,
-    idempotencyKey: idempotencyKey ?? `topup-${Date.now()}`,
+/**
+ * Purchase a credit package via the (mock) payment provider. Price + credits
+ * are resolved server-side from the package id. Returns the new balance on
+ * success; throws `ApiError` (status 402, `code` = 'declined' | 'error') on
+ * a failed charge so the caller can surface the decline.
+ */
+export async function purchaseCredits(
+  packageId: string,
+  paymentMethod: PaymentMethodInput,
+  idempotencyKey?: string,
+): Promise<BalanceSnapshot> {
+  return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/purchase`, {
+    packageId,
+    paymentMethod,
+    idempotencyKey: idempotencyKey ?? `purchase-${Date.now()}`,
   });
 }
