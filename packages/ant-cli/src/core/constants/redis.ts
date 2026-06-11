@@ -312,6 +312,10 @@ export const REDIS_KEYS = {
       `${REDIS_DOMAINS.BILLING}:held:${org}:${user}`,
     /** Per-job debit idempotency lock - ant:billing:debit:{jobId} */
     DEBIT_LOCK: (jobId: string): string => `${REDIS_DOMAINS.BILLING}:debit:${jobId}`,
+    /** Per-job cumulative micro-credits already debited (monotonic). Drives
+     *  incremental live metering: each tick raises this toward the job's
+     *  cumulative cost and debits only the positive delta. - ant:billing:charged:{jobId} */
+    CHARGED: (jobId: string): string => `${REDIS_DOMAINS.BILLING}:charged:${jobId}`,
     /** Monthly grant lock (one grant per cycle) - ant:billing:grantLock:{orgId}:{userId} */
     GRANT_LOCK: (org: string, user: string): string =>
       `${REDIS_DOMAINS.BILLING}:grantLock:${org}:${user}`,
@@ -385,6 +389,8 @@ export const REDIS_TTL = {
     HOLD: 6 * 60 * 60,            // 6 hours
     /** Debit idempotency lock — long enough to outlast any finalize retry. */
     DEBIT_LOCK: 24 * 60 * 60,     // 24 hours
+    /** Per-job cumulative-charged marker — outlives the job + finalize retry. */
+    CHARGED: 24 * 60 * 60,        // 24 hours
     /** Max ledger entries kept per account (LTRIM). SSOT: @ant/shared. */
     LEDGER_MAX_ENTRIES: CREDIT_LEDGER_MAX_ENTRIES,
   },

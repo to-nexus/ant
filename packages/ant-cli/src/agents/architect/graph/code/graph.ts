@@ -218,6 +218,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         // the tooltip / more-dropdown no longer lists a terminated worker.
         state.deps?.kanbanUpdate?.clearWorkerPhaseTokenUsage?.(workerId);
       },
+      isCreditExhausted: () => state.deps?.kanbanUpdate?.isCreditExhausted?.() ?? false,
       onInterruption: (reason, runningTaskIds) => {
         // ✅ Log job_interrupted event to debug/logs/.
         // Static import + synchronous writeQueue update — see

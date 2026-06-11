@@ -1,4 +1,8 @@
 {
+  "credits": {
+    "exhausted": "You're out of credits. Top up to keep working.",
+    "recharge": "Add credits"
+  },
   "input": {
     "placeholder": "Please sign in to start chatting...",
     "send": "Send",
@@ -189,6 +193,7 @@
       "server_shutdown": "Server shutdown",
       "figma_rate_limited": "Figma API rate limit exceeded",
       "figma_connection_lost": "Figma connection lost",
+      "insufficient_credits": "Credit balance ran out",
       "unknown": "Unknown error"
     },
     "subtitles": {
@@ -206,6 +211,7 @@
       "server_shutdown": "Server has restarted. Resume to continue.",
       "figma_rate_limited": "Wait a moment, then resume to continue.",
       "figma_connection_lost": "Ensure Figma Desktop is open and retry.",
+      "insufficient_credits": "Top up your credits, then resume to continue.",
       "unknown": "Resume to continue from where it left off."
     },
     "designErrors": {

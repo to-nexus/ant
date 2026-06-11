@@ -13,6 +13,7 @@
  */
 
 import { UserContext } from '../types/user';
+import type { CreditLedgerPort } from '../ports/creditLedger';
 import { 
   REDIS_KEYS, 
   REDIS_TTL,
@@ -125,4 +126,12 @@ export interface BroadcasterOptions {
   featureName: string;
   jobType?: string;
   userContext: UserContext;
+  /**
+   * Optional credit ledger for live incremental metering. Injected by the
+   * composition root (orchestrator) when billing is enabled — the KanbanBroadcaster
+   * is the single job-cumulative token funnel, so the meter co-locates there.
+   * Absent in OSS/billing-disabled builds (no metering). Port interface only —
+   * keeps `core/realtime` free of any `infrastructure/` import.
+   */
+  creditLedger?: CreditLedgerPort;
 }

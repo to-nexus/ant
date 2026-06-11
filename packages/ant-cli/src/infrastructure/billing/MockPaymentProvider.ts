@@ -20,6 +20,11 @@ const COMPONENT = 'MockPaymentProvider';
 export class MockPaymentProvider implements PaymentProviderPort {
   constructor(private readonly ledger: CreditLedgerPort) {}
 
+  /** Mock provider — enables the dev-only arbitrary credit top-up. */
+  isMock(): boolean {
+    return true;
+  }
+
   async purchaseCredits(req: PurchaseRequest): Promise<PurchaseOutcome> {
     if (req.credits <= 0 || req.amountUsd <= 0) {
       return { ok: false, status: 'error', reason: 'invalid package' };

@@ -17,7 +17,13 @@ import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+
+/** True when an error is a 402 credit block from a job start/resume. */
+function isCreditBlock(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 402 && error.code === 'insufficient_credits';
+}
 
 export function useJobExecution() {
   const { showError } = useAlertModalContext();
@@ -137,14 +143,19 @@ export function useJobExecution() {
         console.error('[useJobExecution] Failed to resume job:', error);
         console.error('[useJobExecution] Error details:', error);
         setRunning(false);
-        showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
+        if (isCreditBlock(error)) {
+          useStore.getState().setCreditBlockActive(true);
+        } else {
+          showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
+        }
       }
       return;
     }
 
     // ✅ Start new job
     setRunning(true, undefined, 'generate'); // Default mode
-    
+    useStore.getState().setCreditBlockActive(false); // clear any prior block
+
     try {
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
@@ -219,6 +230,7 @@ export function useJobExecution() {
       console.error('[useJobExecution] Failed to start job:', error);
       setRunning(false);
       setCurrentJob(null);
+      if (isCreditBlock(error)) useStore.getState().setCreditBlockActive(true);
     }
   }, [setRunning, setStopping, setCurrentJob, setSession, refreshFileTree]);
 

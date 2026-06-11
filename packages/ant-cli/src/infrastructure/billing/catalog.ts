@@ -24,6 +24,14 @@ import type {
  */
 export const MARKUP_DEFAULT = 1.75;
 
+/**
+ * Minimum credit balance required to START (or resume) a job — a small floor
+ * (~one planning LLM call's worth) so the pre-flight gate blocks genuinely
+ * empty accounts without rejecting users who can still afford meaningful work.
+ * The free tier's 200/mo grant clears this comfortably.
+ */
+export const MIN_START_CREDITS = 10;
+
 /** Per-tier definition: monthly price (USD) + monthly included credit grant. */
 export const TIER_DEFINITIONS: Readonly<Record<SubscriptionTier, PlanInfo>> = {
   free: { tier: 'free', monthlyPriceUsd: 0, includedCreditsMonthly: 200 },

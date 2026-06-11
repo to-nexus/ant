@@ -23,6 +23,8 @@ import type {
   DecomposableJobType
 } from '../types/task';
 import type { JobTiming, PhaseTokenUsage, TokenUsageByModel } from '@ant/shared';
+import { computeJobCostUsd, computeModelCostBreakdownUsd } from '@ant/shared';
+import type { CreditLedgerPort } from '../ports/creditLedger';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
@@ -94,7 +96,20 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   // tearing down Redis connections. Prevents end-of-job emissions from
   // racing `pubRedis.quit()` (most visible on short jobs like `plan`).
   private readonly inflight = new InflightTracker();
-  
+
+  // ── live credit metering ───────────────────────────────────────────────
+  // The broadcaster is the single job-cumulative token funnel (serial nodes
+  // and parallel orchestrator both push the merged byModel here), so the
+  // incremental debit co-locates here. Throttled by wall-clock; the ledger's
+  // monotonic `charged:{jobId}` makes repeated/overlapping ticks idempotent.
+  private readonly creditLedger?: CreditLedgerPort;
+  private lastMeterAtMs = 0;
+  /** Last balance (micro-credits) observed by the meter; undefined until first tick. */
+  private lastMeteredBalanceMicro?: number;
+  /** True once a metered debit drove the balance to 0 (exhaustion signal for A3). */
+  private creditExhausted = false;
+  private static readonly METER_THROTTLE_MS = 2000;
+
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
     const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
@@ -111,7 +126,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.jobType = options.jobType || 'code';
     this.agent = getAgentForJobSafe(this.jobType);
     this.userContext = options.userContext;
-    
+    this.creditLedger = options.creditLedger;
+
     // Error & connection event handlers for diagnostics
     this.redis.on('error', (err) => console.error(`❌ [KanbanBroadcaster] redis error:`, err.message));
     this.redis.on('ready', () => console.log(`🟢 [KanbanBroadcaster] redis ready`));
@@ -226,6 +242,58 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   updateTokenUsageByModel(byModel: TokenUsageByModel): void {
     this.cachedTokenUsageByModel = byModel;
+    this.meterCredits(byModel);
+  }
+
+  /**
+   * Live incremental debit. Throttled by wall-clock so a burst of LLM calls
+   * doesn't hammer Redis. Computes the job-cumulative USD cost from the merged
+   * per-model usage and debits the positive delta via the ledger's monotonic
+   * `debitToCumulative`. Fire-and-forget (never blocks the broadcast path) but
+   * tracked so close() can flush it. Sets `creditExhausted` when the balance
+   * floors at 0 — the orchestrator/serial guard reads `isCreditExhausted()`.
+   */
+  private meterCredits(byModel: TokenUsageByModel): void {
+    const ledger = this.creditLedger;
+    const org = this.userContext?.organizationId;
+    const user = this.userContext?.userId;
+    if (!ledger || !org || !user) return;
+
+    const now = Date.now();
+    if (now - this.lastMeterAtMs < KanbanBroadcaster.METER_THROTTLE_MS) return;
+    this.lastMeterAtMs = now;
+
+    const { usd } = computeJobCostUsd(byModel as Record<string, any>);
+    if (!(usd > 0)) return;
+    const modelBreakdown = computeModelCostBreakdownUsd(byModel as Record<string, any>);
+
+    this.inflight.track(
+      ledger
+        .debitToCumulative({
+          jobId: this.jobId,
+          orgId: org,
+          userId: user,
+          cumulativeUsd: usd,
+          modelBreakdown,
+        })
+        .then((snap) => {
+          this.lastMeteredBalanceMicro = snap.microCredits;
+          if (snap.microCredits <= 0) this.creditExhausted = true;
+        })
+        .catch((err) => {
+          console.warn(`[KanbanBroadcaster] credit meter tick failed:`, err?.message);
+        }),
+    );
+  }
+
+  /** True once live metering drove the balance to 0 — exhaustion pause signal. */
+  isCreditExhausted(): boolean {
+    return this.creditExhausted;
+  }
+
+  /** Last balance (micro-credits) seen by the meter, or undefined before the first tick. */
+  getLastMeteredBalanceMicro(): number | undefined {
+    return this.lastMeteredBalanceMicro;
   }
 
   /**

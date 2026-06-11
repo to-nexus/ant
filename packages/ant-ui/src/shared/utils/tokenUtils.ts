@@ -20,6 +20,7 @@ import { TaskTokenUsage } from '@/domain/models/types';
 import {
   computeJobCostUsd,
   computeCallCostUsdSafe,
+  computeModelCostBreakdownUsd,
   usdToMicroCredits,
   microCreditsToCredits,
   type TokenUsageByModel,
@@ -231,6 +232,66 @@ export function costUsdFromUsage(
  */
 export function creditsFromUsd(usd: number, markup: number = 1): number {
   return microCreditsToCredits(usdToMicroCredits(usd, markup));
+}
+
+/**
+ * One row of the per-model cost breakdown shown in the token-usage popup.
+ * Each model is priced at its OWN rate (input / output / cache-write / cache-read),
+ * so the popup can show exactly where the cost came from.
+ */
+export interface PerModelCostRow {
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  /** Precise USD list cost for this model's usage. */
+  usd: number;
+  /** Customer-facing credits (USD × markup), markup server-driven. */
+  credits: number;
+}
+
+/**
+ * Per-model cost rows from a job's per-model usage, sorted by cost desc. Uses
+ * the shared rate card (`computeModelCostBreakdownUsd`) so each model's
+ * cache-write / cache-read tokens are priced at their own rate — same SSOT the
+ * ledger debits with. Empty when no per-model data.
+ */
+export function perModelCostRows(
+  byModel?: TokenUsageByModel | null,
+  markup: number = 1,
+): PerModelCostRow[] {
+  if (!byModel || Object.keys(byModel).length === 0) return [];
+  const breakdown = computeModelCostBreakdownUsd(byModel);
+  return Object.entries(byModel)
+    .map(([modelId, u]) => {
+      const usd = breakdown[modelId] ?? 0;
+      return {
+        modelId,
+        inputTokens: u.inputTokens || 0,
+        outputTokens: u.outputTokens || 0,
+        cacheCreationTokens: u.cacheCreationTokens || 0,
+        cacheReadTokens: u.cacheReadTokens || 0,
+        usd,
+        credits: creditsFromUsd(usd, markup),
+      };
+    })
+    .sort((a, b) => b.usd - a.usd);
+}
+
+/**
+ * Friendly short label for a model id (e.g. `claude-opus-4-8` → "Opus 4.8").
+ * Falls back to the raw id for unknown models.
+ */
+export function formatModelLabel(modelId: string): string {
+  const id = modelId.toLowerCase();
+  if (id.includes('opus-4-8')) return 'Opus 4.8';
+  if (id.includes('opus')) return 'Opus';
+  if (id.includes('sonnet-4-6')) return 'Sonnet 4.6';
+  if (id.includes('sonnet')) return 'Sonnet';
+  if (id.includes('haiku-4-5')) return 'Haiku 4.5';
+  if (id.includes('haiku')) return 'Haiku';
+  return modelId;
 }
 
 /** Format a USD amount — sub-cent shows 4 decimals, else 2. */

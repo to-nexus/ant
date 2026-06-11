@@ -179,10 +179,12 @@ export async function finalizeTerminalJob(
 
   // 3b. Billing settle — MUST run BEFORE sealJobRedisState (which DELs the
   //     taskQueue snapshot that carries the per-model usage). Reads the final
-  //     per-model token usage, computes precise USD at list price, debits
-  //     credits (markup applied inside the ledger), and releases the hold.
-  //     Idempotent per jobId; non-fatal (never blocks teardown). Recording is
-  //     always on; only the enqueue 402 gate is flag-guarded.
+  //     per-model token usage, computes precise USD at list price, and finalizes
+  //     the debit. The live meter has already charged most of this incrementally
+  //     (monotonic `charged:{jobId}`); settle moves the balance to the final
+  //     cumulative target (capturing the last delta) and writes the single
+  //     coalesced `debit` ledger row, then releases the hold. Idempotent per
+  //     jobId; non-fatal (never blocks teardown). Recording is always on.
   try {
     if (userContext?.organizationId && userContext?.userId) {
       const ledger = getInfrastructureFactory().getCreditLedger();

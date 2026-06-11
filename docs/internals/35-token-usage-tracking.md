@@ -88,6 +88,26 @@ rg "CONTEXT_WINDOW_MAX_TOKENS" packages/
 # Expected: definition in ant-shared/src/task.ts, consumers elsewhere.
 ```
 
+## Live credit metering (co-located, NOT inside accumulate)
+
+Billing debits the running job's cost incrementally off the **same job-cumulative
+per-model funnel** the token gauge uses. The meter lives in
+`KanbanBroadcaster.updateTokenUsageByModel` (the single sink both serial nodes
+and the parallel orchestrator push the merged `tokenUsageByModel` into) — it is
+**NOT** inside `accumulateTokenUsage`, which must stay the lone gauge publisher.
+
+- On each broadcast the meter (throttled ~2s) computes `computeJobCostUsd(byModel)`
+  and calls `creditLedger.debitToCumulative({ jobId, cumulativeUsd, ... })`, which
+  atomically (Lua) raises a monotonic `ant:billing:charged:{jobId}` and debits only
+  the positive delta — so repeated/overlapping ticks and the terminal `settle`
+  (which delegates to the same primitive) can never double-charge.
+- When a debit floors the balance at 0, `KanbanBroadcaster.isCreditExhausted()`
+  flips true; the orchestrator polls it at each task-completion boundary and pauses
+  the job with a resumable `insufficient_credits` interruption.
+- The ledger is injected via `BroadcasterOptions.creditLedger` from the composition
+  root (orchestrator), keeping `core/realtime` free of any `infrastructure/billing`
+  import. Absent ledger (billing disabled) → no metering.
+
 ## Adding a new LLM-calling node
 
 1. Implement the node normally — it already has `state.currentPhaseTokenUsage` typed on its state via the common annotation chain.

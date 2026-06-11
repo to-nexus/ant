@@ -1,4 +1,8 @@
 {
+  "credits": {
+    "exhausted": "크레딧이 부족합니다. 충전하면 작업을 이어갈 수 있어요.",
+    "recharge": "충전하기"
+  },
   "input": {
     "placeholder": "로그인 후 채팅을 시작하세요...",
     "send": "전송",
@@ -189,6 +193,7 @@
       "server_shutdown": "서버 종료로 인해 중단됨",
       "figma_rate_limited": "Figma API 요청 한도 초과",
       "figma_connection_lost": "Figma 연결 끊김",
+      "insufficient_credits": "크레딧이 모두 소진되었습니다",
       "unknown": "알 수 없는 오류"
     },
     "subtitles": {
@@ -206,6 +211,7 @@
       "server_shutdown": "서버가 재시작되었습니다. 재개하면 이어서 작업합니다.",
       "figma_rate_limited": "잠시 후 재개하면 중단된 지점부터 다시 시작합니다.",
       "figma_connection_lost": "Figma Desktop이 열려있는지 확인한 후 재개하세요.",
+      "insufficient_credits": "크레딧을 충전한 후 재개하면 이어서 작업합니다.",
       "unknown": "재개하면 중단된 지점부터 다시 시작합니다."
     },
     "designErrors": {

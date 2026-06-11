@@ -31,7 +31,12 @@ import {
   microCreditsToCredits,
 } from '@ant/shared';
 import { MARKUP_DEFAULT, includedCreditsFor } from './catalog';
-import type { CreditLedgerPort, ReserveResult, SettleArgs } from '../../core/ports/creditLedger';
+import type {
+  CreditLedgerPort,
+  DebitCumulativeArgs,
+  ReserveResult,
+  SettleArgs,
+} from '../../core/ports/creditLedger';
 import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
 import { logger } from '../../utils/logger';
 
@@ -39,6 +44,29 @@ const COMPONENT = 'RedisCreditLedger';
 /** Long TTL for "durable" billing keys, refreshed on every access. */
 const DURABLE_TTL = 365 * 24 * 60 * 60;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Atomic monotonic cumulative-debit. KEYS[1]=balance, KEYS[2]=charged.
+ * ARGV[1]=target micro, ARGV[2]=charged TTL, ARGV[3]=balance durable TTL.
+ * Raises `charged` toward `target` and debits only the positive delta,
+ * clamping the balance at 0 (billing floors, never goes negative). Returns
+ * {delta, newBalance}. Idempotent: a target ≤ charged is a no-op.
+ */
+const DEBIT_CUMULATIVE_LUA = `
+local charged = tonumber(redis.call('GET', KEYS[2]) or '0')
+local target = tonumber(ARGV[1])
+if target > charged then
+  local delta = target - charged
+  local nb = redis.call('INCRBY', KEYS[1], -delta)
+  if nb < 0 then redis.call('SET', KEYS[1], '0'); nb = 0 end
+  redis.call('SET', KEYS[2], tostring(target))
+  redis.call('EXPIRE', KEYS[1], ARGV[3])
+  redis.call('EXPIRE', KEYS[2], ARGV[2])
+  return {delta, nb}
+end
+local nb = tonumber(redis.call('GET', KEYS[1]) or '0')
+return {0, nb}
+`;
 
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
@@ -286,13 +314,34 @@ export class RedisCreditLedger implements CreditLedgerPort {
     }
   }
 
-  // ── settle (debit) ───────────────────────────────────────────────────
+  // ── cumulative debit (incremental metering + terminal settle) ──────────
+
+  async debitToCumulative(args: DebitCumulativeArgs): Promise<BalanceSnapshot> {
+    const { jobId, orgId, userId, cumulativeUsd } = args;
+    const account = await this.getOrCreateAccount(orgId, userId);
+    const targetMicro = usdToMicroCredits(cumulativeUsd, account.markup);
+
+    const balanceKey = this.balanceKey(orgId, userId);
+    const res = (await this.redis.eval(
+      DEBIT_CUMULATIVE_LUA,
+      2,
+      balanceKey,
+      REDIS_KEYS.BILLING.CHARGED(jobId),
+      String(Math.max(0, Math.round(targetMicro))),
+      String(REDIS_TTL.BILLING.CHARGED),
+      String(DURABLE_TTL),
+    )) as [number, number];
+    return this.snapshot(account, res[1]);
+  }
+
+  // ── settle (terminal debit) ────────────────────────────────────────────
 
   async settle(args: SettleArgs): Promise<void> {
     const { jobId, orgId, userId, usdCost, modelBreakdown, projectId, featureName, note } = args;
 
-    // Idempotency: claim the per-job debit lock. A re-delivered completion
-    // cannot double-charge.
+    // Idempotency for the LEDGER ROW: claim the per-job debit lock so a
+    // re-delivered completion cannot write a second row. The balance move
+    // itself is already idempotent (monotonic `charged`).
     const lockKey = REDIS_KEYS.BILLING.DEBIT_LOCK(jobId);
     const acquired = await this.redis.set(lockKey, '1', 'EX', REDIS_TTL.BILLING.DEBIT_LOCK, 'NX');
     if (!acquired) {
@@ -303,13 +352,12 @@ export class RedisCreditLedger implements CreditLedgerPort {
     const account = await this.getOrCreateAccount(orgId, userId);
     const microToDebit = usdToMicroCredits(usdCost, account.markup);
 
-    if (microToDebit > 0) {
-      // Debit, clamping the balance at 0 — billing never blocks a job, so an
-      // overspend (actual > available) simply floors the balance instead of
-      // going negative. No reservation/hold is taken (blocking is disabled).
-      const next = await this.adjustBalance(orgId, userId, -microToDebit);
-      if (next < 0) await this.redis.set(this.balanceKey(orgId, userId), '0');
-    }
+    // Move the balance to the final cumulative target (captures any delta the
+    // live meter has not yet charged). Atomic + monotonic — overlap with a
+    // late live tick is a no-op, not a double charge.
+    await this.debitToCumulative({ jobId, orgId, userId, cumulativeUsd: usdCost });
+
+    // One coalesced `debit` row recording the full job cost + per-model split.
     await this.appendTransaction(orgId, userId, {
       id: randomId('debit'),
       ts: new Date().toISOString(),

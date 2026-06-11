@@ -119,6 +119,13 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
   onWorkerTerminate?: (workerId: number) => void;
   /** Called when the orchestrator is interrupted (user stop, recursion limit, consecutive timeouts). */
   onInterruption?: (reason: string, runningTaskIds: string[]) => void;
+  /**
+   * Read whether live credit metering has exhausted the balance. Polled at each
+   * task-completion boundary; when true (and work remains) the orchestrator
+   * pauses the job with `insufficient_credits` (resumable). Returns false when
+   * billing is disabled / no ledger.
+   */
+  isCreditExhausted?: () => boolean;
 }
 
 /**

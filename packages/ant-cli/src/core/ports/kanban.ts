@@ -73,6 +73,15 @@ export interface TaskQueueUpdatePort {
   updateTokenUsageByModel?(byModel: TokenUsageByModel): void;
 
   /**
+   * Live credit-metering signal. The broadcaster debits the running job's
+   * cumulative cost incrementally; `isCreditExhausted()` returns true once a
+   * debit floored the balance at 0. The orchestrator / serial guard reads this
+   * between work units to pause the job with `insufficient_credits`. No-op
+   * (returns false) when billing is disabled or no ledger is injected.
+   */
+  isCreditExhausted?(): boolean;
+
+  /**
    * Snapshot estimating phase token usage (detect + decompose, before tasks).
    * Called once at end of decompose, included in all subsequent broadcasts
    * so the frontend can show estimating vs task breakdown without subtraction.

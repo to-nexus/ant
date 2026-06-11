@@ -19,6 +19,7 @@ import {
   purchaseCredits,
   subscribePlan,
   cancelSubscription,
+  topUpCustomCredits,
 } from '@/infrastructure/http/api';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { selectIsAuthBlocked } from '../selectors/auth';
@@ -30,6 +31,12 @@ export interface BillingSliceState {
   billingCatalog: AsyncFields<BillingCatalog>;
   /** BE-decided: whether USD cost columns may be shown to this caller. */
   billingCanViewUsd: boolean;
+  /**
+   * True when a job start/resume was just blocked by a 402 insufficient_credits.
+   * Drives the recharge CTA shown near the chat input. Cleared on the next
+   * successful start (or manual top-up navigation).
+   */
+  creditBlockActive: boolean;
 }
 
 export interface BillingActions {
@@ -46,6 +53,14 @@ export interface BillingActions {
   subscribePlan: (tier: SubscriptionTier, paymentMethod?: PaymentMethodInput) => Promise<PurchaseOutcome>;
   /** Cancel the active subscription (cycle-end downgrade). */
   cancelSubscription: () => Promise<PurchaseOutcome>;
+  /** Set/clear the chat recharge-CTA flag (job start/resume blocked on credits). */
+  setCreditBlockActive: (active: boolean) => void;
+  /**
+   * DEV-only arbitrary credit top-up (no card). Resolves to the outcome (never
+   * throws); on success the balance + usage are refreshed. Disabled server-side
+   * once a real payment gateway is wired (403 → `{ ok:false, status:'error' }`).
+   */
+  topUpCustomCredits: (credits: number) => Promise<PurchaseOutcome>;
 }
 
 export type BillingSlice = BillingSliceState & BillingActions;
@@ -55,6 +70,9 @@ export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set,
   billingUsage: initialAsyncFields<CreditTransaction[]>(),
   billingCatalog: initialAsyncFields<BillingCatalog>(),
   billingCanViewUsd: false,
+  creditBlockActive: false,
+
+  setCreditBlockActive: (active: boolean) => set({ creditBlockActive: active }),
 
   refreshBalance: async () => {
     if (selectIsAuthBlocked(get())) return;
@@ -147,6 +165,20 @@ export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set,
       if (error instanceof ApiError) {
         const status: PurchaseOutcome['status'] = error.code === 'declined' ? 'declined' : 'error';
         return { ok: false, status, reason: error.message };
+      }
+      return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  topUpCustomCredits: async (credits: number): Promise<PurchaseOutcome> => {
+    try {
+      const data = await topUpCustomCredits(credits);
+      set({ billingBalance: { status: 'ready', data, error: null, refreshing: false } });
+      await (get() as BillingActions).refreshUsage();
+      return { ok: true, status: 'succeeded' };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return { ok: false, status: 'error', reason: error.message };
       }
       return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
     }
