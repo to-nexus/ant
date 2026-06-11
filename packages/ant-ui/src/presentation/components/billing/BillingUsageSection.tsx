@@ -1,13 +1,13 @@
 /**
- * BillingUsageSection — Account config "Billing & Usage" section.
+ * BillingUsageSection — Account config "Plan & Billing" summary.
  *
- * Customer surface: shows the credit balance + tier + a "Buy credits" flow.
- * The full charge/usage ledger is intentionally NOT inlined here — it grows
- * with every purchase and job, so it lives behind a "View activity" button
- * that opens <BillingActivityModal>. The section height stays fixed regardless
- * of how many transactions accumulate.
+ * Summary only: current membership, the CURRENT plan (single card — NOT a plan
+ * picker), and the credit balance. Plan selection, credit top-up, and the full
+ * ledger each live behind their own modal (Manage plan / Buy credits / View
+ * activity), so this section's height stays fixed.
  *
- * Rendered only for individual / team tenants — `local` has no billing.
+ * Rendered only when the BE reports `billingEnabled` (cloud). OSS / local hides
+ * the whole section — see AccountConfigEditor.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,16 +15,22 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { SectionCard } from '../ConfigEditor/aurora';
 import { Spinner } from '../common/async';
-import { formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
-import { CREDIT_PACKAGES, type CreditPackage } from '@ant/shared';
-import { CreditPurchaseModal } from './CreditPurchaseModal';
+import { formatCredits } from '@/shared/utils/tokenUtils';
+import { selectOrgDisplayLabel, selectActiveUserRole, selectUserOrgKind } from '@/domain/store/selectors/auth';
+import { PlansModal } from './PlansModal';
+import { TopUpModal } from './TopUpModal';
 import { BillingActivityModal } from './BillingActivityModal';
 
 export function BillingUsageSection() {
   const { t } = useTranslation('config');
   const balance = useStore((s) => s.billingBalance);
   const refreshBalance = useStore((s) => s.refreshBalance);
-  const [selectedPkg, setSelectedPkg] = useState<CreditPackage | null>(null);
+  const orgLabel = useStore(selectOrgDisplayLabel);
+  const orgKind = useStore(selectUserOrgKind);
+  const role = useStore(selectActiveUserRole);
+
+  const [plansOpen, setPlansOpen] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
@@ -32,89 +38,102 @@ export function BillingUsageSection() {
   }, [refreshBalance]);
 
   const snap = balance.data;
+  const loading = balance.status === 'loading' || (balance.status === 'idle' && balance.refreshing);
+  const canceledUntil = snap?.status === 'canceled' && snap.nextBillingDate
+    ? new Date(snap.nextBillingDate).toLocaleDateString()
+    : null;
+
+  const btn = {
+    base: 'text-xs rounded px-3 py-1.5 transition-colors',
+    style: { background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' } as const,
+  };
 
   return (
     <SectionCard
       id="c3a-billing"
       icon="CreditCard"
-      title={t('account.billingTitle', 'Billing & Usage')}
+      title={t('account.billingTitle', 'Plan & Billing')}
       description={t(
         'account.billingDescription',
-        'Your credit balance and recent usage. Credits are consumed as you run jobs.',
+        'Your membership, plan, and credit balance. Credits are consumed as you run jobs.',
       )}
       accent="cool"
     >
       <div className="space-y-4">
-        {/* Balance + tier */}
-        <div className="flex items-center justify-between">
+        {/* Membership */}
+        <div className="flex items-center justify-between rounded p-3" style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)' }}>
           <div>
+            <div className="text-xs" style={{ color: 'var(--text-3)' }}>
+              {t('account.membershipTitle', 'Account')}
+            </div>
+            <div className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
+              {orgLabel ?? '—'}
+            </div>
+          </div>
+          <div className="text-right text-[11px]" style={{ color: 'var(--text-3)' }}>
+            <div>{t(`account.orgKind_${orgKind ?? 'individual'}`, orgKind ?? 'individual')}</div>
+            {role && <div>{t(`account.role_${role}`, role)}</div>}
+          </div>
+        </div>
+
+        {/* Current plan + balance */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs" style={{ color: 'var(--text-3)' }}>
+              {t('account.currentPlan', 'Current plan')}
+            </div>
+            <div className="text-lg font-semibold" style={{ color: 'var(--text-1)' }}>
+              {loading ? <Spinner /> : snap ? t(`account.plan_${snap.tier}`, snap.tier) : '—'}
+            </div>
+            {snap && (
+              <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                {t('account.includedMonthly', '{{n}}/mo included', {
+                  n: formatCredits(snap.includedCreditsMonthly),
+                })}
+                {canceledUntil && (
+                  <>
+                    {' · '}
+                    <span style={{ color: 'var(--status-warning-fg, var(--orange-600))' }}>
+                      {t('account.canceledUntil', 'Reverts to Free on {{date}}', { date: canceledUntil })}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="text-right">
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
               {t('account.currentBalance', 'Current balance')}
             </div>
             <div className="text-2xl font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
-              {balance.status === 'loading' || (balance.status === 'idle' && balance.refreshing) ? (
-                <Spinner />
-              ) : snap ? (
-                `${formatCredits(snap.credits)} ${t('account.creditsUnit', 'credits')}`
-              ) : (
-                '—'
-              )}
+              {loading ? <Spinner /> : snap ? formatCredits(snap.credits) : '—'}
             </div>
-            {snap && (
-              <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                {t('account.tier', 'Plan')}: {snap.tier} ·{' '}
-                {t('account.includedMonthly', '{{n}}/mo included', {
-                  n: formatCredits(snap.includedCreditsMonthly),
-                })}
-              </div>
-            )}
+            <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+              {t('account.creditsUnit', 'credits')}
+            </div>
           </div>
         </div>
 
-        {/* Buy credits — package cards open the checkout modal */}
-        <div>
-          <div className="text-xs mb-1.5" style={{ color: 'var(--text-3)' }}>
-            {t('account.buyCredits', 'Buy credits')}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {CREDIT_PACKAGES.map((pkg) => (
-              <button
-                key={pkg.id}
-                onClick={() => setSelectedPkg(pkg)}
-                className="flex flex-col items-start gap-0.5 rounded p-2.5 text-left transition-colors"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
-              >
-                <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                  {t(`account.package_${pkg.id}`, pkg.id)}
-                </span>
-                <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-                  {formatCredits(pkg.credits)}
-                </span>
-                <span className="text-xs font-mono" style={{ color: 'var(--text-2)' }}>
-                  {formatUsd(pkg.priceUsd)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Full ledger lives behind the detail modal */}
-        <div>
+        {/* Entry points */}
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => setActivityOpen(true)}
-            className="text-xs rounded px-3 py-1.5 transition-colors"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
+            onClick={() => setPlansOpen(true)}
+            className={btn.base}
+            style={{ ...btn.style, background: 'var(--violet-500)', color: 'white' }}
           >
+            {t('account.managePlan', 'Manage plan')}
+          </button>
+          <button onClick={() => setTopUpOpen(true)} className={btn.base} style={btn.style}>
+            {t('account.buyCredits', 'Buy credits')}
+          </button>
+          <button onClick={() => setActivityOpen(true)} className={btn.base} style={btn.style}>
             {t('account.viewActivity', 'View activity →')}
           </button>
         </div>
       </div>
 
-      <CreditPurchaseModal pkg={selectedPkg} onClose={() => setSelectedPkg(null)} />
+      <PlansModal isOpen={plansOpen} onClose={() => setPlansOpen(false)} />
+      <TopUpModal isOpen={topUpOpen} onClose={() => setTopUpOpen(false)} />
       <BillingActivityModal isOpen={activityOpen} onClose={() => setActivityOpen(false)} />
     </SectionCard>
   );

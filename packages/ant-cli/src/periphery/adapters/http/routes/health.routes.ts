@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { ServerMode, SystemConfigResponse } from '@ant/shared';
 import { isVectorDbEnabled } from '../../../../core/config/vectorDbCapability';
+import { isBillingEnabled } from '../../../../core/config/billingCapability';
 
 /**
  * Health check and system endpoints
@@ -32,6 +33,7 @@ export function createHealthRoutes(): Router {
       ideRuntime: process.env.ANT_K8S_NAMESPACE ? 'kubernetes' : 'docker',
       capabilities: {
         vectorDb: isVectorDbEnabled(),
+        billing: isBillingEnabled(),
       },
     };
 

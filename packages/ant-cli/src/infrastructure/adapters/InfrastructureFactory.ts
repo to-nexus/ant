@@ -37,6 +37,9 @@ import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
 import { RedisCreditLedger } from '../billing/RedisCreditLedger';
 import { MockPaymentProvider } from '../billing/MockPaymentProvider';
+import { NoopCreditLedger } from '../../periphery/adapters/billing/NoopCreditLedger';
+import { NoopPaymentProvider } from '../../periphery/adapters/billing/NoopPaymentProvider';
+import { isBillingEnabled } from '../../core/config/billingCapability';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -231,9 +234,14 @@ export class InfrastructureFactory {
    */
   getCreditLedger(): CreditLedgerPort {
     if (!this.creditLedger) {
-      const stateStore = this.getStateStore() as RedisStateStore;
-      this.creditLedger = new RedisCreditLedger(stateStore.getRedisClient());
-      logger.info('Using RedisCreditLedger', { component: 'InfrastructureFactory' });
+      if (!isBillingEnabled()) {
+        // Cloud-capability seam: OSS / local runs with no metering.
+        this.creditLedger = new NoopCreditLedger();
+      } else {
+        const stateStore = this.getStateStore() as RedisStateStore;
+        this.creditLedger = new RedisCreditLedger(stateStore.getRedisClient());
+        logger.info('Using RedisCreditLedger', { component: 'InfrastructureFactory' });
+      }
     }
     return this.creditLedger;
   }
@@ -245,8 +253,12 @@ export class InfrastructureFactory {
    */
   getPaymentProvider(): PaymentProviderPort {
     if (!this.paymentProvider) {
-      this.paymentProvider = new MockPaymentProvider(this.getCreditLedger());
-      logger.info('Using MockPaymentProvider', { component: 'InfrastructureFactory' });
+      if (!isBillingEnabled()) {
+        this.paymentProvider = new NoopPaymentProvider();
+      } else {
+        this.paymentProvider = new MockPaymentProvider(this.getCreditLedger());
+        logger.info('Using MockPaymentProvider', { component: 'InfrastructureFactory' });
+      }
     }
     return this.paymentProvider;
   }

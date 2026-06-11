@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../aurora/Icon';
 
@@ -135,7 +136,10 @@ export function Modal({
 
   const a = ACCENT[accent];
 
-  return (
+  // Render at document.body so a `position:fixed` backdrop is never clipped by
+  // an ancestor's overflow/stacking context (the same portal pattern used by
+  // Toast / Tooltip / MemberPicker). Fixes the "billing modal 짤림" defect.
+  return createPortal(
     <div
       onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
@@ -346,6 +350,7 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

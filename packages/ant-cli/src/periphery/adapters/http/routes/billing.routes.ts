@@ -12,9 +12,12 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import type { CreditLedgerPort } from '../../../../core/ports/creditLedger';
 import type { PaymentProviderPort } from '../../../../core/ports/paymentProvider';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
-import type { UsageHistoryResponse, PaymentMethodInput } from '@ant/shared';
-import { getCreditPackage, CREDIT_LEDGER_MAX_ENTRIES } from '@ant/shared';
+import type { UsageHistoryResponse, PaymentMethodInput, SubscriptionTier } from '@ant/shared';
+import { CREDIT_LEDGER_MAX_ENTRIES } from '@ant/shared';
+import { getCreditPackage, getPlan, buildCatalog } from '../../../../infrastructure/billing/catalog';
 import { logger } from '../../../../utils/logger';
+
+const PAID_TIERS: readonly SubscriptionTier[] = ['pro', 'max'];
 
 export interface BillingRoutesDeps {
   creditLedger: CreditLedgerPort;
@@ -25,6 +28,12 @@ export interface BillingRoutesDeps {
 
 export function createBillingRoutes(deps: BillingRoutesDeps): Router {
   const router = Router();
+
+  // GET /billing/catalog → { plans, creditPackages, currency }
+  // Server-driven offering: the FE never hardcodes plan/package pricing.
+  router.get('/billing/catalog', (_req: Request, res: Response) => {
+    res.json(buildCatalog());
+  });
 
   // GET /billing/balance → { tier, credits, microCredits, includedCreditsMonthly }
   router.get('/billing/balance', async (req: Request, res: Response) => {
@@ -95,6 +104,62 @@ export function createBillingRoutes(deps: BillingRoutesDeps): Router {
         `purchase ${pkg.id} (+${pkg.credits} credits, $${pkg.priceUsd}) → ${organizationId}:${userId}`,
         { component: 'Billing' },
       );
+      res.json(snapshot);
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Billing');
+    }
+  });
+
+  // POST /billing/subscribe { tier, paymentMethod?, idempotencyKey } → BalanceSnapshot
+  // Price is resolved server-side from the catalog SSOT; the client-sent body is
+  // never trusted for amount. The provider charges; the ledger owns tier-change.
+  router.post('/billing/subscribe', async (req: Request, res: Response) => {
+    try {
+      const { userId, organizationId } = extractUserContext(req);
+      const tier = String(req.body?.tier ?? '') as SubscriptionTier;
+      const paymentMethod = req.body?.paymentMethod as PaymentMethodInput | undefined;
+      const idempotencyKey = String(req.body?.idempotencyKey ?? `subscribe-${Date.now()}`);
+
+      if (!PAID_TIERS.includes(tier)) {
+        // `free` is a cancellation, not a subscribe; unknown tiers are invalid.
+        res.status(400).json({ error: 'invalid tier', code: 'invalid-tier' });
+        return;
+      }
+      // Resolve the plan from the catalog SSOT (validates the tier exists).
+      getPlan(tier);
+
+      const outcome = await deps.paymentProvider.startSubscription(
+        organizationId,
+        userId,
+        tier,
+        paymentMethod,
+      );
+      if (!outcome.ok) {
+        res.status(402).json({
+          error: outcome.reason ?? 'payment failed',
+          code: outcome.status ?? 'error',
+          declineCode: outcome.declineCode,
+        });
+        return;
+      }
+      const snapshot = await deps.creditLedger.changeTier(organizationId, userId, tier, {
+        providerRef: outcome.providerRef,
+        idempotencyKey,
+      });
+      logger.info(`subscribe ${tier} → ${organizationId}:${userId}`, { component: 'Billing' });
+      res.json(snapshot);
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Billing');
+    }
+  });
+
+  // POST /billing/cancel-subscription → BalanceSnapshot (cycle-end downgrade)
+  router.post('/billing/cancel-subscription', async (req: Request, res: Response) => {
+    try {
+      const { userId, organizationId } = extractUserContext(req);
+      await deps.paymentProvider.cancelSubscription(organizationId, userId);
+      const snapshot = await deps.creditLedger.cancelSubscription(organizationId, userId);
+      logger.info(`cancel-subscription → ${organizationId}:${userId}`, { component: 'Billing' });
       res.json(snapshot);
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Billing');

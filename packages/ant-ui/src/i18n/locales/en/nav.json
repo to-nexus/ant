@@ -32,7 +32,14 @@
     "signUp": "Sign Up",
     "signIn": "Sign In",
     "signOut": "Sign Out",
-    "accountConfig": "Account Configuration"
+    "accountConfig": "Account Configuration",
+    "switchAccount": "Switch account",
+    "createTeam": "Create team",
+    "createTeamTitle": "Create a team",
+    "teamNameLabel": "Team name",
+    "teamNamePlaceholder": "Acme Inc.",
+    "close": "Close",
+    "createTeamComingSoon": "Team workspaces are coming soon. You can already switch between accounts here; team creation and member invites will arrive in a future release."
   },
   "onboarding": {
     "title": "Choose your organization",

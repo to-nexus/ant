@@ -21,6 +21,7 @@ import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceServic
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
 import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
+import { isBillingEnabled } from '../../../../../core/config/billingCapability';
 
 /**
  * RouteConfigurator
@@ -83,6 +84,14 @@ export class RouteConfigurator {
    * USD-visibility role gate; local treats the caller as operator.
    */
   private setupBillingRoutes(app: Express): void {
+    // Cloud-capability seam: the commercial billing surface is registered only
+    // when ANT_BILLING_ENABLED. OSS / local leaves `/billing/*` unmounted (404).
+    if (!isBillingEnabled()) {
+      logger.info('[RouteConfigurator] Billing disabled — /billing/* not registered', {
+        component: 'RouteConfigurator',
+      });
+      return;
+    }
     const factory = getInfrastructureFactory();
     const billingRoutes = createBillingRoutes({
       creditLedger: factory.getCreditLedger(),

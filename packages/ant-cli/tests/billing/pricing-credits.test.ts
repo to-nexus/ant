@@ -18,8 +18,10 @@ import {
   usdToMicroCredits,
   microCreditsToCredits,
   creditsToMicroCredits,
-  MARKUP_DEFAULT,
+  normalizeTier,
+  compareTiers,
 } from '@ant/shared';
+import { MARKUP_DEFAULT, CREDIT_PACKAGES, getCreditPackage } from '../../src/infrastructure/billing/catalog';
 
 describe('pricing — per-model cost', () => {
   it('prices 1M input on Opus at exactly $5.00', () => {
@@ -75,5 +77,32 @@ describe('credits — markup + conversion', () => {
 
   it('round-trips credits → micro → credits', () => {
     expect(microCreditsToCredits(creditsToMicroCredits(2_000))).toBe(2_000);
+  });
+});
+
+describe('tier vocabulary — normalize + compare', () => {
+  it('maps legacy vocabulary forward when legacy=true', () => {
+    expect(normalizeTier('starter', true)).toBe('pro');
+    expect(normalizeTier('pro', true)).toBe('max');
+    expect(normalizeTier('free', true)).toBe('free');
+  });
+
+  it('passes current vocabulary through when legacy=false', () => {
+    expect(normalizeTier('pro', false)).toBe('pro');
+    expect(normalizeTier('max', false)).toBe('max');
+    expect(normalizeTier('starter', false)).toBe('free'); // unknown → free
+  });
+
+  it('compareTiers orders free < pro < max', () => {
+    expect(compareTiers('pro', 'free')).toBeGreaterThan(0);
+    expect(compareTiers('free', 'max')).toBeLessThan(0);
+    expect(compareTiers('pro', 'pro')).toBe(0);
+  });
+});
+
+describe('CREDIT_PACKAGES — renamed ids resolve', () => {
+  it('exposes small/medium/large and resolves via getCreditPackage', () => {
+    expect(CREDIT_PACKAGES.map((p) => p.id)).toEqual(['small', 'medium', 'large']);
+    expect(getCreditPackage('medium')?.credits).toBe(5_000);
   });
 });

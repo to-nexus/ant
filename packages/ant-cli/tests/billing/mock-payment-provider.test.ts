@@ -13,11 +13,10 @@ import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
 import {
   MOCK_SUCCESS_CARD,
   MOCK_DECLINE_CARD,
-  CREDIT_PACKAGES,
-  getCreditPackage,
   USD_PER_CREDIT,
   type PaymentMethodInput,
 } from '@ant/shared';
+import { CREDIT_PACKAGES, getCreditPackage } from '../../src/infrastructure/billing/catalog';
 
 /** Ledger fake that records only topUp calls (the sole method the provider uses). */
 class RecordingLedger implements Partial<CreditLedgerPort> {
@@ -37,7 +36,7 @@ const goodCard = (cardNumber: string): PaymentMethodInput => ({
 const baseReq = (paymentMethod: PaymentMethodInput) => ({
   orgId: 'org1',
   userId: 'user1',
-  packageId: 'plus',
+  packageId: 'medium',
   credits: 5_000,
   amountUsd: 50,
   paymentMethod,
@@ -96,7 +95,38 @@ describe('CREDIT_PACKAGES SSOT', () => {
   });
 
   it('getCreditPackage resolves known ids and rejects unknown', () => {
-    expect(getCreditPackage('plus')?.credits).toBe(5_000);
+    expect(getCreditPackage('medium')?.credits).toBe(5_000);
     expect(getCreditPackage('nope')).toBeUndefined();
+  });
+});
+
+describe('MockPaymentProvider.startSubscription', () => {
+  let provider: MockPaymentProvider;
+  beforeEach(() => {
+    provider = new MockPaymentProvider(new RecordingLedger() as unknown as CreditLedgerPort);
+  });
+
+  it('approves a well-formed card and returns a providerRef (no ledger mutation here)', async () => {
+    const out = await provider.startSubscription('org1', 'user1', 'pro', goodCard(MOCK_SUCCESS_CARD));
+    expect(out.ok).toBe(true);
+    expect(out.providerRef).toBeTruthy();
+  });
+
+  it('declines the decline test card', async () => {
+    const out = await provider.startSubscription('org1', 'user1', 'pro', goodCard(MOCK_DECLINE_CARD));
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe('declined');
+    expect(out.declineCode).toBe('card_declined');
+  });
+
+  it('rejects a malformed card as error', async () => {
+    const out = await provider.startSubscription('org1', 'user1', 'pro', goodCard('4242'));
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe('error');
+  });
+
+  it('succeeds without a payment method (provider charge optional in mock)', async () => {
+    const out = await provider.startSubscription('org1', 'user1', 'max');
+    expect(out.ok).toBe(true);
   });
 });
