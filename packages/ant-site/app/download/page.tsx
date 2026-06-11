@@ -2,9 +2,14 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import Link from 'next/link';
 import { Terminal, Clock, Box, Monitor, Activity, Shield, ArrowRight, Check, Copy } from 'lucide-react';
 import { PageHero } from '@/components/PageHero';
+import { GlassCard } from '@/components/aurora/GlassCard';
+import { AuroraButton } from '@/components/aurora/AuroraButton';
+import { SectionHeading } from '@/components/aurora/SectionHeading';
+import { IconOrb } from '@/components/aurora/IconOrb';
+import { Reveal } from '@/components/aurora/Reveal';
+import type { IconOrbTone } from '@/components/aurora/IconOrb';
 
 type DetectedOS = 'mac' | 'windows' | 'linux' | 'unknown';
 
@@ -27,6 +32,12 @@ cd ant
 pnpm install
 pnpm dev:infra:redis
 pnpm dev:all`;
+
+const WHAT_ITEMS: { id: string; Icon: typeof Box; titleKey: string; descKey: string; tone: IconOrbTone }[] = [
+  { id: 'bridge', Icon: Box, titleKey: 'bridgeTitle', descKey: 'bridgeDesc', tone: 'violet' },
+  { id: 'tray', Icon: Monitor, titleKey: 'trayTitle', descKey: 'trayDesc', tone: 'pink' },
+  { id: 'monitor', Icon: Activity, titleKey: 'monitorTitle', descKey: 'monitorDesc', tone: 'teal' },
+];
 
 function detectOS(): DetectedOS {
   if (typeof navigator === 'undefined') return 'unknown';
@@ -72,77 +83,82 @@ export default function DownloadPage() {
         title={t('download.heroTitle1')}
         highlight={t('download.heroTitle2')}
         description={t('download.heroDesc')}
-        accent="teal"
+        accent="purple"
       />
 
       {/* §1 Build from Source (Available Now) */}
-      <section className="py-16 sm:py-20">
+      <section className="py-12 sm:py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl bg-gradient-to-br from-emerald-950/30 to-teal-950/30 border border-emerald-800/30 p-7 sm:p-10">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-xl bg-emerald-950/60 border border-emerald-700/40 flex items-center justify-center text-emerald-300">
-                <Terminal className="w-5 h-5" />
+          <Reveal>
+            <GlassCard glow padding="xl" style={{ border: '1px solid var(--border-brand)' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <IconOrb tone="violet" size={44}>
+                  <Terminal className="w-5 h-5" />
+                </IconOrb>
+                <span className="text-mono" style={{ fontSize: 11, color: 'var(--violet-300)', border: '1px solid var(--border-brand)', background: 'oklch(26% 0.09 290)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }}>
+                  {t('download.sourceLabel')}
+                </span>
               </div>
-              <span className="text-xs font-medium text-emerald-300 border border-emerald-700/40 bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                {t('download.sourceLabel')}
-              </span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-3">
-              {t('download.sourceTitle')}
-            </h2>
-            <p className="text-sm text-gray-300 leading-relaxed mb-6">{t('download.sourceDesc')}</p>
+              <h2 className="text-display" style={{ fontSize: 'clamp(24px, 3.5vw, 30px)', color: 'var(--text-1)', marginBottom: 12 }}>
+                {t('download.sourceTitle')}
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 'var(--lh-relaxed)', marginBottom: 24 }}>{t('download.sourceDesc')}</p>
 
-            <div className="mb-5">
-              <div className="text-xs font-mono uppercase tracking-wider text-emerald-400/70 mb-2">
-                {t('download.sourcePrereqTitle')}
-              </div>
-              <p className="text-sm text-gray-300 leading-relaxed">{prereqLine}</p>
-            </div>
-
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-mono uppercase tracking-wider text-emerald-400/70">
-                  {t('download.sourceSnippetLabel')}
+              <div className="mb-5">
+                <div className="text-mono" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-4)', marginBottom: 8 }}>
+                  {t('download.sourcePrereqTitle')}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-emerald-300 transition-colors"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copied ? 'copied' : 'copy'}
-                </button>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 'var(--lh-relaxed)' }}>{prereqLine}</p>
               </div>
-              <pre className="text-xs sm:text-sm font-mono text-emerald-200 bg-black/40 border border-white/5 rounded-xl p-4 overflow-x-auto leading-relaxed">
-{SOURCE_SNIPPET}
-              </pre>
-            </div>
 
-            <Link
-              href="/self-host"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 hover:border-emerald-500/60 rounded-xl transition-colors"
-            >
-              {t('download.sourceCta')}
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-mono" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-4)' }}>
+                    {t('download.sourceSnippetLabel')}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="inline-flex items-center gap-1.5 transition-colors"
+                    style={{ fontSize: 12, color: copied ? 'var(--violet-300)' : 'var(--text-3)' }}
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'copied' : 'copy'}
+                  </button>
+                </div>
+                <pre
+                  className="text-mono"
+                  style={{ fontSize: 13, color: 'var(--text-2)', background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)', padding: 16, overflowX: 'auto', lineHeight: 'var(--lh-relaxed)', margin: 0 }}
+                >
+{SOURCE_SNIPPET}
+                </pre>
+              </div>
+
+              <AuroraButton href="/self-host" size="sm">
+                {t('download.sourceCta')}
+                <ArrowRight className="w-4 h-4" />
+              </AuroraButton>
+            </GlassCard>
+          </Reveal>
         </div>
       </section>
 
       {/* §2 Desktop App (Coming Soon) */}
-      <section className="py-16 sm:py-24 bg-gradient-to-b from-transparent via-teal-950/5 to-transparent">
+      <section className="py-16 sm:py-24">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs font-medium text-amber-300 border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 rounded-full">
-              {t('download.desktopLabel')}
-            </span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-3">
-            {t('download.desktopTitle')}
-          </h2>
-          <p className="text-sm text-gray-400 leading-relaxed mb-8 max-w-2xl">
-            {t('download.desktopDesc')}
-          </p>
+          <Reveal>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-mono" style={{ fontSize: 11, color: 'var(--amber-500)', border: '1px solid oklch(40% 0.12 85 / 0.5)', background: 'oklch(28% 0.09 85 / 0.4)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }}>
+                {t('download.desktopLabel')}
+              </span>
+            </div>
+            <h2 className="text-display" style={{ fontSize: 'clamp(24px, 3.5vw, 30px)', color: 'var(--text-1)', marginBottom: 12 }}>
+              {t('download.desktopTitle')}
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)', marginBottom: 28, maxWidth: 620 }}>
+              {t('download.desktopDesc')}
+            </p>
+          </Reveal>
 
           <div className="space-y-2">
             {DESKTOP_ITEMS.map((item) => (
@@ -150,18 +166,19 @@ export default function DownloadPage() {
                 key={item.id}
                 type="button"
                 onClick={handleComingSoon}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 hover:bg-white/[0.04] transition-all cursor-pointer text-left"
+                className="w-full flex items-center justify-between text-left transition-all"
+                style={{ padding: 16, borderRadius: 'var(--r-lg)', background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5">
-                    <Clock className="w-4 h-4 text-gray-500" />
+                  <div className="flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'var(--bg-surface-2)' }}>
+                    <Clock className="w-4 h-4" style={{ color: 'var(--text-4)' }} />
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-gray-300">{item.label}</div>
-                    <div className="text-xs text-gray-500">{item.desc}</div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-2)' }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-4)' }}>{item.desc}</div>
                   </div>
                 </div>
-                <span className="text-xs font-medium text-amber-400/80 border border-amber-800/30 bg-amber-950/20 px-2 py-0.5 rounded-full">
+                <span className="text-mono" style={{ fontSize: 11, color: 'var(--amber-500)', border: '1px solid oklch(40% 0.12 85 / 0.4)', background: 'oklch(28% 0.09 85 / 0.3)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }}>
                   {t('download.comingSoon')}
                 </span>
               </button>
@@ -173,25 +190,22 @@ export default function DownloadPage() {
       {/* What desktop will do */}
       <section className="py-16 sm:py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white text-center mb-3">
-            {t('download.whatTitle')}
-          </h2>
-          <p className="text-center text-gray-400 mb-10 max-w-2xl mx-auto text-sm">
-            {t('download.whatDesc')}
-          </p>
+          <Reveal>
+            <div className="flex justify-center mb-10">
+              <SectionHeading title={t('download.whatTitle')} subtitle={t('download.whatDesc')} />
+            </div>
+          </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { id: 'bridge', icon: <Box className="w-5 h-5" />, title: t('download.bridgeTitle'), desc: t('download.bridgeDesc') },
-              { id: 'tray', icon: <Monitor className="w-5 h-5" />, title: t('download.trayTitle'), desc: t('download.trayDesc') },
-              { id: 'monitor', icon: <Activity className="w-5 h-5" />, title: t('download.monitorTitle'), desc: t('download.monitorDesc') },
-            ].map((item) => (
-              <div key={item.id} className="p-6 rounded-2xl bg-white/[0.03] border border-white/5">
-                <div className="w-10 h-10 rounded-lg bg-teal-950/50 border border-teal-800/30 flex items-center justify-center text-teal-400 mb-4">
-                  {item.icon}
-                </div>
-                <h3 className="text-sm font-semibold text-white mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-400 leading-relaxed">{item.desc}</p>
-              </div>
+            {WHAT_ITEMS.map((item, i) => (
+              <Reveal key={item.id} delay={i * 0.08}>
+                <GlassCard hoverable padding="lg" style={{ height: '100%' }}>
+                  <IconOrb tone={item.tone} size={44} style={{ marginBottom: 16 }}>
+                    <item.Icon className="w-5 h-5" />
+                  </IconOrb>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>{t(`download.${item.titleKey}`)}</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)' }}>{t(`download.${item.descKey}`)}</p>
+                </GlassCard>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -200,16 +214,23 @@ export default function DownloadPage() {
       {/* Code-sign notice */}
       <section className="py-12 sm:py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="p-5 rounded-2xl bg-amber-950/10 border border-amber-900/20 flex items-start gap-3">
-            <Shield className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-200/80 leading-relaxed">{t('download.codeSignNotice')}</p>
-          </div>
+          <Reveal>
+            <GlassCard padding="lg">
+              <div className="flex items-start gap-3">
+                <Shield className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--amber-500)' }} />
+                <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)' }}>{t('download.codeSignNotice')}</p>
+              </div>
+            </GlassCard>
+          </Reveal>
         </div>
       </section>
 
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl bg-zinc-900/95 border border-amber-800/40 backdrop-blur shadow-lg shadow-black/40 text-sm text-amber-100 max-w-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 max-w-md"
+          style={{ borderRadius: 'var(--r-lg)', background: 'var(--bg-surface)', border: '1px solid var(--border-2)', backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-lg)', fontSize: 14, color: 'var(--text-1)' }}
+        >
           {toastMessage}
         </div>
       )}

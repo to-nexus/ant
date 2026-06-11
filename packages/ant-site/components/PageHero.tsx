@@ -2,22 +2,24 @@
 
 import type { ReactNode } from 'react';
 
+// Accent names are preserved so all *Content.tsx callers stay unchanged;
+// each maps to an aurora gradient + a hue for the ambient hero halo.
 type Accent = 'emerald' | 'purple' | 'blue' | 'teal' | 'amber';
 
-const ACCENT_BG: Record<Accent, string> = {
-  emerald: 'from-emerald-950/20',
-  purple: 'from-purple-950/20',
-  blue: 'from-blue-950/20',
-  teal: 'from-teal-950/20',
-  amber: 'from-amber-950/20',
+const ACCENT_GRADIENT: Record<Accent, string> = {
+  emerald: 'var(--gradient-cool)',
+  purple: 'var(--gradient-violet-pink)',
+  blue: 'var(--gradient-cool)',
+  teal: 'var(--gradient-cool)',
+  amber: 'var(--gradient-sunset)',
 };
 
-const ACCENT_GRADIENT: Record<Accent, string> = {
-  emerald: 'from-emerald-400 to-teal-300',
-  purple: 'from-purple-400 to-fuchsia-300',
-  blue: 'from-blue-400 to-cyan-300',
-  teal: 'from-teal-400 to-cyan-300',
-  amber: 'from-amber-400 to-orange-300',
+const ACCENT_HUE: Record<Accent, number> = {
+  emerald: 195,
+  purple: 290,
+  blue: 230,
+  teal: 195,
+  amber: 50,
 };
 
 interface PageHeroProps {
@@ -29,18 +31,36 @@ interface PageHeroProps {
   children?: ReactNode;
 }
 
-export function PageHero({ title, highlight, trailing, description, accent = 'emerald', children }: PageHeroProps) {
+export function PageHero({ title, highlight, trailing, description, accent = 'purple', children }: PageHeroProps) {
   return (
     <section className="relative pt-32 pb-16 sm:pt-40 sm:pb-24 overflow-hidden">
-      <div className={`absolute inset-0 bg-gradient-to-b ${ACCENT_BG[accent]} via-transparent to-transparent`} />
+      {/* Ambient hero halo */}
+      <div
+        aria-hidden
+        className="gradient-flow"
+        style={{
+          position: 'absolute',
+          top: '-10%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'min(900px, 90vw)',
+          height: 420,
+          background: `radial-gradient(ellipse at center, oklch(60% 0.24 ${ACCENT_HUE[accent]} / 0.30) 0%, transparent 70%)`,
+          filter: 'blur(50px)',
+          pointerEvents: 'none',
+        }}
+      />
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="animate-fade-in-up">
-          <h1 className="text-4xl sm:text-5xl font-display font-bold text-white leading-tight mb-6">
+        <div className="spring-in">
+          <h1
+            className="text-display"
+            style={{ fontSize: 'clamp(36px, 6vw, 56px)', color: 'var(--text-1)', lineHeight: 1.1, marginBottom: 20 }}
+          >
             {title}
             {highlight && (
               <>
                 {' '}
-                <span className={`bg-clip-text text-transparent bg-gradient-to-r ${ACCENT_GRADIENT[accent]}`}>
+                <span className="text-gradient" style={{ background: ACCENT_GRADIENT[accent] }}>
                   {highlight}
                 </span>
               </>
@@ -48,7 +68,17 @@ export function PageHero({ title, highlight, trailing, description, accent = 'em
             {trailing && ` ${trailing}`}
           </h1>
           {description && (
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">{description}</p>
+            <p
+              style={{
+                fontSize: 18,
+                color: 'var(--text-3)',
+                maxWidth: 640,
+                margin: '0 auto',
+                lineHeight: 'var(--lh-relaxed)',
+              }}
+            >
+              {description}
+            </p>
           )}
           {children && <div className="mt-10">{children}</div>}
         </div>

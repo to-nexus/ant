@@ -167,6 +167,8 @@
     },
     "policy": {
       "title": "프로젝트 정책",
+      "codeOfConductTitle": "행동 강령",
+      "codeOfConductDesc": "존중하고 생산적인 협업을 위한 약속입니다. 첫 참여 전에 한 번 읽어주세요.",
       "securityTitle": "보안 정책",
       "securityDesc": "취약점을 발견했나요? public 이슈 대신 SECURITY.md의 비공개 절차를 따라주세요."
     },

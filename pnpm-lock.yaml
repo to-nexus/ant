@@ -247,6 +247,9 @@ importers:
       '@ant/shared':
         specifier: workspace:^
         version: link:../ant-shared
+      framer-motion:
+        specifier: ^12.23.24
+        version: 12.23.24(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       i18next:
         specifier: ^25.8.6
         version: 25.8.6(typescript@5.9.3)

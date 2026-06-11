@@ -6,6 +6,9 @@ import type { PlanInfo, CreditPackageInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
 import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
 import { CLOUD_SITE_URL } from '@/lib/links';
+import { GlassCard } from '@/components/aurora/GlassCard';
+import { AuroraButton } from '@/components/aurora/AuroraButton';
+import { IconOrb } from '@/components/aurora/IconOrb';
 
 // Presentation-only: which card carries the "Most popular" ribbon. This is
 // marketing chrome, not pricing — the prices/credits/tiers themselves come
@@ -24,56 +27,74 @@ function PlanCard({ plan, ctaHref }: { plan: PlanInfo; ctaHref: string }) {
     defaultValue: [],
   }) as string[];
 
-  const priceLabel =
-    plan.monthlyPriceUsd === 0
-      ? t('pricing.freePrice')
-      : `$${plan.monthlyPriceUsd}`;
+  // Prices/credits are server-sourced fields — never hardcoded.
+  const priceLabel = plan.monthlyPriceUsd === 0 ? t('pricing.freePrice') : `$${plan.monthlyPriceUsd}`;
   const creditsLabel = t('pricing.creditsPerMonth', {
     credits: plan.includedCreditsMonthly.toLocaleString(),
   });
 
   return (
-    <div
-      className={`relative flex flex-col p-7 rounded-2xl border ${
+    <GlassCard
+      glow={popular}
+      hoverable
+      padding="lg"
+      style={
         popular
-          ? 'bg-gradient-to-br from-teal-950/30 to-cyan-950/20 border-teal-700/40'
-          : 'bg-white/[0.03] border-white/10'
-      }`}
+          ? { border: '1px solid var(--border-brand)' }
+          : undefined
+      }
     >
       {popular && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-200 bg-teal-900/70 border border-teal-700/50 rounded-full">
+        <span
+          className="text-display gradient-flow"
+          style={{
+            position: 'absolute',
+            top: -13,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '4px 14px',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: 'var(--text-on-brand)',
+            background: 'var(--gradient-violet-pink)',
+            backgroundSize: '200% 200%',
+            borderRadius: 'var(--r-pill)',
+            boxShadow: 'var(--shadow-glow-aurora)',
+          }}
+        >
           {t('pricing.popular')}
         </span>
       )}
-      <h3 className="text-lg font-semibold text-white mb-1">{name}</h3>
-      {tagline && <p className="text-sm text-gray-400 mb-5">{tagline}</p>}
-      <div className="flex items-baseline gap-1.5 mb-1">
-        <span className="text-3xl font-display font-bold text-white">{priceLabel}</span>
-        {plan.monthlyPriceUsd > 0 && (
-          <span className="text-sm text-gray-500">{t('pricing.perMonth')}</span>
-        )}
+      <div className="flex flex-col h-full">
+        <h3 className="text-display" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
+          {name}
+        </h3>
+        {tagline && <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 20 }}>{tagline}</p>}
+        <div className="flex items-baseline gap-1.5" style={{ marginBottom: 4 }}>
+          <span className="text-display" style={{ fontSize: 36, fontWeight: 800, color: 'var(--text-1)' }}>
+            {priceLabel}
+          </span>
+          {plan.monthlyPriceUsd > 0 && (
+            <span style={{ fontSize: 14, color: 'var(--text-4)' }}>{t('pricing.perMonth')}</span>
+          )}
+        </div>
+        <p style={{ fontSize: 14, color: 'var(--violet-300)', marginBottom: 24 }}>{creditsLabel}</p>
+        <ul className="space-y-2.5 grow" style={{ marginBottom: 28 }}>
+          {bullets.map((b, i) => (
+            <li key={i} className="flex items-start gap-2.5" style={{ fontSize: 14, color: 'var(--text-2)' }}>
+              <Check className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--violet-400)' }} />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+        <AuroraButton href={ctaHref} external variant={popular ? 'primary' : 'secondary'} fullWidth>
+          {t('pricing.cta')}
+          <ArrowRight className="w-4 h-4" />
+        </AuroraButton>
       </div>
-      <p className="text-sm text-teal-300/90 mb-6">{creditsLabel}</p>
-      <ul className="space-y-2.5 text-sm text-gray-300 mb-7 grow">
-        {bullets.map((b, i) => (
-          <li key={i} className="flex items-start gap-2.5">
-            <Check className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-      <a
-        href={ctaHref}
-        className={`group inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-          popular
-            ? 'text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 shadow-lg shadow-teal-500/25'
-            : 'text-white bg-white/10 hover:bg-white/15 border border-white/10'
-        }`}
-      >
-        {t('pricing.cta')}
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </a>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -81,22 +102,26 @@ function TopUpStrip({ packages }: { packages: CreditPackageInfo[] }) {
   const { t } = useTranslation('site');
   if (packages.length === 0) return null;
   return (
-    <div className="mt-12">
+    <div className="mt-14">
       <div className="text-center mb-6">
-        <h3 className="text-lg font-semibold text-white">{t('pricing.topUpTitle')}</h3>
-        <p className="text-sm text-gray-400">{t('pricing.topUpDesc')}</p>
+        <h3 className="text-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)' }}>
+          {t('pricing.topUpTitle')}
+        </h3>
+        <p style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('pricing.topUpDesc')}</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
         {packages.map((pkg) => (
-          <div
-            key={pkg.id}
-            className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/10"
-          >
-            <span className="text-sm text-gray-300">
-              {t('pricing.packageCredits', { credits: pkg.credits.toLocaleString() })}
-            </span>
-            <span className="text-base font-semibold text-white">${pkg.priceUsd}</span>
-          </div>
+          <GlassCard key={pkg.id} padding="none">
+            <div className="flex items-center justify-between" style={{ padding: '16px 18px' }}>
+              <span style={{ fontSize: 14, color: 'var(--text-2)' }}>
+                {t('pricing.packageCredits', { credits: pkg.credits.toLocaleString() })}
+              </span>
+              {/* pkg.priceUsd: server-sourced */}
+              <span className="text-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>
+                ${pkg.priceUsd}
+              </span>
+            </div>
+          </GlassCard>
         ))}
       </div>
     </div>
@@ -106,19 +131,24 @@ function TopUpStrip({ packages }: { packages: CreditPackageInfo[] }) {
 function SelfHostFallback() {
   const { t } = useTranslation('site');
   return (
-    <div className="max-w-xl mx-auto p-8 rounded-2xl bg-white/[0.03] border border-white/10 text-center">
-      <div className="w-11 h-11 mx-auto rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 flex items-center justify-center mb-4">
-        <Server className="w-5 h-5" />
-      </div>
-      <h3 className="text-lg font-semibold text-white mb-2">{t('pricing.selfHost.title')}</h3>
-      <p className="text-sm text-gray-400 leading-relaxed mb-6">{t('pricing.selfHost.desc')}</p>
-      <a
-        href={`${CLOUD_SITE_URL}/cloud#pricing`}
-        className="group inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 rounded-xl transition-colors"
-      >
-        {t('pricing.selfHost.cloudLinkLabel')}
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </a>
+    <div className="max-w-xl mx-auto">
+      <GlassCard padding="xl" glow>
+        <div className="text-center flex flex-col items-center">
+          <IconOrb tone="violet" size={52} style={{ marginBottom: 18 }}>
+            <Server className="w-6 h-6" />
+          </IconOrb>
+          <h3 className="text-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8 }}>
+            {t('pricing.selfHost.title')}
+          </h3>
+          <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)', marginBottom: 24 }}>
+            {t('pricing.selfHost.desc')}
+          </p>
+          <AuroraButton href={`${CLOUD_SITE_URL}/cloud#pricing`} external variant="secondary">
+            {t('pricing.selfHost.cloudLinkLabel')}
+            <ArrowRight className="w-4 h-4" />
+          </AuroraButton>
+        </div>
+      </GlassCard>
     </div>
   );
 }
@@ -129,7 +159,13 @@ function SkeletonGrid() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="h-[420px] rounded-2xl bg-white/[0.03] border border-white/10 animate-pulse"
+          style={{
+            height: 440,
+            borderRadius: 'var(--r-2xl)',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-1)',
+            animation: 'pulse-soft 1.6s ease-in-out infinite',
+          }}
         />
       ))}
     </div>
@@ -143,7 +179,7 @@ export function PricingTable() {
   const ctaHref = getAppEntryUrl(user);
 
   return (
-    <section className="py-12 sm:py-16">
+    <div className="py-4">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         {state.status === 'loading' && <SkeletonGrid />}
 
@@ -162,16 +198,13 @@ export function PricingTable() {
 
         {state.status === 'error' && (
           <div className="max-w-md mx-auto text-center">
-            <p className="text-sm text-gray-400 mb-4">{t('pricing.error')}</p>
-            <button
-              onClick={state.retry}
-              className="px-5 py-2.5 text-sm font-semibold text-white bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl transition-colors"
-            >
+            <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 16 }}>{t('pricing.error')}</p>
+            <AuroraButton onClick={state.retry} variant="secondary">
               {t('pricing.retry')}
-            </button>
+            </AuroraButton>
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }

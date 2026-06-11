@@ -33,44 +33,83 @@ export function QuickstartTabs({ title, description }: QuickstartTabsProps) {
   };
 
   return (
-    <section id="quickstart" className="py-16 sm:py-24">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-3">{title}</h2>
-          {description && <p className="text-sm text-gray-400">{description}</p>}
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      {(title || description) && (
+        <div className="text-center mb-8">
+          <h2 className="text-display" style={{ fontSize: 'clamp(24px, 3.5vw, 30px)', color: 'var(--text-1)', marginBottom: 10 }}>
+            {title}
+          </h2>
+          {description && <p style={{ fontSize: 15, color: 'var(--text-3)' }}>{description}</p>}
         </div>
+      )}
 
-        <div className="rounded-2xl bg-[#0d1117] border border-white/10 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-white/10 px-2">
-            <div className="flex">
-              {TABS.map((tab) => (
+      <div
+        style={{
+          borderRadius: 'var(--r-2xl)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-1)',
+          boxShadow: 'var(--shadow-md)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          className="flex items-center justify-between"
+          style={{ borderBottom: '1px solid var(--border-1)', padding: '0 8px' }}
+        >
+          <div className="flex">
+            {TABS.map((tab) => {
+              const isActive = active === tab.id;
+              return (
                 <button
                   key={tab.id}
                   onClick={() => setActive(tab.id)}
-                  className={`px-4 py-3 text-xs font-mono font-medium transition-colors ${
-                    active === tab.id
-                      ? 'text-emerald-400 border-b-2 border-emerald-400'
-                      : 'text-gray-500 hover:text-gray-300 border-b-2 border-transparent'
-                  }`}
+                  className="text-mono"
+                  style={{
+                    padding: '12px 16px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: isActive ? 'var(--violet-300)' : 'var(--text-4)',
+                    borderBottom: isActive ? '2px solid var(--violet-400)' : '2px solid transparent',
+                    background: 'transparent',
+                    transition: 'color var(--dur-fast) var(--ease-smooth)',
+                  }}
                 >
                   {tab.label}
                 </button>
-              ))}
-            </div>
-            <button
-              onClick={onCopy}
-              className="mr-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
+              );
+            })}
           </div>
-          <pre className="px-5 py-4 text-sm text-gray-200 font-mono overflow-x-auto leading-relaxed">
-            <span className="text-gray-500 select-none">$ </span>
-            {current.command}
-          </pre>
+          <button
+            onClick={onCopy}
+            className="inline-flex items-center gap-1.5"
+            style={{
+              marginRight: 8,
+              padding: '5px 10px',
+              fontSize: 12,
+              color: copied ? 'var(--violet-300)' : 'var(--text-3)',
+              background: 'transparent',
+              borderRadius: 'var(--r-sm)',
+            }}
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
         </div>
+        <pre
+          className="text-mono"
+          style={{
+            padding: '18px 20px',
+            fontSize: 13.5,
+            color: 'var(--text-2)',
+            overflowX: 'auto',
+            lineHeight: 'var(--lh-relaxed)',
+            margin: 0,
+          }}
+        >
+          <span style={{ color: 'var(--text-4)', userSelect: 'none' }}>$ </span>
+          {current.command}
+        </pre>
       </div>
-    </section>
+    </div>
   );
 }

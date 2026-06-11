@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Layers, ArrowRight, FileCode2 } from 'lucide-react';
 import { PageHero } from '@/components/PageHero';
 import { FaqList } from '@/components/FaqList';
+import { GlassCard } from '@/components/aurora/GlassCard';
+import { SectionHeading } from '@/components/aurora/SectionHeading';
+import { Reveal } from '@/components/aurora/Reveal';
 import { DOCS_URL } from '@/lib/links';
 
 const ARCHITECTURE_FLOW = [
@@ -45,89 +48,100 @@ export default function FigmaContent() {
       {/* How it works */}
       <section className="py-16 sm:py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white text-center mb-12">
-            {t('figma.archTitle')}
-          </h2>
+          <Reveal>
+            <div className="flex justify-center mb-12">
+              <SectionHeading title={t('figma.archTitle')} />
+            </div>
+          </Reveal>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12 flex-wrap">
-            {ARCHITECTURE_FLOW.map((item, i) => (
-              <div key={i} className="flex items-center gap-3">
-                {item === '→' ? (
-                  <ArrowRight className="w-5 h-5 text-gray-500 hidden sm:block" />
-                ) : item === 'MCP' || item === 'WebSocket' ? (
-                  <span className="text-xs text-gray-500 px-2 py-1 border border-white/10 rounded-full">{item}</span>
-                ) : (
-                  <span className="px-4 py-2 text-sm font-medium text-white bg-white/5 border border-white/10 rounded-lg">
-                    {item}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          <Reveal>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12 flex-wrap">
+              {ARCHITECTURE_FLOW.map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  {item === '→' ? (
+                    <ArrowRight className="w-5 h-5 hidden sm:block" style={{ color: 'var(--text-4)' }} />
+                  ) : item === 'MCP' || item === 'WebSocket' ? (
+                    <span className="text-mono" style={{ fontSize: 11, color: 'var(--text-4)', padding: '4px 10px', border: '1px solid var(--border-1)', borderRadius: 'var(--r-pill)' }}>
+                      {item}
+                    </span>
+                  ) : (
+                    <span style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, color: 'var(--text-1)', background: 'var(--bg-surface)', border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)' }}>
+                      {item}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/5">
-              <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-purple-400" /> {t('figma.readsTitle')}
-              </h3>
-              <ul className="space-y-2 text-sm text-gray-400">
-                {reads.map((line, idx) => (
-                  <li key={idx}>• {line}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/5">
-              <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-                <FileCode2 className="w-4 h-4 text-emerald-400" /> {t('figma.generatesTitle')}
-              </h3>
-              <ul className="space-y-3 text-sm text-gray-400">
-                <li>
-                  <strong className="text-gray-200 font-mono text-xs">{t('figma.gen1Label')}</strong> — {t('figma.gen1Desc')}
-                </li>
-                <li>
-                  <strong className="text-gray-200 font-mono text-xs">{t('figma.gen2Label')}</strong> — {t('figma.gen2Desc')}
-                </li>
-                <li>
-                  <strong className="text-gray-200 font-mono text-xs">{t('figma.gen3Label')}</strong> — {t('figma.gen3Desc')}
-                </li>
-              </ul>
-            </div>
+            <Reveal>
+              <GlassCard hoverable padding="lg" style={{ height: '100%' }}>
+                <h3 className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 16 }}>
+                  <Layers className="w-4 h-4" style={{ color: 'var(--violet-300)' }} /> {t('figma.readsTitle')}
+                </h3>
+                <ul className="space-y-2" style={{ fontSize: 14, color: 'var(--text-3)' }}>
+                  {reads.map((line, idx) => (
+                    <li key={idx}>• {line}</li>
+                  ))}
+                </ul>
+              </GlassCard>
+            </Reveal>
+            <Reveal delay={0.08}>
+              <GlassCard hoverable padding="lg" style={{ height: '100%' }}>
+                <h3 className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 16 }}>
+                  <FileCode2 className="w-4 h-4" style={{ color: 'var(--teal-400)' }} /> {t('figma.generatesTitle')}
+                </h3>
+                <ul className="space-y-3" style={{ fontSize: 14, color: 'var(--text-3)' }}>
+                  {[1, 2, 3].map((n) => (
+                    <li key={n}>
+                      <strong className="text-mono" style={{ color: 'var(--text-2)', fontSize: 12 }}>{t(`figma.gen${n}Label`)}</strong>{' '}
+                      — {t(`figma.gen${n}Desc`)}
+                    </li>
+                  ))}
+                </ul>
+              </GlassCard>
+            </Reveal>
           </div>
         </div>
       </section>
 
       {/* Setup */}
-      <section className="py-16 sm:py-24 bg-gradient-to-b from-transparent via-purple-950/5 to-transparent">
+      <section className="py-16 sm:py-24">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white text-center mb-12">
-            {t('figma.setupTitle')}
-          </h2>
+          <Reveal>
+            <div className="flex justify-center mb-12">
+              <SectionHeading title={t('figma.setupTitle')} />
+            </div>
+          </Reveal>
 
           <div className="space-y-5">
-            {setupSteps.map((item) => (
-              <div key={item.step} className="flex gap-5 p-6 rounded-2xl bg-white/[0.03] border border-white/5">
-                <div className="w-10 h-10 shrink-0 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                  {item.step}
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-white mb-2">{item.title}</h3>
-                  <p className="text-sm text-gray-400 mb-3 leading-relaxed">{item.desc}</p>
-                  {item.href.startsWith('http') ? (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+            {setupSteps.map((item, i) => (
+              <Reveal key={item.step} delay={i * 0.08}>
+                <GlassCard hoverable padding="lg">
+                  <div className="flex gap-5">
+                    <div
+                      className="text-display gradient-flow shrink-0 flex items-center justify-center"
+                      style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--gradient-aurora)', backgroundSize: '200% 200%', color: 'var(--text-on-brand)', fontWeight: 700, fontSize: 15 }}
                     >
-                      {item.linkLabel}
-                    </a>
-                  ) : (
-                    <Link href={item.href} className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors">
-                      {item.linkLabel}
-                    </Link>
-                  )}
-                </div>
-              </div>
+                      {item.step}
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>{item.title}</h3>
+                      <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 12, lineHeight: 'var(--lh-relaxed)' }}>{item.desc}</p>
+                      {item.href.startsWith('http') ? (
+                        <a href={item.href} target="_blank" rel="noopener noreferrer" className="text-sm transition-colors" style={{ color: 'var(--violet-300)' }}>
+                          {item.linkLabel}
+                        </a>
+                      ) : (
+                        <Link href={item.href} className="text-sm transition-colors" style={{ color: 'var(--violet-300)' }}>
+                          {item.linkLabel}
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </GlassCard>
+              </Reveal>
             ))}
           </div>
         </div>
