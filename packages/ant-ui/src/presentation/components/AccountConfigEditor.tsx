@@ -79,8 +79,8 @@ export function AccountConfigEditor({
   // Account visibility (individual orgs). Default public.
   const userOrgKind = useStore((s) => selectUserOrgKind(s));
   const isIndividual = userOrgKind === 'individual';
-  // Commercial billing surface is cloud-only (ANT_BILLING_ENABLED). OSS / local
-  // hides the whole Plan & Billing section.
+  // Billing surface flag — always-on at this stage; the flag stays as the
+  // future-extraction seam (OSS build without @ant/cloud would hide it).
   const billingEnabled = useStore((s) => s.billingEnabled);
   const [accountVisibility, setAccountVisibility] = useState<'public' | 'private'>('public');
   const [isSavingVisibility, setIsSavingVisibility] = useState(false);
@@ -884,8 +884,8 @@ export function AccountConfigEditor({
           />
 
           {/* ============================
-              Plan & Billing — cloud-only (ANT_BILLING_ENABLED). OSS / local
-              hides the whole section (no plan/credit/payment surfaces).
+              Plan & Billing — always-on at this stage. The flag is the future
+              @ant/cloud extraction seam (OSS build without it would hide this).
               ============================ */}
           {billingEnabled && <BillingUsageSection />}
 

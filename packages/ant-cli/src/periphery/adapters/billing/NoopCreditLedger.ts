@@ -2,17 +2,16 @@ import type { BalanceSnapshot, CreditTransaction, SubscriptionTier } from '@ant/
 import type { CreditLedgerPort, ReserveResult, SettleArgs } from '../../../core/ports/creditLedger';
 
 /**
- * No-op `CreditLedgerPort` used when `ANT_BILLING_ENABLED=false` (OSS / local).
+ * No-op `CreditLedgerPort` — the dormant fallback the billing seam selects when
+ * `isBillingEnabled()` is false. Billing is always-on at this stage, so this is
+ * currently unused; it is retained for the future `@ant/cloud` extraction (an
+ * OSS build without the cloud package falls back to this no-op).
  *
  * Contract:
- *   - `getBalance()` reports a free-tier, zero-balance snapshot so the FE — if
- *     it ever calls — renders coherently (it normally hides billing entirely).
+ *   - `getBalance()` reports a free-tier, zero-balance snapshot.
  *   - `reserve()` always succeeds (billing never blocks a job).
  *   - `settle/releaseHold/topUp/changeTier/cancelSubscription` are no-ops.
  *   - `listTransactions()` → `[]`.
- *
- * Logs a single notice on first construction (mirrors `NoopMemoryAdapter`).
- * See `core/config/billingCapability.ts` for the SSOT toggle.
  */
 export class NoopCreditLedger implements CreditLedgerPort {
   private static announced = false;
@@ -20,7 +19,7 @@ export class NoopCreditLedger implements CreditLedgerPort {
   constructor() {
     if (!NoopCreditLedger.announced) {
       console.log(
-        'ℹ️  [Billing] Disabled (ANT_BILLING_ENABLED=false) — using no-op CreditLedger. ' +
+        'ℹ️  [Billing] Using no-op CreditLedger (billing surface unavailable). ' +
           'No metering, no charges; balance reads as free/0.',
       );
       NoopCreditLedger.announced = true;

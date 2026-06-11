@@ -84,10 +84,10 @@ export class RouteConfigurator {
    * USD-visibility role gate; local treats the caller as operator.
    */
   private setupBillingRoutes(app: Express): void {
-    // Cloud-capability seam: the commercial billing surface is registered only
-    // when ANT_BILLING_ENABLED. OSS / local leaves `/billing/*` unmounted (404).
+    // Billing seam: always-on at this stage. The guard stays as the single hook
+    // for the future @ant/cloud extraction (package-absent → unmounted).
     if (!isBillingEnabled()) {
-      logger.info('[RouteConfigurator] Billing disabled — /billing/* not registered', {
+      logger.info('[RouteConfigurator] Billing not available — /billing/* not registered', {
         component: 'RouteConfigurator',
       });
       return;
