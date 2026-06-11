@@ -94,6 +94,7 @@
       "cloudBullet2": "Hosted preview servers + isolated workspaces",
       "cloudBullet3": "Single sign-on with Google",
       "cloudBullet4": "Same code as the OSS build — no proprietary fork",
+      "cloudBullet5": "Free plan to start — paid plans add monthly credits",
       "cloudCta": "Try the cloud"
     },
     "community": {
@@ -241,31 +242,11 @@
     "heroTitle2": "the ops",
     "heroDesc": "ANT Cloud is the managed deployment of the same OSS code. Same agents, same workflow — we run the infra so you don't have to.",
     "ctaTry": "Try ANT Cloud",
-    "earlyAccessNote": "Currently in early access — pricing TBD.",
-    "tradeoffTitle": "Three ways to run Ant",
-    "tradeoffDesc": "Same code, different operational boundary.",
-    "tradeoffSelfHost": {
-      "title": "Local mode (Persona A)",
-      "bullets": [
-        "Self-host on your laptop — Redis in Docker, four Ant processes",
-        "No OAuth, no Kubernetes, no managed account",
-        "Bring your own LLM key. Free, forever."
-      ]
-    },
-    "tradeoffCloud": {
-      "title": "Managed cloud (Persona B)",
-      "bullets": [
-        "ant.crosstoken.io — we run Redis, IDE pods, preview servers",
-        "Sign in with Google, organization onboarding included",
-        "Anthropic Claude drawn from the managed quota"
-      ]
-    },
-    "selfHostCloudTitle": "Self-host the cloud build (Persona C)",
-    "selfHostCloudDesc": "Run the same ANT_SERVER_MODE=cloud build on your own infrastructure — single VM or multi-tenant Kubernetes. OAuth, JWT, CORS, IDE orchestration all wired by env. See cloud-mode/install.md for the operator-friendly walkthrough.",
-    "selfHostCloudCta": "Open docs/cloud-mode/install.md",
+    "pricingNote": "Start free — paid plans add monthly credits.",
+    "seePlans": "See plans",
     "includesTitle": "What ANT Cloud includes",
     "includes": [
-      "Anthropic Claude as primary LLM (managed quota)",
+      "Anthropic Claude as primary LLM — usage metered in credits",
       "Per-user Cloud IDE pods (Kubernetes-backed VSCode in the browser)",
       "Workspace storage on managed EFS",
       "Same Plan → Design → Code → Preview workflow as local mode",
@@ -278,8 +259,8 @@
         "a": "Same exact code. The only differences are infrastructure (we run it) and authentication (Google sign-in instead of localhost). Workspaces are interchangeable."
       },
       {
-        "q": "What about LLM costs?",
-        "a": "During early access, ANT Cloud covers LLM costs. Long-term pricing is TBD — we'll announce before any change."
+        "q": "How do credits work?",
+        "a": "ANT Cloud meters usage in credits. Every plan includes a monthly credit allotment, and you can top up anytime. The Free plan is enough to evaluate — see the Plans & credits section for details."
       },
       {
         "q": "Can I migrate from cloud to self-host?",
@@ -287,18 +268,20 @@
       },
       {
         "q": "Where's my data hosted?",
-        "a": "Region details are in the early-access onboarding. Self-host if you need specific data residency guarantees."
+        "a": "Workspace data lives on managed, EFS-backed storage. Self-host if you need specific data-residency guarantees."
       },
       {
         "q": "Where's the pricing table?",
-        "a": "On the Pricing page. The OSS build is free forever; cloud plans and credits are listed there."
+        "a": "Right here — see the Plans & credits section below. The OSS self-host build is free forever."
       }
     ]
   },
   "pricing": {
-    "heroTitle1": "Plans &",
-    "heroTitle2": "credits",
-    "heroDesc": "Self-host is free forever. The managed cloud is metered in credits — pick the plan that fits your usage.",
+    "sectionTitle": "Plans & credits",
+    "sectionDesc": "Self-host is free forever. The managed cloud is metered in credits — pick the plan that fits your usage.",
+    "topUpTitle": "Need more credits?",
+    "topUpDesc": "One-time top-ups, on any plan.",
+    "packageCredits": "{{credits}} credits",
     "perMonth": "/month",
     "freePrice": "Free",
     "popular": "Most popular",
@@ -399,9 +382,9 @@
   },
   "legal": {
     "termsTitle": "Terms of Service",
-    "termsBody": "These Terms apply to users of the managed ANT Cloud service only. Self-host users are governed by the Apache-2.0 license in the repository — see /LICENSE.\n\nThe full Terms document is being prepared and will be published before ANT Cloud leaves early access.",
+    "termsBody": "These Terms apply to users of the managed ANT Cloud service only. Self-host users are governed by the Apache-2.0 license in the repository — see /LICENSE.\n\nThe full Terms document is being prepared and will be published here.",
     "privacyTitle": "Privacy Policy",
-    "privacyBody": "This Privacy Policy applies to users of the managed ANT Cloud service only. Self-host instances do not transmit data to ANT — your data stays on your infrastructure.\n\nThe full Privacy Policy is being prepared and will be published before ANT Cloud leaves early access."
+    "privacyBody": "This Privacy Policy applies to users of the managed ANT Cloud service only. Self-host instances do not transmit data to ANT — your data stays on your infrastructure.\n\nThe full Privacy Policy is being prepared and will be published here."
   },
   "download": {
     "heroTitle1": "Get Ant",

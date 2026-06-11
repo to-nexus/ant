@@ -2,7 +2,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Check, Server } from 'lucide-react';
-import type { PlanInfo } from '@ant/shared';
+import type { PlanInfo, CreditPackageInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
 import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
 import { CLOUD_SITE_URL } from '@/lib/links';
@@ -77,6 +77,32 @@ function PlanCard({ plan, ctaHref }: { plan: PlanInfo; ctaHref: string }) {
   );
 }
 
+function TopUpStrip({ packages }: { packages: CreditPackageInfo[] }) {
+  const { t } = useTranslation('site');
+  if (packages.length === 0) return null;
+  return (
+    <div className="mt-12">
+      <div className="text-center mb-6">
+        <h3 className="text-lg font-semibold text-white">{t('pricing.topUpTitle')}</h3>
+        <p className="text-sm text-gray-400">{t('pricing.topUpDesc')}</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+        {packages.map((pkg) => (
+          <div
+            key={pkg.id}
+            className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/10"
+          >
+            <span className="text-sm text-gray-300">
+              {t('pricing.packageCredits', { credits: pkg.credits.toLocaleString() })}
+            </span>
+            <span className="text-base font-semibold text-white">${pkg.priceUsd}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SelfHostFallback() {
   const { t } = useTranslation('site');
   return (
@@ -87,7 +113,7 @@ function SelfHostFallback() {
       <h3 className="text-lg font-semibold text-white mb-2">{t('pricing.selfHost.title')}</h3>
       <p className="text-sm text-gray-400 leading-relaxed mb-6">{t('pricing.selfHost.desc')}</p>
       <a
-        href={`${CLOUD_SITE_URL}/pricing`}
+        href={`${CLOUD_SITE_URL}/cloud#pricing`}
         className="group inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 rounded-xl transition-colors"
       >
         {t('pricing.selfHost.cloudLinkLabel')}
@@ -122,11 +148,14 @@ export function PricingTable() {
         {state.status === 'loading' && <SkeletonGrid />}
 
         {state.status === 'cloud' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {state.catalog.plans.map((plan) => (
-              <PlanCard key={plan.tier} plan={plan} ctaHref={ctaHref} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {state.catalog.plans.map((plan) => (
+                <PlanCard key={plan.tier} plan={plan} ctaHref={ctaHref} />
+              ))}
+            </div>
+            <TopUpStrip packages={state.catalog.creditPackages} />
+          </>
         )}
 
         {state.status === 'self-host' && <SelfHostFallback />}

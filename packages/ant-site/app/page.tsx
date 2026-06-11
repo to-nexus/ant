@@ -209,6 +209,7 @@ export default function HomePage() {
             t('home.split.cloudBullet2'),
             t('home.split.cloudBullet3'),
             t('home.split.cloudBullet4'),
+            t('home.split.cloudBullet5'),
           ],
           ctaLabel: t('home.split.cloudCta'),
           ctaHref: '/cloud',
