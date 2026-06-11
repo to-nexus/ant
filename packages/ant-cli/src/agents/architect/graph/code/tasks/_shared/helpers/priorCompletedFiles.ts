@@ -31,8 +31,23 @@ export interface PriorCompletedTaskFiles {
   type: string;
   /** FeatureTask band ('foundation' | 'platform' | 'integration'), else undefined — display label only */
   band?: string;
+  /**
+   * task.description truncated to ~180 chars. Carries intent that the path/name
+   * cannot — chiefly for shared-infra owners (setup/foundation/platform/
+   * design-system) whose conventions (toggle env names, sealed scope, which
+   * spec section) live only in prose. Truncated so the manifest stays compact
+   * for late tasks (descriptions run up to ~1100 chars). Empty string if absent.
+   */
+  desc: string;
   /** feature-relative paths this task created or modified */
   files: string[];
+}
+
+const DESC_MAX = 180;
+
+function truncateDesc(raw: string | undefined): string {
+  const d = (raw ?? '').trim().replace(/\s+/g, ' ');
+  return d.length > DESC_MAX ? `${d.slice(0, DESC_MAX)}…` : d;
 }
 
 /**
@@ -56,6 +71,7 @@ export function renderPriorCompletedFiles(
       type: t.type,
       // band lives only on FeatureTask; read positionally to stay task-type-blind.
       band: (t as { band?: string }).band,
+      desc: truncateDesc(t.description),
       files,
     });
   }

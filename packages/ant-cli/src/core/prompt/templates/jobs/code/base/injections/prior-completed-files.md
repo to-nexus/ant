@@ -12,6 +12,9 @@
 
 {{#each priorCompletedFiles}}
 - **{{this.name}}** — {{this.type}}{{#if this.band}} · {{this.band}}{{/if}}
+{{#if this.desc}}
+  _{{this.desc}}_
+{{/if}}
 {{#each this.files}}
   - {{this}}
 {{/each}}
