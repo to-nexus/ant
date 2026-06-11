@@ -15,7 +15,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Coins, Sparkles, CreditCard, Receipt } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { AsyncBoundary } from '@/presentation/components/common/async';
 import { useAsyncResource } from '@/presentation/components/common/async/hooks/useAsyncResource';
@@ -26,6 +25,7 @@ import { PlanCard } from '@/presentation/components/billing/PlanCard';
 import { PlanCheckoutModal } from '@/presentation/components/billing/PlanCheckoutModal';
 import { CreditPurchaseModal } from '@/presentation/components/billing/CreditPurchaseModal';
 import { CreditIcon } from '@/presentation/components/billing/CreditIcon';
+import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 
 /** USD list price of one credit (purchase price; mirrors @ant/shared billing). */
 const USD_PER_CREDIT = 0.01;
@@ -59,87 +59,92 @@ export function BillingCenterPanel() {
 
   return (
     <div
-      className="relative flex-1 overflow-y-auto spring-in"
-      style={{ background: 'var(--bg-canvas)' }}
+      className="flex flex-col min-h-0 overflow-hidden"
+      style={{ height: '100%', background: 'var(--bg-canvas)' }}
     >
-      {/* Decorative depth — a soft aurora glow behind the hero. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[420px] opacity-50"
-        style={{
-          background:
-            'radial-gradient(60% 100% at 30% 0%, oklch(64% 0.20 290 / 0.18) 0%, transparent 70%), radial-gradient(50% 90% at 80% 10%, oklch(66% 0.22 340 / 0.14) 0%, transparent 70%)',
-        }}
-      />
+      {/* Scroller — flex:1 + minHeight:0 is what lets it shrink below content
+          height and actually scroll (mirrors ConfigEditor / AccountConfigEditor). */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="w-full" style={{ padding: '0 24px' }}>
+          <div className="spring-in mx-auto" style={{ minWidth: 0, maxWidth: 880 }}>
+            <div className="flex flex-col" style={{ gap: 18, padding: '20px 0 40px' }}>
+              {/* Hero balance band — the de-facto page header. */}
+              <HeroBand
+                credits={effectiveCredits ?? snap?.credits}
+                tier={t(`account.plan_${currentTier}`, currentTier)}
+                includedMonthly={snap ? formatCredits(snap.includedCreditsMonthly) : undefined}
+                liveJobCredits={liveJobCredits}
+                canceledUntil={canceledUntil}
+                loading={balance.status === 'loading'}
+                onBuy={() => document.getElementById('pc-credits')?.scrollIntoView({ behavior: 'smooth' })}
+                onManagePlan={() => document.getElementById('pc-plans')?.scrollIntoView({ behavior: 'smooth' })}
+              />
 
-      <div className="relative mx-auto w-full max-w-[1040px] px-6 py-8 space-y-6">
-        {/* Header */}
-        <div>
-          <h1
-            className="text-2xl font-semibold leading-tight"
-            style={{ color: 'var(--text-1)', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}
-          >
-            {t('billing.pageTitle', 'Billing & Credits')}
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--text-3)' }}>
-            {t('billing.pageSubtitle', 'Manage your plan, credits, and usage.')}
-          </p>
-        </div>
+              {/* Subscription (plans) */}
+              <SectionCard
+                id="pc-plans"
+                icon="Sparkles"
+                title={t('billing.subscription', 'Subscription')}
+                accent="violet-pink"
+              >
+                <AsyncBoundary resource={catalog} surface="region">
+                  {(data) => (
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                      {data.plans.map((plan) => (
+                        <PlanCard key={plan.tier} plan={plan} currentTier={currentTier} onSelect={setSelectedPlan} />
+                      ))}
+                    </div>
+                  )}
+                </AsyncBoundary>
+              </SectionCard>
 
-        {/* Hero balance band */}
-        <HeroBand
-          credits={effectiveCredits ?? snap?.credits}
-          tier={t(`account.plan_${currentTier}`, currentTier)}
-          includedMonthly={snap ? formatCredits(snap.includedCreditsMonthly) : undefined}
-          liveJobCredits={liveJobCredits}
-          canceledUntil={canceledUntil}
-          loading={balance.status === 'loading'}
-          onBuy={() => document.getElementById('pc-credits')?.scrollIntoView({ behavior: 'smooth' })}
-          onManagePlan={() => document.getElementById('pc-plans')?.scrollIntoView({ behavior: 'smooth' })}
-        />
+              {/* Pay-as-you-go credits */}
+              <SectionCard
+                id="pc-credits"
+                icon="Coins"
+                title={t('billing.payAsYouGo', 'Pay-as-you-go credits')}
+                accent="cool"
+              >
+                <AsyncBoundary resource={catalog} surface="region">
+                  {(data) => (
+                    <BuyCreditsSection packages={data.creditPackages} onSelectPackage={setSelectedPkg} />
+                  )}
+                </AsyncBoundary>
+              </SectionCard>
 
-        {/* Subscription (plans) */}
-        <Section id="pc-plans" icon={<Sparkles size={14} />} label={t('billing.subscription', 'Subscription')}>
-          <AsyncBoundary resource={catalog} surface="region">
-            {(data) => (
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                {data.plans.map((plan) => (
-                  <PlanCard key={plan.tier} plan={plan} currentTier={currentTier} onSelect={setSelectedPlan} />
-                ))}
-              </div>
-            )}
-          </AsyncBoundary>
-        </Section>
+              {/* Payment method (mock) */}
+              <SectionCard
+                id="pc-payment"
+                icon="CreditCard"
+                title={t('billing.paymentMethod', 'Payment method')}
+                accent="sunset"
+              >
+                <div
+                  className="rounded-lg p-4 text-sm"
+                  style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
+                >
+                  <div className="mb-1 font-medium" style={{ color: 'var(--text-1)' }}>
+                    {t('billing.testModeTitle', 'Test mode')}
+                  </div>
+                  {t(
+                    'billing.testModeBody',
+                    'Payments are simulated. Use card 4242 4242 4242 4242 to approve, or 4000 0000 0000 0002 to decline. No real charge is made.',
+                  )}
+                </div>
+              </SectionCard>
 
-        {/* Pay-as-you-go credits */}
-        <Section id="pc-credits" icon={<Coins size={14} />} label={t('billing.payAsYouGo', 'Pay-as-you-go credits')}>
-          <AsyncBoundary resource={catalog} surface="region">
-            {(data) => (
-              <BuyCreditsSection packages={data.creditPackages} onSelectPackage={setSelectedPkg} />
-            )}
-          </AsyncBoundary>
-        </Section>
-
-        {/* Payment method (mock) */}
-        <Section id="pc-payment" icon={<CreditCard size={14} />} label={t('billing.paymentMethod', 'Payment method')}>
-          <div
-            className="rounded-lg p-4 text-sm"
-            style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
-          >
-            <div className="mb-1 font-medium" style={{ color: 'var(--text-1)' }}>
-              {t('billing.testModeTitle', 'Test mode')}
+              {/* Activity */}
+              <SectionCard
+                id="pc-activity"
+                icon="Receipt"
+                title={t('billing.activity', 'Usage & activity')}
+                accent="aurora"
+              >
+                <ActivityList />
+              </SectionCard>
             </div>
-            {t(
-              'billing.testModeBody',
-              'Payments are simulated. Use card 4242 4242 4242 4242 to approve, or 4000 0000 0000 0002 to decline. No real charge is made.',
-            )}
           </div>
-        </Section>
-
-        {/* Activity */}
-        <Section id="pc-activity" icon={<Receipt size={14} />} label={t('billing.activity', 'Usage & activity')}>
-          <ActivityList />
-        </Section>
+        </div>
       </div>
 
       <PlanCheckoutModal plan={selectedPlan} onClose={() => setSelectedPlan(null)} />
@@ -172,10 +177,13 @@ function HeroBand({
   const { t } = useTranslation('config');
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-6 rounded-2xl p-6"
+      className="flex flex-wrap items-center justify-between gap-6 p-6"
       style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-2)',
+        background: 'oklch(from var(--bg-surface) l c h / 0.85)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid var(--border-1)',
+        borderRadius: 'var(--r-xl)',
         boxShadow: 'var(--shadow-glow-aurora)',
       }}
     >
@@ -452,36 +460,5 @@ function ActivityRow({ tx, canViewUsd }: { tx: CreditTransaction; canViewUsd: bo
         )}
       </div>
     </div>
-  );
-}
-
-// ── section frame ────────────────────────────────────────────────────────────
-
-function Section({
-  id,
-  icon,
-  label,
-  children,
-}: {
-  id?: string;
-  icon: React.ReactNode;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      className="rounded-xl p-5"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', boxShadow: 'var(--shadow-sm)' }}
-    >
-      <div
-        className="mb-3 flex items-center gap-2 text-xs font-medium uppercase"
-        style={{ color: 'var(--text-3)', letterSpacing: 'var(--tracking-wide)' }}
-      >
-        <span style={{ color: 'var(--violet-500)' }}>{icon}</span>
-        {label}
-      </div>
-      {children}
-    </section>
   );
 }
