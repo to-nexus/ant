@@ -94,6 +94,7 @@
       "cloudBullet2": "워크스페이스마다 격리된 프리뷰 서버",
       "cloudBullet3": "Google 계정으로 SSO",
       "cloudBullet4": "OSS와 같은 코드 — 별도 프로프라이어터리 fork 없음",
+      "cloudBullet5": "무료 플랜으로 시작 — 유료 플랜은 월 크레딧 제공",
       "cloudCta": "클라우드 사용해보기"
     },
     "community": {
@@ -241,31 +242,11 @@
     "heroTitle2": "ANT만",
     "heroDesc": "ANT Cloud는 같은 OSS 코드의 매니지드 배포. 같은 에이전트, 같은 워크플로우 — 인프라만 저희가 운영합니다.",
     "ctaTry": "ANT Cloud 사용해보기",
-    "earlyAccessNote": "현재 얼리 액세스 — 가격 미정.",
-    "tradeoffTitle": "Ant 를 실행하는 세 가지 방법",
-    "tradeoffDesc": "같은 코드, 운영 경계만 다름.",
-    "tradeoffSelfHost": {
-      "title": "Local mode (Persona A)",
-      "bullets": [
-        "노트북에서 셀프호스트 — Docker Redis + Ant 4 프로세스",
-        "OAuth 없음, Kubernetes 없음, 매니지드 계정 없음",
-        "본인 LLM 키 사용. 영구 무료."
-      ]
-    },
-    "tradeoffCloud": {
-      "title": "Managed cloud (Persona B)",
-      "bullets": [
-        "ant.crosstoken.io — Redis, IDE pod, preview 서버 매니지드",
-        "Google 로그인, 조직 온보딩 포함",
-        "Anthropic Claude 가 매니지드 쿼터로 제공"
-      ]
-    },
-    "selfHostCloudTitle": "Cloud build 를 셀프호스트 (Persona C)",
-    "selfHostCloudDesc": "동일한 ANT_SERVER_MODE=cloud 빌드를 본인 인프라에서 — 단일 VM 부터 멀티테넌트 Kubernetes 까지. OAuth, JWT, CORS, IDE orchestration 이 모두 env 로 연결됩니다. 운영자 친화적 가이드는 cloud-mode/install.md.",
-    "selfHostCloudCta": "docs/cloud-mode/install.md 열기",
+    "pricingNote": "무료로 시작 — 유료 플랜은 월 크레딧을 더합니다.",
+    "seePlans": "플랜 보기",
     "includesTitle": "ANT Cloud 가 포함하는 것",
     "includes": [
-      "Anthropic Claude 기본 LLM (매니지드 쿼터)",
+      "Anthropic Claude 기본 LLM — 사용량은 크레딧으로 과금",
       "사용자별 Cloud IDE pod (Kubernetes 기반 브라우저 VSCode)",
       "매니지드 EFS 워크스페이스 저장소",
       "Local mode 와 동일한 Plan → Design → Code → Preview 워크플로우",
@@ -278,8 +259,8 @@
         "a": "정확히 같은 코드입니다. 차이는 인프라(저희가 운영)와 인증(localhost 대신 Google 로그인)뿐. 워크스페이스는 호환됩니다."
       },
       {
-        "q": "LLM 비용은요?",
-        "a": "얼리 액세스 기간 동안 ANT Cloud가 LLM 비용을 부담합니다. 장기 가격은 미정 — 변경 전 사전 공지합니다."
+        "q": "크레딧은 어떻게 동작하나요?",
+        "a": "ANT Cloud는 사용량을 크레딧으로 과금합니다. 플랜마다 월 포함 크레딧이 있고, 언제든 충전할 수 있습니다. Free 플랜으로도 충분히 평가할 수 있어요 — 자세한 내용은 아래 Plans & credits 섹션을 보세요."
       },
       {
         "q": "클라우드 → 셀프호스트 마이그레이션 가능한가요?",
@@ -287,18 +268,20 @@
       },
       {
         "q": "데이터는 어디에 호스팅되나요?",
-        "a": "리전 정보는 얼리 액세스 온보딩에서 안내합니다. 특정 데이터 거주성이 필요하면 셀프호스트를 권합니다."
+        "a": "워크스페이스 데이터는 매니지드 EFS 기반 저장소에 있습니다. 특정 데이터 거주성이 필요하면 셀프호스트를 권합니다."
       },
       {
         "q": "가격표는 어디 있나요?",
-        "a": "가격 페이지에 있습니다. OSS 빌드는 영구 무료이며, 클라우드 플랜과 크레딧이 거기에 정리되어 있습니다."
+        "a": "바로 여기 — 아래 Plans & credits 섹션을 보세요. OSS 셀프호스트 빌드는 영구 무료입니다."
       }
     ]
   },
   "pricing": {
-    "heroTitle1": "플랜과",
-    "heroTitle2": "크레딧",
-    "heroDesc": "셀프호스트는 영구 무료입니다. 매니지드 클라우드는 크레딧으로 과금되며, 사용량에 맞는 플랜을 고르세요.",
+    "sectionTitle": "Plans & credits",
+    "sectionDesc": "셀프호스트는 영구 무료입니다. 매니지드 클라우드는 크레딧으로 과금되며, 사용량에 맞는 플랜을 고르세요.",
+    "topUpTitle": "크레딧이 더 필요하세요?",
+    "topUpDesc": "어느 플랜에서나 일회성 충전.",
+    "packageCredits": "{{credits}} 크레딧",
     "perMonth": "/월",
     "freePrice": "무료",
     "popular": "가장 인기",
@@ -399,9 +382,9 @@
   },
   "legal": {
     "termsTitle": "이용약관",
-    "termsBody": "본 이용약관은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 사용자는 repo의 Apache-2.0 라이선스가 적용됩니다 — /LICENSE 참조.\n\n전체 이용약관은 준비 중이며, ANT Cloud 얼리 액세스 종료 전에 게시됩니다.",
+    "termsBody": "본 이용약관은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 사용자는 repo의 Apache-2.0 라이선스가 적용됩니다 — /LICENSE 참조.\n\n전체 이용약관은 준비 중이며, 여기에 게시됩니다.",
     "privacyTitle": "개인정보 처리방침",
-    "privacyBody": "본 개인정보 처리방침은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 인스턴스는 ANT로 데이터를 전송하지 않습니다 — 데이터는 사용자 인프라에 머뭅니다.\n\n전체 개인정보 처리방침은 준비 중이며, ANT Cloud 얼리 액세스 종료 전에 게시됩니다."
+    "privacyBody": "본 개인정보 처리방침은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 인스턴스는 ANT로 데이터를 전송하지 않습니다 — 데이터는 사용자 인프라에 머뭅니다.\n\n전체 개인정보 처리방침은 준비 중이며, 여기에 게시됩니다."
   },
   "download": {
     "heroTitle1": "Ant 을 내 머신에",

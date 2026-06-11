@@ -26,7 +26,7 @@ export function SiteNavBar() {
     { label: t('nav.docs'), href: DOCS_URL, external: true },
     { label: t('nav.selfHost'), href: '/self-host' },
     { label: t('nav.cloud'), href: '/cloud' },
-    { label: t('nav.pricing'), href: '/pricing' },
+    { label: t('nav.pricing'), href: '/cloud#pricing' },
     { label: t('nav.community'), href: '/community' },
   ];
 
