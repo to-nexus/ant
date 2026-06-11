@@ -17,7 +17,8 @@ import type { PinnedQueryData } from './PinnedQuery';
 import { TurnItem, TypingIndicator } from './TurnItem';
 import { useStore } from '@/domain/store';
 import type { Turn } from '@/domain/store/selectors/chat';
-import { getPendingChoice } from '@/domain/store/selectors/chat';
+import { getPendingChoice, selectResumeFallbackCard } from '@/domain/store/selectors/chat';
+import { ChoiceCard } from './choiceCard';
 
 /**
  * Custom Scroller for Virtuoso that ensures text selection works.
@@ -48,6 +49,8 @@ interface ChatHistoryProps {
 
 export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryProps) {
   const isRunning = useStore((state) => state.isRunning);
+  const kanban = useStore((state) => state.kanban);
+  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
 
@@ -388,14 +391,25 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
     prevShowTypingRef.current = showTypingInFooter;
   }, [showTypingInFooter, turns.length, pending.has]);
 
+  // Resume-affordance safety net (grim-padding-grove RCA): when a job is
+  // persisted as paused+canResume but the durable cancelled card never landed
+  // in chat.jsonl (cross-pod finalize race), synthesize it from the polled
+  // kanban so the user can still resume on reconnect. No-op once a durable card
+  // exists, the job is running, or the interruption was dismissed.
+  const resumeFallbackCard = useMemo(
+    () => selectResumeFallbackCard(turns, kanban, isRunning, dismissedInterruptTimestamp),
+    [turns, kanban, isRunning, dismissedInterruptTimestamp],
+  );
+
   const Footer = useCallback(() => {
-    if (!showTypingInFooter) return null;
+    if (!showTypingInFooter && !resumeFallbackCard) return null;
     return (
       <div className="px-8 py-2 min-w-0">
-        <TypingIndicator />
+        {resumeFallbackCard && <ChoiceCard presented={resumeFallbackCard} />}
+        {showTypingInFooter && <TypingIndicator />}
       </div>
     );
-  }, [showTypingInFooter]);
+  }, [showTypingInFooter, resumeFallbackCard]);
 
   if (turns.length === 0) {
     return (

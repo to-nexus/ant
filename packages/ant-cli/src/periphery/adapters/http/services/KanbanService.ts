@@ -377,11 +377,36 @@ export class KanbanService {
     //   - Unmarked running tasks (job actively running, periodic checkpoint)
     //     render in `inProgress` so a page refresh during normal run does
     //     not show "Paused".
-    // Hard-kill orphans never reach this branch unmarked — JobCleanupManager
+    // Hard-kill orphans normally never reach this branch unmarked — JobCleanupManager
     // projects them into `taskQueue` with marks at cleanup time.
+    //
+    // Safety net (grim-padding-grove RCA): the above invariant can be violated by a
+    // cross-pod race — StaleJobRecovery's `pauseJob` never acquires the poison lock, so
+    // a worker child still alive on a not-yet-drained pod re-writes `runningTasks`
+    // UNMARKED via its un-gated `onCheckpoint`, after cleanup already projected. When the
+    // job is paused/interrupted and NOT running, the per-task `interrupted` flag is
+    // therefore unreliable: treat ALL running tasks (and `currentTask`) as paused so they
+    // land in `todo`, never frozen in `inProgress`. No-op in the normal flow where
+    // `runningTasks` is already `[]` (ultra-fusing-scone write-side invariant).
     const sessionRunningTasks: any[] = (sessionState as any).runningTasks || [];
-    const runningPaused = sessionRunningTasks.filter((t: any) => t?.interrupted === true);
-    const runningLive = sessionRunningTasks.filter((t: any) => t?.interrupted !== true);
+    const isPausedSession = !isActuallyRunning && !!sessionState.interruption;
+    const pausedAtIso = sessionState.interruption?.timestamp;
+    const markPaused = (t: any) => ({
+      ...t,
+      interrupted: true,
+      // Stamp pausedAt so TaskTimer shows frozen elapsed instead of "0s" (only when the
+      // task actually started and isn't already stamped).
+      timing: t?.timing?.startedAt && !t?.timing?.pausedAt && pausedAtIso
+        ? { ...t.timing, pausedAt: pausedAtIso }
+        : t?.timing,
+    });
+    const runningPaused = isPausedSession
+      ? sessionRunningTasks.map(markPaused)
+      : sessionRunningTasks.filter((t: any) => t?.interrupted === true);
+    const runningLive = isPausedSession
+      ? []
+      : sessionRunningTasks.filter((t: any) => t?.interrupted !== true);
+    const pausedCurrent = isPausedSession && currentTask ? markPaused(currentTask) : null;
     const runningIds = new Set<string>([
       ...(currentTask ? [currentTask.id] : []),
       ...sessionRunningTasks.map((t: any) => t.id),
@@ -393,21 +418,24 @@ export class KanbanService {
       ? 200
       : recursionLimit;
 
-    const inProgress = currentTask
+    const inProgress = (!isPausedSession && currentTask)
       ? [currentTask, ...runningLive]
       : runningLive;
 
-    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${sessionTaskQueue.length + runningPaused.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning}`);
+    const todo = [
+      ...(pausedCurrent ? [pausedCurrent] : []),
+      ...runningPaused,
+      ...sessionTaskQueue.filter((task: any) =>
+        !completedTaskIds.includes(task.id) &&
+        !runningIds.has(task.id)
+      ),
+    ];
+
+    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${todo.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning} paused=${isPausedSession}`);
 
     return {
       jobId: sessionJobId,
-      todo: [
-        ...runningPaused,
-        ...sessionTaskQueue.filter((task: any) =>
-          !completedTaskIds.includes(task.id) &&
-          !runningIds.has(task.id)
-        ),
-      ],
+      todo,
       inProgress,
       completed: completedTasksDetails.map((detail: any) => ({
         ...detail,
