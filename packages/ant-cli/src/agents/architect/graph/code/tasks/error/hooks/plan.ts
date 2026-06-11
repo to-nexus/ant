@@ -14,6 +14,7 @@
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { renderPriorCompletedFiles } from '../../_shared/helpers/priorCompletedFiles';
 import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
@@ -99,6 +100,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // so error tasks see the same job-level intent as feature/setup/ui.
     analysis: state.analysis ?? '',
     hasAnalysis: !!state.analysis,
+    // Cross-task output manifest — same SSOT as generic plan/execute. Lets the
+    // error fix reuse an existing shared store / module instead of recreating.
+    priorCompletedFiles: renderPriorCompletedFiles(state, task),
     ...depSnapshot,
   });
 

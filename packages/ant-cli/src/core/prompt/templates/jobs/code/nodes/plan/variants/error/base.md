@@ -8,6 +8,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/code/nodes/plan/injections/analysis-block}}
 
+{{> jobs/code/base/injections/prior-completed-files}}
+
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
