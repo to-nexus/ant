@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
+import { CreditRechargeCTA } from '@/presentation/components/billing/CreditRechargeCTA';
 import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
@@ -111,6 +112,7 @@ export function ChatPanel({
   // pass over the chatEvents slice. Survives reconnect / refresh because
   // it operates on the durable substrate, not on the message envelope.
   const fileStats = useStore(selectFileStats);
+  const creditBlockActive = useStore(s => s.creditBlockActive);
 
   const chatPolicy = useChatPolicy(turnCount);
   const mainPanelActiveTab = useStore(s => s.mainPanelActiveTab);
@@ -264,6 +266,14 @@ export function ChatPanel({
         )}
         {/* Queue Status Banner */}
         <QueueStatusBanner />
+
+        {/* Credit recharge CTA — shown when a job start/resume was blocked by
+            insufficient credits (the mid-job pause shows its own CTA on the card). */}
+        {creditBlockActive && (
+          <div className="px-3 pt-2">
+            <CreditRechargeCTA />
+          </div>
+        )}
 
         <ChatInput
           messageCount={turnCount}

@@ -54,6 +54,26 @@ class FakeRedis {
     const arr = this.lists.get(key) ?? [];
     return arr.slice(start < 0 ? Math.max(0, arr.length + start) : start, end === -1 ? undefined : end + 1);
   }
+  /**
+   * Emulates the DEBIT_CUMULATIVE_LUA script (single-threaded — atomicity is a
+   * real-Redis concern). KEYS = [balance, charged]; ARGV[0] = target micro.
+   * Raises `charged` toward target, debits the delta, clamps balance at 0.
+   */
+  async eval(_script: string, numKeys: number, ...args: any[]): Promise<[number, number]> {
+    const [balanceKey, chargedKey] = args.slice(0, numKeys) as string[];
+    const target = Number(args[numKeys]);
+    const charged = parseInt(this.store.get(chargedKey) ?? '0', 10) || 0;
+    if (target > charged) {
+      const delta = target - charged;
+      let nb = (parseInt(this.store.get(balanceKey) ?? '0', 10) || 0) - delta;
+      if (nb < 0) nb = 0;
+      this.store.set(balanceKey, String(nb));
+      this.store.set(chargedKey, String(target));
+      return [delta, nb];
+    }
+    const nb = parseInt(this.store.get(balanceKey) ?? '0', 10) || 0;
+    return [0, nb];
+  }
 }
 
 const ORG = 'individual';

@@ -2,7 +2,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleDot, Zap, type LucideIcon } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
-import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages, costUsdFromByModel, creditsFromUsd, formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
+import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages, costUsdFromByModel, creditsFromUsd, formatUsd, formatCredits, perModelCostRows, formatModelLabel } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage, TokenUsageByModel, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
@@ -454,6 +454,10 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
   // Precise cost from per-model usage (priced per model). Token → USD → credit
   // shown transparently to everyone (no role gate).
   const costUsd = costUsdFromByModel(tokenUsageByModel);
+  // Account markup (server-driven) so the displayed credits match what the
+  // ledger debits — defaults to 1 until the balance loads / billing disabled.
+  const markup = useStore((s) => s.billingBalance?.data?.markup ?? 1);
+  const modelRows = perModelCostRows(tokenUsageByModel, markup);
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
     ...(inProgressTasks?.map(t => t.tokenUsage) || []),
@@ -520,8 +524,36 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
               <StatRow
                 strong
                 label={t('tokenStats.creditsConsumed', 'Credits used')}
-                value={formatCredits(creditsFromUsd(costUsd))}
+                value={formatCredits(creditsFromUsd(costUsd, markup))}
               />
+            </Section>
+          )}
+
+          {/* Per-model breakdown — each model priced at its own rate
+              (input / output / cache-write / cache-read). Shows where the
+              cost actually came from when multiple models ran. */}
+          {modelRows.length > 0 && (
+            <Section>
+              <CardLabel>{t('tokenStats.perModel', 'By model')}</CardLabel>
+              {modelRows.map((row) => (
+                <div key={row.modelId} className="space-y-0.5">
+                  <StatRow
+                    strong
+                    label={formatModelLabel(row.modelId)}
+                    value={`${formatUsd(row.usd)} · ${formatCredits(row.credits)} cr`}
+                  />
+                  <div className="pl-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                    {formatTokenCount(row.inputTokens)} {t('tokenStats.inAbbr', 'in')} ·{' '}
+                    {formatTokenCount(row.outputTokens)} {t('tokenStats.outAbbr', 'out')}
+                    {row.cacheCreationTokens > 0 && (
+                      <> · {formatTokenCount(row.cacheCreationTokens)} {t('tokenStats.cacheWriteAbbr', 'cache write')}</>
+                    )}
+                    {row.cacheReadTokens > 0 && (
+                      <> · {formatTokenCount(row.cacheReadTokens)} {t('tokenStats.cacheHitAbbr', 'cache hit')}</>
+                    )}
+                  </div>
+                </div>
+              ))}
             </Section>
           )}
 

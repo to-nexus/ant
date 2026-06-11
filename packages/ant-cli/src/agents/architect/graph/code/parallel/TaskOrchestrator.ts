@@ -389,6 +389,36 @@ export class TaskOrchestrator<T extends BaseTask> {
         console.warn(`[Orchestrator] Post-completion checkpoint failed:`, err);
       }
 
+      // ✅ Credit exhaustion: live metering (KanbanBroadcaster) floored the
+      // balance to 0. This task boundary is a safe place to pause — drain so no
+      // new task is assigned, mark the remaining queue interrupted, and save a
+      // resumable checkpoint. After a top-up the job resumes from here. Only
+      // interrupt when work remains; an empty queue is already finishing.
+      if (
+        this.callbacks.isCreditExhausted?.() &&
+        !this.hasInterruptedTasks &&
+        !this.taskQueue.isEmpty()
+      ) {
+        // Mirror the proven figma/timeout inline-interrupt pattern: flag the
+        // interruption, save a resumable checkpoint, drain, and stop workers
+        // (each in-flight worker re-queues its task as interrupted via
+        // reportStopped). Pending queue tasks stay queued and resume fresh.
+        this.hasInterruptedTasks = true;
+        this.interruptReason = 'insufficient_credits';
+        const runningIds = Array.from(this.runningTasks.values()).map(t => t.id);
+        console.error(`[Orchestrator] Credit balance exhausted — pausing job (resumable)`);
+        this.callbacks.onInterruption?.('insufficient_credits', runningIds);
+        try {
+          await this.saveCheckpoint({ reason: 'insufficient_credits', canResume: true });
+        } catch (err) {
+          console.warn(`[Orchestrator] Post-exhaustion checkpoint failed:`, err);
+        }
+        this.drain();
+        this.signalWorkersToStop();
+        this.checkAllDone();
+        return;
+      }
+
       // Try to spawn more workers for newly available tasks
       this.spawnAvailableWorkers();
 

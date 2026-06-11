@@ -2,9 +2,9 @@
 
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Check } from 'lucide-react';
-import type { PlanInfo, CreditPackageInfo } from '@ant/shared';
+import type { PlanInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
-import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
+import { useAuthSession, getBillingUrl } from '@/lib/AuthSessionProvider';
 import { GlassCard } from '@/components/aurora/GlassCard';
 import { AuroraButton } from '@/components/aurora/AuroraButton';
 
@@ -96,36 +96,6 @@ function PlanCard({ plan, ctaHref }: { plan: PlanInfo; ctaHref: string }) {
   );
 }
 
-function TopUpStrip({ packages }: { packages: CreditPackageInfo[] }) {
-  const { t } = useTranslation('site');
-  if (packages.length === 0) return null;
-  return (
-    <div className="mt-14">
-      <div className="text-center mb-6">
-        <h3 className="text-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)' }}>
-          {t('pricing.topUpTitle')}
-        </h3>
-        <p style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('pricing.topUpDesc')}</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-        {packages.map((pkg) => (
-          <GlassCard key={pkg.id} padding="none">
-            <div className="flex items-center justify-between" style={{ padding: '16px 18px' }}>
-              <span style={{ fontSize: 14, color: 'var(--text-2)' }}>
-                {t('pricing.packageCredits', { credits: pkg.credits.toLocaleString() })}
-              </span>
-              {/* pkg.priceUsd: server-sourced */}
-              <span className="text-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>
-                ${pkg.priceUsd}
-              </span>
-            </div>
-          </GlassCard>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Self-host is mentioned only as a brief one-line note — cloud pricing is the
 // primary content. No card, no link-out.
 function SelfHostNote() {
@@ -160,7 +130,9 @@ export function PricingTable() {
   const { t } = useTranslation('site');
   const { user } = useAuthSession();
   const state = usePricingCatalog();
-  const ctaHref = getAppEntryUrl(user);
+  // Plan CTAs deep-link into ant-ui's Payment Center. Pay-as-you-go credits are
+  // a payment-center-only concept — the site shows plans only (no top-up strip).
+  const ctaHref = getBillingUrl(user);
 
   return (
     <div className="py-4">
@@ -174,7 +146,6 @@ export function PricingTable() {
                 <PlanCard key={plan.tier} plan={plan} ctaHref={ctaHref} />
               ))}
             </div>
-            <TopUpStrip packages={state.catalog.creditPackages} />
             <SelfHostNote />
           </>
         )}

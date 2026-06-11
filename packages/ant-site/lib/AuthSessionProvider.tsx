@@ -197,6 +197,19 @@ export function getAppEntryUrl(user: AuthUser | null): string {
 }
 
 /**
+ * Deep-link for pricing plan CTAs — lands the visitor in ant-ui's Payment
+ * Center (`/app/billing`). The marketing site never hosts checkout; it shows
+ * plans and routes here. Unauthenticated visitors route through OAuth first.
+ */
+export function getBillingUrl(user: AuthUser | null): string {
+  return buildAppEntryUrl({
+    isSignedIn: !!user,
+    oauthBase: RAW_API_BASE,
+    appPath: '/app/billing',
+  });
+}
+
+/**
  * GNB "Sign In" URL. Preserves the marketing context by sending the visitor
  * back to the page they signed in from after OAuth.
  */

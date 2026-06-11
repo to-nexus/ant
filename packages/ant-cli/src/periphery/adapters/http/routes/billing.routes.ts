@@ -18,6 +18,8 @@ import { getCreditPackage, getPlan, buildCatalog } from '../../../../infrastruct
 import { logger } from '../../../../utils/logger';
 
 const PAID_TIERS: readonly SubscriptionTier[] = ['pro', 'max'];
+/** Upper bound on a single dev custom top-up — guards against absurd input. */
+const MAX_CUSTOM_TOPUP_CREDITS = 10_000_000;
 
 export interface BillingRoutesDeps {
   creditLedger: CreditLedgerPort;
@@ -104,6 +106,39 @@ export function createBillingRoutes(deps: BillingRoutesDeps): Router {
         `purchase ${pkg.id} (+${pkg.credits} credits, $${pkg.priceUsd}) → ${organizationId}:${userId}`,
         { component: 'Billing' },
       );
+      res.json(snapshot);
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Billing');
+    }
+  });
+
+  // POST /billing/topup-custom { credits, idempotencyKey? } → BalanceSnapshot
+  // DEV-ONLY arbitrary top-up — enabled only while the mock payment provider is
+  // active (no real PG). Lets the customer add any credit amount without a card,
+  // which is the "현재는 개발중" requirement. When a real gateway is wired
+  // (`isMock()` false/absent), this returns 403 and only catalog packages remain.
+  router.post('/billing/topup-custom', async (req: Request, res: Response) => {
+    try {
+      if (!deps.paymentProvider.isMock?.()) {
+        res.status(403).json({ error: 'custom top-up unavailable', code: 'not-mock' });
+        return;
+      }
+      const { userId, organizationId } = extractUserContext(req);
+      const credits = Math.floor(Number(req.body?.credits));
+      if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CUSTOM_TOPUP_CREDITS) {
+        res.status(400).json({
+          error: 'invalid credit amount',
+          code: 'invalid-amount',
+          max: MAX_CUSTOM_TOPUP_CREDITS,
+        });
+        return;
+      }
+      const idempotencyKey = String(req.body?.idempotencyKey ?? `topup-custom-${Date.now()}`);
+      await deps.creditLedger.topUp(organizationId, userId, credits, idempotencyKey);
+      const snapshot = await deps.creditLedger.getBalance(organizationId, userId);
+      logger.info(`custom top-up +${credits} credits → ${organizationId}:${userId}`, {
+        component: 'Billing',
+      });
       res.json(snapshot);
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Billing');

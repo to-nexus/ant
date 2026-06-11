@@ -16,7 +16,34 @@ import { WorkflowStateUpdatePort } from "../core/ports/workflow";
 import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import { recordUserTurn } from "./recordUserTurn";
+import { isBillingEnabled } from "../core/config/billingCapability";
+import { RedisCreditLedger } from "../infrastructure/billing/RedisCreditLedger";
+import type { CreditLedgerPort } from "../core/ports/creditLedger";
+import { Redis } from "ioredis";
 import * as path from "path";
+
+/**
+ * Lazy per-process credit ledger for LIVE incremental metering, injected into
+ * the KanbanBroadcaster (the single job-cumulative token funnel). Built once
+ * from `ANT_REDIS_URL`; `undefined` when billing is disabled / no Redis (OSS).
+ * This is the composition root — the only layer allowed to wire a concrete
+ * `infrastructure/billing` adapter to the core `BroadcasterOptions` port slot.
+ */
+let _jobCreditLedger: CreditLedgerPort | undefined | null = null;
+function getJobCreditLedger(): CreditLedgerPort | undefined {
+  if (_jobCreditLedger !== null) return _jobCreditLedger ?? undefined;
+  const url = process.env.ANT_REDIS_URL;
+  if (!isBillingEnabled() || !url) {
+    _jobCreditLedger = undefined;
+    return undefined;
+  }
+  const tls = url.startsWith("rediss://")
+    ? { tls: { checkServerIdentity: () => undefined as undefined } }
+    : {};
+  const client = new Redis(url, { ...tls, maxRetriesPerRequest: 3, lazyConnect: true });
+  _jobCreditLedger = new RedisCreditLedger(client);
+  return _jobCreditLedger;
+}
 
 /**
  * Orchestrator: Composition Root
@@ -266,7 +293,9 @@ export async function orchestrator(params: {
             const options = getBroadcasterOptionsFromEnv();
 
             if (options) {
-              const broadcasters = createRealtimeBroadcasters(options);
+              options.creditLedger = getJobCreditLedger();
+              options.creditLedger = getJobCreditLedger();
+            const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
@@ -360,7 +389,9 @@ export async function orchestrator(params: {
             const options = getBroadcasterOptionsFromEnv();
 
             if (options) {
-              const broadcasters = createRealtimeBroadcasters(options);
+              options.creditLedger = getJobCreditLedger();
+              options.creditLedger = getJobCreditLedger();
+            const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
@@ -450,6 +481,7 @@ export async function orchestrator(params: {
           const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
           const options = getBroadcasterOptionsFromEnv();
           if (options) {
+            options.creditLedger = getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
             kanbanUpdate = broadcasters.kanban;
             fileTreeUpdate = broadcasters.fileTree;
@@ -569,6 +601,7 @@ export async function orchestrator(params: {
           const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
           const options = getBroadcasterOptionsFromEnv();
           if (options) {
+            options.creditLedger = getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
             kanbanUpdate = broadcasters.kanban;
             fileTreeUpdate = broadcasters.fileTree;

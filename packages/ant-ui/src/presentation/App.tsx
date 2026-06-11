@@ -19,6 +19,7 @@ import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { QuickStart } from '@/presentation/pages/QuickStart';
+import { PaymentCenterPage } from '@/presentation/pages/PaymentCenter/PaymentCenterPage';
 import { ChevronRight } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { selectProjectsLoaded } from '@/domain/store/selectors';
@@ -524,6 +525,26 @@ function AppShell() {
             <div className="flex-1 flex items-center justify-center">
               <Spinner size="lg" tone="muted" />
             </div>
+          </div>
+        </AlertModalProvider>
+      </ToastProvider>
+    );
+  }
+
+  // ✅ Payment Center — a deep-linkable routed page (`/app/billing`) rendered as
+  // a full-height view inside the shell (AppNavBar stays mounted). Entry is the
+  // navbar credit badge; ant-site plan CTAs deep-link here. Reachable once the
+  // user is authed (the boot gates above still take precedence).
+  if (location.pathname === '/billing') {
+    return (
+      <ToastProvider>
+        <AlertModalProvider>
+          <div
+            className="h-screen flex flex-col transition-colors"
+            style={{ background: 'var(--bg-canvas)' }}
+          >
+            <AppNavBar />
+            <PaymentCenterPage />
           </div>
         </AlertModalProvider>
       </ToastProvider>

@@ -38,9 +38,33 @@ export interface SettleArgs {
   note?: string;
 }
 
+export interface DebitCumulativeArgs {
+  jobId: string;
+  orgId: string;
+  userId: string;
+  /** Job-cumulative precise USD list cost so far (from per-model pricing). */
+  cumulativeUsd: number;
+  /** Per-model USD breakdown of the cumulative cost (operator/admin display). */
+  modelBreakdown?: Record<string, number>;
+  projectId?: string;
+  featureName?: string;
+  note?: string;
+}
+
 export interface CreditLedgerPort {
   /** Read balance + tier, applying any due monthly grant lazily. */
   getBalance(orgId: string, userId: string): Promise<BalanceSnapshot>;
+
+  /**
+   * Debit toward a job's CUMULATIVE cost. Idempotent + monotonic: tracks the
+   * micro-credits already charged for `jobId` and debits only the positive
+   * delta needed to reach `cumulativeUsd` (converted via the account markup).
+   * Safe to call repeatedly during a job (live metering) AND once at terminal
+   * settle — the read-charged → delta → debit → set-charged sequence is atomic
+   * (single Lua script), so the live meter (child) and finalize (API process)
+   * racing on the same job cannot double-charge. Returns the resulting balance.
+   */
+  debitToCumulative(args: DebitCumulativeArgs): Promise<BalanceSnapshot>;
 
   /**
    * Reserve a hold for an in-flight job. Returns `ok:false` (without writing a

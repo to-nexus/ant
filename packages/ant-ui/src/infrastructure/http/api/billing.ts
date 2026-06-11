@@ -71,3 +71,18 @@ export async function subscribePlan(
 export async function cancelSubscription(): Promise<BalanceSnapshot> {
   return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/cancel-subscription`, {});
 }
+
+/**
+ * DEV-only arbitrary credit top-up (no card) — enabled while the BE runs the
+ * mock payment provider. Adds `credits` to the balance directly. Throws
+ * `ApiError` (403 `not-mock` once a real PG is wired, 400 `invalid-amount`).
+ */
+export async function topUpCustomCredits(
+  credits: number,
+  idempotencyKey?: string,
+): Promise<BalanceSnapshot> {
+  return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/topup-custom`, {
+    credits,
+    idempotencyKey: idempotencyKey ?? `topup-custom-${Date.now()}`,
+  });
+}

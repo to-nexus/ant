@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CreditIcon } from '@/presentation/components/billing/CreditIcon';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
@@ -48,7 +50,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const refreshUsage = useStore((state) => state.refreshUsage);
   const effectiveCredits = useStore(selectEffectiveCredits);
   const liveJobCredits = useStore(selectLiveJobCreditsConsumed);
-  const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
+  const navigate = useNavigate();
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
@@ -486,6 +488,7 @@ export function AppNavBar({}: AppNavBarProps) {
                         onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-surface-2)'; }}
                       >
+                        <CreditIcon size={13} className="mr-1" />
                         {formatCredits(effectiveCredits)} cr
                       </button>
 
@@ -543,18 +546,15 @@ export function AppNavBar({}: AppNavBarProps) {
                           <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }} />
                           <button
                             onClick={() => {
-                              setAccountConfigScrollTarget('c3a-billing');
-                              setQuickStartProjectId(undefined);
-                              setOnboardingSkipped(true);
-                              openMainPanelTab('accountConfig');
                               setShowCreditMenu(false);
+                              navigate('/billing');
                             }}
                             className="w-full px-4 py-1.5 text-left text-xs"
                             style={{ color: 'var(--text-2)' }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           >
-                            {t('billing.openSettings', 'Open billing settings →')}
+                            {t('billing.openCenter', 'Open billing & credits →')}
                           </button>
                         </div>
                       )}

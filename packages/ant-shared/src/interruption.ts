@@ -23,6 +23,7 @@ export type InterruptionReason =
   | 'server_shutdown'       // Server graceful shutdown
   | 'figma_rate_limited'    // Figma MCP/API rate limit exceeded
   | 'figma_connection_lost' // Figma MCP connection lost (consecutive failures)
+  | 'insufficient_credits'  // Credit balance exhausted mid-job (resumable after top-up)
   | 'unknown';              // Unknown reason
 
 /** Details about a job interruption */

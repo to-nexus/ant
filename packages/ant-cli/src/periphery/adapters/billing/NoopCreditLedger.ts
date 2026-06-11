@@ -1,5 +1,10 @@
 import type { BalanceSnapshot, CreditTransaction, SubscriptionTier } from '@ant/shared';
-import type { CreditLedgerPort, ReserveResult, SettleArgs } from '../../../core/ports/creditLedger';
+import type {
+  CreditLedgerPort,
+  DebitCumulativeArgs,
+  ReserveResult,
+  SettleArgs,
+} from '../../../core/ports/creditLedger';
 
 /**
  * No-op `CreditLedgerPort` — the dormant fallback the billing seam selects when
@@ -55,6 +60,10 @@ export class NoopCreditLedger implements CreditLedgerPort {
 
   async settle(_args: SettleArgs): Promise<void> {
     // intentional no-op
+  }
+
+  async debitToCumulative(_args: DebitCumulativeArgs): Promise<BalanceSnapshot> {
+    return this.freeSnapshot();
   }
 
   async topUp(): Promise<void> {

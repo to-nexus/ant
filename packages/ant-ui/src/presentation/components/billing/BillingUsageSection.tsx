@@ -10,28 +10,23 @@
  * the whole section — see AccountConfigEditor.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/domain/store';
 import { SectionCard } from '../ConfigEditor/aurora';
 import { Spinner } from '../common/async';
 import { formatCredits } from '@/shared/utils/tokenUtils';
 import { selectOrgDisplayLabel, selectActiveUserRole, selectUserOrgKind } from '@/domain/store/selectors/auth';
-import { PlansModal } from './PlansModal';
-import { TopUpModal } from './TopUpModal';
-import { BillingActivityModal } from './BillingActivityModal';
 
 export function BillingUsageSection() {
   const { t } = useTranslation('config');
+  const navigate = useNavigate();
   const balance = useStore((s) => s.billingBalance);
   const refreshBalance = useStore((s) => s.refreshBalance);
   const orgLabel = useStore(selectOrgDisplayLabel);
   const orgKind = useStore(selectUserOrgKind);
   const role = useStore(selectActiveUserRole);
-
-  const [plansOpen, setPlansOpen] = useState(false);
-  const [topUpOpen, setTopUpOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     void refreshBalance();
@@ -42,11 +37,6 @@ export function BillingUsageSection() {
   const canceledUntil = snap?.status === 'canceled' && snap.nextBillingDate
     ? new Date(snap.nextBillingDate).toLocaleDateString()
     : null;
-
-  const btn = {
-    base: 'text-xs rounded px-3 py-1.5 transition-colors',
-    style: { background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' } as const,
-  };
 
   return (
     <SectionCard
@@ -114,27 +104,17 @@ export function BillingUsageSection() {
           </div>
         </div>
 
-        {/* Entry points */}
-        <div className="flex flex-wrap gap-2">
+        {/* Detail → Payment Center (plan management, top-up, activity all live there) */}
+        <div className="flex">
           <button
-            onClick={() => setPlansOpen(true)}
-            className={btn.base}
-            style={{ ...btn.style, background: 'var(--violet-500)', color: 'white' }}
+            onClick={() => navigate('/billing')}
+            className="text-xs rounded px-3 py-1.5 transition-colors"
+            style={{ background: 'var(--violet-500)', color: 'white', border: '1px solid var(--violet-500)' }}
           >
-            {t('account.managePlan', 'Manage plan')}
-          </button>
-          <button onClick={() => setTopUpOpen(true)} className={btn.base} style={btn.style}>
-            {t('account.buyCredits', 'Buy credits')}
-          </button>
-          <button onClick={() => setActivityOpen(true)} className={btn.base} style={btn.style}>
-            {t('account.viewActivity', 'View activity →')}
+            {t('account.viewBillingDetail', '상세보기 →')}
           </button>
         </div>
       </div>
-
-      <PlansModal isOpen={plansOpen} onClose={() => setPlansOpen(false)} />
-      <TopUpModal isOpen={topUpOpen} onClose={() => setTopUpOpen(false)} />
-      <BillingActivityModal isOpen={activityOpen} onClose={() => setActivityOpen(false)} />
     </SectionCard>
   );
 }

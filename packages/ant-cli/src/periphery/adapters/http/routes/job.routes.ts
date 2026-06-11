@@ -15,9 +15,34 @@ import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { getConfigSlots } from '@ant/shared';
+import { isBillingEnabled } from '../../../../core/config/billingCapability';
+import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
+import { MIN_START_CREDITS } from '../../../../infrastructure/billing/catalog';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
+
+/**
+ * Pre-flight credit gate for STARTING / RESUMING a job. Returns a 402 payload
+ * `{ balance, required }` when the account is below `MIN_START_CREDITS`, else
+ * null (allow). No-op (null) when billing is disabled. Non-fatal on read error
+ * — a balance-check failure must not block work.
+ */
+async function checkStartCredits(
+  userContext: { userId: string; organizationId: string },
+): Promise<{ balance: number; required: number } | null> {
+  if (!isBillingEnabled()) return null;
+  try {
+    const ledger = getInfrastructureFactory().getCreditLedger();
+    const bal = await ledger.getBalance(userContext.organizationId, userContext.userId);
+    if (bal.credits < MIN_START_CREDITS) {
+      return { balance: bal.credits, required: MIN_START_CREDITS };
+    }
+  } catch (err) {
+    logger.warn('credit pre-flight check failed — allowing job', { component: 'JobRoute' }, err as any);
+  }
+  return null;
+}
 
 /**
  * Auto-resolve agent from job type when not explicitly provided.
@@ -250,9 +275,25 @@ export function createJobRoutes(deps: {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
 
-      // No credit pre-flight gate: jobs never block on balance. Usage is
-      // metered token-driven and the balance is debited at settle (clamped at
-      // 0). Insufficient credits simply floor the balance at 0 — by design.
+      // Credit pre-flight gate: block a NEW job when the balance is below the
+      // minimum start floor. The live meter + settle debit during/after the
+      // job; this gate stops a genuinely empty account from starting work.
+      const lowStart = await checkStartCredits(userContext);
+      if (lowStart) {
+        await emitConflictAssistantMessage(
+          projectId,
+          featureName,
+          seedTurnId,
+          `lowbal-${seedTurnId ?? Date.now()}`,
+          userContext,
+          '크레딧이 부족하여 작업을 시작할 수 없습니다. 크레딧을 충전해 주세요.',
+        );
+        return res.status(402).json({
+          error: 'Insufficient credits to start a job.',
+          code: 'insufficient_credits',
+          ...lowStart,
+        });
+      }
 
       const resolvedAgent = agent || resolveAgentForJobType(jobType);
       
@@ -334,6 +375,17 @@ export function createJobRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
+
+      // Credit pre-flight gate — a learn job runs LLM indexing work.
+      const lowLearn = await checkStartCredits(userContext);
+      if (lowLearn) {
+        return res.status(402).json({
+          error: 'Insufficient credits to start a learn job.',
+          code: 'insufficient_credits',
+          ...lowLearn,
+        });
+      }
+
       const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
       const branchBase = readBranchBaseFromConfig(projectPath);
 
@@ -651,12 +703,25 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
+
+      // Credit pre-flight gate: a paused job can only resume if the account is
+      // back above the minimum start floor (e.g. after a top-up). Mirrors the
+      // fresh-start gate so an insufficient_credits pause stays paused until paid.
+      const lowResume = await checkStartCredits(userContext);
+      if (lowResume) {
+        return res.status(402).json({
+          error: 'Insufficient credits to resume the job.',
+          code: 'insufficient_credits',
+          ...lowResume,
+        });
+      }
+
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      
+
       let jobType: string | null = null;
       let sessionData: any = null;
       let foundAgent: string | null = null;
-      
+
       for (const entry of getAllSessionPaths(featurePath)) {
         if (fs.existsSync(entry.path)) {
           const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
@@ -791,9 +856,19 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
-      
+
+      // Credit pre-flight gate (continue = resume-with-new-directive).
+      const lowContinue = await checkStartCredits(userContext);
+      if (lowContinue) {
+        return res.status(402).json({
+          error: 'Insufficient credits to continue the job.',
+          code: 'insufficient_credits',
+          ...lowContinue,
+        });
+      }
+
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      
+
       let jobType: string | null = null;
       let sessionPath: string | null = null;
       let foundAgent: string | null = null;

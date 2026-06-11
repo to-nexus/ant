@@ -55,4 +55,11 @@ export interface PaymentProviderPort {
 
   /** Stop auto-renew at the gateway. Mock is a no-op success. */
   cancelSubscription(orgId: string, userId: string): Promise<SubscriptionOutcome>;
+
+  /**
+   * True when this is a mock/stub provider (no real PG). Gates the dev-only
+   * arbitrary credit top-up: while mock, the customer may add any credit amount
+   * without a real charge. A real provider returns false, disabling that path.
+   */
+  isMock?(): boolean;
 }
