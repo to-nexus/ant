@@ -6,11 +6,14 @@
  * Principle there is NO in-memory fallback — construction requires a live
  * Redis client.
  *
+ * Cloud-designated (commercial). Imports the resale catalog from the BE-local
+ * `catalog.ts` SSOT (markup magnitude, plan allotments) — never from @ant/shared.
+ *
  * Keys (see REDIS_KEYS.BILLING):
  *   BALANCE  integer micro-credits (INCRBY/DECRBY)
  *   HELD     per-user aggregate of in-flight holds (micro)
  *   HOLD     per-job hold record {org,user,micro} (TTL'd, idempotent release)
- *   ACCOUNT  JSON BillingAccount (tier + grant cycle + markup)
+ *   ACCOUNT  JSON BillingAccount (tier + grant cycle + markup + subscription)
  *   LEDGER   JSON-per-entry LIST, newest appended, LTRIM-capped
  */
 
@@ -19,13 +22,15 @@ import {
   type BalanceSnapshot,
   type BillingAccount,
   type CreditTransaction,
+  type CreditTransactionKind,
   type SubscriptionTier,
-  TIER_DEFINITIONS,
-  MARKUP_DEFAULT,
+  BILLING_SCHEMA_VERSION,
+  normalizeTier,
   usdToMicroCredits,
   creditsToMicroCredits,
   microCreditsToCredits,
 } from '@ant/shared';
+import { MARKUP_DEFAULT, includedCreditsFor } from './catalog';
 import type { CreditLedgerPort, ReserveResult, SettleArgs } from '../../core/ports/creditLedger';
 import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
 import { logger } from '../../utils/logger';
@@ -48,24 +53,50 @@ export class RedisCreditLedger implements CreditLedgerPort {
 
   // ── account ──────────────────────────────────────────────────────────
 
+  /**
+   * Parse a stored account, applying the one-time tier-vocabulary migration
+   * (`free/starter/pro → free/pro/max`) when `schemaVersion < 2`. Returns the
+   * account plus whether it was mutated (so the caller persists once).
+   */
+  private migrate(raw: BillingAccount): { account: BillingAccount; changed: boolean } {
+    const legacy = (raw.schemaVersion ?? 0) < BILLING_SCHEMA_VERSION;
+    if (!legacy) return { account: raw, changed: false };
+    const account: BillingAccount = {
+      ...raw,
+      tier: normalizeTier(raw.tier, true),
+      ...(raw.currentPlanId && { currentPlanId: normalizeTier(raw.currentPlanId, true) }),
+      schemaVersion: BILLING_SCHEMA_VERSION,
+    };
+    return { account, changed: true };
+  }
+
+  private newAccount(orgId: string, userId: string): BillingAccount {
+    const now = new Date().toISOString();
+    return {
+      orgId,
+      userId,
+      tier: 'free',
+      grantCycleAnchor: now,
+      markup: MARKUP_DEFAULT,
+      createdAt: now,
+      schemaVersion: BILLING_SCHEMA_VERSION,
+      status: 'none',
+    };
+  }
+
   private async getOrCreateAccount(orgId: string, userId: string): Promise<BillingAccount> {
     const key = REDIS_KEYS.BILLING.ACCOUNT(orgId, userId);
     const raw = await this.redis.get(key);
     if (raw) {
       try {
-        return JSON.parse(raw) as BillingAccount;
+        const { account, changed } = this.migrate(JSON.parse(raw) as BillingAccount);
+        if (changed) await this.saveAccount(account);
+        return account;
       } catch {
         /* fall through to recreate */
       }
     }
-    const account: BillingAccount = {
-      orgId,
-      userId,
-      tier: 'free',
-      grantCycleAnchor: new Date().toISOString(),
-      markup: MARKUP_DEFAULT,
-      createdAt: new Date().toISOString(),
-    };
+    const account = this.newAccount(orgId, userId);
     await this.redis.set(key, JSON.stringify(account), 'EX', DURABLE_TTL);
     // Seed the first monthly grant immediately so a brand-new account is usable.
     await this.applyGrant(orgId, userId, account.tier, 'initial grant');
@@ -86,17 +117,36 @@ export class RedisCreditLedger implements CreditLedgerPort {
     userId: string,
     tier: SubscriptionTier,
     note: string,
+    kind: CreditTransactionKind = 'grant',
   ): Promise<void> {
-    const credits = TIER_DEFINITIONS[tier].includedCreditsMonthly;
+    const credits = includedCreditsFor(tier);
     const micro = creditsToMicroCredits(credits);
+    if (micro <= 0) return;
     await this.adjustBalance(orgId, userId, micro);
     await this.appendTransaction(orgId, userId, {
-      id: randomId('grant'),
+      id: randomId(kind),
       ts: new Date().toISOString(),
-      kind: 'grant',
+      kind,
       microCredits: micro,
       note,
     });
+  }
+
+  private snapshot(account: BillingAccount, micro: number): BalanceSnapshot {
+    const anchor = Date.parse(account.grantCycleAnchor);
+    const nextBillingDate = Number.isFinite(anchor)
+      ? new Date(anchor + MONTH_MS).toISOString()
+      : undefined;
+    return {
+      tier: account.tier,
+      microCredits: micro,
+      credits: microCreditsToCredits(micro),
+      includedCreditsMonthly: includedCreditsFor(account.tier),
+      status: account.status ?? 'none',
+      ...(account.currentPlanId && { currentPlanId: account.currentPlanId }),
+      ...(nextBillingDate && { nextBillingDate }),
+      markup: account.markup,
+    };
   }
 
   // ── balance ──────────────────────────────────────────────────────────
@@ -119,9 +169,10 @@ export class RedisCreditLedger implements CreditLedgerPort {
   }
 
   async getBalance(orgId: string, userId: string): Promise<BalanceSnapshot> {
-    const account = await this.getOrCreateAccount(orgId, userId);
+    let account = await this.getOrCreateAccount(orgId, userId);
 
-    // Lazy monthly grant (grant-on-read under a lock — no cron).
+    // Lazy monthly grant (grant-on-read under a lock — no cron). A pending
+    // cycle-end cancellation reverts the tier to free at this boundary.
     const anchor = Date.parse(account.grantCycleAnchor);
     if (Number.isFinite(anchor) && Date.now() - anchor >= MONTH_MS) {
       const lockKey = REDIS_KEYS.BILLING.GRANT_LOCK(orgId, userId);
@@ -132,9 +183,17 @@ export class RedisCreditLedger implements CreditLedgerPort {
           const fresh = await this.getOrCreateAccountRaw(orgId, userId);
           const freshAnchor = Date.parse(fresh.grantCycleAnchor);
           if (Number.isFinite(freshAnchor) && Date.now() - freshAnchor >= MONTH_MS) {
+            if (fresh.status === 'canceled') {
+              // Cycle-end downgrade: paid plan lapses to free, then grant free.
+              fresh.tier = 'free';
+              fresh.currentPlanId = undefined;
+              fresh.status = 'none';
+              fresh.canceledAt = undefined;
+            }
             await this.applyGrant(orgId, userId, fresh.tier, 'monthly grant');
             fresh.grantCycleAnchor = new Date().toISOString();
             await this.saveAccount(fresh);
+            account = fresh;
           }
         } finally {
           await this.redis.del(lockKey);
@@ -143,12 +202,7 @@ export class RedisCreditLedger implements CreditLedgerPort {
     }
 
     const micro = await this.readBalanceMicro(orgId, userId);
-    return {
-      tier: account.tier,
-      microCredits: micro,
-      credits: microCreditsToCredits(micro),
-      includedCreditsMonthly: TIER_DEFINITIONS[account.tier].includedCreditsMonthly,
-    };
+    return this.snapshot(account, micro);
   }
 
   /** Account read WITHOUT the create-side seed grant (used inside the grant lock). */
@@ -156,19 +210,14 @@ export class RedisCreditLedger implements CreditLedgerPort {
     const raw = await this.redis.get(REDIS_KEYS.BILLING.ACCOUNT(orgId, userId));
     if (raw) {
       try {
-        return JSON.parse(raw) as BillingAccount;
+        const { account, changed } = this.migrate(JSON.parse(raw) as BillingAccount);
+        if (changed) await this.saveAccount(account);
+        return account;
       } catch {
         /* recreate below */
       }
     }
-    const account: BillingAccount = {
-      orgId,
-      userId,
-      tier: 'free',
-      grantCycleAnchor: new Date().toISOString(),
-      markup: MARKUP_DEFAULT,
-      createdAt: new Date().toISOString(),
-    };
+    const account = this.newAccount(orgId, userId);
     await this.saveAccount(account);
     return account;
   }
@@ -300,6 +349,62 @@ export class RedisCreditLedger implements CreditLedgerPort {
       microCredits: micro,
       note: `top-up ${credits} credits`,
     });
+  }
+
+  // ── subscription ──────────────────────────────────────────────────────
+
+  async changeTier(
+    orgId: string,
+    userId: string,
+    tier: SubscriptionTier,
+    opts: { providerRef?: string; idempotencyKey: string },
+  ): Promise<BalanceSnapshot> {
+    const accountKey = REDIS_KEYS.BILLING.ACCOUNT(orgId, userId);
+    const dedupeKey = `${accountKey}:tierChange:${opts.idempotencyKey}`;
+    const first = await this.redis.set(dedupeKey, '1', 'EX', DURABLE_TTL, 'NX');
+
+    const account = await this.getOrCreateAccount(orgId, userId);
+    if (!first) {
+      // Retried change — already applied. Return the current balance.
+      const micro = await this.readBalanceMicro(orgId, userId);
+      return this.snapshot(account, micro);
+    }
+
+    const now = new Date();
+    account.tier = tier;
+    account.currentPlanId = tier;
+    account.status = 'active';
+    account.subscribedAt = now.toISOString();
+    account.canceledAt = undefined;
+    if (opts.providerRef) account.providerRef = opts.providerRef;
+    account.schemaVersion = BILLING_SCHEMA_VERSION;
+    // A plan change starts a fresh cycle.
+    account.grantCycleAnchor = now.toISOString();
+    await this.saveAccount(account);
+
+    // Immediate grant of the new tier's allotment, guarded per-anchor so
+    // upgrade↔downgrade churn within one fresh cycle can't farm grants.
+    const grantMarker = `${accountKey}:planGrant:${Date.parse(account.grantCycleAnchor)}`;
+    const grantFirst = await this.redis.set(grantMarker, '1', 'EX', DURABLE_TTL, 'NX');
+    if (grantFirst) {
+      await this.applyGrant(orgId, userId, tier, `plan ${tier}`, 'subscription');
+    }
+
+    const micro = await this.readBalanceMicro(orgId, userId);
+    return this.snapshot(account, micro);
+  }
+
+  async cancelSubscription(orgId: string, userId: string): Promise<BalanceSnapshot> {
+    const account = await this.getOrCreateAccount(orgId, userId);
+    if (account.status === 'active' && account.tier !== 'free') {
+      // Cycle-end: keep the paid tier until the next grant boundary, which
+      // reverts to free (see getBalance). No clawback.
+      account.status = 'canceled';
+      account.canceledAt = new Date().toISOString();
+      await this.saveAccount(account);
+    }
+    const micro = await this.readBalanceMicro(orgId, userId);
+    return this.snapshot(account, micro);
   }
 
   // ── ledger ───────────────────────────────────────────────────────────

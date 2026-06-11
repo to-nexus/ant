@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
+import { CreateTeamModal } from './auth/CreateTeamModal';
 import { useStore } from '@/domain/store';
 import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
@@ -40,6 +41,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const userOrganization = useStore((state) => state.userOrganization);
   const orgDisplayLabel = useStore((state) => selectOrgDisplayLabel(state));
   const memberships = useStore((state) => state.memberships);
+  const billingEnabled = useStore((state) => state.billingEnabled);
   const billingBalance = useStore((state) => state.billingBalance);
   const billingUsage = useStore((state) => state.billingUsage);
   const refreshBalance = useStore((state) => state.refreshBalance);
@@ -57,16 +59,16 @@ export function AppNavBar({}: AppNavBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showCreditMenu, setShowCreditMenu] = useState(false);
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
   const creditMenuRef = useRef<HTMLDivElement>(null);
 
-  // Refresh credit balance whenever the identity/mode resolves. Billing shows
-  // in ALL modes (incl. local) for transparency; the slice guards the fetch
-  // via selectIsAuthBlocked, so this is safe to call unconditionally.
+  // Refresh credit balance whenever the identity/mode resolves. Billing is the
+  // commercial cloud surface (ANT_BILLING_ENABLED); OSS / local skips it.
   useEffect(() => {
-    void refreshBalance();
-  }, [userEmail, serverMode, refreshBalance]);
+    if (billingEnabled) void refreshBalance();
+  }, [userEmail, serverMode, billingEnabled, refreshBalance]);
 
   // Close credit menu on outside click + refresh usage when opened.
   useEffect(() => {
@@ -470,7 +472,7 @@ export function AppNavBar({}: AppNavBarProps) {
                 ) : (
                   // Signed in - Show user info with dropdown
                   <>
-                  {billingBalance.data && effectiveCredits !== undefined && (
+                  {billingEnabled && billingBalance.data && effectiveCredits !== undefined && (
                     <div className="relative hidden sm:block mr-1" ref={creditMenuRef}>
                       <button
                         onClick={() => setShowCreditMenu((v) => !v)}
@@ -613,30 +615,43 @@ export function AppNavBar({}: AppNavBarProps) {
                           boxShadow: 'var(--shadow-md)',
                         }}
                       >
-                        {memberships.length > 1 && (
-                          <>
-                            <div className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
-                              {t('auth.switchAccount', 'Switch account')}
-                            </div>
-                            {memberships.map((m) => (
-                              <button
-                                key={m.organizationId}
-                                onClick={() => handleSwitchOrg(m.organizationId)}
-                                className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
-                                style={{ color: 'var(--text-2)' }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              >
-                                <User className="w-4 h-4" />
-                                <span className="truncate">{m.kind === 'individual' ? 'Individual' : m.name}</span>
-                                {m.organizationId === userOrganization && (
-                                  <Check className="w-3.5 h-3.5 ml-auto" style={{ color: 'var(--violet-500)' }} />
-                                )}
-                              </button>
-                            ))}
-                            <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
-                          </>
-                        )}
+                        {/* Account switcher — GitHub/Vercel/Slack pattern: the
+                            membership list (your individual account + any teams)
+                            followed by a "Create team" entry. Team join/admin is
+                            deferred; "Create team" opens a placeholder modal. */}
+                        <div className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
+                          {t('auth.switchAccount', 'Switch account')}
+                        </div>
+                        {memberships.map((m) => (
+                          <button
+                            key={m.organizationId}
+                            onClick={() => handleSwitchOrg(m.organizationId)}
+                            className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                            style={{ color: 'var(--text-2)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <User className="w-4 h-4" />
+                            <span className="truncate">{m.kind === 'individual' ? 'Individual' : m.name}</span>
+                            {m.organizationId === userOrganization && (
+                              <Check className="w-3.5 h-3.5 ml-auto" style={{ color: 'var(--violet-500)' }} />
+                            )}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setShowCreateTeam(true);
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{ color: 'var(--text-2)' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          {t('auth.createTeam', 'Create team')}
+                        </button>
+                        <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);
@@ -691,6 +706,7 @@ export function AppNavBar({}: AppNavBarProps) {
       {/* Async UI Policy — ambient progress bar sits flush with the navbar's
           bottom edge. Does not affect navbar height or body layout. */}
       <AmbientActivityBar />
+      <CreateTeamModal isOpen={showCreateTeam} onClose={() => setShowCreateTeam(false)} />
     </header>
   );
 }

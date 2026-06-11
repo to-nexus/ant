@@ -366,6 +366,12 @@ export interface ConfigState {
    */
   serverMode: import('@/domain/async').AsyncFields<import('@ant/shared').ServerMode>;
   localBackendPort: number;
+  /**
+   * BE capability flag (`ANT_BILLING_ENABLED`, from `/system/config`). When
+   * false (OSS / local), every commercial billing surface is hidden. Default
+   * false until the config loads.
+   */
+  billingEnabled: boolean;
 }
 
 // ==================

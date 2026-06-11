@@ -79,6 +79,9 @@ export function AccountConfigEditor({
   // Account visibility (individual orgs). Default public.
   const userOrgKind = useStore((s) => selectUserOrgKind(s));
   const isIndividual = userOrgKind === 'individual';
+  // Commercial billing surface is cloud-only (ANT_BILLING_ENABLED). OSS / local
+  // hides the whole Plan & Billing section.
+  const billingEnabled = useStore((s) => s.billingEnabled);
   const [accountVisibility, setAccountVisibility] = useState<'public' | 'private'>('public');
   const [isSavingVisibility, setIsSavingVisibility] = useState(false);
 
@@ -344,7 +347,9 @@ export function AccountConfigEditor({
           : []),
         { id: 'c3a-owners', label: t('account.tocOwners'), icon: 'Users' },
         { id: 'c3a-figma', label: t('account.tocFigma'), icon: 'Palette' },
-        { id: 'c3a-billing', label: t('account.tocBilling', 'Billing'), icon: 'CreditCard' as const },
+        ...(billingEnabled
+          ? [{ id: 'c3a-billing', label: t('account.tocBilling', 'Billing'), icon: 'CreditCard' as const }]
+          : []),
         {
           id: 'c3a-danger',
           label: t('account.tocDanger'),
@@ -879,9 +884,10 @@ export function AccountConfigEditor({
           />
 
           {/* ============================
-              Billing & Usage (all modes incl. local — transparent usage/cost)
+              Plan & Billing — cloud-only (ANT_BILLING_ENABLED). OSS / local
+              hides the whole section (no plan/credit/payment surfaces).
               ============================ */}
-          <BillingUsageSection />
+          {billingEnabled && <BillingUsageSection />}
 
           {/* ============================
               Section 4 — Danger Zone

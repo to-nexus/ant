@@ -14,7 +14,7 @@
  * (grant-on-read under a lock) so no cron is required.
  */
 
-import type { BalanceSnapshot, CreditTransaction } from '@ant/shared';
+import type { BalanceSnapshot, CreditTransaction, SubscriptionTier } from '@ant/shared';
 
 export interface ReserveResult {
   ok: boolean;
@@ -77,4 +77,23 @@ export interface CreditLedgerPort {
 
   /** Recent transactions, newest first. */
   listTransactions(orgId: string, userId: string, limit: number): Promise<CreditTransaction[]>;
+
+  /**
+   * Change the subscription tier and grant the new tier's included credits
+   * immediately (fresh cycle). Idempotent per `idempotencyKey`. Used by the
+   * subscribe route after a successful charge. Returns the fresh balance.
+   */
+  changeTier(
+    orgId: string,
+    userId: string,
+    tier: SubscriptionTier,
+    opts: { providerRef?: string; idempotencyKey: string },
+  ): Promise<BalanceSnapshot>;
+
+  /**
+   * Cancel the active subscription at cycle end: flags the account `canceled`
+   * (tier stays until `nextBillingDate`, then reverts to `free` lazily on the
+   * next grant boundary). Balance is never clawed back. Returns the balance.
+   */
+  cancelSubscription(orgId: string, userId: string): Promise<BalanceSnapshot>;
 }

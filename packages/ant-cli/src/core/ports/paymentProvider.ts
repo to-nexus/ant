@@ -10,7 +10,17 @@
  * from the CREDIT_PACKAGES SSOT (never trusted from the client).
  */
 
-import type { PaymentMethodInput, PurchaseOutcome } from '@ant/shared';
+import type { PaymentMethodInput, PurchaseOutcome, SubscriptionTier } from '@ant/shared';
+
+/** Outcome of a subscription charge. Mirrors {@link PurchaseOutcome}'s failure shape. */
+export interface SubscriptionOutcome {
+  ok: boolean;
+  status?: 'succeeded' | 'declined' | 'error';
+  /** Provider subscription reference on success (mock: synthetic). */
+  providerRef?: string;
+  declineCode?: string;
+  reason?: string;
+}
 
 export interface PurchaseRequest {
   orgId: string;
@@ -31,9 +41,18 @@ export interface PaymentProviderPort {
   /** Charge the payment method and, on success, credit the ledger. */
   purchaseCredits(req: PurchaseRequest): Promise<PurchaseOutcome>;
 
-  /** Start/upgrade a subscription tier. Mock is a no-op success. */
-  startSubscription(orgId: string, userId: string, tier: string): Promise<{ ok: boolean }>;
+  /**
+   * Charge for a subscription tier change. The provider ONLY charges — the
+   * route owns the tier-change + grant (mirrors how `purchaseCredits` delegates
+   * the grant to `ledger.topUp`). A `paymentMethod` exercises the decline path.
+   */
+  startSubscription(
+    orgId: string,
+    userId: string,
+    tier: SubscriptionTier,
+    paymentMethod?: PaymentMethodInput,
+  ): Promise<SubscriptionOutcome>;
 
-  /** Cancel a subscription. Mock is a no-op success. */
-  cancelSubscription(orgId: string, userId: string): Promise<{ ok: boolean }>;
+  /** Stop auto-renew at the gateway. Mock is a no-op success. */
+  cancelSubscription(orgId: string, userId: string): Promise<SubscriptionOutcome>;
 }

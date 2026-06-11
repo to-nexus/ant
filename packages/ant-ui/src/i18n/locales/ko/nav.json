@@ -32,7 +32,14 @@
     "signUp": "회원가입",
     "signIn": "로그인",
     "signOut": "로그아웃",
-    "accountConfig": "계정 설정"
+    "accountConfig": "계정 설정",
+    "switchAccount": "계정 전환",
+    "createTeam": "팀 만들기",
+    "createTeamTitle": "팀 만들기",
+    "teamNameLabel": "팀 이름",
+    "teamNamePlaceholder": "Acme Inc.",
+    "close": "닫기",
+    "createTeamComingSoon": "팀 워크스페이스는 곧 제공됩니다. 지금도 계정 간 전환은 가능하며, 팀 생성과 멤버 초대는 향후 업데이트에서 추가됩니다."
   },
   "onboarding": {
     "title": "조직을 선택하세요",

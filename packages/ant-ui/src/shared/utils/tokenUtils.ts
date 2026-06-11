@@ -22,7 +22,6 @@ import {
   computeCallCostUsdSafe,
   usdToMicroCredits,
   microCreditsToCredits,
-  MARKUP_DEFAULT,
   type TokenUsageByModel,
 } from '@ant/shared';
 
@@ -225,9 +224,13 @@ export function costUsdFromUsage(
   return computeCallCostUsdSafe(modelId, usage).usd;
 }
 
-/** Customer-facing credits consumed for a given USD list cost (markup applied). */
-export function creditsFromUsd(usd: number): number {
-  return microCreditsToCredits(usdToMicroCredits(usd, MARKUP_DEFAULT));
+/**
+ * Customer-facing credits consumed for a given USD list cost. The `markup` is
+ * server-driven (per-account, from the balance snapshot); defaults to 1 (no
+ * markup) since the magnitude is a commercial value not shipped in the bundle.
+ */
+export function creditsFromUsd(usd: number, markup: number = 1): number {
+  return microCreditsToCredits(usdToMicroCredits(usd, markup));
 }
 
 /** Format a USD amount — sub-cent shows 4 decimals, else 2. */

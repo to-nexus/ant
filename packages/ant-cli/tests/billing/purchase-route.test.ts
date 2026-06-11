@@ -69,15 +69,15 @@ describe('POST /billing/purchase', () => {
     const provider = new CapturingProvider({ ok: true, status: 'succeeded' });
     await withServer(provider, async (base) => {
       const res = await post(base, {
-        packageId: 'plus',
+        packageId: 'medium',
         credits: 999_999, // spoof — must be ignored
         amountUsd: 0.01, // spoof — must be ignored
         paymentMethod: { cardNumber: '4242424242424242', expMonth: 12, expYear: 2099, cvc: '123' },
       });
       expect(res.status).toBe(200);
-      expect(provider.lastReq?.credits).toBe(5_000); // from CREDIT_PACKAGES.plus
+      expect(provider.lastReq?.credits).toBe(5_000); // from CREDIT_PACKAGES.medium
       expect(provider.lastReq?.amountUsd).toBe(50);
-      expect(provider.lastReq?.packageId).toBe('plus');
+      expect(provider.lastReq?.packageId).toBe('medium');
     });
   });
 
@@ -102,7 +102,7 @@ describe('POST /billing/purchase', () => {
     });
     await withServer(provider, async (base) => {
       const res = await post(base, {
-        packageId: 'starter',
+        packageId: 'small',
         paymentMethod: { cardNumber: '4000000000000002', expMonth: 12, expYear: 2099, cvc: '123' },
       });
       expect(res.status).toBe(402);

@@ -24,7 +24,14 @@ export function selectLiveJobCreditsConsumed(state: StoreState): number {
   if (!byModel) return 0;
   const usd = costUsdFromByModel(byModel);
   if (usd === undefined || usd <= 0) return 0;
-  return creditsFromUsd(usd);
+  // Markup is server-driven (per-account, from the balance snapshot). Default
+  // to 1 (no markup) until the balance loads / when billing is disabled.
+  return creditsFromUsd(usd, state.billingBalance?.data?.markup ?? 1);
+}
+
+/** BE capability flag — gates every commercial billing surface. */
+export function selectBillingEnabled(state: StoreState): boolean {
+  return state.billingEnabled === true;
 }
 
 /**

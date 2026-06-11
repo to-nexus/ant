@@ -40,6 +40,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     systemConfigStatus: 'idle',
     serverMode: initialAsyncFields<ServerMode>(),
     localBackendPort,
+    billingEnabled: false,
 
     // ==================
     // Actions
@@ -76,6 +77,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
         set({
           recursionLimit: config.recursionLimit,
           systemConfigStatus: 'ready',
+          billingEnabled: config.capabilities?.billing === true,
           serverMode: {
             status: 'ready',
             data: config.authMode,

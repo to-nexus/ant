@@ -10,15 +10,24 @@
 import { StateCreator } from 'zustand';
 import type { AsyncFields } from '@/domain/async';
 import { initialAsyncFields } from '@/domain/async';
-import type { BalanceSnapshot } from '@ant/shared';
+import type { BalanceSnapshot, BillingCatalog, SubscriptionTier } from '@ant/shared';
 import type { CreditTransaction, PaymentMethodInput, PurchaseOutcome } from '@ant/shared';
-import { fetchBalance, fetchUsage, purchaseCredits } from '@/infrastructure/http/api';
+import {
+  fetchBalance,
+  fetchUsage,
+  fetchCatalog,
+  purchaseCredits,
+  subscribePlan,
+  cancelSubscription,
+} from '@/infrastructure/http/api';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface BillingSliceState {
   billingBalance: AsyncFields<BalanceSnapshot>;
   billingUsage: AsyncFields<CreditTransaction[]>;
+  /** Server-driven plan + credit-package offering. */
+  billingCatalog: AsyncFields<BillingCatalog>;
   /** BE-decided: whether USD cost columns may be shown to this caller. */
   billingCanViewUsd: boolean;
 }
@@ -26,12 +35,17 @@ export interface BillingSliceState {
 export interface BillingActions {
   refreshBalance: () => Promise<void>;
   refreshUsage: (limit?: number) => Promise<void>;
+  refreshCatalog: () => Promise<void>;
   /**
    * Purchase a credit package through the payment provider. Resolves to the
    * outcome (never throws) so the checkout UI can render a decline/error
    * inline. On success the balance + usage are refreshed.
    */
   purchaseCredits: (packageId: string, paymentMethod: PaymentMethodInput) => Promise<PurchaseOutcome>;
+  /** Subscribe to / change a plan tier. Same outcome contract as purchaseCredits. */
+  subscribePlan: (tier: SubscriptionTier, paymentMethod?: PaymentMethodInput) => Promise<PurchaseOutcome>;
+  /** Cancel the active subscription (cycle-end downgrade). */
+  cancelSubscription: () => Promise<PurchaseOutcome>;
 }
 
 export type BillingSlice = BillingSliceState & BillingActions;
@@ -39,6 +53,7 @@ export type BillingSlice = BillingSliceState & BillingActions;
 export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set, get) => ({
   billingBalance: initialAsyncFields<BalanceSnapshot>(),
   billingUsage: initialAsyncFields<CreditTransaction[]>(),
+  billingCatalog: initialAsyncFields<BillingCatalog>(),
   billingCanViewUsd: false,
 
   refreshBalance: async () => {
@@ -85,6 +100,26 @@ export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set,
     }
   },
 
+  refreshCatalog: async () => {
+    if (selectIsAuthBlocked(get())) return;
+    const cur = get().billingCatalog;
+    if (cur.status === 'ready' || cur.refreshing) return; // catalog is static
+    set((s: any) => ({ billingCatalog: { ...s.billingCatalog, refreshing: true } }));
+    try {
+      const data = await fetchCatalog();
+      set({ billingCatalog: { status: 'ready', data, error: null, refreshing: false } });
+    } catch (error) {
+      set({
+        billingCatalog: {
+          status: 'error',
+          data: null,
+          error: error instanceof Error ? error : new Error(String(error)),
+          refreshing: false,
+        },
+      });
+    }
+  },
+
   purchaseCredits: async (packageId: string, paymentMethod: PaymentMethodInput): Promise<PurchaseOutcome> => {
     try {
       const data = await purchaseCredits(packageId, paymentMethod);
@@ -97,6 +132,35 @@ export const createBillingSlice: StateCreator<any, [], [], BillingSlice> = (set,
         // 402 → declined / error; any other status maps to a generic error.
         const status: PurchaseOutcome['status'] = error.code === 'declined' ? 'declined' : 'error';
         return { ok: false, status, reason: error.message };
+      }
+      return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  subscribePlan: async (tier: SubscriptionTier, paymentMethod?: PaymentMethodInput): Promise<PurchaseOutcome> => {
+    try {
+      const data = await subscribePlan(tier, paymentMethod);
+      set({ billingBalance: { status: 'ready', data, error: null, refreshing: false } });
+      await (get() as BillingActions).refreshUsage();
+      return { ok: true, status: 'succeeded' };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const status: PurchaseOutcome['status'] = error.code === 'declined' ? 'declined' : 'error';
+        return { ok: false, status, reason: error.message };
+      }
+      return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  cancelSubscription: async (): Promise<PurchaseOutcome> => {
+    try {
+      const data = await cancelSubscription();
+      set({ billingBalance: { status: 'ready', data, error: null, refreshing: false } });
+      await (get() as BillingActions).refreshUsage();
+      return { ok: true, status: 'succeeded' };
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return { ok: false, status: 'error', reason: error.message };
       }
       return { ok: false, status: 'error', reason: error instanceof Error ? error.message : String(error) };
     }

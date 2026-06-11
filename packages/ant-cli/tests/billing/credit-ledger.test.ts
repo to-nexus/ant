@@ -8,7 +8,9 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RedisCreditLedger } from '../../src/infrastructure/billing/RedisCreditLedger';
-import { TIER_DEFINITIONS, creditsToMicroCredits } from '@ant/shared';
+import { TIER_DEFINITIONS } from '../../src/infrastructure/billing/catalog';
+import { creditsToMicroCredits } from '@ant/shared';
+import { REDIS_KEYS } from '../../src/core/constants/redis';
 
 /** In-memory Redis supporting the subset RedisCreditLedger uses. */
 class FakeRedis {
@@ -104,5 +106,60 @@ describe('RedisCreditLedger', () => {
     expect(snap.microCredits).toBe(creditsToMicroCredits(TIER_DEFINITIONS.free.includedCreditsMonthly + 500));
     const txs = await ledger.listTransactions(ORG, USER, 50);
     expect(txs.some((t) => t.kind === 'topup')).toBe(true);
+  });
+
+  it('changeTier sets the tier active and grants the new allotment immediately', async () => {
+    await ledger.getBalance(ORG, USER); // seed free 200
+    const snap = await ledger.changeTier(ORG, USER, 'pro', { idempotencyKey: 'sub-1', providerRef: 'mock' });
+    expect(snap.tier).toBe('pro');
+    expect(snap.status).toBe('active');
+    expect(snap.currentPlanId).toBe('pro');
+    expect(snap.credits).toBe(
+      TIER_DEFINITIONS.free.includedCreditsMonthly + TIER_DEFINITIONS.pro.includedCreditsMonthly,
+    );
+    const txs = await ledger.listTransactions(ORG, USER, 50);
+    expect(txs.some((t) => t.kind === 'subscription')).toBe(true);
+  });
+
+  it('changeTier is idempotent per idempotencyKey (no double grant)', async () => {
+    await ledger.getBalance(ORG, USER);
+    const first = await ledger.changeTier(ORG, USER, 'pro', { idempotencyKey: 'same' });
+    const second = await ledger.changeTier(ORG, USER, 'pro', { idempotencyKey: 'same' });
+    expect(second.microCredits).toBe(first.microCredits);
+  });
+
+  it('cancelSubscription flags canceled but keeps the paid tier + balance (cycle-end)', async () => {
+    await ledger.getBalance(ORG, USER);
+    await ledger.changeTier(ORG, USER, 'pro', { idempotencyKey: 'sub-1' });
+    const before = (await ledger.getBalance(ORG, USER)).microCredits;
+    const snap = await ledger.cancelSubscription(ORG, USER);
+    expect(snap.status).toBe('canceled');
+    expect(snap.tier).toBe('pro'); // stays until cycle end
+    expect(snap.microCredits).toBe(before); // no clawback
+  });
+
+  it('migrates legacy tier vocabulary on read (starter→pro, gated by schemaVersion)', async () => {
+    // Seed a legacy account (pre-rename): tier 'starter', no schemaVersion.
+    const key = REDIS_KEYS.BILLING.ACCOUNT(ORG, USER);
+    redis.store.set(
+      key,
+      JSON.stringify({ orgId: ORG, userId: USER, tier: 'starter', grantCycleAnchor: new Date().toISOString(), markup: 1.75, createdAt: new Date().toISOString() }),
+    );
+    const snap = await ledger.getBalance(ORG, USER);
+    expect(snap.tier).toBe('pro'); // starter → pro
+    // Persisted with the current schema version so the migration is one-time.
+    const stored = JSON.parse(redis.store.get(key)!);
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.tier).toBe('pro');
+  });
+
+  it('migrates legacy pro→max (old $100 tier becomes max)', async () => {
+    const key = REDIS_KEYS.BILLING.ACCOUNT(ORG, 'legacy@b.com');
+    redis.store.set(
+      key,
+      JSON.stringify({ orgId: ORG, userId: 'legacy@b.com', tier: 'pro', grantCycleAnchor: new Date().toISOString(), markup: 1.75, createdAt: new Date().toISOString() }),
+    );
+    const snap = await ledger.getBalance(ORG, 'legacy@b.com');
+    expect(snap.tier).toBe('max');
   });
 });

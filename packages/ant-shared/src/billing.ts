@@ -1,5 +1,5 @@
 /**
- * Billing & Credits — shared contract (BE ↔ FE)
+ * Billing & Credits — shared contract (BE ↔ FE), NEUTRAL surface only.
  *
  * Two figures travel together everywhere:
  *   - USD cost   — the precise internal COGS at list price (computed from
@@ -7,14 +7,20 @@
  *                  role-gated on the customer surface.
  *   - credits    — the customer-facing abstraction. Revenue unit.
  *
- * Economic model (see plan `individual-splendid-dragon.md`):
+ * Economic model:
  *   - 1 credit  := $0.01 of LIST cost at purchase (100 credits = $1.00 paid).
- *   - consumption applies `markup`: a job whose list cost is $C burns
- *     `C × markup` dollars-worth of credits. Revenue per job = credits × $0.01
- *     = C × markup; cost = C; margin = C × (markup − 1).
+ *   - consumption applies a per-account `markup`: a job whose list cost is $C
+ *     burns `C × markup` dollars-worth of credits.
  *
  * Credits are stored as INTEGER micro-credits (credit × 1000) so atomic Redis
  * INCR/DECR never loses sub-credit precision on small jobs.
+ *
+ * ── OSS / cloud seam ────────────────────────────────────────────────────
+ * This file is OSS-resident and holds only NEUTRAL shapes + math. The
+ * COMMERCIAL values (markup magnitude, plan prices, credit-package offering)
+ * live BE-side in the cloud catalog module and reach the FE via the
+ * server-driven `GET /billing/catalog` + `BalanceSnapshot`. Nothing here
+ * encodes the resale offering, so the OSS bundle ships no pricing.
  */
 
 /** Micro-credits per displayed credit. Balances are stored in micro-credits. */
@@ -23,33 +29,46 @@ export const MICRO_PER_CREDIT = 1000;
 /** USD list cost represented by one displayed credit (at purchase). */
 export const USD_PER_CREDIT = 0.01;
 
-/**
- * Default consumption markup over list cost. The single knob that turns COGS
- * into revenue. Overridable per-account via {@link BillingAccount.markup}.
- */
-export const MARKUP_DEFAULT = 1.75;
+/** Subscription tier identity. Prices/allotments are server-driven (catalog). */
+export type SubscriptionTier = 'free' | 'pro' | 'max';
 
-export type SubscriptionTier = 'free' | 'starter' | 'pro';
+/** Ascending tier order (free → max). Drives upgrade/downgrade/current CTAs. */
+export const TIER_ORDER: readonly SubscriptionTier[] = ['free', 'pro', 'max'];
 
 /**
- * Static per-tier definition: monthly price (USD) + monthly included credit
- * grant (displayed credits). Top-up purchases add credits beyond the grant.
+ * Compare two tiers by rank. `> 0` ⇒ `a` is higher (b→a is an upgrade),
+ * `< 0` ⇒ lower (downgrade), `0` ⇒ same. Unknown tiers sort as lowest.
  */
-export interface TierDefinition {
-  tier: SubscriptionTier;
-  monthlyPriceUsd: number;
-  /** Displayed credits granted each cycle. */
-  includedCreditsMonthly: number;
+export function compareTiers(a: SubscriptionTier, b: SubscriptionTier): number {
+  return TIER_ORDER.indexOf(a) - TIER_ORDER.indexOf(b);
 }
 
-export const TIER_DEFINITIONS: Readonly<Record<SubscriptionTier, TierDefinition>> = {
-  free: { tier: 'free', monthlyPriceUsd: 0, includedCreditsMonthly: 200 },
-  starter: { tier: 'starter', monthlyPriceUsd: 20, includedCreditsMonthly: 2_000 },
-  pro: { tier: 'pro', monthlyPriceUsd: 100, includedCreditsMonthly: 12_000 },
+/**
+ * Canonicalize a tier string read from storage. Records written before the
+ * `free/starter/pro → free/pro/max` rename map by the legacy table; callers
+ * gate this on {@link BillingAccount.schemaVersion} `< 2`.
+ */
+export const LEGACY_TIER_MAP: Readonly<Record<string, SubscriptionTier>> = {
+  starter: 'pro',
+  pro: 'max',
 };
 
+/** Current billing-account schema version (bumped at the tier rename). */
+export const BILLING_SCHEMA_VERSION = 2;
+
+/**
+ * Normalize a raw tier value. With `legacy = true` (schemaVersion `< 2`) the
+ * legacy vocabulary is mapped forward; otherwise current values pass through
+ * and anything unknown falls back to `free`.
+ */
+export function normalizeTier(raw: string | undefined, legacy: boolean): SubscriptionTier {
+  if (legacy && raw && raw in LEGACY_TIER_MAP) return LEGACY_TIER_MAP[raw];
+  if (raw === 'free' || raw === 'pro' || raw === 'max') return raw;
+  return 'free';
+}
+
 /** Convert a USD list cost into micro-credits to debit, applying markup. */
-export function usdToMicroCredits(usdListCost: number, markup: number = MARKUP_DEFAULT): number {
+export function usdToMicroCredits(usdListCost: number, markup: number = 1): number {
   if (!Number.isFinite(usdListCost) || usdListCost <= 0) return 0;
   return Math.ceil((usdListCost * markup) / USD_PER_CREDIT * MICRO_PER_CREDIT);
 }
@@ -64,27 +83,41 @@ export function creditsToMicroCredits(credits: number): number {
   return Math.round(credits * MICRO_PER_CREDIT);
 }
 
+// ── Catalog contract (server-driven; values live BE-side) ────────────────
+
 /**
- * Purchasable credit package. Price is at FACE VALUE (1:1):
- * `priceUsd === credits × USD_PER_CREDIT`. Margin lives in the consumption
- * markup ({@link MARKUP_DEFAULT}), not the sale — so prepaid credits sell at
- * cost while every job burns `list_cost × markup` worth of credits.
+ * Subscription plan as exposed by `GET /billing/catalog`. Shape only — the
+ * concrete prices/allotments come from the cloud catalog module, never from
+ * this OSS file.
  */
-export interface CreditPackage {
+export interface PlanInfo {
+  tier: SubscriptionTier;
+  monthlyPriceUsd: number;
+  /** Displayed credits granted each cycle. */
+  includedCreditsMonthly: number;
+  /** Optional marketing feature bullets (i18n keys or literals). */
+  features?: string[];
+}
+
+/**
+ * Purchasable credit package as exposed by `GET /billing/catalog`. Price is at
+ * FACE VALUE (`priceUsd === credits × USD_PER_CREDIT`); margin lives in the
+ * consumption markup, not the sale.
+ */
+export interface CreditPackageInfo {
   id: string;
   credits: number;
   priceUsd: number;
 }
 
-export const CREDIT_PACKAGES: readonly CreditPackage[] = [
-  { id: 'starter', credits: 1_000, priceUsd: 10 },
-  { id: 'plus', credits: 5_000, priceUsd: 50 },
-  { id: 'pro', credits: 20_000, priceUsd: 200 },
-];
-
-export function getCreditPackage(id: string): CreditPackage | undefined {
-  return CREDIT_PACKAGES.find((p) => p.id === id);
+/** Response of `GET /billing/catalog`. */
+export interface BillingCatalog {
+  plans: PlanInfo[];
+  creditPackages: CreditPackageInfo[];
+  currency: 'usd';
 }
+
+// ── Payment + purchase ───────────────────────────────────────────────────
 
 /**
  * Payment-method input collected at checkout. For the mock provider this is
@@ -98,7 +131,7 @@ export interface PaymentMethodInput {
   cvc: string;
 }
 
-/** Outcome of a credit purchase. `declined`/`error` carry a surfaceable reason. */
+/** Outcome of a credit purchase or subscription charge. */
 export interface PurchaseOutcome {
   ok: boolean;
   status: 'succeeded' | 'declined' | 'error';
@@ -107,6 +140,13 @@ export interface PurchaseOutcome {
   amountChargedUsd?: number;
   declineCode?: string;
   reason?: string;
+}
+
+/** Body of `POST /billing/subscribe`. Price resolved server-side from catalog. */
+export interface SubscribeRequest {
+  tier: SubscriptionTier;
+  paymentMethod?: PaymentMethodInput;
+  idempotencyKey: string;
 }
 
 /**
@@ -118,15 +158,14 @@ export const MOCK_DECLINE_CARD = '4000000000000002';
 
 /**
  * Hard cap on retained ledger entries per (org,user). The Redis ledger is
- * `LTRIM`-bounded to this size, so it is also the ceiling for a usage fetch —
- * the activity modal can request the entire ledger in one call. Single source
- * for both the trim cap (BE) and the fetch ceiling (route + FE), so they never
- * drift.
+ * `LTRIM`-bounded to this size, so it is also the ceiling for a usage fetch.
+ * Single source for both the trim cap (BE) and the fetch ceiling (route + FE).
  */
 export const CREDIT_LEDGER_MAX_ENTRIES = 1000;
 
 export type CreditTransactionKind =
   | 'grant' // monthly included-credit grant
+  | 'subscription' // immediate grant on plan start/change
   | 'debit' // job consumption
   | 'topup' // purchased credits
   | 'refund'
@@ -154,6 +193,9 @@ export interface CreditTransaction {
   note?: string;
 }
 
+/** Subscription lifecycle status. `none` = free / never subscribed. */
+export type SubscriptionStatus = 'active' | 'canceled' | 'none';
+
 /** Per-(org,user) billing account: subscription + grant cycle state. */
 export interface BillingAccount {
   orgId: string;
@@ -161,9 +203,19 @@ export interface BillingAccount {
   tier: SubscriptionTier;
   /** Anchor of the current monthly grant cycle (ISO-8601). */
   grantCycleAnchor: string;
-  /** Consumption markup; defaults to {@link MARKUP_DEFAULT}. */
+  /** Consumption markup; the seed magnitude lives in the cloud catalog. */
   markup: number;
   createdAt: string;
+  /** Schema marker; `< 2` (or absent) ⇒ legacy tier vocabulary, normalize. */
+  schemaVersion?: number;
+  /** Subscription state mirror (cloud). */
+  status?: SubscriptionStatus;
+  currentPlanId?: SubscriptionTier;
+  subscribedAt?: string;
+  /** Set when a cycle-end cancellation is pending (tier stays until anchor+cycle). */
+  canceledAt?: string;
+  /** Provider subscription reference (mock: synthetic). */
+  providerRef?: string;
 }
 
 /** Snapshot returned by `GET /billing/balance`. */
@@ -175,6 +227,13 @@ export interface BalanceSnapshot {
   credits: number;
   /** Monthly included-credit allotment for the tier (displayed credits). */
   includedCreditsMonthly: number;
+  /** Subscription state mirror (absent/`none` on free). */
+  status?: SubscriptionStatus;
+  currentPlanId?: SubscriptionTier;
+  /** Cycle renewal / cancellation-effective date (ISO-8601). */
+  nextBillingDate?: string;
+  /** Per-account consumption markup (drives FE live-consumption display). */
+  markup?: number;
 }
 
 /** Server response wrapper for usage history. `canViewUsd` mirrors the role gate. */

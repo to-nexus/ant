@@ -7,9 +7,20 @@
  */
 
 import { API_BASE, apiGet, apiPost } from './client';
-import type { BalanceSnapshot, UsageHistoryResponse, PaymentMethodInput } from '@ant/shared';
+import type {
+  BalanceSnapshot,
+  BillingCatalog,
+  PaymentMethodInput,
+  SubscriptionTier,
+  UsageHistoryResponse,
+} from '@ant/shared';
 
-export type { BalanceSnapshot, UsageHistoryResponse } from '@ant/shared';
+export type { BalanceSnapshot, UsageHistoryResponse, BillingCatalog } from '@ant/shared';
+
+/** Server-driven plan + credit-package offering. */
+export async function fetchCatalog(): Promise<BillingCatalog> {
+  return apiGet<BillingCatalog>(`${API_BASE()}/billing/catalog`);
+}
 
 /** Current credit balance + tier. */
 export async function fetchBalance(): Promise<BalanceSnapshot> {
@@ -37,4 +48,26 @@ export async function purchaseCredits(
     paymentMethod,
     idempotencyKey: idempotencyKey ?? `purchase-${Date.now()}`,
   });
+}
+
+/**
+ * Subscribe to / change a plan tier via the (mock) payment provider. The price
+ * is resolved server-side from the tier. Returns the new balance; throws
+ * `ApiError` (status 402, `code` = 'declined' | 'error') on a failed charge.
+ */
+export async function subscribePlan(
+  tier: SubscriptionTier,
+  paymentMethod?: PaymentMethodInput,
+  idempotencyKey?: string,
+): Promise<BalanceSnapshot> {
+  return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/subscribe`, {
+    tier,
+    paymentMethod,
+    idempotencyKey: idempotencyKey ?? `subscribe-${Date.now()}`,
+  });
+}
+
+/** Cancel the active subscription (cycle-end downgrade to free). */
+export async function cancelSubscription(): Promise<BalanceSnapshot> {
+  return apiPost<BalanceSnapshot>(`${API_BASE()}/billing/cancel-subscription`, {});
 }
