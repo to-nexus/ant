@@ -6,7 +6,7 @@ const nextConfig = {
     unoptimized: true,
   },
   // Workspace TS package — Next must transpile it (no separate `next` build).
-  transpilePackages: ['@ant/auth-client'],
+  transpilePackages: ['@ant/auth-client', '@ant/shared'],
 };
 
 export default nextConfig;

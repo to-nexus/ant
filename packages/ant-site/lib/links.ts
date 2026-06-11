@@ -12,5 +12,9 @@ export const GITHUB_ROADMAP_URL = `${GITHUB_URL}/blob/main/docs/ROADMAP.md`;
 
 export const DOCS_URL = `${GITHUB_URL}/tree/main/docs`;
 
+// Canonical managed-cloud deployment. Used by self-host builds to point
+// visitors at the live pricing surface (their own build has no cloud catalog).
+export const CLOUD_SITE_URL = 'https://ant.crosstoken.io';
+
 export const LICENSE_NAME = 'Apache-2.0';
 export const ORG_NAME = 'NEXUS';

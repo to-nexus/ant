@@ -4,6 +4,7 @@
     "docs": "Docs",
     "selfHost": "Self-host",
     "cloud": "Cloud",
+    "pricing": "Pricing",
     "community": "Community",
     "openSource": "Open Source",
     "figma": "Figma",
@@ -290,9 +291,55 @@
       },
       {
         "q": "Where's the pricing table?",
-        "a": "There isn't one yet. The OSS build is free forever. Cloud pricing is TBD until we leave early access."
+        "a": "On the Pricing page. The OSS build is free forever; cloud plans and credits are listed there."
       }
     ]
+  },
+  "pricing": {
+    "heroTitle1": "Plans &",
+    "heroTitle2": "credits",
+    "heroDesc": "Self-host is free forever. The managed cloud is metered in credits — pick the plan that fits your usage.",
+    "perMonth": "/month",
+    "freePrice": "Free",
+    "popular": "Most popular",
+    "cta": "Get started",
+    "creditsPerMonth": "{{credits}} credits / month",
+    "error": "Couldn't load pricing right now.",
+    "retry": "Retry",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "tagline": "Kick the tires, no card required.",
+        "bullets": [
+          "Full Plan → Design → Code → Preview workflow",
+          "Per-user Cloud IDE pod",
+          "Community support"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "tagline": "For regular, hands-on building.",
+        "bullets": [
+          "Everything in Free",
+          "Higher monthly credit allotment",
+          "Priority job scheduling"
+        ]
+      },
+      "max": {
+        "name": "Max",
+        "tagline": "For heavy, multi-project work.",
+        "bullets": [
+          "Everything in Pro",
+          "Highest monthly credit allotment",
+          "Priority support"
+        ]
+      }
+    },
+    "selfHost": {
+      "title": "Self-host is free forever",
+      "desc": "This build runs in local mode — no managed cloud, no metering. Bring your own LLM key and run all four Ant processes on your own machine.",
+      "cloudLinkLabel": "See cloud pricing"
+    }
   },
   "figma": {
     "heroTitle1": "Figma designs,",
