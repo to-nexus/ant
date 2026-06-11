@@ -574,6 +574,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/prior-completed-files": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/response-language": {
     "sources": [
       "auto-injection",
