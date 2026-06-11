@@ -64,6 +64,7 @@
     "transfer": "전송",
     "previewConfig": "프리뷰 설정",
     "actions": "액션",
+    "billing": "결제",
     "liveJob": "실행 중",
     "failedJob": "실패",
     "canceledJob": "취소됨",

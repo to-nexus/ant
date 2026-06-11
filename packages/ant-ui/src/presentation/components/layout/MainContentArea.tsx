@@ -8,6 +8,7 @@ import { FileEditorPanel } from '../FileEditorPanel';
 import { TransferTab } from '../Transfer/TransferTab';
 import { PreviewConfigEditor } from '../PreviewConfigEditor';
 import { ActionsPanel } from '../Actions';
+import { BillingCenterPanel } from '../billing/BillingCenterPanel';
 import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
@@ -201,6 +202,13 @@ export function MainContentArea({
           style={{ background: 'var(--bg-surface)' }}
         >
           <ActionsPanel />
+        </div>
+      ) : activeTab === 'billing' && openTabs.billing ? (
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-canvas)' }}
+        >
+          <BillingCenterPanel />
         </div>
       ) : (
         <div className="flex-1 h-full">

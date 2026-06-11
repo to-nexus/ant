@@ -64,6 +64,7 @@
     "transfer": "Transfer",
     "previewConfig": "Preview Config",
     "actions": "Actions",
+    "billing": "Billing",
     "liveJob": "Live",
     "failedJob": "Failed",
     "canceledJob": "Canceled",

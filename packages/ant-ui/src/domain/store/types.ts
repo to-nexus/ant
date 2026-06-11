@@ -117,7 +117,8 @@ export type StaticMainPanelTab =
   | 'fileEdit'
   | 'transfer'
   | 'previewConfig'
-  | 'actions';
+  | 'actions'
+  | 'billing';
 
 export type EditorMainPanelTabId = `editor:${string}`;
 export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
@@ -218,6 +219,7 @@ export interface UIState {
     transfer: boolean;
     previewConfig: boolean;
     actions: boolean;
+    billing: boolean;
   };
   mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state

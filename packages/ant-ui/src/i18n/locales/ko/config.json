@@ -12,6 +12,7 @@
     "testModeBody": "결제는 시뮬레이션입니다. 4242 4242 4242 4242 카드는 승인, 4000 0000 0000 0002 카드는 거절됩니다. 실제 청구는 없습니다.",
     "customAmount": "직접 입력",
     "customPlaceholder": "크레딧",
+    "reset": "초기화",
     "addCredits": "추가",
     "adding": "추가 중…",
     "customAdded": "{{n}} 크레딧을 추가했습니다",
