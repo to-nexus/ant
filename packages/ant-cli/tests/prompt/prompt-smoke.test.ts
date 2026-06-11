@@ -524,6 +524,35 @@ describe('Template Smoke Tests', () => {
     expect(output).not.toContain(PREVIEW_SETUP_HEADER);
   });
 
+  it('plan/variants/error/base renders its own task scope + unit-boundary constraint (cubic-forging-cargo fix)', async () => {
+    // RCA: the error plan variant was the only task-scoped plan template that
+    // never rendered {{taskName}}/{{taskDescription}} (it was patterned on the
+    // job-wide verification variant). With no anchor to "your unit", the first
+    // error task re-diagnosed the WHOLE spec and fanned out across sibling
+    // units. The fix injects the unit scope + an explicit boundary constraint.
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render('jobs/code/nodes/plan/variants/error/base', {
+      ...SAMPLE_VARS,
+      taskName: 'T1 — add motion CSS import',
+      taskDescription: 'Add `@classboard/fe-system-shared/motion` import to the root layout.',
+      currentTask: { id: 'fix-motion', name: 'T1', type: 'error', description: 'x', priority: 900 },
+    });
+
+    // (a) the unit scope is now rendered
+    expect(output).toContain('## Your Task (this unit)');
+    expect(output).toContain('T1 — add motion CSS import');
+    expect(output).toContain('Add `@classboard/fe-system-shared/motion` import to the root layout.');
+
+    // (b) the boundary constraint that stops sibling-unit absorption
+    expect(output).toContain('Scope boundary (non-negotiable)');
+    expect(output).toMatch(/Sibling defects are owned by other tasks/);
+    expect(output).toMatch(/do NOT diagnose, plan, or\s+fix them/);
+
+    // (c) Format B (batches[]) is still offered, but scoped to this unit
+    expect(output).toContain('within this unit');
+    expect(output).toMatch(/Do NOT create batches for sibling units/);
+  });
+
   it('verification execute rules carry the ANTRULES write-back checkpoint with the 3-condition filter', async () => {
     await initPartials(TEMPLATES_DIR);
     const output = await adapter.render(
