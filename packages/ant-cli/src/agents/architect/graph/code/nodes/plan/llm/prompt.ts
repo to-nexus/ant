@@ -41,6 +41,7 @@ import { getRACDocuments } from "@ant/shared";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/types";
 import { formatCodeContext } from "../../../tasks/_shared/helpers/planPrompt";
+import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
 
 export interface BuildPlanPromptResult {
@@ -245,6 +246,12 @@ export async function buildPlanPrompt(
     // Tier 0/1/2 — those rows leave the block silently empty.
     analysis: state.analysis ?? '',
     hasAnalysis: !!state.analysis,
+    // Cross-task output manifest — files prior tasks in this job already
+    // authored (paths only). Closes the forward-visibility gap that let a
+    // feature task re-seed/re-create what a foundation/platform owner already
+    // produced. Bodies are read on-demand via the RAC-orthogonal codebase
+    // path; this only announces existence. See `priorCompletedFiles.ts`.
+    priorCompletedFiles: renderPriorCompletedFiles(state, task),
     // Service Virtualization gates (SBS) — four orthogonal partials
     // (contract / data / imagery / session). `hasBusinessConnection` is
     // derived once at resolve and parked on `state.virtualizationSnapshot`.

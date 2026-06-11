@@ -48,6 +48,7 @@ import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/Cach
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { activeExecuteHook } from "../../tasks/_shared/verify/activeHooks";
 import { hooksForTaskType } from "../../tasks/_shared/registry";
+import { renderPriorCompletedFiles } from "../../tasks/_shared/helpers/priorCompletedFiles";
 import type { TaskType } from "@ant/shared";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
@@ -525,6 +526,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // config). Non-sub-tasks leave this falsy and templates fall back
       // to their regular scope block.
       prePlanText: (state.currentTask as CodeTask)?.prePlanText ?? '',
+      // Cross-task output manifest — files prior tasks in this job already
+      // authored (paths only). Same SSOT as the plan side
+      // (`nodes/plan/llm/prompt.ts`); closes the forward-visibility gap so a
+      // task imports/reuses an existing shared store / route / component
+      // instead of recreating it. Bodies read on-demand via codebase path.
+      priorCompletedFiles: renderPriorCompletedFiles(state, state.currentTask as CodeTask),
       // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
       // Placed last so the hook's keys override generic defaults if ever
       // required; today error is the sole publisher and it only adds keys.

@@ -623,6 +623,12 @@ describe('Template Smoke Tests', () => {
       // block empty by design. See Plan B
       // (`.claude/plans/architect-6-noble-coating-lathe-cozy-matsumoto.md`).
       'jobs/code/nodes/plan/injections/parent-pre-plan',
+      // Cross-task output manifest is wrapped in {{#if priorCompletedFiles}}
+      // (no {{else}}) — same Contract pattern as analysis-block. It activates
+      // only when prior tasks in this job have authored files; the first task
+      // (and any standalone render) leaves the block empty by design. See
+      // `tasks/_shared/helpers/priorCompletedFiles.ts`.
+      'jobs/code/base/injections/prior-completed-files',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

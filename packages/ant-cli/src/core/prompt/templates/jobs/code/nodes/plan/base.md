@@ -60,6 +60,8 @@ from the summary.
 
 {{> jobs/code/nodes/plan/injections/analysis-block}}
 
+{{> jobs/code/base/injections/prior-completed-files}}
+
 {{> jobs/code/nodes/plan/injections/parent-pre-plan}}
 
 {{#if hasSystemDesign}}

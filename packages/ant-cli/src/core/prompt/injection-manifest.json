@@ -49,7 +49,8 @@
     "entry-point-ownership-rule": ["taskBand"],
     "entry-point-ownership-checklist": ["taskBand"],
     "execution-context-discipline": [],
-    "symbol-grounding": []
+    "symbol-grounding": [],
+    "prior-completed-files": ["priorCompletedFiles"]
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],
