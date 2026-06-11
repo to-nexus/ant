@@ -244,6 +244,9 @@ importers:
       '@ant/auth-client':
         specifier: workspace:^
         version: link:../ant-auth-client
+      '@ant/shared':
+        specifier: workspace:^
+        version: link:../ant-shared
       i18next:
         specifier: ^25.8.6
         version: 25.8.6(typescript@5.9.3)

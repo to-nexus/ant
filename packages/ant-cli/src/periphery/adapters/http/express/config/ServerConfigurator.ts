@@ -185,6 +185,11 @@ export class ServerConfigurator {
         '/api/health',
         '/api/system/config',
         '/api/agents',
+        // Server-driven pricing catalog — read anonymously by the marketing
+        // site (`@ant/site`). Billing is always-on today so this is mounted;
+        // a future `@ant/cloud`-absent OSS build leaves the router unmounted
+        // (→ 404, which the site degrades to its self-host fallback).
+        '/api/billing/catalog',
         '/',
         '/local',
         '/api/auth/google',

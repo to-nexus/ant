@@ -4,6 +4,7 @@
     "docs": "문서",
     "selfHost": "셀프호스트",
     "cloud": "클라우드",
+    "pricing": "가격",
     "community": "커뮤니티",
     "openSource": "오픈소스",
     "figma": "Figma",
@@ -290,9 +291,55 @@
       },
       {
         "q": "가격표는 어디 있나요?",
-        "a": "아직 없습니다. OSS 빌드는 영구 무료. 클라우드 가격은 얼리 액세스 종료 전까지 미정입니다."
+        "a": "가격 페이지에 있습니다. OSS 빌드는 영구 무료이며, 클라우드 플랜과 크레딧이 거기에 정리되어 있습니다."
       }
     ]
+  },
+  "pricing": {
+    "heroTitle1": "플랜과",
+    "heroTitle2": "크레딧",
+    "heroDesc": "셀프호스트는 영구 무료입니다. 매니지드 클라우드는 크레딧으로 과금되며, 사용량에 맞는 플랜을 고르세요.",
+    "perMonth": "/월",
+    "freePrice": "무료",
+    "popular": "가장 인기",
+    "cta": "시작하기",
+    "creditsPerMonth": "월 {{credits}} 크레딧",
+    "error": "지금 가격 정보를 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "tagline": "카드 없이 가볍게 시작하세요.",
+        "bullets": [
+          "Plan → Design → Code → Preview 전체 워크플로우",
+          "사용자별 Cloud IDE Pod",
+          "커뮤니티 지원"
+        ]
+      },
+      "pro": {
+        "name": "Pro",
+        "tagline": "꾸준히 직접 만드는 분께.",
+        "bullets": [
+          "Free의 모든 기능",
+          "더 많은 월 크레딧 할당",
+          "우선 작업 스케줄링"
+        ]
+      },
+      "max": {
+        "name": "Max",
+        "tagline": "다중 프로젝트의 묵직한 작업에.",
+        "bullets": [
+          "Pro의 모든 기능",
+          "최대 월 크레딧 할당",
+          "우선 지원"
+        ]
+      }
+    },
+    "selfHost": {
+      "title": "셀프호스트는 영구 무료입니다",
+      "desc": "이 빌드는 로컬 모드로 동작합니다 — 매니지드 클라우드도, 과금도 없습니다. 직접 준비한 LLM 키로 네 개의 Ant 프로세스를 내 머신에서 실행하세요.",
+      "cloudLinkLabel": "클라우드 가격 보기"
+    }
   },
   "figma": {
     "heroTitle1": "Figma 디자인,",

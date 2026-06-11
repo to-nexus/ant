@@ -11,6 +11,7 @@ import {
   type AuthBroadcaster,
   type AuthUser as SharedAuthUser,
 } from '@ant/auth-client';
+import { RAW_API_BASE, API_BASE, SERVER_MODE, type ServerMode } from './apiBase';
 
 /**
  * ant-site keeps a slimmer AuthUser than ant-ui — picture / name come from
@@ -23,7 +24,7 @@ export interface AuthUser {
   picture?: string;
 }
 
-export type ServerMode = 'local' | 'cloud';
+export type { ServerMode };
 
 interface AuthSessionContextValue {
   user: AuthUser | null;
@@ -33,19 +34,6 @@ interface AuthSessionContextValue {
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
-
-// API base URL for split-host deployments (e.g. ant.crosstoken.io → ant-server.crosstoken.io)
-// Empty string allows same-site relative URLs for single-origin deployments.
-const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
-const API_BASE = `${RAW_API_BASE}/api`;
-
-// Mirrors ant-ui's env discipline (`VITE_CLOUD_BACKEND_BASE` empty ⇒ local-mode
-// dev, set ⇒ cloud build). On the marketing surface there is no BE round-trip
-// available in dev (no Vite-style proxy), so we treat an empty backend base as
-// the local-mode build signal and short-circuit auth — the BE will already be
-// returning `local@local` if a curious caller reaches it, so this is purely
-// FE plumbing.
-const SERVER_MODE: ServerMode = RAW_API_BASE === '' ? 'local' : 'cloud';
 
 const LOCAL_USER: AuthUser = {
   email: 'local@local',
