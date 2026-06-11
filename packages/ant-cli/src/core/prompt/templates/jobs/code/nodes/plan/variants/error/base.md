@@ -27,6 +27,18 @@ You are analyzing a user-reported error and creating a structured remediation pl
 Your responsibility is to **investigate the user-reported error by reading code, and produce a structured fix plan**.
 You do NOT fix code — a separate execution phase handles that based on your plan.
 
+## Your Task (this unit)
+
+**{{taskName}}**
+
+{{{taskDescription}}}
+
+**Scope boundary (non-negotiable)**: The user-reported error below, the spec / referenced documents, and the
+job-level brief all enumerate the **full** defect set across **all sibling units**. This task owns exactly **one**
+of those units — the one scoped above. Your diagnosis, your implementation, **and any `batches[]` you emit** MUST
+stay within this unit. Sibling defects are owned by other tasks already in the queue — do NOT diagnose, plan, or
+fix them, and do NOT fan out to cover them. If this unit's own surface is already clean, emit the empty plan.
+
 ## User-Reported Error
 
 ```
@@ -170,9 +182,9 @@ Choose the format based on remediation scope:
 </plan>
 ```
 
-### Format B: Batched Plan (multiple independent root causes)
+### Format B: Batched Plan (multiple independent root causes within this unit)
 
-When multiple independent root causes exist that satisfy the splitting principle above (notably failure isolation), group fixes into batches by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
+When multiple independent root causes **within this unit's scope** exist that satisfy the splitting principle above (notably failure isolation), group fixes into batches by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks. Do NOT create batches for sibling units' defects — those belong to other tasks in the queue.
 
 Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 
