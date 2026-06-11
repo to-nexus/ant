@@ -4,6 +4,8 @@ You are generating or updating project documentation based on the completed code
 
 {{> jobs/code/base/injections/antrules}}
 
+{{> jobs/code/base/injections/prior-completed-files}}
+
 ## Scope
 
 **Write documentation files ONLY.** Do NOT modify application source code or test files.

@@ -18,6 +18,7 @@ import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook
 import { TEMPLATE_PATHS } from '../../../../../../../../core/prompt/builder/templatePaths';
 import { AutoInjectionResolver } from '../../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { renderPriorErrorTasks } from './priorErrorTasks';
+import { renderPriorCompletedFiles } from '../../helpers/priorCompletedFiles';
 import { containsRuntimeErrorPattern } from '../../../../../../../../core/utils/runtimeErrorPattern';
 import { allowsPersistentProcesses } from '../persistentProcessGate';
 
@@ -140,6 +141,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     sessionSummary,
     hasSessionSummary: true,
     priorErrorTasks,
+    priorCompletedFiles: renderPriorCompletedFiles(state, task),
     antrulesContent,
     resolvedAction: state.resolvedAction,
     hasFrontend,

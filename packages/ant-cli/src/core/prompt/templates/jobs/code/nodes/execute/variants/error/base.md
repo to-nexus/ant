@@ -10,6 +10,8 @@ You are fixing errors based on a remediation plan that analyzed user-reported er
 
 {{> jobs/code/base/injections/workspace-dep-snapshot}}
 
+{{> jobs/code/base/injections/prior-completed-files}}
+
 ## PATH CONVENTION (feature root)
 
 **All paths are relative to the feature root.**
