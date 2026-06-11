@@ -164,6 +164,17 @@ async function recoverOrphanedRunningJobs(
 
       // SSOT — pauseJob handles cleanupJobState + updateJobStatus('paused')
       // while preserving Redis state so `/resume` can restart the job.
+      //
+      // KNOWN GAP (grim-padding-grove RCA, deferred): unlike the `/stop` route
+      // and the stalled handlers, this path never ACQUIRES the poison lock
+      // (`ant:job-poisoned:{id}`) before pausing — `pauseJob` only releases it.
+      // During a rolling redeploy a worker child can still be alive on a
+      // not-yet-drained pod; with no poison flag its un-gated `onCheckpoint`
+      // (code/graph.ts) re-writes `state.runningTasks` UNMARKED after cleanup,
+      // clobbering this projection. The read-side net in
+      // KanbanService.buildSessionKanbanData makes the UX correct anyway.
+      // Candidate fix (needs deploy-ordering validation): acquire the poison
+      // lock here before pauseJob, mirroring the stalled handler.
       await pauseJob(
         { cleanupJobState: deps.cleanupJobState },
         {

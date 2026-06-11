@@ -54,6 +54,7 @@ import type {
   ChatChoiceResolvedLine,
   PendingCardSnapshot,
   LogJobType,
+  KanbanData,
 } from '@ant/shared';
 import type { FileStats } from '@/domain/models/chat';
 
@@ -753,4 +754,66 @@ export function getPendingChoice(turns: Turn[]): PendingChoiceInfo {
     }
   }
   return { has: false, turnIndex: null };
+}
+
+/**
+ * Resume-affordance safety net (grim-padding-grove RCA).
+ *
+ * The cancelled/resume card is normally a durable `choice_presented` line in
+ * chat.jsonl, appended by the first pause's `cleanupJobState`. A cross-pod
+ * finalize race (StaleJobRecovery pausing a job whose worker child is still
+ * alive) can leave a job persisted as `paused + canResume:true` WITHOUT that
+ * line ever landing — so the chat log has no card and the user has no way to
+ * resume on reconnect, even though the polled kanban already carries the
+ * resumable interruption.
+ *
+ * When the kanban carries a resumable, undismissed interruption and NO durable
+ * cancelled card already exists for that job, synthesize a `choice_presented`
+ * line so it renders through the existing `CancelledVariant` + resume path.
+ * Returns null (no synthesis) when the job is running, the interruption was
+ * dismissed/non-resumable, or a durable cancelled card already exists — so the
+ * synthetic card never double-renders the real one.
+ */
+export function selectResumeFallbackCard(
+  turns: Turn[],
+  kanban: KanbanData | null | undefined,
+  isRunning: boolean,
+  dismissedInterruptTimestamp: string | null | undefined,
+): ChatChoicePresentedLine | null {
+  const interruption = kanban?.interruption;
+  const jobId = kanban?.jobId;
+  if (!jobId || isRunning) return null;
+  if (!interruption || interruption.canResume !== true) return null;
+  if (interruption.timestamp === dismissedInterruptTimestamp) return null;
+
+  // Dedup: a durable cancelled card for this job already renders via `turns`.
+  for (const turn of turns) {
+    for (const section of turn.sections) {
+      for (const item of section.items) {
+        if (
+          item.kind === 'choice' &&
+          item.presented.cardType === 'cancelled' &&
+          item.presented.jobId === jobId
+        ) {
+          return null;
+        }
+      }
+    }
+  }
+
+  const jobType = (kanban as { jobType?: LogJobType }).jobType ?? 'code';
+  return {
+    type: 'choice_presented',
+    ts: interruption.timestamp,
+    jobId,
+    turnId: `resume-fallback:${jobId}`,
+    jobType,
+    cardId: `resume-fallback:${jobId}:${interruption.timestamp}`,
+    cardType: 'cancelled',
+    payload: {
+      jobId,
+      reason: interruption.reason,
+      originalType: jobType,
+    },
+  };
 }
