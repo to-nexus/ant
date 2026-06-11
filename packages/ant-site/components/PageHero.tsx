@@ -60,7 +60,7 @@ export function PageHero({ title, highlight, trailing, description, accent = 'pu
             {highlight && (
               <>
                 {' '}
-                <span className="text-gradient" style={{ background: ACCENT_GRADIENT[accent] }}>
+                <span className="text-gradient" style={{ backgroundImage: ACCENT_GRADIENT[accent] }}>
                   {highlight}
                 </span>
               </>

@@ -1,14 +1,12 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Check, Server } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import type { PlanInfo, CreditPackageInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
 import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
-import { CLOUD_SITE_URL } from '@/lib/links';
 import { GlassCard } from '@/components/aurora/GlassCard';
 import { AuroraButton } from '@/components/aurora/AuroraButton';
-import { IconOrb } from '@/components/aurora/IconOrb';
 
 // Presentation-only: which card carries the "Most popular" ribbon. This is
 // marketing chrome, not pricing — the prices/credits/tiers themselves come
@@ -128,28 +126,14 @@ function TopUpStrip({ packages }: { packages: CreditPackageInfo[] }) {
   );
 }
 
-function SelfHostFallback() {
+// Self-host is mentioned only as a brief one-line note — cloud pricing is the
+// primary content. No card, no link-out.
+function SelfHostNote() {
   const { t } = useTranslation('site');
   return (
-    <div className="max-w-xl mx-auto">
-      <GlassCard padding="xl" glow>
-        <div className="text-center flex flex-col items-center">
-          <IconOrb tone="violet" size={52} style={{ marginBottom: 18 }}>
-            <Server className="w-6 h-6" />
-          </IconOrb>
-          <h3 className="text-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8 }}>
-            {t('pricing.selfHost.title')}
-          </h3>
-          <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)', marginBottom: 24 }}>
-            {t('pricing.selfHost.desc')}
-          </p>
-          <AuroraButton href={`${CLOUD_SITE_URL}/cloud#pricing`} external variant="secondary">
-            {t('pricing.selfHost.cloudLinkLabel')}
-            <ArrowRight className="w-4 h-4" />
-          </AuroraButton>
-        </div>
-      </GlassCard>
-    </div>
+    <p className="text-center mt-10" style={{ fontSize: 13, color: 'var(--text-4)' }}>
+      {t('pricing.selfHostNote')}
+    </p>
   );
 }
 
@@ -191,17 +175,17 @@ export function PricingTable() {
               ))}
             </div>
             <TopUpStrip packages={state.catalog.creditPackages} />
+            <SelfHostNote />
           </>
         )}
 
-        {state.status === 'self-host' && <SelfHostFallback />}
-
-        {state.status === 'error' && (
+        {state.status === 'unavailable' && (
           <div className="max-w-md mx-auto text-center">
             <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 16 }}>{t('pricing.error')}</p>
             <AuroraButton onClick={state.retry} variant="secondary">
               {t('pricing.retry')}
             </AuroraButton>
+            <SelfHostNote />
           </div>
         )}
       </div>

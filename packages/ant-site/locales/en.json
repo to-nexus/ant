@@ -320,11 +320,7 @@
         ]
       }
     },
-    "selfHost": {
-      "title": "Self-host is free forever",
-      "desc": "This build runs in local mode — no managed cloud, no metering. Bring your own LLM key and run all four Ant processes on your own machine.",
-      "cloudLinkLabel": "See cloud pricing"
-    }
+    "selfHostNote": "Prefer to self-host? The OSS build is free forever — bring your own LLM key and run all four Ant processes on your own machine."
   },
   "figma": {
     "heroTitle1": "Figma designs,",
