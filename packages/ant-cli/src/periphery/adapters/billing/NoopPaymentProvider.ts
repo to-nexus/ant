@@ -6,11 +6,10 @@ import type {
 } from '../../../core/ports/paymentProvider';
 
 /**
- * No-op `PaymentProviderPort` used when `ANT_BILLING_ENABLED=false`.
- *
- * Every operation reports an error outcome — purchasing/subscribing is not a
- * feature in OSS / local. The billing routes are unregistered when disabled, so
- * this is only a defensive backstop; it never charges or grants.
+ * No-op `PaymentProviderPort` — the dormant fallback the billing seam selects
+ * when `isBillingEnabled()` is false. Billing is always-on at this stage, so
+ * this is currently unused; retained for the future `@ant/cloud` extraction.
+ * Every operation reports an error outcome — it never charges or grants.
  */
 export class NoopPaymentProvider implements PaymentProviderPort {
   async purchaseCredits(_req: PurchaseRequest): Promise<PurchaseOutcome> {

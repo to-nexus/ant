@@ -40,7 +40,9 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     systemConfigStatus: 'idle',
     serverMode: initialAsyncFields<ServerMode>(),
     localBackendPort,
-    billingEnabled: false,
+    // Billing is always-on at this stage; default true so the surface shows on
+    // first paint (BE confirms via /system/config and never flips it off).
+    billingEnabled: true,
 
     // ==================
     // Actions

@@ -1,40 +1,41 @@
 /**
- * Cloud-capability seam — `ANT_BILLING_ENABLED` gate (OSS / local off).
+ * Billing seam — always-on at this stage + dormant no-op fallback.
  *
- * Locks: with the flag off the factory hands out no-op adapters (no metering,
- * no charges) and `/system/config` reports `capabilities.billing = false`; with
- * it on the real Redis/Mock adapters are constructed. Mirrors the vectorDb
- * capability gate.
+ * Locks: `isBillingEnabled()` is unconditionally true (not env-controlled), so
+ * the factory wires the real adapters and `/billing/*` is registered. The
+ * `Noop*` adapters are retained as the dormant fallback for the future
+ * `@ant/cloud` extraction and are exercised here directly.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { isBillingEnabled } from '../../src/core/config/billingCapability';
 import { NoopCreditLedger } from '../../src/periphery/adapters/billing/NoopCreditLedger';
 import { NoopPaymentProvider } from '../../src/periphery/adapters/billing/NoopPaymentProvider';
 
-afterEach(() => {
-  delete process.env.ANT_BILLING_ENABLED;
-});
-
 describe('isBillingEnabled', () => {
-  it('defaults to false (OSS / local) when unset', () => {
-    delete process.env.ANT_BILLING_ENABLED;
-    expect(isBillingEnabled()).toBe(false);
-  });
-
-  it('is true only for truthy values', () => {
-    for (const v of ['1', 'true', 'yes', 'on', 'TRUE']) {
-      process.env.ANT_BILLING_ENABLED = v;
-      expect(isBillingEnabled()).toBe(true);
-    }
-    for (const v of ['0', 'false', 'no', '']) {
-      process.env.ANT_BILLING_ENABLED = v;
-      expect(isBillingEnabled()).toBe(false);
+  it('is always true at this stage, regardless of env / server mode', () => {
+    const savedBilling = process.env.ANT_BILLING_ENABLED;
+    const savedMode = process.env.ANT_SERVER_MODE;
+    try {
+      for (const billing of [undefined, 'false', '0', 'true']) {
+        for (const mode of [undefined, 'local', 'cloud']) {
+          if (billing === undefined) delete process.env.ANT_BILLING_ENABLED;
+          else process.env.ANT_BILLING_ENABLED = billing;
+          if (mode === undefined) delete process.env.ANT_SERVER_MODE;
+          else process.env.ANT_SERVER_MODE = mode;
+          expect(isBillingEnabled()).toBe(true);
+        }
+      }
+    } finally {
+      if (savedBilling === undefined) delete process.env.ANT_BILLING_ENABLED;
+      else process.env.ANT_BILLING_ENABLED = savedBilling;
+      if (savedMode === undefined) delete process.env.ANT_SERVER_MODE;
+      else process.env.ANT_SERVER_MODE = savedMode;
     }
   });
 });
 
-describe('NoopCreditLedger (billing off)', () => {
+describe('NoopCreditLedger (dormant fallback)', () => {
   it('reports a free/zero balance and never charges', async () => {
     const ledger = new NoopCreditLedger();
     const snap = await ledger.getBalance();
@@ -49,7 +50,7 @@ describe('NoopCreditLedger (billing off)', () => {
   });
 });
 
-describe('NoopPaymentProvider (billing off)', () => {
+describe('NoopPaymentProvider (dormant fallback)', () => {
   it('never approves a charge', async () => {
     const p = new NoopPaymentProvider();
     expect((await p.purchaseCredits({} as any)).ok).toBe(false);
