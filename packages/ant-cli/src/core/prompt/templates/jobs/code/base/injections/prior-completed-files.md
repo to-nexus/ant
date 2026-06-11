@@ -11,7 +11,7 @@
 - This list is additive context, not your task scope. It does not expand what you must build — it constrains you from duplicating what exists.
 
 {{#each priorCompletedFiles}}
-- **{{this.name}}**{{#if this.band}} — {{this.band}}{{/if}}
+- **{{this.name}}** — {{this.type}}{{#if this.band}} · {{this.band}}{{/if}}
 {{#each this.files}}
   - {{this}}
 {{/each}}
