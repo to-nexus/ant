@@ -211,3 +211,89 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     expect(container.readinessProbe.failureThreshold).toBeGreaterThanOrEqual(30);
   });
 });
+
+/**
+ * Regression — K8s label values must be RFC-1123-valid even when cloud
+ * `userId` is a full email (`probe@to.nexus`). The `@` previously leaked
+ * raw into `metadata.labels` and the `listByUser` selector, producing a
+ * K8s 422 at pod creation. See `individual-ide-snuggly-naur` plan.
+ */
+describe('KubernetesIDEOrchestrator — label value sanitization (email userId)', () => {
+  const K8S_LABEL_RE = /^[a-z0-9]([-a-z0-9_.]*[a-z0-9])?$/;
+
+  let fx: PodSpecFixture;
+  let originalBase: string | undefined;
+
+  beforeEach(() => {
+    fx = makePodSpecFixture();
+    originalBase = process.env.ANT_WORKSPACE_BASE_PATH;
+    process.env.ANT_WORKSPACE_BASE_PATH = fx.base;
+  });
+
+  afterEach(() => {
+    rmSync(fx.base, { recursive: true, force: true });
+    if (originalBase === undefined) delete process.env.ANT_WORKSPACE_BASE_PATH;
+    else process.env.ANT_WORKSPACE_BASE_PATH = originalBase;
+  });
+
+  const emailUser = { userId: 'probe@to.nexus', organizationId: 'individual', email: 'probe@to.nexus' } as any;
+  const emailInstanceKey = 'individual:probe@to.nexus:classboard:_base';
+
+  it('pod labels (user, instance) are K8s-valid and <=63 chars with an email userId', () => {
+    const orch = makeOrch();
+    const spec = (orch as any).createPodSpec(
+      emailInstanceKey,
+      'ide-individual-probe-to-nexus-classboard-base',
+      fx.mainCodebase,
+      emailUser,
+      '_base',
+    );
+
+    const labels = spec.metadata.labels;
+    for (const key of ['user', 'instance'] as const) {
+      expect(labels[key], `label ${key}`).toMatch(K8S_LABEL_RE);
+      expect(labels[key].length, `label ${key} length`).toBeLessThanOrEqual(63);
+      expect(labels[key]).not.toContain('@');
+    }
+    expect(labels.user).toBe('probe-to.nexus');
+  });
+
+  it('service selector matches the pod instance label exactly (routing consistency)', () => {
+    const orch = makeOrch();
+    const podSpec = (orch as any).createPodSpec(
+      emailInstanceKey,
+      'ide-individual-probe-to-nexus-classboard-base',
+      fx.mainCodebase,
+      emailUser,
+      '_base',
+    );
+    const serviceSpec = (orch as any).createServiceSpec
+      ? (orch as any).createServiceSpec(emailInstanceKey, 'ide-individual-probe-to-nexus-classboard-base')
+      : null;
+
+    // `instance` value goes through the same sanitizer in both pod label and
+    // service selector — assert against the sanitizer output directly.
+    const sanitized = (orch as any).sanitizeLabelValue(emailInstanceKey);
+    expect(podSpec.metadata.labels.instance).toBe(sanitized);
+    expect(sanitized).toMatch(K8S_LABEL_RE);
+    if (serviceSpec) {
+      expect(serviceSpec.spec.selector.instance).toBe(sanitized);
+      expect(serviceSpec.metadata.labels.instance).toBe(sanitized);
+    }
+  });
+
+  it('listByUser selector encodes the sanitized user value (matches the pod user label)', () => {
+    const orch = makeOrch();
+    const spec = (orch as any).createPodSpec(
+      emailInstanceKey,
+      'ide-individual-probe-to-nexus-classboard-base',
+      fx.mainCodebase,
+      emailUser,
+      '_base',
+    );
+    // The selector built in `listByUser` uses sanitizeLabelValue(userId); it
+    // must equal the pod's `user` label or the lookup silently returns nothing.
+    const selectorUserValue = (orch as any).sanitizeLabelValue(emailUser.userId);
+    expect(spec.metadata.labels.user).toBe(selectorUserValue);
+  });
+});

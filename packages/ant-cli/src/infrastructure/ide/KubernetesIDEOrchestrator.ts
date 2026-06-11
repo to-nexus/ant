@@ -201,6 +201,19 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
+   * Sanitize a value for use as a K8s label value (RFC 1123: <=63 chars,
+   * [a-z0-9-_.], must start/end alphanumeric). Cloud userId is a full email,
+   * so the raw `@` must be stripped here — the raw key lives in the annotation.
+   */
+  private sanitizeLabelValue(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '-')
+      .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '')
+      .slice(0, 63);
+  }
+
+  /**
    * Make K8s API request using https module with ServiceAccount CA certificate
    */
   private async k8sRequest<T>(
@@ -367,8 +380,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         namespace: this.options.namespace,
         labels: {
           'app': 'ant-ide',
-          'instance': instanceKey.replace(/:/g, '-'),
-          'user': userContext.userId
+          'instance': this.sanitizeLabelValue(instanceKey),
+          'user': this.sanitizeLabelValue(userContext.userId)
         },
         annotations: {
           'ant.example.com/instance-key': instanceKey,
@@ -526,13 +539,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         namespace: this.options.namespace,
         labels: {
           'app': 'ant-ide',
-          'instance': instanceKey.replace(/:/g, '-')
+          'instance': this.sanitizeLabelValue(instanceKey)
         }
       },
       spec: {
         selector: {
           'app': 'ant-ide',
-          'instance': instanceKey.replace(/:/g, '-')
+          'instance': this.sanitizeLabelValue(instanceKey)
         },
         ports: [{ port: 3000, targetPort: 3000 }],
         type: 'ClusterIP'
@@ -1200,7 +1213,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async listByUser(userContext: UserContext): Promise<IDEInstance[]> {
     try {
       const response = await this.k8sRequest<{ items: K8sPod[] }>(
-        `/api/v1/namespaces/${this.options.namespace}/pods?labelSelector=app=ant-ide,user=${userContext.userId}`
+        `/api/v1/namespaces/${this.options.namespace}/pods?labelSelector=app=ant-ide,user=${this.sanitizeLabelValue(userContext.userId)}`
       );
 
       return response.items.map(pod => {
