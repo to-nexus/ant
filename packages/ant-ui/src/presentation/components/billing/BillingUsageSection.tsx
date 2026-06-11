@@ -12,7 +12,6 @@
 
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/domain/store';
 import { SectionCard } from '../ConfigEditor/aurora';
 import { Spinner } from '../common/async';
@@ -21,7 +20,7 @@ import { selectOrgDisplayLabel, selectActiveUserRole, selectUserOrgKind } from '
 
 export function BillingUsageSection() {
   const { t } = useTranslation('config');
-  const navigate = useNavigate();
+  const openMainPanelTab = useStore((s) => s.openMainPanelTab);
   const balance = useStore((s) => s.billingBalance);
   const refreshBalance = useStore((s) => s.refreshBalance);
   const orgLabel = useStore(selectOrgDisplayLabel);
@@ -107,7 +106,7 @@ export function BillingUsageSection() {
         {/* Detail → Payment Center (plan management, top-up, activity all live there) */}
         <div className="flex">
           <button
-            onClick={() => navigate('/billing')}
+            onClick={() => openMainPanelTab('billing')}
             className="text-xs rounded px-3 py-1.5 transition-colors"
             style={{ background: 'var(--violet-500)', color: 'white', border: '1px solid var(--violet-500)' }}
           >

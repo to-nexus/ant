@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { CreditIcon } from '@/presentation/components/billing/CreditIcon';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
@@ -50,7 +49,6 @@ export function AppNavBar({}: AppNavBarProps) {
   const refreshUsage = useStore((state) => state.refreshUsage);
   const effectiveCredits = useStore(selectEffectiveCredits);
   const liveJobCredits = useStore(selectLiveJobCreditsConsumed);
-  const navigate = useNavigate();
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
@@ -489,7 +487,7 @@ export function AppNavBar({}: AppNavBarProps) {
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-surface-2)'; }}
                       >
                         <CreditIcon size={13} className="mr-1" />
-                        {formatCredits(effectiveCredits)} cr
+                        {formatCredits(effectiveCredits)}
                       </button>
 
                       {showCreditMenu && (
@@ -506,8 +504,10 @@ export function AppNavBar({}: AppNavBarProps) {
                             <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
                               {t('billing.creditBalance', 'Credit balance')}
                             </div>
-                            <div className="text-xl font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
-                              {formatCredits(effectiveCredits)} cr
+                            <div className="flex items-center gap-1.5 text-xl font-mono font-semibold" style={{ color: 'var(--text-1)' }}>
+                              <CreditIcon size={18} gradient />
+                              {formatCredits(effectiveCredits)}
+                              <span className="text-xs font-sans font-medium tracking-wide" style={{ color: 'var(--text-3)' }}>CREDIT</span>
                             </div>
                             <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
                               {billingBalance.data.tier} · {t('billing.includedMonthly', '{{n}}/mo', { n: formatCredits(billingBalance.data.includedCreditsMonthly) })}
@@ -547,7 +547,7 @@ export function AppNavBar({}: AppNavBarProps) {
                           <button
                             onClick={() => {
                               setShowCreditMenu(false);
-                              navigate('/billing');
+                              openMainPanelTab('billing');
                             }}
                             className="w-full px-4 py-1.5 text-left text-xs"
                             style={{ color: 'var(--text-2)' }}

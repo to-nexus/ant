@@ -1,10 +1,12 @@
 /**
- * PaymentCenterPage — the deep-linkable billing surface (`/app/billing`).
+ * BillingCenterPanel — the billing surface rendered as a main-panel tab.
  *
- * One page, clearly-separated sections: a hero balance band, Subscription
+ * One panel, clearly-separated sections: a hero balance band, Subscription
  * (recurring plans), Pay-as-you-go credits (one-time top-up), Payment method,
- * and Usage activity. Entry is the navbar credit badge; ant-site plan CTAs deep-link
- * here. Aurora design system — tokens only (see styles/aurora-tokens.css).
+ * and Usage activity. Entry is the navbar credit badge / credit-recharge CTAs
+ * (all via `openMainPanelTab('billing')`); the `/app/billing` deep-link
+ * redirects into this tab. Aurora design system — tokens only (see
+ * styles/aurora-tokens.css).
  *
  * Reuses the existing checkout flows (PlanCheckoutModal / CreditPurchaseModal →
  * PaymentModal) so the card form stays a single source of truth; the custom
@@ -12,9 +14,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Coins, Sparkles, CreditCard, Receipt } from 'lucide-react';
+import { Coins, Sparkles, CreditCard, Receipt } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { AsyncBoundary } from '@/presentation/components/common/async';
 import { useAsyncResource } from '@/presentation/components/common/async/hooks/useAsyncResource';
@@ -29,9 +30,8 @@ import { CreditIcon } from '@/presentation/components/billing/CreditIcon';
 /** USD list price of one credit (purchase price; mirrors @ant/shared billing). */
 const USD_PER_CREDIT = 0.01;
 
-export function PaymentCenterPage() {
+export function BillingCenterPanel() {
   const { t } = useTranslation('config');
-  const navigate = useNavigate();
 
   const balance = useStore((s) => s.billingBalance);
   const catalog = useAsyncResource<import('@ant/shared').BillingCatalog>((s) => s.billingCatalog);
@@ -59,13 +59,13 @@ export function PaymentCenterPage() {
 
   return (
     <div
-      className="flex-1 overflow-y-auto spring-in"
+      className="relative flex-1 overflow-y-auto spring-in"
       style={{ background: 'var(--bg-canvas)' }}
     >
       {/* Decorative depth — a soft aurora glow behind the hero. */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-14 h-[420px] opacity-50"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[420px] opacity-50"
         style={{
           background:
             'radial-gradient(60% 100% at 30% 0%, oklch(64% 0.20 290 / 0.18) 0%, transparent 70%), radial-gradient(50% 90% at 80% 10%, oklch(66% 0.22 340 / 0.14) 0%, transparent 70%)',
@@ -74,26 +74,16 @@ export function PaymentCenterPage() {
 
       <div className="relative mx-auto w-full max-w-[1040px] px-6 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
-            title={t('billing.back', 'Back')}
+        <div>
+          <h1
+            className="text-2xl font-semibold leading-tight"
+            style={{ color: 'var(--text-1)', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}
           >
-            <ArrowLeft size={16} />
-          </button>
-          <div>
-            <h1
-              className="text-2xl font-semibold leading-tight"
-              style={{ color: 'var(--text-1)', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}
-            >
-              {t('billing.pageTitle', 'Billing & Credits')}
-            </h1>
-            <p className="text-sm" style={{ color: 'var(--text-3)' }}>
-              {t('billing.pageSubtitle', 'Manage your plan, credits, and usage.')}
-            </p>
-          </div>
+            {t('billing.pageTitle', 'Billing & Credits')}
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--text-3)' }}>
+            {t('billing.pageSubtitle', 'Manage your plan, credits, and usage.')}
+          </p>
         </div>
 
         {/* Hero balance band */}
@@ -317,17 +307,32 @@ function BuyCreditsSection({
             className="w-36 rounded-lg px-3 py-2 text-sm font-mono outline-none"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-1)' }}
           />
-          {/* Preset quick-picks */}
+          {/* Preset quick-picks — accumulate onto the current amount */}
           {[1000, 5000, 20000].map((n) => (
             <button
               key={n}
-              onClick={() => setAmount(String(n))}
+              onClick={() => {
+                const cur = Math.floor(Number(amount));
+                const base = Number.isFinite(cur) && cur > 0 ? cur : 0;
+                setAmount(String(base + n));
+              }}
               className="rounded-full px-3 py-1 text-xs transition-colors"
               style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', color: 'var(--text-2)' }}
             >
               +{formatCredits(n)}
             </button>
           ))}
+          <button
+            onClick={() => {
+              setAmount('');
+              setMsg(null);
+            }}
+            disabled={amount === ''}
+            className="rounded-full px-3 py-1 text-xs transition-colors enabled:hover:opacity-80 disabled:opacity-40"
+            style={{ background: 'transparent', border: '1px solid var(--border-1)', color: 'var(--text-3)' }}
+          >
+            {t('billing.reset', 'Reset')}
+          </button>
           <span className="text-sm" style={{ color: 'var(--text-3)' }}>
             {valid ? `≈ ${formatUsd(usd)}` : ''}
           </span>

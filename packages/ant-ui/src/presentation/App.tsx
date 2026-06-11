@@ -19,7 +19,6 @@ import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { QuickStart } from '@/presentation/pages/QuickStart';
-import { PaymentCenterPage } from '@/presentation/pages/PaymentCenter/PaymentCenterPage';
 import { ChevronRight } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { selectProjectsLoaded } from '@/domain/store/selectors';
@@ -126,6 +125,16 @@ function AppShell() {
       unsub();
     };
   }, []);
+
+  // ✅ Billing deep-link (`/app/billing`, used by ant-site plan CTAs) — open the
+  // billing main-panel tab and redirect into the app shell. Billing is no longer
+  // a standalone page; it lives as a tab like every other secondary surface.
+  useEffect(() => {
+    if (location.pathname === '/billing') {
+      useStore.getState().openMainPanelTab('billing');
+      navigate('/', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   // ✅ Handle Google OAuth callback (always relevant regardless of BE mode —
   // the URL param itself is the trigger; if a callback landed in a local-mode
@@ -525,26 +534,6 @@ function AppShell() {
             <div className="flex-1 flex items-center justify-center">
               <Spinner size="lg" tone="muted" />
             </div>
-          </div>
-        </AlertModalProvider>
-      </ToastProvider>
-    );
-  }
-
-  // ✅ Payment Center — a deep-linkable routed page (`/app/billing`) rendered as
-  // a full-height view inside the shell (AppNavBar stays mounted). Entry is the
-  // navbar credit badge; ant-site plan CTAs deep-link here. Reachable once the
-  // user is authed (the boot gates above still take precedence).
-  if (location.pathname === '/billing') {
-    return (
-      <ToastProvider>
-        <AlertModalProvider>
-          <div
-            className="h-screen flex flex-col transition-colors"
-            style={{ background: 'var(--bg-canvas)' }}
-          >
-            <AppNavBar />
-            <PaymentCenterPage />
           </div>
         </AlertModalProvider>
       </ToastProvider>
