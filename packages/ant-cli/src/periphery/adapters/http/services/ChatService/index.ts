@@ -65,6 +65,49 @@ const COMPONENT = 'ChatService';
  */
 const DEFAULT_JOB_TYPE: LogJobType = 'code';
 
+/**
+ * Transient process-event line types. These are the high-volume progress
+ * trail (a single verification run emits thousands) — disposable on reload,
+ * unlike the conversation (`user_turn` / `assistant_message`) and the choice
+ * cards (`choice_*`), which are always kept.
+ */
+const SNAPSHOT_PROCESS_TYPES: ReadonlySet<ChatLine['type']> = new Set([
+  'chat_status',
+  'assistant_thinking',
+]);
+
+/**
+ * Cap on transient process events shipped in a single `chat_initial_state`
+ * snapshot. Conversation + choice lines are never capped, so the readable
+ * chat is fully preserved; only the older process trail of a long-lived turn
+ * is omitted from the reload payload (on-disk chat.jsonl keeps everything).
+ */
+const MAX_SNAPSHOT_PROCESS_EVENTS = 400;
+
+/**
+ * Keep every non-process line and the most-recent `MAX_SNAPSHOT_PROCESS_EVENTS`
+ * process lines, preserving chronological order. Input is assumed ascending by
+ * `ts` (chat.jsonl is append-only). No-op (returns the same array) when under
+ * the cap, so normal-sized chats are untouched.
+ */
+export function capSnapshotProcessEvents(lines: ChatLine[]): ChatLine[] {
+  let processCount = 0;
+  for (const l of lines) if (SNAPSHOT_PROCESS_TYPES.has(l.type)) processCount++;
+  if (processCount <= MAX_SNAPSHOT_PROCESS_EVENTS) return lines;
+
+  // Drop the oldest (processCount - cap) process lines; keep all others.
+  let toDrop = processCount - MAX_SNAPSHOT_PROCESS_EVENTS;
+  const out: ChatLine[] = [];
+  for (const l of lines) {
+    if (toDrop > 0 && SNAPSHOT_PROCESS_TYPES.has(l.type)) {
+      toDrop--;
+      continue;
+    }
+    out.push(l);
+  }
+  return out;
+}
+
 export class ChatService {
   private readonly broadcaster: MessageBroadcaster;
   private readonly persistence: SessionPersistence;
@@ -820,7 +863,16 @@ export class ChatService {
   // Reads (FE store hydration via SSE chat_initial_state)
   // ═══════════════════════════════════════════════════════════════════
 
-  /** Load every non-collapsed chat.jsonl line for the feature. */
+  /**
+   * Load chat.jsonl lines for the feature, shaping the `chat_initial_state`
+   * snapshot: every conversation line is kept; the transient process trail
+   * (`chat_status` / `assistant_thinking`) is capped to the most recent
+   * `MAX_SNAPSHOT_PROCESS_EVENTS`. This bounds the snapshot a single long-
+   * lived turn would otherwise blow up to (a verification run alone emits
+   * thousands of status cards), which is what makes the chat virtualizer
+   * thrash on reload. Read-only shaping — chat.jsonl on disk is untouched,
+   * and live status/thinking still stream via the separate broadcast path.
+   */
   async loadEventsAsync(
     projectId: string,
     featureName: string,
@@ -830,7 +882,8 @@ export class ChatService {
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     if (!adapter) return [];
     try {
-      return await adapter.loadAllChat();
+      const all = await adapter.loadAllChat();
+      return capSnapshotProcessEvents(all);
     } catch (err) {
       logger.warn(
         `loadAllChat failed for ${projectId}/${featureName}`,
