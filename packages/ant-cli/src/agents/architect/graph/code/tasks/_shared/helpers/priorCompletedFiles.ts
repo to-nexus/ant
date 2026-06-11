@@ -27,6 +27,8 @@ import type { CodeTask } from '../../../../../types/task';
 export interface PriorCompletedTaskFiles {
   /** task.name */
   name: string;
+  /** task.type (setup | design-system | ui | feature | error | …) — what KIND of work produced these files */
+  type: string;
   /** FeatureTask band ('foundation' | 'platform' | 'integration'), else undefined — display label only */
   band?: string;
   /** feature-relative paths this task created or modified */
@@ -51,6 +53,7 @@ export function renderPriorCompletedFiles(
     if (files.length === 0) continue;
     entries.push({
       name: t.name,
+      type: t.type,
       // band lives only on FeatureTask; read positionally to stay task-type-blind.
       band: (t as { band?: string }).band,
       files,
