@@ -31,6 +31,13 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.ResizeObserver === 'f
           this.rafId = null;
           const flushed = Array.from(this.latestByTarget.values());
           this.latestByTarget.clear();
+          // Never deliver an empty batch. Native ResizeObserver always fires
+          // with >=1 entry, so consumers (e.g. react-virtuoso's `entries[0].target`)
+          // assume non-empty. Our deferral can empty `latestByTarget` when every
+          // pending target is `unobserve`d between the native fire and this rAF
+          // (heavy mount/unmount churn on a large virtualized list) — flushing
+          // `[]` then crashes those consumers. Drop the no-op flush instead.
+          if (flushed.length === 0) return;
           cb(flushed, this as unknown as ResizeObserver);
         });
       });
