@@ -25,10 +25,10 @@ You do **NOT** apply fixes yourself — each `batches[]` entry you emit becomes 
 
 {{> jobs/code/shared/task-split-rubric }}
 
-For verification, independent root causes are the natural units — they typically satisfy failure isolation (one cause's fix not blocking others). A single-root-cause investigation belongs in a flat plan and proceeds without sub-task fan-out.
+**Verification override of the rubric's bundle outcome**: because verification has no execute phase and never edits code itself, the rubric's "bundle into one unit" outcome maps to a single `batches[]` entry — never to a flat `implementation` block, which does not exist for this task. Independent root causes that satisfy failure isolation become separate batches; a coherent root cause spanning many files stays one batch (rubric grain). Every root cause — including a lone one — is a `batches[]` entry.
 
 **Output discipline**:
-- When you decide to split per the principle above, place every `modify` / `create` / `delete` entry inside a `batches[]` group keyed by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
+- Group every `modify` / `create` / `delete` entry inside a `batches[]` group keyed by root cause. The system does NOT auto-convert flat plans — only your explicit `batches[]` produces sub-tasks.
 - A 0-error cycle MUST emit an empty plan (`{}` or no `<plan>` block) plus `<done>true</done>`. Do not fabricate a token plan to "stay safe".
 - Do not try to apply a fix yourself. There is no execute phase for this task — the system spawns one error sub-task per `batches[]` entry and re-queues this verification task to re-run gates after they finish.
 
@@ -155,53 +155,11 @@ Output the structured plan.
 
 ## Output Format
 
-Choose the format based on remediation scope:
+A verification plan resolves to exactly ONE of two shapes: the **Fix Plan** (`batches[]`, ≥ 1 batch) when any error remains, or the **No-errors sentinel** when every gate is observed clean. There is no flat `implementation` fix shape — verification never edits code itself.
 
-### Format A: Single Plan (single root cause)
+### Fix Plan (`batches[]` — one batch per root cause)
 
-```
-<plan>
-{
-  "task": {
-    "id": "{{taskId}}",
-    "goal": "Fix N build errors (M root causes)"
-  },
-  "diagnostics": {
-    "command": "[build/test command that was run]",
-    "totalErrors": N,
-    "rootCauses": [
-      {
-        "cause": "[description of root cause]",
-        "affectedFiles": ["file1.ts", "file2.ts"],
-        "errorCount": N
-      }
-    ]
-  },
-  "implementation": {
-    "modify": [
-      {
-        "target": "[file path]",
-        "action": "[what to fix]",
-        "changes": ["[specific change 1]", "[specific change 2]"],
-        "rootCause": "[which root cause this addresses]"
-      }
-    ],
-    "create": [],
-    "delete": []
-  },
-  "rootCauseSelfCheck": {
-    "isPatternAcrossFiles": [true|false — is the same symptom repeating in ≥ 5 files?],
-    "upstreamAlternative": "[one-line description of the single upstream change that would make all N patches unnecessary, or null]",
-    "whyPatchChosenOverUpstream": "[one-line justification, or null if mode=upstream]",
-    "mode": "patch|upstream|refactor"
-  }
-}
-</plan>
-```
-
-### Format B: Batched Plan (multiple independent root causes)
-
-When multiple independent root causes exist that satisfy the splitting principle above (notably failure isolation — each cause's fix can succeed or fail independently), group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
+A single root cause becomes exactly ONE batch; N independent root causes that satisfy the splitting principle above (notably failure isolation — each cause's fix can succeed or fail independently) become N batches. Each batch becomes an independent error sub-task executed separately.
 
 Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 

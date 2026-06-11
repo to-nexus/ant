@@ -72,6 +72,7 @@
 
 **Constraints**:
 - Do NOT end the plan response without emitting `<plan>...</plan>`. Emitting `<done>`, a bare explanation, or empty output is a protocol violation and causes the task to loop until the retry terminator fires.
+- A verification plan resolves to exactly one of: the no-errors sentinel, OR a `batches[]` plan with ≥ 1 batch. A non-empty flat `implementation` plan is a protocol violation — this task has no execute phase, so the system cannot route a flat plan and it leaks into an unbounded inline apply loop. Every remaining root cause, even a single one, MUST be a `batches[]` entry.
 - If your diagnostic observations conclude that no remediation is needed, emit the no-errors sentinel plan (see the empty-plan template in the base prompt) — NOT an empty response.
 - If you are uncertain whether remediation is needed, run one more verification command to collect evidence. Do NOT default to "no response" when uncertain.
 
