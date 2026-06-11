@@ -20,3 +20,17 @@ export const API_BASE = `${RAW_API_BASE}/api`;
 
 /** Local builds short-circuit any backend round-trip; cloud builds fetch. */
 export const SERVER_MODE: ServerMode = RAW_API_BASE === '' ? 'local' : 'cloud';
+
+/**
+ * Canonical managed-cloud API origin for the pricing catalog. Configured via
+ * `NEXT_PUBLIC_CLOUD_API_BASE` (no hardcoded origin) so the marketing site
+ * always shows real cloud prices — even in a local/self-host build — without
+ * baking an origin into the source. Falls back to `RAW_API_BASE` when unset.
+ */
+const RAW_CATALOG_API_BASE = process.env.NEXT_PUBLIC_CLOUD_API_BASE || RAW_API_BASE;
+
+/**
+ * Pricing-catalog fetch base. Prices stay server-sourced at runtime — never
+ * baked into the bundle.
+ */
+export const CATALOG_API_BASE = `${RAW_CATALOG_API_BASE}/api`;
