@@ -8,6 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, setLanguage, type SupportedLanguage } from '@/lib/i18n';
 import { useAuthSession, getAppEntryUrl, getSignInUrl } from '@/lib/AuthSessionProvider';
 import { GitHubStarsBadge } from '@/components/GitHubStarsBadge';
+import { BrandLogo } from '@/components/aurora/BrandLogo';
+import { AuroraButton } from '@/components/aurora/AuroraButton';
 import { DOCS_URL } from '@/lib/links';
 
 export function SiteNavBar() {
@@ -59,27 +61,38 @@ export function SiteNavBar() {
     setUserMenuOpen(false);
   };
 
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href.split('#')[0]));
 
   const changeLanguage = (lang: SupportedLanguage) => {
     setLanguage(lang);
     setLangOpen(false);
   };
 
+  const navLinkBase = 'px-3 py-2 rounded-lg text-sm font-medium transition-colors';
+  const popoverStyle = {
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-1)',
+    boxShadow: 'var(--shadow-lg)',
+  } as const;
+
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+      style={
         scrolled
-          ? 'bg-[#0a0e17]/80 backdrop-blur-xl shadow-lg shadow-black/20 border-b border-white/5'
-          : 'bg-transparent'
-      }`}
+          ? {
+              background: 'color-mix(in oklch, var(--bg-canvas) 78%, transparent)',
+              backdropFilter: 'blur(16px)',
+              borderBottom: '1px solid var(--border-1)',
+              boxShadow: 'var(--shadow-sm)',
+            }
+          : { background: 'transparent' }
+      }
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/logo.png" alt="ANT" className="w-8 h-8" />
-            <span className="text-lg font-display font-bold text-white tracking-tight">Ant</span>
+          <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
+            <BrandLogo size={30} wordSize={18} />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
@@ -90,7 +103,8 @@ export function SiteNavBar() {
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                  className={navLinkBase}
+                  style={{ color: 'var(--text-3)' }}
                 >
                   {item.label}
                 </a>
@@ -98,11 +112,12 @@ export function SiteNavBar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={navLinkBase}
+                  style={
                     isActive(item.href)
-                      ? 'text-white bg-white/10'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  }`}
+                      ? { color: 'var(--text-1)', background: 'var(--bg-surface)' }
+                      : { color: 'var(--text-3)' }
+                  }
                 >
                   {item.label}
                 </Link>
@@ -116,22 +131,24 @@ export function SiteNavBar() {
             <div className="relative" ref={langRef}>
               <button
                 onClick={() => setLangOpen(!langOpen)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-400 hover:text-white hover:bg-white/5 border border-white/10 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors"
+                style={{ color: 'var(--text-3)', border: '1px solid var(--border-1)' }}
               >
                 <Globe className="w-3.5 h-3.5" />
                 {LANGUAGE_LABELS[i18n.language as SupportedLanguage] ?? LANGUAGE_LABELS.ko}
               </button>
               {langOpen && (
-                <div className="absolute top-full right-0 mt-1 w-28 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
+                <div className="absolute top-full right-0 mt-2 w-28 rounded-lg py-1 z-50" style={popoverStyle}>
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <button
                       key={lang}
                       onClick={() => changeLanguage(lang)}
-                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                      className="w-full px-3 py-1.5 text-left text-sm transition-colors"
+                      style={
                         i18n.language === lang
-                          ? 'text-emerald-400 bg-white/5'
-                          : 'text-gray-300 hover:bg-white/5'
-                      }`}
+                          ? { color: 'var(--violet-300)', background: 'var(--bg-hover)' }
+                          : { color: 'var(--text-2)' }
+                      }
                     >
                       {LANGUAGE_LABELS[lang]}
                     </button>
@@ -141,37 +158,43 @@ export function SiteNavBar() {
             </div>
 
             {isLocalMode ? (
-              // Local-mode build mirrors ant-ui's LocalUserBadge — a static
-              // chip with no dropdown / sign-out. There is no remote session
-              // to manage, so the surface is informational only.
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                <Monitor className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-medium text-gray-400">Local</span>
-                <span className="text-xs font-semibold text-white">User</span>
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
+              >
+                <Monitor className="w-4 h-4" style={{ color: 'var(--violet-300)' }} />
+                <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>Local</span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>User</span>
               </div>
             ) : user ? (
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-[var(--bg-surface)]"
                 >
                   {user.picture ? (
                     <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
                   ) : (
-                    <User className="w-5 h-5 text-gray-400" />
+                    <User className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
                   )}
-                  <span className="text-xs text-gray-400 max-w-[120px] truncate">{user.name || user.email}</span>
+                  <span className="text-xs max-w-[120px] truncate" style={{ color: 'var(--text-3)' }}>
+                    {user.name || user.email}
+                  </span>
                 </button>
                 {userMenuOpen && (
-                  <div className="absolute top-full right-0 mt-1 w-52 bg-[#161b22] rounded-md shadow-lg border border-white/10 py-1 z-50">
-                    <div className="px-3 py-2 border-b border-white/5">
-                      <p className="text-xs font-medium text-white truncate">{user.name || user.email}</p>
-                      {user.name && <p className="text-[10px] text-gray-500 truncate">{user.email}</p>}
+                  <div className="absolute top-full right-0 mt-2 w-52 rounded-lg py-1 z-50" style={popoverStyle}>
+                    <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--border-1)' }}>
+                      <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>
+                        {user.name || user.email}
+                      </p>
+                      {user.name && (
+                        <p className="text-[10px] truncate" style={{ color: 'var(--text-4)' }}>{user.email}</p>
+                      )}
                     </div>
-                    <div className="border-t border-white/5 my-0.5" />
                     <button
                       onClick={handleSignOut}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-red-400 flex items-center gap-2 transition-colors"
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors hover:bg-[var(--bg-hover)]"
+                      style={{ color: 'var(--text-3)' }}
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       {t('nav.signOut')}
@@ -182,22 +205,21 @@ export function SiteNavBar() {
             ) : (
               <a
                 href={getSignInUrl(pathname)}
-                className="text-sm font-medium text-gray-300 hover:text-white transition-colors"
+                className="text-sm font-medium transition-colors"
+                style={{ color: 'var(--text-2)' }}
               >
                 {t('nav.signIn')}
               </a>
             )}
-            <a
-              href={getAppEntryUrl(user)}
-              className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-lg shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all"
-            >
+            <AuroraButton href={getAppEntryUrl(user)} external size="sm">
               {user ? t('nav.goToApp') : t('nav.getStarted')}
-            </a>
+            </AuroraButton>
           </div>
 
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 text-gray-400 hover:text-white"
+            className="md:hidden p-2"
+            style={{ color: 'var(--text-2)' }}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -205,7 +227,14 @@ export function SiteNavBar() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden bg-[#0a0e17]/95 backdrop-blur-xl border-t border-white/5">
+        <div
+          className="md:hidden"
+          style={{
+            background: 'color-mix(in oklch, var(--bg-canvas) 95%, transparent)',
+            backdropFilter: 'blur(16px)',
+            borderTop: '1px solid var(--border-1)',
+          }}
+        >
           <div className="px-4 py-4 space-y-1">
             {NAV_ITEMS.map((item) =>
               item.external ? (
@@ -215,7 +244,8 @@ export function SiteNavBar() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                  className="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  style={{ color: 'var(--text-3)' }}
                 >
                   {item.label}
                 </a>
@@ -224,17 +254,18 @@ export function SiteNavBar() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  style={
                     isActive(item.href)
-                      ? 'text-white bg-white/10'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  }`}
+                      ? { color: 'var(--text-1)', background: 'var(--bg-surface)' }
+                      : { color: 'var(--text-3)' }
+                  }
                 >
                   {item.label}
                 </Link>
               ),
             )}
-            <div className="pt-3 border-t border-white/10 space-y-2">
+            <div className="pt-3 space-y-2" style={{ borderTop: '1px solid var(--border-1)' }}>
               <div className="flex items-center justify-center">
                 <GitHubStarsBadge variant="full" />
               </div>
@@ -243,11 +274,12 @@ export function SiteNavBar() {
                   <button
                     key={lang}
                     onClick={() => changeLanguage(lang)}
-                    className={`flex-1 text-center py-2 text-xs font-medium rounded-lg border transition-colors ${
+                    className="flex-1 text-center py-2 text-xs font-medium rounded-lg transition-colors"
+                    style={
                       i18n.language === lang
-                        ? 'text-emerald-400 border-emerald-800/40 bg-emerald-950/20'
-                        : 'text-gray-400 border-white/10 hover:bg-white/5'
-                    }`}
+                        ? { color: 'var(--violet-300)', border: '1px solid var(--border-brand)', background: 'var(--bg-surface)' }
+                        : { color: 'var(--text-3)', border: '1px solid var(--border-1)' }
+                    }
                   >
                     {LANGUAGE_LABELS[lang]}
                   </button>
@@ -255,10 +287,13 @@ export function SiteNavBar() {
               </div>
               <div className="space-y-2">
                 {isLocalMode ? (
-                  <div className="flex items-center justify-center gap-2 px-2 py-2 rounded-lg bg-white/5 border border-white/10">
-                    <Monitor className="w-4 h-4 text-emerald-400" />
-                    <span className="text-xs font-medium text-gray-400">Local</span>
-                    <span className="text-xs font-semibold text-white">User</span>
+                  <div
+                    className="flex items-center justify-center gap-2 px-2 py-2 rounded-lg"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
+                  >
+                    <Monitor className="w-4 h-4" style={{ color: 'var(--violet-300)' }} />
+                    <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>Local</span>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>User</span>
                   </div>
                 ) : user ? (
                   <>
@@ -266,13 +301,16 @@ export function SiteNavBar() {
                       {user.picture ? (
                         <img src={user.picture} alt="" className="w-5 h-5 rounded-full" />
                       ) : (
-                        <User className="w-4 h-4 text-gray-400" />
+                        <User className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
                       )}
-                      <span className="text-xs text-gray-400 truncate">{user.name || user.email}</span>
+                      <span className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
+                        {user.name || user.email}
+                      </span>
                     </div>
                     <button
                       onClick={handleSignOut}
-                      className="w-full text-center py-2 text-sm text-gray-400 hover:text-red-400 border border-white/10 rounded-lg transition-colors"
+                      className="w-full text-center py-2 text-sm rounded-lg transition-colors"
+                      style={{ color: 'var(--text-3)', border: '1px solid var(--border-1)' }}
                     >
                       {t('nav.signOut')}
                     </button>
@@ -280,17 +318,15 @@ export function SiteNavBar() {
                 ) : (
                   <a
                     href={getSignInUrl(pathname)}
-                    className="block text-center py-2 text-sm font-medium text-gray-300 hover:text-white border border-white/10 rounded-lg transition-colors"
+                    className="block text-center py-2 text-sm font-medium rounded-lg transition-colors"
+                    style={{ color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
                   >
                     {t('nav.signIn')}
                   </a>
                 )}
-                <a
-                  href={getAppEntryUrl(user)}
-                  className="block text-center py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg"
-                >
+                <AuroraButton href={getAppEntryUrl(user)} external fullWidth>
                   {user ? t('nav.goToApp') : t('nav.getStarted')}
-                </a>
+                </AuroraButton>
               </div>
             </div>
           </div>

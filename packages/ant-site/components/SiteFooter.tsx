@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { LicenseBadge } from '@/components/LicenseBadge';
+import { BrandLogo } from '@/components/aurora/BrandLogo';
 import {
   GITHUB_URL,
   GITHUB_DISCUSSIONS_URL,
@@ -57,18 +58,14 @@ export function SiteFooter() {
     { label: t('footer.privacy'), href: '/legal/privacy-policy' },
   ];
 
+  const linkClass = 'text-sm text-[color:var(--text-4)] hover:text-[color:var(--text-2)] transition-colors';
   const renderLink = (link: FooterLink) =>
     link.external ? (
-      <a
-        href={link.href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
-      >
+      <a href={link.href} target="_blank" rel="noopener noreferrer" className={linkClass}>
         {link.label}
       </a>
     ) : (
-      <Link href={link.href} className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+      <Link href={link.href} className={linkClass}>
         {link.label}
       </Link>
     );
@@ -81,15 +78,20 @@ export function SiteFooter() {
   ];
 
   return (
-    <footer className="border-t border-white/5 bg-[#060910]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <footer
+      className="relative z-10"
+      style={{ borderTop: '1px solid var(--border-1)', background: 'var(--bg-app)' }}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-3">
-              <img src="/logo.png" alt="ANT" className="w-7 h-7" />
-              <span className="text-base font-display font-bold text-white">ANT</span>
+            <div className="mb-4">
+              <BrandLogo size={28} wordSize={16} />
             </div>
-            <p className="text-sm text-gray-500 leading-relaxed whitespace-pre-line mb-4">
+            <p
+              className="whitespace-pre-line"
+              style={{ fontSize: 14, color: 'var(--text-4)', lineHeight: 'var(--lh-relaxed)', marginBottom: 16 }}
+            >
               {t('footer.tagline')}
             </p>
             <LicenseBadge />
@@ -97,8 +99,8 @@ export function SiteFooter() {
 
           {COLUMNS.map((col) => (
             <div key={col.title}>
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">{col.title}</h3>
-              <ul className="space-y-2">
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', marginBottom: 14 }}>{col.title}</h3>
+              <ul className="space-y-2.5">
                 {col.links.map((link) => (
                   <li key={`${col.title}-${link.label}`}>{renderLink(link)}</li>
                 ))}
@@ -107,8 +109,11 @@ export function SiteFooter() {
           ))}
         </div>
 
-        <div className="mt-10 pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-gray-600">
+        <div
+          className="mt-12 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3"
+          style={{ borderTop: '1px solid var(--border-1)' }}
+        >
+          <p style={{ fontSize: 12, color: 'var(--text-4)' }}>
             &copy; {new Date().getFullYear()} {ORG_NAME}. {t('footer.rights', { license: LICENSE_NAME })}
           </p>
         </div>

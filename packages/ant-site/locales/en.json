@@ -167,6 +167,8 @@
     },
     "policy": {
       "title": "Project policies",
+      "codeOfConductTitle": "Code of conduct",
+      "codeOfConductDesc": "How we keep collaboration respectful and productive. Read it before your first interaction.",
       "securityTitle": "Security policy",
       "securityDesc": "Found a vulnerability? Don't open a public issue — see SECURITY.md for the disclosure process."
     },

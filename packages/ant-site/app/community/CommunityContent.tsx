@@ -4,6 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { ArrowRight, MessageSquare, ExternalLink, Sparkles, Map } from 'lucide-react';
 import { PageHero } from '@/components/PageHero';
 import { RecentActivity } from '@/components/RecentActivity';
+import { GlassCard } from '@/components/aurora/GlassCard';
+import { AuroraButton } from '@/components/aurora/AuroraButton';
+import { SectionHeading } from '@/components/aurora/SectionHeading';
+import { IconOrb } from '@/components/aurora/IconOrb';
+import { Reveal } from '@/components/aurora/Reveal';
 import { githubStats } from '@/lib/githubStats';
 import { GITHUB_DISCUSSIONS_URL, GITHUB_GOOD_FIRST_ISSUES_URL, GITHUB_ROADMAP_URL } from '@/lib/links';
 
@@ -23,69 +28,77 @@ export default function CommunityContent() {
         title={t('community.heroTitle')}
         highlight={t('community.heroHighlight')}
         description={t('community.heroDesc')}
-        accent="emerald"
+        accent="purple"
       >
-        <a
-          href={GITHUB_DISCUSSIONS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group inline-flex items-center gap-2 px-6 py-3 text-base font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl shadow-lg shadow-emerald-500/25 transition-all"
-        >
+        <AuroraButton href={GITHUB_DISCUSSIONS_URL} external size="lg">
           <MessageSquare className="w-4 h-4" />
           {t('community.primaryCta')}
-          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-        </a>
+          <ArrowRight className="w-4 h-4" />
+        </AuroraButton>
       </PageHero>
 
       {/* Discussions */}
       <section className="py-16 sm:py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-3">{t('community.discussionsTitle')}</h2>
-            <p className="text-sm text-gray-400 max-w-2xl mx-auto">{t('community.discussionsDesc')}</p>
-          </div>
+          <Reveal>
+            <div className="flex justify-center mb-10">
+              <SectionHeading title={t('community.discussionsTitle')} subtitle={t('community.discussionsDesc')} />
+            </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {categories.map((cat) => (
-              <div key={cat.name} className="p-5 rounded-xl bg-white/[0.03] border border-white/5">
-                <h3 className="text-sm font-semibold text-emerald-300 mb-2">{cat.name}</h3>
-                <p className="text-sm text-gray-400 leading-relaxed">{cat.desc}</p>
-              </div>
+            {categories.map((cat, i) => (
+              <Reveal key={cat.name} delay={(i % 2) * 0.08}>
+                <GlassCard hoverable padding="md" style={{ height: '100%' }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--violet-300)', marginBottom: 8 }}>{cat.name}</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)' }}>{cat.desc}</p>
+                </GlassCard>
+              </Reveal>
             ))}
           </div>
 
-          <p className="mt-8 text-center text-sm text-gray-500 italic">{t('community.responseNote')}</p>
+          <p className="mt-8 text-center" style={{ fontSize: 14, color: 'var(--text-4)', fontStyle: 'italic' }}>
+            {t('community.responseNote')}
+          </p>
         </div>
       </section>
 
       {/* Recent activity */}
-      <section className="py-16 sm:py-24 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
+      <section className="py-16 sm:py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-3">{t('community.activityTitle')}</h2>
-            <p className="text-sm text-gray-400">{t('community.activityDesc')}</p>
-          </div>
-          <RecentActivity
-            prTitle={t('home.community.recentPRs')}
-            issueTitle={t('home.community.recentIssues')}
-            emptyLabel={t('home.community.activityEmpty')}
-          />
+          <Reveal>
+            <div className="flex justify-center mb-10">
+              <SectionHeading title={t('community.activityTitle')} subtitle={t('community.activityDesc')} />
+            </div>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <GlassCard padding="lg">
+              <RecentActivity
+                prTitle={t('home.community.recentPRs')}
+                issueTitle={t('home.community.recentIssues')}
+                emptyLabel={t('home.community.activityEmpty')}
+              />
+            </GlassCard>
+          </Reveal>
         </div>
       </section>
 
       {/* Good first issues */}
       <section className="py-16 sm:py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center gap-2 mb-3">
-              <Sparkles className="w-5 h-5 text-amber-400" />
-              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white">{t('community.goodFirstTitle')}</h2>
+          <Reveal>
+            <div className="text-center mb-10 flex flex-col items-center gap-3">
+              <IconOrb tone="orange" size={44}>
+                <Sparkles className="w-5 h-5" />
+              </IconOrb>
+              <SectionHeading title={t('community.goodFirstTitle')} subtitle={t('community.goodFirstDesc')} />
             </div>
-            <p className="text-sm text-gray-400">{t('community.goodFirstDesc')}</p>
-          </div>
+          </Reveal>
 
           {goodFirst.length === 0 ? (
-            <p className="text-center text-sm text-gray-500 py-8">{t('community.goodFirstEmpty')}</p>
+            <p className="text-center" style={{ fontSize: 14, color: 'var(--text-4)', padding: '32px 0' }}>
+              {t('community.goodFirstEmpty')}
+            </p>
           ) : (
             <div className="space-y-2 mb-6">
               {goodFirst.map((item) => (
@@ -94,15 +107,16 @@ export default function CommunityContent() {
                   href={item.htmlUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group flex items-start gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-amber-800/30 transition-colors"
+                  className="group flex items-start gap-3 transition-colors"
+                  style={{ padding: '16px', borderRadius: 'var(--r-lg)', background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-200 group-hover:text-white truncate">{item.title}</p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="truncate" style={{ fontSize: 14, color: 'var(--text-2)' }}>{item.title}</p>
+                    <p className="mt-1" style={{ fontSize: 12, color: 'var(--text-4)' }}>
                       #{item.number} · {item.author}
                     </p>
                   </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 shrink-0 mt-1" />
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0 mt-1" style={{ color: 'var(--text-4)' }} />
                 </a>
               ))}
             </div>
@@ -113,7 +127,8 @@ export default function CommunityContent() {
               href={GITHUB_GOOD_FIRST_ISSUES_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="inline-flex items-center gap-2 transition-colors"
+              style={{ fontSize: 14, color: 'var(--violet-300)' }}
             >
               {t('community.goodFirstCta')}
             </a>
@@ -122,21 +137,22 @@ export default function CommunityContent() {
       </section>
 
       {/* Roadmap */}
-      <section className="py-16 sm:py-20 bg-gradient-to-b from-transparent via-emerald-950/5 to-transparent">
+      <section className="py-16 sm:py-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <Map className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-2xl font-display font-bold text-white">{t('community.roadmapTitle')}</h2>
-          </div>
-          <p className="text-sm text-gray-400 leading-relaxed mb-8 max-w-xl mx-auto">{t('community.roadmapDesc')}</p>
-          <a
-            href={GITHUB_ROADMAP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/50 rounded-xl transition-colors"
-          >
-            {t('community.roadmapCta')}
-          </a>
+          <Reveal>
+            <div className="flex justify-center mb-4">
+              <IconOrb tone="teal" size={44}>
+                <Map className="w-5 h-5" />
+              </IconOrb>
+            </div>
+            <h2 className="text-display" style={{ fontSize: 26, color: 'var(--text-1)', marginBottom: 14 }}>{t('community.roadmapTitle')}</h2>
+            <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 'var(--lh-relaxed)', marginBottom: 28, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+              {t('community.roadmapDesc')}
+            </p>
+            <AuroraButton href={GITHUB_ROADMAP_URL} external variant="secondary">
+              {t('community.roadmapCta')}
+            </AuroraButton>
+          </Reveal>
         </div>
       </section>
     </>

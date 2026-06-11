@@ -1,7 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { ArrowRight, Server, Cloud } from 'lucide-react';
+import { GlassCard } from '@/components/aurora/GlassCard';
+import { AuroraButton } from '@/components/aurora/AuroraButton';
+import { IconOrb } from '@/components/aurora/IconOrb';
+import type { IconOrbTone } from '@/components/aurora/IconOrb';
 
 interface SplitColumn {
   title: string;
@@ -18,34 +21,47 @@ interface SelfHostCloudSplitProps {
   cloud: SplitColumn;
 }
 
-function Column({ icon, column, accent }: { icon: typeof Server; column: SplitColumn; accent: 'emerald' | 'teal' }) {
-  const Icon = icon;
-  const accentBg = accent === 'emerald' ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300' : 'bg-teal-950/40 border-teal-800/40 text-teal-300';
-  const ctaBg = accent === 'emerald' ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300' : 'bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30 hover:border-teal-500/50 text-teal-300';
-
+function Column({
+  icon: Icon,
+  column,
+  tone,
+  dotHue,
+}: {
+  icon: typeof Server;
+  column: SplitColumn;
+  tone: IconOrbTone;
+  dotHue: number;
+}) {
   return (
-    <div className="flex flex-col p-8 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-colors">
-      <div className={`w-12 h-12 rounded-xl border flex items-center justify-center mb-5 ${accentBg}`}>
-        <Icon className="w-6 h-6" />
+    <GlassCard hoverable padding="lg">
+      <div className="flex flex-col h-full">
+        <IconOrb tone={tone} size={52} style={{ marginBottom: 20 }}>
+          <Icon className="w-6 h-6" />
+        </IconOrb>
+        <h3 className="text-display" style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8 }}>
+          {column.title}
+        </h3>
+        <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 24, lineHeight: 'var(--lh-relaxed)' }}>
+          {column.tagline}
+        </p>
+        <ul className="space-y-2.5 flex-1" style={{ marginBottom: 28 }}>
+          {column.bullets.map((b, i) => (
+            <li key={i} className="flex items-start gap-2.5" style={{ fontSize: 14, color: 'var(--text-2)' }}>
+              <span
+                aria-hidden
+                className="shrink-0"
+                style={{ marginTop: 7, width: 6, height: 6, borderRadius: '50%', background: `oklch(70% 0.18 ${dotHue})` }}
+              />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+        <AuroraButton href={column.ctaHref} variant="secondary">
+          {column.ctaLabel}
+          <ArrowRight className="w-4 h-4" />
+        </AuroraButton>
       </div>
-      <h3 className="text-xl font-semibold text-white mb-2">{column.title}</h3>
-      <p className="text-sm text-gray-400 mb-6 leading-relaxed">{column.tagline}</p>
-      <ul className="space-y-2 mb-8 flex-1">
-        {column.bullets.map((b, i) => (
-          <li key={i} className="text-sm text-gray-400 flex items-start gap-2">
-            <span className="shrink-0 mt-1.5 w-1 h-1 rounded-full bg-gray-600" />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-      <Link
-        href={column.ctaHref}
-        className={`group inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-medium border rounded-xl transition-all ${ctaBg}`}
-      >
-        {column.ctaLabel}
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </Link>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -53,14 +69,22 @@ export function SelfHostCloudSplit({ title, description, selfHost, cloud }: Self
   return (
     <section className="py-20 sm:py-28">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-display font-bold text-white mb-4">{title}</h2>
-          {description && <p className="text-gray-400 max-w-2xl mx-auto">{description}</p>}
+        <div className="flex justify-center mb-12">
+          <div className="text-center">
+            <h2 className="text-display" style={{ fontSize: 'clamp(28px, 4vw, 40px)', color: 'var(--text-1)', marginBottom: 14 }}>
+              {title}
+            </h2>
+            {description && (
+              <p style={{ fontSize: 16, color: 'var(--text-3)', maxWidth: 560, margin: '0 auto', lineHeight: 'var(--lh-relaxed)' }}>
+                {description}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Column icon={Server} column={selfHost} accent="emerald" />
-          <Column icon={Cloud} column={cloud} accent="teal" />
+          <Column icon={Server} column={selfHost} tone="violet" dotHue={290} />
+          <Column icon={Cloud} column={cloud} tone="pink" dotHue={350} />
         </div>
       </div>
     </section>

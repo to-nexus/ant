@@ -16,12 +16,12 @@ export function ContributorsWall({ title, emptyLabel, limit = 40 }: Contributors
   return (
     <div>
       <div className="flex items-baseline justify-between mb-5">
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        {total > 0 && <span className="text-sm text-gray-500">{total}</span>}
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)' }}>{title}</h3>
+        {total > 0 && <span style={{ fontSize: 14, color: 'var(--text-4)' }}>{total}</span>}
       </div>
 
       {visible.length === 0 ? (
-        <p className="text-sm text-gray-500">{emptyLabel}</p>
+        <p style={{ fontSize: 14, color: 'var(--text-4)' }}>{emptyLabel}</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
@@ -32,7 +32,8 @@ export function ContributorsWall({ title, emptyLabel, limit = 40 }: Contributors
                 target="_blank"
                 rel="noopener noreferrer"
                 title={`${c.login} (${c.contributions} commits)`}
-                className="block w-10 h-10 rounded-full overflow-hidden border border-white/10 hover:border-emerald-400/50 transition-colors"
+                className="block w-10 h-10 rounded-full overflow-hidden transition-colors"
+                style={{ border: '1px solid var(--border-1)' }}
               >
                 <img src={c.avatarUrl} alt={c.login} className="w-full h-full object-cover" loading="lazy" />
               </a>
@@ -43,7 +44,8 @@ export function ContributorsWall({ title, emptyLabel, limit = 40 }: Contributors
               href={`${GITHUB_URL}/graphs/contributors`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-4 inline-block text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="mt-4 inline-block transition-colors"
+              style={{ fontSize: 14, color: 'var(--violet-300)' }}
             >
               + {total - limit} more →
             </a>
