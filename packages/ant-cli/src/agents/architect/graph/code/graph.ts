@@ -667,6 +667,22 @@ export const CodeGraphChannels = {
       directives: Annotation<any>,
       _currentTaskTokenUsage: Annotation<any>,
       _estimatingTokenUsage: Annotation<any>,
+      // Job-level token accumulators. These MUST be declared channels: nodes
+      // (and worker subgraphs that spread `...CodeGraphChannels`) mutate them
+      // via `accumulateTokenUsage`, and an undeclared field is silently dropped
+      // on every node transition — which previously made `tokenUsageByModel`
+      // arrive empty at the worker→orchestrator boundary, breaking per-model
+      // billing (FE USD/credits blank, settle → releaseHold, no debit). The
+      // preserve-on-undefined reducer guards the accumulated value against a
+      // stray partial-state spread clobbering it mid-job.
+      tokenUsage: Annotation<any>({
+        reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+        default: () => undefined,
+      }),
+      tokenUsageByModel: Annotation<any>({
+        reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+        default: () => undefined,
+      }),
       _executeCallIndex: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
         default: () => 0,

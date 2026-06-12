@@ -241,6 +241,13 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    * accumulate path). Billing settle reads this from the Redis snapshot.
    */
   updateTokenUsageByModel(byModel: TokenUsageByModel): void {
+    // Ignore empty updates. Callers (e.g. the orchestrator's freshly-initialized
+    // `accumulatedTokenUsageByModel = {}`) can fire `{}` before any per-model
+    // usage exists; `{}` is truthy and would clobber a populated cache, blanking
+    // the FE USD/credits and persisting an empty snapshot that makes settle take
+    // the no-usage `releaseHold` branch (no debit). Guarding here protects every
+    // funnel at one point.
+    if (!byModel || Object.keys(byModel).length === 0) return;
     this.cachedTokenUsageByModel = byModel;
     this.meterCredits(byModel);
   }

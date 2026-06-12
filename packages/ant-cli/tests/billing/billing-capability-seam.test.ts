@@ -1,10 +1,11 @@
 /**
- * Billing seam — always-on at this stage + dormant no-op fallback.
+ * Billing seam — cloud-only + dormant no-op fallback.
  *
- * Locks: `isBillingEnabled()` is unconditionally true (not env-controlled), so
- * the factory wires the real adapters and `/billing/*` is registered. The
- * `Noop*` adapters are retained as the dormant fallback for the future
- * `@ant/cloud` extraction and are exercised here directly.
+ * Locks: `isBillingEnabled()` is true ONLY in cloud mode (`ANT_SERVER_MODE=cloud`);
+ * local mode is free, so the factory wires the `Noop*` adapters and `/billing/*`
+ * is unregistered. The retired `ANT_BILLING_ENABLED` env has no effect. The
+ * `Noop*` adapters double as the dormant fallback for the future `@ant/cloud`
+ * extraction and are exercised here directly.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,24 +14,32 @@ import { NoopCreditLedger } from '../../src/periphery/adapters/billing/NoopCredi
 import { NoopPaymentProvider } from '../../src/periphery/adapters/billing/NoopPaymentProvider';
 
 describe('isBillingEnabled', () => {
-  it('is always true at this stage, regardless of env / server mode', () => {
-    const savedBilling = process.env.ANT_BILLING_ENABLED;
-    const savedMode = process.env.ANT_SERVER_MODE;
+  const savedBilling = process.env.ANT_BILLING_ENABLED;
+  const savedMode = process.env.ANT_SERVER_MODE;
+  const restore = () => {
+    if (savedBilling === undefined) delete process.env.ANT_BILLING_ENABLED;
+    else process.env.ANT_BILLING_ENABLED = savedBilling;
+    if (savedMode === undefined) delete process.env.ANT_SERVER_MODE;
+    else process.env.ANT_SERVER_MODE = savedMode;
+  };
+
+  it('is true ONLY in cloud mode (local/unset = free), regardless of ANT_BILLING_ENABLED', () => {
     try {
       for (const billing of [undefined, 'false', '0', 'true']) {
-        for (const mode of [undefined, 'local', 'cloud']) {
-          if (billing === undefined) delete process.env.ANT_BILLING_ENABLED;
-          else process.env.ANT_BILLING_ENABLED = billing;
+        if (billing === undefined) delete process.env.ANT_BILLING_ENABLED;
+        else process.env.ANT_BILLING_ENABLED = billing;
+
+        process.env.ANT_SERVER_MODE = 'cloud';
+        expect(isBillingEnabled()).toBe(true);
+
+        for (const mode of [undefined, 'local']) {
           if (mode === undefined) delete process.env.ANT_SERVER_MODE;
           else process.env.ANT_SERVER_MODE = mode;
-          expect(isBillingEnabled()).toBe(true);
+          expect(isBillingEnabled()).toBe(false);
         }
       }
     } finally {
-      if (savedBilling === undefined) delete process.env.ANT_BILLING_ENABLED;
-      else process.env.ANT_BILLING_ENABLED = savedBilling;
-      if (savedMode === undefined) delete process.env.ANT_SERVER_MODE;
-      else process.env.ANT_SERVER_MODE = savedMode;
+      restore();
     }
   });
 });
