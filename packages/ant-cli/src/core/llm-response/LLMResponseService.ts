@@ -116,6 +116,11 @@ interface WorkerLocalState {
   commandCardByCommand: Map<string, string>;
   /** Active thinking block tracker (start time + cardId). */
   thinking: { cardId: string; startTime: number } | null;
+  /** Whether the `text` buffer holds uncommitted prose for this scope.
+   * Lets `commitBufferedTextBeforeNewSegment` short-circuit to a pure
+   * in-memory check on the common no-prose path — avoiding a Redis read
+   * (and a spurious snapshot broadcast) on every status/thinking/card. */
+  textBuffered: boolean;
 }
 
 function makeWorkerState(): WorkerLocalState {
@@ -123,6 +128,7 @@ function makeWorkerState(): WorkerLocalState {
     fileCardByPath: new Map(),
     commandCardByCommand: new Map(),
     thinking: null,
+    textBuffered: false,
   };
 }
 
@@ -154,6 +160,11 @@ export class LLMResponseService {
 
   /** Per-worker-scope trackers (`_main_` / `worker-N`). */
   private readonly workerStates = new Map<string, WorkerLocalState>();
+
+  /** Re-entrancy guard for {@link commitBufferedTextBeforeNewSegment} so the
+   * `assistant_message` it persists cannot recurse back through the
+   * `persistAndBroadcast` / `registerPendingCard` chokepoints. */
+  private _committingText = false;
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
@@ -464,6 +475,7 @@ export class LLMResponseService {
     const turnId = this.getTurnId();
     if (!turnId) return;
     await this.appendBufferKind(turnId, 'text', chunk, undefined);
+    this.getWorkerState().textBuffered = true;
     this.broadcaster.broadcastStreamingDelta(
       this.turnContext.context.projectId,
       this.turnContext.context.featureName,
@@ -485,6 +497,10 @@ export class LLMResponseService {
     if (!this.enabled || !cardId) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
+    // A progress card overlay is the one ordered introduction that bypasses
+    // `appendBufferKind` / `persistAndBroadcast` — commit buffered prose so
+    // the card renders below it.
+    await this.commitBufferedTextBeforeNewSegment();
     const sessionKey = this.turnContext.context.sessionKey;
     const scope = this.turnContext.getWorkerScopeKey();
     const pendingMetadata: Record<string, unknown> = { ...(metadata ?? {}) };
@@ -616,6 +632,28 @@ export class LLMResponseService {
       const next = { ...buffer, text: undefined };
       await this.replaceTurnBuffer(turnId, next);
     }
+    this.getWorkerState().textBuffered = false;
+  }
+
+  /**
+   * Commit any buffered plain-text segment to a durable `assistant_message`
+   * line BEFORE a new non-text segment (thinking / pending card / status /
+   * choice) opens. Symmetric with thinking's flush-on-`</thinking>` — keeps
+   * the ordered durable log (`chat.jsonl`) the single chronology authority
+   * so the FE never has more than one in-flight overlay competing for a
+   * fixed render slot (chat order-inversion fix). Re-entrancy-guarded so the
+   * `assistant_message` it persists does not loop back through the
+   * `persistAndBroadcast` / `registerPendingCard` chokepoints that call this.
+   */
+  private async commitBufferedTextBeforeNewSegment(): Promise<void> {
+    if (!this.enabled || this._committingText) return;
+    if (!this.getWorkerState().textBuffered) return;
+    this._committingText = true;
+    try {
+      await this.flushTextBuffer();
+    } finally {
+      this._committingText = false;
+    }
   }
 
   async clearTurnBuffer(): Promise<void> {
@@ -631,6 +669,7 @@ export class LLMResponseService {
       .catch((err) =>
         logger.warn(`clearTurnBuffer failed`, { component: 'LLMResponseService' }, err),
       );
+    this.getWorkerState().textBuffered = false;
 
     // Match the flush-path contract (see `replaceTurnBuffer` →
     // `streaming_buffer_snapshot`): emit an empty snapshot so the FE
@@ -1064,6 +1103,13 @@ export class LLMResponseService {
   }
 
   private async persistAndBroadcast(line: ChatLine): Promise<void> {
+    // Any durable line other than `assistant_message` itself opens a new
+    // ordered segment (thinking / status / choice) — commit buffered prose
+    // first so it sorts before this line. Excluding `assistant_message` is
+    // both the recursion break and semantically correct.
+    if (line.type !== 'assistant_message') {
+      await this.commitBufferedTextBeforeNewSegment();
+    }
     if (this.chatLogAppender) {
       this.chatLogAppender.appendChatLine(line);
     }
@@ -1107,6 +1153,11 @@ export class LLMResponseService {
     chunk: string,
     cardId?: string,
   ): Promise<void> {
+    // A non-text stream chunk opens a new ordered segment — commit any
+    // buffered prose first so it keeps its chronological position. (For
+    // `card_output` the prose was already committed when the card opened
+    // via `registerPendingCard`, so this is a no-op.)
+    if (kind !== 'text') await this.commitBufferedTextBeforeNewSegment();
     await this.stateStore
       .appendToTurnBuffer(
         this.turnContext.context.sessionKey,
