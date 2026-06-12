@@ -809,6 +809,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         const { applyEstimatingUsage } = await import('../../../../../common/graph/llmHelpers');
         applyEstimatingUsage(state, 'decompose', decomposeTokenUsage, {
           promptChars: prompts.system.length + prompts.user.length,
+          modelId: result.modelId,
         });
       }
     } catch (error) {

@@ -189,7 +189,7 @@ async function decomposeSpecSections(
         onTaskParsed: streamingHook.onTaskParsed,
       },
     );
-    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'spec', promptChars: prompt.length });
+    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'spec', promptChars: prompt.length, modelId: llm.modelName });
 
     const parsed = parseLLMJsonResponse(response);
 

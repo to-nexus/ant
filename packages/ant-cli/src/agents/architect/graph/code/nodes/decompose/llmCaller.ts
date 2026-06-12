@@ -55,7 +55,7 @@ export async function callLLMForDecompose(
   prompt: string | { system: string; user: string },
   workspaceConfig?: any,
   options?: CallDecomposeOptions,
-): Promise<{ response: string; tokenUsage?: any }> {
+): Promise<{ response: string; tokenUsage?: any; modelId: string }> {
   console.log('🤖 [Decompose] Calling LLM for task breakdown...');
   
   let llmToUse = llm;
@@ -99,7 +99,7 @@ export async function callLLMForDecompose(
         onTaskParsed: options.onTaskParsed,
       },
     );
-    return { response, tokenUsage: usage };
+    return { response, tokenUsage: usage, modelId: llmToUse.modelName };
   }
 
   // Inline mode: single-turn stream with XML parsing
@@ -176,6 +176,6 @@ export async function callLLMForDecompose(
   }
   
   await orchestrator.finalize();
-  
-  return { response, tokenUsage: capturedUsage };
+
+  return { response, tokenUsage: capturedUsage, modelId: llmToUse.modelName };
 }

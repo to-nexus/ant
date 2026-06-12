@@ -121,10 +121,11 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       taskName: currentTask!.name,
       jobType: 'design',
       onTokenUsage: async (usage) => {
-        const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import(
+        const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import(
           '../../../../../common/graph/llmHelpers'
         );
-        accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
+        // Attribute to the plan node's actual model (per-node override).
+        accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true, modelId: llm.modelName });
         updateKanbanTokenUsage(state as any);
         const planRound = Math.floor(messages.length / 2);
         logTokenUsageToFile(
@@ -136,7 +137,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
             taskName: currentTask!.name,
             node: 'design-plan',
             callIndex: planRound,
-            modelId: resolveModelIdSafe(state as any),
+            modelId: llm.modelName,
             nodeHistoryLength: messages.length,
             recursionCount: state.recursionCount,
           },
