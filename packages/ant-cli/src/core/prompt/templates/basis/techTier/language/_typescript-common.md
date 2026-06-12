@@ -62,6 +62,7 @@ import type { User } from '@/types';
 ## Forbidden Patterns
 - ❌ `any` without justification
 - ❌ Type assertion without validation (`as` casting blindly)
+- ❌ **Asserting fields a DTO's contract does not declare** (`as Summary & { detailOnlyField? }`). If a field you need is absent from the type you received, you are consuming the wrong projection — not missing a cast. A list/collection endpoint returns a lean projection; the rich shape comes from the detail/get endpoint. The assertion silences the cross-task contract check the compiler would otherwise raise, and the field is `undefined` at runtime — a silent always-null read. Fetch the projection that actually carries the field; do NOT widen the type to invent it.
 - ❌ Non-null assertion (`!`) without checking
 - ❌ `var` keyword (use `const` or `let`)
 - ❌ Implicit `any` in function parameters

@@ -40,6 +40,7 @@ import {
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
   isSvWorldSeedActive,
+  isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
@@ -472,10 +473,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         domain: state.resolvedAction?.domain,
         taskType,
       }),
-      // Session partial is split into three blocks, each gated by a different
-      // signal: band → world-seed (platform shared service / setup),
-      // renderable → body-lifecycle (data-bearing visual surface),
-      // taskType → auth-flow (narrowed in-body by an LLM-self condition).
+      // Session partial is split into four blocks, each gated by a different
+      // signal: band → world-seed + store-lifecycle (platform shared service /
+      // setup — the store OWNER), renderable → body-lifecycle (data-bearing
+      // visual surface — the read consumer), taskType → auth-flow (narrowed
+      // in-body by an LLM-self condition). Store-lifecycle (write-path / single
+      // instance) gates on the owner, NOT the renderable consumer that only
+      // reads — see `serviceVirtualization/sessionGate.ts`.
       serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
         hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         taskType,
@@ -483,6 +487,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         renderable: (state.currentTask as { renderable?: boolean }).renderable,
       }),
       svWorldSeedActive: isSvWorldSeedActive({
+        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+        taskType,
+        band: (state.currentTask as { band?: string }).band,
+      }),
+      svStoreLifecycleActive: isSvStoreLifecycleActive({
         hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         taskType,
         band: (state.currentTask as { band?: string }).band,

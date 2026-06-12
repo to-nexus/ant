@@ -33,6 +33,7 @@ export {
 export {
   isServiceVirtualizationSessionActive,
   isSvWorldSeedActive,
+  isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
   type ServiceVirtualizationSessionGateInput,
