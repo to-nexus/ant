@@ -725,6 +725,100 @@ describe('LLMResponseService — flush broadcasts streaming_buffer_snapshot', ()
   });
 });
 
+describe('LLMResponseService — buffered prose commits on segment boundary (chat order-inversion fix)', () => {
+  it('text → thinking: prose commits to assistant_message BEFORE the thinking line', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose');
+    await service.streamThinkingChunk('reasoning');
+    await service.flushThinkingBuffer();
+
+    const lines = emittedLines(store);
+    expect(lines.map((l) => [l.type, (l as any).text])).toEqual([
+      ['assistant_message', 'prose'],
+      ['assistant_thinking', 'reasoning'],
+    ]);
+  });
+
+  it('text → registerPendingCard: prose commits before the progress card opens', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose before card');
+    await service.registerPendingCard('card-1', 'reading', { filePath: 'a.ts' });
+
+    const lines = emittedLines(store);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].type).toBe('assistant_message');
+    expect((lines[0] as any).text).toBe('prose before card');
+  });
+
+  it('text → appendChatStatus: prose commits before the terminal status line', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose before status');
+    await service.appendChatStatus('card-x', 'read', { filePath: 'a.ts' });
+
+    const lines = emittedLines(store);
+    expect(lines.map((l) => l.type)).toEqual(['assistant_message', 'chat_status']);
+    expect((lines[0] as any).text).toBe('prose before status');
+  });
+
+  it('text → appendChoicePresented: prose commits before the choice card (the 3-site proposal misses this path)', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose before choice');
+    await service.appendChoicePresented({
+      cardId: 'choice-1',
+      cardType: 'triage_choice',
+      prompt: 'Continue?',
+    });
+
+    const lines = emittedLines(store);
+    expect(lines.map((l) => l.type)).toEqual(['assistant_message', 'choice_presented']);
+    expect((lines[0] as any).text).toBe('prose before choice');
+  });
+
+  it('whitespace-only buffered text emits NO assistant_message on transition', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('   ');
+    await service.streamThinkingChunk('reasoning');
+    await service.flushThinkingBuffer();
+
+    const lines = emittedLines(store);
+    expect(lines.filter((l) => l.type === 'assistant_message')).toHaveLength(0);
+    expect(lines.filter((l) => l.type === 'assistant_thinking')).toHaveLength(1);
+  });
+
+  it('a single transition commits the prose exactly once (recursion guard)', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose');
+    await service.streamThinkingChunk('reasoning');
+
+    const lines = emittedLines(store);
+    expect(lines.filter((l) => l.type === 'assistant_message')).toHaveLength(1);
+  });
+
+  it('card_output into an already-open card does not re-commit prose (no second assistant_message)', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('prose');
+    await service.registerPendingCard('card-1', 'command_running', { command: 'ls' });
+    await service.streamCardOutput('card-1', 'out1');
+    await service.streamCardOutput('card-1', 'out2');
+
+    const lines = emittedLines(store);
+    expect(lines.filter((l) => l.type === 'assistant_message')).toHaveLength(1);
+    expect((lines[0] as any).text).toBe('prose');
+  });
+
+  it('no buffered prose → a transition is a cheap no-op (no spurious assistant_message / snapshot)', async () => {
+    const { service, store } = makeService();
+    // No streamTextChunk — textBuffered stays false.
+    await service.appendChatStatus('card-x', 'read', { filePath: 'a.ts' });
+
+    const lines = emittedLines(store);
+    expect(lines.filter((l) => l.type === 'assistant_message')).toHaveLength(0);
+    // The status line itself is the only durable line; the boundary guard
+    // must not have flushed an empty buffer into a snapshot.
+    expect(emittedSnapshots(store)).toHaveLength(0);
+  });
+});
+
 describe('LLMResponseService — sync request snapshot', () => {
   it('handleSyncRequest broadcasts streaming_buffer_snapshot for every active buffer', async () => {
     const { service, store } = makeService();
