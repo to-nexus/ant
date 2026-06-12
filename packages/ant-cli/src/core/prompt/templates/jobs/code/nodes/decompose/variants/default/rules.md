@@ -811,6 +811,10 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ⚠️ **Blind spot**: A dynamic path segment's parameter name MUST be identical across sibling tasks that share that path position. Two tasks independently naming the same position differently produces a structural collision that fails the build even though the files do not overlap. Serialize them and let the establishing task fix the segment name.
 
+**Recognition at this altitude (do NOT reason in filesystem paths)**: You decide the task *set*, not the route tree — concrete paths are derived later, at the framework-aware plan phase. So recognize a shared structural namespace from the **dependency relation in the requirements**, not from a path. The observable signal: one unit's surface is reached *through* another unit's entity — it is a detail / child / tab / sub-resource of that entity, and the entity's primary surface hosts the others. When that holds, those units co-locate under the entity's addressing segment, so the segment's name is one shared decision the entity's owner makes and the others consume.
+
+**Constraint**: Place such units in the SAME `parallelGroup` as the unit that owns the entity's **primary surface** (its detail / shell), and give that owner the EARLIER priority within the band. That owner is an EXISTING unit in your set — do NOT mint a new producer unit for the segment; co-lane the dependents with the existing owner. (Surfacing a NEW producer applies only when no unit owns the entity's primary surface — see Shared Decisions.)
+
 **Observation target**: For each pair of feature tasks, check if they share a persistence boundary.
 
 | Checkpoint | What to observe |
