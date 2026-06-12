@@ -333,6 +333,7 @@ import {
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
   isSvWorldSeedActive,
+  isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
 } from '../../src/core/prompt/builder/serviceVirtualization';
@@ -410,6 +411,61 @@ describe('isSvWorldSeedActive — block gate (band-routed)', () => {
       ).toBe(c.expected);
     });
   }
+});
+
+describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
+  // Store-lifecycle (write-path / single-instance) is owned by the store
+  // author, so its gate is IDENTICAL to the world-seed owner — NOT the
+  // renderable read consumer. A renderable non-platform feature/ui task that
+  // only consumes the store must NOT receive these invariants.
+  const cases: Array<{ name: string; has: boolean; t: string | undefined; band?: string; renderable?: boolean; expected: boolean }> = [
+    { name: 'business + feature @platform', has: true, t: 'feature', band: 'platform', expected: true },
+    { name: 'business + setup', has: true, t: 'setup', expected: true },
+    { name: 'business + feature @ordinary + renderable=true (consumer only)', has: true, t: 'feature', band: undefined, renderable: true, expected: false },
+    { name: 'business + ui + renderable=true (consumer only)', has: true, t: 'ui', renderable: true, expected: false },
+    { name: 'business + feature @foundation', has: true, t: 'feature', band: 'foundation', expected: false },
+    { name: 'no business + feature @platform', has: false, t: 'feature', band: 'platform', expected: false },
+  ];
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(
+        isSvStoreLifecycleActive({ hasBusinessConnection: c.has, taskType: c.t, band: c.band, renderable: c.renderable }),
+      ).toBe(c.expected);
+    });
+  }
+
+  it('relocation invariant — store-lifecycle gate equals world-seed owner gate for all inputs', () => {
+    const tasks = ['feature', 'ui', 'setup', 'design-system', 'verification', undefined];
+    const bands = ['platform', 'foundation', 'integration', undefined];
+    for (const has of [true, false]) {
+      for (const t of tasks) {
+        for (const band of bands) {
+          const input = { hasBusinessConnection: has, taskType: t, band, renderable: true };
+          expect(isSvStoreLifecycleActive(input)).toBe(isSvWorldSeedActive(input));
+        }
+      }
+    }
+  });
+
+  it('session-activation set is unchanged — store ⊆ world-seed, so the OR is not widened', () => {
+    const tasks = ['feature', 'ui', 'setup', 'design-system', 'verification', undefined];
+    const bands = ['platform', 'foundation', undefined];
+    for (const has of [true, false]) {
+      for (const t of tasks) {
+        for (const band of bands) {
+          for (const renderable of [true, false, undefined]) {
+            const input = { hasBusinessConnection: has, taskType: t, band, renderable };
+            const orOfBlocks =
+              isSvWorldSeedActive(input) ||
+              isSvStoreLifecycleActive(input) ||
+              isSvBodyLifecycleActive(input) ||
+              isSvAuthFlowActive(input);
+            expect(isServiceVirtualizationSessionActive(input)).toBe(orOfBlocks);
+          }
+        }
+      }
+    }
+  });
 });
 
 describe('isSvBodyLifecycleActive — block gate (renderable-routed)', () => {
@@ -560,6 +616,28 @@ describe('service-virtualization — Handlebars boolean gate render', () => {
         serviceVirtualizationSessionActive: false,
       });
       expect(out).not.toContain(SENTINEL_SESSION);
+    });
+
+    it(`${label} — session store-lifecycle block routed to owner, not renderable consumer`, async () => {
+      // Owner (store-lifecycle on, body-lifecycle off): Store block present,
+      // Body block absent. This is the platform/setup adapter author.
+      const owner = await adapter.render(templatePath, {
+        serviceVirtualizationSessionActive: true,
+        svStoreLifecycleActive: true,
+        svBodyLifecycleActive: false,
+      });
+      expect(owner).toContain('Store Lifecycle');
+      expect(owner).not.toContain('Body Lifecycle');
+
+      // Read consumer (renderable surface): Body block present, Store block
+      // absent — the write-path invariants must NOT leak to a pure consumer.
+      const consumer = await adapter.render(templatePath, {
+        serviceVirtualizationSessionActive: true,
+        svStoreLifecycleActive: false,
+        svBodyLifecycleActive: true,
+      });
+      expect(consumer).toContain('Body Lifecycle');
+      expect(consumer).not.toContain('Store Lifecycle');
     });
 
     it(`${label} — all gates undefined → all bodies absent (default falsy)`, async () => {

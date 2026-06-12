@@ -30,17 +30,26 @@ You own the one seed every adapter projects from. Decide each axis before author
 **Constraints:** derive identities / ids / ownership from a FIXED seed (never regenerate per render); names, emails, and ids follow the same domain-fit discipline as body fields (no filler or generic placeholders); never call the production backend to fetch or persist session state — the world is owned end-to-end by the adapter.
 {{/if}}
 
-{{#if svBodyLifecycleActive}}
-### Body Lifecycle — every rendered surface non-empty · writes persist · references resolve
+{{#if svStoreLifecycleActive}}
+### Store Lifecycle — writes persist · one store instance
 
-Your surface reads and writes the shared world. Hold these across time:
+You author the store every surface reads and writes through. Hold these across time:
+
+| Axis | Constraint |
+|---|---|
+| Mutation persistence | A write is visible to the very next read; its survival horizon (per-render / per-session / per-origin / cross-device) matches the endpoint's production durability expectation. A handler that returns a modified copy of a record without writing it back to the backing store leaves the very next read stale — the modeled change never happened. |
+| Store continuity | Back the virtualized world with ONE store instance that all consumers resolve and read/write through across mounts, navigations, and re-renders within the running session — a store constructed fresh per consumer / mount / provider makes a prior write invisible after navigation. This is the precondition for *Mutation persistence*: a write's visibility horizon follows its production durability only when every consumer shares one store. |
+{{/if}}
+
+{{#if svBodyLifecycleActive}}
+### Body Lifecycle — every rendered surface non-empty · references resolve
+
+Your surface reads the shared world. Hold these across time:
 
 | Axis | Constraint |
 |---|---|
 | Multi-endpoint cardinality | Every key surface a chosen inhabitant can reach shows at least one record — no key surface is empty for the seeded inhabitant. |
 | Surface is adapter-fed | Every data-bearing surface renders from the active adapter's response, not from a literal baked into the component — a surface populated by a hardcoded literal bypasses the virtualized world, so it never reflects the seed or any mutation. |
-| Mutation persistence | A write is visible to the very next read; its survival horizon (per-render / tab / origin / device) matches the surface's production durability expectation. |
-| Store continuity | The virtualized world is backed by ONE store instance that every surface resolves and reads/writes through across mounts, navigations, and re-renders within the running session — a store constructed fresh per consumer/mount makes a prior write invisible after navigation. This is the precondition for *Mutation persistence*: a write's visibility horizon still follows its production durability, but only when all surfaces share one store. |
 | Cross-body reference | Ids this surface shows resolve to the SAME entity in the shared seed — reference it; do NOT re-seed your own identities or ids. |
 {{/if}}
 

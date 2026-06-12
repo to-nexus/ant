@@ -37,9 +37,12 @@ describe('iterative-mango — SV session faithfulness rows', () => {
   beforeAll(async () => {
     await initPartials(TEMPLATES_DIR);
     const adapter = new FilePromptAdapter(TEMPLATES_DIR);
-    // all three gated blocks active so the rows render
+    // all gated blocks active so the rows render. Store continuity / mutation
+    // persistence moved into the store-lifecycle block (gated on the store
+    // OWNER, not the renderable consumer) — see sessionGate.ts.
     session = await adapter.render(SESSION, {
       svWorldSeedActive: true,
+      svStoreLifecycleActive: true,
       svBodyLifecycleActive: true,
       svAuthFlowActive: true,
     });
@@ -49,7 +52,7 @@ describe('iterative-mango — SV session faithfulness rows', () => {
   it('2-1: Store continuity — ONE shared store instance across mounts/navigations', () => {
     expect(session).toMatch(/Store continuity/);
     expect(session).toMatch(/ONE store instance/);
-    expect(session).toMatch(/per consumer\/mount/);
+    expect(session).toMatch(/per consumer \/ mount/);
   });
 
   it('2-3: Surface is adapter-fed — not a literal baked into the component', () => {

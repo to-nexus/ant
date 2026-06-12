@@ -11,14 +11,21 @@
  *                      platform-band shared-service feature task, or by setup
  *                      that scaffolds the seed. Gate: (feature ∧ band=platform)
  *                      ∨ setup.
- *   - Body lifecycle — empty-surface avoidance, mutation persistence, seed
- *                      reference: every data-bearing VISUAL SURFACE. Gate:
- *                      `renderable` (the ui-pairing-derived task flag — a ui
- *                      task, or a feature paired with a ui task incl. a chrome
- *                      host). A headless feature with no rendered surface is
- *                      excluded — taskType alone (feature/ui) would wrongly
- *                      include headless hooks, so the precise signal is
- *                      `renderable`, not the task type.
+ *   - Store lifecycle — write-path + single-instance invariants (mutation
+ *                      persistence, store continuity) of the virtualized
+ *                      world's STORE. These are properties of the store OWNER,
+ *                      not of a read-surface consumer, so the gate is identical
+ *                      to the world-seed owner: the task that defines the seed
+ *                      is the task that owns how writes persist through it.
+ *                      Gate: (feature ∧ band=platform) ∨ setup.
+ *   - Body lifecycle — read-surface invariants (empty-surface avoidance,
+ *                      adapter-fed rendering, seed reference): every
+ *                      data-bearing VISUAL SURFACE. Gate: `renderable` (the
+ *                      ui-pairing-derived task flag — a ui task, or a feature
+ *                      paired with a ui task incl. a chrome host). A headless
+ *                      feature with no rendered surface is excluded — taskType
+ *                      alone (feature/ui) would wrongly include headless hooks,
+ *                      so the precise signal is `renderable`, not the task type.
  *   - Auth-flow      — account selection / picked=linked authority / redirect
  *                      opaqueness. No infrastructure signal distinguishes an
  *                      auth/identity task from a data task (same root as the
@@ -63,9 +70,28 @@ export function isSvWorldSeedActive(
 }
 
 /**
- * Body-lifecycle block: every data-bearing VISUAL SURFACE, gated by the
- * ui-pairing-derived `renderable` flag (screens, ui, chrome hosts). A headless
- * feature, `design-system`, and `setup` are excluded — they render no body.
+ * Store-lifecycle block: the write-path + single-instance invariants of the
+ * virtualized world's STORE (mutation persistence, store continuity). These
+ * are properties of the store OWNER — the platform-band shared-service feature
+ * that authors the adapter, or setup that scaffolds the seed — NOT of a
+ * read-surface consumer. The gate is identical to the world-seed owner: the
+ * task that defines the seed is the task that owns how writes persist through
+ * it. A renderable read-surface consumer is intentionally excluded — it reads
+ * the store, it does not author how the store persists writes.
+ */
+export function isSvStoreLifecycleActive(
+  input: ServiceVirtualizationSessionGateInput,
+): boolean {
+  return isSvWorldSeedActive(input);
+}
+
+/**
+ * Body-lifecycle block: the read-surface invariants for every data-bearing
+ * VISUAL SURFACE (cardinality, adapter-fed rendering, cross-body reference),
+ * gated by the ui-pairing-derived `renderable` flag (screens, ui, chrome
+ * hosts). A headless feature, `design-system`, and `setup` are excluded — they
+ * render no body. Write-path/store-instance invariants live in
+ * `isSvStoreLifecycleActive`, which gates on the store owner instead.
  */
 export function isSvBodyLifecycleActive(
   input: ServiceVirtualizationSessionGateInput,

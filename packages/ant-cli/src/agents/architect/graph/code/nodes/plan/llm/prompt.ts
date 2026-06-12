@@ -32,6 +32,7 @@ import {
   isServiceVirtualizationImageryActive,
   isServiceVirtualizationSessionActive,
   isSvWorldSeedActive,
+  isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
 } from "../../../../../../../core/prompt/builder/serviceVirtualization";
@@ -268,8 +269,11 @@ export async function buildPlanPrompt(
       domain: state.resolvedAction?.domain,
       taskType: task.type,
     }),
-    // Session partial split into three blocks (band → world-seed,
-    // renderable → body-lifecycle, taskType → auth-flow narrowed in-body).
+    // Session partial split into four blocks (band → world-seed +
+    // store-lifecycle [store OWNER], renderable → body-lifecycle [read
+    // consumer], taskType → auth-flow narrowed in-body). Store-lifecycle
+    // (write-path / single instance) gates on the owner, not the renderable
+    // consumer — see `serviceVirtualization/sessionGate.ts`.
     serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       taskType: task.type,
@@ -277,6 +281,11 @@ export async function buildPlanPrompt(
       renderable: (task as { renderable?: boolean }).renderable,
     }),
     svWorldSeedActive: isSvWorldSeedActive({
+      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      taskType: task.type,
+      band: taskBand,
+    }),
+    svStoreLifecycleActive: isSvStoreLifecycleActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       taskType: task.type,
       band: taskBand,
