@@ -149,7 +149,8 @@ export async function generatePlanText(
       capturedUsage = extractTokenUsageFromStreamEvent(event);
       capturedStopReason = (event as any).stopReason;
       if (capturedUsage) {
-        accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true });
+        // Attribute to the plan node's actual model (may differ from job default).
+        accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true, modelId: llmToUse.modelName });
         updateKanbanTokenUsage(state);
       }
     }
@@ -170,7 +171,7 @@ export async function generatePlanText(
     }
   }
 
-  const { logTokenUsageToFile, resolveModelIdSafe } = await import('../../../../../../common/graph/llmHelpers');
+  const { logTokenUsageToFile } = await import('../../../../../../common/graph/llmHelpers');
   if (capturedUsage) {
     logTokenUsageToFile(
       state.context?.featurePath,
@@ -181,7 +182,7 @@ export async function generatePlanText(
         taskName: state.currentTask?.name || 'unknown',
         node: 'plan-planGen',
         callIndex: 0,
-        modelId: resolveModelIdSafe(state),
+        modelId: llmToUse.modelName,
         nodeHistoryLength: 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: 0,

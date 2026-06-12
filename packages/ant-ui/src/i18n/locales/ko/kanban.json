@@ -43,6 +43,7 @@
     "noTokenData": "토큰 사용 데이터 없음",
     "overhead": "기타",
     "creditsConsumed": "사용 크레딧",
+    "creditsUnit": "크레딧",
     "estimatedCost": "비용 (USD)"
   },
   "task": {

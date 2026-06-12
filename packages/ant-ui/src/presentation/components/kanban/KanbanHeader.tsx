@@ -540,7 +540,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
                   <StatRow
                     strong
                     label={formatModelLabel(row.modelId)}
-                    value={`${formatUsd(row.usd)} · ${formatCredits(row.credits)} cr`}
+                    value={`${formatUsd(row.usd)} · ${formatCredits(row.credits)} ${t('tokenStats.creditsUnit', 'credits')}`}
                   />
                   <div className="pl-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
                     {formatTokenCount(row.inputTokens)} {t('tokenStats.inAbbr', 'in')} ·{' '}

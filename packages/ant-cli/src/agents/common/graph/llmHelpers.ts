@@ -13,11 +13,19 @@ import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger
 import { getEstimatingLabel, resolveNodePhaseLabel, type UILocale } from './timing/estimatingLabels';
 
 /**
- * Resolve the active model id from the graph state. SSOT lookup path is
- * `state.deps.llm.modelName` — every LLM-calling node has an `LLMClient`
- * injected through `state.deps.llm`, and the `LLMClient` interface exposes
- * `readonly modelName: string`. Throws if missing so a misconfigured DI
- * surfaces immediately instead of producing a silent denominator drift.
+ * Resolve the JOB-DEFAULT model id from the graph state. Lookup path is
+ * `state.deps.llm.modelName` — the orchestrator injects ONE job-level
+ * `LLMClient` (no `nodeType`) through `state.deps.llm`, and the `LLMClient`
+ * interface exposes `readonly modelName: string`. Throws if missing so a
+ * misconfigured DI surfaces immediately instead of producing a silent
+ * denominator drift.
+ *
+ * ⚠️ This is the job DEFAULT, NOT the per-call model. Nodes that re-resolve a
+ * per-node model (`createLLMClient(..., { nodeType })` → `llmToUse`) MUST pass
+ * that client's `modelName` explicitly to `accumulateTokenUsage` /
+ * `applyEstimatingUsage` (the `modelId` option), otherwise per-model billing
+ * attribution collapses onto the job default. This resolver is the fallback
+ * for nodes with no per-node override (estimating / triage / detect).
  */
 function resolveModelName(state: TokenTrackingState): string {
   const deps = (state as { deps?: { llm?: { modelName?: string } } }).deps;
@@ -176,16 +184,27 @@ function computeTotal(usage: TokenUsage): number {
 
 /**
  * Accumulate one LLM call's usage into the per-model job-level breakdown,
- * keyed by the live model id (`state.deps.llm.modelName`). Resolution failures
- * are swallowed to `'unknown'` rather than thrown — token tracking must never
- * abort a job, and the settle hook prices `'unknown'` conservatively.
+ * keyed by the model that ACTUALLY made the call. `explicitModelId` is the
+ * per-node client's `modelName` when the node re-resolved a model
+ * (`createLLMClient(..., { nodeType })`); when omitted it falls back to the
+ * job-default `state.deps.llm.modelName`. Resolution failures are swallowed to
+ * `'unknown'` rather than thrown — token tracking must never abort a job, and
+ * the settle hook prices `'unknown'` conservatively.
  */
-function accumulatePerModelUsage(state: TokenTrackingState, usage: TokenUsage): void {
+function accumulatePerModelUsage(
+  state: TokenTrackingState,
+  usage: TokenUsage,
+  explicitModelId?: string,
+): void {
   let modelId: string;
-  try {
-    modelId = resolveModelName(state);
-  } catch {
-    modelId = 'unknown';
+  if (explicitModelId) {
+    modelId = explicitModelId;
+  } else {
+    try {
+      modelId = resolveModelName(state);
+    } catch {
+      modelId = 'unknown';
+    }
   }
   if (!state.tokenUsageByModel) state.tokenUsageByModel = {};
   const entry = (state.tokenUsageByModel[modelId] ??= initTokenUsage());
@@ -211,9 +230,16 @@ export function accumulateTokenUsage(
   options: {
     taskLevel?: boolean;  // Accumulate to task-level counter (default: true)
     jobLevel?: boolean;   // Accumulate to job-level counter (default: true)
+    /**
+     * Model id that performed THIS call. Pass the per-node client's
+     * `modelName` whenever the node re-resolved a model via `nodeType`
+     * (plan / execute / decompose). Omitted → falls back to the job-default
+     * `state.deps.llm.modelName`. Only affects the per-model billing bucket.
+     */
+    modelId?: string;
   } = {}
 ): void {
-  const { taskLevel = true, jobLevel = true } = options;
+  const { taskLevel = true, jobLevel = true, modelId } = options;
   
   // Task-level accumulation
   if (taskLevel) {
@@ -256,10 +282,11 @@ export function accumulateTokenUsage(
         (state.tokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
     }
 
-    // Per-model job-level accumulation — keyed by the live model id so the
-    // billing settle hook can price each model's tokens at its own rate.
-    // Mirrors the job-level fields above but partitioned by model.
-    accumulatePerModelUsage(state, usage);
+    // Per-model job-level accumulation — keyed by the model that actually made
+    // the call (`modelId` when the node overrode the model, else the job
+    // default) so the billing settle hook can price each model's tokens at its
+    // own rate. Mirrors the job-level fields above but partitioned by model.
+    accumulatePerModelUsage(state, usage, modelId);
   }
 
   // Current-node snapshot (overwrite, not accumulate).
@@ -722,6 +749,13 @@ export interface EstimatingOpts {
   callIndex?: number;
   /** Estimated prompt char count for TokenLogger */
   promptChars?: number;
+  /**
+   * Model id that performed the call. Pass the per-node client's `modelName`
+   * when the estimating node re-resolved a model via `nodeType` (e.g.
+   * decompose). Omitted → job-default `state.deps.llm.modelName`. Drives both
+   * the per-model billing bucket and the debug `modelId` field.
+   */
+  modelId?: string;
 }
 
 function resolveFeaturePath(state: EstimatingState): string | undefined {
@@ -756,7 +790,7 @@ export function applyEstimatingUsage(
   if (!state.currentPhaseTokenUsage || state.currentPhaseTokenUsage.phase !== nodeId) {
     beginNodePhase(state, nodeId, getEstimatingLabel(nodeId, state._uiLocale));
   }
-  accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+  accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true, modelId: opts.modelId });
 
   // Cache per-model breakdown before the updateTokenUsage broadcast persists
   // the snapshot — so estimating-only / direct-answer jobs (no task queue)
@@ -774,7 +808,7 @@ export function applyEstimatingUsage(
     taskName: opts.subNode ?? nodeId,
     node: nodeId,
     callIndex: opts.callIndex ?? 0,
-    modelId: resolveModelIdSafe(state),
+    modelId: opts.modelId ?? resolveModelIdSafe(state),
     estimatedPromptChars: opts.promptChars ?? 0,
   });
 

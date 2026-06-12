@@ -43,6 +43,7 @@
     "noTokenData": "No token usage data yet",
     "overhead": "Overhead",
     "creditsConsumed": "Credits used",
+    "creditsUnit": "credits",
     "estimatedCost": "Cost (USD)"
   },
   "task": {

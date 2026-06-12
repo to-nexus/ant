@@ -95,10 +95,13 @@ export async function runPlanLLMWithTools(
     taskName: task.name,
     jobType: 'code',
     onTokenUsage: async (usage) => {
-      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import(
+      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import(
         '../../../../../../common/graph/llmHelpers'
       );
-      accumulateTokenUsage(state, usage, { taskLevel: true, jobLevel: true });
+      // Attribute per-model usage to the plan node's actual model (may differ
+      // from the job default — e.g. plan on Sonnet, job on Opus).
+      const callModelId = llmToUse.modelName;
+      accumulateTokenUsage(state, usage, { taskLevel: true, jobLevel: true, modelId: callModelId });
       updateKanbanTokenUsage(state);
       const planRound = Math.floor((messages.length - 1) / 2);
       logTokenUsageToFile(
@@ -110,7 +113,7 @@ export async function runPlanLLMWithTools(
           taskName: state.currentTask?.name || 'unknown',
           node: 'plan-toolLoop',
           callIndex: planRound,
-          modelId: resolveModelIdSafe(state),
+          modelId: callModelId,
           nodeHistoryLength: messages.length,
           recursionCount: state.recursionCount,
         },
