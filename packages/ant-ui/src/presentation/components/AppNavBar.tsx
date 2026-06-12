@@ -65,7 +65,8 @@ export function AppNavBar({}: AppNavBarProps) {
   const creditMenuRef = useRef<HTMLDivElement>(null);
 
   // Refresh credit balance whenever the identity/mode resolves. Billing is
-  // always-on at this stage; the flag stays as the future-extraction seam.
+  // cloud-only (local mode is free); `billingEnabled` comes from /system/config
+  // and gates every commercial surface below.
   useEffect(() => {
     if (billingEnabled) void refreshBalance();
   }, [userEmail, serverMode, billingEnabled, refreshBalance]);

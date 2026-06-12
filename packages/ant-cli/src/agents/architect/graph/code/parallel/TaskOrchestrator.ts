@@ -485,10 +485,20 @@ export class TaskOrchestrator<T extends BaseTask> {
    * No checkpoint is saved here; handleInterruption is responsible for the
    * definitive interruption checkpoint.
    */
-  async reportStopped(workerId: number): Promise<void> {
+  async reportStopped(
+    workerId: number,
+    tokenUsage?: TaskTokenUsage,
+    tokenUsageByModel?: TokenUsageByModel,
+  ): Promise<void> {
     await this.lock.runExclusive(async () => {
       const task = this.runningTasks.get(workerId);
       this.runningTasks.delete(workerId);
+
+      // Tokens spent before the stop are a real cost — bill them. The re-run
+      // (fresh worker state) accumulates its own usage separately, so this is
+      // additive, not double-counting.
+      if (tokenUsage) this.addTokenUsage(tokenUsage);
+      if (tokenUsageByModel) this.addTokenUsageByModel(tokenUsageByModel);
 
       if (task) {
         task.interrupted = true;
@@ -514,11 +524,24 @@ export class TaskOrchestrator<T extends BaseTask> {
    * 5. After orchestration finishes, caller checks failedTasks to decide
    *    whether the job is "completed" or "interrupted".
    */
-  async reportFailure(workerId: number, task: T, error: Error): Promise<void> {
+  async reportFailure(
+    workerId: number,
+    task: T,
+    error: Error,
+    tokenUsage?: TaskTokenUsage,
+    tokenUsageByModel?: TokenUsageByModel,
+  ): Promise<void> {
     const MAX_TASK_RETRIES = BUDGET_THRESHOLDS.MAX_TASK_RETRIES;
 
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+
+      // Tokens consumed by the failed attempt are a real cost — bill them even
+      // when the task is re-queued (the retry accumulates its own usage with a
+      // fresh worker state, so this is additive). The bare-catch failure path
+      // has no result and passes undefined.
+      if (tokenUsage) this.addTokenUsage(tokenUsage);
+      if (tokenUsageByModel) this.addTokenUsageByModel(tokenUsageByModel);
 
       this.callbacks.onTaskFailure?.(task, error, workerId);
 

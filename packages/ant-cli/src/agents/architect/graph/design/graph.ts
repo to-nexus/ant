@@ -731,6 +731,19 @@ export const DesignGraphChannels = {
   jobTiming: Annotation<any>,
   _currentTaskTokenUsage: Annotation<any>,
   _estimatingTokenUsage: Annotation<any>,
+  // Job-level token accumulators — MUST be declared so `accumulateTokenUsage`'s
+  // writes survive node transitions (an undeclared field is dropped each hop).
+  // Without this, per-model usage never reaches the broadcaster snapshot and
+  // billing settle takes the no-usage `releaseHold` branch. Preserve-on-undefined
+  // guards the accumulated value against a stray partial-state spread.
+  tokenUsage: Annotation<any>({
+    reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+    default: () => undefined,
+  }),
+  tokenUsageByModel: Annotation<any>({
+    reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+    default: () => undefined,
+  }),
   planText: Annotation<any>,
   files: Annotation<any>,
   filesToDelete: Annotation<any>,

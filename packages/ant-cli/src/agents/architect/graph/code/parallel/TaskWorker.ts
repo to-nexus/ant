@@ -183,7 +183,7 @@ export class TaskWorker<T extends BaseTask> {
           // Task was stopped (e.g. user stop) — return to queue, don't mark as completed.
           // handleInterruption's checkpoint will include it as interrupted.
           console.log(`[Worker ${this.workerId}] Task "${task.name}" stopped (not completed) — reporting as stopped`);
-          await this.orchestrator.reportStopped(this.workerId);
+          await this.orchestrator.reportStopped(this.workerId, tokenUsage, tokenUsageByModel);
         } else if (hasUnresolvedViolations) {
           const violationTypes = result.violations.map((v: any) => v.type || 'unknown').join(', ');
           // Typed terminal error so orchestrator can decide re-queue vs escalate
@@ -194,7 +194,7 @@ export class TaskWorker<T extends BaseTask> {
             `Task "${task.name}" ended with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
           );
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
-          await this.orchestrator.reportFailure(this.workerId, completedTask, err);
+          await this.orchestrator.reportFailure(this.workerId, completedTask, err, tokenUsage, tokenUsageByModel);
         } else {
           await this.orchestrator.reportCompletion(this.workerId, completedTask, tokenUsage, tokenUsageByModel);
         }
