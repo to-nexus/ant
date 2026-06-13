@@ -1,6 +1,7 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../../state";
 import { SessionRun } from "../../../../../../core/types";
+import { projectSessionStateToKanban } from "../../../../../../core/realtime/projectSessionStateToKanban";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
 import { designDirOf, ARTIFACT_PREFIX } from "@ant/shared";
@@ -400,6 +401,37 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       ? `Design: ${firstDesign.substring(0, 150)}...`
       : `Directive: ${(state.directive || '').substring(0, 150)}...`;
     
+    // Authoritative terminal snapshot: on a SUCCESSFUL job end the child owns
+    // the per-jobId run keyed by `state.jobId`, with the final board built
+    // from the job's OWN in-process state (not the shared, last-writer-wins
+    // `session.state` slot). This makes the completed run jobId-discoverable
+    // by the Job-tab restore and immune to a later stale re-finalize
+    // (combined with the monotonicity guard in addRun / appendJobSnapshotToSession).
+    // The failed case stays owned by the lifecycle API path (broadcastFinalUpdate).
+    const isSuccessfulTerminal = isLastTask && !taskFailed && !!state.jobId;
+    const terminalSnapshot = isSuccessfulTerminal
+      ? projectSessionStateToKanban(
+          {
+            jobId: state.jobId,
+            taskQueue: state.taskQueue?.getAll() ?? [],
+            completedTasks: state.completedTasks ?? [],
+            completedTasksDetails: state.completedTasksDetails ?? [],
+            currentTask: undefined,
+            runningTasks: [],
+            interruption: undefined,
+            recursionCount: state.recursionCount,
+            recursionLimit: state.recursionLimit,
+            jobTiming: state.jobTiming
+              ? { ...state.jobTiming, completedAt: new Date().toISOString() }
+              : undefined,
+            tokenUsage: state.tokenUsage,
+          } as any,
+          state.jobId,
+          'code',
+          false,
+        )
+      : undefined;
+
     const run: SessionRun = {
       runId: 0,
       job: 'code',
@@ -415,22 +447,30 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         filesWritten: filesWritten,
         files: filePaths,
         modifications: filePaths.length > 0 ? [...filePaths] : []
-      }
+      },
+      ...(isSuccessfulTerminal && {
+        jobId: state.jobId,
+        kanbanSnapshot: terminalSnapshot,
+        status: 'completed' as const,
+      }),
     };
-    
+
     await state.deps.session.addRun(
       state.context.project,
       state.context.featureFolder || 'default',
       'code',
       run
     );
-    
+
     const updatedSession = await state.deps.session.load(
       state.context.project,
       state.context.featureFolder || 'default',
       'code'
     );
-    runId = updatedSession.runs[updatedSession.runs.length - 1]?.runId;
+    // With upsert-by-jobId the terminal run may not be last — find by jobId.
+    runId = state.jobId
+      ? updatedSession.runs.find((r) => r.jobId === state.jobId)?.runId
+      : updatedSession.runs[updatedSession.runs.length - 1]?.runId;
     
     const existingSession = await state.deps.session.load(
       state.context.project,

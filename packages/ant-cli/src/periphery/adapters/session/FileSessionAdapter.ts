@@ -13,6 +13,7 @@ import type {
 import * as crypto from "crypto";
 import { Session, SessionRun, SessionArtifacts, SessionState } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
+import { wouldRegressRun } from "../../../core/utils/sessionRunGuard";
 import * as fs from "fs/promises";
 import * as path from "path";
 import {
@@ -300,16 +301,35 @@ export class FileSessionAdapter implements SessionPort {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {
       const session = await this.load(project, feature, job);
-      
-      if (!run.runId) {
-        run.runId = session.runs.length + 1;
-      }
-      
+
       if (!run.timestamp) {
         run.timestamp = new Date().toISOString();
       }
-      
-      session.runs.push(run);
+
+      // Upsert by jobId when the run carries an identity (architect code/design
+      // terminal runs). This keeps exactly one run per jobId so the Job-tab
+      // restore (`runs.find(r => r.jobId === jobId)`) and the snapshot writer
+      // converge on the same entry. Legacy callers that omit `jobId` (planner,
+      // design learn) always append, preserving their behavior.
+      const idx = run.jobId ? session.runs.findIndex((r) => r.jobId === run.jobId) : -1;
+      if (idx >= 0) {
+        const existing = session.runs[idx];
+        // Monotonicity guard (shared SSOT): never let an upsert regress an
+        // existing run's terminal state / completed count. Merge the I/O
+        // fields regardless, but keep the existing snapshot+status when the
+        // incoming would be a regression.
+        if (run.kanbanSnapshot && wouldRegressRun(existing, run.status, run.kanbanSnapshot)) {
+          const { kanbanSnapshot: _drop, status: _dropStatus, ...nonRegressing } = run;
+          session.runs[idx] = { ...existing, ...nonRegressing, runId: existing.runId };
+        } else {
+          session.runs[idx] = { ...existing, ...run, runId: existing.runId };
+        }
+      } else {
+        if (!run.runId) {
+          run.runId = session.runs.length + 1;
+        }
+        session.runs.push(run);
+      }
       await this.save(session, job);
     });
   }

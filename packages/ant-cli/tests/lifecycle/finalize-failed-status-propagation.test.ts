@@ -86,10 +86,13 @@ function makeDeps(appendCancelledSpy: ReturnType<typeof vi.fn>) {
       readSessionData: vi.fn(async () => sessionState),
     },
     kanbanService: {
-      getFinalSnapshotKanbanData: vi.fn(async () => ({
+      // Mirrors the real getFinalSnapshotKanbanData(.., jobId, ..) contract:
+      // the built board is stamped with the TARGET jobId (Fix B), so the
+      // broadcast/persist identity guard always lines up.
+      getFinalSnapshotKanbanData: vi.fn(async (_p: string, _f: string, _jt: string, jobId: string) => ({
         // Mirror the such-pinning-milky shape: tasks remain in todo,
         // none in progress, some done, no interruption field.
-        jobId: 'such-pinning-milky',
+        jobId,
         todo: Array.from({ length: 11 }, (_, i) => ({ id: `t${i}`, name: `t${i}`, type: 'ui', priority: 650 + i, description: '' })),
         inProgress: [],
         completed: Array.from({ length: 5 }, (_, i) => ({ id: `done-${i}`, name: `done-${i}`, type: 'setup', priority: 100 + i, description: '', completed: true, status: 'completed' })),

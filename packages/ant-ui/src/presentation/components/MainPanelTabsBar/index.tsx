@@ -122,7 +122,7 @@ export function MainPanelTabsBar() {
           label={getJobTabLabel()}
           isActive={activeTab === 'job'}
           isJobTab={true}
-          showText={true}
+          showText={activeTab === 'job'}
           title={currentJobId ? `Job ID: ${currentJobId}` : t('tabs.job')}
           accent={TAB_ACCENTS.job}
           trailing={currentJobId ? <JobIdDropdown jobId={currentJobId} /> : undefined}

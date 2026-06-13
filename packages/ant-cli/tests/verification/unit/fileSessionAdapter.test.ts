@@ -489,3 +489,61 @@ describe('SessionPersistence — chat.jsonl write-side helpers', () => {
     expect(chatLines).toHaveLength(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// 4. addRun upsert-by-jobId (plain-dimming-flock convergence)
+//    A jobId-carrying run upserts the matching entry (one run per jobId) and
+//    respects the shared monotonicity guard; jobId-less callers still append.
+// ════════════════════════════════════════════════════════════════════════════
+describe('FileSessionAdapter.addRun — upsert by jobId', () => {
+  let dir: string;
+  const newAdapter = () => new FileSessionAdapter(dir, 'architect', 'proj', 'feat');
+  const ioRun = (jobId?: string): any => ({
+    runId: 0, job: 'code', timestamp: '',
+    input: { type: 'design', source: 'directive', summary: '', size: 0 },
+    output: { branch: 'main', filesWritten: 0, files: [], modifications: [] },
+    ...(jobId ? { jobId } : {}),
+  });
+  const completed = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, status: 'completed', completed: true }));
+  const snap = (jobId: string, done: number) => ({ jobId, todo: [], inProgress: [], completed: completed(done), isEstimating: false, dataSource: 'session' });
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ant-addrun-'));
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('upserts the same jobId run instead of appending a duplicate', async () => {
+    const adapter = newAdapter();
+    await adapter.addRun('proj', 'feat', 'code', { ...ioRun('job-x'), status: 'paused', kanbanSnapshot: snap('job-x', 6) });
+    await adapter.addRun('proj', 'feat', 'code', { ...ioRun('job-x'), status: 'completed', kanbanSnapshot: snap('job-x', 63) });
+
+    const session = await adapter.load('proj', 'feat', 'code');
+    const xs = session.runs.filter((r) => r.jobId === 'job-x');
+    expect(xs).toHaveLength(1);
+    expect(xs[0].status).toBe('completed');
+    expect(xs[0].kanbanSnapshot!.completed).toHaveLength(63);
+  });
+
+  it('does not regress a completed run via upsert (monotonicity)', async () => {
+    const adapter = newAdapter();
+    await adapter.addRun('proj', 'feat', 'code', { ...ioRun('job-x'), status: 'completed', kanbanSnapshot: snap('job-x', 63) });
+    await adapter.addRun('proj', 'feat', 'code', { ...ioRun('job-x'), status: 'paused', kanbanSnapshot: snap('job-x', 6) });
+
+    const session = await adapter.load('proj', 'feat', 'code');
+    const x = session.runs.find((r) => r.jobId === 'job-x')!;
+    expect(x.status).toBe('completed');
+    expect(x.kanbanSnapshot!.completed).toHaveLength(63);
+  });
+
+  it('appends (never merges) runs that omit jobId', async () => {
+    const adapter = newAdapter();
+    await adapter.addRun('proj', 'feat', 'code', ioRun());
+    await adapter.addRun('proj', 'feat', 'code', ioRun());
+
+    const session = await adapter.load('proj', 'feat', 'code');
+    expect(session.runs).toHaveLength(2);
+    expect(session.runs.every((r) => !r.jobId)).toBe(true);
+  });
+});
