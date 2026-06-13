@@ -30,6 +30,7 @@ import { isWithinRacWhitelist, type RacScope } from './racGate';
  *   - priority === SETUP_PROJECT (100)                        → 'root'
  *   - priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX] (200–299) → 'foundation'
  *   - priority ∈ [INTEGRATION_MIN,   INTEGRATION_MAX] (600–649) → 'integration'
+ *   - priority ∈ [SEAM_MIN,          SEAM_MAX]        (650–669) → 'seam'
  *   - everything else → undefined (ordinary feature / package setup)
  *
  * Invoked for feature tasks (→ feature bands) AND setup tasks (→ 'root' for
@@ -66,6 +67,14 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
     priority <= TASK_PRIORITIES.INTEGRATION_MAX
   ) {
     return 'integration';
+  }
+  // Seam: cross-feature reference closure per package. Runs after integration,
+  // before ui. batchSplit carries this band verbatim onto sub-slices.
+  if (
+    priority >= TASK_PRIORITIES.SEAM_MIN &&
+    priority <= TASK_PRIORITIES.SEAM_MAX
+  ) {
+    return 'seam';
   }
   return undefined;
 }

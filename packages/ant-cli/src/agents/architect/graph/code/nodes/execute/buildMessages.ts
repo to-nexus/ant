@@ -544,6 +544,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // config). Non-sub-tasks leave this falsy and templates fall back
       // to their regular scope block.
       prePlanText: (state.currentTask as CodeTask)?.prePlanText ?? '',
+      // Seam partial contract: at execute time the plan-only "enumerate &
+      // partition" / "this is one slice" blocks are gated OUT (seamPlanning
+      // false) — the apply phase renders only the partial's remediation
+      // principles. `isSliceDeclaration` is supplied to satisfy the manifest
+      // contract; its value is inert here because both sub-blocks sit inside
+      // the `seamPlanning` guard.
+      seamPlanning: false,
+      isSliceDeclaration: false,
       // Cross-task output manifest — files prior tasks in this job already
       // authored (paths only). Same SSOT as the plan side
       // (`nodes/plan/llm/prompt.ts`); closes the forward-visibility gap so a

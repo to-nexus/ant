@@ -105,8 +105,14 @@ export const TASK_PRIORITIES = {
   INTEGRATION_MIN: 600,
   INTEGRATION_MAX: 649,
 
-  // Visual Pass (650-699) — apply styles to skeleton
-  VISUAL_PASS: 650,
+  // Seam (650-669) — cross-feature REFERENCE CLOSURE, one task per package.
+  // Runs after integration (graph fully assembled), before ui. A feature task
+  // whose priority lands here derives band 'seam' (see deriveBandFromPriority).
+  SEAM_MIN: 650,
+  SEAM_MAX: 669,
+
+  // Visual Pass (670-699) — apply styles to skeleton
+  VISUAL_PASS: 670,
   VISUAL_MAX: 699,
 
   // Post-Feature (700-899) — observe completed feature code, barrier-enforced

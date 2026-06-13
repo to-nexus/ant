@@ -405,12 +405,32 @@ export interface SchedulingClassification {
   isFinal?: boolean;
   producesIntegrationGate?: boolean;
   consumesIntegrationGate?: boolean;
+  /**
+   * `band !== 'seam'` — any non-seam feature work (foundation / platform /
+   * integration / ordinary feature) gates the seam pass. Activates the
+   * `hasPreSeamWork` barrier so reference-closure remediation runs only once
+   * the whole module graph is materialized.
+   */
+  producesSeamGate?: boolean;
+  /**
+   * `band === 'seam'` — the reference-closure pass itself. Waits on
+   * `hasPreSeamWork`. Seam sub-slices (also band 'seam') do NOT produce the
+   * gate, so they never block each other — no deadlock (mirrors the
+   * integration gate's producer/consumer split).
+   */
+  consumesSeamGate?: boolean;
   expandedRagQuota?: boolean;
 }
 
 export interface TaskSchedulingHook {
   // ─── Consumer-side flags (this task type is BLOCKED by the named barrier) ───
   preIntegrationBarrier?: boolean;
+  /**
+   * Seam-band feature tasks wait for all non-seam feature work to finish
+   * (the full module graph must be materialized before reference-closure
+   * remediation). Paired with classify's `consumesSeamGate` flag.
+   */
+  preSeamBarrier?: boolean;
   preTestgenBarrier?: boolean;
   preDocBarrier?: boolean;
   preUiBarrier?: boolean;

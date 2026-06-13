@@ -381,6 +381,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         feature: true,
         platform: true,
         integration: true,
+        seam: true,
         ui: true,
         'test-code': true,
         doc: true,

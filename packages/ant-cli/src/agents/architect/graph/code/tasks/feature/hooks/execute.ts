@@ -5,10 +5,10 @@
  * default execute template renders the pre-`<done>` contract attestation gate
  * (`jobs/code/nodes/execute/injections/attestation`).
  *
- * Scope (consumer, not author): ordinary feature (band undefined) and
- * integration feature (band 'integration') consume cross-package contracts and
- * attest. Foundation / platform features author the shared surfaces others
- * consume → excluded.
+ * Scope (consumer, not author): ordinary feature (band undefined),
+ * integration feature (band 'integration'), and seam feature (band 'seam')
+ * consume cross-package contracts and attest. Foundation / platform features
+ * author the shared surfaces others consume → excluded.
  *
  * This is DESIGN-conformance (read-before-bind self-check), orthogonal to
  * PHYSICAL verification (build/typecheck/test). For a Tier-2 self-verify
@@ -25,5 +25,5 @@ import type { ExecutePromptCtx } from '../../_shared/types';
 
 export function extraTemplateVars({ task }: ExecutePromptCtx): Record<string, unknown> {
   const band = task.type === 'feature' ? task.band : undefined;
-  return { requiresAttestation: band === undefined || band === 'integration' };
+  return { requiresAttestation: band === undefined || band === 'integration' || band === 'seam' };
 }

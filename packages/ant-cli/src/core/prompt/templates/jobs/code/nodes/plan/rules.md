@@ -250,6 +250,8 @@ The system does NOT auto-convert flat plans — the split-or-bundle call is your
 
 {{> jobs/code/base/injections/entry-point-ownership-rule}}
 
+{{> jobs/code/base/injections/seam-connectivity-closure}}
+
 {{> jobs/code/base/injections/execution-context-discipline}}
 
 ────────────────────────────────────────────────────────────────────────────────

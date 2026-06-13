@@ -138,6 +138,8 @@ function schedClassify<T extends BaseTask>(
     | 'isFinal'
     | 'producesIntegrationGate'
     | 'consumesIntegrationGate'
+    | 'producesSeamGate'
+    | 'consumesSeamGate'
     | 'expandedRagQuota',
 ): boolean {
   const classify = hooksForTaskType(t.type as TaskType)?.scheduling?.classify;
@@ -166,6 +168,16 @@ function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
  */
 function isPreIntegrationWork<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'producesIntegrationGate');
+}
+
+/**
+ * Seam barrier producer — a task counts as "pre-seam work" when its bundle's
+ * classify reports `producesSeamGate: true` (`band !== 'seam'`). The seam pass
+ * (reference closure) waits until the whole module graph is materialized.
+ * Seam sub-slices are band 'seam' → produce=false → never block each other.
+ */
+function isPreSeamWork<T extends BaseTask>(t: T): boolean {
+  return schedClassify(t, 'producesSeamGate');
 }
 
 export class TaskOrchestrator<T extends BaseTask> {
@@ -786,6 +798,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       hasPreFeatureWork: !!b?.feature && running.some(isFoundationTask),
       hasPrePlatformWork: !!b?.platform && running.some(isPlatformTask),
       hasPreIntegrationWork: !!b?.integration && running.some(isPreIntegrationWork),
+      hasPreSeamWork: !!b?.seam && running.some(isPreSeamWork),
       hasPreUiWork: !!b?.ui && running.some((t) => schedBlocks(t, 'blocksUi')),
       hasPreTestgenWork: !!b?.['test-code'] && running.some((t) => schedBlocks(t, 'blocksTestgen')),
       hasPreDocWork: !!b?.doc && running.some((t) => schedBlocks(t, 'blocksDoc')),
@@ -802,7 +815,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
-    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreSeamWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     for (const task of this.taskQueue.getAll()) {
@@ -839,6 +852,14 @@ export class TaskOrchestrator<T extends BaseTask> {
       // Integration barrier: don't assign integration tasks while feature work exists
       if (hasPreIntegrationWork && sched?.preIntegrationBarrier
           && schedClassify(task, 'consumesIntegrationGate')) {
+        break;
+      }
+
+      // Seam barrier: don't assign seam tasks while any non-seam feature work
+      // (foundation/platform/integration/ordinary) is still running — the whole
+      // module graph must be materialized before reference-closure remediation.
+      if (hasPreSeamWork && sched?.preSeamBarrier
+          && schedClassify(task, 'consumesSeamGate')) {
         break;
       }
 
@@ -930,7 +951,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
-    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPrePlatformWork, hasPreIntegrationWork, hasPreSeamWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     let potentialTasks = 0;
@@ -943,6 +964,8 @@ export class TaskOrchestrator<T extends BaseTask> {
           && !sched?.preTestgenBarrier && !sched?.preDocBarrier) break;
       if (hasPreIntegrationWork && sched?.preIntegrationBarrier
           && schedClassify(task, 'consumesIntegrationGate')) break;
+      if (hasPreSeamWork && sched?.preSeamBarrier
+          && schedClassify(task, 'consumesSeamGate')) break;
       if (hasPreTestgenWork && sched?.preTestgenBarrier) break;
       if (hasPreDocWork && sched?.preDocBarrier) break;
       if (hasPreUiWork && sched?.preUiBarrier) break;
