@@ -618,6 +618,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/session-lifecycle-completeness": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/setup-directory-sealing": {
     "sources": [
       "partial-ref",

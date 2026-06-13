@@ -175,6 +175,10 @@ Your modularization:
 {{> jobs/code/base/injections/service-virtualization-session}}
 {{/if}}
 
+{{#if authSessionLifecycleActive}}
+{{> jobs/code/base/injections/session-lifecycle-completeness}}
+{{/if}}
+
 {{#if (eq currentTask.type "test-code")}}
 ════════════════════════════════════════════════════════════════════════════════
 {{> jobs/code/nodes/execute/injections/test-code-rules }}
