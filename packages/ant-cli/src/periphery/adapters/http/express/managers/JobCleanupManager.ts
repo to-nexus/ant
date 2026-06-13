@@ -634,7 +634,6 @@ export class JobCleanupManager {
     finalStatus?: SessionRunStatus,
   ): Promise<void> {
     try {
-      const state = this.stateTracker.getState();
       // Final-snapshot SSOT: cleanupJobState has already projected the
       // Redis checkpoint into the session file (atomicWriteFile). At this
       // point Redis status may still read 'running' (updateJobStatus runs
@@ -644,17 +643,26 @@ export class JobCleanupManager {
       // tasks. `getFinalSnapshotKanbanData` reads only the patched session
       // file and always emits `dataSource: 'session'`, ensuring the
       // broadcast reflects the post-cleanup final state regardless of
-      // Redis timing.
+      // Redis timing. It returns `null` when `session.state` belongs to a
+      // DIFFERENT jobId (the shared slot is last-writer-wins) — in that case
+      // we skip BOTH persist and broadcast so we never project another job's
+      // board onto this finalizing jobId (plain-dimming-flock RCA).
       const kanbanData = await this.deps.kanbanService.getFinalSnapshotKanbanData(
         mapping.projectId,
         mapping.featureName,
         jobType,
-        state.jobToProject,
-        state.jobs,
-        state.taskQueueSnapshots,
+        jobId,
         userContext
       );
-      
+      if (!kanbanData || (kanbanData.jobId && kanbanData.jobId !== jobId)) {
+        logger.warn(
+          `Skipping final kanban persist/broadcast — no board owned by this jobId`,
+          { component: 'JobCleanupManager', jobId },
+        );
+        this.stateTracker.cleanup(jobId);
+        return;
+      }
+
       // Derive SessionRun.status with `finalStatus` as the SSOT when the
       // caller provided it (finalizeTerminalJob always does; pauseJob
       // passes `'paused'`). Fall back to the legacy interruption-derived

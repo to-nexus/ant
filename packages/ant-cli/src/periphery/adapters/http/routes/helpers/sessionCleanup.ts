@@ -12,6 +12,7 @@ import {
   DEBUG_SUBDIRS,
 } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
+import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 
 /**
  * Append (or upsert) a per-jobId kanban snapshot into the session file's
@@ -62,10 +63,36 @@ export async function appendJobSnapshotToSession(
     );
     return;
   }
+  // Identity guard: never persist a board built for a different jobId onto
+  // this run. The snapshot's own `jobId` is stamped by the builder; a
+  // mismatch means the source state belonged to another job (the shared
+  // `session.state` slot is last-writer-wins).
+  if (kanbanSnapshot?.jobId && kanbanSnapshot.jobId !== jobId) {
+    logger.warn(
+      `[SessionCleanup] Refusing snapshot write — jobId mismatch (target=${jobId}, snapshot=${kanbanSnapshot.jobId})`,
+      { component: 'SessionCleanup' },
+    );
+    return;
+  }
+
   const runs: SessionRun[] = Array.isArray(session.runs) ? session.runs : [];
   const completedAt = new Date().toISOString();
   const idx = runs.findIndex((r) => r.jobId === jobId);
   if (idx >= 0) {
+    // Monotonicity guard (shared SSOT): refuse a write that would demote a
+    // `completed` run or regress its completed count — a clobber from a
+    // stale/earlier checkpoint re-finalizing this jobId (plain-dimming-flock
+    // RCA), not legitimate progress.
+    if (wouldRegressRun(runs[idx], status, kanbanSnapshot)) {
+      logger.warn(
+        `[SessionCleanup] Refusing snapshot write — would regress run ` +
+          `(jobId=${jobId}, existing=${runs[idx].status}/` +
+          `${runs[idx].kanbanSnapshot?.completed?.length ?? 0} done, ` +
+          `incoming=${status}/${kanbanSnapshot?.completed?.length ?? 0} done)`,
+        { component: 'SessionCleanup' },
+      );
+      return;
+    }
     runs[idx] = { ...runs[idx], kanbanSnapshot, status, completedAt };
   } else {
     const job: any = jobType === 'plan' ? 'plan' : jobType;

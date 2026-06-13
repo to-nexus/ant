@@ -6,6 +6,7 @@ import { StateStorePort } from '../../../../core/ports/stateStore';
 import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
 import type { SessionState } from '../../../../core/types/session';
 import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
+import { projectSessionStateToKanban } from '../../../../core/realtime/projectSessionStateToKanban';
 
 /**
  * KanbanService
@@ -362,97 +363,7 @@ export class KanbanService {
     isActuallyRunning: boolean,
   ): any {
     const sessionState: Partial<SessionState> = sessionData?.state || {};
-    const sessionTaskQueue = sessionState.taskQueue || [];
-    const completedTaskIds = sessionState.completedTasks || [];
-    const completedTasksDetails = sessionState.completedTasksDetails || [];
-    const currentTask = sessionState.currentTask || null;
-    // Parallel mode: in-flight workers persist tasks under `runningTasks`
-    // (separate from `taskQueue`) without defensive marking. Tasks here
-    // carry `interrupted:true` only when a real interrupt event stamped them
-    // (handleInterruption → captureWorkerSnapshots). Split per-task by that
-    // flag so:
-    //   - Marked running tasks (graceful stop in progress) render in `todo`
-    //     and TaskCard surfaces the Paused badge — matches the UX of tasks
-    //     that already moved to `taskQueue` via reportStopped.
-    //   - Unmarked running tasks (job actively running, periodic checkpoint)
-    //     render in `inProgress` so a page refresh during normal run does
-    //     not show "Paused".
-    // Hard-kill orphans normally never reach this branch unmarked — JobCleanupManager
-    // projects them into `taskQueue` with marks at cleanup time.
-    //
-    // Safety net (grim-padding-grove RCA): the above invariant can be violated by a
-    // cross-pod race — StaleJobRecovery's `pauseJob` never acquires the poison lock, so
-    // a worker child still alive on a not-yet-drained pod re-writes `runningTasks`
-    // UNMARKED via its un-gated `onCheckpoint`, after cleanup already projected. When the
-    // job is paused/interrupted and NOT running, the per-task `interrupted` flag is
-    // therefore unreliable: treat ALL running tasks (and `currentTask`) as paused so they
-    // land in `todo`, never frozen in `inProgress`. No-op in the normal flow where
-    // `runningTasks` is already `[]` (ultra-fusing-scone write-side invariant).
-    const sessionRunningTasks: any[] = (sessionState as any).runningTasks || [];
-    const isPausedSession = !isActuallyRunning && !!sessionState.interruption;
-    const pausedAtIso = sessionState.interruption?.timestamp;
-    const markPaused = (t: any) => ({
-      ...t,
-      interrupted: true,
-      // Stamp pausedAt so TaskTimer shows frozen elapsed instead of "0s" (only when the
-      // task actually started and isn't already stamped).
-      timing: t?.timing?.startedAt && !t?.timing?.pausedAt && pausedAtIso
-        ? { ...t.timing, pausedAt: pausedAtIso }
-        : t?.timing,
-    });
-    const runningPaused = isPausedSession
-      ? sessionRunningTasks.map(markPaused)
-      : sessionRunningTasks.filter((t: any) => t?.interrupted === true);
-    const runningLive = isPausedSession
-      ? []
-      : sessionRunningTasks.filter((t: any) => t?.interrupted !== true);
-    const pausedCurrent = isPausedSession && currentTask ? markPaused(currentTask) : null;
-    const runningIds = new Set<string>([
-      ...(currentTask ? [currentTask.id] : []),
-      ...sessionRunningTasks.map((t: any) => t.id),
-    ]);
-
-    const MIN_RECURSION_LIMIT = 5;
-    const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
-    const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT)
-      ? 200
-      : recursionLimit;
-
-    const inProgress = (!isPausedSession && currentTask)
-      ? [currentTask, ...runningLive]
-      : runningLive;
-
-    const todo = [
-      ...(pausedCurrent ? [pausedCurrent] : []),
-      ...runningPaused,
-      ...sessionTaskQueue.filter((task: any) =>
-        !completedTaskIds.includes(task.id) &&
-        !runningIds.has(task.id)
-      ),
-    ];
-
-    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${todo.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning} paused=${isPausedSession}`);
-
-    return {
-      jobId: sessionJobId,
-      todo,
-      inProgress,
-      completed: completedTasksDetails.map((detail: any) => ({
-        ...detail,
-        status: 'completed',
-        completed: true
-      })),
-      isEstimating: false,
-      dataSource: 'session',
-      interruption: sessionState.interruption,
-      recursionCount: sessionState.recursionCount,
-      recursionLimit: sessionState.recursionLimit || finalLimit,
-      jobTiming: sessionState.jobTiming,
-      tokenUsage: sessionState.tokenUsage,
-      estimatingTokenUsage: sessionState.estimatingTokenUsage,
-      jobType,
-      agent: getAgentForJobSafe(jobType),
-    };
+    return projectSessionStateToKanban(sessionState, sessionJobId, jobType, isActuallyRunning);
   }
 
   /**
@@ -468,20 +379,22 @@ export class KanbanService {
    * it atomically, so the session file IS the final state and must be
    * the SSOT for the broadcast — regardless of Redis state at the moment.
    *
-   * Mirrors `getKanbanData`'s signature so call sites swap one method
-   * for the other without rewiring arguments. The `jobToProject` /
-   * `jobs` / `taskQueueSnapshots` parameters are accepted for signature
-   * symmetry but unused here (final snapshot derives only from disk).
+   * Takes the finalizing `jobId` explicitly. The shared `session.state`
+   * slot is last-writer-wins across all jobs of this jobType, so it is a
+   * trusted source for THIS jobId's final board only when it actually
+   * belongs to this jobId. On a confirmed mismatch we return `null` so the
+   * caller skips both the snapshot persist and the SSE broadcast — never
+   * projecting another (or stale) job's board onto the finalizing jobId
+   * (plain-dimming-flock RCA). The built board is stamped with the target
+   * `jobId` so downstream identity guards line up.
    */
   async getFinalSnapshotKanbanData(
     projectId: string,
     featureName: string,
     jobType: string,
-    _jobToProject?: Map<string, { projectId: string; featureName: string }>,
-    _jobs?: Map<string, any>,
-    _taskQueueSnapshots?: Map<string, any>,
+    jobId: string,
     userContext?: UserContext,
-  ): Promise<any> {
+  ): Promise<any | null> {
     if (!this.workspaceResolver || !userContext) {
       throw new Error('WorkspaceResolver and userContext are required');
     }
@@ -492,10 +405,20 @@ export class KanbanService {
     const sessionData = await this.safeReadSession(sessionPath);
     const sessionJobId: string | undefined = sessionData?.state?.jobId;
 
+    // Identity guard — only a CONFIRMED different jobId blocks the build
+    // (an absent sessionJobId falls through and is stamped to the target).
+    if (sessionJobId && sessionJobId !== jobId) {
+      console.warn(
+        `⚠️ [KanbanService] Final snapshot skipped — session.state belongs to ${sessionJobId}, not ${jobId}`,
+      );
+      return null;
+    }
+
     // isActuallyRunning is forced false: by the time finalize/pauseJob
     // calls this, the job is logically terminal even if the Redis status
     // write hasn't landed yet. The flag only feeds the diagnostic log.
-    return this.buildSessionKanbanData(sessionData, sessionJobId, jobType, false);
+    // Stamp the target jobId so the persisted snapshot is correctly keyed.
+    return this.buildSessionKanbanData(sessionData, jobId, jobType, false);
   }
 
   /**
