@@ -226,6 +226,12 @@ export async function buildPlanPrompt(
     prePlanText: hasPrePlanText ? prePlanTextRaw : '',
     hasPrePlanText,
     isSliceDeclaration,
+    // Seam partial: gates the plan-only "enumerate & partition" / "this is one
+    // slice" blocks. True at plan time so the parent (isSliceDeclaration=false)
+    // enumerates the module and emits batches, while a slice child
+    // (isSliceDeclaration=true) is told NOT to re-partition. At execute time the
+    // partial renders only its remediation principles (seamPlanning omitted).
+    seamPlanning: true,
     isDiagnosticCarry,
     hasCrossBatchContracts,
     batchSplitCount,

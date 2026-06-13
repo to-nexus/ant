@@ -13,6 +13,10 @@
  *     all non-integration feature work to finish before they can wire
  *     components together. Paired with classify's
  *     `consumesIntegrationGate` flag.
+ *   - preSeamBarrier        — seam band feature tasks wait for all
+ *     non-seam feature work (the whole module graph) to finish before
+ *     closing cross-feature references. Paired with classify's
+ *     `consumesSeamGate` flag.
  *
  * Producer flags (feature work ACTIVATES these barriers for other types):
  *   - blocksUi           — ui tasks wait for feature work to finish.
@@ -33,7 +37,12 @@
  *                                 Activates `hasPreIntegrationWork`.
  *   - consumesIntegrationGate   — `band === 'integration'`. Waits on
  *                                 `hasPreIntegrationWork`.
- *   - expandedRagQuota          — foundation OR integration — both need
+ *   - producesSeamGate          — `band !== 'seam'`. Activates
+ *                                 `hasPreSeamWork` (every non-seam feature
+ *                                 task gates the seam pass).
+ *   - consumesSeamGate          — `band === 'seam'`. Waits on
+ *                                 `hasPreSeamWork`.
+ *   - expandedRagQuota          — foundation / integration / seam — all need
  *                                 broader codebase visibility in RAG.
  *
  * Pre-three-axis: classify read `task.priority` and the priority window
@@ -51,6 +60,7 @@ import type { BaseTask } from '@ant/shared';
 import type { SchedulingClassification } from '../../_shared/types';
 
 export const preIntegrationBarrier = true;
+export const preSeamBarrier = true;
 
 export const blocksUi = true;
 export const blocksTestgen = true;
@@ -68,11 +78,18 @@ export function classify(task: BaseTask): SchedulingClassification {
   // Only ordinary feature work (band undefined) produces the integration gate.
   // Platform runs before features, so it finishes long before integration.
   const producesIntegrationGate = band === undefined;
+  // Seam gate: every non-seam feature task (foundation / platform / integration
+  // / ordinary) gates the seam pass; the seam pass itself consumes the gate.
+  // Seam sub-slices are also band 'seam' → produce=false → no mutual block.
+  const consumesSeamGate = band === 'seam';
+  const producesSeamGate = band !== 'seam';
   return {
     isFoundation,
     isPlatform,
     producesIntegrationGate,
     consumesIntegrationGate,
-    expandedRagQuota: isFoundation || isPlatform || consumesIntegrationGate,
+    producesSeamGate,
+    consumesSeamGate,
+    expandedRagQuota: isFoundation || isPlatform || consumesIntegrationGate || consumesSeamGate,
   };
 }

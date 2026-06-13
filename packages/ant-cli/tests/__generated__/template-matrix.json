@@ -588,6 +588,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/seam-connectivity-closure": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/secure-coding": {
     "sources": [
       "partial-ref",

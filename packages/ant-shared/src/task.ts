@@ -213,11 +213,20 @@ export interface PhaseTokenUsage {
  *   - `'integration'` — cross-feature wiring. Decompose maps priority band
  *                       [INTEGRATION_MIN, INTEGRATION_MAX] to this value.
  *                       Consumes the `hasPreIntegrationWork` barrier.
+ *   - `'seam'`        — cross-feature REFERENCE CLOSURE for one module /
+ *                       package. Decompose maps priority band
+ *                       [SEAM_MIN, SEAM_MAX] to this value and emits one seam
+ *                       task per package that emits outbound references. Runs
+ *                       after integration (the graph is fully assembled),
+ *                       before ui. Consumes the `hasPreSeamWork` barrier; its
+ *                       PLAN phase enumerates the package's reference graph and
+ *                       either remediates inline or fans out `batches[]` into
+ *                       disjoint-file slices (same machinery as test-code).
  *
  * `undefined` = an ordinary feature task (the common case) — a CONSUMER of
  * foundation contracts and platform services.
  */
-export type FeatureBand = 'foundation' | 'platform' | 'integration';
+export type FeatureBand = 'foundation' | 'platform' | 'integration' | 'seam';
 
 /**
  * Setup-scheduling band. Carried by {@link SetupTask} only.

@@ -55,7 +55,8 @@ export interface OrchestratorConfig {
    *   foundation (200–279)    ──[feature]     ──▶ feature     (300–599)
    *   platform   (280–299)    ──[platform]    ──▶ feature     (300–599)
    *   feature    (300–599)    ──[integration] ──▶ integration (600–649)
-   *   feature+integ (300–649) ──[ui]          ──▶ ui          (650–699)
+   *   feature+integ (300–649) ──[seam]        ──▶ seam        (650–669)
+   *   feature+integ+seam      ──[ui]          ──▶ ui          (670–699)
    *   feature+integ (300–649) ──[test-code]   ──▶ test-code   (700)
    *   test-code  (700)        ──[doc]         ──▶ doc         (800)
    *
@@ -83,6 +84,13 @@ export interface OrchestratorConfig {
     platform?: boolean;
     /** Blocks integration (600–649) until all feature (<600) tasks complete. */
     integration?: boolean;
+    /**
+     * Blocks seam (650–669) until all non-seam feature work (foundation /
+     * platform / integration / ordinary feature, <650) completes — the whole
+     * module graph must be materialized before cross-feature reference-closure
+     * remediation. Seam sub-slices (also band 'seam') do not gate each other.
+     */
+    seam?: boolean;
     /** Blocks ui tasks until all feature/setup tasks complete. */
     ui?: boolean;
     /** Blocks test-code tasks until all feature/setup tasks complete. */

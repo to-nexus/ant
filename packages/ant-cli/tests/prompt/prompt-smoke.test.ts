@@ -658,6 +658,12 @@ describe('Template Smoke Tests', () => {
       // (and any standalone render) leaves the block empty by design. See
       // `tasks/_shared/helpers/priorCompletedFiles.ts`.
       'jobs/code/base/injections/prior-completed-files',
+      // Seam reference-closure is wrapped entirely in
+      // {{#if (eq taskBand "seam")}} (no {{else}}) — same Contract pattern as
+      // analysis-block. It activates only for feature tasks in the seam band
+      // (priority 650–669); every other band leaves the block empty by design.
+      // See `.claude/plans/clear-hinting-fruit-shiny-catmull.md`.
+      'jobs/code/base/injections/seam-connectivity-closure',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

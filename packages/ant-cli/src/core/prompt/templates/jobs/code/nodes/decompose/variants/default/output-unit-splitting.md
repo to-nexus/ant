@@ -52,7 +52,7 @@ When the splitting principle above indicates separation, emit ONE `feature` task
 
 **Constraint — pairing via parallelGroup**: Each per-unit ui task shares its `parallelGroup` with its paired renderable feature task. Same `parallelGroup` serializes them on the same output file: the feature task emits a functionally complete but visually unstyled component first (all interactive behavior present and working — "unstyled" means missing visual polish, NOT a non-functional stub); the ui task then enhances it second.
 
-**Constraint — priority**: Per-unit ui tasks use priority in the 650–699 range. Distinguishability between ui tasks comes from `parallelGroup` (which matches the paired feature), not from priority.
+**Constraint — priority**: Per-unit ui tasks use priority in the 670–699 range. Distinguishability between ui tasks comes from `parallelGroup` (which matches the paired feature), not from priority.
 
 **Constraint — do not redefine the shared style foundation**: The `design-system` task (priority 200) owns the token / style FOUNDATION (project-wide tokens, theme config). A per-unit ui task MUST NOT fork or redefine that foundation. It MAY, when an enhancement genuinely requires it, extend shared or global style layers and touch sibling / other-package presentation for integration — building ON the foundation, not redeclaring it. If a token-level gap is observed, extend the `design-system` task rather than redefining tokens locally.
 

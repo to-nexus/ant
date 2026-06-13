@@ -13,8 +13,8 @@
  *   isPriorityFromSpec = false  → canonical band guide
  *                                 (100–189: setup, 200–299: foundation,
  *                                 300–599: feature, 600–649: integration,
- *                                 650–699: ui, 700: test-code, 800: doc,
- *                                 900–980: error, 1000: verification)
+ *                                 650–669: seam, 670–699: ui, 700: test-code,
+ *                                 800: doc, 900–980: error, 1000: verification)
  *                                 plus the Note paragraph.
  *
  * The runtime gate lives at

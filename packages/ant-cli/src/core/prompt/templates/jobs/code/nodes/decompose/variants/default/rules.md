@@ -228,7 +228,7 @@ following the schema below:
 {{#if isPriorityFromSpec}}
 | `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
 {{else}}
-| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–669: feature (seam: cross-feature reference closure, one per package), 670–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 {{/if}}
 | `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
 | `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
@@ -287,7 +287,7 @@ CRITICAL:
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Delivers functionally complete behavior in visually unstyled form — all interactive behavior present and working; "unstyled" is missing visual polish, NOT a non-functional stub |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
-| `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–699). See UI pairing rule in Independent Output Unit Splitting. |
+| `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 670–699). See UI pairing rule in Independent Output Unit Splitting. |
 | `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 700). See Test Generation Task section for inclusion rubric. |
 | `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 800). See Documentation Task section. |
 | `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
@@ -783,7 +783,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "design-system"` (priority 201+, wiring) -> `exclusive: false`, `parallelGroup: "design-system"` (shared group serializes token→wiring; foundation barrier ensures 300+ tasks wait)
 - `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
 - `type: "feature"` (priority 600–649 integration) -> `parallelGroup` (integration barrier ensures all feature tasks complete first)
-- `type: "ui"` (priority 650–699) -> `parallelGroup` EQUAL to its paired renderable feature task's `parallelGroup`. One ui task per renderable feature (see UI pairing rule in Independent Output Unit Splitting). No ui task for non-renderable features (workers / commands / library symbols / pipeline stages / wiring / shared foundations).
+- `type: "feature"` (priority 650–669 seam) -> `parallelGroup: "seam-<package>"`, distinct per package (seam barrier ensures all non-seam feature/integration tasks complete first; one seam task per package emitting outbound references)
+- `type: "ui"` (priority 670–699) -> `parallelGroup` EQUAL to its paired renderable feature task's `parallelGroup`. One ui task per renderable feature (see UI pairing rule in Independent Output Unit Splitting). No ui task for non-renderable features (workers / commands / library symbols / pipeline stages / wiring / shared foundations).
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
 - `type: "test-code"` (single package) -> exclusive
@@ -882,6 +883,20 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Constraint**: Do NOT assign host-entry responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
 
 **Blind spot**: Integration conflicts are EASILY CAUSED when parallel feature tasks independently edit the same host-entry file. If 2+ parallel groups register into the same host entry, an integration task is almost certainly needed. (Per-unit entries do not cause this — each is owned by one authoring task.)
+
+---
+
+## Cross-Feature Reference Closure (seam band)
+
+**Principle**: After feature and integration work, a module's separately-authored parts hold inter-references — navigation targets, invoked endpoints/handlers, emitted events / message keys, injected dependencies, imported symbols — that drift, dangle, or duplicate across the part boundaries no single feature task can see. A `seam` task owns the **reference closure** of ONE module (package): it runs once the module is materialized and makes every reference resolve to a real, registered destination.
+
+**Constraint**: For each package / independent module that emits cross-part references (a host-entry app with navigation, a backend service with endpoints/events/DI, a shared library with internal cross-module references), emit exactly ONE seam task:
+- `type: "feature"`, priority in the seam band [650-669] (after integration, before ui).
+- `parallelGroup: "seam-<package>"` — distinct per package so seams run in parallel; it MUST NOT share a group with any feature/integration task.
+- `stack` set to the package's stack (frontend/backend) so tech-tier guidance pins the concrete reference model (route tree / router registration / event registry / DI container).
+- Description: close `<package>`'s cross-feature reference closure. Its PLAN phase enumerates the package's reference graph over the materialized code and either remediates inline or partitions into disjoint-file slices. Write within this package; read other modules' published contracts read-only; for a destination owned by another module, conform to that module's published contract (the shared foundation / contract package) rather than redefining it.
+
+**Constraint**: Do NOT emit `batches[]` at decompose time — the seam's plan phase owns the partition (same as test-code). Emit NO seam task for a package with no outbound references (a pure-type contract package, a presentational-only library that emits no references).
 
 ---
 

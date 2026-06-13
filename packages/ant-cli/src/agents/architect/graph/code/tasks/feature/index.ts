@@ -116,6 +116,7 @@
 
 import {
   preIntegrationBarrier,
+  preSeamBarrier,
   blocksUi,
   blocksTestgen,
   blocksDoc,
@@ -171,6 +172,7 @@ export const hooks = composeBundle({
   taskTypeSpecific: {
     scheduling: {
       preIntegrationBarrier,
+      preSeamBarrier,
       blocksUi,
       blocksTestgen,
       blocksDoc,

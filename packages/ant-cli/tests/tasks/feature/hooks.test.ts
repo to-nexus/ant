@@ -143,6 +143,8 @@ describe('tasks/feature/hooks/scheduling', () => {
         isPlatform: false,
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
+        producesSeamGate: true,
+        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -156,6 +158,8 @@ describe('tasks/feature/hooks/scheduling', () => {
         isPlatform: true,
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
+        producesSeamGate: true,
+        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -166,6 +170,8 @@ describe('tasks/feature/hooks/scheduling', () => {
         isPlatform: false,
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
+        producesSeamGate: true,
+        consumesSeamGate: false,
         expandedRagQuota: false,
       });
     });
@@ -176,6 +182,8 @@ describe('tasks/feature/hooks/scheduling', () => {
         isPlatform: false,
         producesIntegrationGate: false,
         consumesIntegrationGate: true,
+        producesSeamGate: true,
+        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -190,7 +198,23 @@ describe('tasks/feature/hooks/scheduling', () => {
         isPlatform: false,
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
+        producesSeamGate: true,
+        consumesSeamGate: false,
         expandedRagQuota: false,
+      });
+    });
+
+    it('band==="seam" ⇒ consumesSeamGate + expandedRagQuota; does NOT produce the seam gate', () => {
+      // Seam sub-slices are also band 'seam' — consume but never produce the
+      // gate, so they never block each other (deadlock-free, like integration).
+      expect(schedClassify(task('seam-app', { band: 'seam' }))).toEqual({
+        isFoundation: false,
+        isPlatform: false,
+        producesIntegrationGate: false,
+        consumesIntegrationGate: false,
+        producesSeamGate: false,
+        consumesSeamGate: true,
+        expandedRagQuota: true,
       });
     });
   });
