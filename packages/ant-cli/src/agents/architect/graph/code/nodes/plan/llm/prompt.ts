@@ -36,6 +36,7 @@ import {
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
 } from "../../../../../../../core/prompt/builder/serviceVirtualization";
+import { isAuthSessionLifecycleActive } from "../../../../../../../core/prompt/builder/authSessionGate";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
@@ -297,6 +298,13 @@ export async function buildPlanPrompt(
     svAuthFlowActive: isSvAuthFlowActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       taskType: task.type,
+    }),
+    // Session-lifecycle completeness — SV-INDEPENDENT (no hasBusinessConnection
+    // precondition): persist+rehydrate round-trip is true production behavior,
+    // owned by the platform-band session boundary. See `authSessionGate.ts`.
+    authSessionLifecycleActive: isAuthSessionLifecycleActive({
+      taskType: task.type,
+      band: taskBand,
     }),
     // Plan-tool-loop budget surfacing — observable signal for
     // `plan-tools-batch.md`'s Finalization Discipline. Derived from

@@ -44,6 +44,7 @@ import {
   isSvBodyLifecycleActive,
   isSvAuthFlowActive,
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
+import { isAuthSessionLifecycleActive } from "../../../../../../core/prompt/builder/authSessionGate";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
@@ -503,6 +504,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       svAuthFlowActive: isSvAuthFlowActive({
         hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         taskType,
+      }),
+      // Session-lifecycle completeness — SV-INDEPENDENT (no hasBusinessConnection
+      // precondition): the persist+rehydrate round-trip is true production
+      // behavior, owned by the platform-band session boundary. See
+      // `core/prompt/builder/authSessionGate.ts`.
+      authSessionLifecycleActive: isAuthSessionLifecycleActive({
+        taskType,
+        band: (state.currentTask as { band?: string }).band,
       }),
       // figmaAvailable is strictly derived from uiSource === 'figma'.
       // The previous AND-with-!hasUi() gate is obsolete; hard-exclusive UiSource

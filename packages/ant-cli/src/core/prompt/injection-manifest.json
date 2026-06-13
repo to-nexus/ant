@@ -45,6 +45,7 @@
     "service-virtualization-data": [],
     "service-virtualization-imagery": [],
     "service-virtualization-session": [],
+    "session-lifecycle-completeness": [],
     "response-language": ["userLanguage"],
     "entry-point-ownership-rule": ["taskBand"],
     "entry-point-ownership-checklist": ["taskBand"],

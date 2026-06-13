@@ -191,6 +191,19 @@ description, your only honest options are**:
    emitting a verification-only batch with no on-disk change is itself a
    slice violation.
 
+### Wiring to a sibling-owned flow (the boundary's other half)
+
+The boundary forbids you from *implementing* a remaining task's surface — it
+does NOT excuse rendering a control that points at nothing. When your own
+surface renders an **action affordance** (create / enter-detail / transition /
+mode-switch / edit) whose **destination flow is owned by a remaining task**,
+deferring to that task means **wiring the affordance to that flow's named
+entry** — the routable address or invocable handler that task's description
+names — NOT leaving the control inert (no binding, or a placeholder handler
+that does nothing). An affordance rendered with no reachable destination is the
+dead-control defect; "the sibling owns it" resolves to a wire to the sibling's
+entry, never to a stub.
+
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 

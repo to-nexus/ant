@@ -335,6 +335,10 @@ what YOU own; depend on interfaces for what others own.
 {{> jobs/code/base/injections/service-virtualization-session}}
 {{/if}}
 
+{{#if authSessionLifecycleActive}}
+{{> jobs/code/base/injections/session-lifecycle-completeness}}
+{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 🧠 REASONING CHECKPOINTS
 ────────────────────────────────────────────────────────────────────────────────
