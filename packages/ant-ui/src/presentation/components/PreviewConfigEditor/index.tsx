@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Spinner } from '../common/async';
 import { useStore } from '@/domain/store';
@@ -26,7 +26,22 @@ import { ProjectProfileSection } from './sections/ProjectProfileSection';
 import { ServiceConnectionsSection } from './sections/ServiceConnectionsSection';
 import { PreviewControlsSection } from './sections/PreviewControlsSection';
 import { StatusConsoleSection } from './sections/StatusConsoleSection';
-import { DeploySection } from './sections/DeploySection';
+import { DeploySection, deployPhaseToSignal } from './sections/DeploySection';
+import { ConsoleStreamSwitch } from './components/ConsoleStreamSwitch';
+import type { ConsoleStream } from './components/ConsoleStreamSwitch';
+import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
+import type { PreviewState } from '../FeatureSection/types/preview';
+
+function previewStateToSignal(state: PreviewState): SignalRingState {
+  switch (state) {
+    case 'running': return 'running';
+    case 'installing':
+    case 'starting':
+    case 'stopping': return 'starting';
+    case 'error': return 'error';
+    default: return 'idle';
+  }
+}
 
 const SECTION_IDS = [
   'c3v-live',
@@ -84,6 +99,7 @@ export function PreviewConfigEditor() {
 
   // UI-only local state
   const [logsExpanded, setLogsExpanded] = useState(false);
+  const [activeStream, setActiveStream] = useState<'dev' | 'deploy'>('dev');
 
   const isRunning = previewState === 'running';
 
@@ -91,7 +107,52 @@ export function PreviewConfigEditor() {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useActiveSection(SECTION_IDS, scrollerRef);
 
-  const dockedLogs: DockedConsoleLog[] = logs;
+  // Console: Dev (preview) vs Deploy streams share one docked console.
+  const devSignal = previewStateToSignal(previewState);
+  const deploySignal = deployPhaseToSignal(deployStatusData?.phase);
+
+  const activeLogs: DockedConsoleLog[] = activeStream === 'dev' ? logs : deployLogs;
+  const activeEmptyHint =
+    activeStream === 'dev'
+      ? t('preview.consoleEmpty', '프리뷰 서버를 시작하면 로그가 표시됩니다')
+      : t('preview.console.deployEmpty', '배포를 시작하면 빌드 로그가 표시됩니다');
+
+  // Unread-activity dot: a stream is unread when its log count grew past what
+  // was last seen while it was the open/active stream.
+  const seenCounts = useRef<{ dev: number; deploy: number }>({ dev: 0, deploy: 0 });
+  const markRead = useCallback(
+    (id: 'dev' | 'deploy') => {
+      seenCounts.current[id] = id === 'dev' ? logs.length : deployLogs.length;
+    },
+    [logs.length, deployLogs.length],
+  );
+  // Active stream stays read while the console is open.
+  useEffect(() => {
+    if (logsExpanded) markRead(activeStream);
+  }, [logsExpanded, activeStream, logs.length, deployLogs.length, markRead]);
+  // Reset seen counts when switching feature/project (avoid stale dots).
+  useEffect(() => {
+    seenCounts.current = { dev: logs.length, deploy: deployLogs.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featureKey]);
+
+  const consoleStreams: ConsoleStream[] = useMemo(
+    () => [
+      {
+        id: 'dev',
+        label: t('preview.console.tabDev', 'Dev'),
+        signal: devSignal,
+        unread: logs.length > seenCounts.current.dev,
+      },
+      {
+        id: 'deploy',
+        label: t('preview.console.tabDeploy', 'Deploy'),
+        signal: deploySignal,
+        unread: deployLogs.length > seenCounts.current.deploy,
+      },
+    ],
+    [t, devSignal, deploySignal, logs.length, deployLogs.length],
+  );
 
   const handleOpenPreview = useCallback((targetUrl?: string) => {
     // Resolution order:
@@ -293,7 +354,6 @@ export function PreviewConfigEditor() {
           <div id="c3v-deploy" />
           <DeploySection
             deployStatus={deployStatusData}
-            deployLogs={deployLogs}
             isDeployLoading={isDeployLoading}
             canDeploy={canDeploy}
             disabledReason={deployDisabledReason}
@@ -304,11 +364,22 @@ export function PreviewConfigEditor() {
         </TwoColLayout>
 
         <DockedConsole
-          logs={dockedLogs}
-          title={t('preview.consoleTitle', 'PREVIEW CONSOLE')}
+          logs={activeLogs}
           open={logsExpanded}
           onToggle={() => setLogsExpanded((v) => !v)}
-          emptyHint={t('preview.consoleEmpty', '프리뷰 서버를 시작하면 로그가 표시됩니다')}
+          emptyHint={activeEmptyHint}
+          headerContent={
+            <ConsoleStreamSwitch
+              streams={consoleStreams}
+              activeId={activeStream}
+              ariaLabel={t('preview.consoleTitle', 'PREVIEW CONSOLE')}
+              onSelect={(id) => {
+                const stream = id as 'dev' | 'deploy';
+                setActiveStream(stream);
+                markRead(stream);
+              }}
+            />
+          }
         />
       </div>
     </div>

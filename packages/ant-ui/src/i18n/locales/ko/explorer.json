@@ -220,6 +220,11 @@
     "suggestedFix": "해결: {{fix}}",
     "allChecksPassed": "모든 검사를 통과했습니다.",
     "logsCount": "로그 ({{count}})",
+    "console": {
+      "tabDev": "개발",
+      "tabDeploy": "배포",
+      "deployEmpty": "배포를 시작하면 빌드 로그가 표시됩니다"
+    },
     "deploy": {
       "title": "배포",
       "description": "프로젝트의 프로덕션 빌드를 생성하고 정적 파일로 서빙합니다.",

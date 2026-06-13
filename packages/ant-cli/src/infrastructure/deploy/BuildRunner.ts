@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
-import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
+import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
 
 export interface BuildResult {
   success: boolean;
@@ -121,7 +121,11 @@ async function ensureDependencies(
     }
   }
 
-  const pm = detectPackageManager(workspacePath);
+  // Detect the PM at the workspace root, not the per-package dir — a workspace
+  // member has no lockfile of its own, so detecting here would fall back to npm
+  // and fail on `workspace:*` deps. `pnpm install` from a sub-package installs
+  // the whole workspace correctly.
+  const pm = detectPackageManager(findProjectRoot(workspacePath));
   const { command, args } = buildInstallCommand(pm);
 
   onLog?.(`📦 Installing dependencies (${pm})...`);
