@@ -27,3 +27,5 @@ overrides:
   'minimatch@<5.1.8 >=5': '^5.1.8'
   'glob@<10.5.0 >=10': '^10.5.0'
   '@grpc/grpc-js': '^1.14.4'
+  # tsx<4.22 pulls esbuild ~0.25 (GHSA-gv7w-rqvm-qjhr, fixed 0.28.1); 4.22+ pulls esbuild ~0.28
+  tsx: '^4.22.4'
