@@ -19,7 +19,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import semver from 'semver';
-import { enumeratePackageJsonManifests, resolveModulePath } from './workspaceDepPins';
+import { resolveModulePath } from './workspaceDepPins';
+import { enumeratePackageJsonManifests } from '../../../../utils/workspacePackages';
 
 const DEP_MANIFEST_BASENAMES = new Set([
   'package.json',

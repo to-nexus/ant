@@ -15,14 +15,20 @@
  *   3. Exclude `.next`, `node_modules`, and other dev/build artifacts so
  *      deploy's own `.next/` (including `.next/cache` for fast rebuilds) is
  *      never clobbered.
- *   4. Share `node_modules` via symlink (deploy reads only; install happens
- *      in codebase via PreviewService's existing Redis-locked path).
+ *   4. Share `node_modules` via symlink, mirrored at EVERY workspace package
+ *      level — not just the root. pnpm does not hoist most deps to the root,
+ *      so a single `deploy/node_modules` link is insufficient for a monorepo:
+ *      `next build` in `deploy/apps/web` needs `deploy/apps/web/node_modules`
+ *      to resolve `next` + `workspace:*` deps. Each per-package link points at
+ *      the codebase's real (already-installed) symlink farm; deploy reads
+ *      only, install happens in codebase via PreviewService's Redis-locked path.
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import { spawn } from 'child_process';
+import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -79,7 +85,7 @@ export async function syncDeployWorkspace(
     await nodeIncrementalSync(codebasePath, deployPath, onLog);
   }
 
-  await ensureNodeModulesSymlink(codebasePath, deployPath);
+  await ensureNodeModulesSymlinks(codebasePath, deployPath);
 
   onLog?.(`✅ Deploy workspace ready`);
   return deployPath;
@@ -243,17 +249,40 @@ async function copyIfDiffers(
 }
 
 /**
- * Ensure deploy/node_modules points at codebase/node_modules. If it is
- * already a correct symlink we leave it alone; if it exists as a regular
- * directory (from a prior attempt) we remove it before relinking.
+ * Mirror the codebase's `node_modules` symlink layout into the deploy tree at
+ * every workspace package level. For each package dir (root + every workspace
+ * member, discovered via the shared manifest walk) that actually has a
+ * `node_modules` in the codebase, create a matching symlink in deploy.
+ *
+ * Single-package repos resolve to just the root link — identical to before.
  */
-async function ensureNodeModulesSymlink(
+async function ensureNodeModulesSymlinks(
   codebasePath: string,
   deployPath: string
 ): Promise<void> {
-  const target = path.join(codebasePath, 'node_modules');
-  const link = path.join(deployPath, 'node_modules');
+  const manifests = await enumeratePackageJsonManifests(codebasePath);
+  const pkgDirs = new Set(manifests.map((m) => path.dirname(m)));
 
+  for (const dir of pkgDirs) {
+    const target = path.join(dir, 'node_modules');
+    // Mirror only what the codebase actually installed.
+    const targetStat = await fsp.lstat(target).catch(() => null);
+    if (!targetStat) continue;
+
+    const rel = path.relative(codebasePath, dir); // '' for the workspace root
+    const link = path.join(deployPath, rel, 'node_modules');
+    await linkNodeModules(target, link);
+  }
+}
+
+/**
+ * Link a single `node_modules` into the deploy tree. If it is already the
+ * correct symlink we leave it alone; if it exists as a regular directory
+ * (from a prior attempt) we remove it before relinking. Prefers relative
+ * symlinks so the deploy workspace stays portable if the base path moves
+ * (e.g. from local laptop layout to EFS).
+ */
+async function linkNodeModules(target: string, link: string): Promise<void> {
   const existing = await fsp.lstat(link).catch(() => null);
   if (existing) {
     if (existing.isSymbolicLink()) {
@@ -265,8 +294,7 @@ async function ensureNodeModulesSymlink(
     await fsp.rm(link, { recursive: true, force: true });
   }
 
-  // Prefer relative symlinks so the deploy workspace stays portable if the
-  // base path moves (e.g. from local laptop layout to EFS).
+  await fsp.mkdir(path.dirname(link), { recursive: true });
   const rel = path.relative(path.dirname(link), target);
   await fsp.symlink(rel || target, link, 'dir');
 }

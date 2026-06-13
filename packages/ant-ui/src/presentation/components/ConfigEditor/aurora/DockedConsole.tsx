@@ -1,4 +1,5 @@
 
+import * as React from 'react';
 import { ChevronDown, ChevronUp, Terminal } from 'lucide-react';
 
 export interface DockedConsoleLog {
@@ -13,6 +14,11 @@ export interface DockedConsoleProps {
   open: boolean;
   onToggle: () => void;
   emptyHint?: string;
+  /**
+   * Optional header content rendered in place of the static `title` (e.g. a
+   * stream switch). Kept generic — the console knows nothing about tabs.
+   */
+  headerContent?: React.ReactNode;
 }
 
 /**
@@ -25,6 +31,7 @@ export function DockedConsole({
   open,
   onToggle,
   emptyHint = '로그가 없습니다.',
+  headerContent,
 }: DockedConsoleProps) {
   const visibleLogs = logs.slice(-100);
   const hasLogs = logs.length > 0;
@@ -51,34 +58,31 @@ export function DockedConsole({
         flexShrink: 0,
       }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
+      {/* Header row: headerContent/title + meta on the left, collapse toggle on
+          the right. Kept as sibling buttons (not nested) so interactive header
+          content does not live inside the collapse <button>. */}
+      <div
         style={{
-          width: '100%',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
           padding: '8px 16px',
-          background: 'transparent',
-          border: 'none',
-          color: 'inherit',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
         }}
       >
-        <Terminal size={13} strokeWidth={2} />
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: 2,
-            textTransform: 'uppercase',
-            color: 'oklch(90% 0.02 290)',
-          }}
-        >
-          {title}
-        </span>
+        <Terminal size={13} strokeWidth={2} style={{ flexShrink: 0 }} />
+        {headerContent ?? (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              color: 'oklch(90% 0.02 290)',
+            }}
+          >
+            {title}
+          </span>
+        )}
         <span
           style={{
             fontSize: 10,
@@ -102,12 +106,29 @@ export function DockedConsole({
           />
         )}
         <span style={{ flex: 1 }} />
-        {open ? (
-          <ChevronDown size={14} strokeWidth={2} />
-        ) : (
-          <ChevronUp size={14} strokeWidth={2} />
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={open ? 'Collapse console' : 'Expand console'}
+          aria-expanded={open}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'transparent',
+            border: 'none',
+            color: 'inherit',
+            cursor: 'pointer',
+            padding: 2,
+            fontFamily: 'inherit',
+          }}
+        >
+          {open ? (
+            <ChevronDown size={14} strokeWidth={2} />
+          ) : (
+            <ChevronUp size={14} strokeWidth={2} />
+          )}
+        </button>
+      </div>
       {open && (
         <div
           style={{

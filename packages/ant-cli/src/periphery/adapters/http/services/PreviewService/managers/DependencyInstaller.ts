@@ -2,7 +2,7 @@ import { spawn, execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
-import { detectPackageManager, buildInstallCommand, type PackageManager } from '../../../../../../utils/packageManager';
+import { detectPackageManager, buildInstallCommand, findProjectRoot, type PackageManager } from '../../../../../../utils/packageManager';
 import type { LogCallback } from '../types';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
@@ -385,41 +385,11 @@ export class DependencyInstaller {
   }
   
   /**
-   * Find project root by looking for lock files or workspace config
+   * Find project root by looking for lock files or workspace config.
+   * Delegates to the shared SSOT in utils/packageManager.
    */
   findProjectRoot(packagePath: string): string {
-    let current = packagePath;
-    while (current !== path.dirname(current)) {
-      // Check for workspace config files (pnpm-workspace.yaml indicates workspace root)
-      if (fs.existsSync(path.join(current, 'pnpm-workspace.yaml'))) {
-        return current;
-      }
-      
-      // Check for lock files (indicates root)
-      if (
-        fs.existsSync(path.join(current, 'pnpm-lock.yaml')) ||
-        fs.existsSync(path.join(current, 'yarn.lock')) ||
-        fs.existsSync(path.join(current, 'package-lock.json'))
-      ) {
-        return current;
-      }
-      
-      // Check for workspaces in package.json
-      const pkgPath = path.join(current, 'package.json');
-      if (fs.existsSync(pkgPath)) {
-        try {
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-          if (pkg.workspaces) {
-            return current;
-          }
-        } catch {
-          // ignore
-        }
-      }
-      current = path.dirname(current);
-    }
-    // Fallback to package path
-    return packagePath;
+    return findProjectRoot(packagePath);
   }
   
   /**

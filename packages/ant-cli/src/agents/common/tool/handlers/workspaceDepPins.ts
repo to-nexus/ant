@@ -28,6 +28,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import { enumeratePackageJsonManifests } from '../../../../utils/workspacePackages';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Public types
@@ -127,59 +128,6 @@ const PACKAGE_JSON_DISPATCH: ManifestDispatch = {
 const DISPATCH: Record<ManifestKind, ManifestDispatch> = {
   'package.json': PACKAGE_JSON_DISPATCH,
 };
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Workspace enumeration (package.json row)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const SKIP_DIR_NAMES = new Set([
-  'node_modules', '.git', '.next', '.nuxt', '.turbo', '.cache',
-  'dist', 'build', 'out', 'coverage', '.vercel', '.svelte-kit',
-]);
-
-/**
- * Walk the codebase and collect every `package.json` excluding ones under
- * `node_modules/` and other build/cache directories. When
- * `pnpm-workspace.yaml` is present we still enumerate by walk — globs in
- * the workspace file can be brittle (relative paths, negation, `**`),
- * and a directory walk is both simpler and equally bounded by depth
- * because we prune the same skip-dir set the user-edited tree never
- * traverses.
- *
- * Exported so `invalidationScope.ts::areDepsInstalled` consumes the same
- * disk-walk SSOT — install-status and pin-conflict snapshot agree on what
- * manifests exist.
- */
-export async function enumeratePackageJsonManifests(codebasePath: string): Promise<string[]> {
-  const found: string[] = [];
-
-  async function walk(dir: string, depth: number): Promise<void> {
-    if (depth > 6) return;
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (SKIP_DIR_NAMES.has(entry.name)) continue;
-        if (entry.name.startsWith('.') && entry.name !== '.') continue;
-        await walk(path.join(dir, entry.name), depth + 1);
-      } else if (entry.isFile() && entry.name === 'package.json') {
-        found.push(path.join(dir, entry.name));
-      }
-    }
-  }
-
-  try {
-    await fs.promises.stat(codebasePath);
-  } catch {
-    return [];
-  }
-  await walk(codebasePath, 0);
-  return found;
-}
 
 /**
  * Resolve where a dependency's `node_modules` directory actually lives.

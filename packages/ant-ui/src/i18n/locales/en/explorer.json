@@ -220,6 +220,11 @@
     "suggestedFix": "Fix: {{fix}}",
     "allChecksPassed": "All checks passed.",
     "logsCount": "Logs ({{count}})",
+    "console": {
+      "tabDev": "Dev",
+      "tabDeploy": "Deploy",
+      "deployEmpty": "Build logs appear when you start a deploy"
+    },
     "deploy": {
       "title": "Deploy",
       "description": "Build and serve a production-optimized static version of your project.",

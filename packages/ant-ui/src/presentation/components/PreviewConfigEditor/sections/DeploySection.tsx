@@ -12,7 +12,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
-import type { DeployStatus, DeployLogEntry, DeployVisibility } from '@/infrastructure/http/api';
+import type { DeployStatus, DeployVisibility } from '@/infrastructure/http/api';
 import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
 import { BoardViewModeToggle } from '@/presentation/components/aurora/BoardViewModeToggle';
 import {
@@ -27,59 +27,45 @@ interface DeployAccent {
   ring: SignalRingState;
 }
 
+/**
+ * Map a deploy phase to a SignalRing state. SSOT for the deploy status dot —
+ * shared by the deploy section's accent and the console stream switch.
+ */
+export function deployPhaseToSignal(phase: string | undefined): SignalRingState {
+  switch (phase) {
+    case 'running': return 'running';
+    case 'building':
+    case 'deploying':
+    case 'starting': return 'starting';
+    case 'hibernated': return 'hibernated';
+    case 'unavailable': return 'warning';
+    case 'error': return 'error';
+    default: return 'idle';
+  }
+}
+
 function c3vDeployAccent(
   phase: string | undefined,
   t: TFunction,
 ): DeployAccent {
+  const ring = deployPhaseToSignal(phase);
   switch (phase) {
     case 'running':
-      return {
-        color: 'oklch(45% 0.16 155)',
-        label: t('preview.deploy.running', 'Deployed'),
-        ring: 'running',
-      };
+      return { color: 'oklch(45% 0.16 155)', label: t('preview.deploy.running', 'Deployed'), ring };
     case 'building':
-      return {
-        color: 'var(--violet-700)',
-        label: t('preview.deploy.building', 'Building...'),
-        ring: 'starting',
-      };
+      return { color: 'var(--violet-700)', label: t('preview.deploy.building', 'Building...'), ring };
     case 'deploying':
-      return {
-        color: 'oklch(50% 0.20 320)',
-        label: t('preview.deploy.deploying', 'Deploying...'),
-        ring: 'starting',
-      };
+      return { color: 'oklch(50% 0.20 320)', label: t('preview.deploy.deploying', 'Deploying...'), ring };
     case 'starting':
-      return {
-        color: 'oklch(50% 0.22 270)',
-        label: t('preview.deploy.starting', 'Waking up...'),
-        ring: 'starting',
-      };
+      return { color: 'oklch(50% 0.22 270)', label: t('preview.deploy.starting', 'Waking up...'), ring };
     case 'hibernated':
-      return {
-        color: 'var(--text-3)',
-        label: t('preview.deploy.hibernated', 'Hibernated'),
-        ring: 'hibernated',
-      };
+      return { color: 'var(--text-3)', label: t('preview.deploy.hibernated', 'Hibernated'), ring };
     case 'unavailable':
-      return {
-        color: 'oklch(50% 0.16 50)',
-        label: t('preview.deploy.unavailable', 'Artifact missing'),
-        ring: 'warning',
-      };
+      return { color: 'oklch(50% 0.16 50)', label: t('preview.deploy.unavailable', 'Artifact missing'), ring };
     case 'error':
-      return {
-        color: 'var(--status-error-fg)',
-        label: t('preview.deploy.error', 'Deploy Failed'),
-        ring: 'error',
-      };
+      return { color: 'var(--status-error-fg)', label: t('preview.deploy.error', 'Deploy Failed'), ring };
     default:
-      return {
-        color: 'var(--text-4)',
-        label: t('preview.deploy.idle', 'Not deployed'),
-        ring: 'idle',
-      };
+      return { color: 'var(--text-4)', label: t('preview.deploy.idle', 'Not deployed'), ring };
   }
 }
 
@@ -118,7 +104,6 @@ function bigBtn({
 
 export function DeploySection({
   deployStatus,
-  deployLogs,
   isDeployLoading,
   canDeploy,
   disabledReason,
@@ -127,7 +112,6 @@ export function DeploySection({
   onOpenDeployUrl,
 }: {
   deployStatus: DeployStatus | undefined;
-  deployLogs: DeployLogEntry[];
   isDeployLoading: boolean;
   /**
    * False when the backend would reject a deploy request (no feature
@@ -163,9 +147,6 @@ export function DeploySection({
   const isUnavailable = phase === 'unavailable';
   const isError = phase === 'error';
   const isDeployActive = isRunning || isWorking;
-
-  // deployLogs reserved for a future Aurora deploy console; not rendered here.
-  void deployLogs;
 
   const accent = c3vDeployAccent(phase, t);
 
