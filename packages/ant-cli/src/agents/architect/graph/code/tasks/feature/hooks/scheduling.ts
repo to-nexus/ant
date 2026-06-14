@@ -13,10 +13,10 @@
  *     all non-integration feature work to finish before they can wire
  *     components together. Paired with classify's
  *     `consumesIntegrationGate` flag.
- *   - preSeamBarrier        — seam band feature tasks wait for all
- *     non-seam feature work (the whole module graph) to finish before
- *     closing cross-feature references. Paired with classify's
- *     `consumesSeamGate` flag.
+ *
+ * (Cross-feature reference closure is no longer a feature band — it is the
+ * `seam` TaskType, run AFTER ui. Feature tasks PRODUCE the seam gate, they
+ * never consume it; see `producesSeamGate` below.)
  *
  * Producer flags (feature work ACTIVATES these barriers for other types):
  *   - blocksUi           — ui tasks wait for feature work to finish.
@@ -37,13 +37,12 @@
  *                                 Activates `hasPreIntegrationWork`.
  *   - consumesIntegrationGate   — `band === 'integration'`. Waits on
  *                                 `hasPreIntegrationWork`.
- *   - producesSeamGate          — `band !== 'seam'`. Activates
- *                                 `hasPreSeamWork` (every non-seam feature
- *                                 task gates the seam pass).
- *   - consumesSeamGate          — `band === 'seam'`. Waits on
+ *   - producesSeamGate          — always true. Every feature task is
+ *                                 authoring work that the `seam` pass (run
+ *                                 AFTER ui) must wait for. Activates
  *                                 `hasPreSeamWork`.
- *   - expandedRagQuota          — foundation / integration / seam — all need
- *                                 broader codebase visibility in RAG.
+ *   - expandedRagQuota          — foundation / integration — broader codebase
+ *                                 visibility in RAG.
  *
  * Pre-three-axis: classify read `task.priority` and the priority window
  * crossings (`Math.max(1, parent - 1)` in `batchSplit`) caused
@@ -60,7 +59,6 @@ import type { BaseTask } from '@ant/shared';
 import type { SchedulingClassification } from '../../_shared/types';
 
 export const preIntegrationBarrier = true;
-export const preSeamBarrier = true;
 
 export const blocksUi = true;
 export const blocksTestgen = true;
@@ -78,18 +76,14 @@ export function classify(task: BaseTask): SchedulingClassification {
   // Only ordinary feature work (band undefined) produces the integration gate.
   // Platform runs before features, so it finishes long before integration.
   const producesIntegrationGate = band === undefined;
-  // Seam gate: every non-seam feature task (foundation / platform / integration
-  // / ordinary) gates the seam pass; the seam pass itself consumes the gate.
-  // Seam sub-slices are also band 'seam' → produce=false → no mutual block.
-  const consumesSeamGate = band === 'seam';
-  const producesSeamGate = band !== 'seam';
   return {
     isFoundation,
     isPlatform,
     producesIntegrationGate,
     consumesIntegrationGate,
-    producesSeamGate,
-    consumesSeamGate,
-    expandedRagQuota: isFoundation || isPlatform || consumesIntegrationGate || consumesSeamGate,
+    // Every feature task is authoring work the `seam` pass (run AFTER ui)
+    // must wait for. Activates `hasPreSeamWork`; feature never consumes it.
+    producesSeamGate: true,
+    expandedRagQuota: isFoundation || isPlatform || consumesIntegrationGate,
   };
 }

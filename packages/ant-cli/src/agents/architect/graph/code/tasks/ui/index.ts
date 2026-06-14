@@ -38,7 +38,7 @@
  * presence, not task-type literals).
  */
 
-import { preUiBarrier, blocksTestgen } from './hooks/scheduling';
+import { preUiBarrier, blocksTestgen, classify as schedulingClassify } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { extraTemplateVars as executeExtraTemplateVars } from './hooks/execute';
@@ -64,7 +64,7 @@ export const hooks = composeBundle({
     execute: { extraTemplateVars: executeExtraTemplateVars },
   },
   taskTypeSpecific: {
-    scheduling: { preUiBarrier, blocksTestgen },
+    scheduling: { preUiBarrier, blocksTestgen, classify: schedulingClassify },
     conversations: { convKey },
   },
 });

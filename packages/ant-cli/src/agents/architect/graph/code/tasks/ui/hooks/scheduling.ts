@@ -21,6 +21,13 @@
  *     after ALL ordinary implementation (feature + ui) is complete.
  *     doc is gated transitively (doc waits on test-code via blocksDoc).
  *
+ * classify — produces the seam gate:
+ *   - producesSeamGate — ui is authoring work, and in fact the LAST authoring
+ *     layer (it introduces affordances / navigation the feature layer did
+ *     not). The `seam` pass (reference + affordance closure, run AFTER ui)
+ *     must wait for ui → activates `hasPreSeamWork`. ui does NOT consume the
+ *     seam barrier (seam runs after ui), so no `preSeamBarrier` here.
+ *
  * Intentionally unpublished:
  *   - blocksUi / blocksDoc / blocksIntegration — ui does not gate those
  *     barriers (no self-block on ui; doc reaches ui transitively through
@@ -28,6 +35,12 @@
  *     test locks each of these to `undefined`.
  */
 
+import type { SchedulingClassification } from '../../_shared/types';
+
 export const preUiBarrier = true;
 
 export const blocksTestgen = true;
+
+export function classify(): SchedulingClassification {
+  return { producesSeamGate: true };
+}

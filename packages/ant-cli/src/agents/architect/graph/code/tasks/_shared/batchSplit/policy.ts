@@ -149,4 +149,19 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     populateRemediationMode: false,
     appendFinalVerification: true,
   },
+  // seam (reference + affordance closure) fans out the SAME way as feature:
+  // the parent enumerates the module's reference graph and declares slim,
+  // disjoint-file slices; each child re-plans its slice over the materialized
+  // code. subType 'seam' is carried verbatim (type carry-over — feature's band
+  // carry-over does not apply, seam has no band). Same-lane ordering via
+  // `parallelGroup` + `priorityInParallelGroup` (child priority = parent +
+  // offset, kept inside the seam window 700–749). FV appended unless one
+  // already sits in the queue (Tier 3/4 always has one → no-op).
+  seam: {
+    kind: 'drop-and-replace',
+    subType: 'seam',
+    shape: featureBatchShape,
+    populateRemediationMode: false,
+    appendFinalVerification: true,
+  },
 };

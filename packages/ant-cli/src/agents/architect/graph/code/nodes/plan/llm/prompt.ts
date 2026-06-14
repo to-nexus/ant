@@ -197,13 +197,19 @@ export async function buildPlanPrompt(
     task.type === 'feature' ||
     task.type === 'ui' ||
     task.type === 'design-system' ||
-    task.type === 'test-code'
+    task.type === 'test-code' ||
+    // seam (reference-closure) parent fans out slim slices; each child re-plans
+    // its slice over the materialized code. Same slim-shape contract as feature.
+    task.type === 'seam'
   );
   const isDiagnosticCarry = hasPrePlanText && task.type === 'error';
   const hasCrossBatchContracts = hasPrePlanText && (
     task.type === 'feature' ||
     task.type === 'ui' ||
-    task.type === 'design-system'
+    task.type === 'design-system' ||
+    // seam slices share the module's reference graph (which destination each
+    // slice conforms to) — a genuine cross-batch contract.
+    task.type === 'seam'
   );
   const batchSplitCount = (task as CodeTask).batchSplitCount ?? 0;
 

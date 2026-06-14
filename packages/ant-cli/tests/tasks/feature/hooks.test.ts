@@ -109,6 +109,9 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(featureBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(featureBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(featureBundle.scheduling?.preUiBarrier).toBeUndefined();
+    // seam is its own TaskType now — feature PRODUCES the seam gate (classify)
+    // but never CONSUMES it, so it carries no preSeamBarrier.
+    expect(featureBundle.scheduling?.preSeamBarrier).toBeUndefined();
     // Producer flags: all 4 true. blocksIntegration=true is paired
     // with the orchestrator priority-window check in
     // `isPreIntegrationWork` (FEATURE_CRITICAL ≤ priority <
@@ -144,7 +147,6 @@ describe('tasks/feature/hooks/scheduling', () => {
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
         producesSeamGate: true,
-        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -159,7 +161,6 @@ describe('tasks/feature/hooks/scheduling', () => {
         producesIntegrationGate: false,
         consumesIntegrationGate: false,
         producesSeamGate: true,
-        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -171,7 +172,6 @@ describe('tasks/feature/hooks/scheduling', () => {
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
         producesSeamGate: true,
-        consumesSeamGate: false,
         expandedRagQuota: false,
       });
     });
@@ -183,7 +183,6 @@ describe('tasks/feature/hooks/scheduling', () => {
         producesIntegrationGate: false,
         consumesIntegrationGate: true,
         producesSeamGate: true,
-        consumesSeamGate: false,
         expandedRagQuota: true,
       });
     });
@@ -199,23 +198,17 @@ describe('tasks/feature/hooks/scheduling', () => {
         producesIntegrationGate: true,
         consumesIntegrationGate: false,
         producesSeamGate: true,
-        consumesSeamGate: false,
         expandedRagQuota: false,
       });
     });
 
-    it('band==="seam" ⇒ consumesSeamGate + expandedRagQuota; does NOT produce the seam gate', () => {
-      // Seam sub-slices are also band 'seam' — consume but never produce the
-      // gate, so they never block each other (deadlock-free, like integration).
-      expect(schedClassify(task('seam-app', { band: 'seam' }))).toEqual({
-        isFoundation: false,
-        isPlatform: false,
-        producesIntegrationGate: false,
-        consumesIntegrationGate: false,
-        producesSeamGate: false,
-        consumesSeamGate: true,
-        expandedRagQuota: true,
-      });
+    it('feature always produces the seam gate, never consumes it (seam is its own TaskType now)', () => {
+      // Cross-feature reference closure is the `seam` TaskType (run AFTER ui),
+      // no longer a feature band. Every feature task is authoring work the seam
+      // pass waits for → producesSeamGate true; feature never consumes it.
+      const c = schedClassify(task('feat', { band: 'integration' }));
+      expect(c.producesSeamGate).toBe(true);
+      expect(c.consumesSeamGate).toBeUndefined();
     });
   });
 });

@@ -5,7 +5,7 @@ import { hooksForTaskType } from '../../tasks/_shared/registry';
 
 const VALID_TASK_TYPES: readonly TaskType[] = [
   'setup', 'feature', 'design-system', 'ui',
-  'test-code', 'error', 'verification', 'explain', 'doc',
+  'test-code', 'error', 'verification', 'seam', 'explain', 'doc',
 ] as const;
 
 export interface InvalidTaskTypeViolationDetail {

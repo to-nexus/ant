@@ -1049,6 +1049,18 @@
       "render-call"
     ]
   },
+  "jobs/code/nodes/execute/variants/seam/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/seam/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
   "jobs/code/nodes/execute/variants/verification/base": {
     "sources": [
       "build-callsite",

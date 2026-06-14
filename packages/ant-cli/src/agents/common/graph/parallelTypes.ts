@@ -52,13 +52,17 @@ export interface OrchestratorConfig {
    * Stage-gate barriers controlling task dispatch order.
    *
    * Code barrier chain:
-   *   foundation (200–279)    ──[feature]     ──▶ feature     (300–599)
-   *   platform   (280–299)    ──[platform]    ──▶ feature     (300–599)
-   *   feature    (300–599)    ──[integration] ──▶ integration (600–649)
-   *   feature+integ (300–649) ──[seam]        ──▶ seam        (650–669)
-   *   feature+integ+seam      ──[ui]          ──▶ ui          (670–699)
-   *   feature+integ (300–649) ──[test-code]   ──▶ test-code   (700)
-   *   test-code  (700)        ──[doc]         ──▶ doc         (800)
+   *   foundation (200–279)        ──[feature]     ──▶ feature     (300–599)
+   *   platform   (280–299)        ──[platform]    ──▶ feature     (300–599)
+   *   feature    (300–599)        ──[integration] ──▶ integration (600–649)
+   *   feature+integ (300–649)     ──[ui]          ──▶ ui          (670–699)
+   *   feature+integ+ui (≤699)     ──[seam]        ──▶ seam        (700–749)
+   *   …+seam (≤749)               ──[test-code]   ──▶ test-code   (750)
+   *   …+test-code (750)           ──[doc]         ──▶ doc         (800)
+   *
+   * Seam (cross-feature reference + affordance closure) is its own TaskType,
+   * run AFTER ui over the materialized graph (it must observe ui-introduced
+   * affordances / nav). It is no longer a feature band before ui.
    *
    * Design barrier chain:
    *   tokens     (100–199) ──[assets]    ──▶ assets    (200–299)
@@ -85,17 +89,21 @@ export interface OrchestratorConfig {
     /** Blocks integration (600–649) until all feature (<600) tasks complete. */
     integration?: boolean;
     /**
-     * Blocks seam (650–669) until all non-seam feature work (foundation /
-     * platform / integration / ordinary feature, <650) completes — the whole
-     * module graph must be materialized before cross-feature reference-closure
-     * remediation. Seam sub-slices (also band 'seam') do not gate each other.
+     * Blocks seam-TYPE tasks (700–749) until ALL authoring work (setup /
+     * foundation / platform / feature / integration / ui) completes — the whole
+     * materialized graph, INCLUDING ui-introduced affordances / navigation,
+     * must exist before cross-feature reference + affordance closure. Producers
+     * are every authoring bundle's `classify.producesSeamGate`. Seam sub-slices
+     * (also type 'seam') do NOT produce the gate, so they never block each
+     * other — no deadlock (mirrors the integration gate's producer/consumer
+     * split). ui produces the gate but does NOT consume it (seam runs AFTER ui).
      */
     seam?: boolean;
-    /** Blocks ui tasks until all feature/setup tasks complete. */
+    /** Blocks ui tasks until all feature/setup tasks complete (ui does NOT wait for seam — seam runs after ui). */
     ui?: boolean;
-    /** Blocks test-code tasks until all feature/setup tasks complete. */
+    /** Blocks test-code tasks until all feature/setup/ui/seam tasks complete (tests observe the reference-closed graph). */
     'test-code'?: boolean;
-    /** Blocks doc tasks until all feature/setup/test-code tasks complete. */
+    /** Blocks doc tasks until all feature/setup/test-code/seam tasks complete. */
     doc?: boolean;
     /** Blocks assets (200+) until all tokens (100–199) tasks complete. */
     assets?: boolean;

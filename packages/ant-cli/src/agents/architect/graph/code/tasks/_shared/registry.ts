@@ -26,6 +26,7 @@ import { hooks as designSystemHooks } from '../design-system';
 import { hooks as testCodeHooks } from '../test-code';
 import { hooks as docHooks } from '../doc';
 import { hooks as featureHooks } from '../feature';
+import { hooks as seamHooks } from '../seam';
 
 const REGISTRY: Record<TaskType, TaskHooks> = {
   verification: verificationHooks,
@@ -36,6 +37,7 @@ const REGISTRY: Record<TaskType, TaskHooks> = {
   'test-code': testCodeHooks,
   doc: docHooks,
   feature: featureHooks,
+  seam: seamHooks,
   // R1 dispatch flags — explain tasks are response-only (Tier 0); the
   // plan phase is bypassed entirely. Inline here because explain has
   // no `tasks/explain/index.ts` bundle (only `model/is.ts`); creating

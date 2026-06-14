@@ -204,11 +204,19 @@ describe('priority concern separation — classify behaviour', () => {
     });
   });
 
-  it('ui / test-code / error / explain — no classify published (inert for scheduling)', () => {
-    expect(hooksForTaskType('ui')?.scheduling?.classify).toBeUndefined();
+  it('test-code / error / explain — no classify published (inert for scheduling)', () => {
     expect(hooksForTaskType('test-code')?.scheduling?.classify).toBeUndefined();
     expect(hooksForTaskType('error')?.scheduling?.classify).toBeUndefined();
     expect(hooksForTaskType('explain')?.scheduling?.classify).toBeUndefined();
+  });
+
+  it('ui publishes classify ONLY to produce the seam gate (seam waits for ui)', () => {
+    // ui is the last authoring layer; the seam pass (run after ui) must wait
+    // for it. ui's classify reports producesSeamGate and nothing band-like.
+    const c = hooksForTaskType('ui')?.scheduling?.classify?.({ type: 'ui' } as any);
+    expect(c?.producesSeamGate).toBe(true);
+    expect(c?.isFoundation).toBeFalsy();
+    expect(c?.consumesSeamGate).toBeFalsy();
   });
 });
 

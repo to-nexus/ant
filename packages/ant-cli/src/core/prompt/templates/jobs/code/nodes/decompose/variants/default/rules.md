@@ -228,7 +228,7 @@ following the schema below:
 {{#if isPriorityFromSpec}}
 | `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
 {{else}}
-| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–669: feature (seam: cross-feature reference closure, one per package), 670–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–749: ui, 750: seam (cross-feature reference + affordance closure, one per ref-emitting module, runs AFTER ui), 800: test-code, 850: doc, 900–980: error, 1000: verification |
 {{/if}}
 | `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
 | `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
@@ -244,7 +244,7 @@ by `type`, not by the priority number. The bands above are ordering
 guidance; `type` is the SSOT for scheduling.
 
 **Shared Runtime Services → priority 280–299 (platform band)**: When the
-inputs imply an app-wide shared runtime service or state that MANY feature
+inputs imply a shared runtime service or state that MANY feature
 units depend on AND that itself builds on the shared foundation contracts,
 emit it as a `type: "feature"` task at priority **280–299**. The defining
 test is dependency POSITION — *consumed by many feature units, built on
@@ -268,6 +268,21 @@ none — 280–299 stays empty. Likewise, when only one `business` external
 dependency exists, or all virtualized adapters live in a single feature
 task, the demo world is coherent by construction — emit no separate seed
 task.
+
+**Scope is PER RUNTIME, not per job.** A shared runtime service belongs to ONE
+buildable application (one deployable runtime) — its session/identity, its
+store, its demo world live in that runtime's executing process. In a monorepo
+with MORE THAN ONE buildable app, "consumed by many feature units" is judged
+**within each app independently**: each runtime that has its own session /
+identity / authorization boundary gets its OWN platform-band shared-runtime-
+service task. Do NOT assume one job-wide shared service covers every app — one
+app's session owner does NOT serve another app (separate runtimes, separate
+storage, separate inhabitants, often separate authorities). A shared *type*
+(a session DTO) may live once in the foundation contract package and be
+conformed to by each runtime; the session *boundary* (the runtime accessor +
+store + auth flow) is owned per runtime. (Cross-app SSO — one app's session
+recognized in another — is the only case where the boundary itself is shared;
+absent an explicit SSO requirement, treat each app's boundary as its own.)
 {{/unless}}
 
 CRITICAL:
@@ -287,7 +302,7 @@ CRITICAL:
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Delivers functionally complete behavior in visually unstyled form — all interactive behavior present and working; "unstyled" is missing visual polish, NOT a non-functional stub |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
-| `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 670–699). See UI pairing rule in Independent Output Unit Splitting. |
+| `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–749). See UI pairing rule in Independent Output Unit Splitting. |
 | `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 700). See Test Generation Task section for inclusion rubric. |
 | `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 800). See Documentation Task section. |
 | `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
@@ -783,8 +798,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "design-system"` (priority 201+, wiring) -> `exclusive: false`, `parallelGroup: "design-system"` (shared group serializes token→wiring; foundation barrier ensures 300+ tasks wait)
 - `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
 - `type: "feature"` (priority 600–649 integration) -> `parallelGroup` (integration barrier ensures all feature tasks complete first)
-- `type: "feature"` (priority 650–669 seam) -> `parallelGroup: "seam-<package>"`, distinct per package (seam barrier ensures all non-seam feature/integration tasks complete first; one seam task per package emitting outbound references)
-- `type: "ui"` (priority 670–699) -> `parallelGroup` EQUAL to its paired renderable feature task's `parallelGroup`. One ui task per renderable feature (see UI pairing rule in Independent Output Unit Splitting). No ui task for non-renderable features (workers / commands / library symbols / pipeline stages / wiring / shared foundations).
+- `type: "ui"` (priority 650–749) -> `parallelGroup` EQUAL to its paired renderable feature task's `parallelGroup`. One ui task per renderable feature (see UI pairing rule in Independent Output Unit Splitting). No ui task for non-renderable features (workers / commands / library symbols / pipeline stages / wiring / shared foundations).
+- `type: "seam"` (priority 750) -> `parallelGroup: "seam-<package>"`, distinct per package (seam barrier ensures all authoring — feature/ui/integration — completes first; one seam task per ref-emitting module)
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
 - `type: "test-code"` (single package) -> exclusive
@@ -862,6 +877,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **Constraint — auth/identity boundary closure**: When the split includes an authentication / identity boundary whose production flow has an **interactive sign-in entry** (OAuth / SSO / magic-link / passkey / credential form — NOT a non-interactive scheme like API-key / header / mTLS), that boundary is not complete at its adapter / session-identity context / guard alone. The **entry-path surfaces that drive the sign-in flow** — the sign-in entry and the grant-return (callback) surface — are routable surfaces of that boundary; by the Closure rule above a task MUST own them. Whether they are per-app units or a single sign-in flow shared across apps follows the package-boundary rules (shared consumption → shared library; otherwise per-app). Do NOT schedule the guard / adapter / context while leaving the flow's entry surfaces unscheduled — a gate with no scheduled entry path is a dead, unenterable surface. (A surface listed in the requirements but absent from a UI source is a separate case — see the UI Task Descriptions coverage rule.)
 
+**Constraint — session boundary owner is platform-band, per runtime**: A runtime that HAS an interactive auth/identity boundary also has a **session boundary** — the accessor that establishes identity, persists/rehydrates the session across restart, and the contract every gated surface and every virtualized adapter projects from. That boundary is a shared runtime service: emit it as the runtime's **platform-band** task (priority 280–299; see "Shared Runtime Services" above), NOT folded into a single sign-in screen feature. In a multi-app monorepo this is **per buildable app** — each runtime with its own auth boundary gets its own platform-band session owner; one app's owner does not serve another. A boundary scheduled with only its sign-in/callback surfaces but NO platform-band session owner is the recurring failure: the runtime's session/identity/world directives have no owning task, so each consumer hand-rolls its own (divergent) session contract.
+
 **Constraint — action-affordance flow closure**: A surface renders **action affordances** — controls whose purpose is to create a record, enter a detail / child surface, transition a workflow, switch identity / mode, or edit an entity. Each action affordance the requirements mandate has a **destination flow**: the surface or handler that performs the action. By the Closure rule above that destination MUST be owned by exactly one task — either the task that renders the affordance performs the action inline, OR a named task owns the destination flow. An action affordance whose destination flow is enumerated in NO task is a dead control by construction: it renders but cannot act, no matter how the rendering task is later instructed. When the destination is owned by a separate task, name that flow's entry (its routable address or its invocable handler) in BOTH task descriptions, so the rendering task and the flow task converge on one shared entry instead of each inventing its own.
 
 **Observation target**: Which host-entry integration points exist, and does each receive imports/wiring from multiple feature tasks?
@@ -886,17 +903,17 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ---
 
-## Cross-Feature Reference Closure (seam band)
+## Cross-Feature Reference + Affordance Closure (`seam` type)
 
-**Principle**: After feature and integration work, a module's separately-authored parts hold inter-references — navigation targets, invoked endpoints/handlers, emitted events / message keys, injected dependencies, imported symbols — that drift, dangle, or duplicate across the part boundaries no single feature task can see. A `seam` task owns the **reference closure** of ONE module (package): it runs once the module is materialized and makes every reference resolve to a real, registered destination.
+**Principle**: After ALL authoring (feature AND ui), a module's separately-authored parts hold inter-references — navigation targets, invoked endpoints/handlers, emitted events / message keys, injected dependencies, imported symbols — AND rendered affordances (controls the ui layer introduced) that drift, dangle, duplicate, or point at nothing across the part boundaries no single authoring task can see. A `seam` task owns the **closure** of ONE module (package): it runs once the module is fully materialized (including ui-introduced affordances) and makes every reference/affordance either resolve to a real destination or be removed.
 
-**Constraint**: For each package / independent module that emits cross-part references (a host-entry app with navigation, a backend service with endpoints/events/DI, a shared library with internal cross-module references), emit exactly ONE seam task:
-- `type: "feature"`, priority in the seam band [650-669] (after integration, before ui).
-- `parallelGroup: "seam-<package>"` — distinct per package so seams run in parallel; it MUST NOT share a group with any feature/integration task.
+**Constraint**: For each package / independent module that emits cross-part references OR renders affordances (a host-entry app with navigation/controls, a backend service with endpoints/events/DI, a shared library with internal cross-module references), emit exactly ONE seam task:
+- `type: "seam"`, priority **750** (the seam window base — runs AFTER ui, before test-code/verification). Seam is its own TYPE, not a feature band.
+- `parallelGroup: "seam-<package>"` — distinct per package so seams run in parallel; it MUST NOT share a group with any feature / ui / integration task.
 - `stack` set to the package's stack (frontend/backend) so tech-tier guidance pins the concrete reference model (route tree / router registration / event registry / DI container).
-- Description: close `<package>`'s cross-feature reference closure. Its PLAN phase enumerates the package's reference graph over the materialized code and either remediates inline or partitions into disjoint-file slices. Write within this package; read other modules' published contracts read-only; for a destination owned by another module, conform to that module's published contract (the shared foundation / contract package) rather than redefining it.
+- Description: close `<package>`'s cross-feature reference + affordance closure. Its PLAN phase enumerates the package's reference graph AND rendered affordances over the materialized code and either remediates inline or partitions into disjoint-file slices. Write within this package; read other modules' published contracts read-only; for a destination owned by another module, conform to that module's published contract (the shared foundation / contract package) rather than redefining it.
 
-**Constraint**: Do NOT emit `batches[]` at decompose time — the seam's plan phase owns the partition (same as test-code). Emit NO seam task for a package with no outbound references (a pure-type contract package, a presentational-only library that emits no references).
+**Constraint**: Do NOT emit `batches[]` at decompose time — the seam's plan phase owns the partition (same as test-code). Emit NO seam task for a package with no outbound references AND no rendered affordances (a pure-type contract package, a presentational-only library that emits no references).
 
 ---
 

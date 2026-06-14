@@ -105,19 +105,32 @@ export const TASK_PRIORITIES = {
   INTEGRATION_MIN: 600,
   INTEGRATION_MAX: 649,
 
-  // Seam (650-669) — cross-feature REFERENCE CLOSURE, one task per package.
-  // Runs after integration (graph fully assembled), before ui. A feature task
-  // whose priority lands here derives band 'seam' (see deriveBandFromPriority).
-  SEAM_MIN: 650,
-  SEAM_MAX: 669,
+  // Visual Pass (650-749) — apply styles to skeleton. WIDE window (100): ui
+  // produces MANY tasks (one per renderable feature) AND fans out via lane-mode
+  // batchSplit (child priority = parent + priorityInParallelGroup), so it needs
+  // headroom for both — balanced against feature (300-599) rather than starved.
+  // Reclaims the former seam-band gap (650-669) now that seam is post-ui.
+  VISUAL_PASS: 650,
+  VISUAL_MAX: 749,
 
-  // Visual Pass (670-699) — apply styles to skeleton
-  VISUAL_PASS: 670,
-  VISUAL_MAX: 699,
+  // Seam closure (750-799) — cross-feature REFERENCE + AFFORDANCE closure, one
+  // `type:'seam'` task per ref-emitting module. Runs AFTER all authoring
+  // (feature + ui) over the materialized graph, BEFORE test-code/verification
+  // so they observe a closed graph. Seam is a TYPE (emitted directly), not a
+  // band. A WINDOW (not a single value) is required: the seam plan fans out
+  // `batches[]` via the slim lane shape, where a child's priority is
+  // `parentPriority + batch.priorityInParallelGroup`. Decompose emits each seam
+  // task at the window BASE (SEAM_CLOSURE_MIN); child slices stack upward inside
+  // [750, 799] (offset ≤ 49 — ample slice ceiling) so they never collide with
+  // test-code (800). Same-lane offsets express sequential ordering; disjoint
+  // lanes run in parallel.
+  SEAM_CLOSURE_MIN: 750,
+  SEAM_CLOSURE_MAX: 799,
 
-  // Post-Feature (700-899) — observe completed feature code, barrier-enforced
-  TEST_GENERATION: 700,
-  DOCUMENTATION: 800,
+  // Post-Feature (800-899) — observe completed feature code (barrier waits for
+  // seam too, so tests/docs observe the reference-closed graph).
+  TEST_GENERATION: 800,
+  DOCUMENTATION: 850,
 
   // Error (900-999)
   ERROR_MISSING_ENTRY: 900,
