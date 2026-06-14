@@ -436,6 +436,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       taskBand: state.currentTask?.type === 'feature'
         ? (state.currentTask as FeatureTask).band
         : undefined,
+      // Task type — consumed by the type-gated `seam-connectivity-closure`
+      // partial (`{{#if (eq taskType "seam")}}`) in the seam execute variant.
+      // Mirrors plan/llm/prompt.ts which passes `taskType` for the same gate.
+      taskType: state.currentTask?.type,
       // R1 template dispatch — the final-verification guard in templates
       // (previously `{{#unless (eq currentTask.priority 1000)}}`) now reads
       // `currentTaskIsFinal` so the verification bundle's classify is the

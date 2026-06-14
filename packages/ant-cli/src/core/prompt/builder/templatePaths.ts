@@ -87,6 +87,19 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/code/nodes/execute/variants/docgen/rules',
     system: 'jobs/code/base/system',
   },
+  // seam (cross-feature reference + affordance closure) — its own TaskType,
+  // run AFTER ui over the materialized graph. PLAN rides codePlanDefault (the
+  // generic investigate→partition plan, reused like test-code) with the
+  // type-gated `seam-connectivity-closure` partial supplying enumerate/partition
+  // guidance — so the slim-slice / prePlanText / SV-gate machinery is reused, no
+  // drift. EXECUTE is a DEDICATED variant: the default execute says "author /
+  // wire every control" which is the wrong essence for a closure pass; seam
+  // execute is resolve-or-remove. Shares the common code-job base partials.
+  codeExecuteSeam: {
+    base: 'jobs/code/nodes/execute/variants/seam/base',
+    rules: 'jobs/code/nodes/execute/variants/seam/rules',
+    system: 'jobs/code/base/system',
+  },
   codeRevise: {
     base: 'jobs/code/nodes/revise/variants/default/base',
     rules: 'jobs/code/nodes/revise/variants/default/rules',

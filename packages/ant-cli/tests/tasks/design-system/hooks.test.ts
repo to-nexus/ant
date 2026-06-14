@@ -83,16 +83,22 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(dsBundle.scheduling?.classify?.(task('t-200', { priority: 200 }))).toEqual({
       isFoundation: true,
       expandedRagQuota: true,
+      // design-system is authoring work the `seam` pass (run after ui) waits for.
+      producesSeamGate: true,
     });
     expect(dsBundle.scheduling?.classify?.(task('t-250', { priority: 250 }))).toEqual({
       isFoundation: true,
       expandedRagQuota: true,
+      // design-system is authoring work the `seam` pass (run after ui) waits for.
+      producesSeamGate: true,
     });
     // Type-fixed: priority outside the historical 200-299 window still
     // classifies as foundation (the discriminator is `type`, not band).
     expect(dsBundle.scheduling?.classify?.(task('t-999', { priority: 999 }))).toEqual({
       isFoundation: true,
       expandedRagQuota: true,
+      // design-system is authoring work the `seam` pass (run after ui) waits for.
+      producesSeamGate: true,
     });
   });
 

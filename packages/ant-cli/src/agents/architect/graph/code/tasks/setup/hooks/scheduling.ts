@@ -38,5 +38,9 @@ export const blocksDoc = true;
 // "below-foundation, runs first" cohort. Classify ignores its argument
 // because the discriminator is the `type` field itself, not a sub-band.
 export function classify(): SchedulingClassification {
-  return { isTokens: true };
+  // `producesSeamGate`: setup is authoring (scaffolds the packages the seam
+  // pass closes over). Seam runs AFTER ui, long after setup, but keeping the
+  // flag uniform across all authoring bundles makes the seam barrier robust to
+  // any concurrent late-setup edge.
+  return { isTokens: true, producesSeamGate: true };
 }

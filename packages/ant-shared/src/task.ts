@@ -22,10 +22,14 @@ import type { UiSource } from './canonical';
  * - test-code: Test code generation after features complete (Code Job)
  * - error: Error fixing (Code Job)
  * - verification: Build & runtime verification (Code Job)
+ * - seam: Cross-feature REFERENCE + AFFORDANCE closure for one module/package,
+ *         run AFTER all authoring (feature + ui) over the materialized code.
+ *         Its essence is closure (resolve-or-remove), not authoring — same
+ *         family as verification/error (operates on materialized code). (Code Job)
  * - explain: Explanation task (Code Job)
  * - doc: Document generation (Design Job, Code Job)
  */
-export type TaskType = 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'error' | 'verification' | 'explain' | 'doc';
+export type TaskType = 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'error' | 'verification' | 'seam' | 'explain' | 'doc';
 
 /** Task status in Kanban flow */
 export type TaskStatus = 'todo' | 'in-progress' | 'completed';
@@ -213,20 +217,16 @@ export interface PhaseTokenUsage {
  *   - `'integration'` — cross-feature wiring. Decompose maps priority band
  *                       [INTEGRATION_MIN, INTEGRATION_MAX] to this value.
  *                       Consumes the `hasPreIntegrationWork` barrier.
- *   - `'seam'`        — cross-feature REFERENCE CLOSURE for one module /
- *                       package. Decompose maps priority band
- *                       [SEAM_MIN, SEAM_MAX] to this value and emits one seam
- *                       task per package that emits outbound references. Runs
- *                       after integration (the graph is fully assembled),
- *                       before ui. Consumes the `hasPreSeamWork` barrier; its
- *                       PLAN phase enumerates the package's reference graph and
- *                       either remediates inline or fans out `batches[]` into
- *                       disjoint-file slices (same machinery as test-code).
  *
  * `undefined` = an ordinary feature task (the common case) — a CONSUMER of
  * foundation contracts and platform services.
+ *
+ * NOTE: cross-feature reference closure is NOT a feature band — it is its own
+ * `'seam'` {@link TaskType} (run AFTER ui, over the materialized graph). It was
+ * a feature band historically; promoted to a type because its essence is
+ * closure, not authoring (same family as verification/error).
  */
-export type FeatureBand = 'foundation' | 'platform' | 'integration' | 'seam';
+export type FeatureBand = 'foundation' | 'platform' | 'integration';
 
 /**
  * Setup-scheduling band. Carried by {@link SetupTask} only.
@@ -325,6 +325,7 @@ export type SetupTask         = BaseTaskCommon & { type: 'setup'; band?: SetupBa
 export type UiTask            = BaseTaskCommon & { type: 'ui' };
 export type DesignSystemTask  = BaseTaskCommon & { type: 'design-system' };
 export type VerificationTask  = BaseTaskCommon & { type: 'verification' };
+export type SeamTask          = BaseTaskCommon & { type: 'seam' };
 export type TestCodeTask      = BaseTaskCommon & { type: 'test-code' };
 export type DocTask           = BaseTaskCommon & { type: 'doc' };
 export type ExplainTask       = BaseTaskCommon & { type: 'explain' };
@@ -345,6 +346,7 @@ export type BaseTask =
   | UiTask
   | DesignSystemTask
   | VerificationTask
+  | SeamTask
   | TestCodeTask
   | DocTask
   | ExplainTask;

@@ -30,8 +30,11 @@ import { isWithinRacWhitelist, type RacScope } from './racGate';
  *   - priority === SETUP_PROJECT (100)                        → 'root'
  *   - priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX] (200–299) → 'foundation'
  *   - priority ∈ [INTEGRATION_MIN,   INTEGRATION_MAX] (600–649) → 'integration'
- *   - priority ∈ [SEAM_MIN,          SEAM_MAX]        (650–669) → 'seam'
  *   - everything else → undefined (ordinary feature / package setup)
+ *
+ * NOTE: cross-feature reference closure is the `seam` TaskType (emitted
+ * directly, run AFTER ui at priority 700–749), NOT a band — no priority→band
+ * mapping for it.
  *
  * Invoked for feature tasks (→ feature bands) AND setup tasks (→ 'root' for
  * the project/framework/workspace-level root setup; undefined for a package
@@ -68,14 +71,8 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
   ) {
     return 'integration';
   }
-  // Seam: cross-feature reference closure per package. Runs after integration,
-  // before ui. batchSplit carries this band verbatim onto sub-slices.
-  if (
-    priority >= TASK_PRIORITIES.SEAM_MIN &&
-    priority <= TASK_PRIORITIES.SEAM_MAX
-  ) {
-    return 'seam';
-  }
+  // NOTE: cross-feature reference closure is the `seam` TaskType (emitted
+  // directly by the LLM, run AFTER ui), NOT a band — no priority→band mapping.
   return undefined;
 }
 

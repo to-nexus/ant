@@ -23,6 +23,7 @@ import type {
   UiTask,
   DesignSystemTask,
   VerificationTask,
+  SeamTask,
   TestCodeTask,
   DocTask,
   ExplainTask,
@@ -169,6 +170,7 @@ export type SetupCodeTask         = SetupTask         & CodeTaskCommon & SelfVer
 export type UiCodeTask            = UiTask            & CodeTaskCommon & SelfVerifyCapable;
 export type DesignSystemCodeTask  = DesignSystemTask  & CodeTaskCommon;
 export type VerificationCodeTask  = VerificationTask  & CodeTaskCommon;
+export type SeamCodeTask          = SeamTask          & CodeTaskCommon;
 export type TestCodeCodeTask      = TestCodeTask      & CodeTaskCommon;
 export type DocCodeTask           = DocTask           & CodeTaskCommon;
 export type ExplainCodeTask       = ExplainTask       & CodeTaskCommon;
@@ -185,6 +187,7 @@ export type CodeTask =
   | UiCodeTask
   | DesignSystemCodeTask
   | VerificationCodeTask
+  | SeamCodeTask
   | TestCodeCodeTask
   | DocCodeTask
   | ExplainCodeTask;

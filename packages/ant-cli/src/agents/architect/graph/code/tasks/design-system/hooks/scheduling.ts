@@ -44,5 +44,9 @@ export function classify(): SchedulingClassification {
   return {
     isFoundation: true,
     expandedRagQuota: true,
+    // Authoring work the `seam` pass (run AFTER ui) waits for. Redundant with
+    // the foundation gate while ds runs, but keeps "all authoring produces the
+    // seam gate" uniform across bundles.
+    producesSeamGate: true,
   };
 }

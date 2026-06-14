@@ -308,8 +308,6 @@ New files (no check hits): plain `<file path="...">`.
 
 {{> jobs/code/base/injections/entry-point-ownership-rule}}
 
-{{> jobs/code/base/injections/seam-connectivity-closure}}
-
 {{> jobs/code/base/injections/execution-context-discipline}}
 
 ────────────────────────────────────────────────────────────────────────────────

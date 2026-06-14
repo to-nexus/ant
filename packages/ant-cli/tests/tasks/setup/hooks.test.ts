@@ -96,7 +96,8 @@ describe('tasks/setup/hooks/scheduling', () => {
       // Type-fixed: every setup task is "below-foundation, runs first"
       // by virtue of its `type`. Priority is the sort key only and
       // never participates in classify decisions.
-      expect(schedClassify()).toEqual({ isTokens: true });
+      // `producesSeamGate`: setup is authoring work the seam pass waits for.
+      expect(schedClassify()).toEqual({ isTokens: true, producesSeamGate: true });
     });
   });
 });

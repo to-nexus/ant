@@ -172,9 +172,11 @@ function isPreIntegrationWork<T extends BaseTask>(t: T): boolean {
 
 /**
  * Seam barrier producer — a task counts as "pre-seam work" when its bundle's
- * classify reports `producesSeamGate: true` (`band !== 'seam'`). The seam pass
- * (reference closure) waits until the whole module graph is materialized.
- * Seam sub-slices are band 'seam' → produce=false → never block each other.
+ * classify reports `producesSeamGate: true` (every AUTHORING bundle: setup /
+ * design-system / feature / ui). The seam pass (reference + affordance closure,
+ * a `type:'seam'` task run AFTER ui) waits until the whole materialized graph,
+ * including ui-introduced affordances, exists. Seam tasks themselves do NOT
+ * produce the gate → seam sub-slices never block each other.
  */
 function isPreSeamWork<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'producesSeamGate');
@@ -855,9 +857,10 @@ export class TaskOrchestrator<T extends BaseTask> {
         break;
       }
 
-      // Seam barrier: don't assign seam tasks while any non-seam feature work
-      // (foundation/platform/integration/ordinary) is still running — the whole
-      // module graph must be materialized before reference-closure remediation.
+      // Seam barrier: don't assign seam-type tasks while any authoring work
+      // (setup/foundation/platform/feature/integration/ui) is still running —
+      // the whole materialized graph (incl. ui-introduced affordances) must
+      // exist before reference + affordance closure.
       if (hasPreSeamWork && sched?.preSeamBarrier
           && schedClassify(task, 'consumesSeamGate')) {
         break;

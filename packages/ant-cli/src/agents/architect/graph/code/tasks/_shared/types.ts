@@ -406,15 +406,16 @@ export interface SchedulingClassification {
   producesIntegrationGate?: boolean;
   consumesIntegrationGate?: boolean;
   /**
-   * `band !== 'seam'` — any non-seam feature work (foundation / platform /
-   * integration / ordinary feature) gates the seam pass. Activates the
-   * `hasPreSeamWork` barrier so reference-closure remediation runs only once
-   * the whole module graph is materialized.
+   * `type !== 'seam'` — any AUTHORING work (feature / ui / design-system /
+   * integration) gates the seam pass. Activates the `hasPreSeamWork` barrier
+   * so reference-closure remediation runs only once the whole materialized
+   * graph (feature + ui) exists. NOTE: seam is a TaskType now (run AFTER ui),
+   * so this gate is type-based, not band-based.
    */
   producesSeamGate?: boolean;
   /**
-   * `band === 'seam'` — the reference-closure pass itself. Waits on
-   * `hasPreSeamWork`. Seam sub-slices (also band 'seam') do NOT produce the
+   * `type === 'seam'` — the reference-closure pass itself. Waits on
+   * `hasPreSeamWork`. Seam sub-slices (also type 'seam') do NOT produce the
    * gate, so they never block each other — no deadlock (mirrors the
    * integration gate's producer/consumer split).
    */
