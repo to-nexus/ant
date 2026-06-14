@@ -228,7 +228,7 @@ following the schema below:
 {{#if isPriorityFromSpec}}
 | `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
 {{else}}
-| `priority` | Yes | 100–189: setup, 200–279: feature (shared foundation: types/interfaces/pure contracts) or design-system (token infra from ui-docs or visualTier policy), 280–299: feature (platform: shared runtime services consumed by many features — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–749: ui, 750: seam (cross-feature reference + affordance closure, one per ref-emitting module, runs AFTER ui), 800: test-code, 850: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–219: design-system (TYPE — token/CSS infra at 200, shared components 201+), 220–259: feature (foundation band: types/interfaces/pure contracts), 260–299: feature (platform band: shared runtime services consumed by many features, PER RUNTIME — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–749: ui, 750: seam (cross-feature reference + affordance closure, one per ref-emitting module, runs AFTER ui), 800: test-code, 850: doc, 900–980: error, 1000: verification |
 {{/if}}
 | `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
 | `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
@@ -243,10 +243,10 @@ lanes — when each task type starts relative to others — are determined
 by `type`, not by the priority number. The bands above are ordering
 guidance; `type` is the SSOT for scheduling.
 
-**Shared Runtime Services → priority 280–299 (platform band)**: When the
+**Shared Runtime Services → priority 260–299 (platform band)**: When the
 inputs imply a shared runtime service or state that MANY feature
 units depend on AND that itself builds on the shared foundation contracts,
-emit it as a `type: "feature"` task at priority **280–299**. The defining
+emit it as a `type: "feature"` task at priority **260–299**. The defining
 test is dependency POSITION — *consumed by many feature units, built on
 foundation* — not any particular framework mechanism. Examples across
 stacks: a shared session / identity / authorization-context accessor, a
@@ -261,10 +261,10 @@ and populates concrete canonical records — it depends on those types, NOT on
 any adapter; per-port adapter tasks then bind to this seed and project their
 own response bodies from its canonical entities rather than re-seeding their
 own identities and ids. Such a service runs after foundation contracts
-(200–279) and before ordinary feature work (300+), so feature consumers
+(200–259) and before ordinary feature work (300+), so feature consumers
 bind to its single access contract instead of constructing the shared value
 locally. When the inputs imply no such cross-feature shared service, emit
-none — 280–299 stays empty. Likewise, when only one `business` external
+none — 260–299 stays empty. Likewise, when only one `business` external
 dependency exists, or all virtualized adapters live in a single feature
 task, the demo world is coherent by construction — emit no separate seed
 task.
@@ -877,7 +877,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **Constraint — auth/identity boundary closure**: When the split includes an authentication / identity boundary whose production flow has an **interactive sign-in entry** (OAuth / SSO / magic-link / passkey / credential form — NOT a non-interactive scheme like API-key / header / mTLS), that boundary is not complete at its adapter / session-identity context / guard alone. The **entry-path surfaces that drive the sign-in flow** — the sign-in entry and the grant-return (callback) surface — are routable surfaces of that boundary; by the Closure rule above a task MUST own them. Whether they are per-app units or a single sign-in flow shared across apps follows the package-boundary rules (shared consumption → shared library; otherwise per-app). Do NOT schedule the guard / adapter / context while leaving the flow's entry surfaces unscheduled — a gate with no scheduled entry path is a dead, unenterable surface. (A surface listed in the requirements but absent from a UI source is a separate case — see the UI Task Descriptions coverage rule.)
 
-**Constraint — session boundary owner is platform-band, per runtime**: A runtime that HAS an interactive auth/identity boundary also has a **session boundary** — the accessor that establishes identity, persists/rehydrates the session across restart, and the contract every gated surface and every virtualized adapter projects from. That boundary is a shared runtime service: emit it as the runtime's **platform-band** task (priority 280–299; see "Shared Runtime Services" above), NOT folded into a single sign-in screen feature. In a multi-app monorepo this is **per buildable app** — each runtime with its own auth boundary gets its own platform-band session owner; one app's owner does not serve another. A boundary scheduled with only its sign-in/callback surfaces but NO platform-band session owner is the recurring failure: the runtime's session/identity/world directives have no owning task, so each consumer hand-rolls its own (divergent) session contract.
+**Constraint — session boundary owner is platform-band, per runtime**: A runtime that HAS an interactive auth/identity boundary also has a **session boundary** — the accessor that establishes identity, persists/rehydrates the session across restart, and the contract every gated surface and every virtualized adapter projects from. That boundary is a shared runtime service: emit it as the runtime's **platform-band** task (priority 260–299; see "Shared Runtime Services" above), NOT folded into a single sign-in screen feature. In a multi-app monorepo this is **per buildable app** — each runtime with its own auth boundary gets its own platform-band session owner; one app's owner does not serve another. A boundary scheduled with only its sign-in/callback surfaces but NO platform-band session owner is the recurring failure: the runtime's session/identity/world directives have no owning task, so each consumer hand-rolls its own (divergent) session contract.
 
 **Constraint — action-affordance flow closure**: A surface renders **action affordances** — controls whose purpose is to create a record, enter a detail / child surface, transition a workflow, switch identity / mode, or edit an entity. Each action affordance the requirements mandate has a **destination flow**: the surface or handler that performs the action. By the Closure rule above that destination MUST be owned by exactly one task — either the task that renders the affordance performs the action inline, OR a named task owns the destination flow. An action affordance whose destination flow is enumerated in NO task is a dead control by construction: it renders but cannot act, no matter how the rendering task is later instructed. When the destination is owned by a separate task, name that flow's entry (its routable address or its invocable handler) in BOTH task descriptions, so the rendering task and the flow task converge on one shared entry instead of each inventing its own.
 

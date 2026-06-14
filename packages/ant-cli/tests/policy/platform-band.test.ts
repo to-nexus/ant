@@ -34,11 +34,14 @@ describe('band discriminated-union compile guard (setup=root only, feature=featu
 });
 
 describe('platform band — deriveBandFromPriority (priority→band SSOT)', () => {
-  it('maps [200,279] → foundation, [280,299] → platform', () => {
+  it('maps [200,259] → foundation, [260,299] → platform', () => {
+    // (design-system TYPE lives at 200-219 by decompose guidance, but it is not
+    // a feature so deriveBandFromPriority is never invoked for it; a FEATURE at
+    // 200-259 derives 'foundation'.)
     expect(deriveBandFromPriority(200)).toBe('foundation');
     expect(deriveBandFromPriority(220)).toBe('foundation'); // infra-adapters, shared types
-    expect(deriveBandFromPriority(279)).toBe('foundation');
-    expect(deriveBandFromPriority(280)).toBe('platform');
+    expect(deriveBandFromPriority(259)).toBe('foundation');
+    expect(deriveBandFromPriority(260)).toBe('platform');
     expect(deriveBandFromPriority(TASK_PRIORITIES.PLATFORM_MIN)).toBe('platform');
     expect(deriveBandFromPriority(290)).toBe('platform');
     expect(deriveBandFromPriority(TASK_PRIORITIES.PLATFORM_MAX)).toBe('platform');
@@ -68,7 +71,7 @@ describe('platform band — deriveBandFromPriority (priority→band SSOT)', () =
     // constant itself is unchanged — the design-job `doc` bundle still reads
     // [SHARED_FOUNDATION, FOUNDATION_MAX] = [200, 299].
     expect(TASK_PRIORITIES.FOUNDATION_MAX).toBe(299);
-    expect(TASK_PRIORITIES.PLATFORM_MIN).toBe(280);
+    expect(TASK_PRIORITIES.PLATFORM_MIN).toBe(260);
     expect(TASK_PRIORITIES.PLATFORM_MAX).toBe(299);
   });
 });

@@ -196,7 +196,9 @@ Break this specification into a prioritized list of implementation tasks.
 
 **Priority Assignment** (LOWER NUMBER = HIGHER PRIORITY):
 - 100–189: setup (project initialization)
-- 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy)
+- 200–219: design-system (TYPE — token/CSS infra at 200, shared components 201+; isFoundation)
+- 220–259: feature (foundation band — shared types / interfaces / pure contracts)
+- 260–299: feature (platform band — shared runtime services consumed by many features, PER RUNTIME: session / identity / config accessors, client singletons)
 - 300–599: feature (300=critical, 350=important, 400=normal, 500=nice-to-have)
 - 600–649: feature (integration — wire parallel outputs into shared entry points)
 - 650–749: ui (visual implementation pass)
