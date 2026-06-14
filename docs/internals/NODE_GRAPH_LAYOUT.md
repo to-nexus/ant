@@ -107,7 +107,7 @@ phase 노드 아닌 **phase-공유 헬퍼 (state-aware)** 가 필요하면 `node
 phase 노드 (`nodes/`), routers, parallel, common/tool handlers 는 `task.type` 도 `task.priority` 의미적 비교도 모른다. task-specific 로직은 반드시 `tasks/{taskType}/hooks/` 훅을 통해 주입한다.
 
 - 어떤 위치에서든 `if (task.type === '...')` / `task.type === '...'` 비교 표현식이 나오면 **R1 위반**이다.
-- `task.priority === N` / `task.priority < N` / `task.priority >= TASK_PRIORITIES.X` 같은 의미적 priority 비교도 phase 코드에서 금지된다 (Three-Axis SSOT — `.cursorrules` 참고). priority 는 `TaskQueue.push()` 의 정렬 비교만 합법.
+- `task.priority === N` / `task.priority < N` / `task.priority >= TASK_PRIORITY.X` 같은 의미적 priority 비교도 phase 코드에서 금지된다 (Three-Axis SSOT — `CLAUDE.md` + [`41-task-priority-band-system.md`](41-task-priority-band-system.md) 참고). priority 는 `TaskQueue.push()` 의 정렬 비교만 합법.
 - 해당 조건은 `tasks/{taskType}/hooks/` 로 이주시킨다. **예외 없음.**
 - state 없는 컨텍스트(tool handlers 등)는 `hooksForTaskType(ctx.currentTaskType)` 로 호출한다.
 - **`{ currentTask: { type: '...' } } as any` 같은 fake state 캐스트 금지**. R1 우회이며 리뷰 reject 대상.
@@ -124,7 +124,7 @@ rg "task\.type === '[a-z-]+'" \
 # Three-Axis SSOT — phase 레이어에 의미적 priority 비교 0 보장.
 # decompose responseParser (priority → band 매핑 단일 site) +
 # tasks/_shared/batchSplit/process.ts (parent − 1 정렬 클램프) 만 예외.
-rg -n "\.priority\s*[<>!=]=?\s*(\d+|TASK_PRIORITIES\.)" \
+rg -n "\.priority\s*[<>!=]=?\s*(\d+|TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b" \
   packages/ant-cli/src/agents/architect/graph/code/parallel \
   packages/ant-cli/src/agents/architect/graph/code/routers \
   packages/ant-cli/src/agents/architect/graph/code/nodes/plan \

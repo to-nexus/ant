@@ -1,6 +1,6 @@
 import type { TechTier } from '@ant/shared';
 import { ARTIFACT_PREFIX } from '@ant/shared';
-import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper } from '../../../state';
+import { ArchitectGraphState, VERIFICATION_PRIORITY, MAX_LANE_OFFSET, TaskTimingHelper } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
@@ -352,8 +352,11 @@ export function processDiagnosticBatchSplit(
       } else if (!requireLaneSchedule) {
         priority = parentPriority;
       } else {
-        // batch.priorityInParallelGroup already validated as a non-negative integer.
-        priority = parentPriority + (batch.priorityInParallelGroup as number);
+        // batch.priorityInParallelGroup already validated as a non-negative
+        // integer. Clamp to MAX_LANE_OFFSET so a lane child can never cross out
+        // of its parent's (narrowest: feature band) window into the next band.
+        const offset = Math.min(batch.priorityInParallelGroup as number, MAX_LANE_OFFSET);
+        priority = parentPriority + offset;
       }
 
       return { parallelGroup, priority };
@@ -538,7 +541,7 @@ export function processDiagnosticBatchSplit(
             id: `final-verification-batch-split-${Date.now()}`,
             name: fvLabels.name,
             type: 'verification',
-            priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+            priority: VERIFICATION_PRIORITY,
             description: fvLabels.description,
             techTiers,
             resumeState: undefined,

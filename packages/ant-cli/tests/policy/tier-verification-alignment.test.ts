@@ -17,7 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createTaskQueue } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
 import { onTaskComplete } from '../../src/agents/architect/graph/code/tasks/error/hooks/orchestrator';
-import { TASK_PRIORITIES } from '../../src/agents/architect/graph/code/state';
+import { VERIFICATION_PRIORITY } from '../../src/agents/architect/graph/code/state';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 import type { CodeTask } from '../../src/agents/architect/types/task';
 import { ExecutionTierId } from '@ant/shared';
@@ -55,7 +55,7 @@ const finalVerificationTask = (): CodeTask => ({
   id: 'final-verification',
   name: 'Final Verification',
   type: 'verification',
-  priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+  priority: VERIFICATION_PRIORITY,
   description: 'validate build + tests',
 });
 

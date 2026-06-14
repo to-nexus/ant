@@ -163,8 +163,8 @@ function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
 /**
  * Integration barrier producer — a task counts as "pre-integration work"
  * when its bundle's classify reports `producesIntegrationGate: true`.
- * The priority window (FEATURE_CRITICAL..INTEGRATION_MIN) is owned by the
- * feature bundle's classify implementation; the orchestrator only asks.
+ * The ordinary-feature priority window (300–599) is owned by the feature
+ * bundle's classify implementation; the orchestrator only asks.
  */
 function isPreIntegrationWork<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'producesIntegrationGate');

@@ -225,11 +225,7 @@ following the schema below:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, `"verification"`, or `"explain"` |
-{{#if isPriorityFromSpec}}
-| `priority` | Yes | Free integer in 1..999 reflecting the spec's stated work order (lower = earlier). 1000 is reserved for the Final Verification task only. `type: "error"` tasks may also use any number in 1..999 when the spec prioritises error remediation early. Scheduling lanes (which task type starts relative to others) are determined by `type`, not by the priority number. |
-{{else}}
-| `priority` | Yes | 100–189: setup, 200–219: design-system (TYPE — token/CSS infra at 200, shared components 201+), 220–259: feature (foundation band: types/interfaces/pure contracts), 260–299: feature (platform band: shared runtime services consumed by many features, PER RUNTIME — see Shared Runtime Services below), 300–599: feature, 600–649: feature (integration), 650–749: ui, 750: seam (cross-feature reference + affordance closure, one per ref-emitting module, runs AFTER ui), 800: test-code, 850: doc, 900–980: error, 1000: verification |
-{{/if}}
+| `priority` | Yes | Queue ordering key (lower = earlier). Place each task in its type/band window per the **Priority Assignment** guide above. `type` — not the number — is the SSOT for scheduling lanes (see Note). |
 | `include` | Conditional | Artifact pool path(s) to pre-inject for this task (see Injection Manifest below). Omit when the directive + on-demand reads suffice |
 | `stack` | When fullstack | `"frontend"` or `"backend"` — which runtime tier this task targets (see Task Stack below). REQUIRED on fullstack jobs; omit on single-stack |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
@@ -237,11 +233,19 @@ following the schema below:
 | `selfVerifyOnDone` | Tier 2 only | `true` when the task should run install/typecheck/build/test gates as part of its lifecycle (Tier 2 Exploratory, single unit of work). The runtime transitions the task into a verify cycle automatically after the apply phase emits `<done>`. Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
 | `description` | Yes | Scope boundary + design doc section reference |
 
-{{#unless isPriorityFromSpec}}
 **Note**: `priority` is the ordering key (lower = earlier). Scheduling
 lanes — when each task type starts relative to others — are determined
 by `type`, not by the priority number. The bands above are ordering
 guidance; `type` is the SSOT for scheduling.
+
+**Source order is a within-band reference, not a priority copy.** When a source
+document (spec, system design, directive) states a work order, that order
+informs RELATIVE priority WITHIN a band — it does NOT map one-to-one onto
+priority numbers. Band placement follows dependency classification: shared /
+foundational work (shared contracts, runtime services) is extracted to the
+foundation / platform bands and placed ahead of all consumers, wherever the
+source happened to list it; feature / ui / error work lands in its own band.
+Do NOT transcribe a source's t1…tn sequence into the priority field.
 
 **Shared Runtime Services → priority 260–299 (platform band)**: When the
 inputs imply a shared runtime service or state that MANY feature
@@ -283,7 +287,6 @@ conformed to by each runtime; the session *boundary* (the runtime accessor +
 store + auth flow) is owned per runtime. (Cross-app SSO — one app's session
 recognized in another — is the only case where the boundary itself is shared;
 absent an explicit SSO requirement, treat each app's boundary as its own.)
-{{/unless}}
 
 CRITICAL:
 - The body inside each `<task>...</task>` element MUST be a single valid JSON object (no trailing commas, proper quotes)

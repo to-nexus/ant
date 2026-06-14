@@ -4,10 +4,10 @@
  * services a producer-closure depends on.
  *
  * Covers:
- *   1. deriveBandFromPriority — the single priority→band SSOT. Platform is a
- *      sub-range [280,299] carved from the top of the foundation window;
- *      [200,279] stays foundation, FOUNDATION_MAX (299) is untouched so the
- *      orthogonal design-job `doc` classifier is unaffected.
+ *   1. deriveBandFromPriority — the single priority→band SSOT, a STRICT reverse
+ *      lookup over the `TASK_PRIORITY` window map. design-system [200,219] and
+ *      feature.foundation [220,259] are DISTINCT windows: only [220,259]
+ *      derives 'foundation' (design-system is a TYPE, never band-derived).
  *   2. entry-point-ownership-rule + checklist — the band-gated ownership
  *      branches (platform owns producer; integration mounts only; consumer
  *      must not hand-construct a shared value).
@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { deriveBandFromPriority } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
-import { TASK_PRIORITIES } from '../../src/agents/architect/graph/code/state';
+import { TASK_PRIORITY, windowFor } from '../../src/agents/architect/graph/code/state';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import type { SetupTask, FeatureTask } from '@ant/shared';
 
@@ -33,46 +33,50 @@ describe('band discriminated-union compile guard (setup=root only, feature=featu
   });
 });
 
-describe('platform band — deriveBandFromPriority (priority→band SSOT)', () => {
-  it('maps [200,259] → foundation, [260,299] → platform', () => {
-    // (design-system TYPE lives at 200-219 by decompose guidance, but it is not
-    // a feature so deriveBandFromPriority is never invoked for it; a FEATURE at
-    // 200-259 derives 'foundation'.)
-    expect(deriveBandFromPriority(200)).toBe('foundation');
-    expect(deriveBandFromPriority(220)).toBe('foundation'); // infra-adapters, shared types
+describe('platform band — deriveBandFromPriority (priority→band SSOT, STRICT)', () => {
+  it('design-system [200,219] is NOT a feature band → undefined; feature.foundation [220,259] → foundation', () => {
+    // design-system is a TYPE (band derivation never runs for it); a stray
+    // FEATURE priority inside its window degrades to undefined (ordinary).
+    expect(deriveBandFromPriority(200)).toBeUndefined();
+    expect(deriveBandFromPriority(219)).toBeUndefined();
+    expect(deriveBandFromPriority(220)).toBe('foundation');
     expect(deriveBandFromPriority(259)).toBe('foundation');
-    expect(deriveBandFromPriority(260)).toBe('platform');
-    expect(deriveBandFromPriority(TASK_PRIORITIES.PLATFORM_MIN)).toBe('platform');
-    expect(deriveBandFromPriority(290)).toBe('platform');
-    expect(deriveBandFromPriority(TASK_PRIORITIES.PLATFORM_MAX)).toBe('platform');
   });
 
-  it('keeps feature / integration windows unchanged', () => {
+  it('maps [260,299] → platform', () => {
+    expect(deriveBandFromPriority(260)).toBe('platform');
+    expect(deriveBandFromPriority(windowFor('feature', 'platform').min)).toBe('platform');
+    expect(deriveBandFromPriority(290)).toBe('platform');
+    expect(deriveBandFromPriority(windowFor('feature', 'platform').max)).toBe('platform');
+  });
+
+  it('keeps feature / integration windows', () => {
     expect(deriveBandFromPriority(300)).toBeUndefined(); // ordinary feature (consumer)
     expect(deriveBandFromPriority(599)).toBeUndefined();
     expect(deriveBandFromPriority(600)).toBe('integration');
     expect(deriveBandFromPriority(649)).toBe('integration');
   });
 
-  it("maps SETUP_PROJECT(100) → 'root' (unique workspace-level setup); package setups 101+ → undefined", () => {
-    // The root setup is the lowest priority in the queue and dequeues first.
-    expect(deriveBandFromPriority(TASK_PRIORITIES.SETUP_PROJECT)).toBe('root');
+  it("maps setup.root(100) → 'root' (unique workspace-level setup); package setups 101+ → undefined", () => {
+    expect(deriveBandFromPriority(windowFor('setup', 'root').min)).toBe('root');
     expect(deriveBandFromPriority(100)).toBe('root');
-    // Band-absent (package/member) setups occupy 101..SETUP_MAX — no band.
+    // Band-absent (package/member) setups occupy 101..setup.default.max — no band.
     expect(deriveBandFromPriority(101)).toBeUndefined();
     expect(deriveBandFromPriority(150)).toBeUndefined();
-    expect(deriveBandFromPriority(TASK_PRIORITIES.SETUP_MAX)).toBeUndefined();
+    expect(deriveBandFromPriority(windowFor('setup').max)).toBeUndefined();
     // 'root' is strictly the lowest priority → ahead of every band-absent setup.
-    expect(TASK_PRIORITIES.SETUP_PROJECT).toBeLessThan(101);
+    expect(windowFor('setup', 'root').min).toBeLessThan(windowFor('setup').min);
   });
 
-  it('FOUNDATION_MAX stays 299 (design-job doc classifier window untouched)', () => {
-    // The platform sub-range is checked first in deriveBandFromPriority, so the
-    // constant itself is unchanged — the design-job `doc` bundle still reads
-    // [SHARED_FOUNDATION, FOUNDATION_MAX] = [200, 299].
-    expect(TASK_PRIORITIES.FOUNDATION_MAX).toBe(299);
-    expect(TASK_PRIORITIES.PLATFORM_MIN).toBe(260);
-    expect(TASK_PRIORITIES.PLATFORM_MAX).toBe(299);
+  it('design-system and feature.foundation are distinct, adjacent windows', () => {
+    expect(windowFor('design-system')).toEqual({ min: 200, max: 219 });
+    expect(windowFor('feature', 'foundation')).toEqual({ min: 220, max: 259 });
+    expect(windowFor('feature', 'platform')).toEqual({ min: 260, max: 299 });
+    expect(windowFor('feature', 'integration')).toEqual({ min: 600, max: 649 });
+    // distinct: design-system ceiling sits just below the foundation band floor.
+    expect(TASK_PRIORITY['design-system'].default.max).toBeLessThan(
+      TASK_PRIORITY.feature.foundation.min,
+    );
   });
 });
 

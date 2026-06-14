@@ -55,9 +55,9 @@ describe('priority concern separation — static grep gate', () => {
     // Allow `t.priority` / `task.priority` references only when they
     // are (a) assigned to a schedClassify-style output, or (b) passed
     // as arguments. We reject any pattern that compares priority to a
-    // numeric literal or TASK_PRIORITIES.* member.
+    // numeric literal or TASK_PRIORITY / windowFor / basePriorityFor member.
     const rawNumericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
     expect(src.match(rawNumericCmp)).toBeNull();
     expect(src.match(prioritiesCmp)).toBeNull();
   });
@@ -65,7 +65,7 @@ describe('priority concern separation — static grep gate', () => {
   it('buildMessages.ts — no raw priority numeric comparisons', () => {
     const src = readFile('src/agents/architect/graph/code/nodes/execute/buildMessages.ts');
     const rawNumericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
     expect(src.match(rawNumericCmp)).toBeNull();
     expect(src.match(prioritiesCmp)).toBeNull();
   });
@@ -73,7 +73,7 @@ describe('priority concern separation — static grep gate', () => {
   it('nodes/plan/rag/combine.ts — no raw priority numeric comparisons', () => {
     const src = readFile('src/agents/architect/graph/code/nodes/plan/rag/combine.ts');
     const rawNumericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
     expect(src.match(rawNumericCmp)).toBeNull();
     expect(src.match(prioritiesCmp)).toBeNull();
   });
@@ -81,7 +81,7 @@ describe('priority concern separation — static grep gate', () => {
   it('nodes/decompose/validation.ts — no raw priority numeric comparisons', () => {
     const src = readFile('src/agents/architect/graph/code/nodes/decompose/validation.ts');
     const rawNumericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
     expect(src.match(rawNumericCmp)).toBeNull();
     expect(src.match(prioritiesCmp)).toBeNull();
   });
@@ -89,7 +89,7 @@ describe('priority concern separation — static grep gate', () => {
   it('nodes/decompose/sessionManager.ts — no raw priority numeric comparisons', () => {
     const src = readFile('src/agents/architect/graph/code/nodes/decompose/sessionManager.ts');
     const rawNumericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+    const prioritiesCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
     expect(src.match(rawNumericCmp)).toBeNull();
     expect(src.match(prioritiesCmp)).toBeNull();
   });

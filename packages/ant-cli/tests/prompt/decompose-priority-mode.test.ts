@@ -1,47 +1,37 @@
 /**
- * decompose priority-mode regression guard.
+ * decompose priority band guide — single-source render guard.
  *
- * Locks the conditional `priority` guidance swap in
- * `templates/jobs/code/nodes/decompose/variants/default/rules.md`:
+ * The priority band table is rendered from the `TASK_PRIORITY` window map (the
+ * numeric SSOT) by `renderPriorityBandGuide()` and injected into
+ * `templates/jobs/code/nodes/decompose/variants/default/base.md` via the
+ * `{{{priorityBandGuide}}}` variable. There is exactly ONE canonical band model
+ * for every code intent — the former `gen-code-spec` free-priority mode
+ * (`isPriorityFromSpec`) has been removed.
  *
- *   isPriorityFromSpec = true   → spec-derived free priority 1..999
- *                                 guidance row replaces the canonical
- *                                 bands; the "Note" paragraph about
- *                                 ordering vs scheduling lanes is
- *                                 suppressed (the row itself already
- *                                 carries the equivalent clarification).
- *   isPriorityFromSpec = false  → canonical band guide
- *                                 (100–189: setup, 200–219: design-system,
- *                                 220–259: feature foundation band, 260–299:
- *                                 feature platform band, 300–599: feature,
- *                                 600–649: integration, 650–749: ui, 750: seam,
- *                                 800: test-code, 850: doc, 900–980: error,
- *                                 1000: verification)
- *                                 plus the Note paragraph.
- *
- * The runtime gate lives at
- * `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/index.ts`:
- *
- *     isPriorityFromSpec: state.resolvedAction?.intent === 'gen-code-spec'
- *
- * Only `gen-code-spec` opts into free-priority guidance. `gen-code-sys`
- * and `gen-code-directive` / `rev-code` keep the canonical bands — the
- * scheduling barriers in `parallel/TaskOrchestrator.ts` depend on the
- * canonical bands via each bundle's `classify` hook, so the recommended
- * guide aligns LLM ordering with classify-driven scheduling.
+ * This locks:
+ *   1. The rendered guide carries every (type, band) window, sourced from the
+ *      map (so a hand-copied table cannot drift).
+ *   2. base.md actually interpolates the guide (wiring intact).
+ *   3. No free-priority / isPriorityFromSpec residue remains in the template.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
+import { readFileSync } from 'fs';
 import {
   FilePromptAdapter,
   initPartials,
 } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
+import { renderPriorityBandGuide } from '../../src/agents/architect/graph/code/state.priorityGuide';
+import { windowFor } from '../../src/agents/architect/graph/code/state';
 
 const TEMPLATES_DIR = join(__dirname, '../../src/core/prompt/templates');
+const BASE_MD = join(
+  TEMPLATES_DIR,
+  'jobs/code/nodes/decompose/variants/default/base.md',
+);
 
 const BASE_VARS: Record<string, any> = {
-  // Minimal vars to avoid undefined traversal errors in the template.
   directive: 'Build a service',
   currentTask: undefined,
   resolvedAction: undefined,
@@ -51,22 +41,37 @@ const BASE_VARS: Record<string, any> = {
   fileList: '',
   hasDocuments: false,
   documents: [],
-  hasCompactedArtifacts: false,
-  hasErrorInDirective: false,
   hasUi: false,
   uiSource: undefined,
-  hasRuntimeError: false,
-  isExplicitPipeline: false,
-  visualTierActive: false,
-  gameArtTierActive: false,
-  gameContentTierActive: false,
-  domainTierActive: false,
-  needsBoundaryClassification: false,
-  specClarifyBypassed: false,
-  intentClarifyDisabled: true,
+  priorityBandGuide: renderPriorityBandGuide(),
 };
 
-describe('decompose/variants/default/rules.md — priority guidance gate', () => {
+describe('renderPriorityBandGuide — rendered from TASK_PRIORITY (single SSOT)', () => {
+  it('carries every (type, band) window, numbers sourced from the map', () => {
+    const guide = renderPriorityBandGuide();
+    const { min: setupRoot } = windowFor('setup', 'root');
+    expect(guide).toContain(`- ${setupRoot}: setup (root`);
+    expect(guide).toMatch(/200–219: design-system/);
+    expect(guide).toMatch(/220–259: feature \(foundation band/);
+    expect(guide).toMatch(/260–299: feature \(platform band/);
+    expect(guide).toMatch(/300–599: feature \(ordinary\)/);
+    expect(guide).toMatch(/600–649: feature \(integration/);
+    expect(guide).toMatch(/650–749: ui/);
+    expect(guide).toMatch(/750–799: seam/);
+    expect(guide).toMatch(/800–849: test-code/);
+    expect(guide).toMatch(/850–899: doc/);
+    expect(guide).toMatch(/900–999: error/);
+    expect(guide).toMatch(/1000: verification/);
+  });
+
+  it('ranges agree with windowFor (no hand-copied numbers)', () => {
+    const guide = renderPriorityBandGuide();
+    const w = windowFor('feature', 'integration');
+    expect(guide).toContain(`- ${w.min}–${w.max}: feature (integration`);
+  });
+});
+
+describe('decompose base.md — priority band guide wiring', () => {
   let adapter: FilePromptAdapter;
 
   beforeAll(async () => {
@@ -74,63 +79,29 @@ describe('decompose/variants/default/rules.md — priority guidance gate', () =>
     adapter = new FilePromptAdapter(TEMPLATES_DIR);
   });
 
-  it('isPriorityFromSpec=true (gen-code-spec) — free 1..999 guidance, canonical bands absent', async () => {
-    const output = await adapter.render(
-      'jobs/code/nodes/decompose/variants/default/rules',
-      { ...BASE_VARS, isPriorityFromSpec: true },
+  it('interpolates {{{priorityBandGuide}}} and renders the canonical bands', async () => {
+    const out = await adapter.render(
+      'jobs/code/nodes/decompose/variants/default/base',
+      BASE_VARS,
     );
-
-    // Free-priority clause present.
-    expect(output).toMatch(/Free integer in 1\.\.999/);
-    expect(output).toMatch(/1000 is reserved for the Final Verification task only/);
-    // Scheduling-lane clarification inlined into the spec row.
-    expect(output).toMatch(/Scheduling lanes \(which task type starts/);
-
-    // Canonical band sentinels must NOT appear on the priority table row.
-    // The description of shared-foundation type (priority 200–299) appears
-    // elsewhere in the document (Task Type Rules section), so scope the
-    // negative match tightly to the priority schema row phrasing.
-    expect(output).not.toMatch(/100–189: setup, 200–219: design-system/);
-    expect(output).not.toMatch(/900–980: error, 1000: verification/);
-
-    // The universal ordering Note is suppressed in spec mode (the free
-    // row already covers that semantic).
-    expect(output).not.toMatch(
-      /`priority` is the ordering key \(lower = earlier\)\. Scheduling/,
-    );
+    expect(out).toMatch(/220–259: feature \(foundation band/);
+    expect(out).toMatch(/1000: verification/);
   });
 
-  it('isPriorityFromSpec=false (default) — canonical bands + Note paragraph present', async () => {
-    const output = await adapter.render(
-      'jobs/code/nodes/decompose/variants/default/rules',
-      { ...BASE_VARS, isPriorityFromSpec: false },
+  it('no free-priority / isPriorityFromSpec residue in the template source', () => {
+    const base = readFileSync(BASE_MD, 'utf8');
+    const rules = readFileSync(
+      join(
+        TEMPLATES_DIR,
+        'jobs/code/nodes/decompose/variants/default/rules.md',
+      ),
+      'utf8',
     );
-
-    // Canonical band table row.
-    expect(output).toMatch(/100–189: setup, 200–219: design-system/);
-    expect(output).toMatch(/600–649: feature \(integration\)/);
-    expect(output).toMatch(/900–980: error, 1000: verification/);
-
-    // Ordering-vs-scheduling-lanes Note paragraph.
-    expect(output).toMatch(
-      /\*\*Note\*\*: `priority` is the ordering key \(lower = earlier\)/,
-    );
-    expect(output).toMatch(/Scheduling\s+lanes — when each task type starts relative/);
-    expect(output).toMatch(/`type` is the SSOT for scheduling/);
-
-    // Free-priority clause must NOT leak into the default mode.
-    expect(output).not.toMatch(/Free integer in 1\.\.999 reflecting the spec/);
-  });
-
-  it('unset isPriorityFromSpec (undefined) behaves like default (Handlebars falsy)', async () => {
-    const output = await adapter.render(
-      'jobs/code/nodes/decompose/variants/default/rules',
-      { ...BASE_VARS /* isPriorityFromSpec omitted */ },
-    );
-    expect(output).toMatch(/100–189: setup, 200–219: design-system/);
-    expect(output).toMatch(
-      /\*\*Note\*\*: `priority` is the ordering key \(lower = earlier\)/,
-    );
-    expect(output).not.toMatch(/Free integer in 1\.\.999 reflecting the spec/);
+    expect(base).toContain('{{{priorityBandGuide}}}');
+    expect(base).not.toMatch(/isPriorityFromSpec/);
+    expect(rules).not.toMatch(/isPriorityFromSpec/);
+    expect(rules).not.toMatch(/Free integer in 1\.\.999/);
+    // The hand-copied band table is gone from base.md (replaced by the var).
+    expect(base).not.toMatch(/300=critical, 350=important/);
   });
 });

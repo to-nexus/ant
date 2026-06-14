@@ -186,7 +186,7 @@ describe('decompose Shared Integration Points — neutral host/per-unit + closur
     hasCompactedArtifacts: false, hasErrorInDirective: false, hasUi: false, uiSource: undefined,
     hasRuntimeError: false, isExplicitPipeline: false, visualTierActive: false, gameArtTierActive: false,
     gameContentTierActive: false, domainTierActive: false, needsBoundaryClassification: false,
-    specClarifyBypassed: false, intentClarifyDisabled: true, isPriorityFromSpec: false,
+    specClarifyBypassed: false, intentClarifyDisabled: true,
   };
 
   beforeAll(async () => {

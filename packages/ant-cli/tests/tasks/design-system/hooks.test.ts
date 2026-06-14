@@ -103,8 +103,8 @@ describe('tasks/_shared/registry — design-system entry', () => {
   });
 
   it('static consumer + producer flags stay absent — classify is the SSOT', () => {
-    // Consumer flags — design-system is below FEATURE_CRITICAL (300),
-    // so it never waits on a type-level barrier.
+    // Consumer flags — design-system (200–219) is below the ordinary-feature
+    // window (300), so it never waits on a type-level barrier.
     expect(dsBundle.scheduling?.preUiBarrier).toBeUndefined();
     expect(dsBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(dsBundle.scheduling?.preDocBarrier).toBeUndefined();

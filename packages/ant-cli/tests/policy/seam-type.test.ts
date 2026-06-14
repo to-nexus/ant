@@ -7,8 +7,8 @@
  * Covers:
  *   1. seam is a registered TaskType with its own bundle (isSeamTask predicate).
  *   2. deriveBandFromPriority — seam is NOT a band anymore (no priority→'seam').
- *   3. TASK_PRIORITIES — seam window [700,749] sits AFTER ui [670,699] and
- *      BEFORE test-code (750).
+ *   3. TASK_PRIORITY — seam window [750,799] sits AFTER ui [650,749] and
+ *      BEFORE test-code (800).
  *   4. seam bundle scheduling — consumes the seam gate + blocks testgen/doc;
  *      does NOT produce the gate (sub-slices never self-block) and does NOT
  *      block ui (ui runs before seam — no ui↔seam deadlock).
@@ -26,7 +26,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deriveBandFromPriority } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
-import { TASK_PRIORITIES } from '../../src/agents/architect/graph/code/state';
+import { windowFor } from '../../src/agents/architect/graph/code/state';
+import { renderPriorityBandGuide } from '../../src/agents/architect/graph/code/state.priorityGuide';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { hooksForTaskType } from '../../src/agents/architect/graph/code/tasks/_shared/registry';
 import { isSeamTask } from '../../src/agents/architect/graph/code/tasks/seam';
@@ -64,15 +65,13 @@ describe('seam type — NOT a band (deriveBandFromPriority)', () => {
   });
 });
 
-describe('seam type — TASK_PRIORITIES window (after ui, before test-code)', () => {
+describe('seam type — TASK_PRIORITY window (after ui, before test-code)', () => {
   it('seam [750,799] sits after ui [650,749] and before test-code (800)', () => {
-    expect(TASK_PRIORITIES.SEAM_CLOSURE_MIN).toBe(750);
-    expect(TASK_PRIORITIES.SEAM_CLOSURE_MAX).toBe(799);
-    expect(TASK_PRIORITIES.VISUAL_PASS).toBe(650);
-    expect(TASK_PRIORITIES.VISUAL_MAX).toBe(749);
-    expect(TASK_PRIORITIES.VISUAL_MAX).toBeLessThan(TASK_PRIORITIES.SEAM_CLOSURE_MIN);
-    expect(TASK_PRIORITIES.SEAM_CLOSURE_MAX).toBeLessThan(TASK_PRIORITIES.TEST_GENERATION);
-    expect(TASK_PRIORITIES.TEST_GENERATION).toBe(800);
+    expect(windowFor('seam')).toEqual({ min: 750, max: 799 });
+    expect(windowFor('ui')).toEqual({ min: 650, max: 749 });
+    expect(windowFor('ui').max).toBeLessThan(windowFor('seam').min);
+    expect(windowFor('seam').max).toBeLessThan(windowFor('test-code').min);
+    expect(windowFor('test-code').min).toBe(800);
   });
 });
 
@@ -117,7 +116,7 @@ describe('seam type — batchSplit carries the seam TYPE verbatim', () => {
       id: 'seam-parent',
       name: 'app reference closure',
       type: 'seam',
-      priority: TASK_PRIORITIES.SEAM_CLOSURE_MIN,
+      priority: windowFor('seam').min,
       parallelGroup: 'seam-app',
       description: '',
     } as CodeTask;
@@ -138,8 +137,8 @@ describe('seam type — batchSplit carries the seam TYPE verbatim', () => {
     for (const s of subs) {
       expect(s.type).toBe('seam'); // type carry-over
       // child priority = parent + priorityInParallelGroup, inside the window
-      expect(s.priority).toBeGreaterThanOrEqual(TASK_PRIORITIES.SEAM_CLOSURE_MIN);
-      expect(s.priority).toBeLessThanOrEqual(TASK_PRIORITIES.SEAM_CLOSURE_MAX);
+      expect(s.priority).toBeGreaterThanOrEqual(windowFor('seam').min);
+      expect(s.priority).toBeLessThanOrEqual(windowFor('seam').max);
       expect(classify(s as any).consumesSeamGate).toBe(true);
       expect(classify(s as any).producesSeamGate).toBeFalsy();
     }
@@ -189,17 +188,18 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
 });
 
 describe('seam type — priority SSOT consistency', () => {
-  it('decompose tables agree with TASK_PRIORITIES (seam 700, test-code 750, ui 670–699)', () => {
-    const rules = readFileSync(join(TEMPLATES, 'rules.md'), 'utf8');
-    const base = readFileSync(join(TEMPLATES, 'base.md'), 'utf8');
-
-    expect(rules).toMatch(/750: seam/);
-    expect(rules).toMatch(/800: test-code/);
-    expect(base).toMatch(/750: seam/);
-    expect(base).toMatch(/800: test-code/);
-    // The old feature-band seam line must be gone.
-    expect(rules).not.toMatch(/650–669: feature \(seam/);
-    expect(base).not.toMatch(/650–669: feature \(seam/);
+  it('rendered priority band guide agrees with TASK_PRIORITY (seam 750–799 after ui, test-code 800–849)', () => {
+    // The band table is rendered from TASK_PRIORITY (single SSOT) and injected
+    // into base.md via {{{priorityBandGuide}}} — assert the rendered output, not
+    // a hand-copied table.
+    const guide = renderPriorityBandGuide();
+    expect(guide).toMatch(/650–749: ui/);
+    expect(guide).toMatch(/750–799: seam/);
+    expect(guide).toMatch(/800–849: test-code/);
+    // ui appears before seam in the ordered guide.
+    expect(guide.indexOf('ui')).toBeLessThan(guide.indexOf('seam'));
+    // No stale feature-band seam line.
+    expect(guide).not.toMatch(/feature \(seam/);
   });
 
   it('OrchestratorConfig.barriers carries the seam flag', () => {

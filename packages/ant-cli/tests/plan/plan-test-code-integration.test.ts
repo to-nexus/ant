@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { taskRequiresPlan } from '../../src/agents/architect/graph/code/nodes/plan/llm';
-import { TASK_PRIORITIES } from '../../src/agents/architect/graph/code/state';
+import { VERIFICATION_PRIORITY } from '../../src/agents/architect/graph/code/state';
 import type { CodeTask } from '../../src/agents/architect/types/task';
 
 function makeTask(overrides: Partial<CodeTask>): CodeTask {
@@ -41,11 +41,11 @@ describe('taskRequiresPlan — F2: test-code takes the standard plan path', () =
     expect(taskRequiresPlan(makeTask({ type: 'explain' as any }))).toBe(false);
   });
 
-  it('still returns false for the FINAL_VERIFICATION priority guard', () => {
+  it('still returns false for the VERIFICATION_PRIORITY priority guard', () => {
     expect(
       taskRequiresPlan(makeTask({
         type: 'feature' as any,
-        priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+        priority: VERIFICATION_PRIORITY,
       })),
     ).toBe(false);
   });

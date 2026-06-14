@@ -6,7 +6,7 @@
  * default/rules.md` — "1000: verification" single band) and every creation
  * site (`error/hooks/orchestrator.ts onTaskComplete`, LLM decompose output,
  * scenario seeds) co-assign `type: 'verification'` with
- * `priority: TASK_PRIORITIES.FINAL_VERIFICATION`. There is no such thing as
+ * `priority: VERIFICATION_PRIORITY`. There is no such thing as
  * a "non-final verification task" in this system — consequently there is
  * no separate `isFinalVerificationTask` predicate. Call sites that used to
  * distinguish "final" from "generic verification" were mirroring a legacy
@@ -19,15 +19,14 @@
  * diagnosis and a `VerificationSession`; error applies fixes from an
  * upstream remediation plan and owns neither.
  *
- * R2 coupling note — this module imports the `TASK_PRIORITIES` value map
- * from `graph/code/state.ts`. `state.ts` itself type-imports
- * `VerificationSession`, so the back edge is type-only and erased at
- * runtime; there is no runtime cycle. Structurally this is a pragmatic
- * coupling shared with other task modules (e.g. `tasks/feature/hooks/*`)
- * that also consume `TASK_PRIORITIES`.
+ * R2 coupling note — this module imports `VERIFICATION_PRIORITY` from
+ * `graph/code/state.ts`. `state.ts` itself type-imports `VerificationSession`,
+ * so the back edge is type-only and erased at runtime; there is no runtime
+ * cycle. Structurally this is a pragmatic coupling shared with other task
+ * modules (e.g. `tasks/feature/hooks/*`).
  */
 
-import { TASK_PRIORITIES } from '../../../state';
+import { VERIFICATION_PRIORITY } from '../../../state';
 
 /** Minimal shape needed to classify — avoids depending on the full `CodeTask`. */
 export interface TaskClassifyLike {
@@ -41,7 +40,7 @@ export interface TaskClassifyLike {
  *
  * Positive when EITHER:
  *   - `type === 'verification'` (the canonical assignment), OR
- *   - `priority >= FINAL_VERIFICATION` (defence against dynamically-
+ *   - `priority >= VERIFICATION_PRIORITY` (defence against dynamically-
  *     constructed tasks that set the priority without the type).
  *
  * NOT qualifying: `type === 'error'` (a separate remediation task type —
@@ -54,5 +53,5 @@ export interface TaskClassifyLike {
 export function isVerificationTask(task: TaskClassifyLike | null | undefined): boolean {
   if (!task) return false;
   if (task.type === 'verification') return true;
-  return task.priority != null && task.priority >= TASK_PRIORITIES.FINAL_VERIFICATION;
+  return task.priority != null && task.priority >= VERIFICATION_PRIORITY;
 }
