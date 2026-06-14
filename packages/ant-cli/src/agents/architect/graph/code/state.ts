@@ -78,20 +78,31 @@ export const TASK_PRIORITIES = {
   SETUP_PROJECT: 100,
   SETUP_MAX: 189,
 
-  // Design-System + Shared Foundation (200-299) — visual infrastructure + shared types/interfaces.
+  // Foundation phase (200-299) — runs FIRST, gates feature work. Three
+  // occupants, all `isFoundation` (they finish before priority 300+):
+  //   • `design-system` TYPE   — token/CSS infra (200), shared components (201-219)
+  //   • feature `foundation` BAND — shared types / interfaces / pure contracts (220-259)
+  //   • feature `platform`   BAND — shared runtime services consumed by many
+  //                                 features, per RUNTIME (session/identity/config
+  //                                 accessors, client singletons) (260-299)
   // FOUNDATION_MAX stays 299 because the design-job `doc` bundle classifies on
-  // [SHARED_FOUNDATION, FOUNDATION_MAX]. For CODE-job FEATURE band derivation,
-  // [PLATFORM_MIN, PLATFORM_MAX] is carved out of the top of this window (see
-  // deriveBandFromPriority), so a feature task's effective foundation band is
-  // [200, 279] and [280, 299] is platform.
+  // [SHARED_FOUNDATION, FOUNDATION_MAX] (design-job assets band) — it is NOT
+  // free to move. `PLATFORM_MIN` is code-job-only (deriveBandFromPriority), so
+  // the foundation/platform split is tunable without touching the design job.
+  // Effective CODE-job feature bands: foundation [200,259], platform [260,299].
+  // (design-system is a TYPE, not a feature band — its 200-219 slot is decompose
+  // guidance; deriveBandFromPriority is never invoked for it.)
   SHARED_FOUNDATION: 200,
   FOUNDATION_MAX: 299,
 
-  // Platform (280-299) — shared runtime services/state built on foundation
-  // contracts and consumed by many features. Sub-range of the 200-299 window:
-  // a CODE-job feature task whose priority lands here derives band 'platform'.
-  // Runs after foundation, before ordinary feature work (hasPrePlatformWork).
-  PLATFORM_MIN: 280,
+  // Platform (260-299) — shared runtime services/state built on foundation
+  // contracts and consumed by many features. A CODE-job feature task whose
+  // priority lands here derives band 'platform'. Runs after foundation, before
+  // ordinary feature work (hasPrePlatformWork). Widened from the former 20-wide
+  // [280,299] to [260,299] (40): with per-runtime session owners (one platform
+  // task per buildable app's auth/session boundary) plus their lane-mode
+  // fan-out, the band carries materially more than the single-app assumption.
+  PLATFORM_MIN: 260,
   PLATFORM_MAX: 299,
 
   // Feature (300-599) — headless skeleton implementation

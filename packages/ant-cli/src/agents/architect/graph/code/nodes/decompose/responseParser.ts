@@ -50,9 +50,11 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
   }
   // Platform is a sub-range carved from the TOP of the foundation window:
   // [PLATFORM_MIN, PLATFORM_MAX] ⊂ [SHARED_FOUNDATION, FOUNDATION_MAX]. Checked
-  // FIRST so a feature task in [280, 299] derives 'platform', leaving the
-  // effective foundation band at [200, 279]. (FOUNDATION_MAX stays 299 for the
-  // orthogonal design-job `doc` classifier — see state.ts.)
+  // FIRST so a feature task in [260, 299] derives 'platform', leaving the
+  // effective feature foundation band at [200, 259]. (FOUNDATION_MAX stays 299
+  // for the orthogonal design-job `doc` classifier — see state.ts. The
+  // `design-system` TYPE also lives in the foundation phase at 200-219; it is
+  // not a feature, so this band derivation is never invoked for it.)
   if (
     priority >= TASK_PRIORITIES.PLATFORM_MIN &&
     priority <= TASK_PRIORITIES.PLATFORM_MAX
