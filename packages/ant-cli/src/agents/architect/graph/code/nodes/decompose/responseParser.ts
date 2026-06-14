@@ -1,4 +1,4 @@
-import { TASK_PRIORITIES } from "../../state";
+import { TASK_PRIORITY, basePriorityFor } from "../../state";
 import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
@@ -21,60 +21,46 @@ import type { TaskType, GameEngine, TechTier } from '@ant/shared';
 import { SUPPORTED_GAME_ENGINES } from '@ant/shared';
 import { isWithinRacWhitelist, type RacScope } from './racGate';
 
+// (type, band) pairs that carry a band, in derivation-check order. Each maps
+// to its window in the `TASK_PRIORITY` SSOT — so the priority→band reverse
+// lookup and the band→window forward map can never drift.
+const BAND_DERIVATION: ReadonlyArray<{ type: 'setup' | 'feature'; band: TaskBand }> = [
+  { type: 'setup', band: 'root' },
+  { type: 'feature', band: 'foundation' },
+  { type: 'feature', band: 'platform' },
+  { type: 'feature', band: 'integration' },
+];
+
 /**
  * Three-Axis SSOT — the SOLE phase site that translates `priority` into a
- * semantic `band`. After this point, `task.band` is the canonical input
- * for feature scheduling (the orchestrator never reads `priority` for
- * scheduling decisions).
+ * semantic `band`. After this point, `task.band` is the canonical input for
+ * feature scheduling (the orchestrator never reads `priority`).
  *
- *   - priority === SETUP_PROJECT (100)                        → 'root'
- *   - priority ∈ [SHARED_FOUNDATION, FOUNDATION_MAX] (200–299) → 'foundation'
- *   - priority ∈ [INTEGRATION_MIN,   INTEGRATION_MAX] (600–649) → 'integration'
- *   - everything else → undefined (ordinary feature / package setup)
+ * The mapping is a strict reverse lookup over the `TASK_PRIORITY` window map:
+ * a priority derives a band ONLY when it falls inside that band's window.
  *
- * NOTE: cross-feature reference closure is the `seam` TaskType (emitted
- * directly, run AFTER ui at priority 700–749), NOT a band — no priority→band
- * mapping for it.
+ *   - 100 (setup.root)                 → 'root'
+ *   - [220,259] (feature.foundation)   → 'foundation'
+ *   - [260,299] (feature.platform)     → 'platform'
+ *   - [600,649] (feature.integration)  → 'integration'
+ *   - everything else                  → undefined (ordinary feature / package setup)
  *
- * Invoked for feature tasks (→ feature bands) AND setup tasks (→ 'root' for
- * the project/framework/workspace-level root setup; undefined for a package
- * setup at 101+). Other types DO NOT carry band (their type alone is the
- * discriminator). `'root'` is the lowest priority (SETUP_PROJECT=100), so a
- * root setup always dequeues before any band-absent setup (101+).
+ * STRICT: design-system [200,219] and feature.foundation [220,259] are distinct
+ * windows — only [220,259] derives 'foundation'. design-system is a TYPE (band
+ * derivation is never invoked for it). cross-feature reference closure is the
+ * `seam` TYPE (emitted directly, run AFTER ui), NOT a band.
+ *
+ * Invoked for feature tasks (→ feature bands) AND setup tasks (→ 'root' for the
+ * project/framework/workspace-level root setup; undefined for a package setup
+ * at 101+). Other types carry no band — their type alone is the discriminator.
  */
 export function deriveBandFromPriority(priority: number): TaskBand | undefined {
-  // Root setup: the unique SETUP_PROJECT-priority task. Lowest priority in the
-  // queue → first to dequeue; owns root-level artifacts only (never a member).
-  if (priority === TASK_PRIORITIES.SETUP_PROJECT) {
-    return 'root';
+  for (const { type, band } of BAND_DERIVATION) {
+    const w = TASK_PRIORITY[type][band];
+    if (w && priority >= w.min && priority <= w.max) {
+      return band;
+    }
   }
-  // Platform is a sub-range carved from the TOP of the foundation window:
-  // [PLATFORM_MIN, PLATFORM_MAX] ⊂ [SHARED_FOUNDATION, FOUNDATION_MAX]. Checked
-  // FIRST so a feature task in [260, 299] derives 'platform', leaving the
-  // effective feature foundation band at [200, 259]. (FOUNDATION_MAX stays 299
-  // for the orthogonal design-job `doc` classifier — see state.ts. The
-  // `design-system` TYPE also lives in the foundation phase at 200-219; it is
-  // not a feature, so this band derivation is never invoked for it.)
-  if (
-    priority >= TASK_PRIORITIES.PLATFORM_MIN &&
-    priority <= TASK_PRIORITIES.PLATFORM_MAX
-  ) {
-    return 'platform';
-  }
-  if (
-    priority >= TASK_PRIORITIES.SHARED_FOUNDATION &&
-    priority <= TASK_PRIORITIES.FOUNDATION_MAX
-  ) {
-    return 'foundation';
-  }
-  if (
-    priority >= TASK_PRIORITIES.INTEGRATION_MIN &&
-    priority <= TASK_PRIORITIES.INTEGRATION_MAX
-  ) {
-    return 'integration';
-  }
-  // NOTE: cross-feature reference closure is the `seam` TaskType (emitted
-  // directly by the LLM, run AFTER ui), NOT a band — no priority→band mapping.
   return undefined;
 }
 
@@ -575,7 +561,10 @@ export function createTaskQueue(
         ? rawSelfVerify
         : undefined;
 
-    const resolvedPriority = task.priority || TASK_PRIORITIES.FEATURE_NORMAL;
+    // Missing priority → the task type's default-window base (band-less). One
+    // SSOT: `basePriorityFor` reads the same `TASK_PRIORITY` map as the band
+    // derivation, so this default lands inside the type's own window.
+    const resolvedPriority = task.priority ?? basePriorityFor(resolvedType);
     // Three-Axis SSOT: feature tasks carry an explicit `band` derived from
     // the priority window; setup tasks carry 'root' for the SETUP_PROJECT
     // root setup. After decompose, scheduling reads `task.band`

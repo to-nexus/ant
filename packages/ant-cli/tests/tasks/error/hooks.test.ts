@@ -18,7 +18,7 @@ import * as orchestratorHook from '../../../src/agents/architect/graph/code/task
 import { hooks as errorBundle } from '../../../src/agents/architect/graph/code/tasks/error';
 import { isErrorTask } from '../../../src/agents/architect/graph/code/tasks/error/model/is';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
-import { TASK_PRIORITIES } from '../../../src/agents/architect/graph/code/state';
+import { VERIFICATION_PRIORITY } from '../../../src/agents/architect/graph/code/state';
 
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 import type { TaskCompleteCtx } from '../../../src/agents/architect/graph/code/tasks/_shared/types';
@@ -170,7 +170,7 @@ describe('tasks/error/hooks/orchestrator.onTaskComplete', () => {
     expect(queue.tasks).toHaveLength(1);
     expect(queue.tasks[0]).toMatchObject({
       type: 'verification',
-      priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+      priority: VERIFICATION_PRIORITY,
       name: 'Final Verification (Recheck)',
     });
   });
@@ -187,7 +187,7 @@ describe('tasks/error/hooks/orchestrator.onTaskComplete', () => {
     const queue = makeQueueStub();
     queue.tasks.push(task('existing-final', {
       type: 'verification',
-      priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+      priority: VERIFICATION_PRIORITY,
     }));
     orchestratorHook.onTaskComplete(
       baseCtx({ taskQueue: queue, queueSnapshot: queue.tasks }),
@@ -199,7 +199,7 @@ describe('tasks/error/hooks/orchestrator.onTaskComplete', () => {
     const queue = makeQueueStub();
     const running = [task('running-final', {
       type: 'verification',
-      priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+      priority: VERIFICATION_PRIORITY,
     })];
     orchestratorHook.onTaskComplete(
       baseCtx({ taskQueue: queue, queueSnapshot: queue.tasks, runningSnapshot: running }),
@@ -209,7 +209,7 @@ describe('tasks/error/hooks/orchestrator.onTaskComplete', () => {
 
   it('no-op when a verification task has already completed (parallel)', () => {
     const queue = makeQueueStub();
-    const completed = [task('prior-final', { type: 'verification', priority: TASK_PRIORITIES.FINAL_VERIFICATION })];
+    const completed = [task('prior-final', { type: 'verification', priority: VERIFICATION_PRIORITY })];
     orchestratorHook.onTaskComplete(
       baseCtx({ taskQueue: queue, queueSnapshot: queue.tasks, completedSnapshot: completed }),
     );

@@ -132,7 +132,7 @@ Job 실행 중 상태 변경은 Redis Pub/Sub를 통해 실시간 전파된다.
 |------|------|------|
 | `exclusive` | boolean | true면 단독 실행 (barrier) |
 | `parallelGroup` | string | 같은 그룹은 동시 실행 불가 |
-| `priority` | number | 낮을수록 먼저 실행 (100: setup, 200-300: feature, 1000: final) |
+| `priority` | number | 낮을수록 먼저 실행. 윈도우 체계는 `TASK_PRIORITY` SSOT — [`41-task-priority-band-system.md`](41-task-priority-band-system.md) 참고 |
 | `packages` | string[] | 태스크가 속한 패키지 (설계 문서 split injection용) |
 
 ### 할당 알고리즘

@@ -8,12 +8,12 @@
  *     discriminators read by phase-layer code (orchestrator / router /
  *     parallel / nodes).
  *   - `task.priority` is the TaskQueue's sort key only — semantic
- *     comparisons (`priority === FINAL_VERIFICATION`, band windows,
+ *     comparisons (`priority === VERIFICATION_PRIORITY`, band windows,
  *     `priority < 300`, etc.) are forbidden outside the decompose
  *     `priority → band` mapping site (`responseParser.deriveBandFromPriority`).
  *
  * This sweep ripgreps the phase-layer .ts files and asserts ZERO
- * matches for `*.priority` followed by a numeric / TASK_PRIORITIES
+ * matches for `*.priority` followed by a numeric / TASK_PRIORITY
  * comparator. Violations indicate either (a) a priority comparison
  * leaked back into phase code, or (b) a new SSOT site needs to be
  * documented as an explicit exception below.
@@ -90,11 +90,13 @@ function listTsFiles(dir: string, acc: string[] = []): string[] {
 }
 
 describe('priority isolation sweep — phase layer reads no semantic priority', () => {
-  // Match `<expr>.priority <op> <number-or-TASK_PRIORITIES.X>`.
+  // Match `<expr>.priority <op> <number-or-TASK_PRIORITY...>`.
   // Both directions are caught (literal LHS would still need .priority
   // somewhere in the statement; we keep it strict to .priority on the LHS).
+  // `TASK_PRIORITY` is the normalized window-map symbol (and matches any
+  // `windowFor(...).min`-style comparison's `TASK_PRIORITY` import too).
   const numericCmp = /\.priority\s*[<>!=]=?\s*\d+/g;
-  const constantCmp = /\.priority\s*[<>!=]=?\s*TASK_PRIORITIES\./g;
+  const constantCmp = /\.priority\s*[<>!=]=?\s*(TASK_PRIORITY|windowFor|basePriorityFor|VERIFICATION_PRIORITY)\b/g;
 
   for (const dir of PHASE_DIRS) {
     it(`${dir} — zero priority comparisons`, () => {
@@ -127,7 +129,7 @@ describe('priority isolation sweep — phase layer reads no semantic priority', 
       'utf8',
     );
     expect(decompose).toContain('deriveBandFromPriority');
-    expect(decompose).toMatch(/TASK_PRIORITIES\.SHARED_FOUNDATION/);
-    expect(decompose).toMatch(/TASK_PRIORITIES\.INTEGRATION_MIN/);
+    // The reverse lookup reads the TASK_PRIORITY window map (single SSOT).
+    expect(decompose).toMatch(/TASK_PRIORITY\b/);
   });
 });

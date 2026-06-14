@@ -12,8 +12,8 @@
  *     (see `hooks/scheduling.ts`) is the SSOT for this band; feature
  *     does NOT publish a static consumer flag.
  *   - `hasPreIntegrationWork` — non-integration feature tasks
- *     (classify.producesIntegrationGate for the [FEATURE_CRITICAL,
- *     INTEGRATION_MIN) band) gate integration feature tasks. The
+ *     (classify.producesIntegrationGate for the ordinary-feature
+ *     `default` window 300–599) gate integration feature tasks. The
  *     consumer side uses the static `preIntegrationBarrier` flag
  *     paired with classify.consumesIntegrationGate.
  *   - Producer barriers (`hasPreUiWork / hasPreTestgenWork /
@@ -49,7 +49,7 @@
  *                                        scheduling role X".
  *   - decompose.isExclusive            — false for ordinary feature
  *                                        tasks; true only when
- *                                        priority === FINAL_VERIFICATION
+ *                                        priority >= VERIFICATION_PRIORITY
  *                                        (defence against retyping
  *                                        regression, see
  *                                        `hooks/decompose.ts`).

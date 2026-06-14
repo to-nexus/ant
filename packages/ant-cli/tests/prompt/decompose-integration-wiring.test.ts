@@ -50,7 +50,6 @@ const BASE_VARS: Record<string, any> = {
   needsBoundaryClassification: false,
   specClarifyBypassed: false,
   intentClarifyDisabled: true,
-  isPriorityFromSpec: false,
 };
 
 function read(path: string): string {

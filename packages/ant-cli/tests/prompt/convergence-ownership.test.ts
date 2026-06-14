@@ -45,7 +45,6 @@ const BASE_VARS: Record<string, any> = {
   needsBoundaryClassification: false,
   specClarifyBypassed: false,
   intentClarifyDisabled: true,
-  isPriorityFromSpec: false,
 };
 
 describe('Axis 1 — convergence / shared-decision ownership', () => {

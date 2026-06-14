@@ -40,7 +40,7 @@ interface TaskShape {
  *
  * Two qualifying paths:
  *   - `isVerificationTask(task)` — Tier 3/4 dedicated verification task
- *     (priority >= FINAL_VERIFICATION).
+ *     (priority >= VERIFICATION_PRIORITY).
  *   - `task.selfVerifyOnDone === true` — Tier 2 single task that owns
  *     inline self-verify (decompose-time SSOT in
  *     `nodes/decompose/responseParser.ts`).

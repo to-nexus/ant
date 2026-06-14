@@ -14,7 +14,8 @@
 
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
-import { ArchitectGraphState } from "../../state";
+import { ArchitectGraphState, basePriorityFor } from "../../state";
+import { renderPriorityBandGuide } from "../../state.priorityGuide";
 import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
@@ -452,14 +453,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           .join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
-    // Free-priority gate — `gen-code-spec` is the single intent whose
-    // source document dictates task ordering (the spec writer chose
-    // the numbers). Every other intent (gen-code-sys / gen-code-directive
-    // / rev-code / explain-code) keeps the canonical priority bands so
-    // the LLM's ordering aligns with the scheduling barriers owned by
-    // each bundle's `classify` hook. Runtime is NOT branched — this
-    // flag only swaps the priority-row guidance in the decompose prompt.
-    isPriorityFromSpec: state.resolvedAction?.intent === 'gen-code-spec',
+    // Canonical priority band guide, rendered from the `TASK_PRIORITY` map
+    // (single SSOT — no hand-copied band table). All code intents use the
+    // same canonical bands: priority is purely the queue ordering key, while
+    // band placement follows dependency classification. A source document's
+    // stated order (spec / system design) is a WITHIN-band reference only.
+    priorityBandGuide: renderPriorityBandGuide(),
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
     // active intent (redirect_to_design = job switch, proceed_without_spec
     // = skip source contract) and MUST NOT fire when the upstream
@@ -682,7 +681,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // twice. Whole-attempt resets are owned by `resetAccumulated()`.
     if (accumulatedTasks.some(t => t.id === id)) return;
     const type: TaskType = typeof raw.type === 'string' ? raw.type as TaskType : 'feature';
-    const priority = typeof raw.priority === 'number' ? raw.priority : 300;
+    // Missing priority → the task type's default-window base (same SSOT helper
+    // the canonical `createTaskQueue` path uses, so streaming card sort keys
+    // match the final queue).
+    const priority = typeof raw.priority === 'number' ? raw.priority : basePriorityFor(type);
     const description = typeof raw.description === 'string' ? raw.description : '';
     const stack: 'frontend' | 'backend' | undefined =
       raw.stack === 'frontend' || raw.stack === 'backend' ? raw.stack : undefined;

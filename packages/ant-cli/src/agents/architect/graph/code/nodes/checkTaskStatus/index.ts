@@ -16,7 +16,7 @@
 import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
-import { TASK_PRIORITIES, TaskTimingHelper } from '../../state';
+import { TaskTimingHelper } from '../../state';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 import { isFeatureTask } from '../../tasks/feature/model/is';
 import { clearForTaskBoundary } from '../../tasks/_shared/verify/markVerifyEntered';
@@ -394,7 +394,3 @@ export async function checkTaskStatus(
     recursionLimit: state.recursionLimit,
   };
 }
-
-// Re-export the TASK_PRIORITIES helper is intentionally omitted — phase
-// nodes import it directly from state.ts.
-void TASK_PRIORITIES;

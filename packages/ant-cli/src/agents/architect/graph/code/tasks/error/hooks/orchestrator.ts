@@ -44,7 +44,7 @@
 import type { CodeTask } from '../../../../../types/task';
 import type { TechTier } from '@ant/shared';
 import type { TaskCompleteCtx } from '../../_shared/types';
-import { TASK_PRIORITIES } from '../../../state';
+import { VERIFICATION_PRIORITY } from '../../../state';
 import { isVerificationTask } from '../../verification';
 
 function hasFinalVerification(
@@ -102,7 +102,7 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
     id: `final-verification-recheck-${Date.now()}`,
     name: 'Final Verification (Recheck)',
     type: 'verification',
-    priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+    priority: VERIFICATION_PRIORITY,
     description: 'Re-verify all errors are resolved after error fixes',
     techTiers,
   };

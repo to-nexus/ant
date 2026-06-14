@@ -118,7 +118,7 @@ export function restoreFromSession(
   // comparisons; use task.type as a generic key and route final-
   // verification tasks into the `verification` bucket via the
   // bundle's classify hook. `responseParser.createTaskQueue` retypes
-  // any priority=FINAL_VERIFICATION task to `type: 'verification'` at
+  // any priority>=VERIFICATION_PRIORITY task to `type: 'verification'` at
   // decompose time (single upstream SSOT — see `responseParser.ts`
   // resolvedType branch), so the classify lookup here always finds
   // the verification bundle for final-priority tasks.

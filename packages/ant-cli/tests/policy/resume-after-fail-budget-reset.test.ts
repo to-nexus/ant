@@ -308,7 +308,7 @@ describe('Path A re-queue retry-budget reset invariant — in-session re-queue M
     // window sized generously to accommodate inline JSDoc / carry-comments
     // around the requeue branch (the literal binding is what matters,
     // not its byte offset within the branch).
-    const slice = batchSplitSource.slice(requeueIdx, requeueIdx + 3500);
+    const slice = batchSplitSource.slice(requeueIdx, requeueIdx + 4200);
     expect(slice).toMatch(/batchSplitCount:\s*newBatchSplitCount\b/);
     // Defence: the cross-resume `: 0` reset literal must not have leaked
     // into the in-session re-queue site (re-queue retry-budget reset regression

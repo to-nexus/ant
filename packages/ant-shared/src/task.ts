@@ -199,9 +199,8 @@ export interface PhaseTokenUsage {
  * Feature-scheduling bands. Carried by {@link FeatureTask} only.
  *
  *   - `'foundation'`  — shared types / interfaces / pure contracts. Decompose
- *                       maps priority band [SHARED_FOUNDATION, FOUNDATION_MAX)
- *                       (effectively below PLATFORM_MIN) to this value.
- *                       Activates the `hasPreFeatureWork` barrier.
+ *                       maps the feature.foundation priority window to this
+ *                       value. Activates the `hasPreFeatureWork` barrier.
  *   - `'platform'`    — shared runtime services/state that many feature units
  *                       depend on and that themselves build on foundation
  *                       contracts (e.g. shared context/session/config
@@ -209,13 +208,13 @@ export interface PhaseTokenUsage {
  *                       Stack-neutral: the defining axis is dependency
  *                       POSITION (consumed by many features, built on
  *                       foundation), not any "provider" mechanism. Decompose
- *                       maps priority band [PLATFORM_MIN, PLATFORM_MAX] to this
+ *                       maps the feature.platform priority window to this
  *                       value. Runs AFTER foundation, BEFORE ordinary feature
  *                       work — activates the `hasPrePlatformWork` barrier so
  *                       feature consumers bind to a real access contract
  *                       instead of hand-constructing it.
- *   - `'integration'` — cross-feature wiring. Decompose maps priority band
- *                       [INTEGRATION_MIN, INTEGRATION_MAX] to this value.
+ *   - `'integration'` — cross-feature wiring. Decompose maps the
+ *                       feature.integration priority window to this value.
  *                       Consumes the `hasPreIntegrationWork` barrier.
  *
  * `undefined` = an ordinary feature task (the common case) — a CONSUMER of
@@ -259,8 +258,8 @@ interface BaseTaskCommon {
   id: string;
   name: string;
   description: string;
-  /** Sort key only. Semantic comparisons (`priority === FINAL_VERIFICATION`,
-   *  band windows) are forbidden outside the decompose priority→band site. */
+  /** Sort key only. Semantic comparisons (priority windows / band ranges) are
+   *  forbidden outside the decompose priority→band site. */
   priority: number;
   completed?: boolean;
   interrupted?: boolean;

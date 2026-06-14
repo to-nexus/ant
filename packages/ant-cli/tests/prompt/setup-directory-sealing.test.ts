@@ -342,7 +342,6 @@ describe('decompose/variants/default/rules.md — setup description guidance', (
         documents: [],
         hasUi: false,
         isExplicitPipeline: false,
-        isPriorityFromSpec: false,
         visualTierActive: false,
         gameArtTierActive: false,
         gameContentTierActive: false,

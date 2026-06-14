@@ -14,7 +14,7 @@
  *
  * This test locks:
  *   - verification / doc / explain tasks are skipped
- *   - FINAL_VERIFICATION priority short-circuits regardless of type
+ *   - VERIFICATION_PRIORITY priority short-circuits regardless of type
  *   - test-code is NO LONGER skipped — flows through standard plan
  *   - every other task type (feature / ui / design-system / error /
  *     setup) still requires plan text
@@ -23,7 +23,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { taskRequiresPlan } from '../../../src/agents/architect/graph/code/nodes/plan/llm';
-import { TASK_PRIORITIES } from '../../../src/agents/architect/graph/code/state';
+import { VERIFICATION_PRIORITY } from '../../../src/agents/architect/graph/code/state';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
 function task(
@@ -54,10 +54,10 @@ describe('nodes/plan/planGeneration — taskRequiresPlan', () => {
       expect(taskRequiresPlan(task('explain'))).toBe(false);
     });
 
-    it('FINAL_VERIFICATION priority short-circuits before predicate chain', () => {
+    it('VERIFICATION_PRIORITY priority short-circuits before predicate chain', () => {
       // Priority-guard ensures dynamically-constructed tasks whose
       // `type` is missing still skip plan generation.
-      const t = task('feature', { priority: TASK_PRIORITIES.FINAL_VERIFICATION });
+      const t = task('feature', { priority: VERIFICATION_PRIORITY });
       expect(taskRequiresPlan(t)).toBe(false);
     });
   });

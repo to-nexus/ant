@@ -6,7 +6,7 @@ import { ProjectContext } from "../../types";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify, BaseTask } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify, BaseTask, TaskType, TaskBand } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
@@ -69,94 +69,104 @@ export type ViolationType =
 export const RECURSION_DRAIN_THRESHOLD = 20;
 
 /**
- * Task Priority Mapping
- * Lower number = higher priority (executed first).
- * Each phase occupies a 100-boundary for clean separation.
+ * Task Priority SSOT — normalized by (task type, task band).
+ *
+ * A task is defined by **type + band** (Three-Axis model). Priority is the
+ * TaskQueue ordering key ONLY (lower number = dequeues first); it carries no
+ * semantic meaning outside this map. The single numeric source of truth is the
+ * `TASK_PRIORITY` window map: first key = `TaskType`, second key = band
+ * (`'default'` = `band === undefined`). Band-less types hold only `default`.
+ *
+ * Window phases (contiguous, non-overlapping):
+ *   setup.root 100 → setup 101-189 → design-system 200-219 →
+ *   feature.foundation 220-259 → feature.platform 260-299 →
+ *   feature 300-599 → feature.integration 600-649 → ui 650-749 →
+ *   seam 750-799 → test-code 800-849 → doc 850-899 → error 900-999 →
+ *   verification 1000.
+ *
+ * Phase code never reads these numbers — it calls `windowFor` /
+ * `basePriorityFor`, or asks the scheduling `classify` hook. The ONLY
+ * priority→band translation site is `deriveBandFromPriority`
+ * (decompose/responseParser), which reverse-looks-up this same map.
+ *
+ * design-system [200,219] and feature.foundation [220,259] are DISTINCT
+ * windows: design-system is a TYPE (no band derivation), feature.foundation
+ * is a band. `deriveBandFromPriority` is therefore strict — only [220,259]
+ * derives 'foundation'.
+ *
+ * NOTE: the design JOB has its own, orthogonal priority axis (doc tasks at
+ * 100-299 for tokens/assets) — see `DESIGN_DOC_BANDS` in
+ * `tasks/doc/hooks/scheduling.ts`. It is NOT this map and must not be unified.
  */
-export const TASK_PRIORITIES = {
-  // Setup (100-189)
-  SETUP_PROJECT: 100,
-  SETUP_MAX: 189,
+export interface PriorityWindow {
+  readonly min: number;
+  readonly max: number;
+}
 
-  // Foundation phase (200-299) — runs FIRST, gates feature work. Three
-  // occupants, all `isFoundation` (they finish before priority 300+):
-  //   • `design-system` TYPE   — token/CSS infra (200), shared components (201-219)
-  //   • feature `foundation` BAND — shared types / interfaces / pure contracts (220-259)
-  //   • feature `platform`   BAND — shared runtime services consumed by many
-  //                                 features, per RUNTIME (session/identity/config
-  //                                 accessors, client singletons) (260-299)
-  // FOUNDATION_MAX stays 299 because the design-job `doc` bundle classifies on
-  // [SHARED_FOUNDATION, FOUNDATION_MAX] (design-job assets band) — it is NOT
-  // free to move. `PLATFORM_MIN` is code-job-only (deriveBandFromPriority), so
-  // the foundation/platform split is tunable without touching the design job.
-  // Effective CODE-job feature bands: foundation [200,259], platform [260,299].
-  // (design-system is a TYPE, not a feature band — its 200-219 slot is decompose
-  // guidance; deriveBandFromPriority is never invoked for it.)
-  SHARED_FOUNDATION: 200,
-  FOUNDATION_MAX: 299,
+type BandWindows = { readonly default: PriorityWindow } & {
+  readonly [band: string]: PriorityWindow;
+};
 
-  // Platform (260-299) — shared runtime services/state built on foundation
-  // contracts and consumed by many features. A CODE-job feature task whose
-  // priority lands here derives band 'platform'. Runs after foundation, before
-  // ordinary feature work (hasPrePlatformWork). Widened from the former 20-wide
-  // [280,299] to [260,299] (40): with per-runtime session owners (one platform
-  // task per buildable app's auth/session boundary) plus their lane-mode
-  // fan-out, the band carries materially more than the single-app assumption.
-  PLATFORM_MIN: 260,
-  PLATFORM_MAX: 299,
-
-  // Feature (300-599) — headless skeleton implementation
-  FEATURE_CRITICAL: 300,
-  FEATURE_IMPORTANT: 350,
-  FEATURE_NORMAL: 400,
-  FEATURE_NICE_TO_HAVE: 500,
-  FEATURE_MAX: 599,
-
-  // Integration (600-649) — wires feature outputs into shared entry points
-  INTEGRATION_MIN: 600,
-  INTEGRATION_MAX: 649,
-
-  // Visual Pass (650-749) — apply styles to skeleton. WIDE window (100): ui
-  // produces MANY tasks (one per renderable feature) AND fans out via lane-mode
-  // batchSplit (child priority = parent + priorityInParallelGroup), so it needs
-  // headroom for both — balanced against feature (300-599) rather than starved.
-  // Reclaims the former seam-band gap (650-669) now that seam is post-ui.
-  VISUAL_PASS: 650,
-  VISUAL_MAX: 749,
-
-  // Seam closure (750-799) — cross-feature REFERENCE + AFFORDANCE closure, one
-  // `type:'seam'` task per ref-emitting module. Runs AFTER all authoring
-  // (feature + ui) over the materialized graph, BEFORE test-code/verification
-  // so they observe a closed graph. Seam is a TYPE (emitted directly), not a
-  // band. A WINDOW (not a single value) is required: the seam plan fans out
-  // `batches[]` via the slim lane shape, where a child's priority is
-  // `parentPriority + batch.priorityInParallelGroup`. Decompose emits each seam
-  // task at the window BASE (SEAM_CLOSURE_MIN); child slices stack upward inside
-  // [750, 799] (offset ≤ 49 — ample slice ceiling) so they never collide with
-  // test-code (800). Same-lane offsets express sequential ordering; disjoint
-  // lanes run in parallel.
-  SEAM_CLOSURE_MIN: 750,
-  SEAM_CLOSURE_MAX: 799,
-
-  // Post-Feature (800-899) — observe completed feature code (barrier waits for
-  // seam too, so tests/docs observe the reference-closed graph).
-  TEST_GENERATION: 800,
-  DOCUMENTATION: 850,
-
-  // Error (900-999)
-  ERROR_MISSING_ENTRY: 900,
-  ERROR_MISSING_DEPS: 905,
-  ERROR_CONFIG: 910,
-  ERROR_TYPE: 920,
-  ERROR_IMPORT: 925,
-  ERROR_BUILD: 930,
-  ERROR_SYNTAX: 940,
-  ERROR_LINT: 960,
-  ERROR_OTHER: 980,
-
-  // Final Verification (1000)
-  FINAL_VERIFICATION: 1000,
+export const TASK_PRIORITY: Readonly<Record<
+  Exclude<TaskType, 'explain'>,
+  BandWindows
+>> = {
+  setup: { root: { min: 100, max: 100 }, default: { min: 101, max: 189 } },
+  'design-system': { default: { min: 200, max: 219 } },
+  feature: {
+    foundation: { min: 220, max: 259 },
+    platform: { min: 260, max: 299 },
+    default: { min: 300, max: 599 }, // band === undefined (ordinary feature)
+    integration: { min: 600, max: 649 },
+  },
+  ui: { default: { min: 650, max: 749 } },
+  seam: { default: { min: 750, max: 799 } },
+  'test-code': { default: { min: 800, max: 849 } },
+  doc: { default: { min: 850, max: 899 } },
+  error: { default: { min: 900, max: 999 } },
+  verification: { default: { min: 1000, max: 1000 } },
 } as const;
+
+/**
+ * Lane-mode batchSplit child priority is `parentPriority + offset` (the parent
+ * is emitted at its window base; lane slices stack upward). This is the maximum
+ * legal `priorityInParallelGroup` offset — bounded by the NARROWEST
+ * lane-fanning window so a child never crosses out of its parent's window into
+ * the next band/type. The narrowest such windows are the feature foundation /
+ * platform bands (`max - min === 39`). Guarded by
+ * `tests/policy/priority-constants.test.ts`.
+ */
+export const MAX_LANE_OFFSET = 39;
+
+/**
+ * The priority window for a (type, band) pair. `band === undefined` (or a band
+ * absent from the type) resolves to the type's `default` window. A type with no
+ * window (`explain`, or an unrecognized LLM-emitted type string) falls back to
+ * the ordinary-feature window — matching `DEFAULT_TASK_TYPE = 'feature'`, so an
+ * untyped/garbage task sorts as an ordinary feature rather than crashing.
+ */
+export function windowFor(type: TaskType, band?: TaskBand): PriorityWindow {
+  const byBand =
+    (TASK_PRIORITY as Record<string, BandWindows | undefined>)[type] ?? TASK_PRIORITY.feature;
+  return (band && byBand[band]) || byBand.default;
+}
+
+/**
+ * The canonical emit / fallback priority for a (type, band) pair — the base
+ * (min) of its window. Used as the "missing priority" default per task type
+ * (replaces the former single magic-number default).
+ */
+export function basePriorityFor(type: TaskType, band?: TaskBand): number {
+  return windowFor(type, band).min;
+}
+
+/**
+ * The Final Verification priority (verification is a single-point window). Used
+ * by the verification creation sites + classifier; derived from the map so it
+ * never drifts. (verification is always the final task — there is no
+ * "non-final" verification task; see `tasks/verification/model/is.ts`.)
+ */
+export const VERIFICATION_PRIORITY = TASK_PRIORITY.verification.default.min;
 
 export type { ErrorCategory } from '../../../../core/types/session';
 import type { ErrorCategory } from '../../../../core/types/session';

@@ -3,7 +3,7 @@
  *
  * Feature is the only multi-task type that is NOT exclusive by
  * default: the test pins `isExclusive === false` for ordinary feature
- * tasks and documents the `priority === FINAL_VERIFICATION` fallback
+ * tasks and documents the `priority === VERIFICATION_PRIORITY` fallback
  * (priority-1000 feature tasks are re-typed to `'verification'` at
  * normalisation in `responseParser.ts` L393–394, but the fallback
  * defends against accidental retyping regressions — the hook runs
@@ -25,7 +25,7 @@
  *                                         the orchestrator's priority-
  *                                         window check)
  *   - decompose.isExclusive            — false for feature, true only
- *                                         for priority === FINAL_VERIFICATION
+ *                                         for priority === VERIFICATION_PRIORITY
  *   - conversations.convKey            — `node:execute:feature:<id>`
  */
 
@@ -43,7 +43,7 @@ import * as decompHook from '../../../src/agents/architect/graph/code/tasks/feat
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/feature/hooks/conversations';
 import { hooks as featureBundle } from '../../../src/agents/architect/graph/code/tasks/feature';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
-import { TASK_PRIORITIES } from '../../../src/agents/architect/graph/code/state';
+import { VERIFICATION_PRIORITY, windowFor } from '../../../src/agents/architect/graph/code/state';
 
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
@@ -114,9 +114,8 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(featureBundle.scheduling?.preSeamBarrier).toBeUndefined();
     // Producer flags: all 4 true. blocksIntegration=true is paired
     // with the orchestrator priority-window check in
-    // `isPreIntegrationWork` (FEATURE_CRITICAL ≤ priority <
-    // INTEGRATION_MIN) so integration-priority feature tasks do not
-    // self-block.
+    // `isPreIntegrationWork` (ordinary-feature window 300–599) so
+    // integration-priority feature tasks do not self-block.
     expect(featureBundle.scheduling?.blocksUi).toBe(true);
     expect(featureBundle.scheduling?.blocksTestgen).toBe(true);
     expect(featureBundle.scheduling?.blocksDoc).toBe(true);
@@ -216,13 +215,13 @@ describe('tasks/feature/hooks/scheduling', () => {
 describe('tasks/feature/hooks/decompose', () => {
   it('isExclusive — false for ordinary feature tasks', () => {
     expect(decompHook.isExclusive(task('f1'))).toBe(false);
-    expect(decompHook.isExclusive(task('integration-1', { priority: TASK_PRIORITIES.INTEGRATION_MIN }))).toBe(false);
+    expect(decompHook.isExclusive(task('integration-1', { priority: windowFor('feature', 'integration').min }))).toBe(false);
   });
 
-  it('isExclusive — true fallback when priority === FINAL_VERIFICATION', () => {
+  it('isExclusive — true fallback when priority >= VERIFICATION_PRIORITY', () => {
     // priority 1000 feature tasks are re-typed to 'verification' in responseParser.
     // This fallback defends against a regression of that retyping.
-    expect(decompHook.isExclusive(task('final', { priority: TASK_PRIORITIES.FINAL_VERIFICATION }))).toBe(true);
+    expect(decompHook.isExclusive(task('final', { priority: VERIFICATION_PRIORITY }))).toBe(true);
   });
 });
 
