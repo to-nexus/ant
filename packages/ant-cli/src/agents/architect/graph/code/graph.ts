@@ -321,6 +321,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   completedTasks: checkpoint.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
                   tokenUsage: checkpoint.tokenUsage,
+                  tokenUsageByModel: checkpoint.tokenUsageByModel,
                   // ✅ Preserve estimating phase token usage snapshot in checkpoint
                   estimatingTokenUsage: state._estimatingTokenUsage,
                   jobId: state.jobId,
@@ -484,6 +485,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
             tokenUsage: result.tokenUsage,
+            tokenUsageByModel: result.tokenUsageByModel,
             estimatingTokenUsage: state._estimatingTokenUsage,
             jobId: state.jobId,
             jobTiming: state.jobTiming,
@@ -516,6 +518,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
               completedTasksDetails: result.completedTasks,
               tokenUsage: result.tokenUsage,
+              tokenUsageByModel: result.tokenUsageByModel,
               estimatingTokenUsage: state._estimatingTokenUsage,
               jobId: state.jobId,
               jobTiming: state.jobTiming,
@@ -551,6 +554,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             completedTasks: result.completedTasks.filter(t => !(t as any).supersededBy).map(t => t.id),
             completedTasksDetails: result.completedTasks,
             tokenUsage: result.tokenUsage,
+            tokenUsageByModel: result.tokenUsageByModel,
             estimatingTokenUsage: state._estimatingTokenUsage,
             jobId: state.jobId,
             jobTiming: state.jobTiming,
@@ -587,6 +591,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     completedTasksDetails: result.completedTasks,
     currentTask: undefined,
     tokenUsage: result.tokenUsage || state.tokenUsage,
+    tokenUsageByModel: result.tokenUsageByModel || state.tokenUsageByModel,
     interruption: result.hasInterruptedTasks ? {
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'

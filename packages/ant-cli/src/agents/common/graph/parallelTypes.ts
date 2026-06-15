@@ -23,6 +23,13 @@ export interface OrchestratorResult<T extends BaseTask> {
   remainingQueue: T[];
   drainReason?: string;
   tokenUsage: TaskTokenUsage;
+  /**
+   * Per-model usage breakdown — the basis for precise USD/credit cost.
+   * Surfaced alongside the aggregate `tokenUsage` so the orchestrator's
+   * merged per-model total reaches graph state (and the session) in parallel
+   * mode, where it would otherwise never be written back.
+   */
+  tokenUsageByModel?: TokenUsageByModel;
   /** True if any tasks permanently failed — caller should mark job as interrupted */
   hasFailures: boolean;
   /** True if any task was paused due to recursion limit, user stop, etc. (queued for resume, not failed) */
@@ -171,6 +178,8 @@ export interface ParallelCheckpoint<T extends BaseTask> {
   completedTasks: T[];
   failedTasks: FailedTask<T>[];
   tokenUsage: TaskTokenUsage;
+  /** Per-model usage breakdown — persisted so paused/failed parallel runs retain USD/credit. */
+  tokenUsageByModel?: TokenUsageByModel;
   parallelMode: true;
   interruption?: {
     reason: string;

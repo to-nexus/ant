@@ -14,7 +14,7 @@ import { getAgentForJobSafe } from '../utils/sessionPaths';
  * `sessionState` carries the same fields the persisted `session.state` slot
  * holds (`taskQueue` as a plain array, `completedTasksDetails`, `currentTask`,
  * optional `runningTasks`, `interruption`, recursion counts, jobTiming,
- * tokenUsage). The learn node feeds an equivalent object built from its graph
+ * tokenUsage, tokenUsageByModel). The learn node feeds an equivalent object built from its graph
  * state (`state.taskQueue.getAll()`, `state.completedTasksDetails`, …).
  */
 export function projectSessionStateToKanban(
@@ -110,6 +110,7 @@ export function projectSessionStateToKanban(
     recursionLimit: sessionState.recursionLimit || finalLimit,
     jobTiming: sessionState.jobTiming,
     tokenUsage: sessionState.tokenUsage,
+    tokenUsageByModel: sessionState.tokenUsageByModel,
     estimatingTokenUsage: sessionState.estimatingTokenUsage,
     jobType,
     agent: getAgentForJobSafe(jobType),

@@ -287,6 +287,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       failedTasks: this.failedTasks,
       remainingQueue: this.taskQueue.getAll(),
       tokenUsage: this.accumulatedTokenUsage,
+      tokenUsageByModel: this.accumulatedTokenUsageByModel,
       hasFailures: this.failedTasks.length > 0,
       hasInterruptedTasks: this.hasInterruptedTasks,
       interruptReason: this.interruptReason,
@@ -1168,6 +1169,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       completedTasks: this.completedTasks,
       failedTasks: this.failedTasks,
       tokenUsage: this.accumulatedTokenUsage,
+      tokenUsageByModel: this.accumulatedTokenUsageByModel,
       parallelMode: true,
       ...(effectiveInterruption ? { interruption: effectiveInterruption } : {}),
     };

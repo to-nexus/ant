@@ -277,6 +277,7 @@ export class KanbanService {
           recursionLimit: sessionState.recursionLimit || finalLimit,
           jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
           tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
+          tokenUsageByModel: liveSnapshot.tokenUsageByModel ?? sessionState.tokenUsageByModel,
           estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,
           estimatingLabel: liveSnapshot.estimatingLabel,
           estimatingStartedAt: liveSnapshot.estimatingStartedAt,
@@ -309,12 +310,13 @@ export class KanbanService {
         tasksRemaining: sessionState.interruption?.metadata?.tasksRemaining || 0,
         jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
+        tokenUsageByModel: liveSnapshot.tokenUsageByModel ?? sessionState.tokenUsageByModel,
         estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,
         jobType,
         agent: getAgentForJobSafe(jobType),
       };
     }
-    
+
     // Priority 2: ESTIMATING (job running but no live snapshot yet)
     if (sessionJobId && !isJobCompleted && isActuallyRunning && !liveSnapshot) {
       dlog(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);

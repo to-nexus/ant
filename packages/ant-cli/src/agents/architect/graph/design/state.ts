@@ -7,7 +7,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, ExecutionTierId } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, ExecutionTierId, TokenUsageByModel } from '@ant/shared';
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 
 /**
@@ -168,6 +168,10 @@ export interface DesignGraphState extends TriageableState {
   // ✅ Token usage (per-turn tracking; job-level is `tokenUsage` from ResolvableState)
   _currentTaskTokenUsage?: TokenUsage;
   _estimatingTokenUsage?: TokenUsage;
+  // Per-model job-level usage breakdown (declared channel in graph.ts; surfaced
+  // explicitly because the object-config Annotation form is not lifted by
+  // StateType). Basis for USD/credit cost; persisted to the session.
+  tokenUsageByModel?: TokenUsageByModel;
   
   
   
