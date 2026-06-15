@@ -149,11 +149,19 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
   const adapter = new FilePromptAdapter();
   const PARTIAL = 'jobs/code/base/injections/seam-connectivity-closure';
 
-  it('plan parent (seamPlanning, not a slice): enumerates & partitions into batches', async () => {
+  it('plan parent (seamPlanning, not a slice): enumerates over a module-scoped denominator & partitions', async () => {
     const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
     expect(out).toMatch(/CROSS-FEATURE REFERENCE \+ AFFORDANCE CLOSURE/);
-    expect(out).toMatch(/Enumerate this module's\s+references AND rendered affordances/);
-    expect(out).toMatch(/emit them as batches/);
+    // Denominator: the prior-completed manifest restricted to THIS module's path,
+    // walked file by file (recall-sweep → grounded enumeration). Root fix for the
+    // snowy-grilling-shelf shallow seam (flat_plan_no_batches under-enumeration).
+    expect(out).toMatch(/restrict it\s+to the files under THIS module's own path/);
+    expect(out).toMatch(/Walk it file by file/);
+    expect(out).toMatch(/A file left unexamined is a hole in the closure\./);
+    // Deterministic partition floor: inline only for a single disjoint file set;
+    // otherwise one batch per file set (no flat collapse).
+    expect(out).toMatch(/remediate inline ONLY when every fix touches a single disjoint file set/);
+    expect(out).toMatch(/emit ONE batch per file set/);
     expect(out).not.toMatch(/This is one slice\./);
     // resolve-or-remove remediation always present.
     expect(out).toMatch(/References resolve\./);
@@ -164,14 +172,32 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: true });
     expect(out).toMatch(/This is one slice\./);
     expect(out).toMatch(/non-negotiable/);
-    expect(out).not.toMatch(/emit them as batches/);
+    expect(out).not.toMatch(/emit ONE batch per file set/);
+    expect(out).not.toMatch(/Walk it file by file/);
   });
 
   it('execute phase (seamPlanning false): only remediation, no planning blocks', async () => {
     const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
     expect(out).toMatch(/Affordances resolve or are removed\./);
-    expect(out).not.toMatch(/emit them as batches/);
+    expect(out).not.toMatch(/emit ONE batch per file set/);
     expect(out).not.toMatch(/This is one slice\./);
+  });
+
+  it('reference taxonomy includes style-selector + a Style-selectors-resolve remediation edge', async () => {
+    // classboard `.board-grid`/`.cols`/`.bc-*` undefined-class defect: a named
+    // selector with no backing definition is a seam to close, not invisible to it.
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    expect(out).toMatch(/a style-selector a\s+rendered element names/);
+    expect(out).toMatch(/Style-selectors resolve\./);
+    expect(out).toMatch(/silently renders the element unstyled/);
+  });
+
+  it('gated-entry closure binds "lands" to closed-system usability (admin about:blank#mock defect)', async () => {
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    expect(out).toMatch(/Gated entry lands\./);
+    expect(out).toMatch(/resolves within the\s+closed system/);
+    expect(out).toMatch(/completes back into\s+an authenticated session/);
+    expect(out).toMatch(/placeholder\/blank\/external address/);
   });
 
   it('non-seam task type renders nothing', async () => {
