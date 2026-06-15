@@ -6,7 +6,10 @@
 import { describe, it, expect } from 'vitest';
 import { handleReadState } from '../../src/agents/common/tool/handlers/readState';
 
-const ctx = (completedTasks?: any[]): any => ({ completedTasks });
+const ctx = (completedTasks?: any[]): any => ({
+  completedTasks,
+  chatStatus: { showStatus: async () => undefined, removeStatus: async () => {} },
+});
 
 const tasks = [
   {

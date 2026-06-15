@@ -223,6 +223,7 @@ export type ChatStatusType =
   | 'listing_files' | 'listed_files'
   | 'searching_code' | 'searched_code'
   | 'reading' | 'read'
+  | 'reading_state' | 'read_state'
   | 'reading_source' | 'read_source'
   | 'thinking'
   | 'indexing' | 'indexed'

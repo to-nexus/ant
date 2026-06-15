@@ -450,6 +450,8 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
     case 'searched_code':
     case 'reading':
     case 'read':
+    case 'reading_state':
+    case 'read_state':
     case 'reading_source':
     case 'read_source':
     case 'indexing':

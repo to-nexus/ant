@@ -154,6 +154,18 @@ export function generateChatStatusContent(
       return filePath ? `Read: ${filePath}${range}` : 'Read: file';
     }
 
+    case 'reading_state':
+      return '🧠 Reading run state...';
+
+    case 'read_state': {
+      const error = metadata?.error;
+      if (error) return `❌ Read Run State Failed: ${error}`;
+      const task = metadata?.task;
+      if (task) return `Read run state: ${task}`;
+      const taskCount = metadata?.taskCount ?? 0;
+      return `Read run state: ${taskCount} task${taskCount === 1 ? '' : 's'}`;
+    }
+
     case 'reading_source': {
       const fn = metadata?.filePath ?? '';
       const aggCount = metadata?.aggregated

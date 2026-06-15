@@ -13,7 +13,7 @@
 import { memo, useState } from 'react';
 import {
   Eye, Search, FileSearch, Database, FileCode, Package,
-  ChevronDown, ChevronRight, Download, Palette, Eraser,
+  ChevronDown, ChevronRight, Download, Palette, Eraser, Brain,
 } from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { useStore } from '@/domain/store';
@@ -56,7 +56,7 @@ interface WorkingCardProps {
 function isProgressState(variant: string): boolean {
   return [
     'exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code',
-    'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing',
+    'reading', 'reading_state', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing',
     'learning', 'processing', 'downloading', 'figma_calling',
   ].includes(variant);
 }
@@ -67,6 +67,7 @@ function variantHue(variant: string): number {
     case 'exploring': case 'explored': return 240;
     case 'retrieving': case 'retrieved':
     case 'reading': case 'read':
+    case 'reading_state': case 'read_state':
     case 'reading_source': case 'read_source': return 270;
     case 'grepping': case 'grepped':
     case 'indexing': case 'indexed': return 295;
@@ -93,6 +94,7 @@ function variantIcon(variant: string, isProgress: boolean): { Icon: IconKind; pu
     case 'searching_code': case 'searched_code': return { Icon: isProgress ? SPINNER_MARKER : Search,     pulse: false };
     case 'reading': case 'read':
     case 'reading_source': case 'read_source':   return { Icon: Eye, pulse: isProgress };
+    case 'reading_state': case 'read_state':     return { Icon: Brain, pulse: isProgress };
     case 'indexing': case 'indexed':     return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
     case 'analyzing': case 'analyzed':   return { Icon: isProgress ? SPINNER_MARKER : FileCode,   pulse: false };
     case 'loading': case 'loaded':       return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };

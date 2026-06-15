@@ -230,6 +230,7 @@
       "retrieving": "검색",
       "grepping": "코드 검색",
       "reading": "읽기",
+      "reading_state": "실행 상태",
       "indexing": "인덱싱",
       "storing": "저장",
       "listing_files": "파일 목록",
