@@ -386,7 +386,16 @@ Sub-role is determined by priority:
 {{#if (eq currentTask.type "ui")}}
 ## 🖌️ UI TASK: Visual Enhancement Pass
 
-**Scope**: Enhance the visual presentation of the functionally-complete component files the paired feature task produced. Create and modify the files listed in the plan; when an enhancement genuinely requires it you MAY add supporting modules, dependencies, or logic, extract sub-components, and touch shared / sibling presentation for integration (see "Converge on existing infrastructure" below).
+{{#if pairedFeature}}
+**Your paired feature twin: `{{pairedFeature.name}}`** — the headless skeleton this visual pass builds on. Its scope already carries the content authority (the requirement / spec sections it cites); preserve that content and layer visuals on top, do NOT re-derive content from the visual source alone.
+- Files it authored — read these before styling:
+{{#each pairedFeature.files}}
+  - `{{this}}`
+{{/each}}
+- Twin scope (verbatim): {{pairedFeature.description}}
+{{/if}}
+
+**Scope**: Enhance the visual presentation of the functionally-complete component files {{#if pairedFeature}}your feature twin `{{pairedFeature.name}}`{{else}}the paired feature task{{/if}} produced. Create and modify the files listed in the plan; when an enhancement genuinely requires it you MAY add supporting modules, dependencies, or logic, extract sub-components, and touch shared / sibling presentation for integration (see "Converge on existing infrastructure" below).
 
 **Functional non-regression**: The component you receive is functionally complete — its functional behavior is the contract you MUST NOT regress. Every binding whose removal would break a user-facing requirement (an event handler, data read/write wiring, a routing/navigation target, a permission/role-gated branch, a form submission/validation) keeps working. You are NOT limited to visual attributes: an enhancement goal MAY legitimately add presentational logic, hooks, state, or dependencies — animation, transition, hover/focus/scroll interactivity, layout measurement, responsive behavior — add what the enhancement needs. Replacing an implementation with an equivalent one that preserves the same functional behavior is allowed; silently dropping, no-op-ing, or breaking existing behavior is not. If a visual goal seems to require removing a functional binding, that is out of scope — style around it.
 

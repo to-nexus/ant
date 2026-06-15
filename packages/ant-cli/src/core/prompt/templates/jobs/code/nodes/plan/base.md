@@ -148,6 +148,20 @@ from the summary.
 
 {{taskDescription}}
 
+{{#if pairedFeature}}
+### Paired feature twin — `{{pairedFeature.name}}`
+
+This task is the visual pass over a headless skeleton a feature task already
+authored. Its scope carries the content authority (the requirement / spec
+sections it cites); plan to build on its files and preserve that content, not
+re-derive it from the visual source alone.
+- Files it authored:
+{{#each pairedFeature.files}}
+  - `{{this}}`
+{{/each}}
+- Twin scope (verbatim): {{pairedFeature.description}}
+{{/if}}
+
 {{#if hasRemainingTasks}}
 ────────────────────────────────────────────────────────────────────────────────
 ## Remaining Tasks

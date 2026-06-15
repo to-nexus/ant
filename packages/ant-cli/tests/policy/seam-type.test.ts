@@ -157,7 +157,7 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     // snowy-grilling-shelf shallow seam (flat_plan_no_batches under-enumeration).
     expect(out).toMatch(/restrict it\s+to the files under THIS module's own path/);
     expect(out).toMatch(/Walk it file by file/);
-    expect(out).toMatch(/A file left unexamined is a hole in the closure\./);
+    expect(out).toMatch(/A file left unexamined — in either\s+direction — is a hole in the closure\./);
     // Deterministic partition floor: inline only for a single disjoint file set;
     // otherwise one batch per file set (no flat collapse).
     expect(out).toMatch(/remediate inline ONLY when every fix touches a single disjoint file set/);
@@ -166,6 +166,26 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     // resolve-or-remove remediation always present.
     expect(out).toMatch(/References resolve\./);
     expect(out).toMatch(/Affordances resolve or are removed\./);
+  });
+
+  it('closure is BIDIRECTIONAL — backward direction catches built-but-unreached parts (orphans / empty mount slots)', async () => {
+    // RCA (neat-melting-kayak): the outbound/dangling-only model missed a built
+    // CommentThreadScreen that nothing mounted and a data-comment-anchor slot
+    // left empty — inbound/missing-edge gaps invisible to "references it EMITS".
+    // Fix completes seam's own "operable whole" principle to a symmetric relation.
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    // intro frames closure as bidirectional
+    expect(out).toMatch(/Closure is \*\*bidirectional\*\*/);
+    // planning walks both directions, naming the inbound walk
+    expect(out).toMatch(/Walk it file by file in BOTH directions/);
+    expect(out).toMatch(/\*\*Inbound\*\*/);
+    expect(out).toMatch(/reach-role/);
+    // a backward remediation edge mirrors "References resolve"
+    expect(out).toMatch(/Reach-role parts are reached \(the closure is bidirectional\)\./);
+    expect(out).toMatch(/nothing mounts/);
+    expect(out).toMatch(/mount\/extension slot left empty/);
+    // still grounded in materialized code (observe, not intent-recall)
+    expect(out).toMatch(/Both ends already\s+exist in the materialized code/);
   });
 
   it('plan slice (isSliceDeclaration): does NOT re-enumerate or re-partition', async () => {

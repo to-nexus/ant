@@ -28,6 +28,8 @@ export enum ToolName {
   READ_SOURCE_DOC      = 'read_source_doc',
   READ_ANT_SOURCE      = 'read_ant_source',
   READ_WORKSPACE_FILE  = 'read_workspace_file',
+  // ── Read (scope: live run state — completed-task scope/manifest) ──
+  READ_STATE           = 'read_state',
 
   // ── List (scope: codebase, artifact, ant-source, workspace) ──
   LIST_FILES           = 'list_files',
@@ -81,6 +83,7 @@ export enum JobType {
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   // Read
   [ToolName.READ_FILE]:            '📖 Reading file',
+  [ToolName.READ_STATE]:           '🧠 Reading run state',
   [ToolName.READ_SOURCE_DOC]:      '📖 Reading source doc',
   [ToolName.READ_ANT_SOURCE]:      '📖 Reading Ant source',
   [ToolName.READ_WORKSPACE_FILE]:  '📖 Reading workspace file',
@@ -161,6 +164,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_FILE,
     ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
+    // Read (live run-state scope — completed-task full scope + manifest)
+    ToolName.READ_STATE,
     // Read / Search (reference project scope)
     ToolName.SEARCH_REFERENCE,
     // Search (web)
@@ -249,12 +254,12 @@ export const TOOL_SETS = {
   reference: [ToolName.SEARCH_REFERENCE] as ToolName[],
 
   codeBasic: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
   ] as ToolName[],
 
   planExplore: [
-    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.SEARCH_WEB, ToolName.RUN_COMMAND,
   ] as ToolName[],
 
@@ -276,7 +281,7 @@ export const TOOL_SETS = {
   ] as ToolName[],
 
   designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
-  codeExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
 
   // Design docGen default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent.
@@ -333,6 +338,7 @@ export const TOOL_SETS = {
 
 import {
   handleReadFile,
+  handleReadState,
   handleListFiles,
   handleSearchCode,
   handleDeleteFile,
@@ -349,6 +355,7 @@ import {
 export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolName, ToolHandler>(
   ([
     [ToolName.READ_FILE,        handleReadFile],
+    [ToolName.READ_STATE,       handleReadState],
     [ToolName.LIST_FILES,       handleListFiles],
     [ToolName.SEARCH_CODE,      handleSearchCode],
     [ToolName.MKDIR,            handleMkdir],

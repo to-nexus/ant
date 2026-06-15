@@ -44,6 +44,21 @@ export const ARCHITECT_TOOLS = {
     },
   },
   
+  read_state: {
+    name: 'read_state',
+    description: "Read the LIVE run state of this job — the full description (scope/intent) and authored file manifest of tasks already completed, straight from memory (ahead of any on-disk checkpoint, so it includes a sibling that just finished). The prior-completed-files list shows only a truncated taste of each task; call this to expand one. Pass `task` (a completed task's name or id) for its full scope + files; omit `task` to list every completed task. Use it before re-deriving something a prior task already decided — especially a paired feature task's full intent.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task: {
+          type: 'string',
+          description: 'Name or id of a completed task to expand to its full scope + file manifest. Omit to list all completed tasks.',
+        },
+      },
+      required: [],
+    },
+  },
+
   edit_file: {
     name: 'edit_file',
     description: `Edit an existing file by replacing old_str with new_str. The old_str must match the current file content EXACTLY (including whitespace and indentation). Use content from your context (retrieved files, previous reads). If edit fails with "not found", call read_file to get current content and retry.`,
