@@ -49,22 +49,35 @@ adapter reads are all governed by `preview-env-contract.md §4.5`.
   mirroring the external host itself
 - A returned value that satisfies the interface TYPE but is not USABLE for
   what the consumer does with it is still a contract defect — type-conformance
-  alone is not enough. A value the consumer navigates to, fetches,
-  dereferences, or parses MUST actually work in that operation (a URL the
-  consumer can navigate to or fetch; an id that resolves to a record; a token
-  the consumer accepts) — not merely a string of the right type. The
-  virtualized adapter is the consumer's only proof the path works before the
-  real dependency arrives; a value that typechecks but cannot be acted on
-  leaves the consumer dead-ended. For a navigable target specifically,
-  "works" means it RESOLVES WITHIN THE CLOSED SYSTEM: a URL the consumer
-  navigates to MUST point at the running app's own runtime origin (a path the
-  caller itself serves), never an external or placeholder host (a `*.example`
-  literal, a third-party domain, or a fixed `localhost:PORT`) — such a value
-  typechecks and is even syntactically navigable, yet the closed system cannot
-  answer it, so it dead-ends the consumer exactly like a wrong-typed value.
-  This reachability requirement is unconditional: it binds every method of
-  every virtualized adapter — including a single navigable-target method
-  folded among many data methods — not only a dedicated redirect/auth adapter.
+  alone is not enough. Every value the consumer acts on — navigates to,
+  fetches, dereferences, renders, or parses — MUST actually carry out that
+  operation, not merely be a value of the right type. The virtualized adapter
+  is the consumer's only proof the path works before the real dependency
+  arrives; a value that typechecks but cannot be acted on dead-ends the
+  consumer exactly like a wrong-typed value. State the requirement as ONE
+  positive property and let it bind every form: **a usable value is one the
+  consumer's own resolution mechanism can carry through to completion against
+  the running system itself.**
+  - A navigable target is usable when it is expressed in a form that mechanism
+    can actually follow AND its destination is one the running app itself
+    serves (so the app can answer it). Being free of an external host is not
+    sufficient — a value can name no external host and still be unusable if its
+    form is one nothing the consumer runs against can resolve.
+  - An identifier is usable when it resolves to a seeded record.
+  - A token / grant is usable when the consumer's own verification accepts it.
+  A value the consumer cannot carry to completion fails this property however
+  it is malformed — there is no catalogue of bad shapes to match against, only
+  the one property to satisfy. This binds EVERY method of every virtualized
+  adapter, including a single such value folded among many data methods — not
+  only a dedicated redirect/auth adapter.
+- A virtualized method MUST return a usable, seeded value at the time it is
+  called — not an empty/absent placeholder whose real body is deferred to "a
+  later unit". A method that returns nothing usable (an absent value, or an
+  empty collection where the consumer needs populated data) and leaves the real
+  body to some unnamed future task is an incomplete adapter: unless that owner
+  is named and scheduled, the value stays permanently empty and every consumer
+  of it dead-ends. A surface that is genuinely empty by design is fine — the
+  defect is deferring a body the consumer needs to no owner.
 
 ### Blind Spot
 
@@ -72,3 +85,9 @@ adapter reads are all governed by `preview-env-contract.md §4.5`.
 path.** Every external-dependency port = production adapter + virtualized
 adapter + per-connection toggle var documented in `.env.example`. If only
 one of the three appears in your plan, the plan is incomplete.
+
+**A virtualized method that returns empty/absent and defers the real body to "a
+later unit" reads as done but is not.** When a method hands back nothing the
+consumer can use and the real body is left to some future task, that task's
+owner must be named and scheduled — an unowned deferral leaves the surface
+permanently empty.

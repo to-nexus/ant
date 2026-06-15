@@ -60,18 +60,19 @@ describe('iterative-mango — SV session faithfulness rows', () => {
     expect(session).toMatch(/not from a literal baked into the component/);
   });
 
-  // 2-2 (RCA misty-bringing-novel): the "authorize URL must be in-app, never an
-  // external host" rule was relocated from the gated session auth-flow block
-  // into the ALWAYS-ON contract usability rule, so it binds every adapter method
-  // (incl. an omnibus-data-adapter method) — not only a self-recognized auth task.
-  // Contract now owns the reachability definition; session defers to it and names
-  // the no-op-redirect failure mode.
-  it('2-2: contract OWNS navigable-target reachability (in-app origin, never external host)', () => {
+  // 2-2 (RCA misty-bringing-novel → neat-melting-kayak): the navigable-target
+  // reachability rule lives in the ALWAYS-ON contract usability rule so it binds
+  // every adapter method (incl. an omnibus-data-adapter method). The host
+  // blacklist (`*.example` / external host) was replaced by ONE positive
+  // property — usable = the running app itself serves it — so a host-less form
+  // (a `mock://` scheme) can no longer slip through an enumeration gap.
+  it('2-2: contract OWNS navigable-target reachability as a positive property (app serves it), not a host blacklist', () => {
     expect(contract).toMatch(/navigable target/i);
-    expect(contract).toMatch(/own runtime origin|own origin/i);
-    expect(contract).toMatch(/external or placeholder host|\*\.example/i);
-    // unconditional — binds every adapter method, not only a dedicated auth adapter
-    expect(contract).toMatch(/every method of\s+every virtualized adapter/i);
+    expect(contract).toMatch(/running app itself serves|running system itself|the app can answer it/i);
+    // host blacklist removed (no whack-a-mole)
+    expect(contract).not.toMatch(/\*\.example/);
+    // binds every adapter method, not only a dedicated auth adapter
+    expect(contract).toMatch(/binds EVERY method|every method of every virtualized adapter/i);
     expect(contract).toMatch(/folded among many data methods/i);
   });
 

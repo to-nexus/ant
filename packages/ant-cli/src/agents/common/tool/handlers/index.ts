@@ -3,6 +3,7 @@
  */
 
 export { handleReadFile } from './readFile';
+export { handleReadState } from './readState';
 export { handleListFiles } from './listFiles';
 export { handleSearchCode } from './searchCode';
 export { handleDeleteFile } from './deleteFile';

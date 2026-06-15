@@ -704,30 +704,47 @@ describe('service-virtualization — request-responsiveness + per-authority fide
 });
 
 describe('service-virtualization — navigable-target reachability owned by the always-on contract (RCA: misty-bringing-novel)', () => {
-  // Root cause: the rule that rejects an external/placeholder authorize URL
-  // lived ONLY in the gated + self-narrowed session auth-flow block, so it was
-  // never on the reasoning path when `postOAuthAuthorize` was authored as one
-  // method among many on an omnibus data adapter. The always-on contract layer
-  // (parity + usability) was satisfied by the external placeholder. Fix lifts
-  // the closed-system reachability DEFINITION into the always-on usability rule
-  // so it binds every adapter method; session defers to it (matching the
-  // partial's own "closed-system invariant" defer-to-contract row).
+  // Root cause: the rule that rejects an unusable authorize URL lived ONLY in
+  // the gated session auth-flow block, never on the reasoning path when the
+  // authorize value was authored as one method among many on an omnibus data
+  // adapter. The original always-on lift expressed the rule as a HOST blacklist
+  // (`*.example` / third-party / `localhost:PORT`), so a host-less form (a
+  // custom `mock://` scheme) slipped through every enumerated negative. Fix
+  // restates usability as ONE positive property — a value the consumer's own
+  // resolution mechanism can carry to completion against the running app the
+  // app itself serves — which subsumes host-shaped AND form-shaped failures
+  // without a catalogue; and forbids the deferred-stub (empty/absent body left
+  // to an unnamed "later unit"). Session still defers to the contract rule.
 
-  it('contract: defines a navigable target as resolving within the closed system at the app own origin', () => {
+  it('contract: defines a usable navigable target by a positive property — the running app itself serves it — NOT a host blacklist', () => {
     const src = read(PARTIAL_CONTRACT);
     expect(src).toMatch(/navigable target/i);
-    expect(src).toMatch(/closed system/i);
-    expect(src).toMatch(/own runtime origin|own origin/i);
-    // the external/placeholder host is named as the defect
-    expect(src).toMatch(/external or placeholder host|\*\.example/i);
+    // positive property: the running app/system itself answers it
+    expect(src).toMatch(/running app itself serves|running system itself|the app can answer it/i);
+    // the consumer's own resolution mechanism must be able to follow the form
+    expect(src).toMatch(/resolution mechanism can carry|form .*can actually follow|can actually follow/i);
+    // being free of an external host is explicitly NOT sufficient (no whack-a-mole)
+    expect(src).toMatch(/free of an external host/i);
+    // host blacklist removed — the enumerated placeholder host is gone
+    expect(src).not.toMatch(/\*\.example/);
   });
 
-  it('contract: the reachability requirement is unconditional — every adapter method, not only a dedicated auth/redirect adapter', () => {
+  it('contract: the usability requirement binds every adapter method, stated as ONE positive property not a catalogue of bad shapes', () => {
     const src = read(PARTIAL_CONTRACT);
-    expect(src).toMatch(/unconditional/i);
-    expect(src).toMatch(/every method of\s+every virtualized adapter/i);
+    expect(src).toMatch(/binds EVERY method|every method of every virtualized adapter/i);
     // explicitly targets the omnibus-adapter blind spot
     expect(src).toMatch(/folded among many data methods/i);
+    // single positive property, not an enumeration of bad shapes
+    expect(src).toMatch(/no catalogue of bad shapes|one property to satisfy|one\s+positive property/i);
+  });
+
+  it('contract: forbids the deferred-stub — a virtualized method returns a usable seeded value now, not an empty body deferred to a later unit', () => {
+    const src = read(PARTIAL_CONTRACT);
+    expect(src).toMatch(/later unit/i);
+    expect(src).toMatch(/incomplete adapter/i);
+    expect(src).toMatch(/permanently empty/i);
+    // not a blanket empty ban — a legitimately empty surface is allowed
+    expect(src).toMatch(/genuinely empty by design|empty by design is fine/i);
   });
 
   it('contract: parity rule is bounded — identical observable shape excludes mirroring an external host', () => {

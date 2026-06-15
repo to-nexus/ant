@@ -102,6 +102,18 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // Read-only snapshot so the http_request handler can auto-target the
       // most-recent keep_running server's port without importing graph state.
       runningServers: state.runningServers,
+      // Live completed-task projection for the read_state handler — full
+      // (untruncated) scope + authored manifest, ahead of any disk checkpoint.
+      // Plain view keeps the 2-layer tool architecture intact (handler never
+      // imports graph state), same pattern as runningServers above.
+      completedTasks: (state.completedTasksDetails ?? []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        type: t.type,
+        band: (t as { band?: string }).band,
+        description: (t.description ?? '') as string,
+        files: Array.isArray(t.touchedFiles) ? (t.touchedFiles as string[]) : [],
+      })),
       retries: state.retries,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,

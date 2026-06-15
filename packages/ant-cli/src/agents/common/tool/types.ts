@@ -260,6 +260,25 @@ export interface ToolExecutionContext {
   userId?: string;
   organizationId?: string;
 
+  // === Live run-state read (read_state handler) ===
+  /**
+   * Read-only projection of `state.completedTasksDetails` for the `read_state`
+   * handler — live, ahead of any disk checkpoint (a 60s timer + per-task flush
+   * means a just-finished sibling is in memory before it is in the session
+   * file, and `sessions/` is RAC-gated ephemeral anyway). Each entry carries
+   * the FULL (untruncated) description + authored file manifest so a later task
+   * can dig a prior task's intent on demand. Kept as a plain view so the tool
+   * layer never imports graph state (same pattern as {@link runningServers}).
+   */
+  completedTasks?: ReadonlyArray<{
+    id: string;
+    name: string;
+    type: string;
+    band?: string;
+    description: string;
+    files: string[];
+  }>;
+
   // === Artifact read handlers ===
   sourceDocuments?: any;
   files?: Map<string, any>;

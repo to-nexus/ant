@@ -16,7 +16,11 @@
  */
 
 import type { ExecutePromptCtx } from '../../_shared/types';
+import { uiTwinVars } from '../twin';
 
-export function extraTemplateVars(_ctx: ExecutePromptCtx): Record<string, unknown> {
-  return { requiresAttestation: true };
+export function extraTemplateVars(ctx: ExecutePromptCtx): Record<string, unknown> {
+  // requiresAttestation: contract-conformance self-check before <done>.
+  // pairedFeature: elevate the feature twin (full desc + files) so the visual
+  // pass builds on the materialized skeleton and inherits its content authority.
+  return { requiresAttestation: true, ...uiTwinVars(ctx.state, ctx.task) };
 }

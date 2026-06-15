@@ -645,6 +645,10 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 
 **Constraint**: When Independent Output Unit Splitting applies, the description MUST name a single output unit and its delivered scope. Do NOT enumerate multiple units in one description.
 
+**Constraint — a host/composition task carries the FULL surface set of the section it cites, not a lossy summary**: When a task composes a host/shell/layout (navigation, chrome, entry framing) and its referenced design section enumerates MULTIPLE coexisting surfaces or responsive variants (e.g. a wide-viewport navigation AND a narrow-viewport navigation), the description MUST name the whole set. Citing the section and then summarizing it down to ONE variant silently drops the others the section requires — the Plan phase then builds only the named one. Referencing a section is not enough; the description must not collapse a multi-surface requirement onto a single axis.
+
+⚠️ **Blind spot**: A description can cite the correct section (§) and still under-deliver by paraphrasing a multi-part requirement as one part. The section reference licenses the Plan phase to read the full requirement, but a narrowed summary in the description re-caps the scope below what the section states.
+
 ---
 
 ## UI Task Descriptions
@@ -787,6 +791,8 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 3. Optionally declare the master broadcast (`USE_MOCK=true`, `NEXT_PUBLIC_USE_MOCK=true`, `VITE_USE_MOCK=true`, or `REACT_APP_USE_MOCK=true`) using the same prefix as the per-connection toggles in the same file — mixing prefixes makes the master broadcast invisible to client code
 
 The feature task that owns each business-connection port MUST author both production and virtualized adapters in the same task (single unit of work — port + 2 adapters + toggle wiring). `infrastructure` connections (DB / cache / queue via docker-compose) are NOT virtualization targets — they run as real local instances.
+
+**The virtualized adapter's deliverable is its DATA, not just its shape.** Owning the port means the task's virtualized adapter returns usable, seeded bodies for the surfaces it serves at the time it is authored — projected from the shared demo-world seed when one exists (see Shared Decisions). A method that returns an empty/absent body and defers the real data to a "later" task is NOT done: when the port exposes one generic/omnibus data method (one accessor serving many domains), it has no per-domain successor to fall back on, so the owning task MUST seed it here. Decompose MUST NOT leave any domain surface's mock body to an unnamed future owner. (Authoring-time enforcement: `service-virtualization-contract` deferred-stub rule.)
 
 ---
 
