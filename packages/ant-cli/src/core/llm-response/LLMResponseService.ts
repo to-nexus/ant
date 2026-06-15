@@ -63,6 +63,7 @@ const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
   'retrieving',
   'grepping',
   'reading',
+  'reading_state',
   'reading_source',
   'listing_files',
   'searching_code',
@@ -93,6 +94,7 @@ const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
  */
 const TOOLS_WITH_DEDICATED_STATUS: ReadonlySet<string> = new Set([
   'read_file',
+  'read_state',
   'list_files',
   'search_code',
   'run_command',

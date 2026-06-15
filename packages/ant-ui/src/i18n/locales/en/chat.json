@@ -230,6 +230,7 @@
       "retrieving": "Retrieval",
       "grepping": "Search",
       "reading": "Reading",
+      "reading_state": "Run State",
       "indexing": "Indexing",
       "storing": "Storage",
       "listing_files": "File Listing",

@@ -32,12 +32,19 @@ function detail(t: {
 }
 
 export const handleReadState: ToolHandler = async (ctx, args) => {
+  const queryRaw = typeof args.task === 'string' ? args.task.trim() : '';
+  // Progress half — paired with the `read_state` terminal status below,
+  // mirroring how list_files/read_file emit their dedicated card pair.
+  const idx = await ctx.chatStatus.showStatus('reading_state', {
+    task: queryRaw || undefined,
+  });
+
   const tasks = ctx.completedTasks ?? [];
   if (tasks.length === 0) {
+    await ctx.chatStatus.showStatus('read_state', { taskCount: 0, _mergeIndex: idx });
     return { content: 'No tasks have completed yet in this run.' };
   }
 
-  const queryRaw = typeof args.task === 'string' ? args.task.trim() : '';
   if (!queryRaw) {
     // No filter → compact roster (discovery), mirroring list_files.
     const roster = tasks
@@ -46,6 +53,7 @@ export const handleReadState: ToolHandler = async (ctx, args) => {
         return `- ${t.name} [${t.type}${band}] (${t.files.length} file${t.files.length === 1 ? '' : 's'})`;
       })
       .join('\n');
+    await ctx.chatStatus.showStatus('read_state', { taskCount: tasks.length, _mergeIndex: idx });
     return {
       content: `${tasks.length} task(s) completed in this run. Pass \`task\` (a name or id below) to read one's full scope + file manifest.\n\n${roster}`,
     };
@@ -55,6 +63,11 @@ export const handleReadState: ToolHandler = async (ctx, args) => {
   const matched = tasks.filter(
     (t) => t.id.toLowerCase() === q || t.id.toLowerCase().includes(q) || t.name.toLowerCase().includes(q),
   );
+  await ctx.chatStatus.showStatus('read_state', {
+    task: queryRaw,
+    matchedCount: matched.length,
+    _mergeIndex: idx,
+  });
   if (matched.length === 0) {
     return {
       content: `No completed task matches "${queryRaw}". ${tasks.length} task(s) completed — call read_state with no argument to list them.`,
