@@ -425,6 +425,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
               ? { ...state.jobTiming, completedAt: new Date().toISOString() }
               : undefined,
             tokenUsage: state.tokenUsage,
+            tokenUsageByModel: state.tokenUsageByModel,
           } as any,
           state.jobId,
           'code',
@@ -576,6 +577,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           jobId: state.jobId,
           jobTiming: completedJobTiming,
           tokenUsage: state.tokenUsage,
+          tokenUsageByModel: state.tokenUsageByModel,
           directives: directivesArray,
           overrideDirective: state.overrideDirective,
           chatSource: state.chatSource,

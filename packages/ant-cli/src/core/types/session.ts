@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, ExecutionTierId, SpecClarify, KanbanData } from '@ant/shared';
+import type { TaskTokenUsage, TokenUsageByModel, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, ExecutionTierId, SpecClarify, KanbanData } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -215,6 +215,11 @@ export interface SessionState {
   
   // Token usage
   tokenUsage?: TaskTokenUsage;
+
+  // Per-model token usage breakdown — the basis for precise USD/credit cost.
+  // Persisted alongside `tokenUsage` so completed runs retain cost info after
+  // the Redis snapshot is sealed (consumed by projectSessionStateToKanban).
+  tokenUsageByModel?: TokenUsageByModel;
 
   // Multi-Turn Conversation (cross-run semantic history)
   conversation?: ConversationEntry[];

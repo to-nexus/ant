@@ -626,6 +626,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       completedTasks: result.completedTasks,
       failedTasks: result.failedTasks,
       tokenUsage: result.tokenUsage,
+      tokenUsageByModel: result.tokenUsageByModel,
       parallelMode: true,
       interruption: { reason: 'tasks_failed', canResume: true },
     });
@@ -674,6 +675,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     currentTask: undefined,
     artifacts: refreshedPool,
     tokenUsage: result.tokenUsage || state.tokenUsage,
+    tokenUsageByModel: result.tokenUsageByModel || state.tokenUsageByModel,
     interruption: result.hasInterruptedTasks ? {
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'

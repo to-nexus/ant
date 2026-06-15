@@ -6,7 +6,7 @@ import { ProjectContext } from "../../types";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify, BaseTask, TaskType, TaskBand } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify, BaseTask, TaskType, TaskBand, TokenUsageByModel } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
@@ -219,6 +219,12 @@ export interface ArchitectGraphState extends TriageableState {
   // Unified artifact pool (resolve output, consumed by all downstream nodes)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   artifacts?: ResolvedArtifact[];
+
+  // Per-model job-level usage breakdown (declared channel in graph.ts; the
+  // object-config Annotation form is not lifted by StateType, so it is
+  // surfaced explicitly here). Basis for USD/credit cost; persisted to the
+  // session so completed runs retain it. Aggregate `tokenUsage` is inherited.
+  tokenUsageByModel?: TokenUsageByModel;
 
   // RAC (detect output → decompose enriches basis.techTier: TechTierConfig)
   // Effective TechTier is derived on demand via getTechTier(state) from
