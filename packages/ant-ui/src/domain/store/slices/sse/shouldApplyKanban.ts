@@ -21,6 +21,12 @@ import type { KanbanData } from '@/infrastructure/http/api';
  * the tab synced. Treating live/estimating broadcasts as authoritative for the
  * active feature closes that race. Job-agnostic by construction → code and
  * design behave identically.
+ *
+ * NOTE: with continuous re-convergence (`reconvergeJobType`), `selectedJobType`
+ * now snaps to the live job's type before this gate runs, so clause 3 is
+ * redundant in steady state (clause 2 already matches). It is retained as the
+ * first-tick bootstrap for the very first broadcast within a handler tick,
+ * before re-convergence has applied. Removing it would reopen the race above.
  */
 export function shouldApplyKanban(
   data: Pick<KanbanData, 'jobType' | 'dataSource'>,

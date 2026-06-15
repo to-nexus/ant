@@ -11,6 +11,7 @@ import type { SSEMessageMap } from '@ant/shared';
 
 import { handleKanbanUpdate } from './sse/kanbanReducer';
 import { shouldApplyKanban } from './sse/shouldApplyKanban';
+import { reconvergeJobType } from './sse/reconvergeJobType';
 import { createChatSseHandler } from './sse/chatSseHandler';
 import { createFileTreeSseHandler } from './sse/fileTreeSseHandler';
 import { createUnseenArtifactsHandler, createBridgeHandler, createTransferHandler } from './sse/auxiliarySseHandlers';
@@ -282,12 +283,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         }
       }
 
+      // Single-owner: the live job re-converges the view identity (toolbar
+      // agent+job, workflow graph, history) to its own type so they follow the
+      // board. Fires once per divergence (guarded), routes through the
+      // fetch-free applyJobIdentity SSOT writer.
+      reconvergeJobType(data, get);
+
       // The running job for the active feature drives the board even before
       // `selectedJobType` syncs to it (live/estimating broadcasts are
       // authoritative) — otherwise pre-task estimating broadcasts during
       // triage→detect→decompose were dropped and the decompose skeleton never
-      // showed. See shouldApplyKanban for the full rationale.
-      if (shouldApplyKanban(data, currentState.selectedJobType)) {
+      // showed. See shouldApplyKanban for the full rationale. Re-read
+      // selectedJobType AFTER reconverge so clause-2 matches once converged.
+      if (shouldApplyKanban(data, get().selectedJobType)) {
         get().updateKanban(data);
       }
     }));

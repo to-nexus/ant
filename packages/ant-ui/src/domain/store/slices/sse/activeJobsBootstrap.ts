@@ -1,5 +1,4 @@
 import { isNonTaskJob } from '@ant/shared';
-import { resolveAgentForJobType } from '@/shared/utils/constants';
 
 /**
  * Processes the activeJobs array from the SSE initial kanban response.
@@ -35,12 +34,13 @@ export function handleInitialActiveJobs(
     const pausedNonTask = jobs.find(j => j.status === 'paused' && isNonTaskJob(j.jobType));
     const runningJob = jobs.find(j => j.status === 'running');
     const winner = pausedNonTask || runningJob || jobs[0];
-    const agent = winner.agent || resolveAgentForJobType(winner.jobType);
     console.log(
       `[Store] 🔄 Auto-selecting active job: ${winner.jobType} (status=${winner.status}, was ${currentType})`,
     );
+    // SSOT: setSelectedJobType funnels through applyJobIdentity (which sets the
+    // agent from the job type) and performs the type-scoped session+kanban
+    // fetch + syncViewToJobType the bootstrap relies on.
     setTimeout(() => {
-      get().setSelectedAgent(agent);
       get().setSelectedJobType(winner.jobType as any);
     }, 0);
   } else {
