@@ -2,12 +2,27 @@ import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
+import { resolveAgentForJobType } from '@/shared/utils/constants';
 import type { OrganizationKind } from '@ant/shared';
 import type { OrgMembership } from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
   setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
+  /**
+   * SSOT writer for the active job identity. Sole writer of the
+   * `(selectedAgent, selectedJobType)` pair: resolves the agent from the job
+   * type when not given, persists both, and re-points the SSE job param.
+   * Fetch-free and does NOT touch runtime view fields (`isRunning`, SSE
+   * connect) — those stay owned by `syncViewToJobType` / `selectJobId` / the
+   * kanban reducer. Every identity-change site (toolbar, job-list selection,
+   * live re-convergence, feature-entry bootstrap) funnels through this.
+   */
+  applyJobIdentity: (args: {
+    jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
+    agent?: string;
+    jobId?: string;
+  }) => void;
   setUser: (
     email: string,
     organization: string,
@@ -63,10 +78,24 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     saveToStorage(STORAGE_KEYS.SELECTED_AGENT, agent);
   },
 
+  applyJobIdentity: ({ jobType, agent, jobId }) => {
+    const resolvedAgent = agent ?? resolveAgentForJobType(jobType);
+    set({
+      selectedJobType: jobType,
+      selectedAgent: resolvedAgent,
+      ...(jobId ? { currentJobId: jobId } : {}),
+    });
+    saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, jobType);
+    saveToStorage(STORAGE_KEYS.SELECTED_AGENT, resolvedAgent);
+    sseManager.updateJobParam(jobType);
+  },
+
   setSelectedJobType: (jobType) => {
     const state = get();
-    set({ selectedJobType: jobType });
-    saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, jobType);
+    // SSOT: applyJobIdentity owns the (agent, jobType) pair + persistence +
+    // updateJobParam. Picking a job type also coherently sets its agent
+    // (e.g. selecting `plan` flips the agent to planner).
+    state.applyJobIdentity({ jobType });
 
     state.syncViewToJobType(jobType);
 
@@ -88,7 +117,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           const [session, kanbanData, history] = await Promise.all([
             fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType),
             fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
-            fetchJobHistory(state.selectedProject!, state.selectedFeature!, jobType),
+            fetchJobHistory(state.selectedProject!, state.selectedFeature!),
           ]);
 
           if (get().selectedJobType !== jobType) {
@@ -101,16 +130,17 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           console.log(`[Store] ✅ Session + kanban loaded for ${jobType}`);
 
           // Auto-select the most-recent jobId when the jobType-scoped kanban
-          // has no jobId but the history does. Without this, switching job
-          // types in chat and coming back could leave the Job tab empty
-          // even though completed runs exist for that jobType.
+          // has no jobId but the history does. The history is now feature-wide,
+          // so filter to THIS type — picking a job type must not auto-select a
+          // different type's job (that would re-converge the identity back).
           const hasBoardJobId = !!kanbanData?.jobId;
-          if (!hasBoardJobId && history.jobs.length > 0) {
-            const latest = history.jobs[0];
+          const sameType = history.jobs.filter((j) => j.type === jobType);
+          if (!hasBoardJobId && sameType.length > 0) {
+            const latest = sameType[0];
             console.log(
               `[Store] ↩️ No current jobId for '${jobType}', auto-selecting latest: ${latest.jobId}`,
             );
-            await get().selectJobId(latest.jobId, { live: latest.live });
+            await get().selectJobId(latest.jobId, { live: latest.live, jobType });
           }
         } catch (error) {
           console.error('[Store] Failed to switch job type:', error);
@@ -119,8 +149,6 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           }
         }
       })();
-
-      sseManager.updateJobParam(jobType);
     }
   },
 

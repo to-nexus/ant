@@ -7,6 +7,7 @@ import { useJobHistory } from '@/application/hooks/features/useJobHistory';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { cn } from '@/shared/utils/design-system';
+import { getJobInfo } from '@/shared/utils/constants';
 import type { JobHistoryEntry, KanbanData } from '@/infrastructure/http/api';
 import {
   ElapsedTimeBadge,
@@ -159,10 +160,13 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
     toast.success(t('tabs.copiedJobId'));
   };
 
-  const handleSelect = (id: string, live: boolean, isCurrent: boolean) => {
+  const handleSelect = (entry: JobHistoryEntry, isCurrent: boolean) => {
     setOpen(false);
     if (isCurrent) return;
-    void selectJobId(id, { live });
+    // Carry the entry's own type so selectJobId fetches the right board AND
+    // re-converges the chat identity (agent + jobType) to it — the unified
+    // list is cross-type, so the ambient selectedJobType cannot be trusted.
+    void selectJobId(entry.jobId, { live: entry.live, jobType: entry.type });
   };
 
   const handleDelete = (id: string, live: boolean, isCurrent: boolean) => {
@@ -192,7 +196,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
             if (isCurrent && nextCandidate) {
               // `deleteJobId` already unset currentJobId + cleared the board,
               // so selectJobId will treat the switch as a fresh selection.
-              await selectJobId(nextCandidate.jobId, { live: nextCandidate.live });
+              await selectJobId(nextCandidate.jobId, { live: nextCandidate.live, jobType: nextCandidate.type });
             }
             void refresh();
           } catch {
@@ -292,7 +296,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                     <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
                       <button
                         type="button"
-                        onClick={() => handleSelect(entry.jobId, entry.live, isCurrent)}
+                        onClick={() => handleSelect(entry, isCurrent)}
                         className={cn(
                           'flex shrink-0 items-center gap-2 text-left whitespace-nowrap',
                           'text-xs font-mono',
@@ -362,6 +366,22 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                             );
                           }
                           return <span className="w-1.5 h-1.5 flex-shrink-0" aria-hidden />;
+                        })()}
+                        {/* Per-entry type badge: the list is cross-type, so each
+                            row tags its own job type. Emoji is the visual cue
+                            (same idiom as the chat toolbar); full label in title. */}
+                        {(() => {
+                          const info = getJobInfo(entry.type);
+                          if (!info) return null;
+                          return (
+                            <span
+                              className="shrink-0 text-[11px]"
+                              title={info.label}
+                              aria-label={info.label}
+                            >
+                              {info.label.split(' ')[0]}
+                            </span>
+                          );
                         })()}
                         <span>{entry.jobId}</span>
                       </button>

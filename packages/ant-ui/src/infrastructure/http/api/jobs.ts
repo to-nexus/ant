@@ -94,16 +94,17 @@ export async function executeJob(
 }
 
 /**
- * List past job ids for a feature × jobType, most-recent first. Source-merged
- * from Redis (live + recent) and the session file's `runs[]` array.
+ * List the feature's board-bearing jobs (code/design/learn), most-recent
+ * first, each entry tagged with its own `type`. Source-merged from Redis
+ * (live) and the session files' `runs[]` arrays across types. Feature-wide:
+ * not scoped to the currently-selected job type.
  */
 export function fetchJobHistory(
   projectId: string,
   featureName: string,
-  jobType: string,
 ): Promise<{ jobs: JobHistoryEntry[] }> {
   return apiGet<{ jobs: JobHistoryEntry[] }>(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs?type=${encodeURIComponent(jobType)}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs`,
   ).catch(() => ({ jobs: [] }));
 }
 

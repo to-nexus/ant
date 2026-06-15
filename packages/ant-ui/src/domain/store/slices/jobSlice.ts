@@ -18,11 +18,13 @@ export interface JobActions {
   clearActiveJob: (jobType: string) => void;
   syncViewToJobType: (jobType: string) => void;
   /**
-   * Switch the kanban view to a different jobId in the same feature × jobType.
-   * Restores the kanban from BE (live → snapshot fallback) and reconnects the
-   * workflow SSE only when the target job is still live.
+   * Switch the kanban view to a different jobId in the feature. Restores the
+   * kanban from BE (live → snapshot fallback), reconnects the workflow SSE
+   * only when the target job is still live, and — since the unified job list
+   * is cross-type — re-converges the chat identity (agent + jobType) to the
+   * selected job's own type via `applyJobIdentity`.
    */
-  selectJobId: (jobId: string, opts?: { live?: boolean }) => Promise<void>;
+  selectJobId: (jobId: string, opts?: { live?: boolean; jobType?: string; agent?: string }) => Promise<void>;
   /**
    * Delete every artifact tied to a jobId. If it is the currently selected
    * jobId, the kanban is cleared and `currentJobId` is unset afterwards.
@@ -205,7 +207,10 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     if (!selectedProject || !selectedFeature) return;
     if (prevJobId === jobId) return;
 
-    const jobType = selectedJobType || 'code';
+    // The unified job list carries each entry's own type; fall back to the
+    // ambient selected type only when no entry type is supplied (e.g. the
+    // setSelectedJobType auto-select-latest path within the same type).
+    const jobType = opts?.jobType || selectedJobType || 'code';
 
     // Disconnect previous workflow stream so events from the old jobId
     // can no longer mutate the new view.
@@ -231,6 +236,15 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
         jobType,
       );
       get().updateKanban(kanbanData);
+
+      // SSOT: re-converge the chat identity (agent + jobType) to the selected
+      // job's own type so the toolbar, workflow graph, and history all follow.
+      // Fetch-free applyJobIdentity (NOT setSelectedJobType, whose
+      // auto-select-latest would clobber the job the user just clicked).
+      const resolvedJobType = (kanbanData.jobType || jobType) as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+      if (resolvedJobType !== get().selectedJobType) {
+        get().applyJobIdentity({ jobType: resolvedJobType, agent: opts?.agent, jobId });
+      }
 
       const isLive = opts?.live === true || kanbanData.dataSource === 'live' || kanbanData.dataSource === 'estimating';
       if (isLive) {

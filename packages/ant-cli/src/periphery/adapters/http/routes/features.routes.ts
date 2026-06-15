@@ -216,11 +216,17 @@ export function createFeaturesRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const jobType = asKanbanJobType(req.query.type ?? 'code');
-      if (!jobType) {
+      // Feature-wide by default: list every board-bearing job of the feature
+      // (code/design/learn) in one list, each entry tagged with its own type.
+      // An explicit `?type=` narrows to a single type (back-compat); omitting
+      // it returns all KANBAN_JOB_TYPES. `plan`/`visual`/`ask`/`inline-ask`
+      // render no task list and stay excluded.
+      const requestedType = req.query.type !== undefined ? asKanbanJobType(req.query.type) : undefined;
+      if (req.query.type !== undefined && !requestedType) {
         res.status(400).json({ error: `Invalid job type. Allowed: ${KANBAN_JOB_TYPES.join(', ')}` });
         return;
       }
+      const types: readonly KanbanJobType[] = requestedType ? [requestedType] : KANBAN_JOB_TYPES;
       const userContext = extractUserContext(req);
 
       type HistoryEntry = {
@@ -259,12 +265,15 @@ export function createFeaturesRoutes(deps: {
         try {
           const redisJobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
           for (const j of redisJobs) {
-            if (j.type !== jobType) continue;
+            if (!(types as readonly string[]).includes(j.type)) continue;
+            // `includes` over a widened string[] doesn't narrow `j.type`, but
+            // the guard guarantees membership in KANBAN_JOB_TYPES ⊆ SessionableJobType.
+            const entryType = j.type as KanbanJobType;
             const isLive = j.status === 'running' || j.status === 'paused';
             if (!isLive) continue;
             merged.set(j.jobId, {
               jobId: j.jobId,
-              type: j.type,
+              type: entryType,
               status: summarizeRunStatus(j.status),
               startedAt: j.startedAt ?? j.timestamp,
               completedAt: j.completedAt,
@@ -284,44 +293,54 @@ export function createFeaturesRoutes(deps: {
       //     (1) are backfilled with `kanbanSnapshot` when the same jobId
       //     has already been sealed to runs[] (Redis keeps only live
       //     taskQueue snapshots, not the final sealed kanban).
+      // Resilience: a featurePath-resolution failure must not 500 the route —
+      // fall back to the Redis live entries already collected (parity with the
+      // pre-feature-wide behavior, which caught this in the session-merge try).
+      let featurePath: string | null = null;
       try {
-        const featurePath = getFeaturePath(userContext, projectId, featureName);
-        const sessionPath = getSessionFilePathByJob(featurePath, jobType);
-        let raw: string | null = null;
-        try {
-          raw = await fs.promises.readFile(sessionPath, 'utf-8');
-        } catch (err: any) {
-          if (err.code !== 'ENOENT') throw err;
-        }
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
-          for (const r of runs) {
-            if (!r.jobId) continue;
-            const existing = merged.get(r.jobId);
-            if (existing) {
-              if (r.kanbanSnapshot && !existing.kanbanSnapshot) {
-                existing.kanbanSnapshot = r.kanbanSnapshot as KanbanData;
-              }
-              continue;
-            }
-            merged.set(r.jobId, {
-              jobId: r.jobId,
-              type: jobType,
-              status: r.status ?? 'completed',
-              startedAt: r.timestamp,
-              completedAt: r.completedAt ?? r.timestamp,
-              live: false,
-              kanbanSnapshot: (r.kanbanSnapshot as KanbanData | undefined) ?? undefined,
-            });
-          }
-        }
+        featurePath = getFeaturePath(userContext, projectId, featureName);
       } catch (err) {
-        logger.warn(
-          `Failed to merge session runs for history`,
-          { component: 'Features' },
-          err,
-        );
+        logger.warn(`Failed to resolve feature path for history`, { component: 'Features' }, err);
+      }
+      for (const t of featurePath ? types : []) {
+        try {
+          const sessionPath = getSessionFilePathByJob(featurePath!, t);
+          let raw: string | null = null;
+          try {
+            raw = await fs.promises.readFile(sessionPath, 'utf-8');
+          } catch (err: any) {
+            if (err.code !== 'ENOENT') throw err;
+          }
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
+            for (const r of runs) {
+              if (!r.jobId) continue;
+              const existing = merged.get(r.jobId);
+              if (existing) {
+                if (r.kanbanSnapshot && !existing.kanbanSnapshot) {
+                  existing.kanbanSnapshot = r.kanbanSnapshot as KanbanData;
+                }
+                continue;
+              }
+              merged.set(r.jobId, {
+                jobId: r.jobId,
+                type: t,
+                status: r.status ?? 'completed',
+                startedAt: r.timestamp,
+                completedAt: r.completedAt ?? r.timestamp,
+                live: false,
+                kanbanSnapshot: (r.kanbanSnapshot as KanbanData | undefined) ?? undefined,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn(
+            `Failed to merge session runs for history (${t})`,
+            { component: 'Features' },
+            err,
+          );
+        }
       }
 
       const entries = Array.from(merged.values());
