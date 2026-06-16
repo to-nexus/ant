@@ -20,14 +20,14 @@ import http from 'node:http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 
-vi.mock('../../src/periphery/adapters/http/middleware/rateLimiter', () => ({
+vi.mock('../../../ant-cli/src/periphery/adapters/http/middleware/rateLimiter', () => ({
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
-import { JwtService } from '../../src/infrastructure/auth/JwtService';
-import { createAuthRoutes } from '../../src/periphery/adapters/http/routes/auth.routes';
+import { JwtService } from '../../../ant-cli/src/infrastructure/auth/JwtService';
+import { createAuthRoutes } from '../../src/routes/auth.routes';
 import type { AuthService } from '../../src/infrastructure/auth/AuthService';
-import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
+import type { WorkspaceResolver } from '../../../ant-cli/src/core/config/WorkspacePathResolver';
 
 const TEST_SECRET = 'test-secret-at-least-32-characters-long-xx';
 
@@ -186,7 +186,7 @@ describe('GET /api/auth/me — local mode', () => {
     tmpWorkspaceRoot = await fs.mkdtemp(pathMod.join(os.tmpdir(), 'ant-auth-me-'));
     process.env.ANT_WORKSPACE_BASE_PATH = tmpWorkspaceRoot;
     const { __resetInferredLocalDefaultForTests } = await import(
-      '../../src/periphery/adapters/http/routes/helpers/userContext'
+      '../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext'
     );
     __resetInferredLocalDefaultForTests();
   });
@@ -197,7 +197,7 @@ describe('GET /api/auth/me — local mode', () => {
     if (originalBasePath === undefined) delete process.env.ANT_WORKSPACE_BASE_PATH;
     else process.env.ANT_WORKSPACE_BASE_PATH = originalBasePath;
     const { __resetInferredLocalDefaultForTests } = await import(
-      '../../src/periphery/adapters/http/routes/helpers/userContext'
+      '../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext'
     );
     __resetInferredLocalDefaultForTests();
     if (app) await app.close();

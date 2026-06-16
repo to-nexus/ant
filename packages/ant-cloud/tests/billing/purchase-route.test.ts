@@ -13,13 +13,13 @@ import http from 'node:http';
 import express from 'express';
 
 // Fix the tenant so the route doesn't probe the filesystem for a local default.
-vi.mock('../../src/periphery/adapters/http/routes/helpers/userContext', () => ({
+vi.mock('../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext', () => ({
   extractUserContext: () => ({ userId: 'user1', organizationId: 'org1' }),
 }));
 
-import { createBillingRoutes } from '../../src/periphery/adapters/http/routes/billing.routes';
-import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
-import type { PaymentProviderPort, PurchaseRequest } from '../../src/core/ports/paymentProvider';
+import { createBillingRoutes } from '../../src/routes/billing.routes';
+import type { CreditLedgerPort } from '../../../ant-cli/src/core/ports/creditLedger';
+import type { PaymentProviderPort, PurchaseRequest } from '../../../ant-cli/src/core/ports/paymentProvider';
 import type { PurchaseOutcome } from '@ant/shared';
 
 class FakeLedger implements Partial<CreditLedgerPort> {

@@ -11,13 +11,13 @@ import { describe, it, expect, vi } from 'vitest';
 import http from 'node:http';
 import express from 'express';
 
-vi.mock('../../src/periphery/adapters/http/routes/helpers/userContext', () => ({
+vi.mock('../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext', () => ({
   extractUserContext: () => ({ userId: 'user1', organizationId: 'org1' }),
 }));
 
-import { createBillingRoutes } from '../../src/periphery/adapters/http/routes/billing.routes';
-import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
-import type { PaymentProviderPort, SubscriptionOutcome } from '../../src/core/ports/paymentProvider';
+import { createBillingRoutes } from '../../src/routes/billing.routes';
+import type { CreditLedgerPort } from '../../../ant-cli/src/core/ports/creditLedger';
+import type { PaymentProviderPort, SubscriptionOutcome } from '../../../ant-cli/src/core/ports/paymentProvider';
 import type { BalanceSnapshot, SubscriptionTier } from '@ant/shared';
 
 class FakeLedger implements Partial<CreditLedgerPort> {

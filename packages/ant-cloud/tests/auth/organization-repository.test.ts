@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type Redis from 'ioredis';
 
 import { RedisOrganizationRepository } from '../../src/infrastructure/auth/RedisOrganizationRepository';
-import { REDIS_KEYS } from '../../src/core/constants/redis';
+import { REDIS_KEYS } from '../../../ant-cli/src/core/constants/redis';
 
 // ---------- Minimal in-memory Redis (ioredis-compatible) ----------
 

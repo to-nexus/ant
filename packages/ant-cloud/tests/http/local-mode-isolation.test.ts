@@ -23,17 +23,17 @@ import * as fsAsync from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-vi.mock('../../src/periphery/adapters/http/middleware/rateLimiter', () => ({
+vi.mock('../../../ant-cli/src/periphery/adapters/http/middleware/rateLimiter', () => ({
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
-import { JwtService } from '../../src/infrastructure/auth/JwtService';
-import { createAuthRoutes } from '../../src/periphery/adapters/http/routes/auth.routes';
-import { createOrgRoutes } from '../../src/periphery/adapters/http/routes/org.routes';
-import { createTransferRoutes } from '../../src/periphery/adapters/http/routes/transfer.routes';
-import { __resetInferredLocalDefaultForTests } from '../../src/periphery/adapters/http/routes/helpers/userContext';
+import { JwtService } from '../../../ant-cli/src/infrastructure/auth/JwtService';
+import { createAuthRoutes } from '../../src/routes/auth.routes';
+import { createOrgRoutes } from '../../../ant-cli/src/periphery/adapters/http/routes/org.routes';
+import { createTransferRoutes } from '../../../ant-cli/src/periphery/adapters/http/routes/transfer.routes';
+import { __resetInferredLocalDefaultForTests } from '../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext';
 import type { AuthService } from '../../src/infrastructure/auth/AuthService';
-import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
+import type { WorkspaceResolver } from '../../../ant-cli/src/core/config/WorkspacePathResolver';
 
 const stubAuthService = {} as unknown as AuthService;
 const stubWorkspaceResolver = {} as unknown as WorkspaceResolver;
