@@ -922,7 +922,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `stack` set to the package's stack (frontend/backend) so tech-tier guidance pins the concrete reference model (route tree / router registration / event registry / DI container).
 - Description: state `<package>`'s closure **objective** — bind its separately-authored parts into an operable whole, so every cross-part reference it emits resolves to a real destination AND every reach-role surface it owns is actually reached, with any control that resolves to nothing fixed or removed. Name `<package>` itself as the closure scope — the materialized module is the authority the plan phase walks. Do NOT enumerate specific reference or affordance categories; the plan phase discovers them over the materialized code. Constrain: write only within this package; read other modules' published contracts read-only; for a destination owned by another module, conform to that module's published contract (the shared foundation / contract package) rather than redefining it.
 
-**Constraint**: Do NOT emit `batches[]` at decompose time — the seam's plan phase owns the partition (same as test-code). Emit NO seam task for a package with no outbound references AND no rendered affordances (a pure-type contract package, a presentational-only library that emits no references).
+**Constraint**: Emit NO seam task for a package with no outbound references AND no rendered affordances (a pure-type contract package, a presentational-only library that emits no references). The seam's plan phase owns the within-package partition — decompose emits one parent seam task per qualifying package and nothing finer (same parent-then-split deferral as test-code).
 
 ---
 
