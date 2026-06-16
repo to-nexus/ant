@@ -83,21 +83,6 @@ export type BatchSplitPolicyEntry = {
   shape: (ctx: BatchPlanShapeCtx) => string;
   populateRemediationMode: boolean;
   appendFinalVerification: boolean;
-  /**
-   * When set, the plan's fan-out is NOT the LLM's discretion: the named
-   * top-level array (each entry shaped like a `batches[]` entry —
-   * `{ name, rationale, requiredFiles?, parallelGroup?, priorityInParallelGroup? }`)
-   * is the enumeration of disjoint work slices. When it holds 2+ entries the
-   * runtime auto-partitions (each slice → one sub-task) instead of letting a
-   * flat plan through. A single slice (or none) proceeds as a flat plan.
-   *
-   * This removes the discretionary flat-plan escape that let a whole-module
-   * seam audit collapse into one shallow pass (RCA: third-housing-forge —
-   * both seam tasks emitted `flat_plan_no_batches` and never partitioned).
-   * The decision moves from "should I fan out?" (LLM-optional) to "enumerate
-   * your disjoint slices" (descriptive) + runtime-owned partition.
-   */
-  partitionFromField?: string;
 };
 
 export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPolicyEntry>> = {
@@ -164,23 +149,25 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     populateRemediationMode: false,
     appendFinalVerification: true,
   },
-  // seam (reference + affordance closure) fans out the SAME way as feature:
-  // the parent enumerates the module's reference graph and declares slim,
-  // disjoint-file slices; each child re-plans its slice over the materialized
-  // code. subType 'seam' is carried verbatim (type carry-over — feature's band
-  // carry-over does not apply, seam has no band). Same-lane ordering via
-  // `parallelGroup` + `priorityInParallelGroup` (child priority = parent +
-  // offset, kept inside the seam window 700–749). FV appended unless one
-  // already sits in the queue (Tier 3/4 always has one → no-op).
+  // seam (reference + affordance closure) is TWO-PHASE by `band` (RC5):
+  //   - the classifying PARENT (band undefined) carves the surface into
+  //     `regions[]` (it does NOT audit/fix inline) — `process.ts` rejects a
+  //     parent that emits a flat plan instead of regions, so a whole-module
+  //     audit can never collapse into one shallow pass (RCA: third-housing-
+  //     forge / snowy-grilling-shelf flat_plan_no_batches).
+  //   - each region fans out into a `band:'region'` CHILD that re-plans the
+  //     deep file-by-file audit within its boundary. subType 'seam' carried
+  //     verbatim; the region band is stamped in `process.ts`. Same-lane
+  //     ordering via `parallelGroup` + `priorityInParallelGroup` (child
+  //     priority = parent + offset, inside the seam window). FV appended
+  //     unless one already sits in the queue (Tier 3/4 always has one → no-op).
+  // The region fan-out (≥1 region → fan all; reject-on-flat-parent) is
+  // handled in `process.ts`, not by a generic partitionFromField.
   seam: {
     kind: 'drop-and-replace',
     subType: 'seam',
     shape: featureBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,
-    // Closure audit MUST partition: the seam plan enumerates disjoint
-    // file-set slices in `closureSlices[]`; 2+ slices auto-fan-out so a
-    // whole-module audit cannot run as a single shallow flat pass.
-    partitionFromField: 'closureSlices',
   },
 };

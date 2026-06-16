@@ -26,6 +26,7 @@
     "ui-source-handoff": [],
     "ui-source-dispatch": ["uiSource"],
     "feature-ui-observation": ["featureObservesUiSource"],
+    "layout-validity-floor": ["layoutValidityFloorActive"],
     "game-art-source": [],
     "antrules": ["antrulesContent"],
     "setup-directory-sealing": [],

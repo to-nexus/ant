@@ -256,6 +256,8 @@ The system does NOT auto-convert flat plans — the split-or-bundle call is your
 
 {{> jobs/code/base/injections/feature-ui-observation}}
 
+{{> jobs/code/base/injections/layout-validity-floor}}
+
 {{> jobs/code/base/injections/execution-context-discipline}}
 
 ────────────────────────────────────────────────────────────────────────────────
