@@ -11,18 +11,18 @@
  */
 
 import type Redis from 'ioredis';
-import { logger } from '../../utils/logger';
-import { REDIS_KEYS } from '../state/redisConstants';
+import { logger } from '../../../../ant-cli/src/utils/logger';
+import { REDIS_KEYS } from '../../../../ant-cli/src/infrastructure/state/redisConstants';
 import type {
   OrganizationRepositoryPort,
   OrganizationSummary,
-} from '../../core/ports/organizationRepository';
+} from '../../../../ant-cli/src/core/ports/organizationRepository';
 import type {
   Organization,
   Membership,
   MembershipRole,
   UserRecord,
-} from '../../core/auth/types';
+} from '../../../../ant-cli/src/core/auth/types';
 import { deriveKindFromOrgId } from '@ant/shared';
 
 const PENDING_ORG_SENTINEL = '_pending';

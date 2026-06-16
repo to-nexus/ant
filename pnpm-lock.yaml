@@ -232,6 +232,53 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@24.8.1)(jiti@1.21.7)(tsx@4.22.4)(yaml@2.8.2)
+    optionalDependencies:
+      '@ant/cloud':
+        specifier: workspace:*
+        version: link:../ant-cloud
+
+  packages/ant-cloud:
+    dependencies:
+      '@ant/shared':
+        specifier: workspace:*
+        version: link:../ant-shared
+      express:
+        specifier: ^5.1.0
+        version: 5.1.0
+      google-auth-library:
+        specifier: ^10.5.0
+        version: 10.5.0
+      ioredis:
+        specifier: ^5.9.2
+        version: 5.9.2
+      lucide-react:
+        specifier: ^0.474.0
+        version: 0.474.0(react@19.2.4)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.4
+      react-i18next:
+        specifier: ^16.5.4
+        version: 16.5.4(i18next@25.8.6(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+      zustand:
+        specifier: ^4.4.0
+        version: 4.5.7(@types/react@19.2.14)(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.2
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.1.2
+        version: 19.2.3(@types/react@19.2.14)
+      cookie-parser:
+        specifier: ^1.4.7
+        version: 1.4.7
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@24.8.1)(jiti@1.21.7)(tsx@4.22.4)(yaml@2.8.2)
 
   packages/ant-shared:
     devDependencies:
@@ -414,6 +461,10 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@24.8.1)(jiti@1.21.7)(tsx@4.22.4)(yaml@2.8.2)
+    optionalDependencies:
+      '@ant/cloud':
+        specifier: workspace:*
+        version: link:../ant-cloud
 
 packages:
 

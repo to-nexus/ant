@@ -4,11 +4,9 @@ import {
   createJobRoutes,
   createKanbanRoutes,
   createWorkflowRoutes,
-  createAuthRoutes,
   createIDERoutes,
   createCloudIDERoutes,
-  createApiRoutes,
-  createBillingRoutes
+  createApiRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
@@ -21,7 +19,6 @@ import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceServic
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
 import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
-import { isBillingEnabled } from '../../../../../core/config/billingCapability';
 
 /**
  * RouteConfigurator
@@ -65,41 +62,44 @@ export class RouteConfigurator {
   configure(app: Express): void {
     this.setupRootRoutes(app);
     this.setupCanonicalBackfillMiddleware(app);
-    this.setupAuthRoutes(app);
+    // Cloud overlay routers FIRST so cloud /auth/me + /billing/* win over any
+    // OSS fallback. No-op in OSS/local (getCloudModule() === null).
+    this.setupCloudOverlayRoutes(app);
+    // Auth routes (OAuth/JWT/callback/onboarding/switch-org + cloud /auth/me)
+    // are mounted by the cloud overlay above (`@ant/cloud` registerRoutes).
+    // OSS/local registers no auth routes — there is no authService in local
+    // mode and the FE never calls /auth/me there.
     this.setupApiRoutes(app);
     this.setupIDERoutes(app);
     this.setupCloudIDERoutes(app);
     this.setupKanbanRoutes(app);
     this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
-    this.setupBillingRoutes(app);
     // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
     // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
   }
 
   /**
-   * Billing routes — balance / usage / top-up. Credit ledger + stub payment
-   * provider from the InfrastructureFactory. Org repo (cloud only) drives the
-   * USD-visibility role gate; local treats the caller as operator.
+   * Cloud overlay routes (billing, cloud auth, org/team) — mounted by the
+   * `@ant/cloud` package via its CloudModule.registerRoutes(). Absent in
+   * OSS/local where the seam returns null. The overlay is warm-loaded by
+   * `factory.initCloud()` at the composition root BEFORE this adapter is built,
+   * so the synchronous getCloudModule() read here is already resolved.
    */
-  private setupBillingRoutes(app: Express): void {
-    // Billing seam: always-on at this stage. The guard stays as the single hook
-    // for the future @ant/cloud extraction (package-absent → unmounted).
-    if (!isBillingEnabled()) {
-      logger.info('[RouteConfigurator] Billing not available — /billing/* not registered', {
+  private setupCloudOverlayRoutes(app: Express): void {
+    const factory = getInfrastructureFactory();
+    const cloud = factory.getCloudModule();
+    if (!cloud) {
+      logger.info('[RouteConfigurator] Cloud overlay: ABSENT — no /billing/* or cloud auth', {
         component: 'RouteConfigurator',
       });
       return;
     }
-    const factory = getInfrastructureFactory();
-    const billingRoutes = createBillingRoutes({
-      creditLedger: factory.getCreditLedger(),
-      paymentProvider: factory.getPaymentProvider(),
-      organizationRepository:
-        this.config.mode === 'cloud' ? factory.getOrganizationRepository() : undefined,
+    cloud.registerRoutes({ app, deps: this.deps, config: this.config, factory });
+    logger.info('[RouteConfigurator] Cloud overlay routes registered', {
+      component: 'RouteConfigurator',
     });
-    app.use('/api', billingRoutes);
   }
 
   /**
@@ -127,23 +127,6 @@ export class RouteConfigurator {
   }
 
   /**
-   * Setup auth routes
-   */
-  private setupAuthRoutes(app: Express): void {
-    if (this.deps.authService) {
-      const authRoutes = createAuthRoutes({
-        authService: this.deps.authService,
-        workspaceResolver: this.deps.workspaceResolver,
-        oidcService: this.deps.oidcService,
-        jwtService: this.deps.jwtService,
-        stateStore: getInfrastructureFactory().getStateStore(),
-        organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
-      });
-      app.use('/api', authRoutes);
-    }
-  }
-
-  /**
    * Setup unified API routes (health, agents, projects, features, files, chat, github, figma)
    */
   private setupApiRoutes(app: Express): void {
@@ -166,12 +149,10 @@ export class RouteConfigurator {
       gitStateBroadcaster: this.deps.gitStateBroadcaster,
       cleanupJobState: this.cleanupJobState,
       stateTracker: this.stateTracker,
-      // Phase 3: cloud-mode only. Local mode skips authService, which
-      // gates auth route setup — but the organization repo is harmless
-      // to wire here regardless (no callers in local).
-      organizationRepository: this.config.mode === 'cloud'
-        ? getInfrastructureFactory().getOrganizationRepository()
-        : undefined,
+      // Org repo is now Noop-safe in OSS/local (NoopOrganizationRepository),
+      // so wiring it unconditionally is harmless — the cloud overlay supplies
+      // the real Redis-backed repo when present.
+      organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
     });
     app.use('/api', apiRoutes);
   }
