@@ -77,6 +77,27 @@ export function featureBatchShape(ctx: BatchPlanShapeCtx): string {
   });
 }
 
+/**
+ * Seam batch shape — `featureBatchShape` plus the slice's pre-enumerated
+ * `closureItems`. The seam parent's partition-only pass already walked the
+ * module's reference graph and recorded, per slice, exactly which references /
+ * affordances / style-selectors / reach-roles that slice owns (tagged
+ * resolved | to-fix | to-remove | to-wire). Carrying that inventory verbatim to
+ * the child is what stops the child re-deriving it from scratch — the
+ * duplicate-thin-slice symptom (`comments-css-closure` x2) seen when children
+ * only received the slice name. `closureItems` is seam-only, so it lives here
+ * rather than polluting `featureBatchShape` (shared by feature/ui/design-system/
+ * test-code, which never author it).
+ */
+export function seamBatchShape(ctx: BatchPlanShapeCtx): string {
+  const base = JSON.parse(featureBatchShape(ctx));
+  const closureItems = Array.isArray(ctx.batch.closureItems) ? ctx.batch.closureItems : [];
+  return JSON.stringify({
+    ...base,
+    ...(closureItems.length > 0 ? { closureItems } : {}),
+  });
+}
+
 export type BatchSplitPolicyEntry = {
   kind: 'requeue-parent' | 'drop-and-replace';
   subType: CodeTask['type'];
@@ -175,7 +196,7 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
   seam: {
     kind: 'drop-and-replace',
     subType: 'seam',
-    shape: featureBatchShape,
+    shape: seamBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,
     // Closure audit MUST partition: the seam plan enumerates disjoint

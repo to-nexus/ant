@@ -16,8 +16,11 @@ An *affordance* is any rendered control whose purpose is to cause an effect
 (create, open a detail, transition, switch identity/mode, edit).
 
 {{#if seamPlanning}}
-{{#unless isSliceDeclaration}}
+{{#if isPartitionOnlyPhase}}
 **Planning (this whole module — enumerate over a fixed denominator, then partition):**
+This is your FIRST pass over the module: your single job here is to enumerate and
+partition. Do NOT remediate, fix, or reason about HOW to resolve anything yet —
+that happens later, once each slice is handed back to you as its own unit.
 Your enumeration is not a recall sweep — it has an explicit denominator. The
 manifest of files prior tasks already authored is available to you; **restrict it
 to the files under THIS module's own path, and treat that file set as your
@@ -37,30 +40,39 @@ direction — is a hole in the closure. Where parts diverge on a shared
 destination, decide ONE canonical authority (or, when the destination is owned by
 another module, conform to that module's published contract — do not redefine it).
 
-Then partition the recorded fixes by **disjoint file set**. When your enumeration
-found **two or more** disjoint file sets, emit them as a top-level `closureSlices`
-array — this is a REQUIRED output of the enumeration, not an optional fan-out. Each
+Then partition the recorded fixes by **disjoint file set** and emit a top-level
+`closureSlices` array — this is the REQUIRED output of this phase, never an optional
+fan-out. **Always emit `closureSlices`, even when your enumeration found exactly one
+disjoint set** (emit it as a single-entry array naming the whole-module denominator);
+declaring the denominator is mandatory — do NOT skip it and silently flat-solve. Each
 slice is one object:
 `{ "name": <short unit id>, "rationale": <what this slice closes & why it is one
 isolated unit>, "requiredFiles": [<files this slice reads to derive addresses>],
-"parallelGroup": <lane name>, "priorityInParallelGroup": <non-negative int> }`.
+"closureItems": [<every reference / affordance / style-selector / reach-role this
+slice owns, each tagged resolved | to-fix | to-remove | to-wire, derived from your
+directional walk — this is the inventory the slice will later remediate, so it must
+be complete and specific (name the exact selector, route, handler, or control), not a
+restatement of the slice name>], "parallelGroup": <lane name>,
+"priorityInParallelGroup": <non-negative int> }`.
 List **every** disjoint file set you found — one slice per set. Thorough enumeration
 over the denominator normally yields several sets, so multiple slices is the
-expected outcome; the runtime fans each slice out into its own remediation unit.
-When your enumeration found exactly **one** disjoint file set, do NOT emit
-`closureSlices` — remediate inline as a normal flat plan (`implementation`).
+expected outcome; the runtime fans each multi-slice partition out into its own
+remediation unit, and a single-slice partition flat-executes with its declared
+`closureItems` already in hand.
 When slices must run in a fixed order (one slice's closure depends on another's),
 put them in the SAME `parallelGroup` and order them with `priorityInParallelGroup`;
 independent slices take distinct groups so they run in parallel. Derive every
 address from what the destination actually defines, never from intent or recall.
-{{/unless}}
+{{/if}}
 {{#if isSliceDeclaration}}
 **This is one slice.** Remediate ONLY the references/affordances in your declared
-slice. Do NOT re-enumerate the whole module and do NOT re-partition — your slice
-boundary is non-negotiable.
+slice — its `closureItems` (already enumerated for you when this slice was
+partitioned) are the inventory to resolve. Do NOT re-enumerate the whole module and
+do NOT re-partition — your slice boundary is non-negotiable.
 {{/if}}
 {{/if}}
 
+{{#unless isPartitionOnlyPhase}}
 **Remediation — resolve OR remove (your scope):** Observe, do not assume:
 - **References resolve.** Every reference MUST reach a real, registered
   destination. If the destination is missing and belongs to this module, create
@@ -118,6 +130,7 @@ boundary is non-negotiable.
   if no destination backs the control, remove it. A cross-app control left inert
   (the classic "switch to the other app" link that goes nowhere) is the same dead
   reference as any intra-module one.
+{{/unless}}
 
 **Constraints:**
 - This is closure remediation, NOT a build/test run. Do NOT run build/typecheck/
