@@ -9,6 +9,12 @@ OUTPUT FORMAT:
 
 ---
 
+{{#if hasSystemDesign}}
+{{> jobs/code/base/injections/system-design-guide}}
+
+---
+{{/if}}
+
 ## ExecutionTier Classification (decides task shape)
 
 **Observation target**: The breadth of work implied by the directive, the mode, and the reference documents (if any) listed in the prompt.
