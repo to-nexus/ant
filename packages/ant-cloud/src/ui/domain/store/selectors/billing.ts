@@ -10,7 +10,7 @@
  * (which `refreshBalance` reconciles post-settle).
  */
 
-import type { StoreState } from '../types';
+import type { StoreState } from '@/domain/store/types';
 import { costUsdFromByModel, creditsFromUsd } from '@/shared/utils/tokenUtils';
 
 /**

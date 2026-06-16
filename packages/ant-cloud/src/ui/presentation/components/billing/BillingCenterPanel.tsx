@@ -19,12 +19,12 @@ import { useStore } from '@/domain/store';
 import { AsyncBoundary } from '@/presentation/components/common/async';
 import { useAsyncResource } from '@/presentation/components/common/async/hooks/useAsyncResource';
 import { formatCredits, formatUsd } from '@/shared/utils/tokenUtils';
-import { selectEffectiveCredits, selectLiveJobCreditsConsumed } from '@/domain/store/selectors/billing';
+import { selectEffectiveCredits, selectLiveJobCreditsConsumed } from '@cloud/domain/store/selectors/billing';
 import type { CreditPackageInfo, CreditTransaction, PlanInfo } from '@ant/shared';
-import { PlanCard } from '@/presentation/components/billing/PlanCard';
-import { PlanCheckoutModal } from '@/presentation/components/billing/PlanCheckoutModal';
-import { CreditPurchaseModal } from '@/presentation/components/billing/CreditPurchaseModal';
-import { CreditIcon } from '@/presentation/components/billing/CreditIcon';
+import { PlanCard } from '@cloud/presentation/components/billing/PlanCard';
+import { PlanCheckoutModal } from '@cloud/presentation/components/billing/PlanCheckoutModal';
+import { CreditPurchaseModal } from '@cloud/presentation/components/billing/CreditPurchaseModal';
+import { CreditIcon } from '@cloud/presentation/components/billing/CreditIcon';
 import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 
 /** USD list price of one credit (purchase price; mirrors @ant/shared billing). */

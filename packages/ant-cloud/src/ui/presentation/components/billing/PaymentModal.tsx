@@ -11,8 +11,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { Modal, type ModalAccent } from '../common/Modal';
-import { AuroraInput } from '../ConfigEditor/aurora/AuroraInput';
+import { Modal, type ModalAccent } from '@/presentation/components/common/Modal';
+import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora/AuroraInput';
 import { formatUsd } from '@/shared/utils/tokenUtils';
 import { MOCK_SUCCESS_CARD, MOCK_DECLINE_CARD, type PaymentMethodInput, type PurchaseOutcome } from '@ant/shared';
 

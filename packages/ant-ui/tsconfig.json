@@ -24,7 +24,8 @@
       "@/application/*": ["src/application/*"],
       "@/domain/*": ["src/domain/*"],
       "@/infrastructure/*": ["src/infrastructure/*"],
-      "@/shared/*": ["src/shared/*"]
+      "@/shared/*": ["src/shared/*"],
+      "@cloud/*": ["../ant-cloud/src/ui/*"]
     }
   },
   "include": ["src"],

@@ -4,7 +4,7 @@ import { useStore } from '@/domain/store';
 import { dismissInterruptedJob, resumeJob } from '@/infrastructure/http/api';
 import type { VariantProps, ResolvedIcon } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
-import { CreditRechargeCTA } from '@/presentation/components/billing/CreditRechargeCTA';
+import { Slot } from '@/presentation/extensions/slots';
 
 export function CancelledVariant({ presented, resolved }: VariantProps) {
   const { t } = useTranslation('chat');
@@ -137,7 +137,7 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       )}
       {/* Credit exhaustion — surface the recharge CTA so the user can top up
           before resuming. Resume itself stays available (it 402s until paid). */}
-      {reason === 'insufficient_credits' && <CreditRechargeCTA className="mb-3" />}
+      {reason === 'insufficient_credits' && <Slot name="chat.rechargeCta" className="mb-3" />}
       {canResume && (
         <TwoButtonLayout
           theme="orange"

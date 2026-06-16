@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import App from './presentation/App';
 import './styles/aurora-tokens.css';
 import './index.css';
 import './i18n';
@@ -143,10 +142,25 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <RootErrorBoundary>
-    <BrowserRouter basename="/app">
-      <App />
-    </BrowserRouter>
-  </RootErrorBoundary>
-);
+// OSS / cloud seam: register cloud-only store slices + UI slots BEFORE the
+// store module evaluates. The store is created the first time `./presentation/App`
+// is imported, so this conditional import must run (and complete) first.
+// An OSS build leaves `VITE_INCLUDE_CLOUD` unset → the dynamic import (and the
+// entire `@ant/cloud/ui` graph reachable from it) is dead-code-eliminated.
+async function bootstrap() {
+  if (import.meta.env.VITE_INCLUDE_CLOUD === 'true') {
+    await import('@ant/cloud/ui');
+  }
+
+  const { default: App } = await import('./presentation/App');
+
+  ReactDOM.createRoot(rootElement!).render(
+    <RootErrorBoundary>
+      <BrowserRouter basename="/app">
+        <App />
+      </BrowserRouter>
+    </RootErrorBoundary>
+  );
+}
+
+void bootstrap();

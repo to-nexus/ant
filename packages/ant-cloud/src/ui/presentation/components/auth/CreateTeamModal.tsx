@@ -9,8 +9,8 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal } from '../common/Modal';
-import { AuroraInput } from '../ConfigEditor/aurora/AuroraInput';
+import { Modal } from '@/presentation/components/common/Modal';
+import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora/AuroraInput';
 
 interface CreateTeamModalProps {
   isOpen: boolean;

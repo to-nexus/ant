@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { Modal } from '../common/Modal';
-import { Spinner } from '../common/async';
+import { Modal } from '@/presentation/components/common/Modal';
+import { Spinner } from '@/presentation/components/common/async';
 import { CreditPurchaseModal } from './CreditPurchaseModal';
 import { formatUsd, formatCredits } from '@/shared/utils/tokenUtils';
 import type { CreditPackageInfo } from '@ant/shared';
