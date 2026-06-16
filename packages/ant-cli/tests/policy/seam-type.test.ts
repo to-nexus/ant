@@ -16,13 +16,15 @@
  *      seam gate, so seam waits for the whole materialized graph incl. ui.
  *   6. batchSplit — a seam parent splits into seam sub-slices (type carried
  *      verbatim).
- *   7. seam-connectivity-closure partial — type-gated; plan parent enumerates,
- *      plan slice does not re-partition, execute renders only remediation,
- *      non-seam renders nothing; resolve-or-remove; FPOP neutrality.
+ *   7. seam-connectivity-closure partial — type-gated; band-based two-phase
+ *      (parent classifies regions, region child runs the deep audit), execute
+ *      renders only remediation, non-seam renders nothing; FPOP neutrality.
  *   8. priority SSOT — decompose tables agree (700 seam, 750 test-code).
+ *   9. SeamBand discriminated-union — `band:'region'` is legal only on SeamTask.
  */
 
 import { describe, it, expect } from 'vitest';
+import type { SeamTask, FeatureTask, VerificationTask } from '@ant/shared';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deriveBandFromPriority } from '../../src/agents/architect/graph/code/nodes/decompose/responseParser';
@@ -145,14 +147,15 @@ describe('seam type — batchSplit carries the seam TYPE verbatim', () => {
   });
 });
 
-describe('seam type — partition is runtime-owned via closureSlices (RCA: third-housing-forge)', () => {
+describe('seam type — two-phase by band: parent classifies regions, children audit (RCA: third-housing-forge)', () => {
   const mkState = (): any => ({
     taskQueue: new TaskQueue<CodeTask>(),
     _batchSplitRequeued: false,
     context: { featurePath: undefined },
     _httpJobId: undefined,
   });
-  const mkSeam = (): CodeTask => ({
+  // Classifying PARENT seam carries NO band (band undefined).
+  const mkSeamParent = (): CodeTask => ({
     id: 'seam-parent',
     name: 'app reference closure',
     type: 'seam',
@@ -160,76 +163,76 @@ describe('seam type — partition is runtime-owned via closureSlices (RCA: third
     parallelGroup: 'seam-app',
     description: '',
   } as CodeTask);
+  // A region CHILD seam carries band 'region'.
+  const mkSeamRegion = (): CodeTask => ({
+    id: 'seam-region',
+    name: 'nav region',
+    type: 'seam',
+    band: 'region',
+    priority: windowFor('seam').min,
+    parallelGroup: 'seam-app',
+    description: '',
+  } as CodeTask);
 
-  it('flat plan with 2+ closureSlices auto-fans-out (no discretionary flat escape)', () => {
+  it('parent emits regions[] (>=2) → fans ALL regions into band:region children', () => {
     const state = mkState();
     const plan = JSON.stringify({
-      task: { id: 'parent', goal: 'close app references' },
-      parentReasoning: 'navigation + handlers diverge across feature parts.',
-      // NOTE: no `batches[]` — the LLM emitted its enumeration as closureSlices.
-      closureSlices: [
-        { name: 'nav slice', rationale: 'routes', parallelGroup: 'nav', priorityInParallelGroup: 0 },
-        { name: 'handler slice', rationale: 'handlers', parallelGroup: 'handlers', priorityInParallelGroup: 0 },
+      task: { id: 'parent', goal: 'classify app closure surface' },
+      // NOTE: no `batches[]` and no flat `implementation` — the parent CLASSIFIES.
+      regions: [
+        { name: 'nav region', rationale: 'navigation surface', parallelGroup: 'nav', priorityInParallelGroup: 0 },
+        { name: 'auth region', rationale: 'identity/auth surface', parallelGroup: 'auth', priorityInParallelGroup: 0 },
       ],
     });
-    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
-    // fan-out fired → planText cleared, sub-tasks pushed
-    expect(out).toBe('');
+    const out = processDiagnosticBatchSplit(state, plan, mkSeamParent());
+    expect(out).toBe(''); // fan-out fired → planText cleared
     const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'seam');
     expect(subs.length).toBe(2);
+    // Every region child carries the 'region' band (the deep-audit phase).
+    for (const s of subs) expect(s.band).toBe('region');
   });
 
-  it('single closureSlice does NOT fan out (legitimate single disjoint file set → flat)', () => {
+  it('parent with a SINGLE region still fans out (the region child does the deep audit, not the parent)', () => {
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'parent', goal: 'classify' },
+      regions: [{ name: 'whole-app region', rationale: 'one coherent surface', parallelGroup: 'all', priorityInParallelGroup: 0 }],
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeamParent());
+    expect(out).toBe('');
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'seam');
+    expect(subs.length).toBe(1);
+    expect(subs[0].band).toBe('region');
+  });
+
+  it('parent that emits a FLAT plan (no regions) is REJECTED — closes the flat_plan_no_batches escape', () => {
     const state = mkState();
     const plan = JSON.stringify({
       task: { id: 'parent', goal: 'close app references' },
-      closureSlices: [{ name: 'only slice', rationale: 'one set' }],
-      implementation: { modify: [{ file: 'a', changes: 'x' }], create: [], delete: [] },
+      // Parent skipped classification and emitted a flat fix plan across 5 files.
+      implementation: {
+        modify: [{ file: 'a' }, { file: 'b' }, { file: 'c' }, { file: 'd' }, { file: 'e' }],
+        create: [], delete: [],
+      },
     });
-    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
-    // no fan-out — flat plan flows through unchanged
+    expect(() => processDiagnosticBatchSplit(state, plan, mkSeamParent())).toThrow(/region|regions/i);
+    // nothing fanned out — the plan node re-issues with violation framing.
+    expect(state.taskQueue.getAll().length).toBe(0);
+  });
+
+  it('region CHILD (band region) emits a flat implementation and proceeds untouched (no re-partition)', () => {
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'region', goal: 'audit nav region' },
+      implementation: { modify: [{ file: 'nav.tsx', changes: 'wire link' }], create: [], delete: [] },
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeamRegion());
+    // a region child is a leaf auditor — flat plan flows through unchanged.
     expect(out).toBe(plan);
-    expect(state.taskQueue.getAll().filter((t: any) => t.type === 'seam').length).toBe(0);
+    expect(state.taskQueue.getAll().length).toBe(0);
   });
 
-  it('slice closureItems carry into each sub-task prePlanText (no re-derive → no duplicate thin slices)', () => {
-    // bright-causing-brick RCA: children that received only the slice NAME
-    // re-derived their inventory and emitted duplicate thin slices
-    // (`comments-css-closure` x2). seamBatchShape carries the parent's
-    // pre-enumerated `closureItems` verbatim so the child remediates exactly
-    // those, never re-enumerating.
-    const state = mkState();
-    const plan = JSON.stringify({
-      task: { id: 'parent', goal: 'close app references' },
-      closureSlices: [
-        {
-          name: 'nav slice',
-          rationale: 'routes',
-          closureItems: ['Link to /assignments (to-fix: no route owns it)'],
-          parallelGroup: 'nav',
-          priorityInParallelGroup: 0,
-        },
-        {
-          name: 'css slice',
-          rationale: 'selectors',
-          closureItems: ['.screen selector named but undefined (to-fix)'],
-          parallelGroup: 'css',
-          priorityInParallelGroup: 0,
-        },
-      ],
-    });
-    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
-    expect(out).toBe('');
-    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'seam');
-    expect(subs.length).toBe(2);
-    // each child's prePlanText carries its own (distinct) closureItems inventory
-    const prePlans = subs.map((t: any) => t.prePlanText ?? '');
-    expect(prePlans.some((p: string) => p.includes('/assignments'))).toBe(true);
-    expect(prePlans.some((p: string) => p.includes('.screen selector'))).toBe(true);
-    for (const p of prePlans) expect(p).toMatch(/closureItems/);
-  });
-
-  it('explicit batches[] wins — closureSlices does not double-source the fan-out', () => {
+  it('explicit batches[] on the parent wins — regions not double-sourced', () => {
     const state = mkState();
     const plan = JSON.stringify({
       task: { id: 'parent', goal: 'close app references' },
@@ -238,11 +241,11 @@ describe('seam type — partition is runtime-owned via closureSlices (RCA: third
         { name: 'b2', rationale: 'r2' },
         { name: 'b3', rationale: 'r3' },
       ],
-      closureSlices: [{ name: 's1', rationale: 'x' }, { name: 's2', rationale: 'y' }],
+      regions: [{ name: 'r1', rationale: 'x' }, { name: 'r2', rationale: 'y' }],
     });
-    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
+    const out = processDiagnosticBatchSplit(state, plan, mkSeamParent());
     expect(out).toBe('');
-    // 3 from batches[], NOT 2 from closureSlices
+    // 3 from batches[], NOT 2 from regions
     expect(state.taskQueue.getAll().filter((t: any) => t.type === 'seam').length).toBe(3);
   });
 });
@@ -252,96 +255,83 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
   const PARTIAL = 'jobs/code/base/injections/seam/connectivity-closure';
 
   it('inert placeholder targets (href="#"/no-op) are NOT resolved (RCA: third-housing-forge dead links)', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: undefined });
+    // remediation block (phase-agnostic); prose may wrap, so tolerate whitespace.
     expect(out).toMatch(/inert placeholder\s+target/i);
     expect(out).toMatch(/#`-only/);
     expect(out).toMatch(/no-op/i);
   });
 
   it('cross-app / cross-package outbound references resolve to the destination entry contract', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, seamBand: undefined });
     expect(out).toMatch(/Cross-app \/ cross-package outbound references resolve/);
     expect(out).toMatch(/published entry\s+contract/);
     expect(out).toMatch(/never a raw literal absolute path and never an inert placeholder/);
   });
 
-  it('FIRST-ENTRY partition-only (isPartitionOnlyPhase): enumerates + partitions, remediation WITHHELD', async () => {
-    // bright-causing-brick RCA: a fresh seam parent that saw BOTH the partition
-    // and the remediation guidance wandered into solving instead of partitioning
-    // (seam-app emitted zero slices; seam-admin emitted 2 duplicate thin slices).
-    // First entry is now partition-ONLY — remediation principles are gated out.
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false, isPartitionOnlyPhase: true });
+  it('plan PARENT (seamBand undefined): classifies the surface into regions, does NOT audit/fix inline', async () => {
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: undefined });
     expect(out).toMatch(/CROSS-FEATURE REFERENCE \+ AFFORDANCE CLOSURE/);
-    // single job this phase: partition, not remediate.
-    expect(out).toMatch(/Do NOT remediate, fix, or reason about HOW to resolve anything yet/);
-    // Denominator: the prior-completed manifest restricted to THIS module's path.
-    expect(out).toMatch(/restrict it\s+to the files under THIS module's own path/);
-    expect(out).toMatch(/Walk it file by file/);
-    expect(out).toMatch(/A file left unexamined — in either\s+direction — is a hole in the closure\./);
-    // Partition is runtime-owned: emitted as a REQUIRED `closureSlices[]`.
-    expect(out).toMatch(/closureSlices/);
-    expect(out).toMatch(/REQUIRED output of this phase/);
-    // A2 — always declare the denominator: single set still emits a single-entry
-    // array, never a silent flat-solve (the seam-app zero-slice path).
-    expect(out).toMatch(/Always emit `closureSlices`, even when your enumeration found exactly one/);
-    // A3 — each slice carries its pre-enumerated closureItems inventory (the
-    // discriminator that stops duplicate thin slices).
-    expect(out).toMatch(/closureItems/);
-    expect(out).not.toMatch(/This is one slice\./);
-    // remediation principles are WITHHELD in the partition-only phase.
-    expect(out).not.toMatch(/\*\*Remediation — resolve OR remove/);
-    expect(out).not.toMatch(/Affordances resolve or are removed\./);
+    // Parent CLASSIFIES (coarse), restricted to THIS module's path.
+    expect(out).toMatch(/Classify \(parent/);
+    expect(out).toMatch(/restrict it to the\s+files under THIS module's own path/);
+    expect(out).toMatch(/regions/);
+    expect(out).toMatch(/coarse classification, NOT the audit/);
+    // The flat_plan_no_batches escape is closed at the prompt: parent must NOT
+    // emit a flat fix plan; a multi-feature surface yields several regions.
+    expect(out).toMatch(/do NOT emit a flat `implementation` plan/);
+    expect(out).toMatch(/normally yields \*\*several\*\* regions/);
+    expect(out).toMatch(/under-classified/);
+    // Parent does NOT do the deep file-by-file audit (that is the region child).
+    expect(out).not.toMatch(/Walk it file by file in BOTH directions/);
+    // resolve-or-remove remediation always present.
+    expect(out).toMatch(/References resolve\./);
+    expect(out).toMatch(/Affordances resolve or are removed\./);
   });
 
-  it('closure is BIDIRECTIONAL — partition walks both directions; remediation has the inbound edge', async () => {
+  it('region CHILD (seamBand region): runs the deep bidirectional audit within its region; no re-classify/re-partition', async () => {
     // RCA (neat-melting-kayak): the outbound/dangling-only model missed a built
     // CommentThreadScreen that nothing mounted and a data-comment-anchor slot
     // left empty — inbound/missing-edge gaps invisible to "references it EMITS".
-    // Partition phase (first entry) does the bidirectional walk; the inbound
-    // remediation edge lives in the remediation phase (slice-child / flat-execute).
-    const partition = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false, isPartitionOnlyPhase: true });
-    // intro frames closure as bidirectional (header — always present)
-    expect(partition).toMatch(/Closure is \*\*bidirectional\*\*/);
-    // planning walks both directions, naming the inbound walk
-    expect(partition).toMatch(/Walk it file by file in BOTH directions/);
-    expect(partition).toMatch(/\*\*Inbound\*\*/);
-    expect(partition).toMatch(/reach-role/);
-
-    // remediation phase (execute): the backward edge mirrors "References resolve".
-    const remediation = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
-    expect(remediation).toMatch(/Reach-role parts are reached \(the closure is bidirectional\)\./);
-    expect(remediation).toMatch(/nothing mounts/);
-    expect(remediation).toMatch(/mount\/extension slot left empty/);
-    // still grounded in materialized code (observe, not intent-recall)
-    expect(remediation).toMatch(/Both ends already\s+exist in the materialized code/);
-  });
-
-  it('plan slice (isSliceDeclaration): does NOT re-enumerate or re-partition', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: true });
-    expect(out).toMatch(/This is one slice\./);
-    expect(out).toMatch(/non-negotiable/);
-    expect(out).not.toMatch(/emit ONE batch per file set/);
-    expect(out).not.toMatch(/Walk it file by file/);
+    // The deep, bidirectional audit lives in the region child (RC5 two-phase).
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: 'region' });
+    expect(out).toMatch(/Audit \(region sub-task/);
+    // intro frames closure as bidirectional (always)
+    expect(out).toMatch(/Closure is \*\*bidirectional\*\*/);
+    // the child walks both directions, naming the inbound walk (prose wraps → \s+)
+    expect(out).toMatch(/Walk it file by file in BOTH\s+directions/);
+    expect(out).toMatch(/\*\*Inbound\*\*/);
+    expect(out).toMatch(/reach-role/);
+    expect(out).toMatch(/A file left unexamined[\s\S]*?is a hole\s+in the closure\./);
+    // boundary is non-negotiable — no re-classify, no re-partition
+    expect(out).toMatch(/Do NOT re-classify the whole module and do NOT\s+re-partition/);
+    expect(out).toMatch(/region boundary is non-negotiable/);
+    // backward remediation edge present (remediation block, always)
+    expect(out).toMatch(/Reach-role parts are reached \(the closure is bidirectional\)\./);
+    expect(out).toMatch(/nothing mounts/);
+    expect(out).toMatch(/Both ends already\s+exist in the materialized code/);
+    // the child does NOT render the parent's classify block
+    expect(out).not.toMatch(/Classify \(parent/);
   });
 
   it('execute phase (seamPlanning false): only remediation, no planning blocks', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, seamBand: 'region' });
     expect(out).toMatch(/Affordances resolve or are removed\./);
-    expect(out).not.toMatch(/emit ONE batch per file set/);
-    expect(out).not.toMatch(/This is one slice\./);
+    expect(out).not.toMatch(/Classify \(parent/);
+    expect(out).not.toMatch(/Audit \(region sub-task/);
   });
 
   it('reference taxonomy includes style-selector + a Style-selectors-resolve remediation edge', async () => {
     // classboard `.board-grid`/`.cols`/`.bc-*` undefined-class defect: a named
     // selector with no backing definition is a seam to close, not invisible to it.
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: undefined });
     expect(out).toMatch(/a style-selector a\s+rendered element names/);
     expect(out).toMatch(/Style-selectors resolve\./);
     expect(out).toMatch(/silently renders the element unstyled/);
   });
 
   it('gated-entry closure binds "lands" to closed-system usability (admin about:blank#mock defect)', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: undefined });
     expect(out).toMatch(/Gated entry lands\./);
     expect(out).toMatch(/resolves within the\s+closed system/);
     expect(out).toMatch(/completes back into\s+an authenticated session/);
@@ -350,14 +340,29 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
 
   it('non-seam task type renders nothing', async () => {
     for (const taskType of ['feature', 'ui', 'integration', undefined]) {
-      const out = await adapter.render(PARTIAL, { taskType, seamPlanning: true, isSliceDeclaration: false });
+      const out = await adapter.render(PARTIAL, { taskType, seamPlanning: true, seamBand: undefined });
       expect(out.trim()).toBe('');
     }
   });
 
   it('FPOP neutrality — no platform/library/framework terms', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, seamBand: undefined });
     expect(out).not.toMatch(/React|Next\.js|Tailwind|router\.push|Express|useNavigate/);
+  });
+});
+
+describe('seam type — SeamBand discriminated-union (band:region only on SeamTask)', () => {
+  it('a SeamTask may carry band:region; other variants may not (compile guard)', () => {
+    const region: SeamTask = {
+      id: 'r', name: 'nav region', description: '', type: 'seam', priority: 750, band: 'region',
+    };
+    expect(region.band).toBe('region');
+
+    // @ts-expect-error — feature band is FeatureBand; 'region' is not assignable.
+    const badFeature: FeatureTask = { id: 'f', name: '', description: '', type: 'feature', priority: 200, band: 'region' };
+    // @ts-expect-error — verification carries no band field at all.
+    const badVerify: VerificationTask = { id: 'v', name: '', description: '', type: 'verification', priority: 1000, band: 'region' };
+    void badFeature; void badVerify;
   });
 });
 

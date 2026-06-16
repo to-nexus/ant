@@ -51,7 +51,7 @@
     "response-language": ["userLanguage"],
     "entry-point-ownership-rule": ["taskBand"],
     "entry-point-ownership-checklist": ["taskBand"],
-    "seam/connectivity-closure": ["taskBand", "seamPlanning", "isSliceDeclaration", "isPartitionOnlyPhase"],
+    "seam/connectivity-closure": ["taskBand", "seamPlanning", "isSliceDeclaration"],
     "execution-context-discipline": [],
     "symbol-grounding": [],
     "prior-completed-files": ["priorCompletedFiles"]

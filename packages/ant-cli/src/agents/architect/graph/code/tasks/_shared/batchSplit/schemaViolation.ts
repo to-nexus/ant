@@ -26,14 +26,14 @@
  * Framing` is the structural twin).
  */
 
-export type BatchSplitEntryKind = 'batch';
+export type BatchSplitEntryKind = 'batch' | 'region';
 
 export type BatchSplitViolationReason = 'missing' | 'invalid' | 'collision';
 
 export interface BatchSplitSchemaViolationDetail {
   entryKind: BatchSplitEntryKind;
   ordinal: number;
-  field: 'name' | 'rationale' | 'parallelGroup' | 'priorityInParallelGroup';
+  field: 'name' | 'rationale' | 'parallelGroup' | 'priorityInParallelGroup' | 'regions';
   reason: BatchSplitViolationReason;
   observed: unknown;
   /** Collision only — the other batch index whose value matches this one inside the same lane. */
@@ -62,6 +62,8 @@ const FIELD_GUIDANCE: Record<BatchSplitSchemaViolationDetail['field'], string> =
     "`parallelGroup` (REQUIRED — a short, meaningful lane name, e.g. \"ui-shared-comp\"). Siblings sharing the same `parallelGroup` execute serially; siblings with different `parallelGroup` values run concurrently.",
   priorityInParallelGroup:
     "`priorityInParallelGroup` (REQUIRED — non-negative integer; values within a single lane MUST be distinct). The runtime computes the sub-task's priority as `parentPriority + priorityInParallelGroup`.",
+  regions:
+    "a top-level `regions` array (REQUIRED for the classifying seam parent — do NOT emit a flat `implementation` plan as the parent). Classify the module surface into disjoint audit regions by app × feature-domain × concern-lane; each region is `{ name, rationale, requiredFiles?, parallelGroup?, priorityInParallelGroup? }` and fans out into one child that performs the deep file-by-file audit. A multi-feature surface normally yields several regions.",
 };
 
 /**

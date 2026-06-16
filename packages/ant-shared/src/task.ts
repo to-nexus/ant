@@ -247,10 +247,28 @@ export type FeatureBand = 'foundation' | 'platform' | 'integration';
 export type SetupBand = 'root';
 
 /**
- * Union of all scheduling bands. `deriveBandFromPriority` (the single
- * priority→band site) returns this; each task variant narrows to the bands
- * legal for its `type` ({@link FeatureBand} for feature, {@link SetupBand}
- * for setup).
+ * Seam-scheduling band. Carried by {@link SeamTask} only.
+ *
+ *   - `'region'` — a region sub-task: the deep, bidirectional connectivity /
+ *                  disjoint audit + remediation scoped to ONE classified region
+ *                  of the seam surface, spawned by `batchSplit` from the
+ *                  classifying parent. The thorough audit happens HERE (per
+ *                  region), not in the parent.
+ *
+ * `undefined` = the classifying parent seam — it reads the materialized surface
+ * and carves it into regions (by app × feature-domain × concern-lane); it does
+ * NOT audit or fix inline. Mirrors setup's `'root'`/undefined split (one named
+ * value + the unbanded base case). NOT priority-derived: set by `batchSplit`
+ * when fanning regions out, never by `deriveBandFromPriority`.
+ */
+export type SeamBand = 'region';
+
+/**
+ * Union of the priority-derived scheduling bands. `deriveBandFromPriority` (the
+ * single priority→band site) returns this ({@link FeatureBand} for feature,
+ * {@link SetupBand} for setup). {@link SeamBand} is intentionally NOT a member:
+ * it is stamped by `batchSplit` (region fan-out), never derived from priority,
+ * so keeping it out preserves the "every member is priority-derivable" contract.
  */
 export type TaskBand = FeatureBand | SetupBand;
 
@@ -324,19 +342,19 @@ export type SetupTask         = BaseTaskCommon & { type: 'setup'; band?: SetupBa
 export type UiTask            = BaseTaskCommon & { type: 'ui' };
 export type DesignSystemTask  = BaseTaskCommon & { type: 'design-system' };
 export type VerificationTask  = BaseTaskCommon & { type: 'verification' };
-export type SeamTask          = BaseTaskCommon & { type: 'seam' };
+export type SeamTask          = BaseTaskCommon & { type: 'seam'; band?: SeamBand };
 export type TestCodeTask      = BaseTaskCommon & { type: 'test-code' };
 export type DocTask           = BaseTaskCommon & { type: 'doc' };
 export type ExplainTask       = BaseTaskCommon & { type: 'explain' };
 
 /**
  * Discriminated union over `type`. Compile-time gate keeps `band` off every
- * variant except feature (FeatureBand) and setup (SetupBand=`'root'`):
- * narrowing `task.type === 'verification'` proves no `band` field, and a
- * feature task can never carry `'root'` nor a setup task `'foundation'`. The
- * decompose priority→band mapping site (`deriveBandFromPriority`) is the one
- * location that writes `band` (feature priorities → feature bands;
- * `SETUP_PROJECT` → `'root'`).
+ * variant except feature (FeatureBand), setup (SetupBand=`'root'`), and seam
+ * (SeamBand=`'region'`): narrowing `task.type === 'verification'` proves no
+ * `band` field, a feature task can never carry `'root'` nor a setup task
+ * `'foundation'`, and only a seam task may carry `'region'`. Two writers:
+ * the decompose priority→band site (`deriveBandFromPriority`) writes feature /
+ * setup bands; `batchSplit` stamps `'region'` on seam region children.
  */
 export type BaseTask =
   | FeatureTask
