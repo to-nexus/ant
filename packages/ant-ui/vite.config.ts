@@ -164,10 +164,14 @@ export default defineConfig({
       '@/domain': '/src/domain',
       '@/infrastructure': '/src/infrastructure',
       '@/shared': '/src/shared',
-      // OSS / cloud seam: cloud-only FE source lives in the sibling @ant/cloud
-      // package (resolved by absolute path — root-relative '/...' can't reach it).
-      // Only referenced when VITE_INCLUDE_CLOUD pulls @ant/cloud/ui into the graph.
-      '@cloud': path.resolve(__dirname, '../ant-cloud/src/ui'),
+      // OSS / cloud seam: cloud-only FE source lives in the @ant/cloud overlay
+      // package, whose location differs by repo topology — sibling `packages/ant-cloud`
+      // in the in-place monorepo, or `<ant-cloud>/packages/cloud/src/ui` once `ant`
+      // is embedded as a submodule. `ANT_CLOUD_UI_DIR` (set by the cloud UI build)
+      // overrides the path; the default keeps the in-place monorepo working. Only
+      // referenced when VITE_INCLUDE_CLOUD pulls @ant/cloud/ui into the graph — the
+      // OSS build leaves it unset and Vite DCEs the whole subtree.
+      '@cloud': process.env.ANT_CLOUD_UI_DIR || path.resolve(__dirname, '../ant-cloud/src/ui'),
     },
   },
   optimizeDeps: {
