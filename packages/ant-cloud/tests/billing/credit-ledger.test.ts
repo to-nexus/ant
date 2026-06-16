@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { RedisCreditLedger } from '../../src/infrastructure/billing/RedisCreditLedger';
 import { TIER_DEFINITIONS } from '../../src/infrastructure/billing/catalog';
 import { creditsToMicroCredits } from '@ant/shared';
-import { REDIS_KEYS } from '../../src/core/constants/redis';
+import { REDIS_KEYS } from '../../../ant-cli/src/core/constants/redis';
 
 /** In-memory Redis supporting the subset RedisCreditLedger uses. */
 class FakeRedis {

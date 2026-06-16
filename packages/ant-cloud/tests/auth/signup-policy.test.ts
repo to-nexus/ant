@@ -30,7 +30,7 @@ describe('Org-model signup policy', () => {
       'utf-8',
     );
     const authRoutes = fs.readFileSync(
-      path.join(repoRoot, 'src/periphery/adapters/http/routes/auth.routes.ts'),
+      path.join(repoRoot, 'src/routes/auth.routes.ts'),
       'utf-8',
     );
     const liveGuard = /['"]to\.nexus['"]/;

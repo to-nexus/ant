@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MockPaymentProvider } from '../../src/infrastructure/billing/MockPaymentProvider';
-import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
+import type { CreditLedgerPort } from '../../../ant-cli/src/core/ports/creditLedger';
 import {
   MOCK_SUCCESS_CARD,
   MOCK_DECLINE_CARD,
