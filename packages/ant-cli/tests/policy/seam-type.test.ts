@@ -145,9 +145,88 @@ describe('seam type — batchSplit carries the seam TYPE verbatim', () => {
   });
 });
 
+describe('seam type — partition is runtime-owned via closureSlices (RCA: third-housing-forge)', () => {
+  const mkState = (): any => ({
+    taskQueue: new TaskQueue<CodeTask>(),
+    _batchSplitRequeued: false,
+    context: { featurePath: undefined },
+    _httpJobId: undefined,
+  });
+  const mkSeam = (): CodeTask => ({
+    id: 'seam-parent',
+    name: 'app reference closure',
+    type: 'seam',
+    priority: windowFor('seam').min,
+    parallelGroup: 'seam-app',
+    description: '',
+  } as CodeTask);
+
+  it('flat plan with 2+ closureSlices auto-fans-out (no discretionary flat escape)', () => {
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'parent', goal: 'close app references' },
+      parentReasoning: 'navigation + handlers diverge across feature parts.',
+      // NOTE: no `batches[]` — the LLM emitted its enumeration as closureSlices.
+      closureSlices: [
+        { name: 'nav slice', rationale: 'routes', parallelGroup: 'nav', priorityInParallelGroup: 0 },
+        { name: 'handler slice', rationale: 'handlers', parallelGroup: 'handlers', priorityInParallelGroup: 0 },
+      ],
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
+    // fan-out fired → planText cleared, sub-tasks pushed
+    expect(out).toBe('');
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'seam');
+    expect(subs.length).toBe(2);
+  });
+
+  it('single closureSlice does NOT fan out (legitimate single disjoint file set → flat)', () => {
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'parent', goal: 'close app references' },
+      closureSlices: [{ name: 'only slice', rationale: 'one set' }],
+      implementation: { modify: [{ file: 'a', changes: 'x' }], create: [], delete: [] },
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
+    // no fan-out — flat plan flows through unchanged
+    expect(out).toBe(plan);
+    expect(state.taskQueue.getAll().filter((t: any) => t.type === 'seam').length).toBe(0);
+  });
+
+  it('explicit batches[] wins — closureSlices does not double-source the fan-out', () => {
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'parent', goal: 'close app references' },
+      batches: [
+        { name: 'b1', rationale: 'r1' },
+        { name: 'b2', rationale: 'r2' },
+        { name: 'b3', rationale: 'r3' },
+      ],
+      closureSlices: [{ name: 's1', rationale: 'x' }, { name: 's2', rationale: 'y' }],
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
+    expect(out).toBe('');
+    // 3 from batches[], NOT 2 from closureSlices
+    expect(state.taskQueue.getAll().filter((t: any) => t.type === 'seam').length).toBe(3);
+  });
+});
+
 describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
   const adapter = new FilePromptAdapter();
-  const PARTIAL = 'jobs/code/base/injections/seam-connectivity-closure';
+  const PARTIAL = 'jobs/code/base/injections/seam/connectivity-closure';
+
+  it('inert placeholder targets (href="#"/no-op) are NOT resolved (RCA: third-housing-forge dead links)', async () => {
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+    expect(out).toMatch(/inert placeholder target/i);
+    expect(out).toMatch(/#`-only/);
+    expect(out).toMatch(/no-op/i);
+  });
+
+  it('cross-app / cross-package outbound references resolve to the destination entry contract', async () => {
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
+    expect(out).toMatch(/Cross-app \/ cross-package outbound references resolve/);
+    expect(out).toMatch(/published entry\s+contract/);
+    expect(out).toMatch(/never a raw literal absolute path and never an inert placeholder/);
+  });
 
   it('plan parent (seamPlanning, not a slice): enumerates over a module-scoped denominator & partitions', async () => {
     const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
@@ -158,10 +237,15 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     expect(out).toMatch(/restrict it\s+to the files under THIS module's own path/);
     expect(out).toMatch(/Walk it file by file/);
     expect(out).toMatch(/A file left unexamined — in either\s+direction — is a hole in the closure\./);
-    // Deterministic partition floor: inline only for a single disjoint file set;
-    // otherwise one batch per file set (no flat collapse).
-    expect(out).toMatch(/remediate inline ONLY when every fix touches a single disjoint file set/);
-    expect(out).toMatch(/emit ONE batch per file set/);
+    // Partition is runtime-owned, not LLM-discretion: the enumeration is emitted
+    // as a REQUIRED `closureSlices[]`; 2+ slices auto-fan-out (RCA: third-housing-
+    // forge — flat_plan_no_batches let a whole-app audit run as one shallow pass).
+    expect(out).toMatch(/closureSlices/);
+    expect(out).toMatch(/REQUIRED output of the enumeration/);
+    expect(out).toMatch(/two or more.* disjoint file sets/);
+    // single set → inline flat plan (no closureSlices), so the flat path always
+    // carries an implementation — never a closureSlices-with-no-implementation gap.
+    expect(out).toMatch(/exactly \*\*one\*\* disjoint file set.* do NOT emit\s+`closureSlices`/);
     expect(out).not.toMatch(/This is one slice\./);
     // resolve-or-remove remediation always present.
     expect(out).toMatch(/References resolve\./);

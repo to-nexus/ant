@@ -160,24 +160,26 @@ Your modularization:
   templates only see the resulting booleans.
 --}}
 {{#if serviceVirtualizationContractActive}}
-{{> jobs/code/base/injections/service-virtualization-contract}}
+{{> jobs/code/base/injections/service-virtualization/contract}}
 {{/if}}
 
 {{#if serviceVirtualizationDataActive}}
-{{> jobs/code/base/injections/service-virtualization-data}}
+{{> jobs/code/base/injections/service-virtualization/data}}
 {{/if}}
 
 {{#if serviceVirtualizationImageryActive}}
-{{> jobs/code/base/injections/service-virtualization-imagery}}
+{{> jobs/code/base/injections/service-virtualization/imagery}}
 {{/if}}
 
 {{#if serviceVirtualizationSessionActive}}
-{{> jobs/code/base/injections/service-virtualization-session}}
+{{> jobs/code/base/injections/service-virtualization/session}}
 {{/if}}
 
 {{#if authSessionLifecycleActive}}
 {{> jobs/code/base/injections/session-lifecycle-completeness}}
 {{/if}}
+
+{{> jobs/code/base/injections/feature-ui-observation}}
 
 {{#if (eq currentTask.type "test-code")}}
 ════════════════════════════════════════════════════════════════════════════════

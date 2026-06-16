@@ -18,6 +18,7 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import type { CodeTask } from "../../../../types/task";
+import { featureUiObservationVars } from "../../tasks/_shared/helpers/featureUiObservation";
 import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
@@ -455,6 +456,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // presence. See `AGENTS.md` "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
+      // Axis C — renderable feature observes the UI source for AFFORDANCES (job
+      // pool, not the narrowed selection; separate from styling `uiSource`).
+      ...featureUiObservationVars(state.artifacts || [], state.currentTask as CodeTask),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
       // Stack flags — mirror plan/planGeneration.ts (single SSOT via
       // AutoInjectionResolver.computeStackFlags). Required by Handlebars

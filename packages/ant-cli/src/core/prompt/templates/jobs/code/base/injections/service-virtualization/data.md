@@ -8,9 +8,11 @@ or filler placeholder strings. A demo built on virtualized data is the
 user's first proof that the application is correct end-to-end before
 real backends arrive.**
 
-This partial governs the FAKE body fields a virtualized adapter emits:
-text, number, date, id, and relation fields. Image fields defer to the
-sibling `service-virtualization-imagery` partial.
+This partial governs the FAKE body fields a virtualized adapter emits whose
+purpose is to be **displayed or computed on**: text, number, date, id, and
+relation fields. Two field kinds are OUT of scope and defer to a sibling: image
+fields defer to `service-virtualization-imagery`; **navigable-target fields**
+(below) defer to `service-virtualization-contract`.
 
 ### Observation Targets
 
@@ -61,3 +63,21 @@ content as user-facing material — same diligence as production messaging.
 
 For image fields, defer to `service-virtualization-imagery`. This partial
 owns text / number / date / id / relation fields only.
+
+### Navigable-Target Routing
+
+A field whose value the consuming surface **navigates to, redirects to, or
+otherwise dereferences as a URL / route** (an authorization or sign-in URL, a
+redirect / callback URI, a `next` / `return` location, an action endpoint a
+control posts to) is a **navigable target**, NOT a display field — even when its
+type is a plain string. It is OUT of this partial's scope and obeys
+`service-virtualization-contract`'s navigable-target rule: the value MUST resolve
+INSIDE the closed system (a route the running app itself serves), never mirror an
+external host.
+
+⚠️ **Blind spot — domain plausibility is the trap here.** Applying this partial's
+"domain-plausible" mandate to a navigable-target field produces a realistic-LOOKING
+external URL on the project's own domain — which is exactly the wrong value,
+because the running app does not serve that host and the navigation dead-ends. A
+navigable target's correctness is *reachability*, not *plausibility*. Route such a
+field through the contract rule; do NOT seed it as fake "data".

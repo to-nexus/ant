@@ -613,6 +613,11 @@ describe('Template Smoke Tests', () => {
       // AGENTS.md "Post-RAC Template Condition SSOT").
       'jobs/code/base/injections/ui-source-dispatch',
       'jobs/code/nodes/plan/injections/ui-source-inventory',
+      // feature-ui-observation wraps its entire body in
+      // {{#if featureObservesUiSource}} — fires only for a renderable feature
+      // task whose job pool carries a UI source (Axis C). Renders empty
+      // otherwise, like ui-source-dispatch above.
+      'jobs/code/base/injections/feature-ui-observation',
       // workspace-dep-snapshot wraps its entire body in
       // {{#if hasWorkspaceDepSnapshot}}; with no pins observed at smoke
       // time the partial renders empty. The activation gate is data-
@@ -663,7 +668,7 @@ describe('Template Smoke Tests', () => {
       // analysis-block. It activates only for feature tasks in the seam band
       // (priority 650–669); every other band leaves the block empty by design.
       // See `.claude/plans/clear-hinting-fruit-shiny-catmull.md`.
-      'jobs/code/base/injections/seam-connectivity-closure',
+      'jobs/code/base/injections/seam/connectivity-closure',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

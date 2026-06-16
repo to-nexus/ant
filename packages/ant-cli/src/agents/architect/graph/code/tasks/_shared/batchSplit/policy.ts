@@ -83,6 +83,21 @@ export type BatchSplitPolicyEntry = {
   shape: (ctx: BatchPlanShapeCtx) => string;
   populateRemediationMode: boolean;
   appendFinalVerification: boolean;
+  /**
+   * When set, the plan's fan-out is NOT the LLM's discretion: the named
+   * top-level array (each entry shaped like a `batches[]` entry —
+   * `{ name, rationale, requiredFiles?, parallelGroup?, priorityInParallelGroup? }`)
+   * is the enumeration of disjoint work slices. When it holds 2+ entries the
+   * runtime auto-partitions (each slice → one sub-task) instead of letting a
+   * flat plan through. A single slice (or none) proceeds as a flat plan.
+   *
+   * This removes the discretionary flat-plan escape that let a whole-module
+   * seam audit collapse into one shallow pass (RCA: third-housing-forge —
+   * both seam tasks emitted `flat_plan_no_batches` and never partitioned).
+   * The decision moves from "should I fan out?" (LLM-optional) to "enumerate
+   * your disjoint slices" (descriptive) + runtime-owned partition.
+   */
+  partitionFromField?: string;
 };
 
 export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPolicyEntry>> = {
@@ -163,5 +178,9 @@ export const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPoli
     shape: featureBatchShape,
     populateRemediationMode: false,
     appendFinalVerification: true,
+    // Closure audit MUST partition: the seam plan enumerates disjoint
+    // file-set slices in `closureSlices[]`; 2+ slices auto-fan-out so a
+    // whole-module audit cannot run as a single shallow flat pass.
+    partitionFromField: 'closureSlices',
   },
 };

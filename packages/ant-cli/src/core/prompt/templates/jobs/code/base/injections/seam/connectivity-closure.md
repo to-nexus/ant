@@ -24,7 +24,11 @@ to the files under THIS module's own path, and treat that file set as your
 denominator.** Walk it file by file in BOTH directions. **Outbound** — for EACH file, account
 for every reference it emits (navigation/call/event/dependency/import/style-selector)
 and every interactive control it renders, and record each as resolved, to-fix, or
-to-remove. **Inbound** — for each part the module authored that has a reach-role
+to-remove. A reference is resolved ONLY when it names a real destination; an
+**inert placeholder target** — a `#`-only or empty `href`, an empty `to` / action,
+a handler that no-ops or defers via comment — is NOT resolved (it typechecks and
+builds green yet goes nowhere): record it to-fix or to-remove, exactly like a
+reference that reaches nothing. **Inbound** — for each part the module authored that has a reach-role
 (a routable surface, an attachable/embeddable component, a named mount/extension
 slot), account for whether anything actually reaches it: routes to it, mounts it,
 or fills it. A reach-role part nothing reaches is recorded to-wire or to-remove,
@@ -33,16 +37,22 @@ direction — is a hole in the closure. Where parts diverge on a shared
 destination, decide ONE canonical authority (or, when the destination is owned by
 another module, conform to that module's published contract — do not redefine it).
 
-Then partition the recorded fixes into **slices that write disjoint file sets**.
-You may remediate inline ONLY when every fix touches a single disjoint file set;
-when the fixes span more than one disjoint file set, emit ONE batch per file set —
-do not collapse them into a flat plan. (Thorough enumeration over the denominator
-will normally span several file sets, so partition is the expected outcome, not the
-exception.) When slices must run in a fixed order (one slice's closure depends on
-another's), put them in the SAME `parallelGroup` and order them with
-`priorityInParallelGroup`; independent slices take distinct groups so they run in
-parallel. Derive every address from what the destination actually defines, never
-from intent or recall.
+Then partition the recorded fixes by **disjoint file set**. When your enumeration
+found **two or more** disjoint file sets, emit them as a top-level `closureSlices`
+array — this is a REQUIRED output of the enumeration, not an optional fan-out. Each
+slice is one object:
+`{ "name": <short unit id>, "rationale": <what this slice closes & why it is one
+isolated unit>, "requiredFiles": [<files this slice reads to derive addresses>],
+"parallelGroup": <lane name>, "priorityInParallelGroup": <non-negative int> }`.
+List **every** disjoint file set you found — one slice per set. Thorough enumeration
+over the denominator normally yields several sets, so multiple slices is the
+expected outcome; the runtime fans each slice out into its own remediation unit.
+When your enumeration found exactly **one** disjoint file set, do NOT emit
+`closureSlices` — remediate inline as a normal flat plan (`implementation`).
+When slices must run in a fixed order (one slice's closure depends on another's),
+put them in the SAME `parallelGroup` and order them with `priorityInParallelGroup`;
+independent slices take distinct groups so they run in parallel. Derive every
+address from what the destination actually defines, never from intent or recall.
 {{/unless}}
 {{#if isSliceDeclaration}}
 **This is one slice.** Remediate ONLY the references/affordances in your declared
@@ -57,7 +67,11 @@ boundary is non-negotiable.
   it; if it belongs to another module, conform your reference to that module's
   published contract; if the reference is wrong, correct it. A reference resolving
   to nothing builds green and fails at runtime (a dead link, a 404, an unhandled
-  call, an event no one consumes, an unprovided dependency).
+  call, an event no one consumes, an unprovided dependency). An **inert placeholder
+  target counts as resolving to nothing** — a `#`-only / empty `href`, an empty
+  `to` / action, a no-op or deferral-comment handler is a dead reference even
+  though it typechecks: wire it to its real destination (creating that destination
+  when a requirement backs it) or remove it; never leave the placeholder.
 - **Affordances resolve or are removed.** Every rendered control meant to cause an
   effect MUST reach the surface/handler that performs it — wire it or implement
   it; never a no-op or a deferral comment. A control whose destination is defined
@@ -93,6 +107,17 @@ boundary is non-negotiable.
 - **One authority per shared contract.** References to the same destination MUST
   derive from ONE shared definition (the producer owns it); this module conforms
   rather than carrying a divergent copy. Consolidate duplicated derivations.
+- **Cross-app / cross-package outbound references resolve, never dead-end.** A
+  reference this module emits to a SIBLING app or package (a link to another app's
+  surface, a hand-off to another app's entry) lives in THIS module's files and so
+  is in your closure scope — it is NOT out of scope merely because its destination
+  is another app. Resolve it by conforming to the destination's **published entry
+  contract** (its base-path-aware entry / route, a shared decision owned by one
+  producer), never a raw literal absolute path and never an inert placeholder. If
+  the destination app exists in the workspace, the reference MUST reach its entry;
+  if no destination backs the control, remove it. A cross-app control left inert
+  (the classic "switch to the other app" link that goes nowhere) is the same dead
+  reference as any intra-module one.
 
 **Constraints:**
 - This is closure remediation, NOT a build/test run. Do NOT run build/typecheck/
