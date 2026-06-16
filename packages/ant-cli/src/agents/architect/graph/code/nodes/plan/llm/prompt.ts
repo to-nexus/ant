@@ -220,6 +220,17 @@ export async function buildPlanPrompt(
   );
   const batchSplitCount = (task as CodeTask).batchSplitCount ?? 0;
 
+  // Seam first-entry gate. A fresh seam parent's FIRST plan pass is
+  // partition-only: enumerate the module + emit `closureSlices`, with the
+  // remediation principles WITHHELD until a slice child or flat-execute. Seeing
+  // both partition and remediation guidance at once is what made the parent
+  // wander into solving instead of partitioning (bright-causing-brick RCA).
+  // `batchSplitCount === 0` distinguishes the fresh parent from a re-queued one.
+  // Only meaningful for seam — `connectivity-closure.md` (the sole reader) is
+  // `taskType === 'seam'` gated.
+  const isPartitionOnlyPhase =
+    task.type === 'seam' && !isSliceDeclaration && batchSplitCount === 0;
+
   // FeatureTask sub-classification — surfaces the parent's `band` to the
   // self plan LLM so band-conditional rules in `plan/rules.md` (entry-point
   // ownership, integration-vs-foundation responsibilities) can dispatch
@@ -245,6 +256,7 @@ export async function buildPlanPrompt(
     // (isSliceDeclaration=true) is told NOT to re-partition. At execute time the
     // partial renders only its remediation principles (seamPlanning omitted).
     seamPlanning: true,
+    isPartitionOnlyPhase,
     isDiagnosticCarry,
     hasCrossBatchContracts,
     batchSplitCount,

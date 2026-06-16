@@ -23,12 +23,15 @@ import {
   GAME_CONTENT_TIER_TEMPLATE_PATHS,
   TIER_KEYS,
   isTierActive,
+  shouldEmitVisualTierSpatialFloor,
   getEffectiveDomain,
   getConfigSlots,
+  getRACDocuments,
   deriveCodebaseRole,
   type SupportedLanguage,
   type SupportedStack,
 } from '@ant/shared';
+import { ArtifactPoolView } from './ArtifactPipeline';
 import type { PromptBuildConfig, PromptBuildResult } from './PromptBuildConfig';
 import { AutoInjectionResolver } from './AutoInjectionResolver';
 import { sanitizeInjectionVars } from './InputSanitizer';
@@ -237,7 +240,13 @@ export class PromptBuilder implements PromptPort {
       const taskTechTiers = config.techContext?.techTiers;
       const intent = rac?.intent;
       const slot = intent ? getConfigSlots(intent)?.basis : undefined;
-      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot);
+      // hasUiDoc: a UI design doc (ant/figma/handoff) is the visual authority in
+      // the RAC pool. Drives the layer-selective spatial floor (the source owns
+      // the look; the floor backstops omitted spacing). Read from the RAC pool
+      // (job-level), matching how `hasUi`/`uiSource` are computed in buildMessages.
+      const racDocs = rac ? getRACDocuments(rac) : [];
+      const hasUiDoc = racDocs.length > 0 && new ArtifactPoolView(racDocs).uiSource() !== null;
+      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot, hasUiDoc);
     } else if (config.pipeline?.includeBasis && !config.basis) {
       console.warn(`⚠️  [PromptBuilder] includeBasis=true but config.basis is ${config.basis === undefined ? 'undefined' : 'falsy'} — skipping basis section`);
     }
@@ -413,6 +422,7 @@ export class PromptBuilder implements PromptPort {
     domain: Domain | string | undefined,
     outPaths: Set<string> | undefined,
     slot: BasisSlotConfig | undefined,
+    hasUiDoc: boolean = false,
   ): Promise<string> {
     if (!basis) {
       console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
@@ -466,6 +476,27 @@ export class PromptBuilder implements PromptPort {
           await this.renderGameContentTier(sections, basis, job, outPaths);
           break;
       }
+    }
+
+    // Layer-selective survivor of the hasUiDoc visualTier suppression: when a
+    // UI doc is the visual authority the tier's design-LANGUAGE layers are
+    // (correctly) withheld above, but the spatial-VALIDITY floor must still
+    // reach the task so an omitted spacing value never yields a flush layout.
+    // The floor is a property (containers padded / no flush), not a competing
+    // scale, so it cannot conflict with the source's own values. Emitted only
+    // when `shouldEmitVisualTierSpatialFloor` (UI-doc-suppressed, non-backend,
+    // non-existing-codebase). See `basis/visualTier/spatialSystem/_floor.md`.
+    if (
+      shouldEmitVisualTierSpatialFloor(slot, effectiveDomain, {
+        techTier: basis.techTier,
+        hasUiDoc,
+      })
+    ) {
+      await this.tryPushBasisTemplate(
+        sections,
+        'basis/visualTier/spatialSystem/_floor',
+        outPaths,
+      );
     }
 
     if (sections.length === 0) {

@@ -192,6 +192,43 @@ describe('seam type — partition is runtime-owned via closureSlices (RCA: third
     expect(state.taskQueue.getAll().filter((t: any) => t.type === 'seam').length).toBe(0);
   });
 
+  it('slice closureItems carry into each sub-task prePlanText (no re-derive → no duplicate thin slices)', () => {
+    // bright-causing-brick RCA: children that received only the slice NAME
+    // re-derived their inventory and emitted duplicate thin slices
+    // (`comments-css-closure` x2). seamBatchShape carries the parent's
+    // pre-enumerated `closureItems` verbatim so the child remediates exactly
+    // those, never re-enumerating.
+    const state = mkState();
+    const plan = JSON.stringify({
+      task: { id: 'parent', goal: 'close app references' },
+      closureSlices: [
+        {
+          name: 'nav slice',
+          rationale: 'routes',
+          closureItems: ['Link to /assignments (to-fix: no route owns it)'],
+          parallelGroup: 'nav',
+          priorityInParallelGroup: 0,
+        },
+        {
+          name: 'css slice',
+          rationale: 'selectors',
+          closureItems: ['.screen selector named but undefined (to-fix)'],
+          parallelGroup: 'css',
+          priorityInParallelGroup: 0,
+        },
+      ],
+    });
+    const out = processDiagnosticBatchSplit(state, plan, mkSeam());
+    expect(out).toBe('');
+    const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'seam');
+    expect(subs.length).toBe(2);
+    // each child's prePlanText carries its own (distinct) closureItems inventory
+    const prePlans = subs.map((t: any) => t.prePlanText ?? '');
+    expect(prePlans.some((p: string) => p.includes('/assignments'))).toBe(true);
+    expect(prePlans.some((p: string) => p.includes('.screen selector'))).toBe(true);
+    for (const p of prePlans) expect(p).toMatch(/closureItems/);
+  });
+
   it('explicit batches[] wins — closureSlices does not double-source the fan-out', () => {
     const state = mkState();
     const plan = JSON.stringify({
@@ -216,7 +253,7 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
 
   it('inert placeholder targets (href="#"/no-op) are NOT resolved (RCA: third-housing-forge dead links)', async () => {
     const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
-    expect(out).toMatch(/inert placeholder target/i);
+    expect(out).toMatch(/inert placeholder\s+target/i);
     expect(out).toMatch(/#`-only/);
     expect(out).toMatch(/no-op/i);
   });
@@ -228,48 +265,55 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     expect(out).toMatch(/never a raw literal absolute path and never an inert placeholder/);
   });
 
-  it('plan parent (seamPlanning, not a slice): enumerates over a module-scoped denominator & partitions', async () => {
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
+  it('FIRST-ENTRY partition-only (isPartitionOnlyPhase): enumerates + partitions, remediation WITHHELD', async () => {
+    // bright-causing-brick RCA: a fresh seam parent that saw BOTH the partition
+    // and the remediation guidance wandered into solving instead of partitioning
+    // (seam-app emitted zero slices; seam-admin emitted 2 duplicate thin slices).
+    // First entry is now partition-ONLY — remediation principles are gated out.
+    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false, isPartitionOnlyPhase: true });
     expect(out).toMatch(/CROSS-FEATURE REFERENCE \+ AFFORDANCE CLOSURE/);
-    // Denominator: the prior-completed manifest restricted to THIS module's path,
-    // walked file by file (recall-sweep → grounded enumeration). Root fix for the
-    // snowy-grilling-shelf shallow seam (flat_plan_no_batches under-enumeration).
+    // single job this phase: partition, not remediate.
+    expect(out).toMatch(/Do NOT remediate, fix, or reason about HOW to resolve anything yet/);
+    // Denominator: the prior-completed manifest restricted to THIS module's path.
     expect(out).toMatch(/restrict it\s+to the files under THIS module's own path/);
     expect(out).toMatch(/Walk it file by file/);
     expect(out).toMatch(/A file left unexamined — in either\s+direction — is a hole in the closure\./);
-    // Partition is runtime-owned, not LLM-discretion: the enumeration is emitted
-    // as a REQUIRED `closureSlices[]`; 2+ slices auto-fan-out (RCA: third-housing-
-    // forge — flat_plan_no_batches let a whole-app audit run as one shallow pass).
+    // Partition is runtime-owned: emitted as a REQUIRED `closureSlices[]`.
     expect(out).toMatch(/closureSlices/);
-    expect(out).toMatch(/REQUIRED output of the enumeration/);
-    expect(out).toMatch(/two or more.* disjoint file sets/);
-    // single set → inline flat plan (no closureSlices), so the flat path always
-    // carries an implementation — never a closureSlices-with-no-implementation gap.
-    expect(out).toMatch(/exactly \*\*one\*\* disjoint file set.* do NOT emit\s+`closureSlices`/);
+    expect(out).toMatch(/REQUIRED output of this phase/);
+    // A2 — always declare the denominator: single set still emits a single-entry
+    // array, never a silent flat-solve (the seam-app zero-slice path).
+    expect(out).toMatch(/Always emit `closureSlices`, even when your enumeration found exactly one/);
+    // A3 — each slice carries its pre-enumerated closureItems inventory (the
+    // discriminator that stops duplicate thin slices).
+    expect(out).toMatch(/closureItems/);
     expect(out).not.toMatch(/This is one slice\./);
-    // resolve-or-remove remediation always present.
-    expect(out).toMatch(/References resolve\./);
-    expect(out).toMatch(/Affordances resolve or are removed\./);
+    // remediation principles are WITHHELD in the partition-only phase.
+    expect(out).not.toMatch(/\*\*Remediation — resolve OR remove/);
+    expect(out).not.toMatch(/Affordances resolve or are removed\./);
   });
 
-  it('closure is BIDIRECTIONAL — backward direction catches built-but-unreached parts (orphans / empty mount slots)', async () => {
+  it('closure is BIDIRECTIONAL — partition walks both directions; remediation has the inbound edge', async () => {
     // RCA (neat-melting-kayak): the outbound/dangling-only model missed a built
     // CommentThreadScreen that nothing mounted and a data-comment-anchor slot
     // left empty — inbound/missing-edge gaps invisible to "references it EMITS".
-    // Fix completes seam's own "operable whole" principle to a symmetric relation.
-    const out = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false });
-    // intro frames closure as bidirectional
-    expect(out).toMatch(/Closure is \*\*bidirectional\*\*/);
+    // Partition phase (first entry) does the bidirectional walk; the inbound
+    // remediation edge lives in the remediation phase (slice-child / flat-execute).
+    const partition = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: true, isSliceDeclaration: false, isPartitionOnlyPhase: true });
+    // intro frames closure as bidirectional (header — always present)
+    expect(partition).toMatch(/Closure is \*\*bidirectional\*\*/);
     // planning walks both directions, naming the inbound walk
-    expect(out).toMatch(/Walk it file by file in BOTH directions/);
-    expect(out).toMatch(/\*\*Inbound\*\*/);
-    expect(out).toMatch(/reach-role/);
-    // a backward remediation edge mirrors "References resolve"
-    expect(out).toMatch(/Reach-role parts are reached \(the closure is bidirectional\)\./);
-    expect(out).toMatch(/nothing mounts/);
-    expect(out).toMatch(/mount\/extension slot left empty/);
+    expect(partition).toMatch(/Walk it file by file in BOTH directions/);
+    expect(partition).toMatch(/\*\*Inbound\*\*/);
+    expect(partition).toMatch(/reach-role/);
+
+    // remediation phase (execute): the backward edge mirrors "References resolve".
+    const remediation = await adapter.render(PARTIAL, { taskType: 'seam', seamPlanning: false, isSliceDeclaration: false });
+    expect(remediation).toMatch(/Reach-role parts are reached \(the closure is bidirectional\)\./);
+    expect(remediation).toMatch(/nothing mounts/);
+    expect(remediation).toMatch(/mount\/extension slot left empty/);
     // still grounded in materialized code (observe, not intent-recall)
-    expect(out).toMatch(/Both ends already\s+exist in the materialized code/);
+    expect(remediation).toMatch(/Both ends already\s+exist in the materialized code/);
   });
 
   it('plan slice (isSliceDeclaration): does NOT re-enumerate or re-partition', async () => {

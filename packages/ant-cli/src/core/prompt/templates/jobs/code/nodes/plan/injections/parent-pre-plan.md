@@ -16,6 +16,10 @@ responsibility is the internal detail (imports, assertions, signatures,
 fixture wiring) rather than re-deciding which files to create. If the
 pre-plan only declares the slice boundary, the internal `modify[]` /
 `create[]` / `delete[]` plan is YOUR responsibility to author below.
+When the pre-plan carries a `closureItems` inventory (a closure slice), those
+tagged items — each a reference / affordance / style-selector / reach-role
+marked resolved | to-fix | to-remove | to-wire — ARE the work you own: resolve
+or remove exactly those, and do not re-enumerate the module for more.
 {{/if}}
 
 {{#if isDiagnosticCarry}}

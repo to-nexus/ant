@@ -37,7 +37,7 @@ Free-form handoffs commonly carry a user-authored guide that states the entry po
 
 ### Observable-only rule
 
-Every design value (token, colour, spacing, layout, typography, micro-interaction) used in the output MUST be traceable to a specific file you read (by path + section / line range). When a value is not observable anywhere in the bundle, fall back to VisualTier defaults or framework conventions rather than inventing values. Implementation choices (framework, imports, dependencies, file organisation) are governed by the target codebase, NOT by what the handoff happens to use.
+Every design value (token, colour, spacing, layout, typography, micro-interaction) used in the output MUST be traceable to a specific file you read (by path + section / line range). When a value is not observable anywhere in the bundle, fall back to the spatial-validity floor (the VisualTier spatial default injected for this run — it keeps content-bearing containers padded and consistent without overriding any value the bundle does define) and framework conventions rather than inventing values. Implementation choices (framework, imports, dependencies, file organisation) are governed by the target codebase, NOT by what the handoff happens to use.
 
 ### Blind spot reminder (Redundancy)
 
