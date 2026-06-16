@@ -36,9 +36,9 @@ import type {
   DebitCumulativeArgs,
   ReserveResult,
   SettleArgs,
-} from '../../core/ports/creditLedger';
-import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
-import { logger } from '../../utils/logger';
+} from '../../../../ant-cli/src/core/ports/creditLedger';
+import { REDIS_KEYS, REDIS_TTL } from '../../../../ant-cli/src/core/constants/redis';
+import { logger } from '../../../../ant-cli/src/utils/logger';
 
 const COMPONENT = 'RedisCreditLedger';
 /** Long TTL for "durable" billing keys, refreshed on every access. */

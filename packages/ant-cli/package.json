@@ -73,6 +73,9 @@
     "ws": "^8.20.0",
     "zod": "^4.1.12"
   },
+  "optionalDependencies": {
+    "@ant/cloud": "workspace:*"
+  },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",

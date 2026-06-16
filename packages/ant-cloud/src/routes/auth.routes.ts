@@ -1,22 +1,22 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import { AuthService } from '../../../../infrastructure/auth/AuthService';
-import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
-import { JwtService } from '../../../../infrastructure/auth/JwtService';
-import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
-import { StateStorePort } from '../../../../core/ports/stateStore';
-import { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
-import { authRateLimiter } from '../middleware/rateLimiter';
-import { resolveFrontendOrigin } from '../middleware/corsConfig';
-import { extractStartOrigin } from '../middleware/originHelper';
-import { logger } from '../../../../utils/logger';
-import { extractUserContext, isLocalServerMode } from './helpers/userContext';
+import { AuthService } from '../infrastructure/auth/AuthService';
+import { GoogleOIDCService, OIDCUser } from '../infrastructure/auth/GoogleOIDCService';
+import { JwtService } from '../../../ant-cli/src/infrastructure/auth/JwtService';
+import { WorkspaceResolver } from '../../../ant-cli/src/core/config/WorkspacePathResolver';
+import { StateStorePort } from '../../../ant-cli/src/core/ports/stateStore';
+import { OrganizationRepositoryPort } from '../../../ant-cli/src/core/ports/organizationRepository';
+import { authRateLimiter } from '../../../ant-cli/src/periphery/adapters/http/middleware/rateLimiter';
+import { resolveFrontendOrigin } from '../../../ant-cli/src/periphery/adapters/http/middleware/corsConfig';
+import { extractStartOrigin } from '../../../ant-cli/src/periphery/adapters/http/middleware/originHelper';
+import { logger } from '../../../ant-cli/src/utils/logger';
+import { extractUserContext, isLocalServerMode } from '../../../ant-cli/src/periphery/adapters/http/routes/helpers/userContext';
 import {
   resolveOrganizationId,
   resolveOrgIdentity,
-} from '../../../../core/auth/resolveOrganizationId';
-import { InvalidOrganizationNameError } from '../../../../core/auth/slugify';
+} from '../core/auth/resolveOrganizationId';
+import { InvalidOrganizationNameError } from '../core/auth/slugify';
 import {
   INDIVIDUAL_ORG_ID,
   LOCAL_ORG_ID,

@@ -23,10 +23,10 @@ export { createJobRoutes } from './job.routes';
 export { createKanbanRoutes } from './kanban.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
-export { createAuthRoutes } from './auth.routes';
+// Cloud auth + billing routes moved to `@ant/cloud` (mounted via the cloud
+// overlay's registerRoutes). OSS no longer re-exports them.
 export { createIDERoutes } from './ide.routes';  // Local IDE
 export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
-export { createBillingRoutes } from './billing.routes';
 
 /**
  * Dependencies for route creation

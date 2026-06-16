@@ -10,10 +10,10 @@ import type {
   PaymentProviderPort,
   PurchaseRequest,
   SubscriptionOutcome,
-} from '../../core/ports/paymentProvider';
-import type { CreditLedgerPort } from '../../core/ports/creditLedger';
+} from '../../../../ant-cli/src/core/ports/paymentProvider';
+import type { CreditLedgerPort } from '../../../../ant-cli/src/core/ports/creditLedger';
 import { MOCK_DECLINE_CARD, type PaymentMethodInput, type PurchaseOutcome, type SubscriptionTier } from '@ant/shared';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../../ant-cli/src/utils/logger';
 
 const COMPONENT = 'MockPaymentProvider';
 

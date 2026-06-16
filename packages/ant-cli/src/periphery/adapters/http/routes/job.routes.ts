@@ -17,26 +17,29 @@ import { logger } from '../../../../utils/logger';
 import { getConfigSlots } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
-import { MIN_START_CREDITS } from '../../../../infrastructure/billing/catalog';
+import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 
 /**
  * Pre-flight credit gate for STARTING / RESUMING a job. Returns a 402 payload
- * `{ balance, required }` when the account is below `MIN_START_CREDITS`, else
- * null (allow). No-op (null) when billing is disabled. Non-fatal on read error
- * — a balance-check failure must not block work.
+ * `{ balance, required }` when the account is below the cloud overlay's
+ * `minStartCredits`, else null (allow). No-op (null) when billing is disabled
+ * or the cloud overlay is absent. Non-fatal on read error — a balance-check
+ * failure must not block work.
  */
 async function checkStartCredits(
   userContext: { userId: string; organizationId: string },
 ): Promise<{ balance: number; required: number } | null> {
   if (!isBillingEnabled()) return null;
+  const minStartCredits = peekCloudModule()?.minStartCredits ?? 0;
+  if (minStartCredits <= 0) return null;
   try {
     const ledger = getInfrastructureFactory().getCreditLedger();
     const bal = await ledger.getBalance(userContext.organizationId, userContext.userId);
-    if (bal.credits < MIN_START_CREDITS) {
-      return { balance: bal.credits, required: MIN_START_CREDITS };
+    if (bal.credits < minStartCredits) {
+      return { balance: bal.credits, required: minStartCredits };
     }
   } catch (err) {
     logger.warn('credit pre-flight check failed — allowing job', { component: 'JobRoute' }, err as any);

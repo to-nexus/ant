@@ -9,7 +9,7 @@
  */
 
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../../ant-cli/src/utils/logger';
 
 export interface GoogleOIDCConfig {
   clientId: string;

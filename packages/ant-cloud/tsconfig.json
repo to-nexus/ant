@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cli/*": ["../ant-cli/src/*"],
+      "@cloud/*": ["src/ui/*"]
+    },
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*",
+    "../ant-cli/src/core/types/express.d.ts"
+  ],
+  // src/ui/** is browser FE (JSX/DOM) and is typechecked by ant-ui's tsc via the
+  // main.tsx → @ant/cloud/ui → @cloud/* graph. This node-mode config has no
+  // jsx/DOM lib, so exclude it here to avoid spurious .tsx errors.
+  "exclude": ["node_modules", "dist", "src/ui/**"]
+}

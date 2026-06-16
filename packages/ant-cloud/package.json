@@ -1,0 +1,34 @@
+{
+  "name": "@ant/cloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ANT cloud overlay — billing, cloud auth, org/team. Loaded at runtime through the OSS CloudModule seam (cloudPlugin.ts). Absent in the public OSS build.",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/index.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ant/shared": "workspace:*",
+    "express": "^5.1.0",
+    "google-auth-library": "^10.5.0",
+    "ioredis": "^5.9.2",
+    "lucide-react": "^0.474.0",
+    "react": "^19.1.0",
+    "react-i18next": "^16.5.4",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "cookie-parser": "^1.4.7",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

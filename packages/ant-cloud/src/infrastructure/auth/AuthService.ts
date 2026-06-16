@@ -16,8 +16,8 @@
  * here protects the `:`-delimited Redis/session-key namespace at one boundary.
  */
 
-import { AuthPort, AuthCredentials, AuthContext } from '../../core/ports/auth';
-import type { User, Organization } from '../../core/types/user';
+import { AuthPort, AuthCredentials, AuthContext } from '../../../../ant-cli/src/core/ports/auth';
+import type { User, Organization } from '../../../../ant-cli/src/core/types/user';
 import { resolveOrgIdentity } from '../../core/auth/resolveOrganizationId';
 
 /**
