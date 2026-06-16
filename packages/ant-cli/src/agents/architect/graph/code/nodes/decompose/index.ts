@@ -408,6 +408,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // Post-RAC SSOT" (Channel B suppression).
     isExplicitPipeline,
     hasUi,
+    // Gate for the Design Document Authority guide (system-design-guide).
+    // Port partition is decided at decompose (foundation / port tasks), so
+    // the two-axis authority must reach this phase, not only plan.
+    hasSystemDesign: pool.hasSystemDesign(),
     uiSource,
     uiArtifactPaths,
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
