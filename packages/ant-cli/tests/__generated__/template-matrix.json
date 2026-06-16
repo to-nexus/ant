@@ -540,6 +540,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/layout-validity-floor": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/monorepo-install-locality": {
     "sources": [
       "partial-ref",

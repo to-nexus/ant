@@ -19,6 +19,7 @@ import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import type { CodeTask } from "../../../../types/task";
 import { featureUiObservationVars } from "../../tasks/_shared/helpers/featureUiObservation";
+import { layoutValidityFloorVars } from "../../tasks/_shared/helpers/layoutValidityFloor";
 import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
@@ -459,6 +460,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // Axis C — renderable feature observes the UI source for AFFORDANCES (job
       // pool, not the narrowed selection; separate from styling `uiSource`).
       ...featureUiObservationVars(state.artifacts || [], state.currentTask as CodeTask),
+      // RC2 — structural layout validity floor (contained/centered/responsive),
+      // independent of visualTier/hasUiDoc; fires on renderable feature|ui.
+      ...layoutValidityFloorVars(state.currentTask as CodeTask),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
       // Stack flags — mirror plan/planGeneration.ts (single SSOT via
       // AutoInjectionResolver.computeStackFlags). Required by Handlebars

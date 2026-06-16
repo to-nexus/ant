@@ -91,23 +91,41 @@ export function processDiagnosticBatchSplit(
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
 
-    // Partition-mandatory types (seam): the fan-out is runtime-owned, not the
-    // LLM's discretion. The plan enumerates disjoint slices in the policy's
-    // `partitionFromField` (`closureSlices[]` for seam). 2+ slices → normalize
-    // into `batches[]` so the existing fan-out machinery partitions; a single
-    // slice (or none) falls through to the flat-plan path. An explicit
-    // `batches[]` already present wins (never double-source the fan-out).
-    if (taskPolicy?.partitionFromField) {
-      const slices = (parsed as Record<string, unknown>)[taskPolicy.partitionFromField];
+    // Seam two-phase by `band` (RC5). The fan-out is runtime-owned, never the
+    // LLM's discretion:
+    //   - classifying PARENT (band undefined) MUST emit `regions[]` — a coarse
+    //     classification of the surface into disjoint audit territories. Each
+    //     region (>=1) is normalized into `batches[]` so the existing fan-out
+    //     machinery spawns one `band:'region'` child per region. A parent that
+    //     emits a flat fix plan instead of regions skipped classification →
+    //     reject (BatchSplitSchemaViolation) so the plan node re-issues. This
+    //     closes the flat_plan_no_batches escape that let a whole-module audit
+    //     collapse into one shallow pass (RCA: third-housing-forge).
+    //   - region CHILD (band 'region') legitimately emits a flat implementation
+    //     (its audit) and proceeds untouched below.
+    //   - an explicit `batches[]` already present wins (alternate fan-out, never
+    //     double-sourced; not the shallow-flat escape).
+    if (nextTask.type === 'seam') {
+      const isClassifyingParent = (nextTask as { band?: string }).band === undefined;
       const hasExplicitBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
-      if (Array.isArray(slices) && slices.length >= 2 && !hasExplicitBatches) {
-        parsed.batches = slices;
+      if (isClassifyingParent && !hasExplicitBatches) {
+        const regions = (parsed as Record<string, unknown>).regions;
+        const regionsValid = Array.isArray(regions) && regions.length >= 1;
+        if (!regionsValid) {
+          throw new BatchSplitSchemaViolation({
+            entryKind: 'region',
+            ordinal: 0,
+            field: 'regions',
+            reason: 'missing',
+            observed: parsed,
+          });
+        }
+        parsed.batches = regions; // fan ALL regions (>=1) into region children
         logBatchSplit({
-          action: 'partition_from_field',
-          field: taskPolicy.partitionFromField,
-          sliceCount: slices.length,
+          action: 'partition_from_regions',
+          regionCount: (regions as unknown[]).length,
           taskName: nextTask.name,
-          parentType: nextTask.type,
+          parentType: 'seam',
         });
       }
     }
@@ -422,6 +440,10 @@ export function processDiagnosticBatchSplit(
         ...(nextTask.stack ? { stack: nextTask.stack } : {}),
         ...(subInclude?.length ? { include: subInclude } : {}),
         ...(subType === 'feature' ? { band: parentBand } : {}),
+        // Seam region children carry the `'region'` band (RC5) — the explicit
+        // two-phase discriminator: parent (no band) classified the surface,
+        // each child (band 'region') runs the deep audit within its region.
+        ...(subType === 'seam' ? { band: 'region' as const } : {}),
         // `renderable` mirrors createTaskQueue's derivation across the split:
         // a `ui` sub-task always renders; a `feature` sub-task inherits the
         // parent's renderable verdict (the split cannot re-derive ui-pairing,

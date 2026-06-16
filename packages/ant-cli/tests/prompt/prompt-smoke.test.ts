@@ -618,6 +618,11 @@ describe('Template Smoke Tests', () => {
       // task whose job pool carries a UI source (Axis C). Renders empty
       // otherwise, like ui-source-dispatch above.
       'jobs/code/base/injections/feature-ui-observation',
+      // layout-validity-floor wraps its entire body in
+      // {{#if layoutValidityFloorActive}} — fires only for a renderable
+      // feature/ui surface (RC2 structural floor). Renders empty otherwise,
+      // like feature-ui-observation above.
+      'jobs/code/base/injections/layout-validity-floor',
       // workspace-dep-snapshot wraps its entire body in
       // {{#if hasWorkspaceDepSnapshot}}; with no pins observed at smoke
       // time the partial renders empty. The activation gate is data-

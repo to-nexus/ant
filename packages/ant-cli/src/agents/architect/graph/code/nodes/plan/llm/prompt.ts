@@ -45,6 +45,7 @@ import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/t
 import { formatCodeContext } from "../../../tasks/_shared/helpers/planPrompt";
 import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
 import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
+import { layoutValidityFloorVars } from "../../../tasks/_shared/helpers/layoutValidityFloor";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
 
 export interface BuildPlanPromptResult {
@@ -176,6 +177,9 @@ export async function buildPlanPrompt(
   // Kept separate from `uiSource` so feature never trips the styling-inventory
   // branches keyed on `uiSource`.
   const { featureObservesUiSource, featureUiSource } = featureUiObservationVars(pool, task as CodeTask);
+  // RC2 — structural layout validity floor (contained / centered / responsive),
+  // independent of visualTier / hasUiDoc. Fires on renderable feature|ui surfaces.
+  const { layoutValidityFloorActive } = layoutValidityFloorVars(task as CodeTask);
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -226,6 +230,11 @@ export async function buildPlanPrompt(
   // correctly. Non-feature task types do not carry a band; the template
   // defaults to the foundation/no-band branch in that case.
   const taskBand = task.type === 'feature' ? (task as FeatureCodeTask).band : undefined;
+  // Seam two-phase discriminator (RC2/RC5 — band-based, not the prePlanText
+  // heuristic). `undefined` = classifying parent (carve the surface into
+  // regions); `'region'` = a region sub-task (deep audit within its boundary).
+  // The seam-connectivity-closure partial gates its plan blocks on this.
+  const seamBand = task.type === 'seam' ? (task as { band?: 'region' }).band : undefined;
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
@@ -239,12 +248,14 @@ export async function buildPlanPrompt(
     prePlanText: hasPrePlanText ? prePlanTextRaw : '',
     hasPrePlanText,
     isSliceDeclaration,
-    // Seam partial: gates the plan-only "enumerate & partition" / "this is one
-    // slice" blocks. True at plan time so the parent (isSliceDeclaration=false)
-    // enumerates the module and emits batches, while a slice child
-    // (isSliceDeclaration=true) is told NOT to re-partition. At execute time the
-    // partial renders only its remediation principles (seamPlanning omitted).
+    // Seam partial: gates the plan-only blocks. `seamPlanning` true at plan time
+    // (false/omitted at execute → only remediation renders). `seamBand` splits
+    // the two phases: parent (undefined) carves the surface into regions; a
+    // region child ('region') runs the deep file-by-file audit within its
+    // boundary. Replaces the prePlanText-derived `isSliceDeclaration` heuristic
+    // for seam with an explicit Three-Axis band (RC5).
     seamPlanning: true,
+    seamBand,
     isDiagnosticCarry,
     hasCrossBatchContracts,
     batchSplitCount,
@@ -257,6 +268,7 @@ export async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureObservesUiSource, featureUiSource,
+    layoutValidityFloorActive,
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,
