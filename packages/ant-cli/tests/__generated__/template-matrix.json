@@ -269,6 +269,11 @@
       "basis-registry"
     ]
   },
+  "basis/visualTier/spatialSystem/_floor": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "basis/visualTier/spatialSystem/airy8pt": {
     "sources": [
       "basis-registry"
@@ -535,6 +540,12 @@
     ]
   },
   "jobs/code/base/injections/gate-validity-principle": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/layout-validity-floor": {
     "sources": [
       "partial-ref",
       "manifest"

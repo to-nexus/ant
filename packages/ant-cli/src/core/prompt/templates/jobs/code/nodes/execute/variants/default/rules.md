@@ -181,6 +181,8 @@ Your modularization:
 
 {{> jobs/code/base/injections/feature-ui-observation}}
 
+{{> jobs/code/base/injections/layout-validity-floor}}
+
 {{#if (eq currentTask.type "test-code")}}
 ════════════════════════════════════════════════════════════════════════════════
 {{> jobs/code/nodes/execute/injections/test-code-rules }}
