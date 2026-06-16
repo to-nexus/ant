@@ -564,11 +564,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // the `seamPlanning` guard.
       seamPlanning: false,
       isSliceDeclaration: false,
-      // `isPartitionOnlyPhase` is the seam first-entry gate (partition-only,
-      // remediation withheld). At execute it is ALWAYS false: the apply phase
-      // must render the remediation principles. Passed explicitly to satisfy the
-      // manifest contract (the `{{#unless isPartitionOnlyPhase}}` guard).
-      isPartitionOnlyPhase: false,
       // Cross-task output manifest — files prior tasks in this job already
       // authored (paths only). Same SSOT as the plan side
       // (`nodes/plan/llm/prompt.ts`); closes the forward-visibility gap so a

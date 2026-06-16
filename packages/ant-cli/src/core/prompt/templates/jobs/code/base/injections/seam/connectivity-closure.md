@@ -16,63 +16,51 @@ An *affordance* is any rendered control whose purpose is to cause an effect
 (create, open a detail, transition, switch identity/mode, edit).
 
 {{#if seamPlanning}}
-{{#if isPartitionOnlyPhase}}
-**Planning (this whole module — enumerate over a fixed denominator, then partition):**
-This is your FIRST pass over the module: your single job here is to enumerate and
-partition. Do NOT remediate, fix, or reason about HOW to resolve anything yet —
-that happens later, once each slice is handed back to you as its own unit.
-Your enumeration is not a recall sweep — it has an explicit denominator. The
-manifest of files prior tasks already authored is available to you; **restrict it
-to the files under THIS module's own path, and treat that file set as your
-denominator.** Walk it file by file in BOTH directions. **Outbound** — for EACH file, account
-for every reference it emits (navigation/call/event/dependency/import/style-selector)
-and every interactive control it renders, and record each as resolved, to-fix, or
-to-remove. A reference is resolved ONLY when it names a real destination; an
-**inert placeholder target** — a `#`-only or empty `href`, an empty `to` / action,
-a handler that no-ops or defers via comment — is NOT resolved (it typechecks and
-builds green yet goes nowhere): record it to-fix or to-remove, exactly like a
-reference that reaches nothing. **Inbound** — for each part the module authored that has a reach-role
-(a routable surface, an attachable/embeddable component, a named mount/extension
-slot), account for whether anything actually reaches it: routes to it, mounts it,
-or fills it. A reach-role part nothing reaches is recorded to-wire or to-remove,
-exactly like a reference that reaches nothing. A file left unexamined — in either
-direction — is a hole in the closure. Where parts diverge on a shared
-destination, decide ONE canonical authority (or, when the destination is owned by
-another module, conform to that module's published contract — do not redefine it).
-
-Then partition the recorded fixes by **disjoint file set** and emit a top-level
-`closureSlices` array — this is the REQUIRED output of this phase, never an optional
-fan-out. **Always emit `closureSlices`, even when your enumeration found exactly one
-disjoint set** (emit it as a single-entry array naming the whole-module denominator);
-declaring the denominator is mandatory — do NOT skip it and silently flat-solve. Each
-slice is one object:
-`{ "name": <short unit id>, "rationale": <what this slice closes & why it is one
-isolated unit>, "requiredFiles": [<files this slice reads to derive addresses>],
-"closureItems": [<every reference / affordance / style-selector / reach-role this
-slice owns, each tagged resolved | to-fix | to-remove | to-wire, derived from your
-directional walk — this is the inventory the slice will later remediate, so it must
-be complete and specific (name the exact selector, route, handler, or control), not a
-restatement of the slice name>], "parallelGroup": <lane name>,
-"priorityInParallelGroup": <non-negative int> }`.
-List **every** disjoint file set you found — one slice per set. Thorough enumeration
-over the denominator normally yields several sets, so multiple slices is the
-expected outcome; the runtime fans each multi-slice partition out into its own
-remediation unit, and a single-slice partition flat-executes with its declared
-`closureItems` already in hand.
-When slices must run in a fixed order (one slice's closure depends on another's),
-put them in the SAME `parallelGroup` and order them with `priorityInParallelGroup`;
-independent slices take distinct groups so they run in parallel. Derive every
+{{#unless seamBand}}
+**Classify (parent — carve the surface into regions; do NOT audit or fix here):**
+First decide HOW to split this module's closure, with the materialized code in front
+of you. The manifest of files prior tasks authored is available; **restrict it to the
+files under THIS module's own path**, and partition that surface into disjoint
+**regions** along its natural axes — by app, by feature-domain, and by concern-lane
+(navigation, identity/auth, data-wiring, styling, cross-app hand-off). Emit a top-level
+`regions` array — each region is one object:
+`{ "name": <short region id>, "rationale": <which slice of the surface this region
+covers & why it is one coherent audit unit>, "requiredFiles": [<the files this region's
+audit will read>], "parallelGroup": <lane name>, "priorityInParallelGroup": <non-negative
+int> }`.
+This is **coarse classification, NOT the audit**: do NOT enumerate individual
+references/affordances and do NOT emit a flat `implementation` plan here — each region
+fans out into its own sub-task that performs the deep, file-by-file audit. A surface
+spanning more than one feature-domain normally yields **several** regions; list every
+region you find (a multi-feature module collapsed into one region is under-classified).
+When regions must run in a fixed order (one region's closure depends on another's), put
+them in the SAME `parallelGroup` ordered by `priorityInParallelGroup`; independent
+regions take distinct groups so they run in parallel.
+{{/unless}}
+{{#if (eq seamBand "region")}}
+**Audit (region sub-task — thorough closure within YOUR region only):**
+You own ONE region of the surface; its boundary is handed to you in your inputs. Treat
+your region's file set as your denominator and **Walk it file by file in BOTH
+directions** — this is grounded enumeration, not a recall sweep. **Outbound** — for EACH
+file, account for every reference it emits
+(navigation/call/event/dependency/import/style-selector) and every interactive control
+it renders, and record each as resolved, to-fix, or to-remove. A reference is resolved
+ONLY when it names a real destination; an **inert placeholder target** — a `#`-only or
+empty `href`, an empty `to` / action, a handler that no-ops or defers via comment — is
+NOT resolved (it typechecks and builds green yet goes nowhere): record it to-fix or
+to-remove. **Inbound** — for each part your region authored that has a reach-role (a
+routable surface, an attachable/embeddable component, a named mount/extension slot),
+account for whether anything actually reaches it. A reach-role part nothing reaches is
+recorded to-wire or to-remove. A file left unexamined — in either direction — is a hole
+in the closure. Where parts diverge on a shared destination, decide ONE canonical
+authority (or, when the destination is owned by another module, conform to that
+module's published contract — do not redefine it). Emit a flat `implementation` plan
+that remediates everything you found. Do NOT re-classify the whole module and do NOT
+re-partition into further regions — your region boundary is non-negotiable. Derive every
 address from what the destination actually defines, never from intent or recall.
 {{/if}}
-{{#if isSliceDeclaration}}
-**This is one slice.** Remediate ONLY the references/affordances in your declared
-slice — its `closureItems` (already enumerated for you when this slice was
-partitioned) are the inventory to resolve. Do NOT re-enumerate the whole module and
-do NOT re-partition — your slice boundary is non-negotiable.
-{{/if}}
 {{/if}}
 
-{{#unless isPartitionOnlyPhase}}
 **Remediation — resolve OR remove (your scope):** Observe, do not assume:
 - **References resolve.** Every reference MUST reach a real, registered
   destination. If the destination is missing and belongs to this module, create
@@ -130,7 +118,6 @@ do NOT re-partition — your slice boundary is non-negotiable.
   if no destination backs the control, remove it. A cross-app control left inert
   (the classic "switch to the other app" link that goes nowhere) is the same dead
   reference as any intra-module one.
-{{/unless}}
 
 **Constraints:**
 - This is closure remediation, NOT a build/test run. Do NOT run build/typecheck/

@@ -224,23 +224,17 @@ export async function buildPlanPrompt(
   );
   const batchSplitCount = (task as CodeTask).batchSplitCount ?? 0;
 
-  // Seam first-entry gate. A fresh seam parent's FIRST plan pass is
-  // partition-only: enumerate the module + emit `closureSlices`, with the
-  // remediation principles WITHHELD until a slice child or flat-execute. Seeing
-  // both partition and remediation guidance at once is what made the parent
-  // wander into solving instead of partitioning (bright-causing-brick RCA).
-  // `batchSplitCount === 0` distinguishes the fresh parent from a re-queued one.
-  // Only meaningful for seam — `connectivity-closure.md` (the sole reader) is
-  // `taskType === 'seam'` gated.
-  const isPartitionOnlyPhase =
-    task.type === 'seam' && !isSliceDeclaration && batchSplitCount === 0;
-
   // FeatureTask sub-classification — surfaces the parent's `band` to the
   // self plan LLM so band-conditional rules in `plan/rules.md` (entry-point
   // ownership, integration-vs-foundation responsibilities) can dispatch
   // correctly. Non-feature task types do not carry a band; the template
   // defaults to the foundation/no-band branch in that case.
   const taskBand = task.type === 'feature' ? (task as FeatureCodeTask).band : undefined;
+  // Seam two-phase discriminator (RC2/RC5 — band-based, not the prePlanText
+  // heuristic). `undefined` = classifying parent (carve the surface into
+  // regions); `'region'` = a region sub-task (deep audit within its boundary).
+  // The seam-connectivity-closure partial gates its plan blocks on this.
+  const seamBand = task.type === 'seam' ? (task as { band?: 'region' }).band : undefined;
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
@@ -254,12 +248,14 @@ export async function buildPlanPrompt(
     prePlanText: hasPrePlanText ? prePlanTextRaw : '',
     hasPrePlanText,
     isSliceDeclaration,
-    // Seam partial: gates the plan-only "enumerate & partition" / "this is one
-    // slice" blocks. `seamPlanning` true at plan time (false/omitted at execute
-    // → only remediation renders). `isPartitionOnlyPhase` is the partition-phase
-    // gate (first pass enumerates + partitions; slices remediate).
+    // Seam partial: gates the plan-only blocks. `seamPlanning` true at plan time
+    // (false/omitted at execute → only remediation renders). `seamBand` splits
+    // the two phases: parent (undefined) carves the surface into regions; a
+    // region child ('region') runs the deep file-by-file audit within its
+    // boundary. Replaces the prePlanText-derived `isSliceDeclaration` heuristic
+    // for seam with an explicit Three-Axis band (RC5).
     seamPlanning: true,
-    isPartitionOnlyPhase,
+    seamBand,
     isDiagnosticCarry,
     hasCrossBatchContracts,
     batchSplitCount,
