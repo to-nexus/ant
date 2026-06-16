@@ -36,7 +36,7 @@ const COOKIE_NAME = 'ant_session';
  * 서브도메인으로 자동 전송되도록 한다. 새 도메인 운영을 시작하면 여기에
  * 한 줄 추가하거나 `COOKIE_DOMAIN` env 를 명시한다.
  */
-const KNOWN_BASE_DOMAINS = ['crosstoken.io'] as const;
+const KNOWN_BASE_DOMAINS = ['crosstoken.io', 'cross.nexus'] as const;
 
 /**
  * 쿠키 `Domain` 속성을 추론한다.
