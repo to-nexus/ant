@@ -7,7 +7,7 @@ import {
   searchOrganizations,
   submitOnboardingOrganization,
   type OrganizationSummary,
-} from '@/infrastructure/http/api/organizations';
+} from '@cloud/infrastructure/http/api/organizations';
 import { fetchAuthMeDetailed } from '@/infrastructure/http/api';
 
 const SEARCH_DEBOUNCE_MS = 300;

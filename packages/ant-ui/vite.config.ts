@@ -164,6 +164,10 @@ export default defineConfig({
       '@/domain': '/src/domain',
       '@/infrastructure': '/src/infrastructure',
       '@/shared': '/src/shared',
+      // OSS / cloud seam: cloud-only FE source lives in the sibling @ant/cloud
+      // package (resolved by absolute path — root-relative '/...' can't reach it).
+      // Only referenced when VITE_INCLUDE_CLOUD pulls @ant/cloud/ui into the graph.
+      '@cloud': path.resolve(__dirname, '../ant-cloud/src/ui'),
     },
   },
   optimizeDeps: {

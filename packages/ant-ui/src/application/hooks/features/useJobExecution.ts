@@ -144,7 +144,7 @@ export function useJobExecution() {
         console.error('[useJobExecution] Error details:', error);
         setRunning(false);
         if (isCreditBlock(error)) {
-          useStore.getState().setCreditBlockActive(true);
+          useStore.getState().setCreditBlockActive?.(true);
         } else {
           showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
         }
@@ -154,7 +154,7 @@ export function useJobExecution() {
 
     // ✅ Start new job
     setRunning(true, undefined, 'generate'); // Default mode
-    useStore.getState().setCreditBlockActive(false); // clear any prior block
+    useStore.getState().setCreditBlockActive?.(false); // clear any prior block
 
     try {
       const jobExecution = executeCodeJob({
@@ -230,7 +230,7 @@ export function useJobExecution() {
       console.error('[useJobExecution] Failed to start job:', error);
       setRunning(false);
       setCurrentJob(null);
-      if (isCreditBlock(error)) useStore.getState().setCreditBlockActive(true);
+      if (isCreditBlock(error)) useStore.getState().setCreditBlockActive?.(true);
     }
   }, [setRunning, setStopping, setCurrentJob, setSession, refreshFileTree]);
 

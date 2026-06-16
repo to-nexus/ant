@@ -17,7 +17,7 @@ import { useStore } from '@/domain/store';
 import { STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { Spinner } from './common/async';
 import { DangerZoneSection } from './common/DangerZoneSection';
-import { BillingUsageSection } from './billing/BillingUsageSection';
+import { Slot } from '@/presentation/extensions/slots';
 import { DesktopConnectModal } from './DesktopConnectModal';
 import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
 import {
@@ -887,7 +887,7 @@ export function AccountConfigEditor({
               Plan & Billing — always-on at this stage. The flag is the future
               @ant/cloud extraction seam (OSS build without it would hide this).
               ============================ */}
-          {billingEnabled && <BillingUsageSection />}
+          {billingEnabled && <Slot name="accountConfig.billing" />}
 
           {/* ============================
               Section 4 — Danger Zone

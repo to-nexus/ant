@@ -13,8 +13,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { Modal } from '../common/Modal';
-import { AsyncBoundary, EmptyFallback, useAsyncResource } from '../common/async';
+import { Modal } from '@/presentation/components/common/Modal';
+import { AsyncBoundary, EmptyFallback, useAsyncResource } from '@/presentation/components/common/async';
 import { formatCredits, formatUsd } from '@/shared/utils/tokenUtils';
 import {
   CREDIT_LEDGER_MAX_ENTRIES,

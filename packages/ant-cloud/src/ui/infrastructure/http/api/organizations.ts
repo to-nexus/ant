@@ -8,7 +8,7 @@
  * and `auth.routes.ts`'s onboarding handler.
  */
 
-import { API_BASE, apiGet, apiPost } from './client';
+import { API_BASE, apiGet, apiPost } from '@/infrastructure/http/api/client';
 
 export interface OrganizationSummary {
   id: string;

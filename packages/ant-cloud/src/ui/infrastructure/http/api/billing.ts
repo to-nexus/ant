@@ -6,7 +6,7 @@
  * Types come from `@ant/shared` so FE and BE stay in lockstep.
  */
 
-import { API_BASE, apiGet, apiPost } from './client';
+import { API_BASE, apiGet, apiPost } from '@/infrastructure/http/api/client';
 import type {
   BalanceSnapshot,
   BillingCatalog,

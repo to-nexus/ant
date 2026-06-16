@@ -15,8 +15,9 @@ import { createTransferSlice, TransferSlice } from './slices/transferSlice';
 import { createDeploySlice, DeploySlice } from './slices/deploySlice';
 import { createProjectDeletionSlice, ProjectDeletionSlice } from './slices/projectDeletionSlice';
 import { createFeatureDeletionSlice, FeatureDeletionSlice } from './slices/featureDeletionSlice';
-import { createBillingSlice, BillingSlice } from './slices/billingSlice';
+import type { BillingSlice } from './slices/billing.types';
 import { createGitWorldSlice, type GitWorldSlice } from '../git-world';
+import { getOptionalSlices } from './registry';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
 
 // Combined store type
@@ -66,8 +67,8 @@ function initializePersistentState() {
 // Create store by combining all slices
 export const useStore = create<Store>((set, get, store) => {
   const persistent = initializePersistentState();
-  
-  return {
+
+  const slices: Record<string, unknown> = {
     ...createProjectSlice(set, get, store),
     ...createFileSlice(set, get, store),
     ...createJobSlice(set, get, store),
@@ -85,15 +86,26 @@ export const useStore = create<Store>((set, get, store) => {
     ...createDeploySlice(set, get, store),
     ...createProjectDeletionSlice(set, get, store),
     ...createFeatureDeletionSlice(set, get, store),
-    ...createBillingSlice(set, get, store),
+  };
 
-    // Override with persistent state
+  // Optional cloud slices (billing today) register themselves before the store
+  // is created — see `registry.ts` + `main.tsx`. An OSS build registers none.
+  for (const creator of getOptionalSlices()) {
+    Object.assign(slices, creator(set, get, store));
+  }
+
+  // Override with persistent state.
+  Object.assign(slices, {
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
     mainView: persistent.mainView,
     selectedProject: persistent.selectedProject,
     selectedFeature: persistent.selectedFeature,
     userEmail: persistent.userEmail,
     userOrganization: persistent.userOrganization,
-  };
+  });
+
+  // Cast through `unknown`: neutral slices are fully present, and the optional
+  // cloud slices are folded in at runtime (registry) — TS can't see that here.
+  return slices as unknown as Store;
 });
 

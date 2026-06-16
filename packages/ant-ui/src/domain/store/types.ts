@@ -6,7 +6,7 @@ import type { OrgMembership as OrgMembershipView } from '@ant/auth-client/types'
 import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
 import type { ViewMode } from '@/domain/file/viewMode';
 import type { CurrentFileState } from './slices/fileSlice';
-import type { BillingSliceState } from './slices/billingSlice';
+import type { BillingSliceState } from './slices/billing.types';
 
 // ==================
 // Store State Types

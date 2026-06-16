@@ -13,8 +13,8 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { SectionCard } from '../ConfigEditor/aurora';
-import { Spinner } from '../common/async';
+import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { Spinner } from '@/presentation/components/common/async';
 import { formatCredits } from '@/shared/utils/tokenUtils';
 import { selectOrgDisplayLabel, selectActiveUserRole, selectUserOrgKind } from '@/domain/store/selectors/auth';
 
