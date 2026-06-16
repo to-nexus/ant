@@ -340,7 +340,7 @@ Thumbs.db
 
 **Principle**: Document all required environment variables with placeholder values. Connection variables MUST use `@connection` annotation (see preview-env-contract Section 4).
 
-**Constraint**: When creating `.env.example`, ALWAYS also create `.env` with the same variables. Use localhost/docker-compose default values for connection strings in `.env`.
+**Constraint**: When creating `.env.example`, ALWAYS also create `.env` with the same keys. Assign values by connection category per the preview-env-contract `.env` value invariant: `infrastructure` connection strings → localhost/docker-compose value; virtualized `business` connection URLs → empty (a virtualized dependency has no real local endpoint, so a localhost value is a fabricated address). Plain config → sensible default.
 
 ```env
 # Plain configuration (no annotation)
@@ -363,7 +363,7 @@ ENV=development
 
 **Principle**: Go projects MAY use `config.example.toml` instead of (or alongside) `.env.example` for service connections when the design document specifies TOML-based configuration (e.g., using viper or koanf).
 
-**Constraint**: If using `config.example.toml`, ALWAYS also create `config.toml` with the same structure and localhost default values. Add `config.toml` to `.gitignore`.
+**Constraint**: If using `config.example.toml`, ALWAYS also create `config.toml` with the same structure; assign values by connection category (infrastructure → localhost; virtualized `business` → empty, as in the `base_url = ""` example below). Add `config.toml` to `.gitignore`.
 
 **Constraint**: TOML annotations require `env:VAR_NAME` — the environment variable the platform injects at runtime. This is REQUIRED because TOML keys (e.g., `database.url`) don't map to flat env var names.
 

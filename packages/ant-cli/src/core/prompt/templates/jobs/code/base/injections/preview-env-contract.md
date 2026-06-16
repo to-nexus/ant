@@ -123,7 +123,7 @@ See `preview-setup.md` for framework-specific base path configuration.
 - Root `.env.example` holds variables shared across services (e.g., infrastructure URLs consumed by multiple services)
 - Per-service `.env.example` holds service-scoped variables (e.g., API keys, service-specific settings, PORT default)
 - Both levels use `@connection` annotation for connection variables
-- ALWAYS create `.env` alongside each `.env.example` with resolved localhost values
+- ALWAYS create `.env` alongside each `.env.example`, mirroring every key; assign values by connection category per the `.env` value invariant in §5 (infrastructure → localhost; virtualized `business` → empty)
 - Single-service projects: root-level only (no per-service split needed)
 
 ### Why
@@ -260,7 +260,7 @@ does the bare `USE_MOCK_<NAME>` apply.
 
 ### .env / .env.example Discipline
 
-Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. The master broadcast toggle MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys (per the existing invariant). Adapter-specific config that ONLY the virtualized adapter reads MUST also appear in `.env.example` so the contract is self-documenting.
+Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. The master broadcast toggle MAY be present in `.env.example` for default-broadcast across every business connection lacking a per-connection override. `.env` MUST mirror `.env.example` keys — and a virtualized business connection's URL / endpoint value stays **empty** in `.env` (the toggle is `true` and the mock resolves it; a `localhost:PORT` value would be a fabricated address for a dependency with no real local endpoint). See the `.env` value invariant by connection category in §5. Adapter-specific config that ONLY the virtualized adapter reads MUST also appear in `.env.example` so the contract is self-documenting.
 
 Examples:
 
@@ -379,7 +379,13 @@ If `DATABASE_URL` already has `@connection`, do NOT also add `DB_HOST`, `DB_PORT
 **`.env.example` / `.env` sync is EASILY BROKEN.**
 Any task that adds or modifies environment variables MUST update BOTH files:
 - `.env.example` with annotation and placeholder value
-- `.env` with the resolved localhost value
+- `.env` with the same keys, values assigned by connection category per the `.env` value invariant in §5 (infrastructure → localhost; virtualized `business` → empty)
 If only one file is updated, either the platform cannot detect the connection OR the application fails at runtime.
 
-**Invariant**: At task completion, `.env` MUST contain all variable keys present in `.env.example` with resolved localhost values. This invariant applies to every task — not only tasks whose scope explicitly mentions environment variables.
+**Invariant — `.env` value population by connection category (SSOT)**: At task completion, `.env` MUST mirror **all variable keys** present in `.env.example`. The VALUE assigned to each key is decided by what the key is — NOT by a blanket "resolve to localhost" rule:
+
+- `infrastructure` `@connection` (a real local dependency run via docker-compose — database / cache / queue) → resolved localhost / compose value (e.g. `postgresql://localhost:5432/app`). The endpoint actually exists locally.
+- `business` `@connection` (virtualized by default; this includes the `self` and `ant-project:` modifiers) → **empty value, identical to `.env.example`**. The virtualized adapter — or the platform proxy for `self` / `ant-project` — resolves this dependency at runtime; the running workspace has NO real local endpoint for it, so a concrete `localhost:PORT` value is a fabricated address that points at nothing and contradicts Service Virtualization (§4.5). The connection is reached through its adapter, not through a value you invent here.
+- virtualization toggle (`*USE_MOCK_*`, master broadcast) and plain configuration (PORT / NODE_ENV / LOG_LEVEL) → mirror `.env.example` / a sensible default.
+
+This invariant applies to every task — not only tasks whose scope explicitly mentions environment variables.

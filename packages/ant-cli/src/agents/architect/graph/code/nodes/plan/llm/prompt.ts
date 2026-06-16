@@ -45,6 +45,7 @@ import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/t
 import { formatCodeContext } from "../../../tasks/_shared/helpers/planPrompt";
 import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
 import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
+import { layoutValidityFloorVars } from "../../../tasks/_shared/helpers/layoutValidityFloor";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
 
 export interface BuildPlanPromptResult {
@@ -176,6 +177,9 @@ export async function buildPlanPrompt(
   // Kept separate from `uiSource` so feature never trips the styling-inventory
   // branches keyed on `uiSource`.
   const { featureObservesUiSource, featureUiSource } = featureUiObservationVars(pool, task as CodeTask);
+  // RC2 — structural layout validity floor (contained / centered / responsive),
+  // independent of visualTier / hasUiDoc. Fires on renderable feature|ui surfaces.
+  const { layoutValidityFloorActive } = layoutValidityFloorVars(task as CodeTask);
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -251,10 +255,9 @@ export async function buildPlanPrompt(
     hasPrePlanText,
     isSliceDeclaration,
     // Seam partial: gates the plan-only "enumerate & partition" / "this is one
-    // slice" blocks. True at plan time so the parent (isSliceDeclaration=false)
-    // enumerates the module and emits batches, while a slice child
-    // (isSliceDeclaration=true) is told NOT to re-partition. At execute time the
-    // partial renders only its remediation principles (seamPlanning omitted).
+    // slice" blocks. `seamPlanning` true at plan time (false/omitted at execute
+    // → only remediation renders). `isPartitionOnlyPhase` is the partition-phase
+    // gate (first pass enumerates + partitions; slices remediate).
     seamPlanning: true,
     isPartitionOnlyPhase,
     isDiagnosticCarry,
@@ -269,6 +272,7 @@ export async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureObservesUiSource, featureUiSource,
+    layoutValidityFloorActive,
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,
