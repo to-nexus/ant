@@ -65,16 +65,6 @@ from the summary.
 {{> jobs/code/nodes/plan/injections/parent-pre-plan}}
 
 {{#if hasSystemDesign}}
-🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
-
-**Use EXACT specifications from API Contract (regardless of whether the system-design document is in `ref` or `context`):**
-- Endpoint paths (e.g., `POST /rooms/create` NOT `/rooms`)
-- Field names and types (e.g., `userId: string` NOT `user_id`)
-- Validation rules
-- Response structures
-
-**Your execution plan MUST reference specifications EXACTLY.**
-
 {{> jobs/code/base/injections/system-design-guide}}
 {{/if}}
 
