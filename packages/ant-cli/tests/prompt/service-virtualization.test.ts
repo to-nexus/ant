@@ -28,19 +28,19 @@ import * as path from 'node:path';
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const TEMPLATES_ROOT = path.join(REPO_ROOT, 'src/core/prompt/templates');
 const INJECTIONS_DIR = path.join(TEMPLATES_ROOT, 'jobs/code/base/injections');
-const PARTIAL_CONTRACT = path.join(INJECTIONS_DIR, 'service-virtualization-contract.md');
-const PARTIAL_DATA = path.join(INJECTIONS_DIR, 'service-virtualization-data.md');
-const PARTIAL_IMAGERY = path.join(INJECTIONS_DIR, 'service-virtualization-imagery.md');
-const PARTIAL_SESSION = path.join(INJECTIONS_DIR, 'service-virtualization-session.md');
+const PARTIAL_CONTRACT = path.join(INJECTIONS_DIR, 'service-virtualization/contract.md');
+const PARTIAL_DATA = path.join(INJECTIONS_DIR, 'service-virtualization/data.md');
+const PARTIAL_IMAGERY = path.join(INJECTIONS_DIR, 'service-virtualization/imagery.md');
+const PARTIAL_SESSION = path.join(INJECTIONS_DIR, 'service-virtualization/session.md');
 const PLAN_RULES = path.join(TEMPLATES_ROOT, 'jobs/code/nodes/plan/rules.md');
 const EXECUTE_RULES = path.join(TEMPLATES_ROOT, 'jobs/code/nodes/execute/variants/default/rules.md');
 const BUILD_MESSAGES = path.join(REPO_ROOT, 'src/agents/architect/graph/code/nodes/execute/buildMessages.ts');
 const PLAN_PROMPT = path.join(REPO_ROOT, 'src/agents/architect/graph/code/nodes/plan/llm/prompt.ts');
 
-const INCLUDE_CONTRACT = '{{> jobs/code/base/injections/service-virtualization-contract}}';
-const INCLUDE_DATA = '{{> jobs/code/base/injections/service-virtualization-data}}';
-const INCLUDE_IMAGERY = '{{> jobs/code/base/injections/service-virtualization-imagery}}';
-const INCLUDE_SESSION = '{{> jobs/code/base/injections/service-virtualization-session}}';
+const INCLUDE_CONTRACT = '{{> jobs/code/base/injections/service-virtualization/contract}}';
+const INCLUDE_DATA = '{{> jobs/code/base/injections/service-virtualization/data}}';
+const INCLUDE_IMAGERY = '{{> jobs/code/base/injections/service-virtualization/imagery}}';
+const INCLUDE_SESSION = '{{> jobs/code/base/injections/service-virtualization/session}}';
 
 function read(p: string): string {
   return fs.readFileSync(p, 'utf-8');
@@ -759,6 +759,27 @@ describe('service-virtualization — navigable-target reachability owned by the 
     expect(src).toMatch(/navigable-target rule|navigable target/i);
     expect(src).toMatch(/service-virtualization-contract/);
     expect(src).toMatch(/no-op/i);
+  });
+
+  // RCA: third-housing-forge — the contract "binds every method" rule existed,
+  // but the DATA partial's "domain-plausible" mandate pulled the opposite way at
+  // the point a URL field's value was authored on an omnibus data adapter,
+  // producing a realistic-LOOKING external host (`mock-oauth.<domain>/authorize`).
+  // Fix: data.md cedes navigable-target fields to the contract rule (MECE
+  // carve-out, mirroring the image→imagery carve-out) so domain-plausibility
+  // never applies to a value the app dereferences.
+  it('data: cedes navigable-target fields to the contract rule (MECE — does NOT claim URL/redirect realism)', () => {
+    const src = read(PARTIAL_DATA);
+    // explicit Navigable-Target Routing carve-out exists
+    expect(src).toMatch(/Navigable-Target Routing/i);
+    // routes navigable targets to the contract partial (parallel to image→imagery)
+    expect(src).toMatch(/service-virtualization-contract/);
+    // names the field kinds that are navigable targets, incl. the auth URL case
+    expect(src).toMatch(/redirect|callback|authoriz/i);
+    // flags the domain-plausibility trap: a plausible-looking external URL is wrong
+    expect(src).toMatch(/reachability, not\s+\*?plausibility|plausibility is the trap/i);
+    // scope sentence excludes navigable targets, not just images
+    expect(src).toMatch(/navigable-target fields[^.]*defer/i);
   });
 });
 

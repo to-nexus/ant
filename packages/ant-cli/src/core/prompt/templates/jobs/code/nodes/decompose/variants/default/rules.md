@@ -326,7 +326,7 @@ CRITICAL:
 
 **Constraint**: Mode keywords in the directive (`generate` / `refactor` / `explain` / 한국어 "리팩토링"·"리팩터링") are **mode signals**, NOT `type` values. Choose `type` from the schema enum by what the task DOES (broken behavior → `"error"`; new behavior → `"feature"`; visual → `"ui"`; etc.) — never copy a mode keyword into `type`. The only mode name that is also a valid `type` is `"explain"`.
 
-**Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling.
+**Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling. **"Headless" means unstyled, NOT affordance-blind**: a renderable `"feature"` task observes the UI design source (when one is present in its inputs) for the full set of **affordances / controls / content** the surface must expose, and builds + wires every one of them — including affordances the requirements omit but the design implies (links, secondary actions, the popup/dialog a control opens, the navigation it triggers). The feature owns *what controls exist and that they work*; the paired `"ui"` task owns *how they look*. A control the design shows must never be left inert for the ui task to "finish".
 
 **Constraint**: `"design-system"` scope is visual infrastructure ONLY — token files, CSS generation, framework theme config, and shared UI components. Entity models, API clients, ports, and shared domain logic are `"feature"` type at priority 200–299 — NEVER `"design-system"`.
 

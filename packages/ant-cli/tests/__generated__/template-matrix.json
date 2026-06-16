@@ -523,6 +523,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/feature-ui-observation": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/game-art-source": {
     "sources": [
       "manifest"
@@ -588,7 +594,7 @@
       "manifest"
     ]
   },
-  "jobs/code/base/injections/seam-connectivity-closure": {
+  "jobs/code/base/injections/seam/connectivity-closure": {
     "sources": [
       "partial-ref",
       "manifest"
@@ -600,25 +606,25 @@
       "manifest"
     ]
   },
-  "jobs/code/base/injections/service-virtualization-contract": {
+  "jobs/code/base/injections/service-virtualization/contract": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/code/base/injections/service-virtualization-data": {
+  "jobs/code/base/injections/service-virtualization/data": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/code/base/injections/service-virtualization-imagery": {
+  "jobs/code/base/injections/service-virtualization/imagery": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/code/base/injections/service-virtualization-session": {
+  "jobs/code/base/injections/service-virtualization/session": {
     "sources": [
       "partial-ref",
       "manifest"

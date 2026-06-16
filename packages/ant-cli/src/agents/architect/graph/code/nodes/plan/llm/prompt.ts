@@ -44,6 +44,7 @@ import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/types";
 import { formatCodeContext } from "../../../tasks/_shared/helpers/planPrompt";
 import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
+import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
 
 export interface BuildPlanPromptResult {
@@ -169,6 +170,12 @@ export async function buildPlanPrompt(
   // the TOKEN/ASSET/LAYOUT inventory branch to the correct per-source
   // template. Hard-exclusive by construction (throws on mixed sources).
   const uiSource = planPool.uiSource();
+  // Axis C — a renderable feature observes the UI source for AFFORDANCES (not
+  // styling). Computed from the JOB pool (not the narrowed plan subset) so the
+  // affordance-observation partial can fire without pre-loading the UI body.
+  // Kept separate from `uiSource` so feature never trips the styling-inventory
+  // branches keyed on `uiSource`.
+  const { featureObservesUiSource, featureUiSource } = featureUiObservationVars(pool, task as CodeTask);
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -249,6 +256,7 @@ export async function buildPlanPrompt(
     remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
     hasTools: options?.hasTools ?? false,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
+    featureObservesUiSource, featureUiSource,
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,

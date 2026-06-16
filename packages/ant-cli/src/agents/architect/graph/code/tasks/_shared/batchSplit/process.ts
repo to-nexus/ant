@@ -91,6 +91,27 @@ export function processDiagnosticBatchSplit(
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
 
+    // Partition-mandatory types (seam): the fan-out is runtime-owned, not the
+    // LLM's discretion. The plan enumerates disjoint slices in the policy's
+    // `partitionFromField` (`closureSlices[]` for seam). 2+ slices → normalize
+    // into `batches[]` so the existing fan-out machinery partitions; a single
+    // slice (or none) falls through to the flat-plan path. An explicit
+    // `batches[]` already present wins (never double-source the fan-out).
+    if (taskPolicy?.partitionFromField) {
+      const slices = (parsed as Record<string, unknown>)[taskPolicy.partitionFromField];
+      const hasExplicitBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
+      if (Array.isArray(slices) && slices.length >= 2 && !hasExplicitBatches) {
+        parsed.batches = slices;
+        logBatchSplit({
+          action: 'partition_from_field',
+          field: taskPolicy.partitionFromField,
+          sliceCount: slices.length,
+          taskName: nextTask.name,
+          parentType: nextTask.type,
+        });
+      }
+    }
+
     const modifyArr: any[] = Array.isArray(parsed.implementation?.modify) ? parsed.implementation.modify : [];
     const createArr: any[] = Array.isArray(parsed.implementation?.create) ? parsed.implementation.create : [];
     const deleteArr: any[] = Array.isArray(parsed.implementation?.delete) ? parsed.implementation.delete : [];

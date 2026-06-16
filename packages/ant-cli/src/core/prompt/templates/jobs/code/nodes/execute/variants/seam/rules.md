@@ -18,7 +18,7 @@
 
 ---
 
-{{> jobs/code/base/injections/seam-connectivity-closure}}
+{{> jobs/code/base/injections/seam/connectivity-closure}}
 
 ---
 

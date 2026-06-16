@@ -187,6 +187,8 @@ The system does NOT auto-convert flat plans — the split-or-bundle call is your
 
 **Constraint**: Each `batches[].rationale` MUST be a complete sentence explaining why this batch is one isolated unit per the principle above. Becomes the child task description verbatim.
 
+⚠️ **Blind spot — rationale altitude (renderable / styling slices)**: A `rationale` is the child's whole context (tasks are context-isolated). State it at the **surface / responsibility altitude** — which surface or section the slice owns, which affordances / content / states it must deliver, and how it relates to its paired counterpart — NOT as a transcription of low-level markup or style tokens (raw element/class lists, property-value dumps). A rationale that reads as a fragment of markup gives the child a myopic, near-sighted brief and drops the design-document context the child needs; the child re-reads the design source itself, so the rationale must orient it, not pre-transcribe one layer of it.
+
 **Constraint**: Do NOT carry per-batch `modify[]` / `create[]` / `delete[]` arrays inside a `batches[]` entry. Internal implementation is the child plan's responsibility. The parent communicates **slice boundary** (via `name` + `rationale` + optional `requiredFiles`) and **cross-batch contracts** (via `parentReasoning`) — nothing else.
 
 **Schema (when emitted)**:
@@ -250,7 +252,9 @@ The system does NOT auto-convert flat plans — the split-or-bundle call is your
 
 {{> jobs/code/base/injections/entry-point-ownership-rule}}
 
-{{> jobs/code/base/injections/seam-connectivity-closure}}
+{{> jobs/code/base/injections/seam/connectivity-closure}}
+
+{{> jobs/code/base/injections/feature-ui-observation}}
 
 {{> jobs/code/base/injections/execution-context-discipline}}
 
@@ -322,19 +326,19 @@ what YOU own; depend on interfaces for what others own.
   templates only see the resulting booleans.
 --}}
 {{#if serviceVirtualizationContractActive}}
-{{> jobs/code/base/injections/service-virtualization-contract}}
+{{> jobs/code/base/injections/service-virtualization/contract}}
 {{/if}}
 
 {{#if serviceVirtualizationDataActive}}
-{{> jobs/code/base/injections/service-virtualization-data}}
+{{> jobs/code/base/injections/service-virtualization/data}}
 {{/if}}
 
 {{#if serviceVirtualizationImageryActive}}
-{{> jobs/code/base/injections/service-virtualization-imagery}}
+{{> jobs/code/base/injections/service-virtualization/imagery}}
 {{/if}}
 
 {{#if serviceVirtualizationSessionActive}}
-{{> jobs/code/base/injections/service-virtualization-session}}
+{{> jobs/code/base/injections/service-virtualization/session}}
 {{/if}}
 
 {{#if authSessionLifecycleActive}}
