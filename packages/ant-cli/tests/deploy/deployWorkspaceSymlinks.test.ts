@@ -6,20 +6,22 @@ import * as path from 'path';
 import {
   syncDeployWorkspace,
   resolveDeployWorkspacePath,
+  installDeployDependencies,
 } from '../../src/infrastructure/deploy/DeployWorkspace';
 
 /**
- * Regression anchor for the monorepo deploy install failure
- * (`Dependency install failed: npm install failed with exit code 1`).
+ * Regression anchor for the Next 16 / Turbopack deploy build failure
+ * (`Symlink [project]/apps/X/node_modules is invalid, it points out of the
+ * filesystem root`).
  *
- * Root cause: the deploy workspace excluded every `node_modules` from the
- * sync and created only ONE root symlink. For a pnpm-workspace monorepo,
- * per-package `node_modules` were therefore missing in the deploy tree, so
- * `next build` in `deploy/apps/web` could neither resolve `next` nor skip
- * install — it fell back to `npm install`, which chokes on `workspace:*`.
+ * Root cause: the deploy workspace shared deps by symlinking each package's
+ * `node_modules` to the sibling `codebase/node_modules`. That target escapes
+ * the deploy workspace root, and Turbopack rejects root-escaping symlinks.
  *
- * Fix: mirror the codebase's `node_modules` symlink layout at EVERY package
- * level. These tests drive the public `syncDeployWorkspace`.
+ * Fix: NO node_modules symlinks. The deploy workspace gets its own real,
+ * self-contained `node_modules` via `installDeployDependencies` (bundler-
+ * agnostic). These tests lock that the sync never (re)introduces an escaping
+ * symlink and that install short-circuits when deps already exist.
  */
 
 async function makeFile(p: string, content = ''): Promise<void> {
@@ -27,7 +29,7 @@ async function makeFile(p: string, content = ''): Promise<void> {
   await fsp.writeFile(p, content);
 }
 
-describe('syncDeployWorkspace — node_modules mirroring', () => {
+describe('syncDeployWorkspace — no escaping node_modules symlink', () => {
   let tmp: string;
   let codebase: string;
 
@@ -41,57 +43,47 @@ describe('syncDeployWorkspace — node_modules mirroring', () => {
     await fsp.rm(tmp, { recursive: true, force: true });
   });
 
-  it('mirrors per-package node_modules for a workspace monorepo', async () => {
-    // Root manifest + workspace marker.
+  it('syncs source but creates NO node_modules symlink (monorepo)', async () => {
     await makeFile(path.join(codebase, 'package.json'), JSON.stringify({ name: 'ws' }));
-    await makeFile(path.join(codebase, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n  - 'packages/*'\n");
+    await makeFile(path.join(codebase, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n");
     await makeFile(path.join(codebase, 'node_modules', '.sentinel'), 'root');
-
-    // Two workspace members, each with their own node_modules (pnpm layout).
     await makeFile(path.join(codebase, 'apps/web/package.json'), JSON.stringify({ name: 'web' }));
     await makeFile(path.join(codebase, 'apps/web/node_modules', '.bin', 'next'), '#!/bin/sh\n');
-    await makeFile(path.join(codebase, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }));
-    await makeFile(path.join(codebase, 'packages/lib/node_modules', '.sentinel'), 'lib');
 
     const deploy = await syncDeployWorkspace(codebase);
     expect(deploy).toBe(resolveDeployWorkspacePath(codebase));
 
-    for (const rel of ['node_modules', 'apps/web/node_modules', 'packages/lib/node_modules']) {
-      const link = path.join(deploy, rel);
-      const stat = await fsp.lstat(link);
-      expect(stat.isSymbolicLink(), `${rel} should be a symlink`).toBe(true);
-    }
-
-    // Sentinels resolve through the per-package links into the codebase.
-    expect(fs.readFileSync(path.join(deploy, 'apps/web/node_modules', '.bin', 'next'), 'utf-8')).toContain('#!/bin/sh');
-    expect(fs.readFileSync(path.join(deploy, 'packages/lib/node_modules', '.sentinel'), 'utf-8')).toBe('lib');
-
-    // Source files are synced; node_modules themselves are never copied (link only).
+    // Source files are synced...
     expect(fs.existsSync(path.join(deploy, 'apps/web/package.json'))).toBe(true);
+
+    // ...but no node_modules is copied OR symlinked at any level.
+    for (const rel of ['node_modules', 'apps/web/node_modules']) {
+      const lstat = await fsp.lstat(path.join(deploy, rel)).catch(() => null);
+      expect(lstat, `${rel} must not exist after sync`).toBeNull();
+    }
   });
 
-  it('single-package repo links only the root (no spurious sub-links)', async () => {
+  it('re-sync never introduces a node_modules symlink', async () => {
     await makeFile(path.join(codebase, 'package.json'), JSON.stringify({ name: 'solo' }));
     await makeFile(path.join(codebase, 'node_modules', '.sentinel'), 'root');
     await makeFile(path.join(codebase, 'src/index.ts'), 'export {};');
 
     const deploy = await syncDeployWorkspace(codebase);
+    await syncDeployWorkspace(codebase);
 
-    const rootStat = await fsp.lstat(path.join(deploy, 'node_modules'));
-    expect(rootStat.isSymbolicLink()).toBe(true);
+    expect(await fsp.lstat(path.join(deploy, 'node_modules')).catch(() => null)).toBeNull();
     expect(fs.existsSync(path.join(deploy, 'src/index.ts'))).toBe(true);
   });
 
-  it('is idempotent — re-sync keeps the symlinks correct', async () => {
-    await makeFile(path.join(codebase, 'package.json'), JSON.stringify({ name: 'ws' }));
-    await makeFile(path.join(codebase, 'apps/web/package.json'), JSON.stringify({ name: 'web' }));
-    await makeFile(path.join(codebase, 'apps/web/node_modules', '.sentinel'), 'web');
+  it('installDeployDependencies short-circuits when node_modules/.bin exists', async () => {
+    const deploy = path.join(tmp, 'deploy');
+    await makeFile(path.join(deploy, 'package.json'), JSON.stringify({ name: 'ws' }));
+    await makeFile(path.join(deploy, 'node_modules', '.bin', 'next'), '#!/bin/sh\n');
 
-    const deploy = await syncDeployWorkspace(codebase);
-    await syncDeployWorkspace(codebase);
+    const logs: string[] = [];
+    await installDeployDependencies(deploy, (l) => logs.push(l));
 
-    const stat = await fsp.lstat(path.join(deploy, 'apps/web/node_modules'));
-    expect(stat.isSymbolicLink()).toBe(true);
-    expect(fs.readFileSync(path.join(deploy, 'apps/web/node_modules', '.sentinel'), 'utf-8')).toBe('web');
+    // No real install ran (would need network); it skipped.
+    expect(logs.join('\n')).toMatch(/already present/i);
   });
 });
