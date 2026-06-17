@@ -206,26 +206,24 @@ describe('service-virtualization partials — body discipline', () => {
     }
   });
 
-  it('session: requires an observable identity-selection step + per-identity scoping (SBS)', () => {
+  it('session: identity/entry umbrella reminder — no auto-bind + usable session + persist identity mutations + real sign-in (Defect class)', () => {
+    // Fix D: the named `Auth-Flow Fidelity` carve-out is gone. The behaviors
+    // now derive from the always-on umbrella reminder; the no-auto-login line
+    // is kept explicit because it is the most-recurring defect.
     const src = read(PARTIAL_SESSION);
-    expect(src).toMatch(/selection affordance/i); // chooser, not silent bind
-    expect(src).toMatch(/switching identity|re-select/i); // role re-selectable in one run
-    expect(src).toMatch(/scoped records|scopes records/i); // per-identity data visibility
+    expect(src).toMatch(/Never auto-bind a default identity \(unconditional\)/);
+    expect(src).toMatch(/applies to ANY identity-gated surface in mock mode/);
+    expect(src).toMatch(/usable session/i);
+    expect(src).toMatch(/Persist identity mutations|persists like any other write/i);
+    expect(src).toMatch(/real sign-in surface/i);
   });
 
-  it('session: auth leg must derive the return URL from the handed redirectUri / runtime origin, not a hardcoded host (Defect 1a)', () => {
-    const src = read(PARTIAL_SESSION);
+  it('contract: auth/callback leg derives the return URL from the handed redirectUri / runtime origin, not a hardcoded host (Defect 1a — relocated from session)', () => {
+    const src = read(PARTIAL_CONTRACT);
     // derive from what the app handed / its runtime origin
     expect(src).toMatch(/you were actually handed|runtime origin|own origin at request time/i);
     // explicit prohibition on hardcoding a fixed host
     expect(src).toMatch(/hardcode a fixed host|baked-in origin/i);
-  });
-
-  it('session: disambiguates signup role-selection from login identity-selection (Defect 4)', () => {
-    const src = read(PARTIAL_SESSION);
-    expect(src).toMatch(/sign-up/i); // the first-time role step
-    expect(src).toMatch(/returning[ -]user/i); // returning path must also reach the choice
-    expect(src).toMatch(/identity choice|seeded-identity choice/i);
   });
 
   it('contract: cites the per-connection toggle env var grammar (USE_MOCK_<NAME>)', () => {
@@ -335,7 +333,6 @@ import {
   isSvWorldSeedActive,
   isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
-  isSvAuthFlowActive,
 } from '../../src/core/prompt/builder/serviceVirtualization';
 
 describe('isServiceVirtualizationContractActive — gate truth table', () => {
@@ -370,9 +367,16 @@ describe('isServiceVirtualizationDataActive — gate truth table', () => {
 });
 
 describe('isServiceVirtualizationSessionActive — gate truth table', () => {
+  // Include set = world-seed ∨ body-lifecycle (store ⊆ world-seed). With only
+  // taskType passed (no band, no renderable), the gate is true ONLY for the
+  // owner task types whose world-seed block fires on taskType alone — i.e.
+  // `setup`. `feature` requires band=platform and `ui` requires renderable to
+  // surface a block; with neither passed they are false here. The umbrella
+  // identity/entry reminder rides along whenever a block is active — it is no
+  // longer its own activation term.
   const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
-    { name: 'business + feature', has: true, t: 'feature', expected: true },
-    { name: 'business + ui', has: true, t: 'ui', expected: true },
+    { name: 'business + feature (no band/renderable)', has: true, t: 'feature', expected: false },
+    { name: 'business + ui (no renderable)', has: true, t: 'ui', expected: false },
     { name: 'business + design-system', has: true, t: 'design-system', expected: false },
     { name: 'business + setup', has: true, t: 'setup', expected: true },
     { name: 'business + verification', has: true, t: 'verification', expected: false },
@@ -391,6 +395,15 @@ describe('isServiceVirtualizationSessionActive — gate truth table', () => {
       ).toBe(c.expected);
     });
   }
+
+  it('a renderable feature/ui surfaces the partial via body-lifecycle', () => {
+    expect(
+      isServiceVirtualizationSessionActive({ hasBusinessConnection: true, taskType: 'ui', renderable: true }),
+    ).toBe(true);
+    expect(
+      isServiceVirtualizationSessionActive({ hasBusinessConnection: true, taskType: 'feature', band: 'platform' }),
+    ).toBe(true);
+  });
 });
 
 describe('isSvWorldSeedActive — block gate (band-routed)', () => {
@@ -447,7 +460,7 @@ describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
     }
   });
 
-  it('session-activation set is unchanged — store ⊆ world-seed, so the OR is not widened', () => {
+  it('session-activation set = world-seed ∨ body-lifecycle (store ⊆ world-seed, so the OR is not widened)', () => {
     const tasks = ['feature', 'ui', 'setup', 'design-system', 'verification', undefined];
     const bands = ['platform', 'foundation', undefined];
     for (const has of [true, false]) {
@@ -458,8 +471,7 @@ describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
             const orOfBlocks =
               isSvWorldSeedActive(input) ||
               isSvStoreLifecycleActive(input) ||
-              isSvBodyLifecycleActive(input) ||
-              isSvAuthFlowActive(input);
+              isSvBodyLifecycleActive(input);
             expect(isServiceVirtualizationSessionActive(input)).toBe(orOfBlocks);
           }
         }
@@ -479,25 +491,6 @@ describe('isSvBodyLifecycleActive — block gate (renderable-routed)', () => {
     it(c.name, () => {
       expect(
         isSvBodyLifecycleActive({ hasBusinessConnection: c.has, renderable: c.renderable }),
-      ).toBe(c.expected);
-    });
-  }
-});
-
-describe('isSvAuthFlowActive — block gate (taskType, narrowed in-body)', () => {
-  const cases: Array<{ name: string; has: boolean; t: string | undefined; expected: boolean }> = [
-    { name: 'business + feature', has: true, t: 'feature', expected: true },
-    { name: 'business + ui', has: true, t: 'ui', expected: true },
-    { name: 'business + setup', has: true, t: 'setup', expected: true },
-    { name: 'business + design-system', has: true, t: 'design-system', expected: false },
-    { name: 'business + verification', has: true, t: 'verification', expected: false },
-    { name: 'business + undefined', has: true, t: undefined, expected: false },
-    { name: 'no business + feature', has: false, t: 'feature', expected: false },
-  ];
-  for (const c of cases) {
-    it(c.name, () => {
-      expect(
-        isSvAuthFlowActive({ hasBusinessConnection: c.has, taskType: c.t }),
       ).toBe(c.expected);
     });
   }
@@ -687,7 +680,7 @@ describe('service-virtualization — legacy artifacts removed', () => {
   });
 });
 
-describe('service-virtualization — request-responsiveness + per-authority fidelity (RCA: green-basing-helix)', () => {
+describe('service-virtualization — request-responsiveness (RCA: green-basing-helix)', () => {
   it('data partial mandates the read endpoint applies request inputs to the seeded dataset', () => {
     const src = fs.readFileSync(PARTIAL_DATA, 'utf-8');
     expect(src).toMatch(/Request-responsiveness/i);
@@ -696,11 +689,10 @@ describe('service-virtualization — request-responsiveness + per-authority fide
     expect(src).toMatch(/changing a selecting input changes the returned set/i);
   });
 
-  it('session partial mandates per-authority fidelity (linked authority equals the chooser pick)', () => {
-    const src = fs.readFileSync(PARTIAL_SESSION, 'utf-8');
-    expect(src).toMatch(/linked-authority|linked authority/i);
-    expect(src).toMatch(/the chooser actually picked|did not pick/i);
-  });
+  // Fix D: per-authority fidelity (linked authority = the chooser's pick) was a
+  // named auth carve-out enumeration. It derives from the umbrella principle (a
+  // mocked identity leg behaves like the real backend) and is no longer pinned
+  // as its own row — the carve-out was removed as fragmentation.
 });
 
 describe('service-virtualization — navigable-target reachability owned by the always-on contract (RCA: misty-bringing-novel)', () => {
@@ -754,11 +746,18 @@ describe('service-virtualization — navigable-target reachability owned by the 
     expect(src).toMatch(/never by\s+mirroring the external host/i);
   });
 
-  it('session: auth-entry defers to the contract navigable-target rule and names the no-op-redirect defect', () => {
+  it('session: navigable-target / auth-entry URLs defer to the contract rule (session does NOT restate it)', () => {
     const src = read(PARTIAL_SESSION);
     expect(src).toMatch(/navigable-target rule|navigable target/i);
     expect(src).toMatch(/service-virtualization-contract/);
+  });
+
+  it('contract: owns the no-op-redirect defect for the externally-issued grant / callback leg (relocated from session)', () => {
+    const src = read(PARTIAL_CONTRACT);
     expect(src).toMatch(/no-op/i);
+    // the grant-only / opaque-URI discipline lives with the navigable-target owner
+    expect(src).toMatch(/append\s+only the (issued )?grant/i);
+    expect(src).toMatch(/opaque/i);
   });
 
   // RCA: third-housing-forge — the contract "binds every method" rule existed,

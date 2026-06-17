@@ -545,6 +545,13 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/layer-role-fidelity": {
+    "sources": [
+      "auto-injection",
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/layout-validity-floor": {
     "sources": [
       "partial-ref",

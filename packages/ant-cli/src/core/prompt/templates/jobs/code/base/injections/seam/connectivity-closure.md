@@ -61,6 +61,7 @@ address from what the destination actually defines, never from intent or recall.
 {{/if}}
 {{/if}}
 
+{{#unless seamClassifyingParent}}
 **Remediation — resolve OR remove (your scope):** Observe, do not assume:
 - **References resolve.** Every reference MUST reach a real, registered
   destination. If the destination is missing and belongs to this module, create
@@ -129,4 +130,5 @@ address from what the destination actually defines, never from intent or recall.
   router registration, a constants module, an event registry, a DI container) is
   pinned by the framework guidance injected for this run — follow it; derive, do
   not re-invent.
+{{/unless}}
 {{/if}}

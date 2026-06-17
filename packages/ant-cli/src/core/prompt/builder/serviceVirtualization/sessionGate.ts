@@ -26,17 +26,17 @@
  *                      feature with no rendered surface is excluded — taskType
  *                      alone (feature/ui) would wrongly include headless hooks,
  *                      so the precise signal is `renderable`, not the task type.
- *   - Auth-flow      — account selection / picked=linked authority / redirect
- *                      opaqueness. No infrastructure signal distinguishes an
- *                      auth/identity task from a data task (same root as the
- *                      platform-internal auth-vs-backend split), so the block
- *                      is narrowed by an in-body LLM-self condition rather than
- *                      a precise gate (see plan §후순위). Gate: feature ∨ ui ∨
- *                      setup.
+ *
+ * Identity / entry / auth behavior is NOT a separate gated block — it is the
+ * partial's always-on umbrella reminder (a virtualized identity leg behaves
+ * like the real backend: no auto-bind, lands a usable session, persists
+ * identity mutations, enters via the real sign-in). Navigable-target / callback
+ * reachability is owned by `service-virtualization-contract`; the session
+ * partial defers, never restates it.
  *
  * `hasBusinessConnection` is the common precondition. `design-system` (token
  * infrastructure) is intentionally in NONE of the blocks — tokens author no
- * demo world, response body, or auth flow.
+ * demo world or response body.
  */
 
 export interface ServiceVirtualizationSessionGateInput {
@@ -44,7 +44,7 @@ export interface ServiceVirtualizationSessionGateInput {
   hasBusinessConnection: boolean;
   /** Task type at the call site (`currentTask.type` for execute, plan-side
    *  task type for plan). Optional because the body-lifecycle block keys on
-   *  `renderable` alone; world-seed / auth-flow callers always pass it. */
+   *  `renderable` alone; the world-seed caller always passes it. */
   taskType?: string | undefined;
   /** Scheduling band of the current task (read-only). Used ONLY to route the
    *  World-seed block to the platform-band shared-service owner; never written. */
@@ -101,34 +101,17 @@ export function isSvBodyLifecycleActive(
 }
 
 /**
- * Auth-flow block: surfaced to SV-authoring task types; an in-body LLM-self
- * condition narrows it to sign-in/identity work.
- */
-export function isSvAuthFlowActive(
-  input: ServiceVirtualizationSessionGateInput,
-): boolean {
-  if (input.hasBusinessConnection !== true) return false;
-  return (
-    input.taskType === 'feature' ||
-    input.taskType === 'ui' ||
-    input.taskType === 'setup'
-  );
-}
-
-/**
  * Include gate for the `service-virtualization-session` partial — true iff
- * ANY of the three blocks is active. `design-system` is excluded (all three
- * blocks are false for it).
+ * ANY block is active (world-seed / store-lifecycle ⊆ world-seed / body-
+ * lifecycle). `design-system` is excluded (every block is false for it). The
+ * always-on identity/entry umbrella reminder rides along whenever the partial
+ * is included — it owns no separate gate.
  *
  * @returns `true` iff `hasBusinessConnection === true` AND at least one block
- *          (world-seed / body-lifecycle / auth-flow) activates for this task.
+ *          (world-seed / body-lifecycle) activates for this task.
  */
 export function isServiceVirtualizationSessionActive(
   input: ServiceVirtualizationSessionGateInput,
 ): boolean {
-  return (
-    isSvWorldSeedActive(input) ||
-    isSvBodyLifecycleActive(input) ||
-    isSvAuthFlowActive(input)
-  );
+  return isSvWorldSeedActive(input) || isSvBodyLifecycleActive(input);
 }

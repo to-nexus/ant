@@ -586,6 +586,8 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 - **figma** source → include the figma reference path; real data is fetched live at execute time.
 - **ant** source → include the UI tokens path, plus the specific spec-section paths this task renders.
 
+**Authoritative inheritance**: A `ui` task refines the component its paired feature authored. Whatever authoritative document that feature implements against — a system-design / spec / PRD that fixes layer responsibilities, state ownership, or component structure — the `ui` task `include`s the SAME document(s) **in addition to** the UI source. The visual pass must see the same responsibility authority the feature saw; with only the UI source it re-derives content and structure from the markup and contradicts the layer contract. (The UI source is authority for the *look*; the inherited document is authority for *responsibility / structure* — both, not one.)
+
 ### `stack` — per-task tech-tier pointer
 
 **Principle**: `stack` selects which runtime tier's language/framework this task targets. It is always a single value at task level.
