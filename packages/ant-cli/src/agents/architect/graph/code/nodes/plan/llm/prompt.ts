@@ -34,7 +34,6 @@ import {
   isSvWorldSeedActive,
   isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
-  isSvAuthFlowActive,
 } from "../../../../../../../core/prompt/builder/serviceVirtualization";
 import { isAuthSessionLifecycleActive } from "../../../../../../../core/prompt/builder/authSessionGate";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../../core/prompt/builder/ArtifactPipeline";
@@ -167,6 +166,11 @@ export async function buildPlanPrompt(
   const planPool = new ArtifactPoolView(allDocs);
   const hasSystemDesign = planPool.hasSystemDesign();
   const hasUi = planPool.hasUi();
+  // Layer-role-fidelity floor (Fix B) — the floor is always-on; this Gate flag
+  // self-gates only the partial's defer-clause ("an injected design input
+  // governs"). Any authoritative doc kind counts (system-design / spec / PRD),
+  // so spec-/PRD-carried authority is honored regardless of `hasSystemDesign`.
+  const hasAnyAuthoritativeDoc = hasSystemDesign || planPool.hasSpec() || planPool.hasSources();
   // `uiSource` — Contract-flavoured discriminator; plan/rules.md dispatches
   // the TOKEN/ASSET/LAYOUT inventory branch to the correct per-source
   // template. Hard-exclusive by construction (throws on mixed sources).
@@ -235,6 +239,13 @@ export async function buildPlanPrompt(
   // regions); `'region'` = a region sub-task (deep audit within its boundary).
   // The seam-connectivity-closure partial gates its plan blocks on this.
   const seamBand = task.type === 'seam' ? (task as { band?: 'region' }).band : undefined;
+  // Single-contract gate (Fix A — onyx-fleeing-lathe). The classifying parent
+  // must emit a `regions[]` classification, never the generic flat
+  // `implementation` plan. This var suppresses the competing flat schema in
+  // `plan/rules.md` and the execute-only Remediation block in
+  // `connectivity-closure.md`, so the parent sees ONE contract (regions)
+  // instead of the dual contract that drove the flat-plan escape hatch.
+  const seamClassifyingParent = task.type === 'seam' && seamBand === undefined;
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
@@ -256,6 +267,7 @@ export async function buildPlanPrompt(
     // for seam with an explicit Three-Axis band (RC5).
     seamPlanning: true,
     seamBand,
+    seamClassifyingParent,
     isDiagnosticCarry,
     hasCrossBatchContracts,
     batchSplitCount,
@@ -267,6 +279,7 @@ export async function buildPlanPrompt(
     remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
     hasTools: options?.hasTools ?? false,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
+    hasAnyAuthoritativeDoc,
     featureObservesUiSource, featureUiSource,
     layoutValidityFloorActive,
     featureContext: state.featureContext,
@@ -326,10 +339,6 @@ export async function buildPlanPrompt(
     svBodyLifecycleActive: isSvBodyLifecycleActive({
       hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
       renderable: (task as { renderable?: boolean }).renderable,
-    }),
-    svAuthFlowActive: isSvAuthFlowActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
-      taskType: task.type,
     }),
     // Session-lifecycle completeness — SV-INDEPENDENT (no hasBusinessConnection
     // precondition): persist+rehydrate round-trip is true production behavior,

@@ -392,12 +392,18 @@ Sub-role is determined by priority:
 {{#each pairedFeature.files}}
   - `{{this}}`
 {{/each}}
+{{#if pairedFeature.include}}
+- Authoritative documents it implemented against — honor the same layer / responsibility authority they set; read them if a structural decision is unclear, do NOT re-derive it from the visual source:
+{{#each pairedFeature.include}}
+  - `{{this}}`
+{{/each}}
+{{/if}}
 - Twin scope (verbatim): {{pairedFeature.description}}
 {{/if}}
 
 **Scope**: Enhance the visual presentation of the functionally-complete component files {{#if pairedFeature}}your feature twin `{{pairedFeature.name}}`{{else}}the paired feature task{{/if}} produced. Create and modify the files listed in the plan; when an enhancement genuinely requires it you MAY add supporting modules, dependencies, or logic, extract sub-components, and touch shared / sibling presentation for integration (see "Converge on existing infrastructure" below).
 
-**Functional non-regression**: The component you receive is functionally complete — its functional behavior is the contract you MUST NOT regress. Every binding whose removal would break a user-facing requirement (an event handler, data read/write wiring, a routing/navigation target, a permission/role-gated branch, a form submission/validation) keeps working. You are NOT limited to visual attributes: an enhancement goal MAY legitimately add presentational logic, hooks, state, or dependencies — animation, transition, hover/focus/scroll interactivity, layout measurement, responsive behavior — add what the enhancement needs. Replacing an implementation with an equivalent one that preserves the same functional behavior is allowed; silently dropping, no-op-ing, or breaking existing behavior is not. If a visual goal seems to require removing a functional binding, that is out of scope — style around it.
+**Functional non-regression**: The component you receive is functionally complete — its functional behavior is the contract you MUST NOT regress. Every binding whose removal would break a user-facing requirement (an event handler, data read/write wiring, a routing/navigation target, a permission/role-gated branch, a form submission/validation) keeps working. You are NOT limited to visual attributes: an enhancement goal MAY add **presentational** logic, local view state, and supporting dependencies — animation, transition, hover/focus/scroll interactivity, layout measurement, responsive behavior — add what the *presentation* needs. This license is scoped to presentation: do NOT take over data orchestration (loading sequences), own async or business state, or implement business rules / derivations in the view — those belong to the feature/coordination boundary (see **Layer-Role Fidelity**). Replacing an implementation with an equivalent one that preserves the same functional behavior is allowed; silently dropping, no-op-ing, or breaking existing behavior is not. If a visual goal seems to require removing a functional binding, that is out of scope — style around it. **Surface, don't fix**: if you find a functional gap (a missing handler, an unwired data path, dead navigation), do NOT patch the behavior into the view — report it so the owning feature/seam task closes it.
 
 **Converge on existing infrastructure**: Before adding anything, observe what the project already provides — both shared visual primitives and shared logic — and build on it; do NOT re-invent a local copy or stand up a duplicate path (that fragments the codebase). Do NOT fork or redefine the design-system token foundation — extend it.
 

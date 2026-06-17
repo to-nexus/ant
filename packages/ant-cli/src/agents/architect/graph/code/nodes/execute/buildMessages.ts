@@ -44,7 +44,6 @@ import {
   isSvWorldSeedActive,
   isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
-  isSvAuthFlowActive,
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
 import { isAuthSessionLifecycleActive } from "../../../../../../core/prompt/builder/authSessionGate";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
@@ -457,6 +456,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // presence. See `AGENTS.md` "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
+      // Layer-role-fidelity floor (Fix B) — Gate flag self-gating only the
+      // partial's defer-clause. Any authoritative doc kind (system-design /
+      // spec / PRD) flips it, so spec-/PRD-carried authority is honored.
+      hasAnyAuthoritativeDoc: (() => {
+        const v = new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs));
+        return v.hasSystemDesign() || v.hasSpec() || v.hasSources();
+      })(),
       // Axis C — renderable feature observes the UI source for AFFORDANCES (job
       // pool, not the narrowed selection; separate from styling `uiSource`).
       ...featureUiObservationVars(state.artifacts || [], state.currentTask as CodeTask),
@@ -512,10 +518,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       svBodyLifecycleActive: isSvBodyLifecycleActive({
         hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
         renderable: (state.currentTask as { renderable?: boolean }).renderable,
-      }),
-      svAuthFlowActive: isSvAuthFlowActive({
-        hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
-        taskType,
       }),
       // Session-lifecycle completeness — SV-INDEPENDENT (no hasBusinessConnection
       // precondition): the persist+rehydrate round-trip is true production

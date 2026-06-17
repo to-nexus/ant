@@ -293,6 +293,26 @@ describe('Template Smoke Tests', () => {
     expect(output).toMatch(/external integration boundaries/);
   });
 
+  it('layer-role-fidelity floor renders always-on; defer-clause self-gates on hasAnyAuthoritativeDoc', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const path = 'jobs/code/base/injections/layer-role-fidelity';
+
+    // Floor body is unconditional — renders regardless of doc presence.
+    const noDoc = await adapter.render(path, { hasAnyAuthoritativeDoc: false });
+    expect(noDoc).toContain('Layer-Role Fidelity');
+    expect(noDoc).toContain('Presentation observes, never orchestrates');
+    expect(noDoc).toContain('Single owner for state');
+    // else-branch: floor governs alone.
+    expect(noDoc).toContain('No design input specifies the partition');
+    expect(noDoc).not.toContain('is the authority for what it specifies');
+
+    // Doc present → defer-clause flips to "honor the document's assignment".
+    const withDoc = await adapter.render(path, { hasAnyAuthoritativeDoc: true });
+    expect(withDoc).toContain('Layer-Role Fidelity');
+    expect(withDoc).toContain('is the authority for what it specifies');
+    expect(withDoc).not.toContain('No design input specifies the partition');
+  });
+
   it('decompose/rules.md encodes UI pairing rule with renderable-only predicate', async () => {
     await initPartials(TEMPLATES_DIR);
 

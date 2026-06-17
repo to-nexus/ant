@@ -28,6 +28,13 @@ export interface PairedFeatureVar {
   description: string;
   /** feature-relative paths the twin feature authored (the skeleton to build on). */
   files: string[];
+  /**
+   * Authoritative documents the twin feature implemented against (its
+   * `include`). Surfaced so the ui pass honors the SAME layer / responsibility
+   * authority the feature saw, instead of re-deriving structure from the
+   * visual source alone (Fix B — onyx-fleeing-lathe).
+   */
+  include: string[];
 }
 
 /**
@@ -49,6 +56,7 @@ export function findPairedFeature(
     name: twin.name,
     description: (twin.description ?? '').trim(),
     files: Array.isArray(twin.touchedFiles) ? twin.touchedFiles : [],
+    include: Array.isArray(twin.include) ? twin.include : [],
   };
 }
 

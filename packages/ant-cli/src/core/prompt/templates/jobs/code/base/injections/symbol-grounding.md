@@ -15,6 +15,8 @@
 
 **Constraint**: A style-selector token is a reference, not free text. A name that "looks like a standard utility" (a framework-convention spelling) is a guess until confirmed against the project's styling source. When the project defines its own selector vocabulary, that vocabulary is the SSOT — a name absent from it has no effect and silently breaks layout, with no type or build error to catch it.
 
+**Constraint**: Ground the *composition* of selectors, not only each name. When the source applies a particular set of selector tokens to an element — or a single dedicated selector — reproduce that same composition on that element. Do NOT merge selectors the source keeps separate, and do NOT substitute a shared, general-purpose selector for a dedicated one the source applied: a shared selector carries its own declarations and silently changes the element, with no error to catch it. The element-to-selector pairing is part of the reference being grounded.
+
 **Constraint**: Do NOT mimic the nearest existing caller in the codebase — earlier callers may have drifted from the defining file's shape. The defining file wins.
 
 **Constraint**: This applies equally to references you introduce yourself — test fixtures, mock data, default objects, sample payloads — not only to references named in the plan. A constructed value that must conform to an external type is bound by that type just as a call site is bound by a signature.

@@ -44,7 +44,6 @@ describe('iterative-mango — SV session faithfulness rows', () => {
       svWorldSeedActive: true,
       svStoreLifecycleActive: true,
       svBodyLifecycleActive: true,
-      svAuthFlowActive: true,
     });
     contract = await adapter.render(CONTRACT, {});
   });
@@ -74,12 +73,14 @@ describe('iterative-mango — SV session faithfulness rows', () => {
     // binds every adapter method, not only a dedicated auth adapter
     expect(contract).toMatch(/binds EVERY method|every method of every virtualized adapter/i);
     expect(contract).toMatch(/folded among many data methods/i);
+    // Fix D: the callback-leg no-op-redirect defect is owned by the contract
+    // navigable-target rule (de-duplicated from the session auth-flow block).
+    expect(contract).toMatch(/no-op/i);
   });
 
-  it('2-2b: session defers the authorize entry to the contract rule and names the no-op-redirect defect', () => {
+  it('2-2b: session defers the authorize entry to the contract navigable-target rule (does NOT restate it)', () => {
     expect(session).toMatch(/navigable-target rule|navigable target/i);
     expect(session).toMatch(/service-virtualization-contract/);
-    expect(session).toMatch(/no-op/i);
   });
 
   it('2-6: no-auto-bind is unconditional (applies to ANY identity-gated surface)', () => {

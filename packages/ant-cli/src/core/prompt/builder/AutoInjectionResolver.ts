@@ -12,6 +12,13 @@
 import type { ResolvedActionContext, TechTier, Mode } from '@ant/shared';
 import { deriveCodebaseRole } from '@ant/shared';
 
+/**
+ * Task types that author code into a layer and therefore receive the
+ * `layer-role-fidelity` floor. Excludes verification / doc / test-code /
+ * explain (non-authoring) — they never write a presentation/domain layer.
+ */
+const CODE_AUTHORING_TASK_TYPES = ['feature', 'ui', 'setup', 'error', 'seam', 'design-system'];
+
 // ============================================
 // Input Types
 // ============================================
@@ -110,6 +117,19 @@ export class AutoInjectionResolver {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (!skipStaticPolicy && hasFrontend) {
       injections.push(`${commonPrefix}/visual-source-authority`);
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Tier A: layer-role-fidelity floor (Fix B — onyx-fleeing-lathe)
+    // Always-on for code-authoring task types; the doc-present defer-clause
+    // self-gates INSIDE the partial on `hasAnyAuthoritativeDoc`
+    // (= hasSystemDesign ∨ hasSpec ∨ hasSources, passed by the call site).
+    // Exempt the non-authoring types (verification / doc / test-code / explain)
+    // — they never write a layer — and the Tier 0/1 `direct` node, which
+    // resolves no code-authoring `taskType` through this resolver.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (job === 'code' && CODE_AUTHORING_TASK_TYPES.includes(taskType ?? '')) {
+      injections.push(`${jobPrefix}/layer-role-fidelity`);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

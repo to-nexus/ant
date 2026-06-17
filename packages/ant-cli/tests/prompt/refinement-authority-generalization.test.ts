@@ -99,6 +99,17 @@ describe('execute Section 1-1 — generalized to all tasks (no parentReasoning g
     expect(SYMBOL_GROUNDING).toMatch(/permitted literal set of any enumerated field/);
   });
 
+  it('grounding partial grounds selector *composition*, not only individual names', () => {
+    // onyx-fleeing-lathe Fix C: name-existence (already covered) ≠ which
+    // selectors co-apply to one element. Borrowing a shared selector onto an
+    // element the source styled with a dedicated one is a composition defect.
+    expect(SYMBOL_GROUNDING).toMatch(/Ground the \*composition\* of selectors, not only each name/);
+    expect(SYMBOL_GROUNDING).toMatch(/Do NOT merge selectors the source keeps separate/);
+    expect(SYMBOL_GROUNDING).toMatch(
+      /do NOT substitute a shared, general-purpose selector for a dedicated one/,
+    );
+  });
+
   it('preserves the ✅/❌ refinement-authority table verbatim under the new title', () => {
     expect(EXECUTE_RULES).toMatch(
       /Use `read_file` \/ `search_code` to confirm exact import paths, function signatures, type shapes, file conventions/,

@@ -35,7 +35,6 @@ export {
   isSvWorldSeedActive,
   isSvStoreLifecycleActive,
   isSvBodyLifecycleActive,
-  isSvAuthFlowActive,
   type ServiceVirtualizationSessionGateInput,
 } from './sessionGate';
 

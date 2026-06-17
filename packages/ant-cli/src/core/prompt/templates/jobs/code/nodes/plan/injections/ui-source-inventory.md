@@ -1,8 +1,10 @@
 {{!--
   Per-UiSource planning guidance for `design-system` and `ui` task types.
-  Dispatched by `plan/rules.md` when `hasUi` is true. The Gate `hasUi` stays
-  the outer condition — this partial only fires when at least one UI source
-  is selected.
+  Dispatched by `plan/rules.md` only inside its `{{#if hasUi}}` branch — that
+  dispatch-site Gate is the single owner of the `hasUi` presence condition.
+  This partial therefore does NOT re-gate on `hasUi` (an inner gate would be
+  always-true here, a job-wide signal duplicated where the outer one already
+  decided it); it branches by `taskType` and the `uiSource` discriminator only.
 
   Structure:
     - Each branch lists its inventory items as bullet sections
@@ -18,7 +20,6 @@
       It matters most for handoff (where token-shape and code-shape files
       mix in one manifest) but applies uniformly to all sources.
 --}}
-{{#if hasUi}}
 {{#if (eq taskType "design-system")}}
 
 **FOR `design-system` TASKS ({{uiSource}} source) — inventory items to cover in the plan:**
@@ -93,5 +94,4 @@
 - If a design property is not observable in any planned read, note it as "unspecified" and defer to framework conventions; do NOT invent.
 {{/if}}
 
-{{/if}}
 {{/if}}

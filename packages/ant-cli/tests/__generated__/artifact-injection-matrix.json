@@ -19,6 +19,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -47,6 +48,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -75,6 +77,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -103,6 +106,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -130,6 +134,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -204,6 +209,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -233,6 +239,7 @@
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/directive",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
@@ -261,6 +268,7 @@
     "injectionPaths": [
       "jobs/shared/injections/output-tag-policy",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/base/injections/layer-role-fidelity",
       "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
