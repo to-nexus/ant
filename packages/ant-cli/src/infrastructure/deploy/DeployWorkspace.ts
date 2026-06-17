@@ -15,20 +15,24 @@
  *   3. Exclude `.next`, `node_modules`, and other dev/build artifacts so
  *      deploy's own `.next/` (including `.next/cache` for fast rebuilds) is
  *      never clobbered.
- *   4. Share `node_modules` via symlink, mirrored at EVERY workspace package
- *      level — not just the root. pnpm does not hoist most deps to the root,
- *      so a single `deploy/node_modules` link is insufficient for a monorepo:
- *      `next build` in `deploy/apps/web` needs `deploy/apps/web/node_modules`
- *      to resolve `next` + `workspace:*` deps. Each per-package link points at
- *      the codebase's real (already-installed) symlink farm; deploy reads
- *      only, install happens in codebase via PreviewService's Redis-locked path.
+ *   4. `node_modules` is NOT shared via symlink. A symlink pointing at the
+ *      sibling `codebase/node_modules` escapes the deploy workspace root, and
+ *      Next 16's Turbopack rejects such symlinks ("points out of the
+ *      filesystem root"). Instead deploy gets its OWN real, self-contained
+ *      `node_modules` via a frozen install at the deploy root (see
+ *      DeployService.startDeploy). Because `node_modules` is in EXCLUDES, the
+ *      rsync `--delete` never removes it, so it persists across snapshots
+ *      (like `.next/cache`) — the install runs once then no-ops. A real tree
+ *      is bundler-agnostic: it works under any bundler / Next version, unlike
+ *      the previous escaping-symlink scheme that depended on the bundler
+ *      following links out of root.
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import { spawn } from 'child_process';
-import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
+import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -65,8 +69,10 @@ export function resolveDeployWorkspacePath(codebasePath: string): string {
  * Uses rsync -a --delete when available (near-instant for unchanged trees,
  * transfers only diffs), falls back to a Node-based mtime/size walker.
  *
- * After sync, ensures `deploy/node_modules` is a symlink into
- * `codebase/node_modules` so the build can resolve deps without reinstalling.
+ * Dependency install is the caller's responsibility (DeployService runs a
+ * frozen install at the deploy root once) — `node_modules` is excluded from
+ * the sync and persists across snapshots, so it is never a symlink and never
+ * escapes the deploy root.
  *
  * Returns the absolute deploy workspace path.
  */
@@ -84,8 +90,6 @@ export async function syncDeployWorkspace(
   } else {
     await nodeIncrementalSync(codebasePath, deployPath, onLog);
   }
-
-  await ensureNodeModulesSymlinks(codebasePath, deployPath);
 
   onLog?.(`✅ Deploy workspace ready`);
   return deployPath;
@@ -248,53 +252,77 @@ async function copyIfDiffers(
   tally('copy');
 }
 
+const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
+
 /**
- * Mirror the codebase's `node_modules` symlink layout into the deploy tree at
- * every workspace package level. For each package dir (root + every workspace
- * member, discovered via the shared manifest walk) that actually has a
- * `node_modules` in the codebase, create a matching symlink in deploy.
+ * Ensure the deploy workspace has its own real `node_modules`.
  *
- * Single-package repos resolve to just the root link — identical to before.
+ * Runs ONE install at the deploy workspace root (not per-package): pnpm/yarn
+ * link the whole workspace from a sub-dir, but npm workspaces require the root,
+ * so we always install at the root for correctness across package managers.
+ * Includes devDependencies (build tools live there) via `buildInstallCommand`.
+ *
+ * Idempotent across deploys: `node_modules` is excluded from the rsync and
+ * persists, so a warm install is a near-no-op (store hardlinks, lockfile
+ * already satisfied). Skips entirely when a populated `node_modules/.bin`
+ * already exists at the root.
  */
-async function ensureNodeModulesSymlinks(
-  codebasePath: string,
-  deployPath: string
+export async function installDeployDependencies(
+  deployRoot: string,
+  onLog?: (line: string) => void
 ): Promise<void> {
-  const manifests = await enumeratePackageJsonManifests(codebasePath);
-  const pkgDirs = new Set(manifests.map((m) => path.dirname(m)));
-
-  for (const dir of pkgDirs) {
-    const target = path.join(dir, 'node_modules');
-    // Mirror only what the codebase actually installed.
-    const targetStat = await fsp.lstat(target).catch(() => null);
-    if (!targetStat) continue;
-
-    const rel = path.relative(codebasePath, dir); // '' for the workspace root
-    const link = path.join(deployPath, rel, 'node_modules');
-    await linkNodeModules(target, link);
+  const binDir = path.join(deployRoot, 'node_modules', '.bin');
+  if (fs.existsSync(binDir)) {
+    onLog?.(`📦 Deploy node_modules already present — skipping install`);
+    return;
   }
-}
 
-/**
- * Link a single `node_modules` into the deploy tree. If it is already the
- * correct symlink we leave it alone; if it exists as a regular directory
- * (from a prior attempt) we remove it before relinking. Prefers relative
- * symlinks so the deploy workspace stays portable if the base path moves
- * (e.g. from local laptop layout to EFS).
- */
-async function linkNodeModules(target: string, link: string): Promise<void> {
-  const existing = await fsp.lstat(link).catch(() => null);
-  if (existing) {
-    if (existing.isSymbolicLink()) {
-      const current = await fsp.readlink(link).catch(() => '');
-      if (path.resolve(path.dirname(link), current) === path.resolve(target)) {
-        return;
+  const pm = detectPackageManager(deployRoot);
+  const { command, args } = buildInstallCommand(pm);
+  onLog?.(`📦 Installing deploy dependencies (${pm}) at workspace root...`);
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const child = spawn(command, args, {
+      cwd: deployRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+    });
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      onLog?.(`❌ ${pm} install timed out (5 minutes)`);
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
+      reject(new Error(`${pm} install timed out`));
+    }, INSTALL_TIMEOUT_MS);
+
+    const pipe = (data: Buffer) =>
+      data.toString().split('\n').filter(Boolean).forEach((line) => onLog?.(line));
+    child.stdout?.on('data', pipe);
+    child.stderr?.on('data', pipe);
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        onLog?.(`✅ Deploy dependencies installed`);
+        resolve();
+      } else {
+        const err = `${pm} install failed with exit code ${code}`;
+        onLog?.(`❌ ${err}`);
+        reject(new Error(err));
       }
-    }
-    await fsp.rm(link, { recursive: true, force: true });
-  }
+    });
 
-  await fsp.mkdir(path.dirname(link), { recursive: true });
-  const rel = path.relative(path.dirname(link), target);
-  await fsp.symlink(rel || target, link, 'dir');
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      onLog?.(`❌ Install error: ${err.message}`);
+      reject(err);
+    });
+  });
 }
