@@ -33,6 +33,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import { spawn } from 'child_process';
 import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
+import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -255,24 +256,59 @@ async function copyIfDiffers(
 const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * Remove any `node_modules` that is a SYMLINK anywhere in the deploy tree
+ * (root + every workspace package). Such links are the legacy escaping-symlink
+ * scheme (`deploy/.../node_modules → codebase/.../node_modules`) that Turbopack
+ * rejects ("points out of the filesystem root"). Because the deploy workspace
+ * persists and `node_modules` is excluded from the rsync, a link created by a
+ * pre-fix build survives indefinitely until purged here. Real `node_modules`
+ * directories are left untouched. Returns the number of links removed.
+ */
+export async function purgeNodeModulesSymlinks(deployRoot: string): Promise<number> {
+  const manifests = await enumeratePackageJsonManifests(deployRoot);
+  const pkgDirs = new Set<string>([deployRoot, ...manifests.map((m) => path.dirname(m))]);
+
+  let purged = 0;
+  for (const dir of pkgDirs) {
+    const nm = path.join(dir, 'node_modules');
+    const st = await fsp.lstat(nm).catch(() => null);
+    if (st?.isSymbolicLink()) {
+      await fsp.rm(nm, { recursive: true, force: true });
+      purged++;
+    }
+  }
+  return purged;
+}
+
+/**
  * Ensure the deploy workspace has its own real `node_modules`.
  *
- * Runs ONE install at the deploy workspace root (not per-package): pnpm/yarn
- * link the whole workspace from a sub-dir, but npm workspaces require the root,
- * so we always install at the root for correctness across package managers.
- * Includes devDependencies (build tools live there) via `buildInstallCommand`.
+ * 1. Purge any escaping `node_modules` symlinks left by a pre-fix build — the
+ *    deploy workspace persists, so stale links must be reconciled, not trusted.
+ * 2. Runs ONE install at the deploy workspace root (not per-package): pnpm/yarn
+ *    link the whole workspace from a sub-dir, but npm workspaces require the
+ *    root, so we always install at the root for correctness across package
+ *    managers. Includes devDependencies (build tools) via `buildInstallCommand`.
  *
- * Idempotent across deploys: `node_modules` is excluded from the rsync and
- * persists, so a warm install is a near-no-op (store hardlinks, lockfile
- * already satisfied). Skips entirely when a populated `node_modules/.bin`
- * already exists at the root.
+ * Idempotent across deploys: after a successful install `node_modules` is a
+ * REAL dir, persists (excluded from rsync), and the install short-circuits.
+ * The skip check uses `lstat` (not `existsSync`, which follows symlinks) so a
+ * stale escaping link can never be mistaken for "already installed".
  */
 export async function installDeployDependencies(
   deployRoot: string,
   onLog?: (line: string) => void
 ): Promise<void> {
-  const binDir = path.join(deployRoot, 'node_modules', '.bin');
-  if (fs.existsSync(binDir)) {
+  const purged = await purgeNodeModulesSymlinks(deployRoot);
+  if (purged > 0) {
+    onLog?.(`🧹 Removed ${purged} stale node_modules symlink(s) from deploy workspace`);
+  }
+
+  // Skip only when the ROOT node_modules is a real directory with a populated
+  // .bin — never when it is (or was) a symlink.
+  const rootNm = path.join(deployRoot, 'node_modules');
+  const rootStat = await fsp.lstat(rootNm).catch(() => null);
+  if (rootStat?.isDirectory() && !rootStat.isSymbolicLink() && fs.existsSync(path.join(rootNm, '.bin'))) {
     onLog?.(`📦 Deploy node_modules already present — skipping install`);
     return;
   }

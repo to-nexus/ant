@@ -7,6 +7,7 @@ import {
   syncDeployWorkspace,
   resolveDeployWorkspacePath,
   installDeployDependencies,
+  purgeNodeModulesSymlinks,
 } from '../../src/infrastructure/deploy/DeployWorkspace';
 
 /**
@@ -75,7 +76,7 @@ describe('syncDeployWorkspace — no escaping node_modules symlink', () => {
     expect(fs.existsSync(path.join(deploy, 'src/index.ts'))).toBe(true);
   });
 
-  it('installDeployDependencies short-circuits when node_modules/.bin exists', async () => {
+  it('installDeployDependencies short-circuits when REAL node_modules/.bin exists', async () => {
     const deploy = path.join(tmp, 'deploy');
     await makeFile(path.join(deploy, 'package.json'), JSON.stringify({ name: 'ws' }));
     await makeFile(path.join(deploy, 'node_modules', '.bin', 'next'), '#!/bin/sh\n');
@@ -85,5 +86,35 @@ describe('syncDeployWorkspace — no escaping node_modules symlink', () => {
 
     // No real install ran (would need network); it skipped.
     expect(logs.join('\n')).toMatch(/already present/i);
+  });
+
+  it('purgeNodeModulesSymlinks removes stale escaping symlinks (root + per-package), keeps real dirs', async () => {
+    // Reproduce the 2nd-round recurrence: a persisted deploy tree still holds
+    // the pre-fix escaping symlinks `deploy/.../node_modules → codebase/...`.
+    // The link target is a populated codebase node_modules — exactly why the
+    // old existsSync(.bin) skip wrongly fired (it followed the link).
+    await makeFile(path.join(codebase, 'node_modules', '.bin', 'next'), '#!/bin/sh\n');
+    await makeFile(path.join(codebase, 'apps/web/node_modules', '.bin', 'next'), '#!/bin/sh\n');
+
+    const deploy = path.join(tmp, 'deploy');
+    await makeFile(path.join(deploy, 'package.json'), JSON.stringify({ name: 'ws' }));
+    await makeFile(path.join(deploy, 'apps/web/package.json'), JSON.stringify({ name: 'web' }));
+    // A package with a REAL node_modules must NOT be touched by the purge.
+    await makeFile(path.join(deploy, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }));
+    await makeFile(path.join(deploy, 'packages/lib/node_modules', '.sentinel'), 'real');
+    // Stale escaping links at root + one package (what the old farm created).
+    await fsp.symlink(path.join(codebase, 'node_modules'), path.join(deploy, 'node_modules'), 'dir');
+    await fsp.symlink(path.join(codebase, 'apps/web/node_modules'), path.join(deploy, 'apps/web/node_modules'), 'dir');
+
+    const purged = await purgeNodeModulesSymlinks(deploy);
+
+    expect(purged).toBe(2);
+    // Both escaping symlinks gone (the core fix).
+    expect(await fsp.lstat(path.join(deploy, 'node_modules')).catch(() => null)).toBeNull();
+    expect(await fsp.lstat(path.join(deploy, 'apps/web/node_modules')).catch(() => null)).toBeNull();
+    // Real node_modules untouched.
+    const realStat = await fsp.lstat(path.join(deploy, 'packages/lib/node_modules'));
+    expect(realStat.isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(deploy, 'packages/lib/node_modules', '.sentinel'), 'utf-8')).toBe('real');
   });
 });
