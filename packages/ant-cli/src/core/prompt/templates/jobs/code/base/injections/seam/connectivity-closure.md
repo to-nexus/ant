@@ -25,14 +25,24 @@ files under THIS module's own path**, and partition that surface into disjoint
 (navigation, identity/auth, data-wiring, styling, cross-app hand-off). Emit a top-level
 `regions` array — each region is one object:
 `{ "name": <short region id>, "rationale": <which slice of the surface this region
-covers & why it is one coherent audit unit>, "requiredFiles": [<the files this region's
-audit will read>], "parallelGroup": <lane name>, "priorityInParallelGroup": <non-negative
-int> }`.
+covers & why it is one coherent audit unit>, "requiredFiles": [<the files this region
+OWNS as its audit denominator — each is audited in full here; a file another region
+merely cross-reads is NOT owned>], "parallelGroup": <lane name>,
+"priorityInParallelGroup": <non-negative int> }`.
 This is **coarse classification, NOT the audit**: do NOT enumerate individual
 references/affordances and do NOT emit a flat `implementation` plan here — each region
 fans out into its own sub-task that performs the deep, file-by-file audit. A surface
 spanning more than one feature-domain normally yields **several** regions; list every
 region you find (a multi-feature module collapsed into one region is under-classified).
+The partition MUST be **total, not only disjoint**: every file under this module's path
+that renders an interactive control or emits a reference MUST be owned by exactly ONE
+region's `requiredFiles` as its audit denominator — a file merely cross-read by another
+region is NOT owned, and its controls/references then go un-audited and ship dead. Before
+emitting, reconcile the union of all regions' `requiredFiles` against this module's
+control-rendering and reference-emitting files; any such file owned by no region is a
+**partition hole** (it builds green yet ships a dead control or dead link) — add or widen
+a region until none remains. Disjointness prevents double-work; totality prevents silent
+holes — an under-covered partition is as much a closure defect as an unexamined file.
 When regions must run in a fixed order (one region's closure depends on another's), put
 them in the SAME `parallelGroup` ordered by `priorityInParallelGroup`; independent
 regions take distinct groups so they run in parallel.

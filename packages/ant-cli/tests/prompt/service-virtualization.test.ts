@@ -695,6 +695,29 @@ describe('service-virtualization — request-responsiveness (RCA: green-basing-h
   // as its own row — the carve-out was removed as fragmentation.
 });
 
+describe('service-virtualization — consumer-shaped realism facets (RCA: heavy-dealing-mural)', () => {
+  // F1: seed data language must match the product display locale — defect 1d
+  // (English seed under a Korean UI). Domain-vocabulary fit was silent on locale,
+  // so parallel platform tasks diverged (admin Korean / user-app English).
+  it('data partial requires seed data to match the product display locale', () => {
+    const src = fs.readFileSync(PARTIAL_DATA, 'utf-8');
+    expect(src).toMatch(/Locale fit/i);
+    expect(src).toMatch(/display locale|locale/i);
+    expect(src).toMatch(/never a default-English fallback/i);
+  });
+
+  // F2: seed must spread across an axis a surface aggregates/plots — defect 2a
+  // (monthly chart 0 because all dates clustered in one bucket). Quantity coverage
+  // (cardinality) is orthogonal to distribution.
+  it('data partial requires distribution across an aggregation/plot axis (orthogonal to quantity)', () => {
+    const src = fs.readFileSync(PARTIAL_DATA, 'utf-8');
+    expect(src).toMatch(/Distribution fit/i);
+    expect(src).toMatch(/aggregate or plot records across an axis/i);
+    expect(src).toMatch(/non-degenerate|single-bar chart/i);
+    expect(src).toMatch(/Distinct from quantity/i);
+  });
+});
+
 describe('service-virtualization — navigable-target reachability owned by the always-on contract (RCA: misty-bringing-novel)', () => {
   // Root cause: the rule that rejects an unusable authorize URL lived ONLY in
   // the gated session auth-flow block, never on the reasoning path when the

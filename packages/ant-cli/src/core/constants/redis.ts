@@ -204,6 +204,12 @@ export const REDIS_KEYS = {
   LIFECYCLE: {
     CLEANUP_REQUEST: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:request`,
     CLEANUP_ACK: `${REDIS_DOMAINS.LIFECYCLE}:cleanup:ack`,
+    // Fire-and-forget (no ack): API publishes after a code job finalizes so the
+    // ant-preview process re-detects connections from the FINAL code, replacing
+    // the snapshot cached early in the job (before later seam/error tasks renamed
+    // dirs / env vars). Without this the post-job panel shows a stale snapshot and
+    // the Real/Virtualized toggle writes an env var the code no longer references.
+    CONNECTIONS_REFRESH: `${REDIS_DOMAINS.LIFECYCLE}:connections:refresh`,
   },
 
   /**

@@ -282,6 +282,15 @@ describe('seam type — seam-connectivity-closure partial (type-gated)', () => {
     expect(out).toMatch(/do NOT emit a flat `implementation` plan/);
     expect(out).toMatch(/normally yields \*\*several\*\* regions/);
     expect(out).toMatch(/under-classified/);
+    // Partition must be TOTAL, not only disjoint — every control-rendering /
+    // reference-emitting file owned by exactly one region; reconcile for holes
+    // (heavy-dealing-mural: profile never partitioned, assignment-detail only
+    // cross-read → dead controls/links shipped past the operability gate).
+    expect(out).toMatch(/total, not only disjoint/);
+    expect(out).toMatch(/owned by exactly ONE\s+region's `requiredFiles` as its audit denominator/);
+    expect(out).toMatch(/cross-read by another\s+region is NOT owned/);
+    expect(out).toMatch(/reconcile/);
+    expect(out).toMatch(/partition hole/);
     // Parent does NOT do the deep file-by-file audit (that is the region child).
     expect(out).not.toMatch(/Walk it file by file in BOTH directions/);
     // resolve-or-remove remediation always present.
