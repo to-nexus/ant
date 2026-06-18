@@ -22,8 +22,10 @@ before authoring the body:
 | Axis | Question | Constraint |
 |---|---|---|
 | Domain fit | What category does this entity belong to in the directive / design doc? | Fake names / labels / shapes mirror the project's domain vocabulary |
+| Locale fit | Does the product present to users in a specific display locale / language? | Fake names, labels, and prose are written in that locale — a localized surface gets localized data, never a default-English fallback |
 | Determinism | Does re-rendering the same scenario yield the same data? | Derive values from a stable seed (entity id / index / hash) — never `Math.random()` per render |
 | Quantity coverage | What state coverage does the surface need? | Provide enough fake records to render: empty / one / a handful / a long list — match the surface that consumes them |
+| Distribution fit | Does a surface aggregate or plot records across an axis (time bucket / category / status)? | The seed spreads across that axis so the aggregation is non-degenerate — a long list collapsed into one bucket still renders an empty or single-bar chart. Distinct from quantity: enough records is not enough if they all share one bucket |
 | Cross-entity invariant | Do entities reference each other? | Foreign-key style invariants MUST hold (an order's user reference resolves to an actual user record) |
 | Temporal plausibility | Are timestamps and durations human-believable? | Bound dates to a recent window, durations to plausible ranges; do NOT emit zero-epoch values |
 | Request-responsiveness | Does the operation take inputs that select or shape which records it returns (filter, search, sort, pagination)? | The returned set is a FUNCTION of those inputs applied to the seeded dataset — a filter narrows it, a search matches within it, a sort orders it, a page bounds it. Returning the whole dataset regardless of the inputs makes every such control on the consuming surface inert |

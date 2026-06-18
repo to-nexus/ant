@@ -160,6 +160,7 @@ export class PreviewServer {
   private server: any;
   private options: PreviewServerOptions;
   private cleanupUnsubscribe?: () => void;
+  private connectionsRefreshUnsubscribe?: () => void;
 
   constructor(options: PreviewServerOptions) {
     this.options = options;
@@ -241,6 +242,37 @@ export class PreviewServer {
       },
     );
 
+    // Register the post-code-job connections-refresh subscriber. finalizeTerminalJob
+    // (API) publishes on `ant:lifecycle:connections:refresh` after a code job
+    // completes; we re-detect from the FINAL code so the preview panel no longer
+    // shows the snapshot cached early in the job. Fire-and-forget (no ack), and
+    // best-effort — a failure here never affects job teardown.
+    this.connectionsRefreshUnsubscribe = await this.stateStore.subscribe(
+      REDIS_KEYS.LIFECYCLE.CONNECTIONS_REFRESH,
+      async (raw: any) => {
+        const msg = raw as
+          | { organizationId?: string; userId?: string; projectId?: string; feature?: string }
+          | undefined;
+        if (!msg || !msg.organizationId || !msg.userId || !msg.projectId) {
+          logger.warn('[PreviewServer] Ignored malformed connections-refresh request', { component: 'PreviewServer' }, { msg });
+          return;
+        }
+        try {
+          const connections = await this.refreshProjectConnections(
+            { organizationId: msg.organizationId, userId: msg.userId },
+            msg.projectId,
+            msg.feature || 'main',
+          );
+          logger.info(
+            `[PreviewServer] Connections refreshed post-job: ${connections.length} for ${msg.projectId}/${msg.feature || 'main'}`,
+            { component: 'PreviewServer' },
+          );
+        } catch (err: any) {
+          logger.warn('[PreviewServer] connections-refresh request failed', { component: 'PreviewServer' }, { projectId: msg.projectId, err: err?.message ?? String(err) });
+        }
+      },
+    );
+
     logger.info('[PreviewServer] Services initialized', {
       component: 'PreviewServer'
     });
@@ -315,6 +347,98 @@ export class PreviewServer {
     
     // Main codebase path: basePath/org/user/projectId/codebase
     return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'codebase');
+  }
+
+  /**
+   * Re-detect this project's service connections from the CURRENT code and
+   * overwrite the cached registry (+ the live PreviewState if running). SINGLE
+   * source shared by the `detect-connections` endpoint (Auto Detect button) AND
+   * the post-code-job `CONNECTIONS_REFRESH` subscriber — so the post-job panel
+   * reflects the FINAL code, not the snapshot cached early in the job. Best-effort
+   * detection: a missing workspace or structure-detection failure yields [].
+   */
+  private async refreshProjectConnections(
+    userContext: { organizationId: string; userId: string },
+    projectId: string,
+    feature: string,
+  ): Promise<import('../../core/ports/portRegistry').ServiceConnection[]> {
+    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
+    const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+    if (!fs.existsSync(workspacePath)) {
+      return [];
+    }
+
+    let connections: import('../../core/ports/portRegistry').ServiceConnection[] = [];
+    try {
+      const structureDetector = new ProjectStructureDetector();
+      const structure = await structureDetector.detect(workspacePath);
+      if (structure) {
+        const connectionDetector = new ConnectionDetector();
+        connections = connectionDetector.detect(workspacePath, structure, serverKey);
+      }
+    } catch (detectErr: any) {
+      logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
+    }
+
+    // Enrich docker connections with live infrastructure status
+    const infraManager = new InfrastructureManager();
+    const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const infraStatus = await infraManager.getInfraStatus(workspacePath, infraProjectName);
+    if (infraStatus.length > 0) {
+      for (const conn of connections) {
+        const isDocker = typeof conn.resolution === 'object' && conn.resolution?.type === 'docker';
+        if (isDocker) {
+          const dockerService = (conn.resolution as { type: 'docker'; service: string }).service || conn.id;
+          const svc = infraStatus.find(s =>
+            s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
+          );
+          conn.status = svc?.status === 'running' ? 'active'
+                      : svc?.status === 'stopped' ? 'stopped'
+                      : svc ? 'error' : conn.status;
+        }
+      }
+    }
+
+    // Enrich ant-project connections with target preview status
+    for (const conn of connections) {
+      const isAntProject = typeof conn.resolution === 'object' && conn.resolution?.type === 'ant-project';
+      if (isAntProject) {
+        const r = conn.resolution as { type: 'ant-project'; projectId: string; feature: string };
+        try {
+          const targetState = await this.stateStore.getPreview(
+            userContext.organizationId, userContext.userId, r.projectId, r.feature
+          );
+          conn.status = targetState?.running && targetState?.ready ? 'active'
+                      : targetState?.running ? 'starting'
+                      : 'stopped';
+        } catch { conn.status = 'error'; }
+      }
+    }
+
+    // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
+    const configConnections = connections.map(({ status, ...rest }: any) => rest);
+    await this.stateStore.savePreviewConfig(
+      userContext.organizationId,
+      userContext.userId,
+      projectId,
+      feature,
+      { connections: configConnections }
+    );
+
+    // Also update PreviewState if preview is currently running
+    try {
+      const currentState = await this.previewService.getPreviewStatus(
+        userContext.organizationId, userContext.userId, projectId, feature
+      );
+      if (currentState.running) {
+        await this.stateStore.updatePreview(
+          userContext.organizationId, userContext.userId, projectId, feature,
+          { connections }
+        );
+      }
+    } catch { /* best-effort */ }
+
+    return connections;
   }
 
   /**
@@ -808,7 +932,6 @@ export class PreviewServer {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.body.feature || req.query.feature as string || 'main';
-        const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
         if (!fs.existsSync(workspacePath)) {
@@ -816,76 +939,7 @@ export class PreviewServer {
           return;
         }
 
-        let connections: import('../../core/ports/portRegistry').ServiceConnection[] = [];
-        try {
-          const structureDetector = new ProjectStructureDetector();
-          const structure = await structureDetector.detect(workspacePath);
-          if (structure) {
-            const connectionDetector = new ConnectionDetector();
-            connections = connectionDetector.detect(workspacePath, structure, serverKey);
-          }
-        } catch (detectErr: any) {
-          logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
-        }
-
-        // Enrich docker connections with live infrastructure status
-        const infraManager = new InfrastructureManager();
-        const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-        const infraStatus = await infraManager.getInfraStatus(workspacePath, infraProjectName);
-        if (infraStatus.length > 0) {
-          for (const conn of connections) {
-            const isDocker = typeof conn.resolution === 'object' && conn.resolution?.type === 'docker';
-            if (isDocker) {
-              const dockerService = (conn.resolution as { type: 'docker'; service: string }).service || conn.id;
-              const svc = infraStatus.find(s =>
-                s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
-              );
-              conn.status = svc?.status === 'running' ? 'active'
-                          : svc?.status === 'stopped' ? 'stopped'
-                          : svc ? 'error' : conn.status;
-            }
-          }
-        }
-
-        // Enrich ant-project connections with target preview status
-        for (const conn of connections) {
-          const isAntProject = typeof conn.resolution === 'object' && conn.resolution?.type === 'ant-project';
-          if (isAntProject) {
-            const res = conn.resolution as { type: 'ant-project'; projectId: string; feature: string };
-            try {
-              const targetState = await this.stateStore.getPreview(
-                userContext.organizationId, userContext.userId, res.projectId, res.feature
-              );
-              conn.status = targetState?.running && targetState?.ready ? 'active'
-                          : targetState?.running ? 'starting'
-                          : 'stopped';
-            } catch { conn.status = 'error'; }
-          }
-        }
-
-        // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
-        const configConnections = connections.map(({ status, ...rest }: any) => rest);
-        await this.stateStore.savePreviewConfig(
-          userContext.organizationId,
-          userContext.userId,
-          projectId,
-          feature,
-          { connections: configConnections }
-        );
-
-        // Also update PreviewState if preview is currently running
-        try {
-          const currentState = await this.previewService.getPreviewStatus(
-            userContext.organizationId, userContext.userId, projectId, feature
-          );
-          if (currentState.running) {
-            await this.stateStore.updatePreview(
-              userContext.organizationId, userContext.userId, projectId, feature,
-              { connections }
-            );
-          }
-        } catch { /* best-effort */ }
-
+        const connections = await this.refreshProjectConnections(userContext, projectId, feature);
         logger.info(`[PreviewServer] Detect-connections: found ${connections.length} for ${projectId}/${feature}`, { component: 'PreviewServer' });
         res.json({ success: true, connections });
       } catch (error: any) {
@@ -1236,6 +1290,14 @@ export class PreviewServer {
         logger.warn('[PreviewServer] Error unsubscribing cleanup channel', { component: 'PreviewServer' }, err);
       }
       this.cleanupUnsubscribe = undefined;
+    }
+    if (this.connectionsRefreshUnsubscribe) {
+      try {
+        this.connectionsRefreshUnsubscribe();
+      } catch (err) {
+        logger.warn('[PreviewServer] Error unsubscribing connections-refresh channel', { component: 'PreviewServer' }, err);
+      }
+      this.connectionsRefreshUnsubscribe = undefined;
     }
 
     // Cleanup preview service

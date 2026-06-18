@@ -59,6 +59,7 @@ import { logger } from '../../../../../utils/logger';
 import type { JobCleanupManager } from '../managers/JobCleanupManager';
 import { sealJobRedisState } from '../../routes/helpers/sessionCleanup';
 import type { JobStateTracker } from '../managers/JobStateTracker';
+import { REDIS_KEYS } from '../../../../../core/constants/redis';
 
 const COMPONENT = 'FinalizeTerminalJob';
 const LOCK_TTL_SECONDS = 120;
@@ -213,6 +214,39 @@ export async function finalizeTerminalJob(
   } catch (err) {
     logger.warn(
       `billing settle failed during finalize — proceeding to seal`,
+      { component: COMPONENT, jobId },
+      err,
+    );
+  }
+
+  // 3c. Connections refresh — fire-and-forget cross-process signal so the
+  //     ant-preview process re-detects service connections from the FINAL code.
+  //     ONLY for a cleanly-completed `code` job (it mutated the scanned source);
+  //     a paused/interrupted/failed job, or a non-code job (plan/design/learn/
+  //     ask), leaves the codebase as the panel already reflects. Without this the
+  //     preview keeps the snapshot it cached early in the job — before later
+  //     seam/error tasks renamed app dirs / env vars — and the Real/Virtualized
+  //     toggle then writes an env var the code no longer references (no-op toggle).
+  //     Best-effort: a publish failure must never block teardown.
+  try {
+    if (
+      finalStatus === 'completed' &&
+      !interruption &&
+      jobType === 'code' &&
+      projectId &&
+      userContext?.organizationId &&
+      userContext?.userId
+    ) {
+      await stateStore.publish(REDIS_KEYS.LIFECYCLE.CONNECTIONS_REFRESH, {
+        organizationId: userContext.organizationId,
+        userId: userContext.userId,
+        projectId,
+        feature: featureName,
+      });
+    }
+  } catch (err) {
+    logger.warn(
+      `connections-refresh publish failed during finalize — non-fatal`,
       { component: COMPONENT, jobId },
       err,
     );
