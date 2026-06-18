@@ -535,14 +535,17 @@ export class JobWorker {
       env.ANT_SEED_TURN_ID = payload.seedTurnId;
     }
 
-    // Path to the job runner script
-    const isDev = process.env.NODE_ENV === 'development';
+    // Run-mode is decided by HOW THIS MODULE was loaded, not by NODE_ENV:
+    // tsx-from-source → __filename ends in .ts (local dev AND cloud);
+    // esbuild-compiled → bundled into dist/*.js. NODE_ENV is orthogonal
+    // (cloud runs tsx with NODE_ENV=production), so it must not gate this.
+    const fromSource = __filename.endsWith('.ts');
 
     let runnerScript: string;
     let command: string;
     let args: string[];
 
-    if (isDev) {
+    if (fromSource) {
       runnerScript = path.resolve(__dirname, '../../composition/job-runner.ts');
       command = 'npx';
       args = ['tsx', runnerScript];
@@ -552,7 +555,7 @@ export class JobWorker {
       args = [runnerScript];
     }
 
-    logger.info(`Spawning job runner: ${runnerScript} (isDev=${isDev}, NODE_ENV=${process.env.NODE_ENV})`, {
+    logger.info(`Spawning job runner: ${runnerScript} (fromSource=${fromSource})`, {
       component: 'JobWorker',
       jobId
     });
