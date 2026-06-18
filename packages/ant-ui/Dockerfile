@@ -14,8 +14,7 @@ RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 
 # BUILD STAGE
 FROM base AS builder
-RUN apk add --no-cache libc6-compat
-RUN apk update
+RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Copy workspace configuration
@@ -77,6 +76,12 @@ RUN rm -rf /usr/share/nginx/html/* && \
 COPY --from=builder /app/packages/ant-ui/dist /usr/share/nginx/html
 
 # nginx.conf는 ConfigMap에서 /etc/nginx/conf.d/default.conf로 마운트됨
+
+# Run as non-root: nginx 유저가 pid/cache/log/html에 쓸 수 있도록 권한 부여.
+# 마운트되는 ConfigMap nginx.conf는 8080(비특권 포트)을 리슨한다.
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx && \
+    touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
+USER nginx
 
 EXPOSE 8080
 

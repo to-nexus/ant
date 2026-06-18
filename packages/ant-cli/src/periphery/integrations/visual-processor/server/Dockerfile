@@ -10,6 +10,10 @@ COPY packages/ant-cli/src/periphery/integrations/visual-processor/server/config.
      packages/ant-cli/src/periphery/integrations/visual-processor/server/app.py \
      ./
 
+# Run as non-root user
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 4103
 
 ENV UVICORN_WORKERS=1
