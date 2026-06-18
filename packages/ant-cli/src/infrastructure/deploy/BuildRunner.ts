@@ -91,12 +91,15 @@ const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
  * The install always includes devDependencies (build tools like typescript live
  * there) regardless of NODE_ENV — see utils/packageManager.buildInstallCommand.
  *
- * Fast path: in the deploy workspace, `node_modules` is a symlink pointing
- * at the dev codebase's already-installed `node_modules` (see
- * DeployWorkspace.syncDeployWorkspace). PreviewService runs a Redis-locked
- * install for preview dev, so deps are already present and correct —
- * running install again here would race with that lock (and with any
- * live `next dev` file watcher). Skip when we can verify deps are ready.
+ * Fast path: the deploy workspace's deps are installed once at the deploy
+ * root by `installDeployDependencies` before the build loop, producing a real,
+ * self-contained `node_modules` per package. So by the time we get here deps
+ * are present and this is a no-op.
+ *
+ * A `node_modules` that is a SYMLINK is NOT a skip reason — that is the legacy
+ * escaping link Turbopack rejects, and it should have been purged + reinstalled
+ * upstream. If one is still seen here, fall through to a real install rather
+ * than trusting it.
  */
 async function ensureDependencies(
   workspacePath: string,
@@ -105,14 +108,9 @@ async function ensureDependencies(
   const nodeModulesPath = path.join(workspacePath, 'node_modules');
   const nodeModulesStat = await fs.promises.lstat(nodeModulesPath).catch(() => null);
 
-  if (nodeModulesStat?.isSymbolicLink()) {
-    onLog?.(`📦 node_modules is a symlink (shared with dev codebase) — skipping install`);
-    return;
-  }
-
-  // Heuristic for the non-symlink case: if node_modules exists and contains
-  // a resolvable next binary (or any .bin), deps are almost certainly
-  // installed. Treat as no-op to avoid redundant reinstalls.
+  // Heuristic: a REAL node_modules dir with a populated .bin means deps are
+  // installed. Symlinks are deliberately excluded (lstat → isDirectory() is
+  // false for a symlink) so a stale escaping link never short-circuits.
   if (nodeModulesStat?.isDirectory()) {
     const binDir = path.join(nodeModulesPath, '.bin');
     if (fs.existsSync(binDir)) {
