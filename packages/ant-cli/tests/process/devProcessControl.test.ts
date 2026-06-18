@@ -170,6 +170,63 @@ describe('DevProcessControl', () => {
       const found = await dev.detect({ cwds: [tmpDir], ports: [] });
       expect(found.some(f => f.source === 'next-lock')).toBe(false);
     });
+
+    it('detects the Next 16 `.next/dev/lock` (the format ANT previously missed)', async () => {
+      const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], { stdio: 'ignore' });
+      orphans.push(stand);
+
+      const lockDir = path.join(tmpDir, '.next', 'dev');
+      fs.mkdirSync(lockDir, { recursive: true });
+      // Real Next 16.2.9 shape: { pid, port, hostname, appUrl, startedAt }.
+      fs.writeFileSync(
+        path.join(lockDir, 'lock'),
+        JSON.stringify({ pid: stand.pid, port: 30000, hostname: 'localhost', appUrl: 'http://localhost:30000' }),
+      );
+
+      const found = await dev.detect({ cwds: [tmpDir], ports: [] });
+      const fromLock = found.find(f => f.source === 'next-lock');
+      expect(fromLock?.pid).toBe(stand.pid);
+      expect(fromLock?.port).toBe(30000);
+    });
+
+    it('cleanupStaleLocks removes the Next 16 `.next/dev/lock` and kills its PID', async () => {
+      const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], { stdio: 'ignore' });
+      orphans.push(stand);
+
+      const lockDir = path.join(tmpDir, '.next', 'dev');
+      fs.mkdirSync(lockDir, { recursive: true });
+      const lockPath = path.join(lockDir, 'lock');
+      fs.writeFileSync(lockPath, JSON.stringify({ pid: stand.pid, port: 30000 }));
+
+      await dev.cleanupStaleLocks(tmpDir);
+
+      expect(fs.existsSync(lockPath)).toBe(false);
+      expect(dev.isAlive(stand.pid!)).toBe(false);
+    }, 10_000);
+  });
+
+  describe('detect (process-tree by cwd)', () => {
+    const linuxOnly = process.platform === 'linux';
+    (linuxOnly ? it : it.skip)(
+      'finds a runtime process whose /proc/<pid>/cwd is the workspace (next dev has no cwd in its cmdline)',
+      async () => {
+        // Spawn a long-lived node process with cwd === tmpDir. Its command
+        // line ("node -e ...") does NOT contain tmpDir — exactly the case the
+        // old ps-cmdline matcher missed for `next dev`. The procfs cwd path
+        // must still find it.
+        const child = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], {
+          cwd: tmpDir,
+          stdio: 'ignore',
+        });
+        orphans.push(child);
+        await new Promise(r => setTimeout(r, 200));
+
+        const found = await dev.detect({ cwds: [tmpDir], ports: [] });
+        const match = found.find(f => f.source === 'process-tree' && f.pid === child.pid);
+        expect(match).toBeDefined();
+      },
+      10_000,
+    );
   });
 
   describe('detect (port)', () => {

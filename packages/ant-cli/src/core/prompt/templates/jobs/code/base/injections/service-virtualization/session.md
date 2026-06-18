@@ -5,14 +5,44 @@
 A virtualized adapter that answers one request correctly still fails the
 startup-test when the running demo cannot be entered, navigated, or trusted to
 remember itself. The mock adapter MUST simulate a coherent persistent session —
-the cross-request, across-time layer above single-body realism. The blocks
-below activate by this task's role in that session.
+the cross-request, across-time layer above single-body realism. Identity, entry,
+and authorization are IN scope: in mock mode they are not "things the user
+provides later in production" — they are the user's only path into the running
+app. The blocks below activate by this task's role in that session.
+
+### Identity & entry behave like the real backend
+
+A virtualized backend is observationally indistinguishable from the real one
+behind a runtime toggle — so a mocked identity / session leg behaves like the
+real backend, not like a shortcut. The wrong default is to stub identity as a
+constant or an auto-bound session; the right behaviors fall out of the principle:
+
+- **Never auto-bind a default identity (unconditional).** Reaching an
+  authenticated session ALWAYS passes through the normal sign-in entry and a
+  deliberate identity choice — no surface silently establishes a session at
+  load. This applies to ANY identity-gated surface in mock mode.
+- **Land a usable session.** The session-issuing leg yields a seeded identity
+  carrying an admitted role — not a type-conformant-but-inert value, and not a
+  perpetual loading / empty state the surface can never leave.
+- **Persist identity mutations.** Linking / unlinking an external account, or
+  any change to the identity, persists like any other write — visible to the
+  very next read, never a constant the mutation cannot move.
+- **Enter through the real sign-in surface.** Preserve the production entry
+  surface's shape and simulate the external leg's outcome inside the closed
+  system — do not replace it with an ad-hoc substitute because the external leg
+  is unreachable in mock mode.
+
+Navigable targets the entry depends on — the sign-in / authorize / redirect /
+callback URLs the browser is sent to — are governed by
+`service-virtualization-contract`'s navigable-target rule (they MUST resolve
+INSIDE the closed system at the running app's own origin). This partial does not
+restate that rule.
 
 ### Sibling SSOTs (defer)
 
 | Sibling | Defer for |
 |---|---|
-| `service-virtualization-contract` | adapter activation env var; the closed-system invariant (no production-backend egress) |
+| `service-virtualization-contract` | adapter activation env var; the closed-system invariant (no production-backend egress); navigable-target / callback-URL reachability |
 | `service-virtualization-data` | field values within a single response body |
 | `service-virtualization-imagery` | placeholder image fields |
 
@@ -51,21 +81,6 @@ Your surface reads the shared world. Hold these across time:
 | Multi-endpoint cardinality | Every key surface a chosen inhabitant can reach shows at least one record — no key surface is empty for the seeded inhabitant. |
 | Surface is adapter-fed | Every data-bearing surface renders from the active adapter's response, not from a literal baked into the component — a surface populated by a hardcoded literal bypasses the virtualized world, so it never reflects the seed or any mutation. |
 | Cross-body reference | Ids this surface shows resolve to the SAME entity in the shared seed — reference it; do NOT re-seed your own identities or ids. |
-{{/if}}
-
-{{#if svAuthFlowActive}}
-### Auth-Flow Fidelity
-
-**The first bullet (no auto-bind) applies to ANY identity-gated surface in mock mode. The remaining fidelity bullets apply when this task authors a sign-in / identity surface or adapter (OAuth / SSO / magic-link / passkey).**
-
-- **Never auto-bind a default identity (unconditional).** In mock mode, reaching an authenticated session ALWAYS passes through the normal sign-in flow and a deliberate identity choice — no surface silently binds a hardcoded default identity (e.g. an auto-authenticated session established at load). An identity-gated app with no reachable sign-in entry is the defect, not a shortcut.
-- **Preserve the production entry surface.** Do NOT replace an external-leg authentication surface (OAuth / SSO) with an ad-hoc credential form because the external leg is unreachable in mock mode — keep its shape and simulate the external leg's outcome inside the closed system.
-- **Make identity an explicit choice.** Do NOT collapse a login attempt into instant, silent binding to one identity. Surface the seeded identities as a **selection affordance** (mirroring how an external authority presents account selection); from a fresh state, reaching an authenticated session requires at least one deliberate identity choice, and the chosen identity determines the session.
-- **Do NOT conflate sign-up role-selection with login identity-selection.** Choosing a role during initial **sign-up** (which role a brand-new identity will hold) is a DIFFERENT event from choosing which already-seeded identity to authenticate as. The **returning-user** path MUST also reach the seeded-identity choice — implementing only the sign-up role step leaves a returning user silently bound to one default.
-- **Per-authority fidelity.** When the entry offers a choice among several external authorities, the issued session's **linked authority equals the authority the chooser actually picked** — never a fixed default: selecting one yields a session linked to that authority, a different one yields the different one, and no selection resolves to an authority the chooser did not pick.
-- **The authorize / account-selection entry obeys the contract's navigable-target rule.** The URL the browser is sent to in order to begin or confirm sign-in is a navigable target (see `service-virtualization-contract` — it MUST resolve within the closed system at the app's own origin). For an external-authority sign-in whose production form points at the authority's host, the virtualized entry instead resolves to a surface the running app itself serves — its in-app authorize / account-selection surface. Two failure modes leave this entry unreachable and the sign-in unable to even begin: a literal external authorize host (e.g. a `*.example` placeholder), and a redirect step that **no-ops** (navigates nowhere) on the reasoning that mock mode has no real authority to send the browser to — in the closed system that redirect MUST instead carry the browser to the in-app surface.
-- **Callback URI is opaque — append only the grant.** The virtualized leg emulates only what the external authority contributes: the grant (`code` / `state` / token). Treat the handed redirect / callback URI as opaque and preserve it verbatim, appending only the issued grant; do NOT re-stamp a parameter the URI already carries, discard the URI, or invent a non-standard scheme. Derive the returned URL from **the redirect / callback URI you were actually handed** (equivalently the running app's **own origin at request time** / **runtime origin**) — do NOT **hardcode a fixed host** (a constant `localhost:PORT`, a deployment domain, or any **baked-in origin**). A hardcoded origin breaks the instant the app is served from a different origin, and a non-navigable target means the callback never fires and the demo is unenterable.
-- **Identity is not terminal.** Returning to the selection affordance and **switching identity** requires no source or environment edit; where the surface gates capabilities or **scopes records** by identity, each seeded identity observes its own admitted surfaces and its own scoped records.
 {{/if}}
 
 ### Blind Spot

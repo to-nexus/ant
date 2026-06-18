@@ -195,6 +195,37 @@ export function isTierActive(
 }
 
 /**
+ * Layer-selective survivor of the `hasUiDoc` visualTier suppression.
+ *
+ * When a UI design doc is the visual authority, `isTierActive('visualTier')`
+ * returns false and the doc owns the look — its design-LANGUAGE layers
+ * (visualLanguage / surface / colour / typography / components / interaction)
+ * are correctly withheld. But a source can omit a structural spacing value, and
+ * with the whole tier gone nothing backstops it → content renders flush
+ * (bright-causing-brick RCA). This predicate decides whether to emit ONLY the
+ * spatial-validity floor (`basis/visualTier/spatialSystem/_floor`) — a property,
+ * not a competing scale, so it cannot conflict with the source's own values.
+ *
+ * Emits iff visualTier is a real option for this slot+domain AND the reason it
+ * is suppressed is specifically `hasUiDoc` — never for a backend stack (no UI
+ * surface) or an existing codebase (which carries its own spacing). When no UI
+ * doc is present the real `spatialSystem` preset already covers spacing, so the
+ * floor stays off (no duplication / MECE).
+ */
+export function shouldEmitVisualTierSpatialFloor(
+  slot: BasisSlotConfig | undefined,
+  domain: Domain | undefined,
+  runtime?: TierRuntimeContext,
+): boolean {
+  if (!slot?.tiers?.includes('visualTier')) return false;
+  if (!domain || !TIER_DOMAIN_MATRIX.visualTier.includes(domain)) return false;
+  const ctx = runtime ?? {};
+  if (ctx.techTier?.stack === 'backend') return false;
+  if (ctx.hasCodebase === true) return false;
+  return ctx.hasUiDoc === true;
+}
+
+/**
  * Active-tier list helper — convenience for callers that need the full set.
  * Returns tiers in stable `TIER_KEYS` order.
  */

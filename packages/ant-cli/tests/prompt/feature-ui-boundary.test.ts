@@ -45,9 +45,15 @@ describe('Axis 3 — feature/ui boundary', () => {
       });
     });
 
-    it('frames the ui task as enhancement that may add supporting logic', () => {
+    it('frames the ui task as enhancement that may add presentational logic, scoped to presentation', () => {
       expect(out).toMatch(/UI TASK: Visual Enhancement Pass/);
-      expect(out).toMatch(/MAY legitimately add presentational logic, hooks, state, or dependencies/);
+      // License is preserved but scoped to genuinely-presentational concerns
+      // (Fix B-C — onyx-fleeing-lathe).
+      expect(out).toMatch(/MAY add \*\*presentational\*\* logic, local view state, and supporting dependencies/);
+      // Excludes data orchestration / async-business state / business rules.
+      expect(out).toMatch(/do NOT take over data orchestration/);
+      // Surface, don't fix — route functional gaps back to feature/seam.
+      expect(out).toMatch(/Surface, don't fix/);
     });
 
     it('requires functional non-regression and infrastructure convergence', () => {

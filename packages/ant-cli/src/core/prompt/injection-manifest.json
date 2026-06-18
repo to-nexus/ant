@@ -21,6 +21,7 @@
     "text-format-compact": [],
     "tool-calling-rules-compact": [],
     "system-design-guide": [],
+    "layer-role-fidelity": ["hasAnyAuthoritativeDoc"],
     "ui-source-ant": [],
     "ui-source-figma": ["figmaFileKey", "figmaStartNodeId"],
     "ui-source-handoff": [],

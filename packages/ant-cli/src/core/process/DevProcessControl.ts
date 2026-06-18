@@ -89,6 +89,19 @@ export type CleanupLogger = (level: 'info' | 'warn', message: string) => void;
 
 const LOG = { component: 'DevProcessControl' } as const;
 
+/**
+ * Next dev-lock file candidates, relative to a package cwd, newest format first.
+ * Next 16 writes `.next/dev/lock` (JSON: { pid, port, hostname, appUrl, ... });
+ * older internal builds used `.next/dev/server.json`. The lock is a DEFENSIVE
+ * channel only — orphan recovery's authority is the version-independent port +
+ * `/proc/<pid>/cwd` signals — so we tolerate either filename rather than
+ * tracking Next's internal format precisely.
+ */
+const NEXT_DEV_LOCK_RELPATHS = [
+  ['.next', 'dev', 'lock'],
+  ['.next', 'dev', 'server.json'],
+] as const;
+
 export class DevProcessControl {
   private readonly onLog?: CleanupLogger;
 
@@ -175,26 +188,17 @@ export class DevProcessControl {
     const visited = new Set<number>([pid]);
     const queue: Array<{ pid: number; depth: number }> = [{ pid, depth: 0 }];
 
+    // On Linux, derive the child map from /proc PPIDs — no `pgrep` dependency
+    // (containers frequently lack it). Elsewhere, fall back to `pgrep -P`.
+    const procfsMap = process.platform === 'linux' ? this.buildProcfsChildrenMap() : null;
+
     while (queue.length > 0) {
       const { pid: current, depth } = queue.shift()!;
       if (depth >= 6) continue;
       if (collected.length + queue.length >= 256) break;
 
-      let children: number[] = [];
-      try {
-        const out = execFileSync('pgrep', ['-P', String(current)], {
-          encoding: 'utf-8',
-          timeout: 1500,
-          stdio: ['pipe', 'pipe', 'ignore'],
-        }).trim();
-        if (out) {
-          children = out.split('\n')
-            .map(s => parseInt(s.trim(), 10))
-            .filter(n => !isNaN(n) && !visited.has(n));
-        }
-      } catch {
-        // pgrep absent or no children — both yield empty list.
-      }
+      const children = (procfsMap ? procfsMap.get(current) ?? [] : this.childrenViaPgrep(current))
+        .filter(n => !visited.has(n));
 
       for (const child of children) {
         visited.add(child);
@@ -205,12 +209,57 @@ export class DevProcessControl {
     return collected;
   }
 
+  private childrenViaPgrep(pid: number): number[] {
+    try {
+      const out = execFileSync('pgrep', ['-P', String(pid)], {
+        encoding: 'utf-8',
+        timeout: 1500,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
+      if (!out) return [];
+      return out.split('\n').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    } catch {
+      return []; // pgrep absent or no children
+    }
+  }
+
+  /** Build a PPID→children[] map from `/proc/<pid>/stat` (Linux only). */
+  private buildProcfsChildrenMap(): Map<number, number[]> {
+    const map = new Map<number, number[]>();
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync('/proc');
+    } catch {
+      return map;
+    }
+    for (const entry of entries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      if (!pid || isNaN(pid)) continue;
+      let ppid: number | undefined;
+      try {
+        // stat format: "pid (comm) state ppid ..." — comm may contain spaces/
+        // parens, so parse the fields AFTER the last ')'.
+        const stat = fs.readFileSync(`/proc/${entry}/stat`, 'utf-8');
+        const after = stat.slice(stat.lastIndexOf(')') + 1).trim().split(/\s+/);
+        ppid = parseInt(after[1], 10); // [0]=state, [1]=ppid
+      } catch {
+        continue;
+      }
+      if (ppid == null || isNaN(ppid)) continue;
+      const arr = map.get(ppid);
+      if (arr) arr.push(pid);
+      else map.set(ppid, [pid]);
+    }
+    return map;
+  }
+
   // ─── lock cleanup ───────────────────────────────────────────────────
 
   /**
    * Inspect and clean up stale framework dev lock files under `cwd`.
    * Currently handles:
-   *   • Next.js: `.next/dev/server.json` (PID + port reference)
+   *   • Next.js: `.next/dev/lock` (Next 16) / `.next/dev/server.json` (older)
    *
    * If the recorded PID is alive, that process is killed via `killTree`
    * before the lock is removed. If the PID is already dead, the lock is
@@ -221,39 +270,42 @@ export class DevProcessControl {
   }
 
   private async cleanupNextDevLock(cwd: string): Promise<void> {
-    const lockPath = path.join(cwd, '.next', 'dev', 'server.json');
-    let lockStat: fs.Stats;
-    try {
-      lockStat = fs.statSync(lockPath);
-      if (!lockStat.isFile()) return;
-    } catch {
-      return; // no lock file
-    }
-
-    let lockedPid: number | undefined;
-    let lockedPort: number | undefined;
-    try {
-      const raw = fs.readFileSync(lockPath, 'utf-8');
-      const data = JSON.parse(raw);
-      if (typeof data?.pid === 'number') lockedPid = data.pid;
-      if (typeof data?.port === 'number') lockedPort = data.port;
-    } catch {
-      // Corrupt lock — still safe to remove
-    }
-
-    if (lockedPid != null && this.isAlive(lockedPid)) {
-      this.log('warn', `Stale Next dev lock at ${lockPath} → killing PID ${lockedPid}` +
-        (lockedPort ? ` (port ${lockedPort})` : ''));
-      await this.killTree(lockedPid);
-    }
-
-    try {
-      fs.unlinkSync(lockPath);
-      logger.debug(`Removed stale Next dev lock: ${lockPath}`, LOG);
-    } catch (err: any) {
-      if (err.code !== 'ENOENT') {
-        logger.debug(`Failed to remove ${lockPath}: ${err.message}`, LOG);
+    for (const rel of NEXT_DEV_LOCK_RELPATHS) {
+      const lockPath = path.join(cwd, ...rel);
+      try {
+        if (!fs.statSync(lockPath).isFile()) continue;
+      } catch {
+        continue; // this candidate absent
       }
+
+      const parsed = this.parseLockPids(lockPath);
+      if (parsed.pid != null && this.isAlive(parsed.pid)) {
+        this.log('warn', `Stale Next dev lock at ${lockPath} → killing PID ${parsed.pid}` +
+          (parsed.port ? ` (port ${parsed.port})` : ''));
+        await this.killTree(parsed.pid);
+      }
+
+      try {
+        fs.unlinkSync(lockPath);
+        logger.debug(`Removed stale Next dev lock: ${lockPath}`, LOG);
+      } catch (err: any) {
+        if (err.code !== 'ENOENT') {
+          logger.debug(`Failed to remove ${lockPath}: ${err.message}`, LOG);
+        }
+      }
+    }
+  }
+
+  /** Extract pid/port from a Next dev lock file (JSON). Tolerant of corruption. */
+  private parseLockPids(lockPath: string): { pid?: number; port?: number } {
+    try {
+      const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      return {
+        pid: typeof data?.pid === 'number' ? data.pid : undefined,
+        port: typeof data?.port === 'number' ? data.port : undefined,
+      };
+    } catch {
+      return {}; // missing or corrupt — caller still removes the file
     }
   }
 
@@ -262,7 +314,7 @@ export class DevProcessControl {
   /**
    * Detect any lingering dev-server processes for the given working
    * directories and ports. Combines three independent signals:
-   *   1. `next-lock`     — `.next/dev/server.json` with a live PID
+   *   1. `next-lock`     — `.next/dev/lock` (or legacy `server.json`) live PID
    *   2. `port`          — listener lookup (lsof/ss/netstat/procfs fallback)
    *   3. `process-tree`  — `ps aux` lines containing one of the cwds
    *                        AND matching a runtime token (node/next/vite/npm/pnpm).
@@ -320,20 +372,12 @@ export class DevProcessControl {
   }
 
   private readNextLock(cwd: string): DetectedDevServer | undefined {
-    const lockPath = path.join(cwd, '.next', 'dev', 'server.json');
-    try {
-      const raw = fs.readFileSync(lockPath, 'utf-8');
-      const data = JSON.parse(raw);
-      if (typeof data?.pid === 'number') {
-        return {
-          source: 'next-lock',
-          pid: data.pid,
-          port: typeof data.port === 'number' ? data.port : undefined,
-          cwd,
-          command: 'next dev',
-        };
+    for (const rel of NEXT_DEV_LOCK_RELPATHS) {
+      const { pid, port } = this.parseLockPids(path.join(cwd, ...rel));
+      if (pid != null) {
+        return { source: 'next-lock', pid, port, cwd, command: 'next dev' };
       }
-    } catch { /* missing or unparseable */ }
+    }
     return undefined;
   }
 
@@ -505,7 +549,61 @@ export class DevProcessControl {
     return inodes;
   }
 
+  private readonly runtimePattern = /node|next|vite|npm|pnpm|yarn/;
+
+  /**
+   * Find dev-server processes whose working directory is one of `cwds`.
+   *
+   * Linux (cloud): authoritative `/proc/<pid>/cwd` match — version-independent,
+   * unlike scanning a command line that for `next dev` never contains the cwd.
+   * Other platforms: fall back to a `ps aux` command-line substring match
+   * (best-effort; the port + Next-lock channels remain the primary signals).
+   */
   private findProcessesByCwd(cwds: string[]): DetectedDevServer[] {
+    return process.platform === 'linux'
+      ? this.findProcessesByCwdProcfs(cwds)
+      : this.findProcessesByCwdPs(cwds);
+  }
+
+  private findProcessesByCwdProcfs(cwds: string[]): DetectedDevServer[] {
+    const targets = cwds.map(c => path.resolve(c));
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync('/proc');
+    } catch {
+      return [];
+    }
+
+    const found: DetectedDevServer[] = [];
+    for (const entry of entries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      if (!pid || isNaN(pid)) continue;
+
+      let cwd: string;
+      try {
+        cwd = fs.readlinkSync(`/proc/${entry}/cwd`);
+      } catch {
+        continue; // process gone or no permission
+      }
+      const resolved = path.resolve(cwd);
+      const matchedCwd = targets.find(t => resolved === t || resolved.startsWith(t + path.sep));
+      if (!matchedCwd) continue;
+
+      // Filter to actual runtimes via comm/cmdline so we don't kill, e.g., an
+      // editor or shell that happens to sit in the workspace dir.
+      let comm = '';
+      try { comm = fs.readFileSync(`/proc/${entry}/comm`, 'utf-8').trim(); } catch { /* ignore */ }
+      let cmdline = '';
+      try { cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf-8').replace(/\0/g, ' ').trim(); } catch { /* ignore */ }
+      if (!this.runtimePattern.test(comm) && !this.runtimePattern.test(cmdline)) continue;
+
+      found.push({ source: 'process-tree', pid, cwd: matchedCwd, command: (cmdline || comm).slice(0, 200) });
+    }
+    return found;
+  }
+
+  private findProcessesByCwdPs(cwds: string[]): DetectedDevServer[] {
     let psOutput = '';
     try {
       psOutput = execFileSync('ps', ['aux'], {
@@ -517,10 +615,9 @@ export class DevProcessControl {
       return [];
     }
 
-    const runtimePattern = /node|next|vite|npm|pnpm|yarn/;
     const found: DetectedDevServer[] = [];
     for (const line of psOutput.split('\n')) {
-      if (!runtimePattern.test(line)) continue;
+      if (!this.runtimePattern.test(line)) continue;
       const matchedCwd = cwds.find(c => c && line.includes(c));
       if (!matchedCwd) continue;
 

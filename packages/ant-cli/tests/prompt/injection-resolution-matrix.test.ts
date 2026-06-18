@@ -238,6 +238,30 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute node)', () =
     expect(injections).not.toContain('jobs/shared/injections/visual-source-authority');
   });
 
+  // layer-role-fidelity floor (Fix B) — always-on for the 6 code-authoring
+  // task types; absent for the non-authoring types + the (taskType-less)
+  // direct node.
+  it.each(['feature', 'ui', 'setup', 'error', 'seam', 'design-system'] as const)(
+    'taskType=%s: layer-role-fidelity included',
+    (tt) => {
+      const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
+      expect(injections).toContain('jobs/code/base/injections/layer-role-fidelity');
+    },
+  );
+
+  it.each(['verification', 'doc', 'test-code', 'explain'] as const)(
+    'taskType=%s: NO layer-role-fidelity',
+    (tt) => {
+      const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
+      expect(injections).not.toContain('jobs/code/base/injections/layer-role-fidelity');
+    },
+  );
+
+  it('direct node (no taskType): NO layer-role-fidelity', () => {
+    const injections = resolveAutoInjections({ job: 'code', techTier: feTS });
+    expect(injections).not.toContain('jobs/code/base/injections/layer-role-fidelity');
+  });
+
   // backend-safety: all except verification and doc, when backend
   it('backend-safety included for feature+backend', () => {
     const beTier = makeTechTier({ stack: 'backend' });

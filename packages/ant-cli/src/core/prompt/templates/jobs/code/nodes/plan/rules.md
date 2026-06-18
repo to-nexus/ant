@@ -36,6 +36,29 @@ Generate a **concrete implementation plan** for this task.
 ## 📋 OUTPUT FORMAT (MANDATORY)
 ────────────────────────────────────────────────────────────────────────────────
 
+{{#if seamClassifyingParent}}
+**Your response MUST contain exactly one `<plan>` block whose body is a top-level `regions` array — coarse classification ONLY, NOT a flat `implementation` plan.** Each region object's fields and the partition principle are defined in the SEAM — CROSS-FEATURE REFERENCE + AFFORDANCE CLOSURE section below; emit them inside the `<plan>` envelope:
+
+```
+<plan>
+{
+  "task": {
+    "id": "task-id",
+    "goal": "One-line goal description"
+  },
+  "regions": [
+    {
+      "name": "short region id",
+      "rationale": "which slice of the surface this region covers & why it is one coherent audit unit",
+      "requiredFiles": ["files this region's audit will read"],
+      "parallelGroup": "lane name",
+      "priorityInParallelGroup": 0
+    }
+  ]
+}
+</plan>
+```
+{{else}}
 **Your response MUST contain exactly one `<plan>` block with this structure:**
 
 ```
@@ -53,6 +76,7 @@ Generate a **concrete implementation plan** for this task.
 }
 </plan>
 ```
+{{/if}}
 
 Per the Output Tag Contract, the first output token must be `<` of a registered tag, so do NOT write any prose before `<plan>` opens. Emit nothing after `</plan>` closes — the plan node terminates at that boundary and the next phase consumes the sealed JSON directly.
 
@@ -82,6 +106,7 @@ verification task owns that gate. Do NOT scrape additional files looking
 for work to justify continuing — if your own surface is clean, the task
 is done.
 
+{{#unless seamClassifyingParent}}
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 JSON SCHEMA FOR `<plan>`
 ────────────────────────────────────────────────────────────────────────────────
@@ -134,6 +159,7 @@ is done.
 Inside a `batches[]` entry, ONLY `name`, `rationale`, and (optional) `requiredFiles` are emitted — not the slice's internal `modify[]` / `create[]` / `delete[]`. The slice's implementation plan is the child plan node's responsibility, not the parent's. See FAN-OUT AT PLAN TIME below.
 
 Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
+{{/unless}}
 
 {{#if (or (eq taskType "feature") (eq taskType "ui") (eq taskType "design-system") (eq taskType "test-code"))}}
 ────────────────────────────────────────────────────────────────────────────────

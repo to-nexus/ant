@@ -226,6 +226,19 @@ export class ProcessSpawner {
   }
   
   /**
+   * Resolve a framework binary from the package's own `node_modules/.bin`,
+   * falling back to the project root's (npm hoist / pnpm root). Returns the
+   * absolute path, or undefined to let the caller fall back to `npx`.
+   */
+  private resolveLocalBin(pkgPath: string, projectRoot: string | undefined, bin: string): string | undefined {
+    const candidates = [path.join(pkgPath, 'node_modules', '.bin', bin)];
+    if (projectRoot && path.resolve(projectRoot) !== path.resolve(pkgPath)) {
+      candidates.push(path.join(projectRoot, 'node_modules', '.bin', bin));
+    }
+    return candidates.find(c => fs.existsSync(c));
+  }
+
+  /**
    * Spawn Node.js / TypeScript dev process (vite, next, npm run dev, etc.)
    */
   private spawnNode(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
@@ -240,11 +253,17 @@ export class ProcessSpawner {
     
     if (pkg.type === 'frontend') {
       if (devScript?.includes('vite')) {
-        command = 'npx';
-        args = ['vite', '--port', port.toString(), '--host', '0.0.0.0'];
+        const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'vite');
+        command = bin ?? 'npx';
+        args = [...(bin ? [] : ['vite']), '--port', port.toString(), '--host', '0.0.0.0'];
       } else if (isNextJs) {
-        command = 'npx';
-        args = ['next', 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
+        // Resolve the local `.bin/next` directly instead of going through
+        // `npx`. The npx wrapper adds a process layer that complicates
+        // group-kill and depends on npx's own resolution behavior; spawning
+        // the resolved bin keeps the tree shallow and version-independent.
+        const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'next');
+        command = bin ?? 'npx';
+        args = [...(bin ? [] : ['next']), 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
       } else if (devScript?.includes('react-scripts')) {
         command = 'npm';
         args = ['run', 'dev'];
