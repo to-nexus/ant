@@ -70,6 +70,22 @@ adapter reads are all governed by `preview-env-contract.md §4.5`.
   the one property to satisfy. This binds EVERY method of every virtualized
   adapter, including a single such value folded among many data methods — not
   only a dedicated redirect/auth adapter.
+- **An externally-issued grant or callback** (a sign-in / authorization / payment
+  return the consumer dereferences) follows the same property, with one added
+  discipline: the virtualized leg emulates only what the external authority
+  contributes — the grant (`code` / `state` / token). Treat the redirect /
+  callback URI the consumer hands you as OPAQUE — preserve it verbatim and append
+  only the issued grant; do NOT discard it, re-stamp a parameter it already
+  carries, or invent a non-standard scheme. Derive the returned URL from the
+  redirect / callback URI **you were actually handed** — equivalently the running
+  app's **own origin at request time** (its **runtime origin**) — never
+  **hardcode a fixed host** (a constant `localhost:PORT`, a deployment domain, or
+  any **baked-in origin**): a baked-in origin breaks the instant the app is served
+  from a different origin. A redirect step that **no-ops** — navigates nowhere, on
+  the reasoning that mock mode has no real authority to send the browser to —
+  leaves the entry unreachable and the sign-in unable to even begin; in the closed
+  system that redirect MUST carry the browser to the in-app authorize / return
+  surface the running app itself serves.
 - A virtualized method MUST return a usable, seeded value at the time it is
   called — not an empty/absent placeholder whose real body is deferred to "a
   later unit". A method that returns nothing usable (an absent value, or an

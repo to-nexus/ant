@@ -68,6 +68,14 @@ from the summary.
 {{> jobs/code/base/injections/system-design-guide}}
 {{/if}}
 
+{{!-- Layer-role-fidelity floor (Fix B) — always-on for code-authoring task
+     types; test-code / doc author no layer and are exempt. The doc-present
+     defer-clause self-gates inside the partial on `hasAnyAuthoritativeDoc`.
+     Execute-side wiring is in AutoInjectionResolver. --}}
+{{#unless (or (eq taskType "test-code") (eq taskType "doc"))}}
+{{> jobs/code/base/injections/layer-role-fidelity}}
+{{/unless}}
+
 {{#if hasFrontend}}
 {{> jobs/shared/injections/visual-source-authority}}
 {{/if}}
@@ -149,6 +157,12 @@ re-derive it from the visual source alone.
 {{#each pairedFeature.files}}
   - `{{this}}`
 {{/each}}
+{{#if pairedFeature.include}}
+- Authoritative documents it implemented against — `include` the same and honor the layer / responsibility authority they set, do NOT re-derive structure from the visual source:
+{{#each pairedFeature.include}}
+  - `{{this}}`
+{{/each}}
+{{/if}}
 - Twin scope (verbatim): {{pairedFeature.description}}
 {{/if}}
 

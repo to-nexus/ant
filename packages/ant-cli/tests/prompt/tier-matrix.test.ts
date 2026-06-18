@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isTierActive,
+  shouldEmitVisualTierSpatialFloor,
   TIER_DOMAIN_MATRIX,
   TIER_KEYS,
   type TierKey,
@@ -86,6 +87,52 @@ describe('isTierActive — slot/domain/runtime composition', () => {
     const slot: BasisSlotConfig = { tiers: ['visualTier'] };
     expect(isTierActive('visualTier', slot, 'service', { hasCodebase: true })).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { hasCodebase: false })).toBe(true);
+  });
+});
+
+// bright-causing-brick RCA — when a UI doc suppresses visualTier wholesale, an
+// omitted spacing value had no backstop → flush layout. The spatial-validity
+// FLOOR is the layer-selective survivor of that suppression: emitted ONLY when
+// the reason visualTier is off is `hasUiDoc` (the doc owns the look; the floor
+// owns the structural spacing invariant), never for backend / existing-codebase.
+describe('shouldEmitVisualTierSpatialFloor — layer-selective hasUiDoc survivor', () => {
+  const slot: BasisSlotConfig = { tiers: ['visualTier'] };
+
+  it('emits when a UI doc suppresses visualTier (service, frontend)', () => {
+    expect(shouldEmitVisualTierSpatialFloor(slot, 'service', { hasUiDoc: true })).toBe(true);
+    expect(
+      shouldEmitVisualTierSpatialFloor(slot, 'service', {
+        hasUiDoc: true,
+        techTier: { stack: 'frontend' },
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT emit without a UI doc (the real spatialSystem preset covers spacing → MECE, no dup)', () => {
+    expect(shouldEmitVisualTierSpatialFloor(slot, 'service', { hasUiDoc: false })).toBe(false);
+    expect(shouldEmitVisualTierSpatialFloor(slot, 'service', {})).toBe(false);
+  });
+
+  it('does NOT emit for a backend stack (no UI surface) even with a UI doc', () => {
+    expect(
+      shouldEmitVisualTierSpatialFloor(slot, 'service', {
+        hasUiDoc: true,
+        techTier: { stack: 'backend' },
+      }),
+    ).toBe(false);
+  });
+
+  it('does NOT emit for an existing codebase (owns its own spacing) even with a UI doc', () => {
+    expect(
+      shouldEmitVisualTierSpatialFloor(slot, 'service', { hasUiDoc: true, hasCodebase: true }),
+    ).toBe(false);
+  });
+
+  it('does NOT emit where visualTier is not a slot/domain option (game domain, or slot opts out)', () => {
+    expect(shouldEmitVisualTierSpatialFloor(slot, 'game', { hasUiDoc: true })).toBe(false);
+    expect(
+      shouldEmitVisualTierSpatialFloor({ tiers: ['techTier'] }, 'service', { hasUiDoc: true }),
+    ).toBe(false);
   });
 });
 

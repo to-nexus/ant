@@ -30,7 +30,7 @@ import type { DeployVisibility } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
-import { resolveDeployWorkspacePath, syncDeployWorkspace } from './DeployWorkspace';
+import { resolveDeployWorkspacePath, syncDeployWorkspace, installDeployDependencies } from './DeployWorkspace';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import {
   toUrlKey,
@@ -496,6 +496,26 @@ export class DeployService {
     const tagFor = (pkg: DeployPackage) => packages.length > 1 ? `[${pkg.slug}] ` : '';
 
     try {
+      // Install once at the deploy workspace root before any package build.
+      // Deploy has its OWN real node_modules (no symlink into codebase) so
+      // Turbopack never sees a root-escaping link. Persisted across deploys →
+      // warm install is a near-no-op. Failure aborts the whole deploy.
+      try {
+        await installDeployDependencies(workspacePath, (line) =>
+          this.broadcastLog(tenantId, userId, projectId, feature, line));
+      } catch (err: any) {
+        for (const p of packages) { p.phase = 'error'; p.error = err.message; }
+        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
+          phase: 'error', packages, error: err.message,
+        });
+        await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'error', error: err.message });
+        for (const p of packages) this.portManager.release(p.port);
+        logger.error(`[Deploy] Dependency install failed for ${key}: ${err.message}`, { component: 'DeployService' });
+        return;
+      }
+
+      if (isStale()) return;
+
       for (let i = 0; i < packages.length; i++) {
         if (isStale()) {
           logger.info(`[Deploy] executeBuild aborted — generation stale: ${key}`, { component: 'DeployService' });
