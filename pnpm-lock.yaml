@@ -151,8 +151,8 @@ importers:
         specifier: ^1.2.3
         version: 1.4.1(@langchain/core@1.1.47(openai@6.14.0(ws@8.21.0)(zod@4.1.12))(ws@8.21.0))(openai@6.14.0(ws@8.21.0)(zod@4.1.12))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(ws@8.21.0)
       multer:
-        specifier: ^2.1.1
-        version: 2.1.1
+        specifier: ^2.2.0
+        version: 2.2.0
       openai:
         specifier: ^6.14.0
         version: 6.14.0(ws@8.21.0)(zod@4.1.12)
@@ -3443,8 +3443,8 @@ packages:
   msgpackr@1.11.5:
     resolution: {integrity: sha512-UjkUHN0yqp9RWKy0Lplhh+wlpdt9oQBYgULZOiFhV3VclSF1JnSQWZ5r9gORQlNYaUKQoR8itv7g7z1xDDuACA==}
 
-  multer@2.1.1:
-    resolution: {integrity: sha512-mo+QTzKlx8R7E5ylSXxWzGoXoZbOsRMpyitcht8By2KHvMbf3tjwosZ/Mu/XYU6UuJ3VZnODIrak5ZrPiPyB6A==}
+  multer@2.2.0:
+    resolution: {integrity: sha512-6rdyFg2kLrMh9Jee7/BMPuV9lEAd7lLW2YUpF9/YxR7njyoUwwQ0ZPh3TaIY50Sw6vlyD2HW3wGOkTS4P79xrQ==}
     engines: {node: '>= 10.16.0'}
 
   mustache@4.2.0:
@@ -7698,7 +7698,7 @@ snapshots:
     optionalDependencies:
       msgpackr-extract: 3.0.3
 
-  multer@2.1.1:
+  multer@2.2.0:
     dependencies:
       append-field: 1.0.0
       busboy: 1.6.0
