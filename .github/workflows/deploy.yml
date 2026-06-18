@@ -55,22 +55,25 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: write # security-scan artifact 업로드에 필수
 
 jobs:
   # ===========================================
-  # Security scan (Trivy vuln + secret)
+  # Security scan (Trivy vuln/misconfig/secret + Semgrep SAST)
+  # 빌드/배포 전 필수 게이트. secops-ci-policies 접근용 READ_ONLY_REPO만
+  # 명시적으로 전달한다 (secrets: inherit 금지 — 최소 권한 원칙).
   # ===========================================
   security-scan:
-    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan.yml@master
-    with:
-      severity: 'CRITICAL,HIGH'
+    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan-v2.yml@master
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
 
   # ===========================================
   # Detect changes in main, dev, stage, or ci branches
   # ===========================================
   detect-changes:
     if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
-    # needs: security-scan
+    needs: security-scan
     runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
@@ -247,7 +250,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Dev environment - ant-preview deployment (main, dev, ci/* branches)
@@ -269,7 +275,10 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Dev environment - visual-processor deployment (main, dev, ci/* branches)
@@ -285,7 +294,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-visual-processor
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Dev environment - ant-site deployment (S3 static upload)
@@ -396,7 +408,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   auto-all-ant-preview-dev-deploy:
     needs: [detect-changes, test-ant-cli]
@@ -414,7 +429,10 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   auto-all-ant-visual-processor-dev-deploy:
     needs: detect-changes
@@ -426,7 +444,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-visual-processor
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Stage branch - ant-ui deployment (S3 static upload)
@@ -491,7 +512,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Stage branch - ant-site deployment (S3 static upload)
@@ -561,7 +585,10 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Stage branch - visual-processor deployment
@@ -576,7 +603,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-visual-processor
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Stage branch - Deploy all when root package.json changes
@@ -638,7 +668,10 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   auto-all-ant-preview-stage-deploy:
     needs: [detect-changes, test-ant-cli]
@@ -656,7 +689,10 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   auto-all-ant-visual-processor-stage-deploy:
     needs: detect-changes
@@ -668,12 +704,16 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-visual-processor
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Manual deployment workflow - ant-ui (dev, stage only)
   # ===========================================
   manual-ant-ui-deploy:
+    needs: security-scan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui' && github.event.inputs.environment != 'prod'
     runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: ${{ github.event.inputs.environment }}
@@ -725,6 +765,7 @@ jobs:
   # Manual deployment workflow - ant-site (dev, stage only)
   # ===========================================
   manual-ant-site-deploy:
+    needs: security-scan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-site' && github.event.inputs.environment != 'prod'
     runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: ${{ github.event.inputs.environment }}
@@ -775,6 +816,7 @@ jobs:
   # Manual deployment workflow - ant-cli (dev, stage only)
   # ===========================================
   manual-ant-cli-deploy:
+    needs: security-scan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-cli' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -785,12 +827,16 @@ jobs:
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Manual deployment workflow - ant-preview (dev, stage only)
   # ===========================================
   manual-ant-preview-deploy:
+    needs: security-scan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-preview' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -807,12 +853,16 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Manual deployment workflow - visual-processor (dev, stage only)
   # ===========================================
   manual-ant-visual-processor-deploy:
+    needs: security-scan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-visual-processor' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
@@ -823,12 +873,16 @@ jobs:
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ===========================================
   # Release (prod) deployment via repository_dispatch or workflow_dispatch
   # ===========================================
   release-deploy-ant-ui:
+    needs: security-scan
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-ui')
@@ -879,6 +933,7 @@ jobs:
             --paths "/app/" "/app/index.html" "/app/*.png" "/app/*.svg" "/app/*.ico"
 
   release-deploy-ant-site:
+    needs: security-scan
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-site')
@@ -928,6 +983,7 @@ jobs:
             --paths "/" "/*"
 
   release-deploy-ant-cli:
+    needs: security-scan
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-cli')
@@ -940,9 +996,13 @@ jobs:
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   release-deploy-ant-preview:
+    needs: security-scan
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-preview')
@@ -961,9 +1021,13 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   release-deploy-ant-visual-processor:
+    needs: security-scan
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-visual-processor')
@@ -976,4 +1040,7 @@ jobs:
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
-    secrets: inherit
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

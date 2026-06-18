@@ -1,0 +1,18 @@
+name: PR Security Check
+
+# 모든 PR에 대해 Security Scan(Trivy vuln/secret + Semgrep SAST)을 필수 실행한다.
+# secops-ci-policies 레포의 ignore/custom rule을 적용하기 위해 READ_ONLY_REPO만
+# 명시적으로 전달한다. (secrets: inherit 금지 — 최소 권한 원칙)
+on:
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+  actions: write # security-scan artifact 업로드에 필수
+
+jobs:
+  security-scan:
+    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan-v2.yml@master
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}

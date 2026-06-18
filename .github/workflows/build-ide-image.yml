@@ -17,6 +17,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: write # security-scan artifact 업로드에 필수
 
 env:
   ECR_REGISTRY: 412381771241.dkr.ecr.ap-northeast-2.amazonaws.com
@@ -25,12 +26,12 @@ env:
 
 jobs:
   security-scan:
-    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan.yml@master
-    with:
-      severity: 'CRITICAL,HIGH'
+    uses: to-nexus/cross-hub-workflows/.github/workflows/security-scan-v2.yml@master
+    secrets:
+      READ_ONLY_REPO: ${{ secrets.READ_ONLY_REPO }}
 
   build-and-push:
-    # needs: security-scan
+    needs: security-scan
     runs-on:
       - codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
