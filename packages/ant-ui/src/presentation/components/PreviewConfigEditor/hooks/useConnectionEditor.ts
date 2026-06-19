@@ -185,13 +185,19 @@ export function useConnectionEditor(
     try {
       const result = await toggleConnectionVirtualization(selectedProject, featureName, id, active);
       if (result.success && result.connections) {
-        // Preserve unsaved panel edits on OTHER connections — the toggle
-        // response only carries persisted config, so a wholesale replace would
-        // revert a sibling connection the user edited but hasn't saved yet.
-        setLocalConns(prev => preserveLocalEdits(result.connections, prev, id));
-        setConfig(prev => prev
-          ? { ...prev, connections: result.connections }
-          : { connections: result.connections } as PreviewConfig);
+        // Surgically adopt ONLY the toggled connection from the server response.
+        // Toggling connection B must never touch connection A — a wholesale
+        // replace (in either localConns or config) would revert a sibling the
+        // user edited but hasn't saved/applied yet (the server response carries
+        // persisted config, not A's pending edit).
+        const serverToggled = result.connections.find(c => c.id === id);
+        if (serverToggled) {
+          setLocalConns(prev => prev.map(c => (c.id === id ? serverToggled : c)));
+          setConfig(prev => {
+            if (!prev?.connections) return { connections: result.connections } as PreviewConfig;
+            return { ...prev, connections: prev.connections.map(c => (c.id === id ? serverToggled : c)) };
+          });
+        }
       }
       if (result.restartRequired) {
         const key = makeFeatureKey(selectedProject, selectedFeature);
