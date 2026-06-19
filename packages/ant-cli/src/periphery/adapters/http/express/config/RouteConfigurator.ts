@@ -574,7 +574,11 @@ export class RouteConfigurator {
         type: jobType,
         mode: params.mode,
         userContext: params.userContext,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // Persist the pre-allocated turnId so a worker_stalled pause can
+        // anchor its cancellation card from Redis even if the durable
+        // user_turn disk write is lost — see JobStatusData.turnId.
+        ...(params.seedTurnId && { turnId: params.seedTurnId }),
       });
       
       // ✅ CRITICAL: Register job mapping in Redis for cross-Pod SSE broadcast
