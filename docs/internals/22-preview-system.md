@@ -46,7 +46,7 @@ Preview 상태는 두 개의 독립된 Redis 키에 저장된다:
 
 | Redis 키 | 용도 | 수명 | 포함 데이터 |
 |----------|------|------|------------|
-| `PREVIEW` (`ant:infra:preview:{portKey}`) | 런타임 상태 | Preview 실행 중에만 존재. `stopPreview` 시 삭제 | running, phase, port, host, podId, packages, connections (w/ status), issues |
+| `PREVIEW` (`ant:infra:preview:{portKey}`) | 런타임 상태 | Preview 실행 중에만 존재. `stopPreview` 시 삭제 | running, phase, port, host, podId, packages, connections (w/ status), issues, restartRequired |
 | `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | 영속 설정 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile |
 
 설계 원칙:
@@ -279,8 +279,26 @@ display = live가 있으면 base에 live.status overlay, 없으면 base 그대�
 ### 감지 타이밍
 
 - **자동 감지**: Config Panel 최초 열 때 레지스트리가 비어있으면 1회 실행 후 Redis에 캐싱
-- **수동 재감지**: "Auto Detect" 버튼 → POST /detect-connections → 파일시스템 재스캔, 레지스트리 전체 교체
+- **수동 재감지**: "Auto Detect" 버튼 → POST /detect-connections → 파일시스템 재스캔. **소스 기준 재설정**(`preserveUserEdits=false`).
 - **Preview Start**: Redis 레지스트리에서만 읽기 (감지 실행 안 함)
+- **코드잡 완료 후 자동 새로고침**: `CONNECTIONS_REFRESH` pub/sub → 재감지. 단 `preserveUserEdits=true` — 사용자가 패널에서 바꿨지만 아직 `.env.example`에 영속 안 된(`userModified`) 편집을 덮어쓰지 않는다([`mergeDetectedWithSaved`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits.ts)). 소스가 편집을 따라잡으면(detected == saved) `userModified`를 해제해 "변경됨" 뱃지를 정리한다.
+
+### Env 주입 우선순위 (ProcessSpawner)
+
+`spawn` 시 dev 서버에 넘기는 env는 다음 우선순위로 합성된다 (낮음 → 높음). 시작 시점에만 읽히므로, 저장된 변경을 반영하려면 재시작이 필요하다.
+
+| 순위 | 레이어 | 비고 |
+|---|---|---|
+| 1 | `process.env` | 시스템 |
+| 2 | **mock 토글 기본값** (`USE_MOCK_<NAME>=true`) | SV §6 — business 연결마다 per-connection 주입. `.env`가 덮어쓸 수 있어 greenfield는 mock-on, 사용자 `=false`는 real |
+| 3 | `.env` / `.env.local` | 프로젝트/패키지 레벨 |
+| 4 | connection 값 (`envVar=value`) | url=실제 URL, ant-project=`/프록시경로` |
+| 5 | 플랫폼 강제 (`PORT`/`NODE_ENV`/폴링/basePath) | `.env`를 덮어씀 |
+| 6 | `extraEnv` | 호출자 오버라이드 |
+
+### 변경 반영 (재시작하여 적용)
+
+real↔virtual 토글(`PUT /virtualization-toggle`, `.env` 직접 기록)과 연결 설정 변경(`PUT /preview-config`, Redis 기록)은 모두 영속되지만, **구동 중 dev 서버는 spawn 시점 env를 캡처**했으므로 재-spawn 전까지 반영되지 않는다. 두 핸들러는 구동 중이면 `PreviewState.restartRequired=true`로 표시하고, FE는 기존 Restart 컨트롤에 "재시작하여 적용" 신호를 띄운다. `startPreview`가 신선한 env로 재기동하며 `restartRequired=false`로 클리어한다. (별도 재시작 버튼 없음 — 기존 Restart를 재사용.)
 
 ### Cross-Project / Internal 연결
 

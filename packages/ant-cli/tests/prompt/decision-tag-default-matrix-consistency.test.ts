@@ -67,6 +67,15 @@ describe('D40 — Decision Default × Matrix Consistency', () => {
     });
   });
 
+  describe('serviceVirtualization default = build (§4 / D40)', () => {
+    it('defaultOnRetryExhaustion is the parser-valid build value { optedOut: false }', () => {
+      const def = findTag<{ optedOut: boolean }>('serviceVirtualization');
+      // A missing/garbled tag must degrade to BUILD (SV generation on), never to
+      // a value the parser would itself reject.
+      expect(def.defaultOnRetryExhaustion).toEqual({ optedOut: false });
+    });
+  });
+
   describe('gameContentTier default × matrix (I9)', () => {
     const def = findTag<{ genre?: string; coreLoop?: string }>('gameContentTier');
 

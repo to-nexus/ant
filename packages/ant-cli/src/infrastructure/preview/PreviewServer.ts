@@ -42,6 +42,7 @@ import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/p
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { setToggleEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import { mergeDetectedWithSaved } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits';
 import { detectFramework } from '../deploy';
 import { toToggleFramework } from '../../core/prompt/builder/serviceVirtualization/connectionModel';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
@@ -262,6 +263,9 @@ export class PreviewServer {
             { organizationId: msg.organizationId, userId: msg.userId },
             msg.projectId,
             msg.feature || 'main',
+            // Post-job refresh re-detects from FINAL source, but must not clobber
+            // panel edits the user hasn't yet persisted to `.env.example` (Fix).
+            { preserveUserEdits: true },
           );
           logger.info(
             `[PreviewServer] Connections refreshed post-job: ${connections.length} for ${msg.projectId}/${msg.feature || 'main'}`,
@@ -361,6 +365,7 @@ export class PreviewServer {
     userContext: { organizationId: string; userId: string },
     projectId: string,
     feature: string,
+    opts?: { preserveUserEdits?: boolean },
   ): Promise<import('../../core/ports/portRegistry').ServiceConnection[]> {
     const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
     const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
@@ -415,6 +420,19 @@ export class PreviewServer {
       }
     }
 
+    // Anti-clobber: re-detection reads category/resolution from `.env.example`
+    // only, so a post-job refresh would discard panel edits the user hasn't yet
+    // persisted there (Fix button). Overlay `userModified` saved connections on
+    // top of the fresh detection. Auto Detect (explicit source reset) opts out.
+    if (opts?.preserveUserEdits) {
+      try {
+        const saved = await this.stateStore.getPreviewConfig(
+          userContext.organizationId, userContext.userId, projectId, feature,
+        );
+        connections = mergeDetectedWithSaved(connections, saved?.connections ?? []);
+      } catch { /* best-effort — fall back to fresh detection */ }
+    }
+
     // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
     const configConnections = connections.map(({ status, ...rest }: any) => rest);
     await this.stateStore.savePreviewConfig(
@@ -439,6 +457,34 @@ export class PreviewServer {
     } catch { /* best-effort */ }
 
     return connections;
+  }
+
+  /**
+   * Mark the running preview as needing a restart to apply a just-saved
+   * connection/toggle change. Env is captured at spawn time, so a config/.env
+   * write does not reach the live dev server until it re-spawns. The FE reads
+   * `PreviewState.restartRequired` to surface a "restart to apply" hint on the
+   * existing Restart control. No-op when the preview is not running (the next
+   * start injects fresh env anyway). Best-effort.
+   */
+  private async markRestartRequiredIfRunning(
+    userContext: { organizationId: string; userId: string },
+    projectId: string,
+    feature: string,
+  ): Promise<boolean> {
+    try {
+      const status = await this.previewService.getPreviewStatus(
+        userContext.organizationId, userContext.userId, projectId, feature
+      );
+      if (status.running) {
+        await this.stateStore.updatePreview(
+          userContext.organizationId, userContext.userId, projectId, feature,
+          { restartRequired: true }
+        );
+        return true;
+      }
+    } catch { /* best-effort — never block the save response */ }
+    return false;
   }
 
   /**
@@ -667,6 +713,7 @@ export class PreviewServer {
           structureType: status.structureType || fsStructureType || null,
           projectProfile: (status as any).projectProfile || fsProjectProfile || null,
           connections: status.connections || [],
+          restartRequired: status.restartRequired ?? false,
           canStart,
           logs: logs.slice(-50)
         });
@@ -830,9 +877,10 @@ export class PreviewServer {
           feature,
           { connections: configConnections }
         );
+        const restartRequired = await this.markRestartRequiredIfRunning(userContext, projectId, feature);
 
         logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature} (${resolvedConnections.length} connections)`, { component: 'PreviewServer' });
-        res.json({ success: true, connections: resolvedConnections });
+        res.json({ success: true, connections: resolvedConnections, restartRequired });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);
         sendErrorResponse(res, 500, error, 'PreviewServer');
@@ -910,12 +958,13 @@ export class PreviewServer {
           feature,
           { connections: updatedConnections },
         );
+        const restartRequired = await this.markRestartRequiredIfRunning(userContext, projectId, feature);
 
         logger.info(
           `[PreviewServer] Virtualization toggle: ${projectId}/${feature} ${writtenVar}=${active}`,
           { component: 'PreviewServer' },
         );
-        res.json({ success: true, connections: updatedConnections });
+        res.json({ success: true, connections: updatedConnections, restartRequired });
       } catch (error: any) {
         logger.error('[PreviewServer] Virtualization toggle error', { component: 'PreviewServer' }, error);
         sendErrorResponse(res, 500, error, 'PreviewServer');

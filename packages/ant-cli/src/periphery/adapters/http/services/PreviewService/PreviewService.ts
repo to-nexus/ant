@@ -860,6 +860,9 @@ export class PreviewService {
           podId: os.hostname(),
           packages: packagePorts,
           issues: [],
+          // Fresh spawn injects current .env/config, so any prior "needs
+          // restart to apply" signal is satisfied by this start.
+          restartRequired: false,
           startedAt: new Date()
         };
         
@@ -1830,6 +1833,7 @@ export class PreviewService {
     structureType?: string;
     projectProfile?: { language: string; framework?: string };
     connections?: ServiceConnection[];
+    restartRequired?: boolean;
     setupReasoning?: string;
     setupReason?: string;
     suggestedFix?: string;
@@ -1868,6 +1872,7 @@ export class PreviewService {
             structureType: redisState.structureType,
             projectProfile,
             connections: redisState.connections,
+            restartRequired: redisState.restartRequired,
             setupReasoning: redisState.setupReasoning,
             setupReason: redisState.setupReason,
             suggestedFix: redisState.suggestedFix,

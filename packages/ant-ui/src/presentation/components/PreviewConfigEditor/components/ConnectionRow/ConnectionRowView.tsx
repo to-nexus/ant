@@ -78,13 +78,11 @@ function ringStateForConn(conn: ServiceConnection): SignalRingState | null {
 export function ConnectionRowView({
   conn,
   onEdit,
-  onUpdate,
   onFix,
   onToggleVirtualization,
 }: {
   conn: ServiceConnection;
   onEdit: () => void;
-  onUpdate: (updates: Partial<ServiceConnection>) => void;
   onFix: (msg: string) => void;
   onToggleVirtualization?: (active: boolean) => void;
 }) {
@@ -336,10 +334,7 @@ export function ConnectionRowView({
           {dirty && (
             <button
               type="button"
-              onClick={() => {
-                onFix(generateFixMessage(conn));
-                onUpdate({ userModified: false });
-              }}
+              onClick={() => onFix(generateFixMessage(conn))}
               title="Apply changes to project files"
               style={{
                 display: 'inline-flex',

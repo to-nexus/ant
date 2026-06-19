@@ -17,20 +17,22 @@
  */
 
 export interface ServiceVirtualizationDataGateInput {
-  /** True when the codebase declares at least one `business` connection. */
-  hasBusinessConnection: boolean;
+  /** Workspace domain (coerced undefined→service by `getEffectiveDomain`). */
+  domain: string | undefined;
+  /** Decompose `<serviceVirtualization>` opt-out (real-backend-only). */
+  optedOut: boolean;
   /** Task type at the call site (`currentTask.type` for execute, plan-side
    *  task type for plan). Callers pass the resolved string. */
   taskType: string | undefined;
 }
 
 /**
- * @returns `true` iff `hasBusinessConnection === true` AND `taskType` is
- *          one of the body-authoring types (feature / ui).
+ * @returns `true` iff the task is a generative service-domain task that did
+ *          not opt out AND `taskType` is a body-authoring type (feature / ui).
  */
 export function isServiceVirtualizationDataActive(
   input: ServiceVirtualizationDataGateInput,
 ): boolean {
-  if (input.hasBusinessConnection !== true) return false;
+  if (input.domain !== 'service' || input.optedOut === true) return false;
   return input.taskType === 'feature' || input.taskType === 'ui';
 }

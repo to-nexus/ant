@@ -223,6 +223,13 @@ export interface Basis {
   gameArtTier?: GameArtTier;
   /** Phase 1 — game-domain content tier (genre + coreLoop). */
   gameContentTier?: GameContentTier;
+  /**
+   * Service Virtualization build decision (§4). Decompose emits a
+   * `<serviceVirtualization>` tag (default `build`); `optedOut: true` means the
+   * user asked for the real backend only and SV generation is suppressed.
+   * Absent ⇒ not opted out (build). Service-domain only.
+   */
+  serviceVirtualization?: { optedOut: boolean };
 }
 
 // ============================================

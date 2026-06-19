@@ -305,6 +305,7 @@ export function PreviewConfigEditor() {
             previewStatus={previewStatus}
             isPreviewLoading={isPreviewLoading}
             isJobRunning={isJobRunning}
+            restartRequired={vm.restartRequired}
             dismissedSet={dismissedSet}
             onStart={handleStart}
             onStop={handleStop}

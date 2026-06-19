@@ -35,7 +35,7 @@ import {
 // Public types
 // ============================================
 
-export type DecisionTagName = 'domain' | 'gameArtTier' | 'gameContentTier';
+export type DecisionTagName = 'domain' | 'gameArtTier' | 'gameContentTier' | 'serviceVirtualization';
 
 export interface DecisionTagViolation {
   tag: DecisionTagName;
@@ -60,7 +60,8 @@ export class DecisionTagViolationError extends Error {
 export type ParsedDecisionTag =
   | { name: 'domain'; value: Domain }
   | { name: 'gameArtTier'; value: GameArtTier }
-  | { name: 'gameContentTier'; value: GameContentTier };
+  | { name: 'gameContentTier'; value: GameContentTier }
+  | { name: 'serviceVirtualization'; value: { optedOut: boolean } };
 
 // ============================================
 // Tag definitions
@@ -198,10 +199,32 @@ const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
   },
 };
 
+/**
+ * serviceVirtualization (§4) — SV build decision for service-domain code jobs.
+ * Body grammar: `build | opt-out`. Default is BUILD (SV generation is on by
+ * default); the LLM emits `opt-out` only when the user's directive forbids mock
+ * adapters / mandates the real backend. `defaultOnRetryExhaustion` MUST be the
+ * parser-valid build value (D40) so a missing/garbled tag degrades to "build",
+ * never to a value the parser would itself reject.
+ */
+const serviceVirtualizationTagDef: DecisionTagDef<{ optedOut: boolean }> = {
+  name: 'serviceVirtualization',
+  pattern: /<serviceVirtualization>\s*([\s\S]*?)\s*<\/serviceVirtualization>/i,
+  defaultOnRetryExhaustion: { optedOut: false },
+  retryPolicy: 'none',
+  parse: (raw) => {
+    const v = raw.trim().toLowerCase();
+    if (v === 'build') return { ok: true, value: { optedOut: false } };
+    if (v === 'opt-out' || v === 'optout' || v === 'opt_out') return { ok: true, value: { optedOut: true } };
+    return { ok: false, reason: 'invalid_value', observed: raw };
+  },
+};
+
 export const DECISION_TAG_REGISTRY: ReadonlyArray<DecisionTagDef<unknown>> = [
   domainTagDef,
   gameArtTierTagDef,
   gameContentTierTagDef,
+  serviceVirtualizationTagDef,
 ] as const;
 
 // ============================================

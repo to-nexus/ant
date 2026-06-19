@@ -151,11 +151,11 @@ Your modularization:
 
 {{!--
   Service Virtualization SSOT — four orthogonal partials gated by
-  helpers under `core/prompt/builder/serviceVirtualization/`:
-    - contract: hasBusinessConnection
-    - data:     hasBusinessConnection × (taskType ∈ feature|ui|design-system)
-    - imagery:  hasFrontend × domain==='service' × (taskType ∈ feature|ui|design-system|setup|error|verification)
-    - session:  hasBusinessConnection × (taskType ∈ feature|ui|design-system|setup)
+  helpers under `core/prompt/builder/serviceVirtualization/` (§4 default-ON):
+    - contract: domain==='service' × ¬optedOut
+    - data:     domain==='service' × ¬optedOut × (taskType ∈ feature|ui)
+    - imagery:  hasFrontend × domain==='service' × ¬optedOut × (taskType ∈ feature|ui|design-system|setup|error|verification)
+    - session:  domain==='service' × ¬optedOut × (band/renderable routing)
   Domain-Branching Locality (I1): the gates are derived in code; the
   templates only see the resulting booleans.
 --}}

@@ -168,7 +168,6 @@ describe('buildPlanPrompt — generic path passes prePlanText vars', () => {
       resolvedAction: undefined,
       directive: '',
       featureContext: undefined,
-      virtualizationSnapshot: undefined,
       _verifyEntered: false,
       conversations: {},
       recursionCount: 0,

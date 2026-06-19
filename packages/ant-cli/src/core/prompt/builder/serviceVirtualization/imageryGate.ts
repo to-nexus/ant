@@ -51,14 +51,16 @@ export interface ServiceVirtualizationImageryGateInput {
   /** Workspace domain — only `'service'` activates content imagery; the
    *  `'game'` domain is served by `game-art-source` instead. */
   domain: string | undefined;
+  /** Decompose `<serviceVirtualization>` opt-out (real-backend-only). */
+  optedOut: boolean;
   /** Task type at the call site. plan uses `taskType`; execute uses
    *  `currentTask.type` — callers pass the resolved string. */
   taskType: string | undefined;
 }
 
 /**
- * @returns `true` iff all three gate axes pass (service domain, frontend
- *          stack present, task type is in
+ * @returns `true` iff all gate axes pass (service domain, not opted out,
+ *          frontend stack present, task type is in
  *          {@link IMAGERY_ENABLED_TASK_TYPES}).
  */
 export function isServiceVirtualizationImageryActive(
@@ -67,6 +69,7 @@ export function isServiceVirtualizationImageryActive(
   return (
     input.hasFrontend === true &&
     input.domain === 'service' &&
+    input.optedOut !== true &&
     input.taskType !== undefined &&
     IMAGERY_ENABLED_TASK_TYPES.has(input.taskType)
   );

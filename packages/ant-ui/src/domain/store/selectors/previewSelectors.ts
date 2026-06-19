@@ -51,6 +51,8 @@ export interface PreviewVM {
   structureType?: PreviewStatus['structureType'];
   projectProfile?: PreviewStatus['projectProfile'];
   connections?: PreviewStatus['connections'];
+  /** A saved toggle/config change awaits a restart to take effect. */
+  restartRequired: boolean;
   error?: PreviewError;
   setupReasoning?: SetupFailureReasoning;
   setupReason?: string;
@@ -105,6 +107,7 @@ function buildEmptyVM(): PreviewVM {
     structureType: undefined,
     projectProfile: undefined,
     connections: undefined,
+    restartRequired: false,
     error: undefined,
     setupReasoning: undefined,
     setupReason: undefined,
@@ -181,6 +184,8 @@ export function selectPreviewVM(
     structureType: status?.structureType,
     projectProfile: status?.projectProfile,
     connections: status?.connections,
+    // Only meaningful while running; a stopped/idle preview applies fresh env on start.
+    restartRequired: (status?.restartRequired ?? false) && (status?.running ?? false),
     error,
     setupReasoning: status?.setupReasoning as SetupFailureReasoning | undefined,
     setupReason: status?.setupReason,
