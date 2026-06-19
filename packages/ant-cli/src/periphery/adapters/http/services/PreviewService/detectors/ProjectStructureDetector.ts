@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, ProjectStructure } from '../types';
-import { PackageDetector } from './PackageDetector';
+import { PackageDetector, resolveRunScript, hasRunnableScript } from './PackageDetector';
 import { logger } from '../../../../../../utils/logger';
 
 /**
@@ -68,7 +68,7 @@ export class ProjectStructureDetector {
     if (fs.existsSync(pkgJsonPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
-        const hasDevScript = !!(pkg.scripts?.dev || pkg.scripts?.start);
+        const hasDevScript = hasRunnableScript(pkg);
         const hasWorkspaces = !!(pkg.workspaces) || fs.existsSync(path.join(localPath, 'pnpm-workspace.yaml'));
         
         if (hasWorkspaces) {
@@ -136,7 +136,7 @@ export class ProjectStructureDetector {
           if (!entry.isDirectory()) continue;
           try {
             const subPkg = JSON.parse(fs.readFileSync(path.join(dirPath, entry.name, 'package.json'), 'utf-8'));
-            if (subPkg.scripts?.dev || subPkg.scripts?.start) return true;
+            if (hasRunnableScript(subPkg)) return true;
           } catch { /* skip */ }
         }
       } catch { /* dir not readable */ }
@@ -197,8 +197,8 @@ export class ProjectStructureDetector {
       try {
         const pkgJson = JSON.parse(await fs.promises.readFile(pkgJsonPath, 'utf-8'));
         
-        // Only include packages with dev script
-        if (!pkgJson.scripts?.dev && !pkgJson.scripts?.start) continue;
+        // Only include packages that declare a runnable dev-server script
+        if (!hasRunnableScript(pkgJson)) continue;
         
         let pkgType: 'frontend' | 'backend' | 'other' = 'other';
         if (this.packageDetector.isFrontendPackage(pkgJson)) {
@@ -500,8 +500,9 @@ export class ProjectStructureDetector {
           // A build-watcher serves no port — spawning it as a frontend dev
           // server yields a useless preview entry (regression: packages/ui).
           // Exclusion-based: apps with non-standard dev servers stay included.
-          const devOrStart = pkgJson.scripts?.dev || pkgJson.scripts?.start;
-          if (devOrStart && !this.packageDetector.isBundlerWatchScript(devOrStart)) {
+          const runScript = resolveRunScript(pkgJson, pkgType);
+          const runScriptBody = runScript ? pkgJson.scripts?.[runScript] : undefined;
+          if (runScriptBody && !this.packageDetector.isBundlerWatchScript(runScriptBody)) {
             packages.push({
               name: pkgName,
               path: wsPath,

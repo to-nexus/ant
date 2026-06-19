@@ -5,6 +5,7 @@ import { PackageInfo, LogCallback, ExitCallback } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
+import { resolveRunScript } from '../detectors/PackageDetector';
 
 export interface SpawnOptions {
   serverKey: string;
@@ -251,32 +252,27 @@ export class ProcessSpawner {
     // Determine command based on package type and script content
     const isNextJs = devScript?.includes('next');
     
-    if (pkg.type === 'frontend') {
-      if (devScript?.includes('vite')) {
-        const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'vite');
-        command = bin ?? 'npx';
-        args = [...(bin ? [] : ['vite']), '--port', port.toString(), '--host', '0.0.0.0'];
-      } else if (isNextJs) {
-        // Resolve the local `.bin/next` directly instead of going through
-        // `npx`. The npx wrapper adds a process layer that complicates
-        // group-kill and depends on npx's own resolution behavior; spawning
-        // the resolved bin keeps the tree shallow and version-independent.
-        const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'next');
-        command = bin ?? 'npx';
-        args = [...(bin ? [] : ['next']), 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
-      } else if (devScript?.includes('react-scripts')) {
-        command = 'npm';
-        args = ['run', 'dev'];
-      } else {
-        command = 'npm';
-        args = ['run', 'dev'];
-      }
-    } else if (pkg.type === 'backend') {
-      command = 'npm';
-      args = ['run', 'dev'];
+    if (pkg.type === 'frontend' && devScript?.includes('vite')) {
+      const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'vite');
+      command = bin ?? 'npx';
+      args = [...(bin ? [] : ['vite']), '--port', port.toString(), '--host', '0.0.0.0'];
+    } else if (pkg.type === 'frontend' && isNextJs) {
+      // Resolve the local `.bin/next` directly instead of going through
+      // `npx`. The npx wrapper adds a process layer that complicates
+      // group-kill and depends on npx's own resolution behavior; spawning
+      // the resolved bin keeps the tree shallow and version-independent.
+      const bin = this.resolveLocalBin(pkg.path, options.projectRoot, 'next');
+      command = bin ?? 'npx';
+      args = [...(bin ? [] : ['next']), 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
     } else {
+      // Everything else (CRA / generic frontend / backend / other) runs the
+      // package's own declared dev script rather than assuming `dev` exists —
+      // NestJS scaffolds use `start:dev`, CRA uses `start`, etc. Falling back to
+      // `dev` preserves the legacy "Missing script: dev" diagnostic for a
+      // genuinely script-less package (flows through the settling-window path).
+      const script = resolveRunScript(pkgJson, pkg.type) ?? 'dev';
       command = 'npm';
-      args = ['run', 'dev'];
+      args = ['run', script];
     }
     
     // Inject base path environment variables for ALL frontend frameworks.
