@@ -57,7 +57,7 @@
     "handlebars": "^4.7.9",
     "helmet": "^8.1.0",
     "http-proxy": "^1.18.1",
-    "http-proxy-middleware": "^3.0.0",
+    "http-proxy-middleware": "^3.0.7",
     "ioredis": "^5.9.2",
     "jpeg-js": "^0.4.4",
     "js-yaml": "^4.1.1",
