@@ -37,6 +37,15 @@ export interface JobStatusData {
   completedAt?: string;
   error?: string;
   task?: string;
+  /**
+   * Pre-allocated turnId (chat SSOT §6 — `seedTurnId`) the job's durable
+   * `user_turn` line is anchored to. Persisted here so the cancellation
+   * choice card can resolve its turn anchor from Redis (the SSOT) when the
+   * feature.jsonl / chat.jsonl disk lookup misses — e.g. a `worker_stalled`
+   * crash that loses or never flushes the user_turn write. See
+   * `ChatService.resolveCancelledCardTurnId`.
+   */
+  turnId?: string;
 }
 
 // ============================================

@@ -428,7 +428,10 @@ export class BullMQJobQueue implements JobQueuePort {
       type: payload.type,
       mode: payload.mode,
       timestamp: new Date().toISOString(),
-      userContext: payload.userContext
+      userContext: payload.userContext,
+      // Anchor for the cancellation card when the disk user_turn lookup
+      // misses (e.g. worker_stalled) — see JobStatusData.turnId.
+      ...(payload.seedTurnId && { turnId: payload.seedTurnId }),
     });
 
     return jobId;

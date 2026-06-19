@@ -84,6 +84,12 @@ class FakeStateStore implements Partial<StateStorePort> {
     this.setPendingCardCalls.push({ sessionKey, turnId, card });
   }
 
+  /** Job status records keyed by jobId — backs the cancelled-card Tier 2 anchor. */
+  jobStatus = new Map<string, any>();
+  async getJobStatus(jobId: string): Promise<any> {
+    return this.jobStatus.get(jobId) ?? null;
+  }
+
   async nextPauseSeq(turnId: string): Promise<number> {
     const next = (this.pauseSeqByTurn.get(turnId) ?? 0) + 1;
     this.pauseSeqByTurn.set(turnId, next);
@@ -933,6 +939,67 @@ describe('ChatService — Phase 9 emission contract', () => {
       (l) => l.type === 'choice_presented' && (l as any).cardType === 'cancelled',
     );
     expect(cancelledLines).toHaveLength(0);
+  });
+
+  it('cancelled card anchors to the Redis job-record seedTurnId (Tier 2) when the disk user_turn lookup misses', async () => {
+    // worker_stalled signature: the durable user_turn was never written /
+    // was lost, so findTurnIdForJob returns null — but the job record in
+    // Redis carries the pre-allocated seedTurnId. The card MUST still emit.
+    store.jobStatus.set('stalled-job', { jobId: 'stalled-job', turnId: 't-seed' });
+
+    const result = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'stalled-job', {
+      reason: 'worker_stalled',
+      message: 'Worker process became unresponsive. You can resume this job.',
+      userContext: USER_CTX,
+    });
+
+    expect(result.emitted).toBe(true);
+    const cancelled = chatEventLines(store).find(
+      (l): l is ChatChoicePresentedLine =>
+        l.type === 'choice_presented' && (l as any).cardType === 'cancelled',
+    );
+    expect(cancelled?.turnId).toBe('t-seed');
+    expect((cancelled?.payload as any)?.reason).toBe('worker_stalled');
+  });
+
+  it('cancelled card falls back to the most-recent user_turn (Tier 3) when neither jobId nor seedTurnId resolves', async () => {
+    // A prior turn exists in the feature, but nothing ties it to this
+    // crashed job (no jobId match, no seedTurnId). The card anchors to the
+    // most-recent non-collapsed user_turn — mirrors resolveResumeTurnId.
+    await seedUserTurn('earlier-job', 't-prev');
+
+    const result = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'lost-job', {
+      reason: 'worker_stalled',
+      message: 'resume me',
+      userContext: USER_CTX,
+    });
+
+    expect(result.emitted).toBe(true);
+    const cancelled = chatEventLines(store).find(
+      (l): l is ChatChoicePresentedLine =>
+        l.type === 'choice_presented' && (l as any).cardType === 'cancelled',
+    );
+    expect(cancelled?.turnId).toBe('t-prev');
+  });
+
+  it('cancelled card prefers the exact-jobId user_turn (Tier 1) over the seedTurnId anchor', async () => {
+    // When the durable user_turn IS present, the precise jobId match wins
+    // even if a (stale) seedTurnId is also recorded.
+    await seedUserTurn('job-precise', 't-exact');
+    store.jobStatus.set('job-precise', { jobId: 'job-precise', turnId: 't-stale-seed' });
+
+    const result = await service.appendChoicePresentedCancelled('proj', 'feat-a', 'job-precise', {
+      reason: 'worker_stalled',
+      message: 'resume me',
+      userContext: USER_CTX,
+    });
+
+    expect(result.emitted).toBe(true);
+    const cancelled = chatEventLines(store).find(
+      (l): l is ChatChoicePresentedLine =>
+        l.type === 'choice_presented' && (l as any).cardType === 'cancelled',
+    );
+    expect(cancelled?.turnId).toBe('t-exact');
   });
 
   it('appendUserTurn carries actionMetadata into the broadcast line', async () => {

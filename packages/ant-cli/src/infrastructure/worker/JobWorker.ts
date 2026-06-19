@@ -33,7 +33,7 @@ import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchU
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
 import type { InterruptionReason } from '@ant/shared';
-import { readCgroupMemoryLimit, readCgroupMemoryUsage } from '../../periphery/system/cgroupLimits';
+import { readCgroupMemoryLimit, readCgroupMemoryUsage, deriveDefaultHeapMb } from '../../periphery/system/cgroupLimits';
 import * as fs from 'fs';
 
 // ESM: derive __dirname from import.meta.url
@@ -86,6 +86,29 @@ export function classifyChildExit(
     };
   }
   return { level: 'warn', message: `Child terminated by signal=${signal} (code=null)` };
+}
+
+/**
+ * Resolve the `NODE_OPTIONS` value for the job-runner child so its V8 heap is
+ * capped below the pod cgroup limit. A capped child surfaces memory pressure
+ * as a catchable JS heap-OOM (→ proper RESULT / resumable pause) instead of a
+ * silent cgroup SIGKILL that strands the job as a bare BullMQ stall.
+ *
+ * Mirrors `buildSpawnEnv`'s command-side merge: an explicit operator-set
+ * `--max-old-space-size` (inherited via NODE_OPTIONS) wins; otherwise the
+ * cgroup-derived cap is appended. Returns the inherited value unchanged when
+ * no cgroup limit is readable (local dev) or a cap is already present.
+ */
+export function resolveChildNodeOptions(
+  inheritedNodeOptions: string | undefined,
+  cgroupMemBytes: number | undefined,
+  concurrentChildren: number,
+): string | undefined {
+  const inherited = inheritedNodeOptions ?? '';
+  if (/--max-old-space-size\b/.test(inherited)) return inheritedNodeOptions;
+  const mb = deriveDefaultHeapMb(cgroupMemBytes, concurrentChildren);
+  if (mb === undefined) return inheritedNodeOptions;
+  return [inherited, `--max-old-space-size=${mb}`].filter(Boolean).join(' ');
 }
 
 export interface JobWorkerOptions {
@@ -533,6 +556,18 @@ export class JobWorker {
       // the orchestrator will pass this to recordUserTurn so the durable
       // user_turn shares the same id as the optimistic SSE broadcast.
       env.ANT_SEED_TURN_ID = payload.seedTurnId;
+    }
+
+    // Cap the child V8 heap below the pod cgroup memory limit, split across
+    // the concurrent job-runner children this worker may spawn. See
+    // resolveChildNodeOptions.
+    const childNodeOptions = resolveChildNodeOptions(
+      env.NODE_OPTIONS,
+      readCgroupMemoryLimit(),
+      this.options.concurrency || DEFAULT_CONCURRENCY,
+    );
+    if (childNodeOptions) {
+      env.NODE_OPTIONS = childNodeOptions;
     }
 
     // Run-mode is decided by HOW THIS MODULE was loaded, not by NODE_ENV:
