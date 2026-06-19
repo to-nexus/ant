@@ -245,7 +245,14 @@ export class ProcessSpawner {
   private spawnNode(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
     const pkgJson = pkg.packageJson;
     const devScript = pkgJson?.scripts?.dev || pkgJson?.scripts?.start;
-    
+
+    // The preview workspace is persisted across runs, so a TS incremental build
+    // cache can outlive the dist/ it described (e.g. NestJS `deleteOutDir` wipes
+    // dist/ but a root-level *.tsbuildinfo survives). tsc then reports "up to
+    // date" and skips emit, so the entry file is never produced. Clear it so the
+    // dev server's first compile always emits.
+    this.clearStaleIncrementalBuildCache(pkg.path, options.onLog);
+
     let command: string;
     let args: string[] = [];
     
@@ -536,6 +543,25 @@ export class ProcessSpawner {
         }
       } catch { /* skip unreadable dirs */ }
     }
+  }
+
+  /**
+   * Remove stale TypeScript incremental build caches (`*.tsbuildinfo`) from the
+   * package root. With `incremental: true`, tsc trusts the buildinfo over the
+   * actual presence of emitted files — so a buildinfo left from a prior build
+   * (or a previous preview session, since the workspace is persisted) makes the
+   * next `tsc --watch` skip emit after the output was deleted, and the entry
+   * file is never produced. Top-level, node-only artifact; idempotent.
+   */
+  private clearStaleIncrementalBuildCache(pkgPath: string, onLog: LogCallback): void {
+    try {
+      for (const entry of fs.readdirSync(pkgPath)) {
+        if (entry.endsWith('.tsbuildinfo')) {
+          fs.rmSync(path.join(pkgPath, entry), { force: true });
+          onLog('stdout', `🧹 Cleared stale build cache: ${entry}\n`);
+        }
+      }
+    } catch { /* missing dir / perms — non-fatal */ }
   }
 
   private getRequiredCommand(language: string): string | null {
