@@ -60,6 +60,20 @@ export const createChatSlice: StateCreator<any, [], [], ChatSlice> = (set, get) 
         console.log(`[ChatSlice] 🔄 Auto-switching job type: ${get().selectedJobType} → ${input.jobType}`);
         get().setSelectedJobType(input.jobType);
       }
+
+      // Accumulate manual (non-autoSubmit) fixes that haven't been consumed by
+      // ChatInput yet — clicking Fix on several connections before opening the
+      // chat must batch into ONE message, not let the last overwrite the rest.
+      const existing = get().pendingChatInput as PendingChatInput | null;
+      if (existing && !existing.autoSubmit && !input.autoSubmit) {
+        set({
+          pendingChatInput: {
+            ...input,
+            message: `${existing.message.trimEnd()}\n\n${input.message}`,
+          },
+        });
+        return;
+      }
     }
 
     set({ pendingChatInput: input });
