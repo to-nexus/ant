@@ -1,16 +1,17 @@
 /**
  * service-virtualization-contract activation gate (SBS SSOT).
  *
- * The `service-virtualization-contract` partial fires when the project has
- * at least one `business` `@connection` (= every external dependency that
- * MUST be reachable through a port whose production and virtualized
- * adapters share the same interface). The single gate axis is:
+ * The `service-virtualization-contract` partial fires for every generative
+ * service-domain code task unless the user opted out (§4 default-ON). The
+ * gate axis is:
  *
- *   hasBusinessConnection
+ *   domain==='service' ∧ ¬optedOut
  *
- * `hasBusinessConnection` is derived once from the workspace by `resolve`
- * and parked on `state.virtualizationSnapshot.hasBusinessConnection` so all
- * downstream phases share one snapshot.
+ * `domain` is the workspace selector (call sites coerce undefined→service via
+ * `getEffectiveDomain`); `optedOut` is the decompose `<serviceVirtualization>`
+ * decision on `state.resolvedAction.basis.serviceVirtualization`. The partial
+ * self-scopes ("every external-dependency port…"), so a project with no
+ * external dependency yields no extra content even with the gate open.
  *
  * Companions:
  *   - `service-virtualization-data`    (FAKE body realism — non-image data)
@@ -21,16 +22,18 @@
  */
 
 export interface ServiceVirtualizationContractGateInput {
-  /** True when the codebase declares at least one `business` connection. */
-  hasBusinessConnection: boolean;
+  /** Workspace domain (coerced undefined→service by `getEffectiveDomain`). */
+  domain: string | undefined;
+  /** Decompose `<serviceVirtualization>` opt-out (real-backend-only). */
+  optedOut: boolean;
 }
 
 /**
- * @returns `true` iff a business-connection-bearing port exists for which
- *          the contract body must enforce side-by-side adapters + toggle.
+ * @returns `true` for a generative service-domain task that did not opt out —
+ *          the contract body then enforces side-by-side adapters + toggle.
  */
 export function isServiceVirtualizationContractActive(
   input: ServiceVirtualizationContractGateInput,
 ): boolean {
-  return input.hasBusinessConnection === true;
+  return input.domain === 'service' && input.optedOut !== true;
 }

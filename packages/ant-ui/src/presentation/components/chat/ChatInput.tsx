@@ -72,7 +72,14 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         messageLength: pendingChatInput.message.length,
         source: pendingChatInput.source,
       });
-      setMessage(pendingChatInput.message);
+      // Append (not replace) for manual fixes so multiple service fixes can be
+      // queued into a single chat message. Self-contained autoSubmit payloads
+      // (intent-change / template) still replace. Empty box → just set.
+      setMessage((prev) => {
+        const incoming = pendingChatInput.message;
+        if (pendingChatInput.autoSubmit || !prev.trim()) return incoming;
+        return `${prev.trimEnd()}\n\n${incoming}`;
+      });
       useStore.setState({ pendingChatInput: null });
       console.log('[ChatInput] ✅ Input consumed, submit button enabled');
       if (pendingChatInput.autoSubmit) {

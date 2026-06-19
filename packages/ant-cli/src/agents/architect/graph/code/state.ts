@@ -758,26 +758,6 @@ export interface ArchitectGraphState extends TriageableState {
    * flag and returns; `routeAfterDirect` then promotes back to decompose.
    */
   needsEscalation?: boolean;
-
-  /**
-   * Service Virtualization snapshot — single boolean derived once at
-   * resolve time and read by every downstream phase that gates on
-   * "business external dependency present".
-   *
-   * SSOT writer: `resolve` node calls `buildVirtualizationSnapshot` from
-   * `core/prompt/builder/serviceVirtualization/snapshot.ts`.
-   *
-   * SSOT readers:
-   *   - `nodes/plan/llm/prompt.ts`       — gates contract / data partials
-   *   - `nodes/execute/buildMessages.ts` — gates contract / data partials
-   *
-   * Phase code never re-scans `.env.example` / docker-compose to derive
-   * this — call sites read `state.virtualizationSnapshot.hasBusinessConnection`
-   * only.
-   */
-  virtualizationSnapshot?: {
-    hasBusinessConnection: boolean;
-  };
 }
 
 /**

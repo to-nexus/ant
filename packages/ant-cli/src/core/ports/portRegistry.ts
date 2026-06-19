@@ -114,6 +114,7 @@ export interface ServiceConnection {
   source?: string;                    // Package requiring this ("backend", "frontend", "*")
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
+  userModified?: boolean;             // User edited category/resolution in the panel (not yet persisted to .env.example)
   configSource?: 'env' | 'toml';     // Which config file format this was detected from
   /**
    * Service Virtualization strategy. Auto-attached for every
@@ -151,7 +152,12 @@ export interface PreviewState {
   
   // Service connections (auto-detected + user-configured via Preview Config UI)
   connections: ServiceConnection[];
-  
+
+  // True when a saved connection/toggle change has NOT yet been applied to the
+  // running dev server (env is captured at spawn time; applying = restart).
+  // Set by toggle/preview-config save while running; cleared on startPreview.
+  restartRequired?: boolean;
+
   // nativeBasePath removed — all frameworks now use native base path via env var injection.
   // Kept as optional field for backward compat with existing Redis entries during rollout.
   nativeBasePath?: boolean;
@@ -349,7 +355,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
   ): Promise<void>;
   
   /**

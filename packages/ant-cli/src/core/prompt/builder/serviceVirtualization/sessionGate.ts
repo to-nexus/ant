@@ -40,8 +40,10 @@
  */
 
 export interface ServiceVirtualizationSessionGateInput {
-  /** True when the codebase declares at least one `business` connection. */
-  hasBusinessConnection: boolean;
+  /** Workspace domain (coerced undefined→service by `getEffectiveDomain`). */
+  domain: string | undefined;
+  /** Decompose `<serviceVirtualization>` opt-out (real-backend-only). */
+  optedOut: boolean;
   /** Task type at the call site (`currentTask.type` for execute, plan-side
    *  task type for plan). Optional because the body-lifecycle block keys on
    *  `renderable` alone; the world-seed caller always passes it. */
@@ -62,7 +64,7 @@ export interface ServiceVirtualizationSessionGateInput {
 export function isSvWorldSeedActive(
   input: ServiceVirtualizationSessionGateInput,
 ): boolean {
-  if (input.hasBusinessConnection !== true) return false;
+  if (input.domain !== 'service' || input.optedOut === true) return false;
   return (
     (input.taskType === 'feature' && input.band === 'platform') ||
     input.taskType === 'setup'
@@ -96,7 +98,7 @@ export function isSvStoreLifecycleActive(
 export function isSvBodyLifecycleActive(
   input: ServiceVirtualizationSessionGateInput,
 ): boolean {
-  if (input.hasBusinessConnection !== true) return false;
+  if (input.domain !== 'service' || input.optedOut === true) return false;
   return input.renderable === true;
 }
 

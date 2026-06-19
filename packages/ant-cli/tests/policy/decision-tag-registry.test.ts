@@ -17,11 +17,12 @@ import {
 } from '../../src/core/llm-response/DecisionTagRegistry';
 
 describe('DECISION_TAG_REGISTRY', () => {
-  it('registers exactly the 3 Phase 2 tags (no <gameEngine> standalone)', () => {
+  it('registers the decision tags (no <gameEngine> standalone)', () => {
     expect(DECISION_TAG_REGISTRY.map(d => d.name)).toEqual([
       'domain',
       'gameArtTier',
       'gameContentTier',
+      'serviceVirtualization',
     ]);
   });
 });
@@ -58,6 +59,28 @@ describe('parseDecisionTags — happy path', () => {
     expect(r.parsed.gameContentTier).toEqual({ genre: 'match3', coreLoop: 'solve' });
   });
 
+  it('parses serviceVirtualization build → { optedOut: false } (§4)', () => {
+    const r = parseDecisionTags('<serviceVirtualization>build</serviceVirtualization>');
+    expect(r.parsed.serviceVirtualization).toEqual({ optedOut: false });
+  });
+
+  it('parses serviceVirtualization opt-out → { optedOut: true } (§4)', () => {
+    const r = parseDecisionTags('<serviceVirtualization>opt-out</serviceVirtualization>');
+    expect(r.parsed.serviceVirtualization).toEqual({ optedOut: true });
+  });
+
+  it('serviceVirtualization invalid body → violation, no value', () => {
+    const r = parseDecisionTags('<serviceVirtualization>maybe</serviceVirtualization>');
+    expect(r.parsed.serviceVirtualization).toBeUndefined();
+    expect(r.violations.some(v => v.tag === 'serviceVirtualization')).toBe(true);
+  });
+
+  it('applyDecisionTagDefaults fills serviceVirtualization → build when missing', () => {
+    const r = parseDecisionTags('');
+    const filled = applyDecisionTagDefaults(r.parsed, ['serviceVirtualization']);
+    expect(filled.serviceVirtualization).toEqual({ optedOut: false });
+  });
+
   it('parses all three together (v8)', () => {
     const raw = `
       <domain>game</domain>
@@ -66,7 +89,9 @@ describe('parseDecisionTags — happy path', () => {
     `;
     const r = parseDecisionTags(raw);
     expect(r.violations).toHaveLength(0);
-    expect(r.missing).toHaveLength(0);
+    // serviceVirtualization is naturally absent from a game-domain decompose
+    // (SV is service-only) — it is the one registered tag not emitted here.
+    expect(r.missing).toEqual(['serviceVirtualization']);
     expect(r.parsed.domain).toBe('game');
     expect(r.parsed.gameArtTier).toEqual({ concept: 'cardClassic', perspective: '2d' });
     expect(r.parsed.gameContentTier).toEqual({ genre: 'cardSolitaire', coreLoop: 'collect' });
@@ -112,7 +137,7 @@ describe('parseDecisionTags — invalid bodies', () => {
 describe('parseDecisionTags — missing tags', () => {
   it('lists all missing names', () => {
     const r = parseDecisionTags('');
-    expect(r.missing).toEqual(['domain', 'gameArtTier', 'gameContentTier']);
+    expect(r.missing).toEqual(['domain', 'gameArtTier', 'gameContentTier', 'serviceVirtualization']);
   });
 });
 

@@ -27,6 +27,31 @@ export interface UseConnectionEditorResult {
   handleToggleVirtualization: (id: string, active: boolean) => Promise<void>;
 }
 
+/**
+ * Overlay locally-edited (`userModified`) connections on top of an incoming set
+ * (a server response or re-derived prop). A server response for a single
+ * operation (e.g. a virtualization toggle on connection B) reflects only the
+ * persisted config and does NOT carry connection A's unsaved panel edit — a
+ * naive wholesale replace would silently revert A. This preserves every pending
+ * edit except the one being acted on (`exceptId`, which should take the fresh
+ * server value). Keyed by `id`.
+ */
+function preserveLocalEdits(
+  incoming: ServiceConnection[],
+  prev: ServiceConnection[],
+  exceptId?: string,
+): ServiceConnection[] {
+  const edited = new Map(
+    prev.filter(c => c.userModified && c.id !== exceptId).map(c => [c.id, c] as const),
+  );
+  if (edited.size === 0) return incoming;
+  const merged = incoming.map(c => edited.get(c.id) ?? c);
+  for (const [id, c] of edited) {
+    if (!incoming.some(x => x.id === id)) merged.push(c);
+  }
+  return merged;
+}
+
 export function useConnectionEditor(
   setConfig: React.Dispatch<React.SetStateAction<PreviewConfig | null>>,
   connections: ServiceConnection[],
@@ -43,7 +68,10 @@ export function useConnectionEditor(
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
-      setLocalConns(connections);
+      // `connections` is re-derived on every preview status poll. Preserve any
+      // locally-edited (userModified) connection still pending code-apply so a
+      // poll tick can't revert it; take fresh values for everything else.
+      setLocalConns(prev => preserveLocalEdits(connections, prev));
     }
   }, [connections, hasUnsavedChanges]);
 
@@ -107,12 +135,18 @@ export function useConnectionEditor(
           ? { ...prev, connections: result.connections }
           : { connections: result.connections } as PreviewConfig);
       }
+      // Surface "restart to apply" immediately when the BE flagged a running
+      // preview as stale — env is captured at spawn, so the save needs a restart.
+      if (result.restartRequired) {
+        const key = makeFeatureKey(selectedProject, selectedFeature);
+        if (key) mergePreviewStatus(key, { restartRequired: true });
+      }
       setHasUnsavedChanges(false);
       setEditingConnId(null);
     } catch (err) {
       console.error('[PreviewConfig] Save failed:', err);
     }
-  }, [selectedProject, selectedFeature, localConns, setConfig]);
+  }, [selectedProject, selectedFeature, localConns, setConfig, mergePreviewStatus]);
 
   const handleUpdateConn = useCallback((id: string, updates: Partial<ServiceConnection>) => {
     setLocalConns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
@@ -151,10 +185,17 @@ export function useConnectionEditor(
     try {
       const result = await toggleConnectionVirtualization(selectedProject, featureName, id, active);
       if (result.success && result.connections) {
-        setLocalConns(result.connections);
+        // Preserve unsaved panel edits on OTHER connections — the toggle
+        // response only carries persisted config, so a wholesale replace would
+        // revert a sibling connection the user edited but hasn't saved yet.
+        setLocalConns(prev => preserveLocalEdits(result.connections, prev, id));
         setConfig(prev => prev
           ? { ...prev, connections: result.connections }
           : { connections: result.connections } as PreviewConfig);
+      }
+      if (result.restartRequired) {
+        const key = makeFeatureKey(selectedProject, selectedFeature);
+        if (key) mergePreviewStatus(key, { restartRequired: true });
       }
     } catch (err) {
       console.error('[PreviewConfig] Virtualization toggle failed:', err);
@@ -164,7 +205,7 @@ export function useConnectionEditor(
           : c,
       ));
     }
-  }, [selectedProject, selectedFeature, setConfig]);
+  }, [selectedProject, selectedFeature, setConfig, mergePreviewStatus]);
 
   return {
     localConns, hasUnsavedChanges,
