@@ -357,14 +357,16 @@ export class ChatService {
     },
   ): Promise<{ cardId: string; emitted: boolean }> {
     const ctx = args.userContext ?? this.defaultUserContext;
-    const turnId = await this.findTurnIdForJobWithFallback(projectId, featureName, jobId, ctx);
+    const turnId = await this.resolveCancelledCardTurnId(projectId, featureName, jobId, ctx);
     if (!turnId) {
-      // No matching user_turn means the durable log can't anchor the
-      // cancelled card. Skip emission rather than write a turnless line.
-      // Surface a warning so this failure mode is visible in logs — when
-      // it happens the user sees no Cancelled/Resume card after refresh.
+      // All anchor sources missed (no exact-jobId user_turn on disk, no
+      // seedTurnId in the Redis job record, and no prior user_turn in the
+      // feature). The durable log can't anchor the cancelled card, so skip
+      // emission rather than write a turnless line. Surface a warning so
+      // this failure mode stays visible — the user sees no Cancelled/Resume
+      // card after refresh.
       logger.warn(
-        `appendChoicePresentedCancelled: no user_turn matches jobId=${jobId} (project=${projectId}, feature=${featureName}, reason=${args.reason}). Skipping emission.`,
+        `appendChoicePresentedCancelled: no turn anchor for jobId=${jobId} (project=${projectId}, feature=${featureName}, reason=${args.reason}). Skipping emission.`,
         { component: COMPONENT },
       );
       return { cardId: '', emitted: false };
@@ -1008,6 +1010,78 @@ export class ChatService {
     } catch (err) {
       logger.warn(
         `findTurnIdForJob chat.jsonl fallback failed for ${projectId}/${featureName}`,
+        { component: COMPONENT },
+        err,
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Resolve the turn anchor for a cancellation (Resume/Dismiss) choice card.
+   *
+   * The cancelled card is emitted by the API side AFTER the worker has
+   * exited (e.g. `worker_stalled`), so it must rediscover the originating
+   * turnId. The durable `user_turn` line is written only by the worker's
+   * `recordUserTurn`; if that write is lost / never flushed / collapsed, the
+   * exact-jobId disk lookup misses and the user historically saw NO card.
+   *
+   * Three tiers, most-precise first:
+   *   1. exact-jobId user_turn from disk (`findTurnIdForJobWithFallback`);
+   *   2. the Redis job record's `seedTurnId` (`JobStatusData.turnId`) — the
+   *      SSOT id the user_turn was supposed to carry, independent of disk
+   *      durability;
+   *   3. the most-recent non-collapsed user_turn in the feature (mirrors the
+   *      resume path's `resolveResumeTurnId` graceful fallback).
+   *
+   * Scoped to the cancelled-card path on purpose — the shared
+   * `findTurnIdForJobWithFallback` must stay exact-match so other callers
+   * (assistant messages, choice resolution) never mis-anchor.
+   */
+  private async resolveCancelledCardTurnId(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext: UserContext | undefined,
+  ): Promise<string | null> {
+    const exact = await this.findTurnIdForJobWithFallback(projectId, featureName, jobId, userContext);
+    if (exact) return exact;
+
+    if (this.stateStore) {
+      try {
+        const status = await this.stateStore.getJobStatus(jobId);
+        if (status?.turnId) return status.turnId;
+      } catch (err) {
+        logger.warn(
+          `resolveCancelledCardTurnId: getJobStatus failed for ${jobId}`,
+          { component: COMPONENT },
+          err,
+        );
+      }
+    }
+
+    const adapter = this.makeAdapter(projectId, featureName, userContext);
+    if (!adapter) return null;
+    try {
+      const { userTurns } = await adapter.loadSinceBoundary();
+      if (userTurns.length > 0) return userTurns[userTurns.length - 1].turnId;
+    } catch (err) {
+      logger.warn(
+        `resolveCancelledCardTurnId: loadSinceBoundary failed for ${projectId}/${featureName}`,
+        { component: COMPONENT },
+        err,
+      );
+    }
+    try {
+      const lines = await adapter.loadAllChat();
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.collapsed) continue;
+        if (line.type === 'user_turn') return line.turnId;
+      }
+    } catch (err) {
+      logger.warn(
+        `resolveCancelledCardTurnId: chat.jsonl scan failed for ${projectId}/${featureName}`,
         { component: COMPONENT },
         err,
       );
