@@ -291,7 +291,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
   ): Promise<void>;
   
   /**

@@ -86,6 +86,12 @@ export interface PreviewStatus {
   structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
   projectProfile?: { language: string; framework?: string } | null;
   connections?: ServiceConnection[] | null;
+  /**
+   * A saved connection/toggle change has not yet been applied to the running
+   * dev server (env is captured at spawn). FE surfaces a "restart to apply"
+   * hint on the existing Restart control; cleared on next start.
+   */
+  restartRequired?: boolean;
   canStart?: boolean;
 }
 
@@ -154,7 +160,7 @@ export function updatePreviewConfig(
   projectId: string,
   feature: string,
   config: { connections?: ServiceConnection[] | null },
-): Promise<{ success: boolean; connections?: ServiceConnection[] }> {
+): Promise<{ success: boolean; connections?: ServiceConnection[]; restartRequired?: boolean }> {
   return apiPut(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config`,
     { feature: feature || 'main', connections: config.connections },
@@ -183,7 +189,7 @@ export function toggleConnectionVirtualization(
   feature: string,
   connectionId: string,
   active: boolean,
-): Promise<{ success: boolean; connections: ServiceConnection[] }> {
+): Promise<{ success: boolean; connections: ServiceConnection[]; restartRequired?: boolean }> {
   return apiPut(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/virtualization-toggle`,
     { feature: feature || 'main', connectionId, active },

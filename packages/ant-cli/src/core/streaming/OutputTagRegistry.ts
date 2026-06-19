@@ -649,6 +649,20 @@ register({
 });
 
 register({
+  name: 'serviceVirtualization',
+  pattern: /<serviceVirtualization>\s*[\s\S]*?\s*<\/serviceVirtualization>/i,
+  axis: {
+    intent: 'decision',
+    processing: ['consumed-suppressed', 'post-stream'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  extract: (text) => extractTagBody(text, 'serviceVirtualization'),
+  promptContract:
+    'Emit `<serviceVirtualization>build|opt-out</serviceVirtualization>` during service-domain decompose. Default `build`; `opt-out` only when the directive forbids mock adapters / mandates the real backend.',
+});
+
+register({
   name: 'techTier',
   pattern: /<techTier>\s*[\s\S]*?\s*<\/techTier>/i,
   axis: {

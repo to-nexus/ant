@@ -319,6 +319,18 @@ describe('service-virtualization — wire sites', () => {
     expect(src).toMatch(/serviceVirtualizationImageryActive:/);
     expect(src).toMatch(/serviceVirtualizationSessionActive:/);
   });
+
+  it('§4 — call sites pass domain/optedOut and no longer reference the retired snapshot', () => {
+    for (const p of [BUILD_MESSAGES, PLAN_PROMPT]) {
+      const src = read(p);
+      expect(src).toMatch(/optedOut:/);
+      expect(src).toMatch(/getEffectiveDomain\(/);
+      expect(src).not.toMatch(/virtualizationSnapshot/);
+      // No longer PASSED as a gate input (a doc comment mentioning the retired
+      // flag by name is fine — only the `hasBusinessConnection:` key is banned).
+      expect(src).not.toMatch(/hasBusinessConnection:/);
+    }
+  });
 });
 
 // =============================================================================
@@ -335,12 +347,26 @@ import {
   isSvBodyLifecycleActive,
 } from '../../src/core/prompt/builder/serviceVirtualization';
 
-describe('isServiceVirtualizationContractActive — gate truth table', () => {
-  it('hasBusinessConnection=true → active', () => {
-    expect(isServiceVirtualizationContractActive({ hasBusinessConnection: true })).toBe(true);
+// §4 — the SV precondition is now `domain==='service' ∧ ¬optedOut`. These two
+// fixtures map the legacy boolean truth tables: ON = service & not-opted-out,
+// OFF = opted out (still service). Domain/opt-out specific axes are covered
+// explicitly per gate below.
+const SV_ON = { domain: 'service', optedOut: false } as const;
+const SV_OFF = { domain: 'service', optedOut: true } as const;
+const svBase = (has: boolean) => (has ? SV_ON : SV_OFF);
+
+describe('isServiceVirtualizationContractActive — gate truth table (§4)', () => {
+  it('service ∧ ¬optedOut → active', () => {
+    expect(isServiceVirtualizationContractActive(SV_ON)).toBe(true);
   });
-  it('hasBusinessConnection=false → inactive', () => {
-    expect(isServiceVirtualizationContractActive({ hasBusinessConnection: false })).toBe(false);
+  it('service ∧ optedOut → inactive', () => {
+    expect(isServiceVirtualizationContractActive(SV_OFF)).toBe(false);
+  });
+  it('game domain → inactive', () => {
+    expect(isServiceVirtualizationContractActive({ domain: 'game', optedOut: false })).toBe(false);
+  });
+  it('undefined domain → inactive at the gate (call sites coerce via getEffectiveDomain)', () => {
+    expect(isServiceVirtualizationContractActive({ domain: undefined, optedOut: false })).toBe(false);
   });
 });
 
@@ -360,7 +386,7 @@ describe('isServiceVirtualizationDataActive — gate truth table', () => {
   for (const c of cases) {
     it(c.name, () => {
       expect(
-        isServiceVirtualizationDataActive({ hasBusinessConnection: c.has, taskType: c.t }),
+        isServiceVirtualizationDataActive({ ...svBase(c.has), taskType: c.t }),
       ).toBe(c.expected);
     });
   }
@@ -391,17 +417,17 @@ describe('isServiceVirtualizationSessionActive — gate truth table', () => {
   for (const c of cases) {
     it(c.name, () => {
       expect(
-        isServiceVirtualizationSessionActive({ hasBusinessConnection: c.has, taskType: c.t }),
+        isServiceVirtualizationSessionActive({ ...svBase(c.has), taskType: c.t }),
       ).toBe(c.expected);
     });
   }
 
   it('a renderable feature/ui surfaces the partial via body-lifecycle', () => {
     expect(
-      isServiceVirtualizationSessionActive({ hasBusinessConnection: true, taskType: 'ui', renderable: true }),
+      isServiceVirtualizationSessionActive({ ...SV_ON, taskType: 'ui', renderable: true }),
     ).toBe(true);
     expect(
-      isServiceVirtualizationSessionActive({ hasBusinessConnection: true, taskType: 'feature', band: 'platform' }),
+      isServiceVirtualizationSessionActive({ ...SV_ON, taskType: 'feature', band: 'platform' }),
     ).toBe(true);
   });
 });
@@ -420,7 +446,7 @@ describe('isSvWorldSeedActive — block gate (band-routed)', () => {
   for (const c of cases) {
     it(c.name, () => {
       expect(
-        isSvWorldSeedActive({ hasBusinessConnection: c.has, taskType: c.t, band: c.band }),
+        isSvWorldSeedActive({ ...svBase(c.has), taskType: c.t, band: c.band }),
       ).toBe(c.expected);
     });
   }
@@ -442,7 +468,7 @@ describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
   for (const c of cases) {
     it(c.name, () => {
       expect(
-        isSvStoreLifecycleActive({ hasBusinessConnection: c.has, taskType: c.t, band: c.band, renderable: c.renderable }),
+        isSvStoreLifecycleActive({ ...svBase(c.has), taskType: c.t, band: c.band, renderable: c.renderable }),
       ).toBe(c.expected);
     });
   }
@@ -453,7 +479,7 @@ describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
     for (const has of [true, false]) {
       for (const t of tasks) {
         for (const band of bands) {
-          const input = { hasBusinessConnection: has, taskType: t, band, renderable: true };
+          const input = { ...svBase(has), taskType: t, band, renderable: true };
           expect(isSvStoreLifecycleActive(input)).toBe(isSvWorldSeedActive(input));
         }
       }
@@ -467,7 +493,7 @@ describe('isSvStoreLifecycleActive — block gate (store-owner-routed)', () => {
       for (const t of tasks) {
         for (const band of bands) {
           for (const renderable of [true, false, undefined]) {
-            const input = { hasBusinessConnection: has, taskType: t, band, renderable };
+            const input = { ...svBase(has), taskType: t, band, renderable };
             const orOfBlocks =
               isSvWorldSeedActive(input) ||
               isSvStoreLifecycleActive(input) ||
@@ -490,7 +516,7 @@ describe('isSvBodyLifecycleActive — block gate (renderable-routed)', () => {
   for (const c of cases) {
     it(c.name, () => {
       expect(
-        isSvBodyLifecycleActive({ hasBusinessConnection: c.has, renderable: c.renderable }),
+        isSvBodyLifecycleActive({ ...svBase(c.has), renderable: c.renderable }),
       ).toBe(c.expected);
     });
   }
@@ -523,11 +549,23 @@ describe('isServiceVirtualizationImageryActive — gate truth table', () => {
         isServiceVirtualizationImageryActive({
           hasFrontend: c.hasFrontend,
           domain: c.domain,
+          optedOut: false,
           taskType: c.taskType,
         }),
       ).toBe(c.expected);
     });
   }
+
+  it('opted out → inactive even for service + FE + feature', () => {
+    expect(
+      isServiceVirtualizationImageryActive({
+        hasFrontend: true,
+        domain: 'service',
+        optedOut: true,
+        taskType: 'feature',
+      }),
+    ).toBe(false);
+  });
 });
 
 // =============================================================================

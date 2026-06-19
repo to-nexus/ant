@@ -428,6 +428,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     domainTierActive: !!_effectiveDomain,
     gameArtTierActive: _gameArtTierEnabled,
     gameContentTierActive: _gameContentTierEnabled,
+    // §4 — gate the `<serviceVirtualization>` opt-out teaching/emission to
+    // service-domain jobs (game uses the game-art surface, not SV). Keeps the
+    // domain comparison in code, not the template (Domain-Branching Locality I1).
+    serviceVirtualizationTagActive: _effectiveDomain === 'service',
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
@@ -1387,27 +1391,36 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // to avoid the cost of a second pass through the response body.
   if (state.resolvedAction && _effectiveDomain && decisionTagsAtFinal) {
     const { applyDecisionTagDefaults } = await import('../../../../../../core/llm-response/DecisionTagRegistry');
-    const expectedTags: Array<'gameArtTier' | 'gameContentTier' | 'domain'> = [];
+    const expectedTags: Array<'gameArtTier' | 'gameContentTier' | 'domain' | 'serviceVirtualization'> = [];
     if (isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime)) {
       expectedTags.push('gameArtTier');
     }
     if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
       expectedTags.push('gameContentTier');
     }
+    // §4 — SV build decision is expected for every service-domain code job, so
+    // a missing tag default-fills to BUILD (optedOut:false) rather than leaving
+    // basis.serviceVirtualization undefined.
+    if (_effectiveDomain === 'service') {
+      expectedTags.push('serviceVirtualization');
+    }
     const applied = applyDecisionTagDefaults(decisionTagsAtFinal.parsed, expectedTags);
 
     const gameArtTier = applied.gameArtTier as import('@ant/shared').GameArtTier | undefined;
     const gameContentTier = applied.gameContentTier as import('@ant/shared').GameContentTier | undefined;
+    const serviceVirtualization = applied.serviceVirtualization as { optedOut: boolean } | undefined;
 
-    if (gameArtTier || gameContentTier) {
+    if (gameArtTier || gameContentTier || serviceVirtualization) {
       const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
       if (gameArtTier) newBasis.gameArtTier = { ...(state.resolvedAction.basis?.gameArtTier ?? {}), ...gameArtTier };
       if (gameContentTier) newBasis.gameContentTier = { ...(state.resolvedAction.basis?.gameContentTier ?? {}), ...gameContentTier };
+      if (serviceVirtualization) newBasis.serviceVirtualization = serviceVirtualization;
       state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
       console.log(
         `🎮 [Decompose] Phase-1 decision tags applied: ` +
         `gameArtTier=${gameArtTier ? Object.keys(gameArtTier).join(',') : '-'}, ` +
-        `gameContentTier=${gameContentTier ? Object.keys(gameContentTier).join(',') : '-'}`,
+        `gameContentTier=${gameContentTier ? Object.keys(gameContentTier).join(',') : '-'}, ` +
+        `serviceVirtualization=${serviceVirtualization ? (serviceVirtualization.optedOut ? 'opt-out' : 'build') : '-'}`,
       );
     }
     if (decisionTagsAtFinal.violations.length > 0) {

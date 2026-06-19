@@ -44,7 +44,6 @@ export function ConnectionRow({
     <ConnectionRowView
       conn={conn}
       onEdit={onEdit}
-      onUpdate={onUpdate}
       onFix={onFix}
       onToggleVirtualization={onToggleVirtualization}
     />

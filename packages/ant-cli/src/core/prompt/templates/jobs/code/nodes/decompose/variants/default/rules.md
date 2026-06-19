@@ -1068,6 +1068,14 @@ The body is a comma-separated `axis=value` list. Phase 4 emits all 7 axes (conce
 <gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
 {{/if}}
 
+{{#if serviceVirtualizationTagActive}}
+**`<serviceVirtualization>` tag** (Service Virtualization build policy):
+
+<serviceVirtualization>build</serviceVirtualization>
+
+The body is the literal `build` or `opt-out`. Default `build` — the app ships its mock adapters alongside the production ones so it stays runnable without the external systems it depends on. Emit `opt-out` ONLY when the directive / context / refs explicitly forbid mock adapters or mandate the real backend (e.g. "no mock", "connect to the real backend only").
+{{/if}}
+
 **(N+1). `<tasks>` tag** (sequence of `<task>` elements -- see Task Schema and ExecutionTier Classification above. Empty (`<tasks></tasks>`) when tier is `0` or `1`; exactly one `<task>` when tier is `2`; `>= 2` `<task>` elements including a verification task when tier is `3` or `4`.)
 
 **(N+2). `<references>` tag** (REQUIRED, even if empty):
