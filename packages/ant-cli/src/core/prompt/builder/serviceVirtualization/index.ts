@@ -39,12 +39,6 @@ export {
 } from './sessionGate';
 
 export {
-  detectHasBusinessConnection,
-  detectIsGreenfield,
-  buildVirtualizationSnapshot,
-} from './snapshot';
-
-export {
   type ConnectionCategory,
   type DeployFramework,
   type AnnotationMatch,

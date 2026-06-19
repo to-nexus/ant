@@ -23,7 +23,7 @@
 import { TextContentBlock } from "../../../../../../../core/ports/llm";
 import { ArchitectGraphState } from "../../../state";
 import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
-import { getTechTier, type ResolvedArtifact } from "@ant/shared";
+import { getTechTier, getEffectiveDomain, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
 import { TEMPLATE_PATHS } from "../../../../../../../core/prompt/builder/templatePaths";
 import {
@@ -300,19 +300,23 @@ export async function buildPlanPrompt(
     // path; this only announces existence. See `priorCompletedFiles.ts`.
     priorCompletedFiles: renderPriorCompletedFiles(state, task),
     // Service Virtualization gates (SBS) — four orthogonal partials
-    // (contract / data / imagery / session). `hasBusinessConnection` is
-    // derived once at resolve and parked on `state.virtualizationSnapshot`.
-    // See `core/prompt/builder/serviceVirtualization/`.
+    // (contract / data / imagery / session). §4 gate: domain==='service' ∧
+    // ¬optedOut (`getEffectiveDomain` coerces undefined→service to keep SV
+    // default-ON; `optedOut` from the decompose `<serviceVirtualization>` tag
+    // on `resolvedAction.basis`). See `core/prompt/builder/serviceVirtualization/`.
     serviceVirtualizationContractActive: isServiceVirtualizationContractActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
     }),
     serviceVirtualizationDataActive: isServiceVirtualizationDataActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       taskType: task.type,
     }),
     serviceVirtualizationImageryActive: isServiceVirtualizationImageryActive({
       hasFrontend,
-      domain: state.resolvedAction?.domain,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       taskType: task.type,
     }),
     // Session partial split into four blocks (band → world-seed +
@@ -321,23 +325,27 @@ export async function buildPlanPrompt(
     // (write-path / single instance) gates on the owner, not the renderable
     // consumer — see `serviceVirtualization/sessionGate.ts`.
     serviceVirtualizationSessionActive: isServiceVirtualizationSessionActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       taskType: task.type,
       band: taskBand,
       renderable: (task as { renderable?: boolean }).renderable,
     }),
     svWorldSeedActive: isSvWorldSeedActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       taskType: task.type,
       band: taskBand,
     }),
     svStoreLifecycleActive: isSvStoreLifecycleActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       taskType: task.type,
       band: taskBand,
     }),
     svBodyLifecycleActive: isSvBodyLifecycleActive({
-      hasBusinessConnection: state.virtualizationSnapshot?.hasBusinessConnection === true,
+      domain: getEffectiveDomain(state.resolvedAction?.domain),
+      optedOut: state.resolvedAction?.basis?.serviceVirtualization?.optedOut === true,
       renderable: (task as { renderable?: boolean }).renderable,
     }),
     // Session-lifecycle completeness — SV-INDEPENDENT (no hasBusinessConnection

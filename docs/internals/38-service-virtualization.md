@@ -11,15 +11,16 @@ This document is the single architecture reference for SV across the three
 jobs that touch it (design, code, preview/runtime) and the verification that
 guards it.
 
-> **Implementation status (2026-06).** §1–3, §5, §7 describe live behavior.
-> The connection-config SSOT (§3) is implemented; SV partials currently still
-> activate via the resolve-time `hasBusinessConnection` flag
-> (greenfield-defaulted). **§4 (default-ON + `<serviceVirtualization>`
-> opt-out)** and **§6 (preview mock-toggle injection that guarantees
-> greenfield mock boot)** are the TARGET and are NOT yet implemented — they
-> are the next steps. Until §6 lands, a greenfield app whose toggle lives only
-> in `.env.example` is NOT guaranteed to boot on mock. There is no
-> SV-specific verification gate (§7).
+> **Implementation status (2026-06).** §1–6 describe live behavior. The
+> connection-config SSOT (§3) is implemented. **§4 (default-ON +
+> `<serviceVirtualization>` opt-out)** is live: the four SV partials gate on
+> `domain==='service' ∧ ¬optedOut` (the resolve-time `hasBusinessConnection`
+> snapshot is retired), with the build decision carried by the
+> `<serviceVirtualization>` decision tag (default `build`). **§6 (preview
+> mock-toggle injection)** is live: `ProcessSpawner` seeds the framework-correct
+> mock toggle as a default for every business connection at spawn, so a
+> greenfield app boots on its mocks even when the toggle lives only in
+> `.env.example`. There is still no SV-specific verification gate (§7).
 
 ---
 
@@ -121,9 +122,14 @@ The four partials fire on these axes (detection axis removed):
 | Partial | Scope | Gate (post-redesign) |
 |---|---|---|
 | `service-virtualization-contract` | port shape + toggle grammar | generative code task ∧ `domain==='service'` ∧ ¬optedOut |
-| `service-virtualization-data` | one response body realism | taskType ∈ {feature, ui, design-system} ∧ `domain==='service'` ∧ ¬optedOut |
-| `service-virtualization-session` | cross-body demo coherence | taskType ∈ {feature, ui, design-system, setup} ∧ `domain==='service'` ∧ ¬optedOut |
-| `service-virtualization-imagery` | image-subtype placeholders | `hasFrontend` ∧ `domain==='service'` ∧ taskType ∈ {feature, ui, design-system, setup, error, verification} ∧ ¬optedOut |
+| `service-virtualization-data` | one response body realism | taskType ∈ {feature, ui} ∧ `domain==='service'` ∧ ¬optedOut |
+| `service-virtualization-session` | cross-body demo coherence | `domain==='service'` ∧ ¬optedOut ∧ (world-seed: feature@platform ∨ setup) ∨ (body-lifecycle: `renderable`) |
+| `service-virtualization-imagery` | image-subtype placeholders | `hasFrontend` ∧ `domain==='service'` ∧ ¬optedOut ∧ taskType ∈ {feature, ui, design-system, setup, error, verification} |
+
+`optedOut` is the `<serviceVirtualization>` decision tag (default `build`)
+parsed at decompose and parked on `state.resolvedAction.basis.serviceVirtualization`.
+Gate predicates live in [`core/prompt/builder/serviceVirtualization/`](../../packages/ant-cli/src/core/prompt/builder/serviceVirtualization); plan / execute coerce
+`domain` via `getEffectiveDomain` (undefined→service) so SV stays default-ON.
 
 `domain==='service'` gates all four (game-domain visuals are served by the
 game-art surface, not SV). The partials self-scope ("every external-dependency
@@ -186,7 +192,12 @@ A greenfield app must boot on its mock adapters when previewed, even though the
 toggle was declared only in `.env.example` (Next.js does not load
 `.env.example`). The preview process guarantees this by **injecting the
 framework-correct mock toggle as a default** for every business connection at
-spawn time.
+spawn time. The injection is **per-connection** (the generated factory reads
+its own `USE_MOCK_<NAME>`): for each business connection the spawner sets the
+bare `USE_MOCK_<NAME>` plus the framework-prefixed form
+(`NEXT_PUBLIC_`/`VITE_`/`REACT_APP_`), covering both the detector-derived
+`virtualization.toggleEnvVar` and the `conn.name`-derived form. Implementation:
+[`ProcessSpawner.mockToggleDefaults`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner.ts).
 
 Env precedence in [`ProcessSpawner`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner.ts)
 (low → high): `process.env` → **mock toggle defaults** → `.env`/`.env.local`
@@ -202,8 +213,8 @@ sequenceDiagram
   participant App as dev server
   PV->>PS: spawn(pkg, connections)
   PS->>CM: frameworkAwareToggleVars(name, framework)
-  CM-->>PS: { NEXT_PUBLIC_USE_MOCK_BACKEND_API:"true", USE_MOCK:"true", ... }
-  PS->>App: spawn with env (defaults < .env)
+  CM-->>PS: { toggles: ["USE_MOCK_BACKEND_API", "NEXT_PUBLIC_USE_MOCK_BACKEND_API"] }
+  PS->>App: spawn with env (per-connection toggle defaults < .env)
   App->>App: createApiPort() reads toggle ⇒ MockApiAdapter
 ```
 

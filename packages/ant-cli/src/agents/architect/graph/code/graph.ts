@@ -747,10 +747,6 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => false,
       }),
-      virtualizationSnapshot: Annotation<any>({
-        reducer: (_prev: any, next: any) => next,
-        default: () => undefined,
-      }),
 } as const;
 
 const ArchitectCodeGraphStateAnnotation = Annotation.Root(CodeGraphChannels);

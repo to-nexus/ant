@@ -116,6 +116,7 @@ export function PreviewControlsSection({
   previewStatus,
   isPreviewLoading,
   isJobRunning,
+  restartRequired,
   dismissedSet,
   onStart,
   onStop,
@@ -129,6 +130,8 @@ export function PreviewControlsSection({
   previewStatus: PreviewStatus | undefined;
   isPreviewLoading: boolean;
   isJobRunning: boolean;
+  /** A saved toggle/config change awaits a restart to take effect. */
+  restartRequired?: boolean;
   dismissedSet: Set<string>;
   onStart: () => void;
   onStop: () => void;
@@ -340,18 +343,67 @@ export function PreviewControlsSection({
               <button
                 type="button"
                 onClick={onRestart}
-                style={c3vBigBtn({
-                  bg: 'var(--bg-surface)',
-                  fg: 'var(--text-2)',
-                  border: '1px solid var(--border-2)',
-                })}
+                style={c3vBigBtn(
+                  restartRequired
+                    ? {
+                        bg: 'linear-gradient(135deg, oklch(70% 0.16 250), oklch(66% 0.18 270))',
+                        fg: 'white',
+                        glow: '0 6px 18px -6px oklch(66% 0.18 260 / 0.55)',
+                      }
+                    : {
+                        bg: 'var(--bg-surface)',
+                        fg: 'var(--text-2)',
+                        border: '1px solid var(--border-2)',
+                      },
+                )}
               >
+                {restartRequired && (
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: 'white',
+                      boxShadow: '0 0 0 3px oklch(100% 0 0 / 0.35)',
+                    }}
+                  />
+                )}
                 {t('preview.restart', 'Restart')}
               </button>
             </>
           )}
         </div>
       </div>
+
+      {/* Restart-to-apply banner: a saved toggle/config change is not yet live
+          because the dev server captured its env at spawn time. Points the
+          user at the existing Restart control above — no separate action. */}
+      {restartRequired && isRunning && (
+        <div
+          style={{
+            margin: '0 20px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 12px',
+            background: 'oklch(96% 0.03 260)',
+            border: '1px solid oklch(82% 0.10 260)',
+            borderRadius: 'var(--r-md)',
+            color: 'oklch(45% 0.12 260)',
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}
+        >
+          <AlertCircle size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {t(
+              'preview.restartToApply',
+              '연결 설정이 변경되었습니다 — 위의 Restart 를 눌러야 적용됩니다.',
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Error banner */}
       {showStartupError && (

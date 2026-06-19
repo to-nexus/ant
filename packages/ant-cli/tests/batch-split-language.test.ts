@@ -172,7 +172,6 @@ describe('Fix B — buildPlanPrompt passes userLanguage to plan/base render', ()
       resolvedAction: undefined,
       directive: '',
       featureContext: undefined,
-      virtualizationSnapshot: undefined,
       _verifyEntered: false,
       conversations: {},
       recursionCount: 0,
