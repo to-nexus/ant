@@ -175,22 +175,3 @@ export function detectConnections(
     { feature: feature || 'main' },
   );
 }
-
-/**
- * Toggle Service Virtualization (`USE_MOCK_<NAME>`) for a single business
- * connection. Writes the toggle to the project `.env` file (creating /
- * appending / replacing as needed) and updates the Redis-backed registry
- * so subsequent detect runs observe the same state. Real swap requires
- * zero code changes — only the env var flips.
- */
-export function toggleConnectionVirtualization(
-  projectId: string,
-  feature: string,
-  connectionId: string,
-  active: boolean,
-): Promise<{ success: boolean; connections: ServiceConnection[]; restartRequired?: boolean }> {
-  return apiPut(
-    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/virtualization-toggle`,
-    { feature: feature || 'main', connectionId, active },
-  );
-}
