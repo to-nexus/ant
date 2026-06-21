@@ -35,7 +35,6 @@ export interface ServiceConnection {
   source?: string;
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;
-  userModified?: boolean;
   /**
    * Auto-attached for every `business` connection by the BE detector.
    * `undefined` for `infrastructure` connections (docker-compose provides

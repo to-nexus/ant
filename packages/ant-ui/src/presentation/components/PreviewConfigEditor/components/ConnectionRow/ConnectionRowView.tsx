@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Pencil,
-  MessageSquare,
   Server,
   Database,
   ArrowRight,
@@ -12,7 +11,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ServiceConnection } from '@/infrastructure/http/api';
 import { SignalRing } from '@/presentation/components/ConfigEditor/aurora';
 import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
-import { getResolutionLabel, generateFixMessage } from '../../utils';
+import { getResolutionLabel } from '../../utils';
 import { VirtualizationToggle } from './VirtualizationToggle';
 
 const CATEGORY_META: Record<
@@ -78,12 +77,10 @@ function ringStateForConn(conn: ServiceConnection): SignalRingState | null {
 export function ConnectionRowView({
   conn,
   onEdit,
-  onFix,
   onToggleVirtualization,
 }: {
   conn: ServiceConnection;
   onEdit: () => void;
-  onFix: (msg: string) => void;
   onToggleVirtualization?: (active: boolean) => void;
 }) {
   const [hover, setHover] = useState(false);
@@ -93,7 +90,7 @@ export function ConnectionRowView({
     RESOLUTION_CHIP_TONE[conn.resolution.type] || RESOLUTION_CHIP_TONE.url;
   const ResIcon = resTone.Icon;
   const ring = ringStateForConn(conn);
-  const dirty = conn.missingAnnotation || conn.userModified;
+  const dirty = !!conn.missingAnnotation;
 
   return (
     <div
@@ -130,14 +127,10 @@ export function ConnectionRowView({
         }}
       />
 
-      {/* Dirty corner indicator */}
+      {/* Missing-annotation corner indicator */}
       {dirty && (
         <span
-          title={
-            conn.userModified
-              ? 'Changes not yet applied to project files'
-              : 'Missing @connection annotation in .env.example'
-          }
+          title="Missing @connection annotation — edit and Save to add it"
           style={{
             position: 'absolute',
             top: 8,
@@ -153,7 +146,7 @@ export function ConnectionRowView({
             borderRadius: 'var(--r-pill)',
           }}
         >
-          {conn.userModified ? 'MODIFIED' : '!ANNOTATION'}
+          !ANNOTATION
         </span>
       )}
 
@@ -331,29 +324,6 @@ export function ConnectionRowView({
           >
             <Pencil size={10} strokeWidth={2.2} />
           </button>
-          {dirty && (
-            <button
-              type="button"
-              onClick={() => onFix(generateFixMessage(conn))}
-              title="Apply changes to project files"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 3,
-                padding: '3px 7px',
-                fontSize: 10,
-                fontWeight: 700,
-                background: 'oklch(94% 0.06 50)',
-                color: 'oklch(50% 0.16 50)',
-                border: '1px solid oklch(82% 0.10 50)',
-                borderRadius: 'var(--r-sm)',
-                cursor: 'pointer',
-              }}
-            >
-              <MessageSquare size={9} strokeWidth={2.2} />
-              Fix
-            </button>
-          )}
         </div>
       )}
     </div>

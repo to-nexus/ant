@@ -41,8 +41,12 @@ import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/de
 import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
-import { setToggleEnvValue } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
-import { mergeDetectedWithSaved } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits';
+import {
+  setToggleEnvValue,
+  upsertConnectionAnnotation,
+  mirrorConnectionToEnv,
+  removeConnectionAnnotation,
+} from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
 import { detectFramework } from '../deploy';
 import { toToggleFramework } from '../../core/prompt/builder/serviceVirtualization/connectionModel';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
@@ -263,9 +267,6 @@ export class PreviewServer {
             { organizationId: msg.organizationId, userId: msg.userId },
             msg.projectId,
             msg.feature || 'main',
-            // Post-job refresh re-detects from FINAL source, but must not clobber
-            // panel edits the user hasn't yet persisted to `.env.example` (Fix).
-            { preserveUserEdits: true },
           );
           logger.info(
             `[PreviewServer] Connections refreshed post-job: ${connections.length} for ${msg.projectId}/${msg.feature || 'main'}`,
@@ -365,7 +366,6 @@ export class PreviewServer {
     userContext: { organizationId: string; userId: string },
     projectId: string,
     feature: string,
-    opts?: { preserveUserEdits?: boolean },
   ): Promise<import('../../core/ports/portRegistry').ServiceConnection[]> {
     const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
     const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
@@ -420,19 +420,9 @@ export class PreviewServer {
       }
     }
 
-    // Anti-clobber: re-detection reads category/resolution from `.env.example`
-    // only, so a post-job refresh would discard panel edits the user hasn't yet
-    // persisted there (Fix button). Overlay `userModified` saved connections on
-    // top of the fresh detection. Auto Detect (explicit source reset) opts out.
-    if (opts?.preserveUserEdits) {
-      try {
-        const saved = await this.stateStore.getPreviewConfig(
-          userContext.organizationId, userContext.userId, projectId, feature,
-        );
-        connections = mergeDetectedWithSaved(connections, saved?.connections ?? []);
-      } catch { /* best-effort — fall back to fresh detection */ }
-    }
-
+    // Re-detection reads from `.env.example` (the SSOT) directly. Panel edits
+    // are persisted there deterministically on Save, so the fresh detection
+    // already reflects the user's intent — no overlay/merge needed.
     // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
     const configConnections = connections.map(({ status, ...rest }: any) => rest);
     await this.stateStore.savePreviewConfig(
@@ -870,6 +860,15 @@ export class PreviewServer {
 
         // Strip runtime status before persisting (status is transient, belongs in PREVIEW state only)
         const configConnections = resolvedConnections.map(({ status, ...rest }: any) => rest);
+
+        // Snapshot previous connections (before overwrite) to detect removals —
+        // a connection dropped from the panel must have its annotation removed.
+        const prevConfig = await this.stateStore.getPreviewConfig(
+          userContext.organizationId, userContext.userId, projectId, feature,
+        );
+        const newIds = new Set(configConnections.map((c: any) => c.id));
+        const removedConns = (prevConfig?.connections ?? []).filter((c: any) => !newIds.has(c.id));
+
         await this.stateStore.savePreviewConfig(
           userContext.organizationId,
           userContext.userId,
@@ -877,6 +876,24 @@ export class PreviewServer {
           feature,
           { connections: configConnections }
         );
+        // Deterministically persist annotations to .env.example + mirror to .env
+        // — the write side of panel Save, replacing the Fix → LLM code-job round-trip.
+        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+        if (fs.existsSync(workspacePath)) {
+          for (const conn of configConnections) {
+            const subdir = conn.source && conn.source !== '*' ? conn.source : '';
+            const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+            const framework = toToggleFramework(detectFramework(pkgDir));
+            upsertConnectionAnnotation(path.join(pkgDir, '.env.example'), conn, framework);
+            mirrorConnectionToEnv(path.join(pkgDir, '.env'), conn, framework);
+          }
+          for (const conn of removedConns) {
+            const subdir = conn.source && conn.source !== '*' ? conn.source : '';
+            const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+            removeConnectionAnnotation(path.join(pkgDir, '.env.example'), conn);
+          }
+        }
+
         const restartRequired = await this.markRestartRequiredIfRunning(userContext, projectId, feature);
 
         logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature} (${resolvedConnections.length} connections)`, { component: 'PreviewServer' });
