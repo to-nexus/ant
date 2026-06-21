@@ -6,7 +6,8 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
-import { frameworkAwareToggleVars, frameworkTogglePrefix, toToggleFramework } from '../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
+import { toToggleFramework } from '../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
+import { setToggleDefaultIfAbsent } from '../detectors/ConnectionDetector/envFileWriter';
 import { detectFramework } from '../../../../../../infrastructure/deploy';
 
 export interface SpawnOptions {
@@ -209,48 +210,34 @@ export class ProcessSpawner {
   }
 
   /**
-   * Mock-toggle defaults injected at spawn for every business connection of
-   * this package (Service Virtualization §6 runtime mock-boot guarantee).
+   * Ensure every business connection of this package has its mock toggle
+   * present in the package `.env` (default `true`), writing it when absent.
+   * Replaces the former runtime `mockToggleDefaults` injection: default-ON now
+   * lives in the file (one SSOT), so the generated factory reads a real value
+   * and a greenfield app boots mocked instead of hitting ECONNREFUSED.
    *
-   * A greenfield app declares its toggle only in `.env.example`, which the
-   * spawner never copies to `.env`; without a default the generated factory
-   * reads an unset toggle and boots the production adapter → ECONNREFUSED. We
-   * therefore seed every business connection's toggle to `true`. These sit
-   * BELOW `.env` in the env chain, so an explicit `.env` toggle (`=false`, the
-   * user opting into the real backend via the UI toggle) always wins.
-   *
-   * Per-connection grain only — the generated factory reads its own
-   * `USE_MOCK_<NAME>` (not the master broadcast). Names are the union of the
-   * framework-aware derivation from `conn.name` and the detector-stored
-   * `conn.virtualization.toggleEnvVar` (which may differ for pattern-detected
-   * connections), so the value the generated code reads is always covered.
-   * Toggle naming + framework prefix come from the connectionModel SSOT.
+   * Idempotent — `setToggleDefaultIfAbsent` skips when any framework-prefixed
+   * variant already exists, so an explicit `.env` toggle (user opting into the
+   * real backend via the UI) is preserved. Per-connection grain; the toggle
+   * name is the detector-stored `virtualization.toggleEnvVar` (SSOT).
    */
-  private mockToggleDefaults(
+  private backfillMockToggles(
     connections: ServiceConnection[] | undefined,
     packageSource: string | undefined,
     pkgPath: string,
-  ): Record<string, string> {
-    if (!connections?.length) return {};
+  ): void {
+    if (!connections?.length) return;
     const business = connections.filter(
       c => c.virtualization &&
         (c.source === '*' || !packageSource || c.source === packageSource),
     );
-    if (business.length === 0) return {};
+    if (business.length === 0) return;
 
     const framework = toToggleFramework(detectFramework(pkgPath));
-    const result: Record<string, string> = {};
+    const envPath = path.join(pkgPath, '.env');
     for (const conn of business) {
-      const names = new Set(frameworkAwareToggleVars(conn.name, framework).toggles);
-      // Cover the detector-derived bare toggle too (pattern-detected
-      // connections derive it from a nameHint that may not equal conn.name).
-      const bare = conn.virtualization!.toggleEnvVar;
-      names.add(bare);
-      const prefix = frameworkTogglePrefix(framework);
-      if (prefix) names.add(`${prefix}${bare}`);
-      for (const n of names) result[n] = 'true';
+      setToggleDefaultIfAbsent(envPath, conn.virtualization!.toggleEnvVar, framework);
     }
-    return result;
   }
 
   /**
@@ -358,19 +345,20 @@ export class ProcessSpawner {
     
     // Environment variable priority (low to high):
     //   1. process.env (system)
-    //   2. mock-toggle defaults (SV §6: greenfield mock-boot; .env overrides)
-    //   3. project root .env / .env.local (workspace-level)
-    //   4. package .env / .env.local (package-level override)
-    //   5. connections[].envVar=value
-    //   6. platform injected (PORT, base path, polling)
-    //   7. extraEnv (caller override)
-    const mockDefaults = this.mockToggleDefaults(options.connections, options.packageSource, pkg.path);
+    //   2. project root .env / .env.local (workspace-level)
+    //   3. package .env / .env.local (package-level override)
+    //   4. connections[].envVar=value
+    //   5. platform injected (PORT, base path, polling)
+    //   6. extraEnv (caller override)
+    // Mock-toggle default-ON lives in `.env` (one SSOT): backfill any missing
+    // business toggle to `true` BEFORE loading, so the file the factory reads
+    // always carries it (greenfield mock-boot, no ECONNREFUSED).
+    this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {
       ...process.env,
-      ...mockDefaults,
       ...projectEnv,
       ...connectionsEnv,
       PORT: port.toString(),
@@ -490,13 +478,12 @@ export class ProcessSpawner {
     
     this.ensureConfigFiles(pkg.path, options.onLog);
 
-    const mockDefaults = this.mockToggleDefaults(options.connections, options.packageSource, pkg.path);
+    this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {
       ...process.env,
-      ...mockDefaults,
       ...projectEnv,
       ...connectionsEnv,
       PORT: port.toString(),

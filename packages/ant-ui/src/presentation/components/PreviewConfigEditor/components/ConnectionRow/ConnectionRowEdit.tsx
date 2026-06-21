@@ -99,7 +99,6 @@ export function ConnectionRowEdit({
       envVar: draft.envVar,
       value: finalValue,
       resolution: finalResolution,
-      userModified: true,
     });
     onCancel();
   };
