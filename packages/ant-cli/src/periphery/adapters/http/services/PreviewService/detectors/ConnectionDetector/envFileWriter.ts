@@ -199,8 +199,8 @@ export function upsertConnectionAnnotation(
 /**
  * Mirror a connection's runtime value into `.env` per the §5 value invariant:
  * `infrastructure` → its localhost/compose value, virtualized `business`
- * (incl. self / ant-project) → empty. Business connections also get the
- * mock-toggle default line when absent.
+ * (incl. self / ant-project) → empty. Business connections also persist their
+ * virtualization toggle's active value (the panel toggle is deferred to Save).
  */
 export function mirrorConnectionToEnv(
   envPath: string,
@@ -211,7 +211,14 @@ export function mirrorConnectionToEnv(
   setEnvValue(envPath, conn.envVar, mirrorValue);
 
   if (conn.category === 'business' && conn.virtualization) {
-    setToggleDefaultIfAbsent(envPath, conn.virtualization.toggleEnvVar, framework);
+    // Write the chosen toggle value, not just a default — Save is the single
+    // place the panel toggle lands, so the active state must be persisted.
+    setToggleEnvValue(
+      envPath,
+      conn.virtualization.toggleEnvVar,
+      framework,
+      conn.virtualization.active ? 'true' : 'false',
+    );
   }
 }
 

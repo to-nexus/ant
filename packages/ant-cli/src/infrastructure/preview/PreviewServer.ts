@@ -42,7 +42,6 @@ import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/p
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import {
-  setToggleEnvValue,
   upsertConnectionAnnotation,
   mirrorConnectionToEnv,
   removeConnectionAnnotation,
@@ -900,90 +899,6 @@ export class PreviewServer {
         res.json({ success: true, connections: resolvedConnections, restartRequired });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);
-        sendErrorResponse(res, 500, error, 'PreviewServer');
-      }
-    });
-
-    /**
-     * PUT /preview/projects/:id/virtualization-toggle
-     *
-     * Service Virtualization toggle endpoint. Writes
-     * `USE_MOCK_<NAME>=true|false` to the project `.env` file (Walking-
-     * Skeleton swap requires zero code changes), then updates the Redis-
-     * backed connection registry so subsequent `detect-connections` runs
-     * observe the same `virtualization.active` state.
-     *
-     * Body: { feature, connectionId, active }
-     */
-    this.app.put('/projects/:id/virtualization-toggle', async (req: Request, res: Response) => {
-      try {
-        const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
-        const feature = req.body.feature || 'main';
-        const { connectionId, active } = req.body as { connectionId?: string; active?: boolean };
-
-        if (!connectionId || typeof active !== 'boolean') {
-          res.status(400).json({ error: 'connectionId (string) and active (boolean) are required' });
-          return;
-        }
-
-        const config = await this.stateStore.getPreviewConfig(
-          userContext.organizationId, userContext.userId, projectId, feature
-        );
-        const connections = config?.connections || [];
-        const target = connections.find(c => c.id === connectionId);
-        if (!target) {
-          res.status(404).json({ error: `Connection "${connectionId}" not found` });
-          return;
-        }
-        if (!target.virtualization) {
-          res.status(400).json({
-            error: `Connection "${connectionId}" is not virtualizable (category=${target.category}). Only business connections support Service Virtualization.`,
-          });
-          return;
-        }
-
-        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
-        if (!fs.existsSync(workspacePath)) {
-          res.status(404).json({ error: 'Project workspace not found', path: workspacePath });
-          return;
-        }
-
-        const subdir = target.source && target.source !== '*' ? target.source : '';
-        // Detect the framework on the CONSUMING package dir (monorepo: the root
-        // package.json lacks the bundler dep and would mis-detect) so the toggle
-        // is written under the client-visible prefix the app actually reads.
-        const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
-        const envFilePath = path.join(pkgDir, '.env');
-        const framework = toToggleFramework(detectFramework(pkgDir));
-        const writtenVar = setToggleEnvValue(
-          envFilePath,
-          target.virtualization.toggleEnvVar,
-          framework,
-          active ? 'true' : 'false',
-        );
-
-        const updatedConnections = connections.map(c =>
-          c.id === connectionId && c.virtualization
-            ? { ...c, virtualization: { ...c.virtualization, active } }
-            : c
-        );
-        await this.stateStore.savePreviewConfig(
-          userContext.organizationId,
-          userContext.userId,
-          projectId,
-          feature,
-          { connections: updatedConnections },
-        );
-        const restartRequired = await this.markRestartRequiredIfRunning(userContext, projectId, feature);
-
-        logger.info(
-          `[PreviewServer] Virtualization toggle: ${projectId}/${feature} ${writtenVar}=${active}`,
-          { component: 'PreviewServer' },
-        );
-        res.json({ success: true, connections: updatedConnections, restartRequired });
-      } catch (error: any) {
-        logger.error('[PreviewServer] Virtualization toggle error', { component: 'PreviewServer' }, error);
         sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });

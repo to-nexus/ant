@@ -93,6 +93,24 @@ describe('mirrorConnectionToEnv (§5 value invariant)', () => {
     expect(c).toMatch(/^STRIPE_API_KEY=\s*$/m);
   });
 
+  it('business: persists the active toggle value (false) to .env', () => {
+    mirrorConnectionToEnv(envp(), conn({ virtualization: { toggleEnvVar: 'USE_MOCK_STRIPE_API', active: false } }));
+    expect(read()).toContain('USE_MOCK_STRIPE_API=false');
+  });
+
+  it('business: persists active=true', () => {
+    mirrorConnectionToEnv(envp(), conn({ virtualization: { toggleEnvVar: 'USE_MOCK_STRIPE_API', active: true } }));
+    expect(read()).toContain('USE_MOCK_STRIPE_API=true');
+  });
+
+  it('business: overwrites an existing opposite toggle value (Save persists choice)', () => {
+    fs.writeFileSync(envp(), 'USE_MOCK_STRIPE_API=true\n');
+    mirrorConnectionToEnv(envp(), conn({ virtualization: { toggleEnvVar: 'USE_MOCK_STRIPE_API', active: false } }));
+    const c = read();
+    expect(c).toContain('USE_MOCK_STRIPE_API=false');
+    expect(c).not.toContain('USE_MOCK_STRIPE_API=true');
+  });
+
   it('infrastructure → keeps its localhost/compose value', () => {
     const infra = conn({
       id: 'postgres', name: 'PostgreSQL', category: 'infrastructure',
