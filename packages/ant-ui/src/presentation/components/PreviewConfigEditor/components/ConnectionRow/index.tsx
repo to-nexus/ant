@@ -17,7 +17,6 @@ export function ConnectionRow({
   onEdit,
   onUpdate,
   onDelete,
-  onFix,
   onToggleVirtualization,
 }: {
   conn: ServiceConnection;
@@ -25,7 +24,6 @@ export function ConnectionRow({
   onEdit: () => void;
   onUpdate: (updates: Partial<ServiceConnection>) => void;
   onDelete: () => void;
-  onFix: (msg: string) => void;
   onToggleVirtualization?: (active: boolean) => void;
 }) {
   if (isEditing) {
@@ -44,7 +42,6 @@ export function ConnectionRow({
     <ConnectionRowView
       conn={conn}
       onEdit={onEdit}
-      onFix={onFix}
       onToggleVirtualization={onToggleVirtualization}
     />
   );

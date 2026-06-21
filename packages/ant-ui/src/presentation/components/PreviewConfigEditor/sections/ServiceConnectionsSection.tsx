@@ -2,6 +2,7 @@
 import { useTranslation } from 'react-i18next';
 import { Check, Package, Plus, Search, Sparkles } from 'lucide-react';
 import type { ServiceConnection } from '@/infrastructure/http/api';
+import { Spinner } from '@/presentation/components/common/async';
 import {
   SectionCard,
   StatusPill,
@@ -19,12 +20,12 @@ export function ServiceConnectionsSection({
   addingNew,
   setAddingNew,
   isDetecting,
+  isSaving,
   onAutoDetect,
   onSaveConnections,
   onUpdateConn,
   onDeleteConn,
   onAddConn,
-  onApplyToChat,
   onToggleVirtualization,
 }: {
   localConns: ServiceConnection[];
@@ -36,20 +37,18 @@ export function ServiceConnectionsSection({
   addingNew: boolean;
   setAddingNew: (v: boolean) => void;
   isDetecting: boolean;
+  isSaving: boolean;
   onAutoDetect: () => void;
   onSaveConnections: () => void;
   onUpdateConn: (id: string, updates: Partial<ServiceConnection>) => void;
   onDeleteConn: (id: string) => void;
   onAddConn: (conn: ServiceConnection) => void;
-  onApplyToChat: (msg: string) => void;
   onToggleVirtualization: (id: string, active: boolean) => void;
 }) {
   const { t } = useTranslation('explorer');
 
   const hasActive = localConns.some((c) => c.status === 'active');
-  const hasDirty = localConns.some(
-    (c) => c.missingAnnotation || c.userModified,
-  );
+  const hasDirty = localConns.some((c) => c.missingAnnotation);
 
   const statusPills = localConns.length > 0 ? (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -94,11 +93,16 @@ export function ServiceConnectionsSection({
         <button
           type="button"
           onClick={onSaveConnections}
-          style={ghostBtnStyle}
+          disabled={isSaving}
+          style={{ ...ghostBtnStyle, opacity: isSaving ? 0.6 : 1, cursor: isSaving ? 'wait' : 'pointer' }}
           title={t('preview.save', 'Save')}
         >
-          <Check size={11} strokeWidth={2.2} />
-          {t('preview.save', 'Save')}
+          {isSaving ? (
+            <Spinner size="sm" tone="inherit" />
+          ) : (
+            <Check size={11} strokeWidth={2.2} />
+          )}
+          {isSaving ? t('preview.saving', 'Saving…') : t('preview.save', 'Save')}
         </button>
       )}
       <button
@@ -207,7 +211,6 @@ export function ServiceConnectionsSection({
                     }
                     onUpdate={(updates) => onUpdateConn(conn.id, updates)}
                     onDelete={() => onDeleteConn(conn.id)}
-                    onFix={onApplyToChat}
                     onToggleVirtualization={(active) =>
                       onToggleVirtualization(conn.id, active)
                     }

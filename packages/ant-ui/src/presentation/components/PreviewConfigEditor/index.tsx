@@ -325,12 +325,12 @@ export function PreviewConfigEditor() {
             addingNew={connEditor.addingNew}
             setAddingNew={connEditor.setAddingNew}
             isDetecting={connEditor.isDetecting}
+            isSaving={connEditor.isSaving}
             onAutoDetect={connEditor.handleAutoDetect}
             onSaveConnections={connEditor.handleSaveConnections}
             onUpdateConn={connEditor.handleUpdateConn}
             onDeleteConn={connEditor.handleDeleteConn}
             onAddConn={connEditor.handleAddConn}
-            onApplyToChat={handleApplyToChat}
             onToggleVirtualization={connEditor.handleToggleVirtualization}
           />
 

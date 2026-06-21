@@ -17,6 +17,7 @@ export interface UseConnectionEditorResult {
   addingNew: boolean;
   setAddingNew: (v: boolean) => void;
   isDetecting: boolean;
+  isSaving: boolean;
   packageGroups: Map<string, ServiceConnection[]>;
   isSinglePackage: boolean;
   handleAutoDetect: () => Promise<void>;
@@ -25,31 +26,6 @@ export interface UseConnectionEditorResult {
   handleDeleteConn: (id: string) => void;
   handleAddConn: (conn: ServiceConnection) => void;
   handleToggleVirtualization: (id: string, active: boolean) => Promise<void>;
-}
-
-/**
- * Overlay locally-edited (`userModified`) connections on top of an incoming set
- * (a server response or re-derived prop). A server response for a single
- * operation (e.g. a virtualization toggle on connection B) reflects only the
- * persisted config and does NOT carry connection A's unsaved panel edit — a
- * naive wholesale replace would silently revert A. This preserves every pending
- * edit except the one being acted on (`exceptId`, which should take the fresh
- * server value). Keyed by `id`.
- */
-function preserveLocalEdits(
-  incoming: ServiceConnection[],
-  prev: ServiceConnection[],
-  exceptId?: string,
-): ServiceConnection[] {
-  const edited = new Map(
-    prev.filter(c => c.userModified && c.id !== exceptId).map(c => [c.id, c] as const),
-  );
-  if (edited.size === 0) return incoming;
-  const merged = incoming.map(c => edited.get(c.id) ?? c);
-  for (const [id, c] of edited) {
-    if (!incoming.some(x => x.id === id)) merged.push(c);
-  }
-  return merged;
 }
 
 export function useConnectionEditor(
@@ -64,14 +40,15 @@ export function useConnectionEditor(
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
-      // `connections` is re-derived on every preview status poll. Preserve any
-      // locally-edited (userModified) connection still pending code-apply so a
-      // poll tick can't revert it; take fresh values for everything else.
-      setLocalConns(prev => preserveLocalEdits(connections, prev));
+      // `connections` is re-derived on every preview status poll. Panel edits
+      // persist to `.env.example` (the detection source) on Save, so a fresh
+      // re-derivation already reflects the user's intent — take it wholesale.
+      setLocalConns(connections);
     }
   }, [connections, hasUnsavedChanges]);
 
@@ -127,6 +104,7 @@ export function useConnectionEditor(
 
   const handleSaveConnections = useCallback(async () => {
     if (!selectedProject) return;
+    setIsSaving(true);
     try {
       const result = await updatePreviewConfig(selectedProject, selectedFeature || 'main', { connections: localConns });
       if (result.success && result.connections) {
@@ -145,6 +123,8 @@ export function useConnectionEditor(
       setEditingConnId(null);
     } catch (err) {
       console.error('[PreviewConfig] Save failed:', err);
+    } finally {
+      setIsSaving(false);
     }
   }, [selectedProject, selectedFeature, localConns, setConfig, mergePreviewStatus]);
 
@@ -217,7 +197,7 @@ export function useConnectionEditor(
     localConns, hasUnsavedChanges,
     editingConnId, setEditingConnId,
     addingNew, setAddingNew,
-    isDetecting, packageGroups, isSinglePackage,
+    isDetecting, isSaving, packageGroups, isSinglePackage,
     handleAutoDetect, handleSaveConnections,
     handleUpdateConn, handleDeleteConn, handleAddConn,
     handleToggleVirtualization,

@@ -15,6 +15,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { DeployFramework as BuildFramework } from '@ant/shared';
+import type { ConnectionResolution } from '../../../ports/portRegistry';
 
 export type ConnectionCategory = 'business' | 'infrastructure';
 
@@ -41,6 +42,41 @@ export function parseAnnotationLine(line: string): AnnotationMatch | null {
   const m = line.match(CONNECTION_ANNOTATION_RE);
   if (!m) return null;
   return { category: m[1] as ConnectionCategory, name: m[2], modifier: m[3] };
+}
+
+/**
+ * Inverse of `parseResolutionModifier` — render a `ConnectionResolution` back
+ * to its annotation modifier token(s). The deterministic write side of the
+ * `@connection` grammar (panel Save → `.env.example`), symmetric with the
+ * read side used by the preview detector.
+ *
+ *   ant-project self            → `'self'`
+ *   ant-project p:f[:svc]       → `'ant-project:p:f[:svc]'`
+ *   url / docker                → `''` (no modifier)
+ *
+ * `docker` carries no annotation token — infrastructure connections are
+ * authored modifier-less and the detector upgrades `url`→`docker` via
+ * docker-compose at read time, so the annotation form is `url`-shaped.
+ */
+export function resolutionToModifier(resolution: ConnectionResolution): string {
+  if (resolution.type === 'ant-project') {
+    if (resolution.projectId === 'self' && resolution.feature === 'self') return 'self';
+    const base = `ant-project:${resolution.projectId}:${resolution.feature}`;
+    return resolution.serviceName ? `${base}:${resolution.serviceName}` : base;
+  }
+  return '';
+}
+
+/** Render a single `# @connection {category} {name} [modifier]` line. */
+export function serializeAnnotationLine(
+  category: ConnectionCategory,
+  name: string,
+  modifier?: string,
+): string {
+  const mod = modifier?.trim();
+  return mod
+    ? `# @connection ${category} ${name} ${mod}`
+    : `# @connection ${category} ${name}`;
 }
 
 /** Bare per-connection toggle env var: `USE_MOCK_<UPPER_SNAKE_NAME>`. */
