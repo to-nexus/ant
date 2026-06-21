@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   detectConnections,
   updatePreviewConfig,
-  toggleConnectionVirtualization,
   type ServiceConnection,
   type PreviewConfig,
 } from '@/infrastructure/http/api';
@@ -25,7 +24,7 @@ export interface UseConnectionEditorResult {
   handleUpdateConn: (id: string, updates: Partial<ServiceConnection>) => void;
   handleDeleteConn: (id: string) => void;
   handleAddConn: (conn: ServiceConnection) => void;
-  handleToggleVirtualization: (id: string, active: boolean) => Promise<void>;
+  handleToggleVirtualization: (id: string, active: boolean) => void;
 }
 
 export function useConnectionEditor(
@@ -146,52 +145,18 @@ export function useConnectionEditor(
   }, []);
 
   /**
-   * Auto-save Service Virtualization toggle: optimistically flips the
-   * connection's `virtualization.active`, then writes
-   * `USE_MOCK_<NAME>=true|false` to the project `.env` via a dedicated BE
-   * endpoint so the runtime observes the new state on next preview start.
-   * Reverts the optimistic update on transport failure.
+   * Flip a connection's `virtualization.active` locally and mark unsaved — the
+   * toggle is deferred to Save (same flow as resolution / category edits), and
+   * Save persists `USE_MOCK_<NAME>=<active>` to `.env`. No immediate write.
    */
-  const handleToggleVirtualization = useCallback(async (id: string, active: boolean) => {
-    if (!selectedProject) return;
-    const featureName = selectedFeature || 'main';
-
+  const handleToggleVirtualization = useCallback((id: string, active: boolean) => {
     setLocalConns(prev => prev.map(c =>
       c.id === id && c.virtualization
         ? { ...c, virtualization: { ...c.virtualization, active } }
         : c,
     ));
-
-    try {
-      const result = await toggleConnectionVirtualization(selectedProject, featureName, id, active);
-      if (result.success && result.connections) {
-        // Surgically adopt ONLY the toggled connection from the server response.
-        // Toggling connection B must never touch connection A — a wholesale
-        // replace (in either localConns or config) would revert a sibling the
-        // user edited but hasn't saved/applied yet (the server response carries
-        // persisted config, not A's pending edit).
-        const serverToggled = result.connections.find(c => c.id === id);
-        if (serverToggled) {
-          setLocalConns(prev => prev.map(c => (c.id === id ? serverToggled : c)));
-          setConfig(prev => {
-            if (!prev?.connections) return { connections: result.connections } as PreviewConfig;
-            return { ...prev, connections: prev.connections.map(c => (c.id === id ? serverToggled : c)) };
-          });
-        }
-      }
-      if (result.restartRequired) {
-        const key = makeFeatureKey(selectedProject, selectedFeature);
-        if (key) mergePreviewStatus(key, { restartRequired: true });
-      }
-    } catch (err) {
-      console.error('[PreviewConfig] Virtualization toggle failed:', err);
-      setLocalConns(prev => prev.map(c =>
-        c.id === id && c.virtualization
-          ? { ...c, virtualization: { ...c.virtualization, active: !active } }
-          : c,
-      ));
-    }
-  }, [selectedProject, selectedFeature, setConfig, mergePreviewStatus]);
+    setHasUnsavedChanges(true);
+  }, []);
 
   return {
     localConns, hasUnsavedChanges,
