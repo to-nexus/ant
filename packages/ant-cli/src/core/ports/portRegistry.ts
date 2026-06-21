@@ -114,7 +114,6 @@ export interface ServiceConnection {
   source?: string;                    // Package requiring this ("backend", "frontend", "*")
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
-  userModified?: boolean;             // User edited category/resolution in the panel (not yet persisted to .env.example)
   configSource?: 'env' | 'toml';     // Which config file format this was detected from
   /**
    * Service Virtualization strategy. Auto-attached for every
