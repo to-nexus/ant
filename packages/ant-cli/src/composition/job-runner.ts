@@ -38,7 +38,9 @@ import { UnifiedWorkspaceResolver } from '../core/config/WorkspacePathResolver';
 import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { logger } from '../utils/logger';
 import { handleGracefulShutdown } from './gracefulShutdown';
-import { REDIS_KEYS } from '../infrastructure/state/redisConstants';
+import { abortJob, isJobAborted } from './jobAbort';
+import { REDIS_KEYS, REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
+import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
 import { createTLSOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason } from '../core/types/session';
 
@@ -97,6 +99,61 @@ function getJobParams(): JobParams {
 
 // Pre-established Redis connection for SIGTERM handler (avoids connection latency during shutdown)
 let killReasonRedis: Redis | null = null;
+
+// Redis SSOT subscriber for the user-stop signal. Owns a dedicated subscriber
+// connection internally (RedisStateStore) so channel + JSON serialization match
+// the publisher (POST /jobs/:id/stop).
+let stopSignalStore: RedisStateStore | null = null;
+let stopPollTimer: NodeJS.Timeout | null = null;
+
+// Once-guard shared by the STOP-triggered self-SIGTERM and a real parent SIGTERM,
+// so double signal delivery cannot run reportResult/exit twice.
+let shutdownInitiated = false;
+
+/**
+ * Make this child observe the Redis stop SSOT directly (Unified Distributed
+ * System Principle): the running job must honor a user stop even when no
+ * external process holds its in-memory child handle (cloud replica / pod
+ * restart / orphaned child). On stop we trip the AbortController (interrupts
+ * the in-flight LLM stream) and self-raise SIGTERM — reusing the proven
+ * terminal path (resolveKillReason → handleGracefulShutdown → reportResult →
+ * exit 143) rather than duplicating it.
+ */
+async function watchUserStop(jobId: string): Promise<void> {
+  const redisUrl = process.env.ANT_REDIS_URL;
+  if (!redisUrl) return;
+
+  const trigger = (source: string) => {
+    if (shutdownInitiated) return;
+    console.log(`[JobRunner] User-stop observed via ${source} — aborting job: ${jobId}`);
+    abortJob();
+    process.kill(process.pid, 'SIGTERM');
+  };
+
+  try {
+    stopSignalStore = new RedisStateStore({ url: redisUrl, maxRetriesPerRequest: 1 });
+
+    // Primary: pub/sub STOP signal.
+    await stopSignalStore.subscribe(
+      REDIS_CHANNELS.JOB_WORKER.STOP,
+      (message: unknown) => {
+        if ((message as { jobId?: string })?.jobId === jobId) trigger('pub/sub STOP');
+      },
+    );
+
+    // Backup: poll the userStopped flag (covers a STOP published before this
+    // subscription was live). Effective only because the flag is preserved
+    // through the user_stopped finalize seal — see sealJobRedisState.
+    stopPollTimer = setInterval(async () => {
+      try {
+        if (await stopSignalStore!.isUserStopped(jobId)) trigger('poll backup');
+      } catch { /* best-effort */ }
+    }, 2000);
+    stopPollTimer.unref();
+  } catch (err: any) {
+    console.warn(`[JobRunner] Failed to wire user-stop watcher: ${err?.message}`);
+  }
+}
 
 async function resolveKillReason(jobId: string): Promise<InterruptionReason> {
   if (!killReasonRedis) return 'server_crash';
@@ -183,11 +240,24 @@ async function runJob(params: JobParams): Promise<void> {
     reportResult(true, result);
     
   } catch (error: any) {
-    logger.error(`Job runner failed: ${params.jobId}`, { 
+    // User-stop abort: the LLM stream throws APIUserAbortError, which unwinds
+    // here. Do NOT report process_crash / exit(1) — the SIGTERM handler
+    // (raised by the STOP subscription) is the sole terminal authority and
+    // will reportResult(user_stopped) + exit(143). Park so the main path can
+    // never race it. The parked promise is reclaimed on process.exit.
+    if (isJobAborted()) {
+      logger.info(`Job aborted by user stop — yielding to shutdown handler: ${params.jobId}`, {
+        component: 'JobRunner',
+        jobId: params.jobId,
+      });
+      await new Promise<never>(() => {});
+    }
+
+    logger.error(`Job runner failed: ${params.jobId}`, {
       component: 'JobRunner',
-      jobId: params.jobId 
+      jobId: params.jobId
     }, error);
-    
+
     reportProgress('failed', error.message);
     reportResult(false, {
       success: false,
@@ -221,11 +291,15 @@ async function main(): Promise<void> {
     } catch { /* best-effort — resolveKillReason will fallback to server_crash */ }
   }
 
+  // Observe the Redis stop SSOT before running, so a user stop is honored even
+  // when no external process holds this child's in-memory handle.
+  await watchUserStop(params.jobId);
+
   const partialResult = await initPartials();
   if (partialResult.failed.length > 0) {
     console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register`);
   }
-  
+
   try {
     await runJob(params);
     
@@ -264,8 +338,15 @@ async function main(): Promise<void> {
 // the interruption reason and route to the correct lifecycle transition
 // (finalize for user_stopped, pauseJob for the rest).
 process.on('SIGTERM', async () => {
+  // Once-guard: a STOP-triggered self-SIGTERM and a real parent SIGTERM can both
+  // arrive — only the first runs the terminal report + exit.
+  if (shutdownInitiated) return;
+  shutdownInitiated = true;
+
   const jobId = process.env.ANT_JOB_ID || 'unknown';
   const reason = await resolveKillReason(jobId);
+
+  if (stopPollTimer) clearInterval(stopPollTimer);
 
   const mem = process.memoryUsage();
   console.log(JSON.stringify({
@@ -291,6 +372,7 @@ process.on('SIGTERM', async () => {
   await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
 
   killReasonRedis?.disconnect();
+  stopSignalStore?.close().catch(() => { /* best-effort */ });
   console.log(`[JobRunner] Exiting with code 143 (SIGTERM, reason=${reason})`);
   process.exit(143);
 });

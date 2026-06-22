@@ -162,6 +162,7 @@ export class AnthropicLLMClient implements LLMClient {
     // as .messages.create() but keeps the HTTP connection alive via SSE.
     // Wrapped with withRetry to handle overloaded_error delivered inside SSE stream
     // (HTTP 200 + error event), which bypasses the SDK's built-in HTTP-status retry.
+    const signal: AbortSignal | undefined = options?.signal;
     const response = await withRetry(
       async () => {
         const stream = this.client.messages.stream({
@@ -170,7 +171,7 @@ export class AnthropicLLMClient implements LLMClient {
           ...(systemParam && { system: systemParam }),
           ...this.buildThinkingParams(enableThinking, thinkingBudget),
           messages: this.convertMessages(userMessages),
-        });
+        }, { signal });
         return await stream.finalMessage();
       },
       {
@@ -248,6 +249,10 @@ export class AnthropicLLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    const signal: AbortSignal | undefined = options?.signal;
+    // Cover aborts that land between tool-loop stream calls (before any HTTP).
+    if (signal?.aborted) return;
+
     const toolsCount = options?.tools?.length || 0;
     const enableThinking = options?.enableThinking === true;
     const thinkingBudget = options?.thinkingBudget || 10000;
@@ -309,7 +314,7 @@ export class AnthropicLLMClient implements LLMClient {
       } : {}),
       ...(stopSequences && stopSequences.length > 0 ? { stop_sequences: stopSequences } : {}),
       stream: true,
-    });
+    }, { signal });
 
     // 🔴 FIX: Accumulate tool_use input across multiple deltas
     const toolUseBuffer: Map<number, { id: string; name: string; input: string }> = new Map();

@@ -18,6 +18,7 @@ import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
+import { isJobAborted } from '../../../../../composition/jobAbort';
 import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/workerScope';
 import { VerificationTerminalError } from '../tasks/_shared/verify/terminal/errors';
 import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
@@ -289,8 +290,10 @@ export class TaskWorker<T extends BaseTask> {
         violations: (task as any).resumeState.violations || [],
         enforcementHistory: (task as any).resumeState.enforcementHistory || [],
       } : {}),
-      // Worker stop signal checker
-      _isStopRequested: () => this.stopRequested,
+      // Worker stop signal checker. Also honors a direct user-stop abort
+      // (isJobAborted) so cooperative checkpoints fire even when the orchestrator
+      // signalWorkersToStop path hasn't run (orphaned-child stop).
+      _isStopRequested: () => this.stopRequested || isJobAborted(),
     };
 
     // Clear resumeState after restoring. Task-type-specific snapshot
