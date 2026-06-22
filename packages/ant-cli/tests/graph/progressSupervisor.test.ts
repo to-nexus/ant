@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   detectOutputStall,
-  normalizeStderrLineSig,
+  stallLineKey,
   pushLineSig,
   DEFAULT_REPEAT_GRACE_MS,
   DEFAULT_REPEAT_THRESHOLD,
@@ -31,21 +31,27 @@ const baseThresholds: SupervisorThresholds = {
 // Pure helpers — preserved from prior watchdog test contract
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-describe('normalizeStderrLineSig', () => {
-  it('collapses numeric tokens so progress counters match', () => {
-    expect(normalizeStderrLineSig('Generating static pages (1/4)')).toBe(
-      normalizeStderrLineSig('Generating static pages (3/4)'),
+describe('stallLineKey', () => {
+  it('does NOT collapse numeric tokens — advancing counters key distinctly (progress ≠ stall)', () => {
+    // RCA bronze-mending-blade: a climbing counter is observable progress, not a
+    // stuck loop. The two lines must produce DIFFERENT keys.
+    expect(stallLineKey('Generating static pages (1/4)')).not.toBe(
+      stallLineKey('Generating static pages (3/4)'),
     );
   });
 
-  it('trims to 80 chars so long suffixes do not defeat the counter', () => {
+  it('keys byte-identical lines the same (true repetition is still a stall)', () => {
+    expect(stallLineKey('Error: build failed')).toBe(stallLineKey('Error: build failed'));
+  });
+
+  it('trims to 80 chars', () => {
     const long = 'Error: '.padEnd(200, 'x');
-    expect(normalizeStderrLineSig(long).length).toBeLessThanOrEqual(80);
+    expect(stallLineKey(long).length).toBeLessThanOrEqual(80);
   });
 
   it('returns an empty string for whitespace-only input', () => {
-    expect(normalizeStderrLineSig('   ')).toBe('');
-    expect(normalizeStderrLineSig('\n')).toBe('');
+    expect(stallLineKey('   ')).toBe('');
+    expect(stallLineKey('\n')).toBe('');
   });
 });
 
@@ -123,13 +129,37 @@ describe('detectOutputStall', () => {
     expect(stall?.repeat).toBe(6);
   });
 
-  it('fires when Next-style progress counters collapse to a single normalized signature (stuck retry loop)', () => {
+  it('does NOT fire for advancing progress counters — monotonic progress is not a stall (RCA bronze-mending-blade)', () => {
+    // A progress bar whose only delta is a climbing number is observable
+    // forward progress, NOT a stuck retry loop. Each line keys distinctly.
     const m = buildMap([
       'Generating static pages (0/4)',
       'Generating static pages (1/4)',
       'Generating static pages (2/4)',
       'Generating static pages (3/4)',
     ]);
+    const startedAt = now - (DEFAULT_REPEAT_GRACE_MS + 5_000);
+    expect(detectOutputStall(m, startedAt, { now })).toBeNull();
+  });
+
+  it('does NOT fire on a slow pnpm install progress stream past the grace window (the bronze-mending-blade kill)', () => {
+    // Exactly the stream that was killed (exit 124) on cloud EFS: the linking
+    // phase emits the same line shape while `added` climbs. Even well past the
+    // grace window, a monotonic counter must never trip repeatedSignature —
+    // otherwise node_modules never completes and verification never reaches
+    // batchSplit.
+    const lines: string[] = [];
+    for (let added = 1; added <= 60; added++) {
+      lines.push(`Progress: resolved 371, reused 371, downloaded 0, added ${added}`);
+    }
+    const m = buildMap(lines);
+    const startedAt = now - (DEFAULT_REPEAT_GRACE_MS * 3);
+    expect(detectOutputStall(m, startedAt, { now })).toBeNull();
+  });
+
+  it('still fires when an install genuinely repeats a byte-identical error line', () => {
+    // Positive control: a real stuck loop emits the SAME line verbatim.
+    const m = buildMap(Array(DEFAULT_REPEAT_THRESHOLD).fill('ERR_PNPM_FETCH_404 GET https://registry/...'));
     const startedAt = now - (DEFAULT_REPEAT_GRACE_MS + 5_000);
     const stall = detectOutputStall(m, startedAt, { now });
     expect(stall).not.toBeNull();
