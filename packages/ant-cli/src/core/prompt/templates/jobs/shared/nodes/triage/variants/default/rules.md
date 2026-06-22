@@ -26,7 +26,7 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
 | **Output shape** | What the request PRODUCES: a document / design artifact, a code change, a chat-only readout, or a score. Interrogative phrasing alone does not make it a readout. | artifact → design / plan family · code change → code family · readout → `explain-*` · rubric / score → `ask-evaluate` |
 | **Scope** | Does the directive open a NEW subject, or extend / modify work already in progress (the just-authored or a prior artifact)? Additive phrasing ("also need…", "add…", "X is missing") on an existing subject is an extension. | new subject → `gen-*` · extension or modification of an existing artifact → `rev-*` |
 | **Authoring stance** | From the SESSION Job: are you ALREADY authoring this kind of artifact (a design or plan job), or DOWNSTREAM of it (a code / implementation job)? | already authoring → extend in place (`rev-*`) or a new same-kind doc (`gen-*`) · downstream + an ungroundable multi-boundary problem → specify first (`gen-spec`) |
-| **Boundary count** | The independent, non-collapsible concerns the directive names: one, or two-plus. | informs spec-first only from a downstream stance; never decisive on its own |
+| **Boundary count** | The independent, non-collapsible concerns the directive names: one, or two-plus. | not decisive alone, but DECISIVE in combination — from a downstream stance, a problem spanning two-plus boundaries triggers the spec-first Hard Constraint; from an authoring stance it signals extension (`rev-*`). |
 | **Nature** | Is it a report of a problem in observed / built behaviour, a request to build something not yet there, or a question about current state? | problem → work (code / spec) · build → `gen-*` · current-state question → `explain-*` |
 
 ### Family guidance
@@ -44,12 +44,14 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
   locked stack or source (frontend / backend / fullstack, figma / description)
   follows the stack or source the directive states.
 - **`gen-spec` (spec-first)** — from a DOWNSTREAM (code / implementation)
-  stance, when the directive reports a multi-boundary problem in built
-  behaviour that cannot be grounded from the directive alone, prefer
-  specifying the remediation first. This is a **strong prior for the downstream
-  stance, not an override**: when you are already in a design / plan job,
-  multi-boundary-ness is a signal to EXTEND the artifact you are authoring
-  (Scope → `rev-*`), not to spawn another new spec.
+  stance, a directive that reports a problem in built behaviour whose full
+  remediation spans two-plus independent, non-collapsible boundaries → specify
+  the remediation first (see Hard Constraint 4). Groundability is whether the
+  FULL cross-boundary remediation is specified, not whether individual symptoms
+  are described: a long, detailed report (stack traces, named routes) does NOT
+  make a cross-boundary remediation groundable. From a DESIGN / PLAN authoring
+  stance this does not apply — multi-boundary-ness signals EXTENDING the
+  artifact you are authoring (Scope → `rev-*`), not spawning a new spec.
 
 ## Hard Constraints
 
@@ -64,8 +66,17 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
 3. **Greenfield / build-from-design is a build, not a fix** — it belongs to
    the `gen-*` family even when multi-boundary. The discriminator is "create
    what is not there yet" vs "fix what is broken," not boundary count.
-4. **Invalid / accidental input** (unintelligible, incomplete, no actionable
+4. **Spec-first outranks code sub-selection from a downstream stance.** From a
+   DOWNSTREAM (code / implementation) Job, when the directive reports a problem
+   in built behaviour whose remediation spans two-plus independent,
+   non-collapsible boundaries and is not fully groundable from the directive
+   alone → `gen-spec`. This OUTRANKS the `gen-code-*` sub-selection: per-symptom
+   detail (stack traces, specific routes) describes symptoms, not the
+   cross-boundary remediation, and does not make it groundable. Does NOT apply
+   from a design / plan authoring stance (there, multi-boundary → `rev-*`), and
+   does NOT apply to a build that does not exist yet (Constraint 3 governs).
+5. **Invalid / accidental input** (unintelligible, incomplete, no actionable
    content) → `ask-general`.
-5. The chosen `X` MUST appear verbatim in the INTENT CATALOG; misspellings,
+6. The chosen `X` MUST appear verbatim in the INTENT CATALOG; misspellings,
    synonyms, and inventions are not allowed.
-6. Do not output any text outside `<intentId>...</intentId>`.
+7. Do not output any text outside `<intentId>...</intentId>`.
