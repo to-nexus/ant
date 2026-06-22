@@ -99,6 +99,48 @@ describe('NodeCommandAdapter.isAllowed', () => {
     });
   });
 
+  describe('project-local node_modules/.bin binaries', () => {
+    it('allows a locally-installed CLI invoked directly', () => {
+      expect(adapter.isAllowed('node_modules/.bin/vitest --version')).toBe(true);
+      expect(adapter.isAllowed('./node_modules/.bin/tsc --noEmit')).toBe(true);
+      expect(adapter.isAllowed('cd apps/admin && node_modules/.bin/vitest --version 2>&1 || true')).toBe(true);
+    });
+
+    it('still rejects path traversal or arbitrary nested binaries', () => {
+      expect(adapter.isAllowed('node_modules/.bin/../../evil')).toBe(false);
+      expect(adapter.isAllowed('some/other/path/bin')).toBe(false);
+    });
+  });
+
+  describe('read-only diagnostics (Fix 2)', () => {
+    it('allows POSIX test/[ conditionals and path/file inspection', () => {
+      expect(adapter.isAllowed('test -d codebase/node_modules && echo installed || echo missing')).toBe(true);
+      expect(adapter.isAllowed('readlink node_modules/typescript 2>&1 || echo "not a symlink"')).toBe(true);
+      expect(adapter.isAllowed('[ -f package.json ] && echo yes')).toBe(true);
+      expect(adapter.isAllowed('stat package.json')).toBe(true);
+      expect(adapter.isAllowed('realpath ./src')).toBe(true);
+      expect(adapter.isAllowed('basename /a/b/c.ts')).toBe(true);
+      expect(adapter.isAllowed('dirname /a/b/c.ts')).toBe(true);
+    });
+
+    it('allows read-only text/data pipes', () => {
+      expect(adapter.isAllowed('cat pnpm-lock.yaml | jq .')).toBe(true);
+      expect(adapter.isAllowed('cat package.json | jq -r .name')).toBe(true);
+      expect(adapter.isAllowed('echo a:b:c | cut -d: -f2')).toBe(true);
+      expect(adapter.isAllowed('cat f | tr a-z A-Z')).toBe(true);
+    });
+
+    it('STILL rejects file-writing and arbitrary-interpreter commands', () => {
+      // File creation must go through <file> tags, not shell redirection.
+      expect(adapter.isAllowed("printf 'shamefully-hoist=true\\n' > .npmrc")).toBe(false);
+      expect(adapter.isAllowed("tee .npmrc")).toBe(false);
+      expect(adapter.isAllowed('ln -s /tmp/test .symlink_test')).toBe(false);
+      // Arbitrary interpreters stay out (node -e already covers scripting needs).
+      expect(adapter.isAllowed('python3 -c "import os"')).toBe(false);
+      expect(adapter.isAllowed('cat x | python3 -c "import sys"')).toBe(false);
+    });
+  });
+
   describe('compound commands', () => {
     it('allows piped commands when both sides are whitelisted', () => {
       expect(adapter.isAllowed('grep -rn "foo" src/ | head -20')).toBe(true);

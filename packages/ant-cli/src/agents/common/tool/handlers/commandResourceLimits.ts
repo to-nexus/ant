@@ -121,6 +121,9 @@ export function resolveHeapCapMb(
  * Spawn env (or undefined). Single SSOT for the env passed to every command:
  * - CI=true for non-install commands (and installs without shell operators —
  *   preserving prior install-only behavior). Keeps runners non-interactive.
+ * - npm_config_frozen_lockfile=false for install commands — keeps CI's
+ *   non-interactivity but decouples the frozen/immutable-lockfile side effect that
+ *   breaks generation-time installs (lockfile is mutated every task).
  * - VITEST_*_FORKS/THREADS = `workers` — shape-proof worker cap for vitest 2.x
  *   (inherited regardless of command shape; harmless no-op on v4). `0` disables.
  * - NODE_OPTIONS heap cap — `ANT_CMD_MAX_OLD_SPACE_MB` (opt-in) else a default
@@ -138,6 +141,18 @@ export function buildSpawnEnv(
 
   if (!(opts.isInstallCommand && opts.hasShellOperators)) {
     extra.CI = 'true';
+  }
+
+  // Decouple frozen-lockfile from CI for install commands. CI=true (set above for
+  // bare installs — `34366b35` prompt-hang suppression — or inherited from the pod)
+  // makes pnpm/yarn use a frozen/immutable lockfile: correct in real CI, wrong during
+  // ANT generation where every task mutates the lockfile (→ ERR_PNPM_OUTDATED_LOCKFILE).
+  // `34366b35` guarded only the *downstream* build/test leak (operator carve-out) and
+  // missed the install's OWN frozen behavior. `cleanCommandEnv` merges
+  // {...process.env, ...extra}, so this explicit knob also beats an inherited CI=true
+  // (npm/yarn ignore it harmlessly).
+  if (opts.isInstallCommand) {
+    extra.npm_config_frozen_lockfile = 'false';
   }
 
   if (workers > 0) {
