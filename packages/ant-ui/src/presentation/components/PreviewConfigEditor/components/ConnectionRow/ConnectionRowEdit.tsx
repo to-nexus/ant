@@ -65,13 +65,11 @@ export function ConnectionRowEdit({
   onCancel,
   onUpdate,
   onDelete,
-  onToggleVirtualization,
 }: {
   conn: ServiceConnection;
   onCancel: () => void;
   onUpdate: (updates: Partial<ServiceConnection>) => void;
   onDelete: () => void;
-  onToggleVirtualization?: (active: boolean) => void;
 }) {
   const { draft, setDraft, draftProjectId, derivedValue } = useConnectionRowDraft(conn, true);
   const { projects, features, loadingProjects, loadingFeatures } = useProjectFeatureLookup(
@@ -99,6 +97,7 @@ export function ConnectionRowEdit({
       envVar: draft.envVar,
       value: finalValue,
       resolution: finalResolution,
+      virtualization: draft.virtualization,
     });
     onCancel();
   };
@@ -124,8 +123,17 @@ export function ConnectionRowEdit({
             placeholder="Connection name"
           />
         </div>
-        {onToggleVirtualization && (
-          <VirtualizationToggle conn={conn} onToggle={onToggleVirtualization} />
+        {draft.virtualization && (
+          <VirtualizationToggle
+            conn={{ ...conn, virtualization: draft.virtualization }}
+            onToggle={(active) =>
+              setDraft((d) =>
+                d.virtualization
+                  ? { ...d, virtualization: { ...d.virtualization, active } }
+                  : d,
+              )
+            }
+          />
         )}
         <div
           style={{

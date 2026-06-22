@@ -26,7 +26,6 @@ export function ServiceConnectionsSection({
   onUpdateConn,
   onDeleteConn,
   onAddConn,
-  onToggleVirtualization,
 }: {
   localConns: ServiceConnection[];
   packageGroups: Map<string, ServiceConnection[]>;
@@ -43,7 +42,6 @@ export function ServiceConnectionsSection({
   onUpdateConn: (id: string, updates: Partial<ServiceConnection>) => void;
   onDeleteConn: (id: string) => void;
   onAddConn: (conn: ServiceConnection) => void;
-  onToggleVirtualization: (id: string, active: boolean) => void;
 }) {
   const { t } = useTranslation('explorer');
 
@@ -211,9 +209,6 @@ export function ServiceConnectionsSection({
                     }
                     onUpdate={(updates) => onUpdateConn(conn.id, updates)}
                     onDelete={() => onDeleteConn(conn.id)}
-                    onToggleVirtualization={(active) =>
-                      onToggleVirtualization(conn.id, active)
-                    }
                   />
                 ))}
               </div>

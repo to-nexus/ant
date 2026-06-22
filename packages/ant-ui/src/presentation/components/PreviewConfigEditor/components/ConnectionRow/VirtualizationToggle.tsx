@@ -8,10 +8,10 @@ import type { ServiceConnection } from '@/infrastructure/http/api';
  * connections (docker-compose) skip rendering because virtualization is
  * not a concern there.
  *
- * Clicking either button calls `onToggle(active)`. The parent owns the
- * actual transport: the active state is persisted by writing
- * `USE_MOCK_<NAME>=true|false` to the project `.env` file via a dedicated
- * BE endpoint, so a real-swap requires zero code changes.
+ * Rendered inside edit mode only. Clicking either button calls
+ * `onToggle(active)`, which updates the row's edit draft; the change is
+ * committed locally on ✓ and persisted on the section-level Save, which writes
+ * `USE_MOCK_<NAME>=true|false` to the project `.env` (no dedicated endpoint).
  */
 export function VirtualizationToggle({
   conn,

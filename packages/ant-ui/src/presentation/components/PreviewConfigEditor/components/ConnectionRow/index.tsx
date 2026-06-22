@@ -6,10 +6,10 @@ export { VirtualizationToggle } from './VirtualizationToggle';
 
 /**
  * Single connection row in the Service Connections list. Switches between
- * read-only (view) and edit modes based on `isEditing`. The Real /
- * Virtualized toggle is delivered through `onToggleVirtualization` and
- * appears in both modes when the connection has a `virtualization` field
- * (every business connection by definition).
+ * read-only (view) and edit modes based on `isEditing`. The Real / Virtualized
+ * state shows as a static badge in view mode and is editable only inside edit
+ * mode (drafted like every other field, committed via the row ✓ then persisted
+ * by the section-level Save).
  */
 export function ConnectionRow({
   conn,
@@ -17,14 +17,12 @@ export function ConnectionRow({
   onEdit,
   onUpdate,
   onDelete,
-  onToggleVirtualization,
 }: {
   conn: ServiceConnection;
   isEditing: boolean;
   onEdit: () => void;
   onUpdate: (updates: Partial<ServiceConnection>) => void;
   onDelete: () => void;
-  onToggleVirtualization?: (active: boolean) => void;
 }) {
   if (isEditing) {
     return (
@@ -33,16 +31,9 @@ export function ConnectionRow({
         onCancel={onEdit}
         onUpdate={onUpdate}
         onDelete={onDelete}
-        onToggleVirtualization={onToggleVirtualization}
       />
     );
   }
 
-  return (
-    <ConnectionRowView
-      conn={conn}
-      onEdit={onEdit}
-      onToggleVirtualization={onToggleVirtualization}
-    />
-  );
+  return <ConnectionRowView conn={conn} onEdit={onEdit} />;
 }

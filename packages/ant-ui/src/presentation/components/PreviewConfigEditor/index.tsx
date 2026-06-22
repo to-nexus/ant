@@ -331,7 +331,6 @@ export function PreviewConfigEditor() {
             onUpdateConn={connEditor.handleUpdateConn}
             onDeleteConn={connEditor.handleDeleteConn}
             onAddConn={connEditor.handleAddConn}
-            onToggleVirtualization={connEditor.handleToggleVirtualization}
           />
 
           <div id="c3v-profile" />

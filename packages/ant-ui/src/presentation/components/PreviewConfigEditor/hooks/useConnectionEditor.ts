@@ -24,7 +24,6 @@ export interface UseConnectionEditorResult {
   handleUpdateConn: (id: string, updates: Partial<ServiceConnection>) => void;
   handleDeleteConn: (id: string) => void;
   handleAddConn: (conn: ServiceConnection) => void;
-  handleToggleVirtualization: (id: string, active: boolean) => void;
 }
 
 export function useConnectionEditor(
@@ -144,20 +143,6 @@ export function useConnectionEditor(
     setAddingNew(false);
   }, []);
 
-  /**
-   * Flip a connection's `virtualization.active` locally and mark unsaved — the
-   * toggle is deferred to Save (same flow as resolution / category edits), and
-   * Save persists `USE_MOCK_<NAME>=<active>` to `.env`. No immediate write.
-   */
-  const handleToggleVirtualization = useCallback((id: string, active: boolean) => {
-    setLocalConns(prev => prev.map(c =>
-      c.id === id && c.virtualization
-        ? { ...c, virtualization: { ...c.virtualization, active } }
-        : c,
-    ));
-    setHasUnsavedChanges(true);
-  }, []);
-
   return {
     localConns, hasUnsavedChanges,
     editingConnId, setEditingConnId,
@@ -165,6 +150,5 @@ export function useConnectionEditor(
     isDetecting, isSaving, packageGroups, isSinglePackage,
     handleAutoDetect, handleSaveConnections,
     handleUpdateConn, handleDeleteConn, handleAddConn,
-    handleToggleVirtualization,
   };
 }
