@@ -105,12 +105,29 @@ describe('buildSpawnEnv', () => {
 
   it('preserves prior install behavior: no CI for install WITH shell operators', () => {
     expect(buildSpawnEnv({ isInstallCommand: true, hasShellOperators: true }, 1, {})).toEqual({
+      npm_config_frozen_lockfile: 'false',
       VITEST_MAX_FORKS: '1',
       VITEST_MIN_FORKS: '1',
       VITEST_MAX_THREADS: '1',
       VITEST_MIN_THREADS: '1',
     });
     expect(buildSpawnEnv({ isInstallCommand: true, hasShellOperators: false }, 1, {})).toMatchObject({
+      CI: 'true',
+    });
+  });
+
+  it('decouples frozen-lockfile from CI for install commands (keeps non-interactivity, allows lockfile update)', () => {
+    // Bare install: keeps CI=true (prompt-hang suppression) AND forces lockfile update.
+    const bare = buildSpawnEnv({ isInstallCommand: true, hasShellOperators: false }, 0, {});
+    expect(bare).toMatchObject({ CI: 'true', npm_config_frozen_lockfile: 'false' });
+    // Compound install: no CI (downstream build/test leak guard) but still lockfile-updating.
+    const compound = buildSpawnEnv({ isInstallCommand: true, hasShellOperators: true }, 0, {});
+    expect(compound).toEqual({ npm_config_frozen_lockfile: 'false' });
+    // Explicit knob must win over an inherited CI=true in the pod env.
+    const inheritedCi = buildSpawnEnv({ isInstallCommand: true, hasShellOperators: false }, 0, { CI: 'true' });
+    expect(inheritedCi?.npm_config_frozen_lockfile).toBe('false');
+    // Non-install commands never get the frozen knob.
+    expect(buildSpawnEnv({ isInstallCommand: false, hasShellOperators: false }, 0, {})).toEqual({
       CI: 'true',
     });
   });
