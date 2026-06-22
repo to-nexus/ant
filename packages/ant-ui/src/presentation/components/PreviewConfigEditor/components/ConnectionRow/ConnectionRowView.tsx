@@ -12,7 +12,6 @@ import type { ServiceConnection } from '@/infrastructure/http/api';
 import { SignalRing } from '@/presentation/components/ConfigEditor/aurora';
 import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
 import { getResolutionLabel } from '../../utils';
-import { VirtualizationToggle } from './VirtualizationToggle';
 
 const CATEGORY_META: Record<
   string,
@@ -69,19 +68,16 @@ function ringStateForConn(conn: ServiceConnection): SignalRingState | null {
 }
 
 /**
- * Read-only display of a connection. The Virtualization toggle (if the
- * connection has one) sits in the badge row so the user can flip
- * Real/Virtualized without entering edit mode — toggle persistence
- * happens via `onToggleVirtualization` (writes `.env` on the BE).
+ * Read-only display of a connection. The Real/Virtualized state shows as a
+ * static badge here; flipping it requires entering edit mode (like every other
+ * field) and persists through the section-level Save.
  */
 export function ConnectionRowView({
   conn,
   onEdit,
-  onToggleVirtualization,
 }: {
   conn: ServiceConnection;
   onEdit: () => void;
-  onToggleVirtualization?: (active: boolean) => void;
 }) {
   const [hover, setHover] = useState(false);
   const catMeta = CATEGORY_META[conn.category] || CATEGORY_META.business;
@@ -239,11 +235,30 @@ export function ConnectionRowView({
             {conn.source}
           </span>
         )}
-        {onToggleVirtualization && (
-          <VirtualizationToggle
-            conn={conn}
-            onToggle={onToggleVirtualization}
-          />
+        {conn.virtualization && (
+          <span
+            title={`Service Virtualization: ${conn.virtualization.toggleEnvVar} (edit to change)`}
+            style={{
+              padding: '2px 8px',
+              fontSize: 10,
+              fontWeight: 700,
+              borderRadius: 'var(--r-pill)',
+              letterSpacing: '0.02em',
+              ...(conn.virtualization.active
+                ? {
+                    background: 'oklch(94% 0.06 290 / 0.55)',
+                    color: 'var(--violet-700)',
+                    border: '1px solid var(--violet-200)',
+                  }
+                : {
+                    background: 'oklch(94% 0.04 240 / 0.55)',
+                    color: 'oklch(42% 0.14 250)',
+                    border: '1px solid oklch(84% 0.08 240)',
+                  }),
+            }}
+          >
+            {conn.virtualization.active ? 'Virtualized' : 'Real'}
+          </span>
         )}
       </div>
 
