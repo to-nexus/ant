@@ -36,6 +36,7 @@ import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
@@ -332,6 +333,7 @@ export async function execute(
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: !isAfterToolCall && !hasRemediationPlan,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
+      signal: getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         thinking = '';

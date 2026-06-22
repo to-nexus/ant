@@ -148,13 +148,19 @@ export async function sealJobRedisState(
   stateStore: StateStorePort | undefined,
   kanbanService: KanbanService | undefined,
   jobId: string,
+  // For the user_stopped finalize path, keep the userStopped flag alive so the
+  // running child's poll backup + JobWorker's poll + the pre-spawn guard stay
+  // armed until the child is truly terminal. The flag is cleared independently
+  // on resume (JobWorker.processJob) and confirmed terminal exit
+  // (JobExecutionManager); its 1h TTL caps any leak.
+  preserveUserStopped: boolean = false,
 ): Promise<void> {
   if (stateStore) {
     const ops = [
       stateStore.deleteJobStatus(jobId),
       stateStore.deleteTaskQueue(jobId),
       stateStore.deleteWorkflowState(jobId),
-      stateStore.clearUserStopped(jobId),
+      ...(preserveUserStopped ? [] : [stateStore.clearUserStopped(jobId)]),
       stateStore.deleteJobMapping(jobId),
       stateStore.deleteKillReason(jobId),
     ];
