@@ -258,6 +258,9 @@ export async function finalizeTerminalJob(
     stateStore,
     deps.kanbanService,
     jobId,
+    // Keep the userStopped flag alive so the running child's stop watcher and
+    // the worker poll/pre-spawn guards stay armed until it is truly terminal.
+    interruption?.reason === 'user_stopped',
   );
 
   // 5. In-memory tracker cleanup (redundant if broadcastFinalUpdate already
