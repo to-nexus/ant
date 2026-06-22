@@ -95,18 +95,40 @@ export class NodeCommandAdapter implements CommandPort {
     'wc',        // Count lines/words/bytes
     'file',      // Identify file type
     'diff',      // Compare files
-    
+    'cmp',       // Byte-compare two files (read-only)
+    'stat',      // File metadata (read-only)
+    'readlink',  // Resolve a symlink target (read-only)
+    'realpath',  // Canonicalize a path (read-only)
+    'basename',  // Strip path to filename (pure string)
+    'dirname',   // Strip filename to dir (pure string)
+    'du',        // Disk usage (read-only diagnostics)
+    'df',        // Filesystem free space (read-only diagnostics)
+
+    // Read-only conditionals (POSIX test) — diagnostics like `test -d x && echo y`
+    'test',
+    '[',
+
     // File searching
     'find',      // Search for files
     'grep',      // Search text patterns
     'which',     // Locate command
-    
-    // Text processing
+
+    // Text processing (read-only: stdin → stdout)
     'echo',      // Print text
     'sort',      // Sort lines
     'uniq',      // Remove duplicates
     'awk',       // Text processing
     'sed',       // Stream editor
+    'cut',       // Select columns/fields
+    'tr',        // Translate/squeeze characters
+    'nl',        // Number lines
+    'tac',       // Reverse line order
+    'rev',       // Reverse characters per line
+    'column',    // Columnate lists
+    'jq',        // JSON query/transform (read-only without -i)
+    'yq',        // YAML/JSON query (read-only without -i)
+    'printenv',  // Print environment variables (read-only)
+    'date',      // Current date/time (read-only)
     
     // Network
     'curl',      // HTTP requests / API testing
@@ -182,12 +204,17 @@ export class NodeCommandAdapter implements CommandPort {
   }
 
   /**
-   * Allow ./relative-path binaries produced by compile-and-run workflows
-   * (e.g., `go build -o app && ./app`). Only simple names are permitted —
-   * no path traversal, no subdirectories, no flags.
+   * Allow relative-path binaries the project produces or installs:
+   * - `./app` — compile-and-run output (e.g. `go build -o app && ./app`)
+   * - `(./)node_modules/.bin/<name>` — a locally-installed CLI the LLM invokes
+   *   directly (e.g. `node_modules/.bin/vitest --version`) instead of via `pnpm exec`.
+   * Both forbid path traversal / nested subdirectories / flags in the token itself.
    */
   private isAllowedRelativeBinary(cmd: string): boolean {
-    return /^\.\/[a-zA-Z_][\w.-]*$/.test(cmd);
+    return (
+      /^\.\/[a-zA-Z_][\w.-]*$/.test(cmd) ||
+      /^(?:\.\/)?node_modules\/\.bin\/[a-zA-Z_][\w.-]*$/.test(cmd)
+    );
   }
 
   /**
