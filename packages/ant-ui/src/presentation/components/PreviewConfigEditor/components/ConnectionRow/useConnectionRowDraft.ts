@@ -3,6 +3,7 @@ import type {
   ServiceConnection,
   ConnectionResolution,
   ServiceCategory,
+  VirtualizationStrategy,
 } from '@/infrastructure/http/api';
 
 export interface DraftState {
@@ -12,6 +13,8 @@ export interface DraftState {
   resolution: ConnectionResolution;
   urlInput: string;
   connectionString: string;
+  /** Real/Virtual toggle, drafted like every other field — committed on ✓. */
+  virtualization?: VirtualizationStrategy;
 }
 
 export interface UseConnectionRowDraftResult {
@@ -37,6 +40,7 @@ export function useConnectionRowDraft(
     resolution: conn.resolution,
     urlInput: '',
     connectionString: '',
+    virtualization: conn.virtualization,
   });
 
   useEffect(() => {
@@ -48,9 +52,10 @@ export function useConnectionRowDraft(
         resolution: conn.resolution,
         urlInput: conn.resolution.type === 'url' ? (conn.value || conn.resolution.url || '') : '',
         connectionString: conn.resolution.type === 'docker' ? (conn.value || '') : '',
+        virtualization: conn.virtualization,
       });
     }
-  }, [isEditing, conn.name, conn.category, conn.envVar, conn.value, conn.resolution]);
+  }, [isEditing, conn.name, conn.category, conn.envVar, conn.value, conn.resolution, conn.virtualization]);
 
   const draftProjectId = draft.resolution.type === 'ant-project' ? draft.resolution.projectId : null;
 

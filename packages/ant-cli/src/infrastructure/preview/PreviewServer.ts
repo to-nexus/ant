@@ -36,7 +36,8 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
-import { toUrlKeyWithService, isUrlKey, packageSlug, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
 import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
@@ -831,31 +832,17 @@ export class PreviewServer {
           }
         }
 
-        // Resolve ant-project connections: compute resolvedUrlKey and proxy path
-        const resolvedConnections = (connections || []).map((conn: any) => {
-          if (conn.resolution?.type === 'ant-project' && conn.resolution.projectId && conn.resolution.feature) {
-            const resolvedProjectId = conn.resolution.projectId === 'self' ? projectId : conn.resolution.projectId;
-            const resolvedFeature = conn.resolution.feature === 'self' ? feature : conn.resolution.feature;
-            const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${resolvedProjectId}:${resolvedFeature}`;
-            // Normalize the user-supplied serviceName through the SAME slug
-            // helper used when producing `PreviewPackage.slug`. This way a
-            // user typing `apps/web`, `apps-web`, or `web` in their
-            // `@connection` annotation all resolve to the same slug, and the
-            // proxy can match by exact slug equality without fuzzy logic.
-            const slug = packageSlug(conn.resolution.serviceName);
-            const resolvedUrlKey = toUrlKeyWithService(backendServerKey, slug);
-            return {
-              ...conn,
-              resolution: {
-                ...conn.resolution,
-                serviceName: slug,
-                resolvedUrlKey,
-              },
-              value: `/${resolvedUrlKey}`,
-            };
-          }
-          return conn;
-        });
+        // Resolve ant-project connections: compute resolvedUrlKey and proxy path.
+        // A service-less connection (e.g. `self`) resolves to the whole-backend
+        // proxy path — see resolveConnectionForSave for the serviceName guard.
+        const resolvedConnections = (connections || []).map((conn: any) =>
+          resolveConnectionForSave(conn, {
+            projectId,
+            feature,
+            organizationId: userContext.organizationId,
+            userId: userContext.userId,
+          }),
+        );
 
         // Strip runtime status before persisting (status is transient, belongs in PREVIEW state only)
         const configConnections = resolvedConnections.map(({ status, ...rest }: any) => rest);
