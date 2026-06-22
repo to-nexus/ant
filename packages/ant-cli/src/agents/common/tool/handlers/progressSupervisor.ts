@@ -35,9 +35,17 @@ export function readPositiveInt(raw: string | undefined, fallback: number): numb
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** Collapses progress counters like "(1/4)" → "(N/N)" so retries match. */
-export function normalizeStderrLineSig(line: string): string {
-  return line.replace(/\d+/g, 'N').trim().slice(0, 80);
+/**
+ * Stall identity for one output line: trim + length-cap, NO digit collapse. A
+ * `repeatedSignature` stall means the command re-emits the *same* line with no
+ * progress; a line whose only delta is a climbing counter (`added 1`→`added 13`)
+ * is progress and MUST key distinctly. Only byte-identical repetition is a stall;
+ * a chatty loop varying only by a number stays bounded by noOutput / hardTimeout.
+ * (RCA `bronze-mending-blade`: digit-collapsing pnpm's monotonic install progress
+ * into one signature killed every >60s install on slow EFS as a false stuck loop.)
+ */
+export function stallLineKey(line: string): string {
+  return line.trim().slice(0, 80);
 }
 
 /** Banner lines from package managers / shells — excluded from signature counting
@@ -45,7 +53,7 @@ export function normalizeStderrLineSig(line: string): string {
 const STALL_IGNORE_PREFIXES = ['> ', '$ '];
 
 export function pushLineSig(stallMap: Map<string, number>, line: string): void {
-  const sig = normalizeStderrLineSig(line);
+  const sig = stallLineKey(line);
   if (!sig) return;
   for (const prefix of STALL_IGNORE_PREFIXES) {
     if (sig.startsWith(prefix)) return;
@@ -195,7 +203,7 @@ export class ProgressSupervisor {
 
   private hasNonBannerLine(chunk: string): boolean {
     for (const line of chunk.split('\n')) {
-      const sig = normalizeStderrLineSig(line);
+      const sig = stallLineKey(line);
       if (!sig) continue;
       const isBanner = STALL_IGNORE_PREFIXES.some(p => sig.startsWith(p));
       if (!isBanner) return true;
