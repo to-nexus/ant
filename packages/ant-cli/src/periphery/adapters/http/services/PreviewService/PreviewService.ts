@@ -29,12 +29,16 @@ const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
 /**
- * Choose the appropriate post-validation status line for the preview spawn loop.
+ * Choose the appropriate post-spawn status line for the preview spawn loop.
  *
- * The FE preview state machine ([packages/ant-ui/.../FeatureSection/utils/preview.ts])
- * matches `'All preview servers started'` to transition packages to `'running'`.
- * Emit it only when no package crashed during the settling window so the UI
- * doesn't show a false `'running'` state for a partially-broken preview.
+ * This runs right after spawn, BEFORE the async health check — so "all
+ * processes survived the settling window" is NOT yet "the dev server responds".
+ * The success line here is therefore neutral ("verifying…"); the truthful
+ * `'All preview servers started successfully!'` line — which the FE progress
+ * view ([packages/ant-ui/.../FeatureSection/utils/preview.ts]) matches to flip
+ * packages to `'running'` — is emitted only AFTER the health check passes (see
+ * the health-check `.then` in `startPreview`). This prevents the UI from
+ * showing a false success that then fails 60s later.
  */
 export function summarizePreviewSpawnOutcome(
   orderedPackages: ReadonlyArray<{ name: string; process?: ChildProcess | null }>,
@@ -43,7 +47,7 @@ export function summarizePreviewSpawnOutcome(
     .filter(p => p.process != null && p.process.exitCode !== null && p.process.exitCode !== 0)
     .map(p => p.name);
   if (crashedDuringSettling.length === 0) {
-    return { type: 'stdout', message: '✅ All preview servers started successfully!' };
+    return { type: 'stdout', message: '🚀 Processes spawned — verifying dev server health…' };
   }
   return {
     type: 'stderr',
@@ -981,6 +985,11 @@ export class PreviewService {
         }
         
         if (ready) {
+          // Truthful success signal — emitted ONLY after the health check
+          // passes. The FE progress view (preview.ts) matches this string to
+          // flip packages to 'running'; the spawn-time summary above is
+          // intentionally neutral so the UI never shows a premature success.
+          this.appendLog(serverKey, 'stdout', '✅ All preview servers started successfully!');
           await this.updatePhase(serverKey, 'running', { running: true, ready: true });
         } else {
           // Health check failed — dev server is not responding. Clean up everything.

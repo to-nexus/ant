@@ -12,13 +12,15 @@
  * so their outputs are keyed to the same feature and normalised with
  * the same `isLoading` rule.
  *
- * Invariant: when backend reports `phase === 'running'`, `isLoading` is
- * forced to `false`. A stuck-loading UI cannot exist once the backend
- * considers the server up.
+ * Invariant: when the backend reports any TERMINAL phase
+ * (`running` | `error` | `stopped`), `isLoading` is forced to `false`. A
+ * stuck-loading UI cannot exist once the server is up OR has failed/stopped —
+ * the Start button always returns to a clickable state after a failure.
  */
 
 import type { PreviewStatus, LogEntry } from '@/infrastructure/http/api';
 import type { PerFeaturePreviewState } from '../slices/previewSlice';
+import { isTerminalPhase } from '../slices/previewSlice';
 import {
   analyzePreviewState,
   extractErrorFromLogs,
@@ -136,8 +138,11 @@ export function selectPreviewVM(
   const status = entry?.status;
   const rawLoading = entry?.isLoading ?? false;
 
-  // Invariant: running ⇒ not loading (see module header).
-  const isLoading = status?.phase === 'running' ? false : rawLoading;
+  // Invariant: any terminal phase (running | error | stopped) ⇒ not loading.
+  // Only transitional phases (installing / starting / stopping / undefined)
+  // honour the raw flag, so a failed/stopped server never leaves the Start
+  // button stuck behind a spinner. (see module header)
+  const isLoading = isTerminalPhase(status?.phase) ? false : rawLoading;
 
   const state: PreviewState = analyzePreviewState(status as any, isLoading);
 

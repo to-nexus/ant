@@ -21,6 +21,7 @@ import {
 } from '@/infrastructure/http/api';
 import type { PreviewStatus } from '@/infrastructure/http/api';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
+import * as consoleLogCache from '@/infrastructure/persistence/consoleLogCache';
 import { PREVIEW_MESSAGES } from '../constants/preview';
 import {
   loadDismissedMessages,
@@ -116,6 +117,9 @@ export function usePreviewManager(
     // Preserve fields that describe the workspace (not the run) so
     // buttons stay meaningful.
     const prev = useStore.getState().previewByFeature[featureKey]?.status;
+    // Restart resets logs — clear both the store buffer (below) and the
+    // sessionStorage cache so a stale prior-run buffer can't be re-hydrated.
+    consoleLogCache.clearLogs('preview', featureKey);
     setPreviewStatus(featureKey, {
       running: false,
       ready: false,
@@ -155,6 +159,10 @@ export function usePreviewManager(
       // where that event is lost.)
     } catch (err: any) {
       if (err?.setupReasoning) {
+        // Preserve accumulated logs — they explain WHY setup failed. The prior
+        // start already reset logs to []; any lines since then are diagnostic.
+        const prevLogs =
+          useStore.getState().previewByFeature[featureKey]?.status?.logs ?? [];
         setPreviewStatus(featureKey, {
           running: false,
           ready: false,
@@ -162,7 +170,7 @@ export function usePreviewManager(
           setupReason: err.setupReason,
           suggestedFix: err.suggestedFix,
           issues: err.issues,
-          logs: [],
+          logs: prevLogs,
         } as PreviewStatus);
       } else {
         // Network/timeout — backend might still be up. Re-sync from

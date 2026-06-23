@@ -101,6 +101,28 @@ export function PreviewConfigEditor() {
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [activeStream, setActiveStream] = useState<'dev' | 'deploy'>('dev');
 
+  // Surface failures: when a stream transitions INTO an error state, expand the
+  // console and switch to that stream so the diagnostic logs are visible
+  // instead of hidden in the collapsed panel. Edge-triggered via refs so a
+  // manual collapse while still in error is respected (we only react to the
+  // idle/active→error edge, not to a sustained error state).
+  const prevDevErrRef = useRef(false);
+  const prevDeployErrRef = useRef(false);
+  const deployPhase = deployStatusData?.phase;
+  useEffect(() => {
+    const devErr = previewState === 'error';
+    const deployErr = deployPhase === 'error';
+    if (devErr && !prevDevErrRef.current) {
+      setActiveStream('dev');
+      setLogsExpanded(true);
+    } else if (deployErr && !prevDeployErrRef.current) {
+      setActiveStream('deploy');
+      setLogsExpanded(true);
+    }
+    prevDevErrRef.current = devErr;
+    prevDeployErrRef.current = deployErr;
+  }, [previewState, deployPhase]);
+
   const isRunning = previewState === 'running';
 
   // Single scroller for TwoColLayout + DockedConsole

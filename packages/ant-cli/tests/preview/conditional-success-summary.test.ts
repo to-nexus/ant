@@ -8,17 +8,19 @@ function child(exitCode: number | null): { exitCode: number | null } {
 }
 
 describe('summarizePreviewSpawnOutcome', () => {
-  it('all packages still running → success summary that the FE state machine matches', () => {
+  it('all packages still running → NEUTRAL spawn summary (success is NOT yet claimed)', () => {
     const result = summarizePreviewSpawnOutcome([
       { name: 'apps/console', process: child(null) as any },
       { name: 'apps/hub', process: child(null) as any },
     ]);
-    expect(result).toEqual({
-      type: 'stdout',
-      message: '✅ All preview servers started successfully!',
-    });
-    // The FE preview state machine at preview.ts:131 matches this exact substring.
-    expect(result.message).toContain('All preview servers started');
+    expect(result.type).toBe('stdout');
+    // This runs BEFORE the async health check, so it must NOT emit the
+    // running-trigger literal — that would let the FE (preview.ts:131) flip to
+    // 'running' prematurely, before the dev server is verified. The truthful
+    // success line is emitted only after the health check passes.
+    expect(result.message).not.toContain('All preview servers started');
+    expect(result.message).not.toContain('successfully');
+    expect(result.message.toLowerCase()).toContain('verifying');
   });
 
   it('one package crashed during settling → factual failure summary, NOT success', () => {
@@ -50,13 +52,13 @@ describe('summarizePreviewSpawnOutcome', () => {
 
   it('package with exitCode=0 (clean exit during settling) treated as healthy — only non-zero counts', () => {
     // Edge case: an exit-zero is "completed cleanly", not a crash. This should
-    // still produce the success summary.
+    // still produce the neutral (non-failure) spawn summary.
     const result = summarizePreviewSpawnOutcome([
       { name: 'apps/console', process: child(0) as any },
       { name: 'apps/hub', process: child(null) as any },
     ]);
     expect(result.type).toBe('stdout');
-    expect(result.message).toContain('All preview servers started');
+    expect(result.message).not.toContain('All preview servers started');
   });
 
   it('package with no process attached → ignored (not counted as crash)', () => {
