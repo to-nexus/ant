@@ -36,6 +36,7 @@ import { WorkspacePathResolver } from "../core/config/WorkspacePathResolver";
 import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
 import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { logCorsConfigSummary } from "../periphery/adapters/http/middleware/corsConfig";
+import { getInfrastructureFactory } from "../infrastructure/adapters/InfrastructureFactory";
 
 /**
  * Server Entry Point
@@ -99,6 +100,10 @@ async function main() {
   if (partialResult.failed.length > 0) {
     console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register — server may produce incomplete prompts`);
   }
+
+  // Warm-load the cloud overlay (@ant/cloud) BEFORE the adapter wires routes.
+  // No-op in local mode; throws in cloud mode if the package is missing.
+  await getInfrastructureFactory().initCloud();
 
   // Create server with mode configuration and WorkspaceService
   const server = new ExpressServerAdapter(mode, workspacesPath, workspaceService);

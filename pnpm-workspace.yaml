@@ -12,6 +12,7 @@ allowBuilds:
   msgpackr-extract: false
   protobufjs: false
   ssh2: false
+  '@google/genai': false
 
 # Trivy CI fix — 전이 의존성 CVE patch (pnpm 11 워크스페이스는 overrides 를 여기서만 인식)
 overrides:

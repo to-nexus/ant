@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
-import { CreditRechargeCTA } from '@/presentation/components/billing/CreditRechargeCTA';
+import { Slot } from '@/presentation/extensions/slots';
 import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
@@ -271,7 +271,7 @@ export function ChatPanel({
             insufficient credits (the mid-job pause shows its own CTA on the card). */}
         {creditBlockActive && (
           <div className="px-3 pt-2">
-            <CreditRechargeCTA />
+            <Slot name="chat.rechargeCta" />
           </div>
         )}
 

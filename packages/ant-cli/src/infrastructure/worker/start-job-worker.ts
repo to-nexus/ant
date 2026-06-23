@@ -18,11 +18,14 @@
 import 'dotenv/config';
 import { startJobWorker } from './JobWorker';
 import { logger } from '../../utils/logger';
+import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 
 async function main(): Promise<void> {
   logger.info(`Starting Job Worker process... (RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'not set'})`, { component: 'JobWorkerProcess' });
 
   try {
+    // Warm-load the cloud overlay (parity with API/realtime composition roots).
+    await getInfrastructureFactory().initCloud();
     const worker = await startJobWorker();
     logger.info('Job Worker is running. Press Ctrl+C to stop.', { component: 'JobWorkerProcess' });
     

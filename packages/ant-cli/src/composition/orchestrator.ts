@@ -17,7 +17,7 @@ import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import { recordUserTurn } from "./recordUserTurn";
 import { isBillingEnabled } from "../core/config/billingCapability";
-import { RedisCreditLedger } from "../infrastructure/billing/RedisCreditLedger";
+import { loadCloudModule } from "../core/cloud/cloudPlugin";
 import type { CreditLedgerPort } from "../core/ports/creditLedger";
 import { Redis } from "ioredis";
 import * as path from "path";
@@ -30,10 +30,19 @@ import * as path from "path";
  * `infrastructure/billing` adapter to the core `BroadcasterOptions` port slot.
  */
 let _jobCreditLedger: CreditLedgerPort | undefined | null = null;
-function getJobCreditLedger(): CreditLedgerPort | undefined {
+async function getJobCreditLedger(): Promise<CreditLedgerPort | undefined> {
   if (_jobCreditLedger !== null) return _jobCreditLedger ?? undefined;
   const url = process.env.ANT_REDIS_URL;
   if (!isBillingEnabled() || !url) {
+    _jobCreditLedger = undefined;
+    return undefined;
+  }
+  // The concrete credit ledger lives in `@ant/cloud`; obtain it through the OSS
+  // seam. `loadCloudModule()` returns null in OSS/local (billing disabled or
+  // package absent) → no ledger, matching the billing-disabled path. The
+  // dynamic import is cached by cloudPlugin.
+  const cloud = await loadCloudModule();
+  if (!cloud) {
     _jobCreditLedger = undefined;
     return undefined;
   }
@@ -41,7 +50,7 @@ function getJobCreditLedger(): CreditLedgerPort | undefined {
     ? { tls: { checkServerIdentity: () => undefined as undefined } }
     : {};
   const client = new Redis(url, { ...tls, maxRetriesPerRequest: 3, lazyConnect: true });
-  _jobCreditLedger = new RedisCreditLedger(client);
+  _jobCreditLedger = cloud.createCreditLedger({ redis: client });
   return _jobCreditLedger;
 }
 
@@ -293,8 +302,8 @@ export async function orchestrator(params: {
             const options = getBroadcasterOptionsFromEnv();
 
             if (options) {
-              options.creditLedger = getJobCreditLedger();
-              options.creditLedger = getJobCreditLedger();
+              options.creditLedger = await getJobCreditLedger();
+              options.creditLedger = await getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
@@ -389,8 +398,8 @@ export async function orchestrator(params: {
             const options = getBroadcasterOptionsFromEnv();
 
             if (options) {
-              options.creditLedger = getJobCreditLedger();
-              options.creditLedger = getJobCreditLedger();
+              options.creditLedger = await getJobCreditLedger();
+              options.creditLedger = await getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
@@ -481,7 +490,7 @@ export async function orchestrator(params: {
           const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
           const options = getBroadcasterOptionsFromEnv();
           if (options) {
-            options.creditLedger = getJobCreditLedger();
+            options.creditLedger = await getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
             kanbanUpdate = broadcasters.kanban;
             fileTreeUpdate = broadcasters.fileTree;
@@ -601,7 +610,7 @@ export async function orchestrator(params: {
           const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
           const options = getBroadcasterOptionsFromEnv();
           if (options) {
-            options.creditLedger = getJobCreditLedger();
+            options.creditLedger = await getJobCreditLedger();
             const broadcasters = createRealtimeBroadcasters(options);
             kanbanUpdate = broadcasters.kanban;
             fileTreeUpdate = broadcasters.fileTree;
