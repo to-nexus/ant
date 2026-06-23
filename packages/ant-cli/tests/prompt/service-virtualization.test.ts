@@ -843,6 +843,83 @@ describe('service-virtualization — navigable-target reachability owned by the 
   });
 });
 
+// =============================================================================
+// 6. preview-env-contract §4.5 — One Connection, One Toggle (no master, no sub-toggles)
+// =============================================================================
+
+describe('preview-env-contract §4.5 — toggle cardinality', () => {
+  const PREVIEW_ENV_CONTRACT = path.join(INJECTIONS_DIR, 'preview-env-contract.md');
+  const DECOMPOSE_RULES = path.join(
+    TEMPLATES_ROOT,
+    'jobs/code/nodes/decompose/variants/default/rules.md',
+  );
+
+  it('declares the "One Connection, One Toggle" principle', () => {
+    const src = read(PREVIEW_ENV_CONTRACT);
+    expect(src).toMatch(/One Connection, One Toggle/);
+    // adapters sharing one backend read the single connection-derived toggle
+    expect(src).toMatch(/single connection-derived toggle/i);
+  });
+
+  it('flags concern-named sub-toggles as unreachable from the preview switch', () => {
+    const src = read(PREVIEW_ENV_CONTRACT);
+    // names the trap shape and the consequence
+    expect(src).toMatch(/USE_MOCK_API.*USE_MOCK_AUTH|USE_MOCK_AUTH.*USE_MOCK_API/);
+    expect(src).toMatch(/unreachable from the preview connection switch/i);
+  });
+
+  it('does NOT instruct authoring a master broadcast toggle', () => {
+    const src = read(PREVIEW_ENV_CONTRACT);
+    // the old "master broadcast MAY be present" authoring guidance is gone
+    expect(src).not.toMatch(/master broadcast toggle MAY be present/i);
+    // and the master-broadcast .env.example example block is removed
+    expect(src).not.toMatch(/Master broadcast \(optional\)/i);
+    // explicit "do NOT author a master broadcast" directive present
+    expect(src).toMatch(/do NOT author a master broadcast/i);
+  });
+
+  it('decompose SV wiring no longer offers the master broadcast as an option', () => {
+    const src = read(DECOMPOSE_RULES);
+    expect(src).not.toMatch(/Optionally declare the master broadcast/i);
+    // points at the §4.5 principle instead
+    expect(src).toMatch(/One Connection, One Toggle/);
+  });
+
+  it('§4.5 framework naming table no longer advertises a "Master broadcast" column', () => {
+    const src = read(PREVIEW_ENV_CONTRACT);
+    // the naming table header used to carry a Master broadcast column that
+    // contradicted the no-master rule — it must be gone
+    expect(src).not.toMatch(/\| Consumer runtime \| Toggle name \| Master broadcast \|/);
+    // master remains documented only as a runtime fallback, not generated output
+    expect(src).toMatch(/runtime honours it only as a fallback/i);
+  });
+});
+
+// =============================================================================
+// 7. service-virtualization/contract.md — consumption-side selection code
+// =============================================================================
+
+describe('service-virtualization/contract — adapter selection (consumption) side', () => {
+  // collapse hard line-wraps so phrase matches are newline-insensitive
+  const flat = (p: string): string => read(p).replace(/\s+/g, ' ');
+
+  it('does NOT instruct the selection code to implement a master-broadcast fallback', () => {
+    const src = flat(PARTIAL_CONTRACT);
+    // the old "master broadcast variable as fallback" mandate is gone
+    expect(src).not.toMatch(/master broadcast variable as fallback/i);
+    // explicit prohibition present instead
+    expect(src).toMatch(/Do NOT read a master broadcast/i);
+  });
+
+  it('binds the selection code to exactly the single connection-derived toggle', () => {
+    const src = flat(PARTIAL_CONTRACT);
+    expect(src).toMatch(/reads from exactly that name — and only that name/i);
+    // multiple adapters behind one backend share the ONE toggle
+    expect(src).toMatch(/every selection site reads that ONE connection-derived toggle/i);
+    expect(src).toMatch(/per-adapter \/ per-concern toggle/i);
+  });
+});
+
 function walk(dir: string, visit: (file: string) => void): void {
   if (!fs.existsSync(dir)) return;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
