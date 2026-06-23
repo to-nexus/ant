@@ -21,6 +21,7 @@ import 'dotenv/config';
 import { createRealtimeServer } from './RealtimeServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
+import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const WORKSPACES_PATH = process.env.ANT_WORKSPACE_BASE_PATH;
@@ -45,7 +46,10 @@ async function main(): Promise<void> {
   logger.warn(`   Port: ${PORT}`, { component: 'RealtimeServerProcess' });
 
   logCorsConfigSummary();
-  
+
+  // Warm-load the cloud overlay before the broadcaster (live debit) is wired.
+  await getInfrastructureFactory().initCloud();
+
   try {
     const server = await createRealtimeServer({
       port: PORT,

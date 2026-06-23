@@ -34,12 +34,12 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { BullMQJobQueue } from '../queue/BullMQJobQueue';
 import { LocalIDEOrchestrator } from '../ide/LocalIDEOrchestrator';
 import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
-import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
-import { RedisCreditLedger } from '../billing/RedisCreditLedger';
-import { MockPaymentProvider } from '../billing/MockPaymentProvider';
 import { NoopCreditLedger } from '../../periphery/adapters/billing/NoopCreditLedger';
 import { NoopPaymentProvider } from '../../periphery/adapters/billing/NoopPaymentProvider';
+import { NoopOrganizationRepository } from '../../periphery/adapters/auth/NoopOrganizationRepository';
 import { isBillingEnabled } from '../../core/config/billingCapability';
+import { loadCloudModule } from '../../core/cloud/cloudPlugin';
+import type { CloudModule } from '../../core/cloud/cloudModule';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -74,11 +74,15 @@ export class InfrastructureFactory {
   private organizationRepository: OrganizationRepositoryPort | null = null;
   private creditLedger: CreditLedgerPort | null = null;
   private paymentProvider: PaymentProviderPort | null = null;
-  
+
+  // Cloud overlay (@ant/cloud) — loaded once via initCloud(). Null in OSS/local.
+  private cloudModule: CloudModule | null = null;
+  private cloudInited = false;
+
   // Dependencies (must be set before getting orchestrators)
   private portManager: PortManager | null = null;
   private portRegistry: PortRegistryPort | null = null;
-  
+
   private config: InfrastructureConfig;
 
   private constructor() {
@@ -150,6 +154,33 @@ export class InfrastructureFactory {
   }
 
   /**
+   * Warm-load the cloud overlay once, at composition time, BEFORE any router or
+   * service touches a (synchronous) adapter getter. Two-phase init mirrors
+   * `setDependencies()`: async import here, sync reads later.
+   *
+   * - OSS / local (`isBillingEnabled()` false): no-op, getters return Noop.
+   * - Cloud with `@ant/cloud` present: real adapters wired.
+   * - Cloud WITHOUT the package: fail fast at boot (no silent Noop degradation).
+   */
+  async initCloud(): Promise<void> {
+    if (this.cloudInited) return;
+    this.cloudInited = true;
+    if (!isBillingEnabled()) return;
+    this.cloudModule = await loadCloudModule();
+    if (!this.cloudModule) {
+      throw new Error(
+        'ANT_SERVER_MODE=cloud but the @ant/cloud overlay is not installed/loadable. ' +
+          'Install the cloud package or run in local mode.',
+      );
+    }
+  }
+
+  /** The loaded cloud overlay, or null in OSS/local. */
+  getCloudModule(): CloudModule | null {
+    return this.cloudModule;
+  }
+
+  /**
    * Set dependencies (required for IDE orchestrator with Docker)
    */
   setDependencies(portManager: PortManager, portRegistry: PortRegistryPort): void {
@@ -212,13 +243,18 @@ export class InfrastructureFactory {
    */
   getOrganizationRepository(): OrganizationRepositoryPort {
     if (!this.organizationRepository) {
-      const stateStore = this.getStateStore() as RedisStateStore;
-      this.organizationRepository = new RedisOrganizationRepository(
-        stateStore.getRedisClient(),
-      );
-      logger.info('Using RedisOrganizationRepository', {
-        component: 'InfrastructureFactory',
-      });
+      if (!this.cloudModule) {
+        // OSS / local: dormant org/transfer routes get a NPE-safe no-op repo.
+        this.organizationRepository = new NoopOrganizationRepository();
+      } else {
+        const stateStore = this.getStateStore() as RedisStateStore;
+        this.organizationRepository = this.cloudModule.createOrganizationRepository({
+          redis: stateStore.getRedisClient(),
+        });
+        logger.info('Using cloud OrganizationRepository', {
+          component: 'InfrastructureFactory',
+        });
+      }
     }
     return this.organizationRepository;
   }
@@ -234,13 +270,15 @@ export class InfrastructureFactory {
    */
   getCreditLedger(): CreditLedgerPort {
     if (!this.creditLedger) {
-      if (!isBillingEnabled()) {
+      if (!isBillingEnabled() || !this.cloudModule) {
         // Cloud-capability seam: OSS / local runs with no metering.
         this.creditLedger = new NoopCreditLedger();
       } else {
         const stateStore = this.getStateStore() as RedisStateStore;
-        this.creditLedger = new RedisCreditLedger(stateStore.getRedisClient());
-        logger.info('Using RedisCreditLedger', { component: 'InfrastructureFactory' });
+        this.creditLedger = this.cloudModule.createCreditLedger({
+          redis: stateStore.getRedisClient(),
+        });
+        logger.info('Using cloud CreditLedger', { component: 'InfrastructureFactory' });
       }
     }
     return this.creditLedger;
@@ -253,11 +291,11 @@ export class InfrastructureFactory {
    */
   getPaymentProvider(): PaymentProviderPort {
     if (!this.paymentProvider) {
-      if (!isBillingEnabled()) {
+      if (!isBillingEnabled() || !this.cloudModule) {
         this.paymentProvider = new NoopPaymentProvider();
       } else {
-        this.paymentProvider = new MockPaymentProvider(this.getCreditLedger());
-        logger.info('Using MockPaymentProvider', { component: 'InfrastructureFactory' });
+        this.paymentProvider = this.cloudModule.createPaymentProvider(this.getCreditLedger());
+        logger.info('Using cloud PaymentProvider', { component: 'InfrastructureFactory' });
       }
     }
     return this.paymentProvider;

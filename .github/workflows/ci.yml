@@ -1,0 +1,151 @@
+name: CI (OSS)
+
+# Public OSS CI — verification only, NO secrets, NO deploy. The cloud deploy/CD
+# pipelines (ECR/K8s/S3/Vault, IDE image) live in the private ant-cloud repo.
+# This workflow guarantees the public tree builds and boots in local mode
+# without the @ant/cloud overlay.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ANT_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:shared
+      - run: pnpm typecheck:cli
+      - run: pnpm typecheck:ui
+      - run: pnpm test:cli
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - run: pnpm build:ui:local
+      # The OSS UI build must DCE all cloud chunks. Fail if any cloud marker leaks.
+      - name: Assert no cloud chunks in OSS UI build
+        run: |
+          if grep -rqE "BillingCenterPanel|NavbarCreditMenu|OrganizationOnboardingScreen|refreshCatalog" packages/ant-ui/dist/assets 2>/dev/null; then
+            echo "::error::Cloud UI content leaked into the OSS build"; exit 1
+          fi
+          echo "OSS UI build is cloud-free."
+
+  oss-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:shared
+
+      - name: No static @ant/cloud import in ant-cli/src
+        run: |
+          # Allow only the indirected specifier in cloudPlugin.ts (const spec = '@ant/cloud').
+          hits=$(grep -rnE "from '@ant/cloud'|from \"@ant/cloud\"|import\(\s*['\"]@ant/cloud['\"]\s*\)|require\(\s*['\"]@ant/cloud['\"]\s*\)" packages/ant-cli/src || true)
+          if [ -n "$hits" ]; then echo "::error::static @ant/cloud import found"; echo "$hits"; exit 1; fi
+          echo "No static @ant/cloud imports."
+
+      - name: Cloud overlay source must be absent
+        run: |
+          for p in \
+            packages/ant-cloud \
+            packages/ant-cli/src/infrastructure/billing/RedisCreditLedger.ts \
+            packages/ant-cli/src/infrastructure/billing/MockPaymentProvider.ts \
+            packages/ant-cli/src/infrastructure/auth/AuthService.ts \
+            packages/ant-cli/src/infrastructure/auth/GoogleOIDCService.ts \
+            packages/ant-cli/src/infrastructure/auth/RedisOrganizationRepository.ts \
+            packages/ant-cli/src/periphery/adapters/http/routes/billing.routes.ts \
+            packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts ; do
+            if [ -e "$p" ]; then echo "::error::cloud source present in OSS tree: $p"; exit 1; fi
+          done
+          echo "Cloud overlay source absent."
+
+      - name: Seam regression guards
+        env:
+          ANT_REDIS_URL: redis://localhost:6379
+        run: |
+          cd packages/ant-cli
+          pnpm vitest run tests/policy/ tests/billing/ --reporter=dot
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  boot-smoke:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ANT_SERVER_MODE: local
+      ANT_REDIS_URL: redis://localhost:6379
+      ANT_ENCRYPTION_KEY: ci-boot-smoke-encryption-key-0001
+      ANT_WORKSPACE_BASE_PATH: /tmp/ant-workspaces
+      ANT_CLI_PORT: "4100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:shared
+      - name: Boot API server (local mode) and assert capabilities.billing === false
+        run: |
+          mkdir -p /tmp/ant-workspaces
+          pnpm --filter @ant/cli exec tsx src/composition/server.ts &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4100/api/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          CONFIG=$(curl -sf http://localhost:4100/api/system/config)
+          echo "system/config: $CONFIG"
+          kill $SERVER_PID 2>/dev/null || true
+          echo "$CONFIG" | node -e "const c=JSON.parse(require('fs').readFileSync(0,'utf8')); if(c.capabilities&&c.capabilities.billing===false){console.log('OK: billing capability is false in local mode')}else{console.error('FAIL: expected capabilities.billing===false, got',JSON.stringify(c.capabilities));process.exit(1)}"

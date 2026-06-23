@@ -189,11 +189,11 @@ USER ant
 WORKDIR /app/packages/ant-cli
 
 ENV NODE_ENV=production
-ENV ANT_SERVER_MODE=cloud
+# Default to local/OSS mode; cloud images override with --build-arg ANT_SERVER_MODE=cloud.
+ARG ANT_SERVER_MODE=local
+ENV ANT_SERVER_MODE=${ANT_SERVER_MODE}
 ENV ANT_CLI_PORT=4100
 ENV ANT_WORKSPACE_BASE_PATH=/data/workspaces
-ENV GOOGLE_REDIRECT_URI=""
-ENV FRONTEND_URL=""
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 
 EXPOSE 4100
@@ -300,13 +300,11 @@ WORKDIR /app/packages/ant-cli
 
 # Server configuration (non-sensitive defaults)
 ENV NODE_ENV=production
-ENV ANT_SERVER_MODE=cloud
+# Default to local/OSS mode; cloud images override with --build-arg ANT_SERVER_MODE=cloud.
+ARG ANT_SERVER_MODE=local
+ENV ANT_SERVER_MODE=${ANT_SERVER_MODE}
 ENV ANT_CLI_PORT=4100
 ENV ANT_WORKSPACE_BASE_PATH=/data/workspaces
-
-# Auth / Redirect defaults (overridden by docker-compose env_file at runtime)
-ENV GOOGLE_REDIRECT_URI=""
-ENV FRONTEND_URL=""
 
 # Node.js memory configuration
 ENV NODE_OPTIONS="--max-old-space-size=8192"

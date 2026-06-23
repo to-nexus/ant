@@ -12,9 +12,8 @@ import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { FileJobPrerequisitesAdapter } from '../../../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceServiceAdapter } from '../../../../../infrastructure/workspace/WorkspaceServiceAdapter';
 import { WorkspaceServicePort } from '../../../../../core/ports/workspace';
-import { AuthService } from '../../../../../infrastructure/auth/AuthService';
-import { GoogleOIDCService } from '../../../../../infrastructure/auth/GoogleOIDCService';
 import { createJwtServiceFromEnv } from '../../../../../infrastructure/auth/JwtService';
+import type { AuthPort } from '../../../../../core/ports/auth';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
 import { logger } from '../../../../../utils/logger';
@@ -52,59 +51,26 @@ export function initializeServices(
   ideOrchestrator.startIdleCheck();
   logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
   
-  // Initialize AuthService + JWT for Cloud mode
-  let authService: AuthService | undefined;
-  let oidcService: GoogleOIDCService | undefined;
+  // Cloud auth wiring. JwtService is a neutral OSS HS256 primitive (no
+  // commercial secret) — `createJwtServiceFromEnv()` returns undefined when
+  // ANT_JWT_SECRET is unset (local mode), so JWT auth is naturally absent
+  // there. It is threaded through `deps.jwtService` for WS auth, jwtAuth
+  // middleware, and the cloud auth routes.
+  //
+  // AuthService now lives in `@ant/cloud`; it is obtained via the cloud seam
+  // (real in cloud mode, null in OSS/local). WS auth (ExpressServerAdapter)
+  // consumes `deps.authService` as an `AuthPort`. The Google OIDC service is
+  // no longer constructed here — the cloud overlay's `registerRoutes` is its
+  // single owner (`buildOidcServiceFromEnv`).
   const jwtService = config.mode === 'cloud' ? createJwtServiceFromEnv() : undefined;
-  
+  const authService: AuthPort | undefined =
+    config.mode === 'cloud' ? factory.getCloudModule()?.createAuthService() : undefined;
+
   if (config.mode === 'cloud') {
-    authService = new AuthService();
-    
     if (jwtService) {
       logger.info('JWT authentication enabled', { component: 'ServiceInitializer' });
     } else {
-      logger.warn('ANT_JWT_SECRET not set - JWT authentication disabled in cloud mode', { 
-        component: 'ServiceInitializer' 
-      });
-    }
-    
-    // Initialize Google OIDC service if credentials are provided.
-    //
-    // OAuth redirect_uri must land on the BE host. In same-origin cloud
-    // deployments (Persona B managed / Persona C single-host) FE and BE
-    // share an origin, so `FRONTEND_URL` is the right BE fallback too.
-    // Split-host operators set `GOOGLE_REDIRECT_URI` explicitly to the BE
-    // host. The legacy `CLOUD_URL` env (pointed at `https://ant.nexus.ai`
-    // by default) was removed — it was an unsupported third source of
-    // truth that silently misrouted callbacks when unset.
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    // Strip trailing slash so `FRONTEND_URL=https://x.io/` doesn't compose
-    // a `https://x.io//api/auth/google/callback` that Google's exact-match
-    // redirect_uri check would reject.
-    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, '');
-    const googleRedirectUri =
-      process.env.GOOGLE_REDIRECT_URI ||
-      (frontendUrl ? `${frontendUrl}/api/auth/google/callback` : undefined);
-    
-    if (googleClientId && googleClientSecret && googleRedirectUri) {
-      oidcService = new GoogleOIDCService({
-        clientId: googleClientId,
-        clientSecret: googleClientSecret,
-        redirectUri: googleRedirectUri
-      });
-      logger.info(`Google OIDC authentication enabled (redirect_uri=${googleRedirectUri})`, {
-        component: 'ServiceInitializer'
-      });
-    } else if (googleClientId && googleClientSecret && !googleRedirectUri) {
-      logger.warn(
-        'Google OIDC: GOOGLE_CLIENT_ID/SECRET set but redirect_uri unresolved. ' +
-        'Set GOOGLE_REDIRECT_URI explicitly, or set FRONTEND_URL (used as BE ' +
-        'host in same-origin cloud deployments).',
-        { component: 'ServiceInitializer' }
-      );
-    } else {
-      logger.warn('Google OIDC not configured - set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET', {
+      logger.warn('ANT_JWT_SECRET not set - JWT authentication disabled in cloud mode', {
         component: 'ServiceInitializer'
       });
     }
@@ -174,7 +140,6 @@ export function initializeServices(
     workspaceService,
     workspaceResolver,
     authService,
-    oidcService,
     jwtService,
     portManager,
     portRegistry,
