@@ -106,10 +106,14 @@ jobs:
           cd packages/ant-cli
           pnpm vitest run tests/policy/ tests/billing/ --reporter=dot
 
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      - name: Secret scan (gitleaks, free CLI)
+        # The gitleaks-action requires a GITLEAKS_LICENSE secret for org accounts.
+        # Use the free open-source binary instead; config + allowlist in .gitleaks.toml.
+        run: |
+          VER=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          /tmp/gitleaks dir . -c .gitleaks.toml --no-banner --redact --exit-code 1
 
   boot-smoke:
     runs-on: ubuntu-latest
@@ -128,7 +132,8 @@ jobs:
       ANT_REDIS_URL: redis://localhost:6379
       ANT_ENCRYPTION_KEY: ci-boot-smoke-encryption-key-0001
       ANT_WORKSPACE_BASE_PATH: /tmp/ant-workspaces
-      ANT_CLI_PORT: "4100"
+      # server.ts binds process.env.PORT (default 8080); ANT_CLI_PORT is not read.
+      PORT: "4100"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

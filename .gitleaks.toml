@@ -1,0 +1,25 @@
+# OSS CI secret-scan config — consumed by the free gitleaks CLI in
+# .github/workflows/ci.yml (replaces the licensed gitleaks-action, which requires
+# a GITLEAKS_LICENSE secret for organization accounts).
+#
+# Keep the full default ruleset; only exclude dependency/build/local-only trees
+# and a clearly-fake unit-test fixture. Do NOT allowlist real secrets here.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exclude deps/build/local-only trees and a known test fixture (not a real secret)."
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)\.git/''',
+  '''(^|/)\.openvscode-server/''',
+  '''(^|/)docs/tmp/''',
+  '''(^|/)workspace/''',
+]
+regexes = [
+  # Placeholder key in packages/ant-cli/tests/http/cookie-domain-derivation.test.ts
+  # — the literal string is its own proof it is not a real credential.
+  '''test-secret-at-least-32-characters-long-xx''',
+]
