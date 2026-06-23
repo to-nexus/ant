@@ -14,23 +14,29 @@ is real and is NOT a virtualization target.
 
 ### Switching Contract
 
-Activation MUST come from a boolean env var per business connection, with
-a master broadcast variable as fallback when the per-connection toggle is
-unset. Default (both unset) is `false` — production adapter active.
+Activation MUST come from the single boolean env var that belongs to the
+business connection. Default (unset) is `false` — production adapter active.
 
 **The concrete env var name follows the framework-aware naming rule in
 `preview-env-contract.md §4.5`** (form `USE_MOCK_<NAME>`; an adapter
 selected in client-bundled code requires that runtime's client-exposure
-prefix). The adapter selection code reads from exactly that name. A toggle
-name not derived from the connection name, or missing the client-exposure
-prefix where the adapter is selected in client code, is a defect — it
-inlines as undefined and the production adapter activates silently.
+prefix). The adapter selection code reads from exactly that name — and only
+that name. A toggle name not derived from the connection name, or missing the
+client-exposure prefix where the adapter is selected in client code, is a
+defect — it inlines as undefined and the production adapter activates silently.
+
+When several adapters virtualize the SAME backend connection (e.g. a
+data-access adapter and an auth adapter reaching one backend host), every
+selection site reads that ONE connection-derived toggle. Do NOT read a master
+broadcast or mint a per-adapter / per-concern toggle in the selection code —
+the toggle is keyed on the connection, not on the adapter or the concern.
+"One Connection, One Toggle" is owned by `preview-env-contract.md §4.5`.
 
 ### .env / .env.example Discipline
 
-Toggle declaration, the master-broadcast fallback, the `.env` ↔
-`.env.example` mirror, and any adapter-specific config the virtualized
-adapter reads are all governed by `preview-env-contract.md §4.5`.
+Toggle declaration, the `.env` ↔ `.env.example` mirror, and any
+adapter-specific config the virtualized adapter reads are all governed by
+`preview-env-contract.md §4.5`.
 
 ### Constraints
 
