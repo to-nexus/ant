@@ -25,6 +25,7 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import * as consoleLogCache from '@/infrastructure/persistence/consoleLogCache';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
 import { getPreviewStatus } from '@/infrastructure/http/api';
 import type { PreviewStatus, LogEntry } from '@/infrastructure/http/api';
@@ -72,6 +73,15 @@ export function usePreviewSync(): void {
     if (!featureKey || !selectedProject || !selectedFeature) return;
     if (selectIsAuthBlocked(useStore.getState())) return;
     let cancelled = false;
+    // Hydrate logs from the sessionStorage cache so a refresh restores the
+    // prior run's output. Only seed when the store buffer is empty (cold
+    // start); the merge-preserve guard then keeps it from being clobbered by
+    // the GET /status last-50.
+    const cached = consoleLogCache.readLogs<LogEntry>('preview', featureKey);
+    const curLogs = useStore.getState().previewByFeature[featureKey]?.status?.logs ?? [];
+    if (cached && cached.length > 0 && curLogs.length === 0) {
+      mergePreviewStatus(featureKey, { logs: cached } as Partial<PreviewStatus>);
+    }
     getPreviewStatus(selectedProject, selectedFeature)
       .then((status) => {
         if (cancelled) return;
@@ -80,7 +90,9 @@ export function usePreviewSync(): void {
         // carry the real transition.
         const entry = useStore.getState().previewByFeature[featureKey];
         if (entry && Date.now() < entry.stopGuardUntil && status?.running) return;
-        // GET /status never returns `logs` — merge preserves the buffer.
+        // GET /status DOES return logs (last-50, owning pod only). mergePreviewStatus
+        // adopts them only to seed an empty buffer — it never clobbers the live
+        // SSE-accumulated buffer (or one just hydrated from the cache above).
         mergePreviewStatus(featureKey, status as Partial<PreviewStatus>);
       })
       .catch((err) => {
@@ -155,6 +167,10 @@ export function usePreviewSync(): void {
           mergePreviewStatus(key, messageData as Partial<PreviewStatus>);
         } else if (messageType === 'log') {
           appendPreviewLog(key, messageData as LogEntry);
+          // Mirror to the sessionStorage cache (throttled) so a refresh restores it.
+          // Re-read post-append — `snap` was captured before appendPreviewLog ran.
+          const logs = useStore.getState().previewByFeature[key]?.status?.logs ?? [];
+          consoleLogCache.writeLogs('preview', key, logs);
         }
       } catch (err) {
         console.error('[usePreviewSync] handler error:', err);

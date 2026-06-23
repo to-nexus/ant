@@ -7,6 +7,7 @@ import {
   selectIsDeployLoading,
 } from '@/domain/store/slices/deploySlice';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import * as consoleLogCache from '@/infrastructure/persistence/consoleLogCache';
 import {
   startDeploy,
   stopDeploy,
@@ -83,14 +84,24 @@ export function useDeployManager(
   const setDeployLoading = useStore((s: any) => s.setDeployLoading);
   const appendDeployLog = useStore((s: any) => s.appendDeployLog);
   const clearDeployLogs = useStore((s: any) => s.clearDeployLogs);
+  const setDeployLogs = useStore((s: any) => s.setDeployLogs);
+  const setDeployStopGuard = useStore((s: any) => s.setDeployStopGuard);
 
   // Initial status fetch + re-fetch on feature switch (corrects stale 'running')
   useEffect(() => {
     if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
+    // Hydrate logs from the sessionStorage cache so a refresh restores the
+    // prior run's output. Only seed when the store buffer is empty (cold
+    // start) — never overwrite live SSE logs.
+    const cached = consoleLogCache.readLogs<DeployLogEntry>('deploy', featureKey);
+    const curLogs = useStore.getState().deployByFeature[featureKey]?.logs ?? [];
+    if (cached && cached.length > 0 && curLogs.length === 0) {
+      setDeployLogs(featureKey, cached);
+    }
     getDeployStatus(selectedProject, selectedFeature)
       .then((status) => setDeployStatus(featureKey, status))
       .catch(() => setDeployStatus(featureKey, undefined));
-  }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus]);
+  }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus, setDeployLogs]);
 
   // Re-validate on tab focus — catches pod restarts / idle evictions that
   // happened while the tab was backgrounded.
@@ -120,6 +131,26 @@ export function useDeployManager(
       .catch(() => { /* silent */ });
   }, [isPrimary, connectionStatus, featureKey, selectedProject, selectedFeature, setDeployStatus]);
 
+  // Loading-timeout safety net (mirrors usePreviewSync). If the deploy stays
+  // in a loading state without reaching a terminal phase for this long, a
+  // terminal SSE event was likely lost — fall back to an authoritative
+  // GET /deploy-status. The terminal-phase invariant in `selectIsDeployLoading`
+  // then clears the spinner; a genuinely-slow build (still non-terminal) keeps
+  // loading. Re-arms on every phase change, so a later lost event is still
+  // caught within the window of the last received phase.
+  const DEPLOY_LOADING_TIMEOUT_MS = 45_000;
+  const deployPhase = deployStatus?.phase;
+  useEffect(() => {
+    if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
+    if (!isDeployLoading) return;
+    const id = window.setTimeout(() => {
+      getDeployStatus(selectedProject, selectedFeature)
+        .then((status) => setDeployStatus(featureKey, status))
+        .catch(() => { /* next sync will catch up */ });
+    }, DEPLOY_LOADING_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [isPrimary, featureKey, selectedProject, selectedFeature, isDeployLoading, deployPhase, setDeployStatus]);
+
   // SSE handler — piped events are already filtered by project/feature at the
   // SSEManager URL level (EventSource reconnects on feature switch). Redundant
   // in-memory guard below ensures no stray events land on the wrong feature
@@ -138,8 +169,19 @@ export function useDeployManager(
         const messageData = payload?.data;
 
         if (messageType === 'status') {
-          setDeployStatus(featureKey, messageData as DeployStatus);
           const phase = (messageData as DeployStatus)?.phase;
+          // stopGuard: while a stop is in flight, drop late "still working"
+          // events so a stale build/running event doesn't revive the UI.
+          const entry = s.deployByFeature[featureKey];
+          const stillWorking =
+            phase === 'building' ||
+            phase === 'deploying' ||
+            phase === 'starting' ||
+            phase === 'running';
+          if (entry && Date.now() < entry.stopGuardUntil && stillWorking) {
+            return;
+          }
+          setDeployStatus(featureKey, messageData as DeployStatus);
           if (
             phase === 'running' ||
             phase === 'error' ||
@@ -151,6 +193,9 @@ export function useDeployManager(
           }
         } else if (messageType === 'log') {
           appendDeployLog(featureKey, messageData as DeployLogEntry);
+          // Mirror to the sessionStorage cache (throttled) so a refresh restores it.
+          const logs = useStore.getState().deployByFeature[featureKey]?.logs ?? [];
+          consoleLogCache.writeLogs('deploy', featureKey, logs);
         }
       } catch (err) {
         console.error('[useDeployManager] handler error:', err);
@@ -171,8 +216,11 @@ export function useDeployManager(
     // `building` for a request that the server will immediately reject.
     if (!canDeploy) return;
 
+    // Disarm any stopGuard from a prior stop — a NEW deploy's events are not stale.
+    setDeployStopGuard(featureKey, 0);
     setDeployLoading(featureKey, true);
     clearDeployLogs(featureKey);
+    consoleLogCache.clearLogs('deploy', featureKey); // restart resets persisted logs too
     setDeployStatus(featureKey, { phase: 'building', visibility });
 
     try {
@@ -186,21 +234,27 @@ export function useDeployManager(
       setDeployStatus(featureKey, { phase: 'error', error: err.message });
       setDeployLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, featureKey, canDeploy, setDeployLoading, clearDeployLogs, setDeployStatus]);
+  }, [selectedProject, selectedFeature, featureKey, canDeploy, setDeployLoading, clearDeployLogs, setDeployStatus, setDeployStopGuard]);
 
   const stop = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !featureKey) return;
 
+    // 15s window to ignore stale "still building/running" events while the
+    // backend tears the deploy down (mirrors preview's stopGuard).
+    setDeployStopGuard(featureKey, Date.now() + 15000);
     setDeployLoading(featureKey, true);
     try {
       await stopDeploy(selectedProject, selectedFeature);
       setDeployStatus(featureKey, { phase: 'stopped' });
+      // Stop confirmed — the server is gone, so the guard window serves no
+      // further purpose. Disarm so it can't leak into a follow-up deploy.
+      setDeployStopGuard(featureKey, 0);
     } catch (err: any) {
       console.error('[useDeployManager] stop error:', err);
     } finally {
       setDeployLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, featureKey, setDeployLoading, setDeployStatus]);
+  }, [selectedProject, selectedFeature, featureKey, setDeployLoading, setDeployStatus, setDeployStopGuard]);
 
   const openDeployUrl = useCallback((url?: string) => {
     // Resolution order:

@@ -6,7 +6,26 @@ export interface PerFeatureDeployState {
   status: DeployStatus | undefined;
   logs: DeployLogEntry[];
   isLoading: boolean;
+  /**
+   * Time-based window during which stale "still building/running" SSE events
+   * are ignored while a stop is in flight (mirrors preview's `stopGuardUntil`).
+   * 0 means disarmed.
+   */
+  stopGuardUntil: number;
 }
+
+// Single owner of the "terminal deploy phase ⇒ not loading" rule (deploy
+// parity of preview's `isTerminalPhase`). A settled deploy never leaves the
+// button stuck behind a spinner, regardless of which fetch path wrote the
+// status (SSE handler, initial/visibility/reconnect fetch, loading-timeout).
+export const isTerminalDeployPhase = (
+  phase?: DeployStatus['phase'],
+): boolean =>
+  phase === 'running' ||
+  phase === 'error' ||
+  phase === 'stopped' ||
+  phase === 'hibernated' ||
+  phase === 'unavailable';
 
 export interface DeploySliceState {
   /** Map keyed by `${projectId}:${featureName}` — isolates state per feature. */
@@ -16,8 +35,11 @@ export interface DeploySliceState {
 export interface DeployActions {
   setDeployStatus: (key: string, status: DeployStatus | undefined) => void;
   appendDeployLog: (key: string, log: DeployLogEntry) => void;
+  /** Bulk-set logs (used to hydrate from the sessionStorage cache on mount). */
+  setDeployLogs: (key: string, logs: DeployLogEntry[]) => void;
   clearDeployLogs: (key: string) => void;
   setDeployLoading: (key: string, loading: boolean) => void;
+  setDeployStopGuard: (key: string, until: number) => void;
   removeDeployEntry: (key: string) => void;
   refreshDeployStatus: (projectId: string, featureName: string) => Promise<void>;
 }
@@ -40,6 +62,7 @@ const emptyEntry = (): PerFeatureDeployState => ({
   status: undefined,
   logs: [],
   isLoading: false,
+  stopGuardUntil: 0,
 });
 
 // Stable reference for "no logs" — selectors must return the SAME array
@@ -68,7 +91,22 @@ export function selectIsDeployLoading(
   key: string | null,
 ): boolean {
   if (!key) return false;
-  return s.deployByFeature[key]?.isLoading ?? false;
+  const entry = s.deployByFeature[key];
+  if (!entry) return false;
+  // Invariant: a terminal phase ⇒ not loading. Forces the button back to a
+  // clickable state on success/failure/stop even if the explicit
+  // `setDeployLoading(false)` was missed (e.g. a status written by the
+  // initial/visibility/reconnect fetch path, which doesn't clear the flag).
+  if (isTerminalDeployPhase(entry.status?.phase)) return false;
+  return entry.isLoading ?? false;
+}
+
+export function selectDeployStopGuardUntil(
+  s: { deployByFeature: Record<string, PerFeatureDeployState> },
+  key: string | null,
+): number {
+  if (!key) return 0;
+  return s.deployByFeature[key]?.stopGuardUntil ?? 0;
 }
 
 export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, get) => ({
@@ -98,6 +136,15 @@ export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, g
     });
   },
 
+  setDeployLogs: (key, logs) => {
+    set((state: any) => ({
+      deployByFeature: {
+        ...state.deployByFeature,
+        [key]: { ...(state.deployByFeature[key] ?? emptyEntry()), logs: logs.slice(-200) },
+      },
+    }));
+  },
+
   clearDeployLogs: (key) => {
     set((state: any) => ({
       deployByFeature: {
@@ -112,6 +159,15 @@ export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, g
       deployByFeature: {
         ...state.deployByFeature,
         [key]: { ...(state.deployByFeature[key] ?? emptyEntry()), isLoading: loading },
+      },
+    }));
+  },
+
+  setDeployStopGuard: (key, until) => {
+    set((state: any) => ({
+      deployByFeature: {
+        ...state.deployByFeature,
+        [key]: { ...(state.deployByFeature[key] ?? emptyEntry()), stopGuardUntil: until },
       },
     }));
   },

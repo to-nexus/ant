@@ -23,7 +23,8 @@ export interface DockedConsoleProps {
 
 /**
  * Bottom-docked mini console used by the C3 editors.
- * Renders the last 100 log lines. Dark surface independent of theme.
+ * Renders the full provided buffer (the store already caps it) and
+ * auto-scrolls to the newest line. Dark surface independent of theme.
  */
 export function DockedConsole({
   logs,
@@ -33,8 +34,24 @@ export function DockedConsole({
   emptyHint = '로그가 없습니다.',
   headerContent,
 }: DockedConsoleProps) {
-  const visibleLogs = logs.slice(-100);
   const hasLogs = logs.length > 0;
+
+  // Auto-scroll to the newest line as logs stream in, but never fight a user
+  // who has scrolled up to read earlier output. `stickRef` tracks whether the
+  // viewport is at the bottom; we only pin to bottom while it is.
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const stickRef = React.useRef(true);
+  const handleScroll = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  }, []);
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const el = scrollRef.current;
+    if (!el || !stickRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logs.length, open]);
 
   const formatTimestamp = (raw: string) => {
     const d = new Date(raw);
@@ -131,6 +148,8 @@ export function DockedConsole({
       </div>
       {open && (
         <div
+          ref={scrollRef}
+          onScroll={handleScroll}
           style={{
             maxHeight: 200,
             overflowY: 'auto',
@@ -139,7 +158,7 @@ export function DockedConsole({
             lineHeight: 1.55,
           }}
         >
-          {visibleLogs.length === 0 ? (
+          {logs.length === 0 ? (
             <div
               style={{
                 fontStyle: 'italic',
@@ -151,9 +170,9 @@ export function DockedConsole({
               {emptyHint}
             </div>
           ) : (
-            visibleLogs.map((log, idx) => (
+            logs.map((log, idx) => (
               <div
-                key={idx}
+                key={`${log.timestamp}-${idx}`}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '76px 1fr',
