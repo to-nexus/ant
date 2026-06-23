@@ -46,3 +46,6 @@ The watchdog terminates commands that produce no output for >60s. For codebase e
 - repo-wide history  → narrow with `-L <file>` or a path filter            (NOT a regex search over the entire repo)
 
 If you genuinely need a shell traversal (e.g., counting matches), scope it tightly: pass a starting directory deeper than the workspace root, add `-maxdepth N` to `find`, or pipe into `| head` to bound output volume.
+
+⚠️ OUTPUT VISIBILITY — do NOT redirect output away from yourself:
+The result returns the command's stdout/stderr to you directly. Redirecting output to a file (`> out.txt`, `2> err.log`, `1>/dev/null`) sends it where you cannot see it — the result comes back empty and you cannot diagnose a failure. Run the command plainly (a pipe like `… 2>&1 | tail -80` to bound volume is fine); only redirect to a file when you will then read that file. `pipefail` (rightmost non-zero exit in a pipe) is best-effort and not guaranteed on minimal shells, so do not rely on a pipe's exit code alone to detect a left-side failure — inspect the returned output.
