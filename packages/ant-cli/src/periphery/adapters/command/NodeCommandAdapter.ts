@@ -270,12 +270,22 @@ export class NodeCommandAdapter implements CommandPort {
       //
       // ✅ CRITICAL: `set -o pipefail` makes pipeline exit code reflect the rightmost
       // non-zero exit code, not just the last command. Without this, `build | tail -80`
-      // reports exit 0 (tail) even when build fails. The `2>/dev/null || true` prefix
-      // is safe: pipefail is enabled on bash/zsh, silently skipped on dash/POSIX sh,
-      // and placed before set -e so the fallback doesn't trigger an early exit.
-      // SIGPIPE (exit 141) from `cmd | head` is handled separately in runCommand.ts.
+      // reports exit 0 (tail) even when build fails.
+      //
+      // ⚠️ PORTABILITY: `pipefail` is a bash/zsh option. POSIX sh (dash, Alpine busybox
+      // `ash` — what production `node:22-alpine` workers run) does NOT support it, and
+      // `set -o pipefail` there is an *illegal option to a special builtin*, which makes
+      // a non-interactive shell EXIT IMMEDIATELY (exit 2) — before any inline guard like
+      // `2>/dev/null || true` can run, and before `${trimmed}` executes. A bare
+      // `set -o pipefail 2>/dev/null || true` therefore aborts EVERY operator command on
+      // POSIX sh with an empty-output exit 2. The dev box (macOS /bin/sh is bash-family)
+      // hides this. Fix: run the probe in a SUBSHELL so the special-builtin abort is
+      // contained — on POSIX sh the subshell dies, `&&` short-circuits, and the parent
+      // continues without pipefail; on bash/zsh the subshell succeeds and pipefail is
+      // enabled in the parent. SIGPIPE (exit 141) from `cmd | head` is handled
+      // separately in runCommand.ts and does not depend on pipefail.
       const shellCommand = (!isWindows && needsShell)
-        ? `set -o pipefail 2>/dev/null || true; set -e; ${trimmed}`
+        ? `( set -o pipefail ) 2>/dev/null && set -o pipefail; set -e; ${trimmed}`
         : trimmed;
       const shellArgs = isWindows ? ['/c', trimmed] : ['-lc', shellCommand];
 

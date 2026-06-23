@@ -813,8 +813,16 @@ async function executeCommandLogic(
 
     if (!success) {
       sideEffects.push(makeCommandExecuted({ exitCode: exitCode ?? 1, command, success: false, hasWarnings: false, verifies }));
+      // When the command produced no captured output, do NOT claim an error is
+      // present to read — there is none. Empty output on failure almost always
+      // means the command redirected its output to a file (`> file`, `2> file`,
+      // `1>/dev/null`) or simply produced nothing. Guide the LLM to a diagnosable
+      // form instead of sending it guessing.
+      const content = output.trim().length > 0
+        ? `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT:\n${output}\n\n⚠️  You MUST read the error above and fix the specific issue mentioned.\nDO NOT guess - the error tells you exactly what's wrong.`
+        : `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT: (none captured)\n\n⚠️  The command failed but produced NO output to read. Likely causes:\n- Output was redirected to a file (e.g. \`> out.txt\`, \`2> err.log\`, \`1>/dev/null\`) — re-run WITHOUT redirecting so the output is returned to you, or read the file you wrote.\n- The command genuinely produced no output before failing.\nDo NOT keep retrying the same command with different redirection — change the approach so the output reaches you.`;
       return {
-        content: `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT:\n${output}\n\n⚠️  You MUST read the error above and fix the specific issue mentioned.\nDO NOT guess - the error tells you exactly what's wrong.`,
+        content,
         error: output,
         sideEffects,
       };
