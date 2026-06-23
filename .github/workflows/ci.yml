@@ -78,7 +78,9 @@ jobs:
       - name: No static @ant/cloud import in ant-cli/src
         run: |
           # Allow only the indirected specifier in cloudPlugin.ts (const spec = '@ant/cloud').
-          hits=$(grep -rnE "from '@ant/cloud'|from \"@ant/cloud\"|import\(\s*['\"]@ant/cloud['\"]\s*\)|require\(\s*['\"]@ant/cloud['\"]\s*\)" packages/ant-cli/src || true)
+          # Exclude comment lines (JSDoc `*`, `//`, `/*`): a doc example of the dynamic
+          # import form is not an actual import. Real import statements never start with those.
+          hits=$(grep -rnE "from '@ant/cloud'|from \"@ant/cloud\"|import\(\s*['\"]@ant/cloud['\"]\s*\)|require\(\s*['\"]@ant/cloud['\"]\s*\)" packages/ant-cli/src | grep -vE ":[0-9]+:[[:space:]]*(\*|//|/\*)" || true)
           if [ -n "$hits" ]; then echo "::error::static @ant/cloud import found"; echo "$hits"; exit 1; fi
           echo "No static @ant/cloud imports."
 
