@@ -115,6 +115,21 @@ address from what the destination actually defines, never from intent or recall.
   an authenticated session** — a target that typechecks but cannot be navigated to
   or completed (a placeholder/blank/external address) dead-ends the gate and is a
   defect to resolve, exactly like a reference that resolves to nothing.
+- **Path references conform to the served prefix by their routing channel.** When
+  the module is served under a path prefix, resolving to a real destination is
+  necessary but not sufficient: a path's prefix-correctness is decided by WHETHER
+  it travels THROUGH the framework's own primitive or is emitted OUTSIDE it — not
+  by whether its destination is in-app or external. A path emitted OUTSIDE the
+  framework primitive — a self-issued full-page navigation, a markup anchor or
+  asset reference written as a literal absolute path rather than produced by the
+  framework's link/navigation/asset primitive, or any URL handed to a non-router
+  consumer (INCLUDING the gated-entry landing target) — does NOT receive the
+  framework's automatic prefix, so a bare absolute path dead-ends under the prefix
+  though the route exists. Conversely, a path handed THROUGH the framework
+  primitive already carries the prefix and MUST stay bare — adding it there
+  double-applies. Audit every path reference this module emits and resolve each to
+  the channel-correct form per the framework guidance injected for this run; an
+  in-app destination reached outside the primitive still needs the prefix.
 - **One authority per shared contract.** References to the same destination MUST
   derive from ONE shared definition (the producer owns it); this module conforms
   rather than carrying a divergent copy. Consolidate duplicated derivations.
