@@ -193,50 +193,67 @@ export function createJobRoutes(deps: {
         const { jobId: existingJobId, isInterrupted } = duplicate;
 
         if (isInterrupted) {
-          // Verify session file still has resumable interruption data.
-          // If session was cleared, this is a zombie paused job — auto-dismiss it.
+          // A paused job has NO live worker (the state is set by graceful
+          // shutdown or StaleJobRecovery; the resume path itself re-checks the
+          // BullMQ active lock). Reaching the new-job `execute` endpoint is an
+          // unambiguous choice to start fresh — `resume` is a separate route —
+          // so supersede the interrupted job instead of hard-blocking with 409.
+          // (A genuinely `running` job still 409s below for concurrency.)
           const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
           const resumable = hasResumableSession(featurePath, existingJobId);
 
-          if (!resumable) {
-            logger.info(`Auto-dismissing zombie paused job: ${existingJobId} (session cleared)`, { component: 'JobRoute' });
-            // Seal the zombie paused record (status, taskQueue, workflow, etc.)
-            // so it can't reappear in `listJobsByFeature` or block future jobs.
-            // jobType here is the incoming request's type — matches the zombie
-            // because checkDuplicateJob filtered by jobType.
-            await finalize({
-              jobId: existingJobId,
-              finalStatus: 'failed',
-              projectId,
-              featureName,
-              jobType: jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+          logger.info(
+            `Superseding interrupted job: ${existingJobId} (resumable=${resumable}) for new ${jobType} job`,
+            { component: 'JobRoute' },
+          );
+          // Seal the paused record (status, taskQueue, workflow, etc.) so it
+          // can't reappear in `listJobsByFeature` or block future jobs. jobType
+          // here is the incoming request's type — matches the paused job because
+          // checkDuplicateJob filtered by jobType. We do NOT re-enqueue the old
+          // jobId (resume's "still being processed" race only affects same-id
+          // re-enqueue); the new job below gets a fresh jobId.
+          await finalize({
+            jobId: existingJobId,
+            finalStatus: 'failed',
+            projectId,
+            featureName,
+            jobType: jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+            userContext,
+            interruption: {
+              reason: 'user_stopped',
+              message: resumable ? 'Superseded by a new job' : 'Auto-dismissed: session data was cleared',
+              canResume: false,
+              timestamp: new Date().toISOString(),
+              metadata: { stoppedBy: resumable ? 'superseded_by_new_job' : 'zombie_auto_dismiss' },
+            },
+            featurePath,
+          });
+
+          // chat-SSOT — the superseded job's cancelled/resume cards are now
+          // stale; flip them to resolved so the chat view doesn't keep a
+          // dangling resume affordance for a job the user moved past. Mirrors
+          // the dismiss handler's `resolveAllCancelledForJob` invocation.
+          if (deps.chatService) {
+            await deps.chatService.resolveAllCancelledForJob(projectId, featureName, existingJobId, {
+              choiceSelected: 'dismiss',
+              resolvedLabel: 'Superseded',
               userContext,
-              interruption: {
-                reason: 'user_stopped',
-                message: 'Auto-dismissed: session data was cleared',
-                canResume: false,
-                timestamp: new Date().toISOString(),
-                metadata: { stoppedBy: 'zombie_auto_dismiss' },
-              },
-              featurePath,
             });
-            // Fall through to normal job execution below
-          } else {
+          }
+
+          // Only surface a note when recoverable progress was discarded.
+          // Zombie sessions had nothing to resume, so staying silent is honest.
+          if (resumable) {
             await emitConflictAssistantMessage(
               projectId,
               featureName,
               seedTurnId,
               existingJobId,
               userContext,
-              '이전 작업이 중단되어 있습니다. 재개하거나 닫아주세요.',
+              '이전에 중단된 작업을 새 작업으로 대체했습니다.',
             );
-            return res.status(409).json({
-              error: 'A previous job was interrupted. Please resume or dismiss it first.',
-              existingJobId,
-              isInterrupted: true,
-              featureKey: `${projectId}/${featureName}`
-            });
           }
+          // Fall through to normal job execution below.
         } else {
           await emitConflictAssistantMessage(
             projectId,

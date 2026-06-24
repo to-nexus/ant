@@ -17,6 +17,7 @@
 import { useEffect, useRef } from 'react';
 import type { BaselineEstimate, PhaseTokenUsage } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { API_BASE } from '@/infrastructure/http/api/client';
 
 export interface UseBaselineEstimateInput {
   /** Currently selected intent (from action card). */
@@ -78,8 +79,9 @@ export function useBaselineEstimate(input: UseBaselineEstimateInput = {}): void 
       if (contextKey) params.set('context', contextKey.replace(/\|/g, ','));
 
       try {
-        const res = await fetch(`/api/jobs/baseline-estimate?${params.toString()}`, {
+        const res = await fetch(`${API_BASE()}/jobs/baseline-estimate?${params.toString()}`, {
           signal: controller.signal,
+          credentials: 'include',
         });
         if (!res.ok) {
           // 400 `intent-unmapped` is expected for visual intents (image
