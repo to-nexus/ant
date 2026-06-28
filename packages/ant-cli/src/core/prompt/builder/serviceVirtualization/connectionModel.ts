@@ -101,6 +101,23 @@ const FRAMEWORK_TOGGLE_PREFIX: Record<DeployFramework, string> = {
 /** Distinct prefixes a toggle may carry (bare `''` + each bundler prefix). */
 const ALL_TOGGLE_PREFIXES = [...new Set(Object.values(FRAMEWORK_TOGGLE_PREFIX))];
 
+/**
+ * True if `envVar` is in the SV mock-toggle namespace ANT owns — the master
+ * broadcast `USE_MOCK` or a per-connection `USE_MOCK_<NAME>`, with or without a
+ * client-bundle prefix (`NEXT_PUBLIC_` / `VITE_` / `REACT_APP_`).
+ *
+ * A toggle is the real/virtualize axis, never a connection's identity var, so
+ * the preview detector uses this to reject a `@connection` whose immediately
+ * following line is a mock toggle (a malformed annotation missing its URL var).
+ */
+export function isMockToggleVar(envVar: string): boolean {
+  return ALL_TOGGLE_PREFIXES.some(prefix => {
+    if (!envVar.startsWith(prefix)) return false;
+    const bare = envVar.slice(prefix.length);
+    return bare === MASTER_TOGGLE || bare.startsWith(`${MASTER_TOGGLE}_`);
+  });
+}
+
 /** Client-bundle visibility prefix for the given framework (bare when none). */
 export function frameworkTogglePrefix(framework: DeployFramework | undefined): string {
   return framework ? FRAMEWORK_TOGGLE_PREFIX[framework] : '';

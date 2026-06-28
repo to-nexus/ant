@@ -11,6 +11,7 @@ import { parseResolutionModifier } from './parseModifiers';
 import {
   parseAnnotationLine,
   deriveToggleVar,
+  isMockToggleVar,
 } from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
@@ -56,6 +57,17 @@ export function detectFromAnnotations(projectPath: string, subdir?: string): Ser
 
     const [envVar, value] = parseEnvLine(nextLine);
     if (!envVar) continue;
+
+    // A connection's identity var must never be an SV mock toggle — ANT owns
+    // that namespace (it is the real/virtualize axis, written/backfilled by the
+    // platform). An annotation whose only following line is a toggle is missing
+    // its URL var (malformed); surfacing the toggle as a connection is the bug.
+    if (isMockToggleVar(envVar)) {
+      console.warn(
+        `⚠️ [ConnectionDetector] @connection "${name}" binds to mock toggle "${envVar}" — malformed (no URL var), dropping`,
+      );
+      continue;
+    }
 
     const resolution = dispatchResolutionTokens(modifier, value || '');
     const virtualization = autoAttachVirtualization(category, name);

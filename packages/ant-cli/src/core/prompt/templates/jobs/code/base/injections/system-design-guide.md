@@ -23,6 +23,8 @@ The api-contract is **silent** on this question by design — it documents an in
 
 ⚠️ **Blind spot — identity vs data:** an external sign-in / identity-delegation boundary (authorize + callback + token + linked-account surfaces) is the classic case where its endpoints sit beside data endpoints under one contract heading yet belong to a separate port per the system-design. Honor the system-design's split; do not collapse identity onto the data port.
 
+⚠️ **Blind spot — a separate port is NOT a separate external connection:** port partition (this question) is orthogonal to how many external hosts the consumer dials. A dependency held as its own port still reaches its endpoints through whatever host the system-design assigns it — and when the system-design serves two ports from ONE host (one base address — e.g. an identity boundary whose endpoints share the data API's host under one path prefix), the consumer reaches both through a SINGLE external connection, not two. The count of external connections — and therefore the count of base-address / endpoint env vars and their virtualization toggles — is decided by **distinct external hosts**, never by port count. Minting a second base-address variable for a port that shares another port's host is a defect: it fabricates a connection the platform then surfaces as a separate dependency. Keeping a port separate in the code does NOT license giving it its own base URL. (Connection-topology is owned elsewhere — one host is one connection with one toggle; see the service-connection / virtualization env contract.)
+
 ### When a document is silent
 
 - Silent on a **wire detail** → the api-contract still applies (Question 1).
