@@ -5,7 +5,10 @@ import * as os from 'node:os';
 import { detectFromAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseEnvAnnotations';
 import { detectFromTomlAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseTomlAnnotations';
 import { detectFromKnownPatterns } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseKnownPatterns';
-import { deriveToggleVar } from '../../src/core/prompt/builder/serviceVirtualization/connectionModel';
+import {
+  deriveToggleVar,
+  isMockToggleVar,
+} from '../../src/core/prompt/builder/serviceVirtualization/connectionModel';
 
 /**
  * Phase 1 — Service Virtualization auto-attach truth table.
@@ -274,5 +277,77 @@ describe('connection annotation Service Virtualization auto-attach', () => {
       '.env': ['NEXT_PUBLIC_USE_MOCK_STRIPE_API=false', 'NEXT_PUBLIC_USE_MOCK=true'].join('\n'),
     });
     expect(detectFromAnnotations(root)[0].virtualization?.active).toBe(false);
+  });
+});
+
+/**
+ * Mock-toggle binding guard — a `@connection`'s identity var must never be an
+ * SV mock toggle (the real/virtualize axis ANT owns, never a connection URL).
+ * An annotation whose immediately-following line is a toggle is missing its URL
+ * var (malformed) and is dropped instead of surfacing the toggle as a phantom
+ * connection. Reproduces the classboard app, where `# @connection business auth`
+ * sat directly above `NEXT_PUBLIC_USE_MOCK_AUTH` (auth shares the api host, so
+ * it has no URL var of its own).
+ */
+describe('connection annotation drops mock-toggle-bound (malformed) connections', () => {
+  it('isMockToggleVar recognizes the USE_MOCK namespace across prefixes', () => {
+    expect(isMockToggleVar('USE_MOCK')).toBe(true);
+    expect(isMockToggleVar('USE_MOCK_AUTH')).toBe(true);
+    expect(isMockToggleVar('NEXT_PUBLIC_USE_MOCK_AUTH')).toBe(true);
+    expect(isMockToggleVar('VITE_USE_MOCK')).toBe(true);
+    expect(isMockToggleVar('REACT_APP_USE_MOCK_API')).toBe(true);
+    // Genuine connection/url vars are not toggles.
+    expect(isMockToggleVar('NEXT_PUBLIC_API_BASE_URL')).toBe(false);
+    expect(isMockToggleVar('NEXT_PUBLIC_AUTH_BASE_URL')).toBe(false);
+    expect(isMockToggleVar('STRIPE_API_KEY')).toBe(false);
+  });
+
+  it('drops a business @connection bound to a prefixed mock toggle (classboard app auth)', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business auth',
+        'NEXT_PUBLIC_USE_MOCK_AUTH=true',
+        'NEXT_PUBLIC_OAUTH_NAVER_CLIENT_ID=',
+      ].join('\n'),
+    });
+    expect(detectFromAnnotations(root)).toHaveLength(0);
+  });
+
+  it('keeps the well-formed connection and drops only the malformed one (app: api + auth)', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business api',
+        'NEXT_PUBLIC_API_BASE_URL=',
+        'NEXT_PUBLIC_USE_MOCK_API=true',
+        '',
+        '# @connection business auth',
+        'NEXT_PUBLIC_USE_MOCK_AUTH=true',
+        'NEXT_PUBLIC_OAUTH_NAVER_CLIENT_ID=',
+      ].join('\n'),
+    });
+    const conns = detectFromAnnotations(root);
+    expect(conns).toHaveLength(1);
+    expect(conns[0].id).toBe('api');
+    expect(conns[0].envVar).toBe('NEXT_PUBLIC_API_BASE_URL');
+  });
+
+  it('does NOT drop a connection whose URL var precedes its toggle (well-formed)', () => {
+    const root = setupProject({
+      '.env.example': [
+        '# @connection business stripe-api',
+        'STRIPE_API_KEY=',
+        'USE_MOCK_STRIPE_API=true',
+      ].join('\n'),
+    });
+    const conns = detectFromAnnotations(root);
+    expect(conns).toHaveLength(1);
+    expect(conns[0].envVar).toBe('STRIPE_API_KEY');
+  });
+
+  it('drops when bound to the bare master toggle USE_MOCK', () => {
+    const root = setupProject({
+      '.env.example': ['# @connection business auth', 'USE_MOCK=true'].join('\n'),
+    });
+    expect(detectFromAnnotations(root)).toHaveLength(0);
   });
 });
