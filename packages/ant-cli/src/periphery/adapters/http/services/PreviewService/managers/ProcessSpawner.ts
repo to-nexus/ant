@@ -9,6 +9,7 @@ import { resolveRunScript } from '../detectors/PackageDetector';
 import { toToggleFramework } from '../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 import { setToggleDefaultIfAbsent } from '../detectors/ConnectionDetector/envFileWriter';
 import { detectFramework } from '../../../../../../infrastructure/deploy';
+import { loadProjectEnv as loadProjectEnvShared, connectionsToEnv as connectionsToEnvShared } from './envAssembly';
 
 export interface SpawnOptions {
   serverKey: string;
@@ -157,40 +158,7 @@ export class ProcessSpawner {
    * Package-level values take precedence over project-root values.
    */
   loadProjectEnv(packagePath: string, projectRoot?: string): Record<string, string> {
-    const result: Record<string, string> = {};
-
-    const dirsToLoad: string[] = [];
-    if (projectRoot && path.resolve(projectRoot) !== path.resolve(packagePath)) {
-      dirsToLoad.push(projectRoot);
-    }
-    dirsToLoad.push(packagePath);
-
-    for (const dir of dirsToLoad) {
-      for (const fileName of ['.env', '.env.local']) {
-        const filePath = path.join(dir, fileName);
-        if (!fs.existsSync(filePath)) continue;
-
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          for (const line of content.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) continue;
-            const eqIndex = trimmed.indexOf('=');
-            if (eqIndex === -1) continue;
-            const key = trimmed.substring(0, eqIndex).trim();
-            let value = trimmed.substring(eqIndex + 1).trim();
-            if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-              value = value.slice(1, -1);
-            }
-            result[key] = value;
-          }
-        } catch (err) {
-          logger.warn(`[ProcessSpawner] Failed to parse ${filePath}: ${err}`, { component: 'ProcessSpawner' });
-        }
-      }
-    }
-
-    return result;
+    return loadProjectEnvShared(packagePath, projectRoot);
   }
 
   /**
@@ -198,15 +166,7 @@ export class ProcessSpawner {
    * Only injects env vars belonging to the target package (or global '*').
    */
   private connectionsToEnv(connections?: ServiceConnection[], packageSource?: string): Record<string, string> {
-    if (!connections?.length) return {};
-    const result: Record<string, string> = {};
-    for (const conn of connections) {
-      if (!conn.envVar || !conn.value) continue;
-      if (conn.source === '*' || !packageSource || conn.source === packageSource) {
-        result[conn.envVar] = conn.value;
-      }
-    }
-    return result;
+    return connectionsToEnvShared(connections, packageSource);
   }
 
   /**

@@ -44,7 +44,14 @@ export interface PreviewRuntimeIssue {
   source?: string;
 }
 
-export type PreviewPhase = 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';
+export type PreviewPhase = 'idle' | 'installing' | 'infra' | 'provisioning' | 'starting' | 'running' | 'error' | 'stopped';
+
+/**
+ * Which startup stage an `error` phase failed in. Lets the UI show "infra
+ * failed" / "migrations failed" instead of a buried log line. `undefined`
+ * for non-error phases.
+ */
+export type PreviewErrorStage = 'install' | 'infra' | 'provisioning' | 'starting';
 
 // === External Service Contract ===
 
@@ -142,6 +149,8 @@ export interface PreviewState {
   // Phase (single source of truth for UI state)
   phase: PreviewPhase;
   error?: string;                  // Error message when phase is 'error'
+  errorStage?: PreviewErrorStage;  // Which startup stage failed (when phase === 'error')
+  hint?: string;                   // Actionable next-step hint for the failed stage
   
   // Project structure (auto-detected at preview start)
   structureType?: PreviewStructureType;
@@ -354,7 +363,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'errorStage' | 'hint' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
   ): Promise<void>;
   
   /**

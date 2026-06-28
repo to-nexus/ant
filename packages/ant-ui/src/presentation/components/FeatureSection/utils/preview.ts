@@ -35,6 +35,11 @@ export function analyzePreviewState(
     // Map backend phases to frontend states
     switch (status.phase) {
       case 'installing': return 'installing';
+      // infra (docker compose up) + provisioning (DB migrate/seed) are
+      // mid-startup gates: show the starting spinner; the streamed console
+      // carries the precise stage line (🐳 / 🗄️).
+      case 'infra': return 'starting';
+      case 'provisioning': return 'starting';
       case 'starting': return 'starting';
       case 'running': return 'running';
       case 'stopping': return 'stopping';

@@ -1,12 +1,29 @@
-import { spawn, execSync, execFileSync } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
+import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import type { LogCallback } from '../types';
+import { loadProjectEnv } from './envAssembly';
+import { getComposeServices } from '../detectors/ConnectionDetector/enrichCompose';
 
 export interface ServiceStatus {
   name: string;
   status: 'running' | 'stopped' | 'unhealthy' | 'unknown';
+}
+
+/**
+ * Structured outcome of an infrastructure bring-up. `composePresent=false`
+ * means the project ships no compose file (nothing to do → `ok:true`). When
+ * `composePresent=true` and `ok=false`, `stage` says where it failed so the
+ * caller can fail-fast with an actionable error instead of spawning the app
+ * against missing/half-ready infrastructure.
+ */
+export interface InfraStartResult {
+  ok: boolean;
+  composePresent: boolean;
+  stage?: 'docker-missing' | 'compose-up' | 'readiness' | 'cancelled';
+  detail?: string;
 }
 
 /**
@@ -61,46 +78,54 @@ export class InfrastructureManager {
   }
 
   /**
-   * Start infrastructure services via docker compose
-   * 
-   * @returns true if services started successfully, false otherwise
+   * Start infrastructure services via docker compose.
+   *
+   * Returns a structured result so the caller can fail-fast: a project that
+   * ships a compose file but whose infra fails to come up (or is up but not
+   * accepting connections) MUST NOT have its app spawned against missing
+   * infrastructure — that only produces cryptic runtime errors at the wrong
+   * layer.
    */
   async startInfrastructure(
     projectPath: string,
     onLog: LogCallback,
     projectName?: string,
     signal?: AbortSignal,
-  ): Promise<boolean> {
+  ): Promise<InfraStartResult> {
     const composeFile = this.findComposeFile(projectPath);
     if (!composeFile) {
       logger.debug('No docker-compose file found, skipping infrastructure startup', { component: 'InfrastructureManager' });
-      return true; // No infrastructure needed = success
+      return { ok: true, composePresent: false };
     }
 
-    if (signal?.aborted) return false;
+    if (signal?.aborted) return { ok: false, composePresent: true, stage: 'cancelled' };
 
     const dockerAvailable = await this.isDockerAvailable();
     if (!dockerAvailable) {
-      const msg = '⚠️ Docker not found. Infrastructure services will not be started. App may fail to connect to external services.';
+      const msg = '❌ This project ships a docker-compose infrastructure but Docker is not available. Start Docker (or use a runtime that provides it) and retry.';
       logger.warn(msg, { component: 'InfrastructureManager' });
       onLog('stderr', msg + '\n');
-      return false;
+      return { ok: false, composePresent: true, stage: 'docker-missing', detail: 'Docker not available' };
     }
 
     // Pre-cleanup: remove stale containers/volumes from crashed previous runs
     await this.preCleanup(composeFile, projectName, onLog);
 
-    if (signal?.aborted) return false;
+    if (signal?.aborted) return { ok: false, composePresent: true, stage: 'cancelled' };
 
     const composeDir = path.dirname(composeFile);
     const composeName = path.basename(composeFile);
+    // Pass the project's .env so compose `${VAR}` interpolation resolves
+    // (image tags, registry hosts, credentials). Without this, compose only
+    // sees the bare process env and silently substitutes empty strings.
+    const composeEnv = { ...process.env, ...loadProjectEnv(projectPath) };
 
     logger.info(`🐳 Starting infrastructure services from ${composeName}`, { component: 'InfrastructureManager' });
     onLog('stdout', `🐳 Starting infrastructure services (${composeName})...\n`);
 
-    return new Promise((resolve) => {
+    const upResult = await new Promise<InfraStartResult>((resolve) => {
       if (signal?.aborted) {
-        resolve(false);
+        resolve({ ok: false, composePresent: true, stage: 'cancelled' });
         return;
       }
 
@@ -117,9 +142,9 @@ export class InfrastructureManager {
         cwd: composeDir,
         shell: false,
         stdio: 'pipe',
+        env: composeEnv,
       });
 
-      let stdout = '';
       let stderr = '';
       let settled = false;
 
@@ -131,7 +156,7 @@ export class InfrastructureManager {
           onLog('stderr', '⏹️ Infrastructure startup cancelled\n');
           try { child.kill('SIGTERM'); } catch { /* ignore */ }
           setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
-          resolve(false);
+          resolve({ ok: false, composePresent: true, stage: 'cancelled' });
         }
       };
       signal?.addEventListener('abort', onAbort, { once: true });
@@ -140,18 +165,16 @@ export class InfrastructureManager {
         if (!settled) {
           settled = true;
           signal?.removeEventListener('abort', onAbort);
-          const msg = `⚠️ Infrastructure startup timed out after ${this.STARTUP_TIMEOUT / 1000}s. Continuing anyway.`;
+          const msg = `❌ Infrastructure startup timed out after ${this.STARTUP_TIMEOUT / 1000}s.`;
           logger.warn(msg, { component: 'InfrastructureManager' });
           onLog('stderr', msg + '\n');
           try { child.kill('SIGTERM'); } catch { /* ignore */ }
-          resolve(false);
+          resolve({ ok: false, composePresent: true, stage: 'compose-up', detail: `timed out after ${this.STARTUP_TIMEOUT / 1000}s` });
         }
       }, this.STARTUP_TIMEOUT);
 
       child.stdout?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stdout += chunk;
-        onLog('stdout', chunk);
+        onLog('stdout', data.toString());
       });
 
       child.stderr?.on('data', (data: Buffer) => {
@@ -170,14 +193,14 @@ export class InfrastructureManager {
         signal?.removeEventListener('abort', onAbort);
 
         if (code === 0) {
-          logger.info('✅ Infrastructure services started successfully', { component: 'InfrastructureManager' });
-          onLog('stdout', '✅ Infrastructure services ready\n');
-          resolve(true);
+          logger.info('✅ Infrastructure containers started', { component: 'InfrastructureManager' });
+          resolve({ ok: true, composePresent: true });
         } else {
-          const msg = `⚠️ docker compose up exited with code ${code}. Continuing anyway.`;
-          logger.warn(`${msg} stderr: ${stderr.slice(-500)}`, { component: 'InfrastructureManager' });
+          const tail = stderr.slice(-500).trim();
+          const msg = `❌ docker compose up exited with code ${code}.`;
+          logger.warn(`${msg} stderr: ${tail}`, { component: 'InfrastructureManager' });
           onLog('stderr', msg + '\n');
-          resolve(false);
+          resolve({ ok: false, composePresent: true, stage: 'compose-up', detail: tail || `exit code ${code}` });
         }
       });
 
@@ -187,11 +210,70 @@ export class InfrastructureManager {
         clearTimeout(timeoutId);
         signal?.removeEventListener('abort', onAbort);
 
-        const msg = `⚠️ Failed to start infrastructure: ${error.message}`;
+        const msg = `❌ Failed to start infrastructure: ${error.message}`;
         logger.warn(msg, { component: 'InfrastructureManager' });
         onLog('stderr', msg + '\n');
-        resolve(false);
+        resolve({ ok: false, composePresent: true, stage: 'compose-up', detail: error.message });
       });
+    });
+
+    if (!upResult.ok) return upResult;
+
+    // Readiness probe: `--wait` only guarantees containers reached `running`;
+    // services without a healthcheck are "ready" the instant they spawn. Probe
+    // each published host port so the app never connects before the DB accepts.
+    const readiness = await this.probeReadiness(projectPath, onLog, signal);
+    if (!readiness.ok) return readiness;
+
+    onLog('stdout', '✅ Infrastructure services ready\n');
+    return { ok: true, composePresent: true };
+  }
+
+  private readonly READINESS_TIMEOUT = 30_000;
+  private readonly READINESS_INTERVAL = 500;
+
+  /**
+   * TCP-probe every published compose host port until it accepts a connection
+   * or the budget is exhausted. Stack-neutral readiness gate that closes the
+   * `docker compose up --wait` false-positive for healthcheck-less services.
+   */
+  private async probeReadiness(projectPath: string, onLog: LogCallback, signal?: AbortSignal): Promise<InfraStartResult> {
+    const ports = Array.from(
+      new Set(getComposeServices(projectPath).map(s => s.port).filter((p): p is number => typeof p === 'number')),
+    );
+    if (ports.length === 0) return { ok: true, composePresent: true };
+
+    const deadline = Date.now() + this.READINESS_TIMEOUT;
+    for (const port of ports) {
+      let ready = false;
+      while (Date.now() < deadline) {
+        if (signal?.aborted) return { ok: false, composePresent: true, stage: 'cancelled' };
+        if (await this.canConnect(port)) { ready = true; break; }
+        await new Promise(r => setTimeout(r, this.READINESS_INTERVAL));
+      }
+      if (!ready) {
+        const msg = `❌ Infrastructure service on port ${port} did not accept connections within ${this.READINESS_TIMEOUT / 1000}s.`;
+        logger.warn(msg, { component: 'InfrastructureManager' });
+        onLog('stderr', msg + '\n');
+        return { ok: false, composePresent: true, stage: 'readiness', detail: `port ${port} not accepting connections` };
+      }
+    }
+    return { ok: true, composePresent: true };
+  }
+
+  private canConnect(port: number, host = '127.0.0.1'): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      const done = (ok: boolean) => {
+        socket.removeAllListeners();
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(2000);
+      socket.once('connect', () => done(true));
+      socket.once('timeout', () => done(false));
+      socket.once('error', () => done(false));
+      socket.connect(port, host);
     });
   }
 
@@ -216,6 +298,7 @@ export class InfrastructureManager {
     }
 
     const composeDir = path.dirname(composeFile);
+    const composeEnv = { ...process.env, ...loadProjectEnv(projectPath) };
 
     logger.info('🐳 Stopping infrastructure services', { component: 'InfrastructureManager' });
     onLog('stdout', '🐳 Stopping infrastructure services...\n');
@@ -233,6 +316,7 @@ export class InfrastructureManager {
         cwd: composeDir,
         shell: false,
         stdio: 'pipe',
+        env: composeEnv,
       });
 
       let settled = false;
@@ -240,8 +324,10 @@ export class InfrastructureManager {
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
-          logger.warn('Infrastructure shutdown timed out, continuing cleanup', { component: 'InfrastructureManager' });
+          logger.warn('Infrastructure shutdown timed out, escalating to SIGKILL', { component: 'InfrastructureManager' });
           try { child.kill('SIGTERM'); } catch { /* ignore */ }
+          // Escalate if `docker compose down` itself hangs (stuck container stop).
+          setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
           resolve();
         }
       }, this.SHUTDOWN_TIMEOUT);
@@ -298,6 +384,7 @@ export class InfrastructureManager {
         cwd: path.dirname(composeFile),
         shell: false,
         stdio: 'pipe',
+        env: { ...process.env, ...loadProjectEnv(path.dirname(composeFile)) },
       });
 
       let settled = false;
@@ -360,6 +447,7 @@ export class InfrastructureManager {
         encoding: 'utf-8',
         timeout: 10_000,
         stdio: 'pipe',
+        env: { ...process.env, ...loadProjectEnv(projectPath) },
       });
 
       if (!output.trim()) {

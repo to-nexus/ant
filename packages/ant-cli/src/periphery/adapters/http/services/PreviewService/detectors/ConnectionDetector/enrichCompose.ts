@@ -41,6 +41,16 @@ export function enrichWithCompose(connections: ServiceConnection[], projectPath:
   return connections;
 }
 
+/**
+ * Public accessor for declared compose services and their first published host
+ * port. Shared SSOT used by both connection enrichment and the
+ * InfrastructureManager readiness probe (so "container running" can be upgraded
+ * to "port actually accepting connections").
+ */
+export function getComposeServices(projectPath: string): Array<{ name: string; image?: string; port?: number }> {
+  return parseComposeServices(projectPath);
+}
+
 function parseComposeServices(projectPath: string): Array<{ name: string; image?: string; port?: number }> {
   let composePath: string | null = null;
   for (const f of COMPOSE_FILES) {
