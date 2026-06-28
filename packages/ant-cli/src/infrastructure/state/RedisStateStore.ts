@@ -760,7 +760,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'errorStage' | 'hint' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
@@ -818,7 +818,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null }
+    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null; setupCommands?: string[] | null }
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
@@ -840,7 +840,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null } | null> {
+  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null; setupCommands?: string[] | null } | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
     const data = await this.redis.get(key);

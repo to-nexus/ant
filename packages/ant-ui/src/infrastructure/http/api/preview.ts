@@ -80,8 +80,12 @@ export interface PreviewStatus {
   suggestedFix?: string;
   packages?: PreviewStatusPackage[];
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
-  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
+  phase?: 'idle' | 'installing' | 'infra' | 'provisioning' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
   error?: string;
+  /** Which startup stage failed (when phase === 'error'). */
+  errorStage?: 'install' | 'infra' | 'provisioning' | 'starting';
+  /** Actionable next-step hint for the failed stage. */
+  hint?: string;
   structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
   projectProfile?: { language: string; framework?: string } | null;
   connections?: ServiceConnection[] | null;

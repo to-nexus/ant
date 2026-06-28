@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
-import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, ServiceConnection } from '../../../../../core/ports/portRegistry';
+import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, PreviewErrorStage, ServiceConnection } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey, toUrlKey, toUrlKeyWithService, packageSlug } from './utils/serverKeyUtils';
@@ -17,6 +17,7 @@ import { RuntimeDiagnostics } from './detectors/RuntimeDiagnostics';
 import { DependencyInstaller } from './managers/DependencyInstaller';
 import { ProcessSpawner } from './managers/ProcessSpawner';
 import { InfrastructureManager } from './managers/InfrastructureManager';
+import { ProvisioningManager } from './managers/ProvisioningManager';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
@@ -27,6 +28,22 @@ import { DevProcessControl, isPortConflictOutput } from '../../../../../core/pro
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
+
+/**
+ * Thrown when a startup stage (infra / provisioning) fails hard. Carries the
+ * stage + an actionable hint so the catch block can surface "which stage, why,
+ * what next" to the UI instead of a buried generic error.
+ */
+class PreviewStageError extends Error {
+  constructor(
+    message: string,
+    readonly stage: PreviewErrorStage,
+    readonly hint: string,
+  ) {
+    super(message);
+    this.name = 'PreviewStageError';
+  }
+}
 
 /**
  * Choose the appropriate post-spawn status line for the preview spawn loop.
@@ -112,6 +129,7 @@ export class PreviewService {
   private dependencyInstaller: DependencyInstaller;
   private processSpawner: ProcessSpawner;
   private infrastructureManager: InfrastructureManager;
+  private provisioningManager: ProvisioningManager;
   private healthChecker: HealthChecker;
   private issueDetector: IssueDetector;
 
@@ -145,6 +163,7 @@ export class PreviewService {
     this.dependencyInstaller = new DependencyInstaller();
     this.processSpawner = new ProcessSpawner();
     this.infrastructureManager = new InfrastructureManager();
+    this.provisioningManager = new ProvisioningManager();
     this.healthChecker = new HealthChecker();
     this.issueDetector = new IssueDetector();
     this.dev = this.processSpawner.getDevProcessControl();
@@ -213,17 +232,23 @@ export class PreviewService {
   private async updatePhase(
     serverKey: string,
     phase: PreviewPhase,
-    extra?: { error?: string; running?: boolean; ready?: boolean }
+    extra?: { error?: string; running?: boolean; ready?: boolean; errorStage?: PreviewErrorStage; hint?: string }
   ): Promise<void> {
     const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-    
+
+    // infra / provisioning are mid-startup gates: the dev server is NOT up yet.
+    const midStartup = phase === 'infra' || phase === 'provisioning';
+    const defaultRunning = phase === 'installing' || phase === 'starting' || phase === 'running';
+
     // 1. Update Redis (source of truth)
     if (this.portRegistry) {
       try {
         await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
           phase,
           error: extra?.error,
-          running: extra?.running ?? (phase === 'installing' || phase === 'starting' || phase === 'running'),
+          errorStage: phase === 'error' ? extra?.errorStage : undefined,
+          hint: phase === 'error' ? extra?.hint : undefined,
+          running: extra?.running ?? (defaultRunning && !midStartup),
           ready: extra?.ready ?? (phase === 'running'),
         });
       } catch (err: any) {
@@ -243,6 +268,8 @@ export class PreviewService {
             ready: state.ready,
             phase: state.phase,
             error: state.error,
+            errorStage: state.errorStage,
+            hint: state.hint,
             port: state.port || undefined,
             // Top-level url is the "representative" Open URL. For
             // multi-frontend monorepos there is no single representative —
@@ -694,9 +721,22 @@ export class PreviewService {
       if (startSignal.aborted) throw new Error('Preview start cancelled');
       this.previewServerPaths.set(serverKey, localPath);
       const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-      await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName, startSignal);
+      await this.updatePhase(serverKey, 'infra', { running: false, ready: false });
+      const infraResult = await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName, startSignal);
       if (startSignal.aborted) throw new Error('Preview start cancelled');
-      
+
+      // Fail-fast: a project that SHIPS a compose file but whose infra didn't
+      // come up (or is up but not accepting connections) must not spawn the app
+      // against missing infrastructure — that only yields cryptic runtime errors.
+      if (infraResult.composePresent && !infraResult.ok && infraResult.stage !== 'cancelled') {
+        const hint = infraResult.stage === 'docker-missing'
+          ? 'This project requires Docker for its infrastructure. Start Docker and retry.'
+          : infraResult.stage === 'readiness'
+            ? `A required service did not become reachable (${infraResult.detail ?? 'timeout'}). Check the compose service config.`
+            : `docker compose failed to start (${infraResult.detail ?? 'see logs'}).`;
+        throw new PreviewStageError(`Infrastructure failed: ${infraResult.detail ?? infraResult.stage}`, 'infra', hint);
+      }
+
       const infraStatus = await this.infrastructureManager.getInfraStatus(localPath, infraProjectName);
 
       // 3. Allocate ports and start all preview servers
@@ -782,6 +822,30 @@ export class PreviewService {
       logger.info(`[Preview] ${connections.length} connections from registry for ${serverKey}`, { component: 'PreviewService' });
 
       if (startSignal.aborted) throw new Error('Preview start cancelled');
+
+      // 2.6. Provisioning: run post-infra setup commands (DB migration / seed /
+      // declared) against the now-ready infra, BEFORE spawning the app. The
+      // compose DB comes up empty (volumes are wiped each start), so without
+      // this every query against an un-migrated schema fails. Same env as the
+      // dev process so DATABASE_URL matches. Fatal on failure.
+      const setupCommands = savedConfig?.setupCommands ?? undefined;
+      const provisionCommands = this.provisioningManager.resolveSetupCommands(
+        structure.packages, localPath, setupCommands ?? undefined,
+      );
+      if (provisionCommands.length > 0) {
+        await this.updatePhase(serverKey, 'provisioning', { running: false, ready: false });
+        const provisionResult = await this.provisioningManager.runProvisioning(
+          structure.packages, localPath, connections, setupCommands ?? undefined, logCallback, startSignal,
+        );
+        if (startSignal.aborted) throw new Error('Preview start cancelled');
+        if (!provisionResult.ok) {
+          throw new PreviewStageError(
+            `Provisioning failed: ${provisionResult.detail ?? 'unknown'}`,
+            'provisioning',
+            'A setup command (e.g. DB migration) failed. Check the logs above for the underlying error.',
+          );
+        }
+      }
 
       // Per-package pre-flight: now that ports are allocated and cwds known,
       // sweep each package cwd + port for stale dev processes/locks. This
@@ -1114,10 +1178,25 @@ export class PreviewService {
       // Actual error — report as 'error'
       logger.error(`Error starting preview server: ${error.message}`, { component: 'PreviewService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
-      
+
+      const stageErr = error instanceof PreviewStageError ? error : undefined;
+
+      // A hard infra/provisioning failure leaves containers up but no app — tear
+      // them down so the next start (and its preCleanup) begins from a clean slate.
+      if (stageErr) {
+        const infraPath = this.previewServerPaths.get(serverKey);
+        if (infraPath) {
+          const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+          await this.infrastructureManager.stopInfrastructure(infraPath, logCb, `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-')).catch(() => {});
+          this.previewServerPaths.delete(serverKey);
+        }
+      }
+
       await this.updatePhase(serverKey, 'error', {
         running: false, ready: false,
-        error: error.message || 'Failed to start preview server'
+        error: error.message || 'Failed to start preview server',
+        errorStage: stageErr?.stage,
+        hint: stageErr?.hint,
       });
       
       return {
