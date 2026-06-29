@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseEnvLine } from './utils';
+import { findNextEnvLine } from './parseEnvAnnotations';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
 import {
   frameworkTogglePrefix,
@@ -124,6 +125,30 @@ function findKeyLineIndex(lines: string[], envVar: string): number {
 }
 
 /**
+ * Indices of every `@connection` line that binds to `envVar`, using the SAME
+ * binding rule the detector reads with — `findNextEnvLine` (the read SSOT):
+ * an annotation binds to the next `KEY=` line after it, skipping blanks AND
+ * comments. The write side must locate the existing annotation the same way it
+ * was read; assuming strict adjacency (`keyIdx - 1`) misses an annotation that
+ * the code job separated from its KEY with explanatory comment lines, causing a
+ * duplicate annotation to be inserted instead of an in-place replace.
+ *
+ * Returns indices in file order; usually one, but more if a prior buggy write
+ * left duplicates (callers collapse them).
+ */
+function annotationIndicesBoundTo(lines: string[], envVar: string): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!parseAnnotationLine(lines[i])) continue;
+    const next = findNextEnvLine(lines, i + 1);
+    if (!next) continue;
+    const [k] = parseEnvLine(next);
+    if (k === envVar) indices.push(i);
+  }
+  return indices;
+}
+
+/**
  * Write `bareToggle=true` (framework-aware) ONLY when no variant is already
  * present — idempotent default. Shared by the `.env.example` annotation writer
  * and the spawn-time `.env` backfill that replaced `mockToggleDefaults`, so
@@ -181,11 +206,15 @@ export function upsertConnectionAnnotation(
         'utf-8',
       );
     } else {
-      const prevIdx = keyIdx - 1;
-      if (prevIdx >= 0 && parseAnnotationLine(lines[prevIdx])) {
-        lines[prevIdx] = annotationLine; // replace existing annotation in place
+      // Locate the existing annotation with the read-side binding rule
+      // (comment-tolerant), not strict `keyIdx - 1` adjacency.
+      const bound = annotationIndicesBoundTo(lines, conn.envVar);
+      if (bound.length > 0) {
+        lines[bound[0]] = annotationLine; // replace in place (preserves position)
+        // Collapse any duplicates a prior strict-adjacency write left behind.
+        for (let j = bound.length - 1; j >= 1; j--) lines.splice(bound[j], 1);
       } else {
-        lines.splice(keyIdx, 0, annotationLine); // insert above the KEY line
+        lines.splice(keyIdx, 0, annotationLine); // KEY present, no annotation → insert above
       }
       fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
     }
@@ -233,11 +262,10 @@ export function removeConnectionAnnotation(
 ): void {
   if (!fs.existsSync(envExamplePath)) return;
   const lines = fs.readFileSync(envExamplePath, 'utf-8').split('\n');
-  const keyIdx = findKeyLineIndex(lines, conn.envVar);
-  if (keyIdx <= 0) return;
-  const prevIdx = keyIdx - 1;
-  if (parseAnnotationLine(lines[prevIdx])) {
-    lines.splice(prevIdx, 1);
-    fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
-  }
+  // Same comment-tolerant binding rule as the read/upsert side; removes every
+  // annotation bound to this KEY (collapses any leftover duplicates too).
+  const bound = annotationIndicesBoundTo(lines, conn.envVar);
+  if (bound.length === 0) return;
+  for (let j = bound.length - 1; j >= 0; j--) lines.splice(bound[j], 1);
+  fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
 }
