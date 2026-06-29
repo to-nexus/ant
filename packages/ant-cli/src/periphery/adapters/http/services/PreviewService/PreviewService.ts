@@ -18,6 +18,7 @@ import { DependencyInstaller } from './managers/DependencyInstaller';
 import { ProcessSpawner } from './managers/ProcessSpawner';
 import { InfrastructureManager } from './managers/InfrastructureManager';
 import { ProvisioningManager } from './managers/ProvisioningManager';
+import { readPreviewManifest } from './managers/previewManifest';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
@@ -828,14 +829,14 @@ export class PreviewService {
       // compose DB comes up empty (volumes are wiped each start), so without
       // this every query against an un-migrated schema fails. Same env as the
       // dev process so DATABASE_URL matches. Fatal on failure.
-      const setupCommands = savedConfig?.setupCommands ?? undefined;
+      const previewManifest = readPreviewManifest(localPath);
       const provisionCommands = this.provisioningManager.resolveSetupCommands(
-        structure.packages, localPath, setupCommands ?? undefined,
+        structure.packages, localPath, previewManifest,
       );
       if (provisionCommands.length > 0) {
         await this.updatePhase(serverKey, 'provisioning', { running: false, ready: false });
         const provisionResult = await this.provisioningManager.runProvisioning(
-          structure.packages, localPath, connections, setupCommands ?? undefined, logCallback, startSignal,
+          structure.packages, localPath, connections, previewManifest, logCallback, startSignal,
         );
         if (startSignal.aborted) throw new Error('Preview start cancelled');
         if (!provisionResult.ok) {

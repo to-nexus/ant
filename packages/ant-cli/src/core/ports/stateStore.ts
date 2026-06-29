@@ -313,7 +313,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null; setupCommands?: string[] | null }
+    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null }
   ): Promise<void>;
   
   /**
@@ -325,7 +325,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null; setupCommands?: string[] | null } | null>;
+  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null } | null>;
   
   /**
    * Unregister preview

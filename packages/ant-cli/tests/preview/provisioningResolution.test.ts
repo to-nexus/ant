@@ -6,15 +6,23 @@ import { ProvisioningManager } from '../../src/periphery/adapters/http/services/
 import { InfrastructureManager } from '../../src/periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
 import { getComposeServices } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/enrichCompose';
 import type { PackageInfo } from '../../src/periphery/adapters/http/services/PreviewService/types';
+import type { PreviewManifestResult } from '../../src/periphery/adapters/http/services/PreviewService/managers/previewManifest';
 
 /**
  * Provisioning command resolution — the post-infra setup step that fixes the
  * "fresh empty DB → every query fails" preview gap.
  *
- * Key regression (the defect caught during planning): a Prisma project WITHOUT
- * committed migrations must use `db push`, NOT `migrate deploy` — `migrate
- * deploy` errors with "No migration found" and would not provision the schema.
+ * Declared-only: the single source is the preview manifest. ANT infra is
+ * ORM/stack-agnostic — it runs the declared commands, it does NOT auto-detect
+ * Prisma (or any ORM). Root commands run at the project root; per-package
+ * commands run in the matching package's cwd, keyed by
+ * `packageSource = path.relative(projectRoot, pkg.path)`.
  */
+
+const manifest = (m: Partial<PreviewManifestResult>): PreviewManifestResult => ({
+  root: m.root ?? [],
+  byPackage: m.byPackage ?? {},
+});
 
 function withTempProject(
   setup: (dir: string) => void,
@@ -47,74 +55,62 @@ const pkg = (p: string): PackageInfo => ({ name: 'root', path: p, type: 'backend
 describe('ProvisioningManager.resolveSetupCommands', () => {
   const mgr = new ProvisioningManager();
 
-  it('Prisma WITHOUT migrations → db push --skip-generate (not migrate deploy)', () => {
+  it('empty manifest → no setup commands', () => {
+    const cmds = mgr.resolveSetupCommands([pkg('/tmp/root')], '/tmp/root', manifest({}));
+    expect(cmds).toHaveLength(0);
+  });
+
+  it('root setupCommands → verbatim, shell, root cwd, packageSource "*"', () => {
+    const root = '/tmp/root';
+    const cmds = mgr.resolveSetupCommands(
+      [pkg(root)], root,
+      manifest({ root: ['npm run db:setup', 'npm run seed'] }),
+    );
+    expect(cmds.map(c => c.label)).toEqual(['npm run db:setup', 'npm run seed']);
+    expect(cmds.every(c => c.shell)).toBe(true);
+    expect(cmds.every(c => c.cwd === root)).toBe(true);
+    expect(cmds.every(c => c.packageSource === '*')).toBe(true);
+  });
+
+  it('per-package: key matches packageSource → cwd + env scoped to that package', () => {
     withTempProject(
+      () => { /* no fs needed — resolution is manifest-driven */ },
       (dir) => {
-        fs.mkdirSync(path.join(dir, 'prisma'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'prisma', 'schema.prisma'), 'datasource db {}');
-      },
-      (dir) => {
-        const cmds = mgr.resolveSetupCommands([pkg(dir)], dir);
+        const api = path.join(dir, 'apps', 'api');
+        const key = path.relative(dir, api); // 'apps/api'
+        const cmds = mgr.resolveSetupCommands(
+          [{ name: 'api', path: api, type: 'backend' }], dir,
+          manifest({ byPackage: { [key]: ['npx prisma migrate deploy'] } }),
+        );
         expect(cmds).toHaveLength(1);
-        expect(cmds[0].label).toBe('prisma db push --skip-generate');
-        // never migrate deploy when there is no migration history
-        expect(cmds[0].label).not.toContain('migrate deploy');
-      },
-    );
-  });
-
-  it('Prisma WITH committed migrations → migrate deploy', () => {
-    withTempProject(
-      (dir) => {
-        fs.mkdirSync(path.join(dir, 'prisma', 'migrations', '0001_init'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'prisma', 'schema.prisma'), 'datasource db {}');
-        fs.writeFileSync(path.join(dir, 'prisma', 'migrations', '0001_init', 'migration.sql'), 'SELECT 1;');
-      },
-      (dir) => {
-        const cmds = mgr.resolveSetupCommands([pkg(dir)], dir);
-        expect(cmds).toHaveLength(1);
-        expect(cmds[0].label).toBe('prisma migrate deploy');
-      },
-    );
-  });
-
-  it('no Prisma schema → no setup commands', () => {
-    withTempProject(
-      () => { /* empty project */ },
-      (dir) => expect(mgr.resolveSetupCommands([pkg(dir)], dir)).toHaveLength(0),
-    );
-  });
-
-  it('declared setupCommands take precedence over ORM auto-detect (verbatim, shell, root cwd)', () => {
-    withTempProject(
-      (dir) => {
-        fs.mkdirSync(path.join(dir, 'prisma'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'prisma', 'schema.prisma'), 'datasource db {}');
-      },
-      (dir) => {
-        const cmds = mgr.resolveSetupCommands([pkg(dir)], dir, ['npm run db:setup', 'npm run seed']);
-        expect(cmds.map(c => c.label)).toEqual(['npm run db:setup', 'npm run seed']);
-        expect(cmds.every(c => c.shell)).toBe(true);
-        expect(cmds.every(c => c.cwd === dir)).toBe(true);
-      },
-    );
-  });
-
-  it('per-package: schema in a subpackage resolves cwd + packageSource to that package', () => {
-    withTempProject(
-      (dir) => {
-        const api = path.join(dir, 'packages', 'api');
-        fs.mkdirSync(path.join(api, 'prisma'), { recursive: true });
-        fs.writeFileSync(path.join(api, 'prisma', 'schema.prisma'), 'datasource db {}');
-      },
-      (dir) => {
-        const api = path.join(dir, 'packages', 'api');
-        const cmds = mgr.resolveSetupCommands([{ name: 'api', path: api, type: 'backend' }], dir);
-        expect(cmds).toHaveLength(1);
+        expect(cmds[0].label).toBe('npx prisma migrate deploy');
         expect(cmds[0].cwd).toBe(api);
-        expect(cmds[0].packageSource).toBe(path.join('packages', 'api'));
+        expect(cmds[0].packageSource).toBe(key);
+        expect(cmds[0].shell).toBe(true);
       },
     );
+  });
+
+  it('per-package key matching no detected package → skipped (no command)', () => {
+    const root = '/tmp/root';
+    const cmds = mgr.resolveSetupCommands(
+      [pkg(root)], root,
+      manifest({ byPackage: { 'apps/ghost': ['npm run x'] } }),
+    );
+    expect(cmds).toHaveLength(0);
+  });
+
+  it('root + per-package combined → root first, then matched package', () => {
+    const dir = '/tmp/root';
+    const api = path.join(dir, 'apps', 'api');
+    const key = path.relative(dir, api);
+    const cmds = mgr.resolveSetupCommands(
+      [pkg(dir), { name: 'api', path: api, type: 'backend' }], dir,
+      manifest({ root: ['npm run migrate:all'], byPackage: { [key]: ['npm run seed'] } }),
+    );
+    expect(cmds.map(c => c.label)).toEqual(['npm run migrate:all', 'npm run seed']);
+    expect(cmds[0].cwd).toBe(dir);
+    expect(cmds[1].cwd).toBe(api);
   });
 });
 
