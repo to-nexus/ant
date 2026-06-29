@@ -13,6 +13,7 @@ import {
   removeConnectionAnnotation,
   mirrorConnectionToEnv,
 } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
+import { detectFromAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseEnvAnnotations';
 import type { ServiceConnection } from '../../src/core/ports/portRegistry';
 
 const conn = (over: Partial<ServiceConnection> = {}): ServiceConnection => ({
@@ -120,5 +121,118 @@ describe('mirrorConnectionToEnv (§5 value invariant)', () => {
     });
     mirrorConnectionToEnv(envp(), infra);
     expect(read()).toContain('DATABASE_URL=postgres://localhost:5432/db');
+  });
+});
+
+/**
+ * Comment-tolerant annotation binding on the WRITE side — regression for the
+ * classboard cloud case where a code job placed explanatory comment lines
+ * between `# @connection business api` and its KEY. Strict `keyIdx - 1`
+ * adjacency missed the annotation, inserted a duplicate, and first-wins dedup
+ * reverted the resolution on Auto-Detect. The writer must locate the existing
+ * annotation with the same rule the reader binds with (`findNextEnvLine`).
+ */
+describe('annotation write with comments between annotation and KEY', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-envwriter-gap-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  const ex = () => path.join(dir, '.env.example');
+  const read = () => (fs.existsSync(ex()) ? fs.readFileSync(ex(), 'utf-8') : '');
+  const apiConn = (over: Partial<ServiceConnection> = {}): ServiceConnection =>
+    conn({
+      id: 'api', name: 'Api', envVar: 'NEXT_PUBLIC_API_BASE_URL',
+      virtualization: { toggleEnvVar: 'USE_MOCK_API', active: false },
+      ...over,
+    });
+
+  it('replaces the annotation in place across a comment gap (no duplicate)', () => {
+    fs.writeFileSync(ex(), [
+      '# @connection business api',
+      '# auth is the /api/v1/auth/* route group of this same backend, not a',
+      '# separate service — its adapter shares this connection\'s single toggle.',
+      'NEXT_PUBLIC_API_BASE_URL=',
+      'NEXT_PUBLIC_USE_MOCK_API=false',
+      '',
+    ].join('\n'));
+    upsertConnectionAnnotation(
+      ex(),
+      apiConn({ resolution: { type: 'ant-project', projectId: 'classboard-be', feature: 'cloud-opus' } }),
+      'next',
+    );
+    const lines = read().split('\n');
+    const ann = lines.filter(l => l.includes('@connection business api'));
+    expect(ann).toEqual(['# @connection business api ant-project:classboard-be:cloud-opus']);
+    // Explanatory comments preserved.
+    expect(read()).toContain('# auth is the /api/v1/auth/* route group');
+  });
+
+  it('self-heals a file already corrupted with a duplicate annotation', () => {
+    fs.writeFileSync(ex(), [
+      '# @connection business api',
+      '# explanatory comment',
+      '# @connection business api ant-project:classboard-be:cloud-opus',
+      'NEXT_PUBLIC_API_BASE_URL=',
+      '',
+    ].join('\n'));
+    upsertConnectionAnnotation(
+      ex(),
+      apiConn({ resolution: { type: 'ant-project', projectId: 'classboard-be', feature: 'cloud-opus' } }),
+      'next',
+    );
+    const ann = read().split('\n').filter(l => l.includes('@connection business api'));
+    expect(ann).toEqual(['# @connection business api ant-project:classboard-be:cloud-opus']);
+  });
+
+  it('round-trips: detect re-reads the written ant-project resolution (no revert)', () => {
+    fs.writeFileSync(ex(), [
+      '# @connection business api',
+      '# explanatory comment that separates the annotation from its KEY',
+      'NEXT_PUBLIC_API_BASE_URL=',
+      'NEXT_PUBLIC_USE_MOCK_API=false',
+      '',
+    ].join('\n'));
+    upsertConnectionAnnotation(
+      ex(),
+      apiConn({ resolution: { type: 'ant-project', projectId: 'classboard-be', feature: 'cloud-opus' } }),
+      'next',
+    );
+    const detected = detectFromAnnotations(dir);
+    const api = detected.find(c => c.id === 'api');
+    expect(api?.resolution).toEqual({
+      type: 'ant-project', projectId: 'classboard-be', feature: 'cloud-opus',
+    });
+  });
+
+  it('removeConnectionAnnotation drops the annotation across a comment gap, keeping comments + KEY', () => {
+    fs.writeFileSync(ex(), [
+      '# @connection business api',
+      '# explanatory comment',
+      'NEXT_PUBLIC_API_BASE_URL=',
+      '',
+    ].join('\n'));
+    removeConnectionAnnotation(ex(), apiConn());
+    const c = read();
+    expect(c).not.toContain('@connection');
+    expect(c).toContain('# explanatory comment');
+    expect(c).toContain('NEXT_PUBLIC_API_BASE_URL=');
+  });
+
+  it('does NOT touch another connection whose annotation is separated by an intervening KEY', () => {
+    // `api` binds to NEXT_PUBLIC_API_BASE_URL; upserting `other` must not collect it.
+    fs.writeFileSync(ex(), [
+      '# @connection business api',
+      'NEXT_PUBLIC_API_BASE_URL=',
+      'OTHER_URL=',
+      '',
+    ].join('\n'));
+    upsertConnectionAnnotation(
+      ex(),
+      conn({ id: 'other', envVar: 'OTHER_URL', virtualization: { toggleEnvVar: 'USE_MOCK_OTHER', active: false } }),
+    );
+    const c = read();
+    // The api annotation is untouched (still modifier-less), and `other` got its own.
+    expect(c).toContain('# @connection business api\n');
+    expect(c).toContain('# @connection business other');
+    expect(c.split('\n').filter(l => l.includes('@connection business api')).length).toBe(1);
   });
 });
