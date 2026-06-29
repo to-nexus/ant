@@ -191,6 +191,13 @@ export class AutoInjectionResolver {
 
       if (job === 'code' && !isVerification && !isDoc && hasBackend) {
         injections.push('jobs/code/nodes/execute/injections/backend-safety');
+        // Preview provisioning manifest contract — mirrors backend-safety's
+        // gate exactly. A DB-backed backend must declare its boot-time
+        // schema-apply command in `ant.manifest.json`; this partial teaches
+        // both initial authoring and self-repair ("fix the manifest"). Plan
+        // node intentionally excluded — the manifest is authored at execute
+        // time, so the planner does not need the contract.
+        injections.push(`${jobPrefix}/preview-manifest`);
       }
 
       if (job === 'code' && !isTestCode && !isDoc) {

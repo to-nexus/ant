@@ -591,6 +591,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/preview-manifest": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/preview-setup": {
     "sources": [
       "auto-injection",
