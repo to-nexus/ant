@@ -3,61 +3,38 @@
  *
  * Purpose
  * -------
- * Multiple call sites have to defend against zombie dev servers:
- *   • PreviewService.startPreview pre-flight   — cleanup before spawn
- *   • PreviewService.startPreview retry        — recover from port conflict
- *   • PreviewService.stopPreview               — kill children + clear locks
- *   • PreviewService.forceRestart              — wait until ports/locks clear
- *   • Code Job learn node (run_command leak)   — task-end teardown
+ * Multiple call sites have to tear down dev servers:
+ *   • PreviewService.startPreview / stopPreview / reconciler  — owned-identity reap
+ *   • PreviewService spawn-conflict retry                     — Next-lock cleanup
+ *   • Code Job learn node / runCommand (run_command leak)     — task-end teardown
  *
- * Without a SSOT, each site reimplements its own variant of process-tree
- * kill, lock cleanup, and port checks. We had exactly that — and at least
- * three of those variants were buggy or missing entirely. This module
- * consolidates them so future runtime additions (Bun, alternate Vite
- * lock formats, etc.) only require changes here.
+ * Cleanup acts ONLY on process identities ANT provably spawned — either a
+ * live `ChildProcess` handle (`killTree`) or a persisted `(pid, pgid, podId)`
+ * record scoped to this pod (`killOwned`). There is NO OS process-table /
+ * port scan: a bare port number is only pod-local, so treating it as a global
+ * process identity is exactly what let cross-pod cleanup kill the wrong
+ * project. `process.kill` is the only OS interaction and is identical on
+ * Mac/Linux/Windows.
  *
  * Design rules
  * ------------
- *   1. `detect` (read-only) and `forceCleanup` (write) are SEPARATE so
- *      callers can decide whether to log/confirm before killing.
- *   2. Per-runtime heuristics (Next dev lock, Vite lock) live in private
- *      helpers; callers never branch on framework.
- *   3. `killTree` always tries process-group SIGTERM + descendant SIGTERM,
- *      polls `kill(pid,0)`, then escalates to SIGKILL. Single source of
- *      escalation logic.
- *   4. macOS/Linux only. Windows is a no-op for the helpers that depend
- *      on `pgrep`/`lsof` (callers already gate on platform separately).
+ *   1. `killTree` (live handle) and `killOwned` (persisted records) are the
+ *      only kill entry points. Both target groups we created ourselves.
+ *   2. Per-runtime lock heuristics (Next dev lock) live in private helpers;
+ *      callers never branch on framework.
+ *   3. Escalation is a single source of truth: group SIGTERM → poll → SIGKILL.
  */
 
 import { execFileSync } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { logger } from '../../utils/logger';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export type DetectionSource = 'next-lock' | 'port' | 'process-tree';
-
-export interface DetectedDevServer {
-  source: DetectionSource;
-  pid: number;
-  /** Set when `source === 'port'` or when reachable via lock file metadata. */
-  port?: number;
-  /** Working directory hint (lock-file dir for next-lock, ps cwd match for process-tree). */
-  cwd?: string;
-  /** Best-effort command line snippet for diagnostics. */
-  command?: string;
-}
-
-export interface DetectOptions {
-  /** Working directories to scan for stale lock files and matching ps lines. */
-  cwds: string[];
-  /** Ports to check for lingering listeners. */
-  ports?: number[];
-}
 
 export interface KillTreeOptions {
   /** Time to wait for graceful exit before SIGKILL escalation. Default 4000ms. */
@@ -66,18 +43,26 @@ export interface KillTreeOptions {
   skipDescendants?: boolean;
 }
 
+/**
+ * A process this pod provably spawned, identified by persisted leader pid +
+ * group id. `pgid === pid` by the `detached:true` spawn contract.
+ */
+export interface OwnedProcessRecord {
+  pid: number;
+  /** Process-group id. Defaults to `pid` when absent (stale record). */
+  pgid?: number;
+  /** Hostname of the pod that spawned it. `killOwned` acts only when this === os.hostname(). */
+  podId: string;
+}
+
+export interface KillOwnedOptions {
+  /** Time to wait for graceful exit before SIGKILL escalation. Default 4000ms. */
+  graceMs?: number;
+}
+
 export interface ForceCleanupResult {
   killed: number[];
   survived: number[];
-}
-
-export interface WaitForCleanStateOptions {
-  cwds: string[];
-  ports: number[];
-  /** Total polling budget. Default 5000ms. */
-  timeoutMs?: number;
-  /** Polling interval. Default 100ms. */
-  intervalMs?: number;
 }
 
 /** Optional log sink so callers can surface cleanup actions in their own UX. */
@@ -93,9 +78,9 @@ const LOG = { component: 'DevProcessControl' } as const;
  * Next dev-lock file candidates, relative to a package cwd, newest format first.
  * Next 16 writes `.next/dev/lock` (JSON: { pid, port, hostname, appUrl, ... });
  * older internal builds used `.next/dev/server.json`. The lock is a DEFENSIVE
- * channel only — orphan recovery's authority is the version-independent port +
- * `/proc/<pid>/cwd` signals — so we tolerate either filename rather than
- * tracking Next's internal format precisely.
+ * filesystem-hygiene channel only — process reaping authority is the owned
+ * identity (`killOwned` / `killTree`) — so we tolerate either filename rather
+ * than tracking Next's internal format precisely.
  */
 const NEXT_DEV_LOCK_RELPATHS = [
   ['.next', 'dev', 'lock'],
@@ -112,31 +97,24 @@ export class DevProcessControl {
   // ─── kill primitives ────────────────────────────────────────────────
 
   /**
-   * Best-effort process-tree kill.
+   * Best-effort process-tree kill of a LIVE `ChildProcess` handle (or a raw
+   * pid we own, e.g. a learn-node server we spawned ourselves).
    *
    * Strategy:
-   *   1. Collect descendants via `pgrep -P <pid>` (recursive, depth/visited capped).
-   *   2. Send SIGTERM to the root pid AND each descendant pid (single-PID kills).
-   *      For an OWNED `ChildProcess` (we spawned it with `detached:true`,
-   *      so PID === PGID is guaranteed by Node's spawn contract), we ALSO
-   *      send a process-group SIGTERM via `kill(-pid)` to reach the shell
-   *      and any grandchild that re-detached into the same group leader.
-   *   3. Poll `kill(pid,0)` every 100ms for `graceMs` to wait for graceful exit.
+   *   1. Collect descendants via `pgrep -P <pid>` / procfs BFS.
+   *   2. SIGTERM the root pid AND each descendant. For an OWNED `ChildProcess`
+   *      (spawned `detached:true`, so PID === PGID by Node's contract) ALSO
+   *      send a process-group SIGTERM via `kill(-pid)` to reach the shell and
+   *      any grandchild that re-detached into the same group leader.
+   *   3. Poll `kill(pid,0)` for `graceMs`.
    *   4. SIGKILL anything still alive — same dual-channel rule.
    *
    * IMPORTANT — group-kill safety contract:
-   *   `process.kill(-pid, signal)` interprets `pid` as a PGID. We can only
-   *   guarantee `pid === pgid` for processes we spawned ourselves with
-   *   `detached:true`. For raw PIDs returned by `detect()` (ps aux scan,
-   *   port lookup, lock-file PIDs) the PGID may belong to an unrelated
-   *   process group — including the preview server's own group. Sending
-   *   `kill(-pid)` to such a PID has caused the preview server itself to
-   *   be SIGKILLed in the wild (see `restart_freeze_diagnosis` plan §1).
-   *   The number-overload path therefore NEVER uses negative-PID kills.
-   *
-   * Accepts either a `ChildProcess` (use its pid, group kill allowed) or a
-   * raw pid number (single-PID kill only). Returns when all targets are
-   * confirmed dead OR after escalation completes.
+   *   `process.kill(-pid, signal)` interprets `pid` as a PGID. We only ever
+   *   guarantee `pid === pgid` for processes WE spawned with `detached:true`.
+   *   The number-overload path therefore NEVER uses negative-PID kills (a raw
+   *   pid's PGID may belong to an unrelated group — including the preview
+   *   server's own — which once SIGKILLed the preview server itself).
    */
   async killTree(target: ChildProcess | number, opts: KillTreeOptions = {}): Promise<void> {
     const isOwnedChild = typeof target !== 'number';
@@ -175,6 +153,65 @@ export class DevProcessControl {
 
     // Best-effort second wait so callers can rely on dead-state on return.
     await this.waitForExit(survivors, 1000);
+  }
+
+  /**
+   * Kill processes identified by PERSISTED owned-identity records — the
+   * cross-pod-safe teardown used when the live `ChildProcess` handles are
+   * gone (a different pod handles the stop, or this pod's Node process
+   * restarted while the detached group survived).
+   *
+   * Acts ONLY on records whose `podId === os.hostname()`. Other-pod records
+   * are skipped (the owning pod reaps via its local handles; see the
+   * `ant:lifecycle:cleanup:request` broadcast). For each owned record it sends
+   * `kill(-pgid, SIGTERM)` UNCONDITIONALLY (treating `ESRCH` as already-clean),
+   * polls the leader pid, then escalates to `SIGKILL`. The group is signalled
+   * even when the leader pid reports `ESRCH`, because after a Node restart the
+   * leader shell may have exited while the re-parented dev server still holds
+   * the port within the same group. Because `kill(-pgid)` only ever targets a
+   * group WE created and recorded under this serverKey, it can never reach
+   * another project's process.
+   */
+  async killOwned(records: OwnedProcessRecord[], opts: KillOwnedOptions = {}): Promise<ForceCleanupResult> {
+    const host = os.hostname();
+    const mine = records.filter(r => r.podId === host && typeof r.pid === 'number' && r.pid > 0);
+    if (mine.length === 0) return { killed: [], survived: [] };
+
+    const graceMs = opts.graceMs ?? 4000;
+    const groupOf = (r: OwnedProcessRecord) => (r.pgid && r.pgid > 0 ? r.pgid : r.pid);
+
+    this.log('info', `Reaping ${mine.length} owned process group(s): ` +
+      mine.map(r => groupOf(r)).join(', '));
+
+    // Phase 1: group SIGTERM (persisted pgid).
+    for (const r of mine) {
+      this.sendSignal(-groupOf(r), 'SIGTERM');
+    }
+
+    // Phase 2: poll the leader pids for exit.
+    const pids = mine.map(r => r.pid);
+    const exited = await this.waitForExit(pids, graceMs);
+    const survivors = mine.filter(r => !exited.has(r.pid));
+
+    // Phase 3: group SIGKILL escalation.
+    if (survivors.length > 0) {
+      for (const r of survivors) {
+        this.sendSignal(-groupOf(r), 'SIGKILL');
+      }
+      await this.waitForExit(survivors.map(r => r.pid), 1000);
+    }
+
+    const killed: number[] = [];
+    const survived: number[] = [];
+    for (const r of mine) {
+      if (this.isAlive(r.pid)) survived.push(r.pid);
+      else killed.push(r.pid);
+    }
+    if (survived.length > 0) {
+      this.log('warn', `killOwned: ${survived.length} process(es) still alive after escalation: ` +
+        survived.join(', '));
+    }
+    return { killed, survived };
   }
 
   /**
@@ -309,396 +346,6 @@ export class DevProcessControl {
     }
   }
 
-  // ─── detection ──────────────────────────────────────────────────────
-
-  /**
-   * Detect any lingering dev-server processes for the given working
-   * directories and ports. Combines three independent signals:
-   *   1. `next-lock`     — `.next/dev/lock` (or legacy `server.json`) live PID
-   *   2. `port`          — listener lookup (lsof/ss/netstat/procfs fallback)
-   *   3. `process-tree`  — `ps aux` lines containing one of the cwds
-   *                        AND matching a runtime token (node/next/vite/npm/pnpm).
-   *
-   * Duplicate PIDs across sources are deduped — first source wins for
-   * the reported `source` field. Order: next-lock > port > process-tree
-   * (most specific first).
-   */
-  async detect(opts: DetectOptions): Promise<DetectedDevServer[]> {
-    const cwds = (opts.cwds || []).filter(Boolean);
-    const ports = opts.ports || [];
-    // Pre-seed `seen` with our own PID + parent PID so detect can NEVER
-    // surface them. If they did surface, the SSOT cleanup chain
-    // (forceCleanup → killTree → kill(pid)) would target the preview
-    // server itself. Combined with the group-kill safety in killTree, this
-    // is the second defense line: even if a future change reintroduces
-    // negative-PID kill on raw PIDs, our own PID just isn't in the
-    // candidate set anymore. Non-POSIX `process.ppid` may be undefined.
-    const seen = new Set<number>([process.pid]);
-    if (typeof process.ppid === 'number' && process.ppid > 0) {
-      seen.add(process.ppid);
-    }
-    const out: DetectedDevServer[] = [];
-
-    // 1. Next dev locks
-    for (const cwd of cwds) {
-      const fromLock = this.readNextLock(cwd);
-      if (fromLock && !seen.has(fromLock.pid) && this.isAlive(fromLock.pid)) {
-        seen.add(fromLock.pid);
-        out.push(fromLock);
-      }
-    }
-
-    // 2. Port listeners
-    for (const port of ports) {
-      const pids = this.pidsOnPort(port);
-      for (const pid of pids) {
-        if (seen.has(pid)) continue;
-        seen.add(pid);
-        out.push({ source: 'port', pid, port });
-      }
-    }
-
-    // 3. Process-tree match against any cwd
-    if (cwds.length > 0) {
-      const orphans = this.findProcessesByCwd(cwds);
-      for (const o of orphans) {
-        if (seen.has(o.pid)) continue;
-        seen.add(o.pid);
-        out.push(o);
-      }
-    }
-
-    return out;
-  }
-
-  private readNextLock(cwd: string): DetectedDevServer | undefined {
-    for (const rel of NEXT_DEV_LOCK_RELPATHS) {
-      const { pid, port } = this.parseLockPids(path.join(cwd, ...rel));
-      if (pid != null) {
-        return { source: 'next-lock', pid, port, cwd, command: 'next dev' };
-      }
-    }
-    return undefined;
-  }
-
-  private pidsOnPort(port: number): number[] {
-    const fromLsof = this.pidsOnPortFromLsof(port);
-    if (fromLsof.length > 0) return fromLsof;
-
-    const fromSs = this.pidsOnPortFromSs(port);
-    if (fromSs.length > 0) return fromSs;
-
-    const fromNetstat = this.pidsOnPortFromNetstat(port);
-    if (fromNetstat.length > 0) return fromNetstat;
-
-    return this.pidsOnPortFromProcfs(port);
-  }
-
-  private pidsOnPortFromLsof(port: number): number[] {
-    try {
-      const out = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
-        encoding: 'utf-8',
-        timeout: 3000,
-        stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
-      if (!out) return [];
-      return this.parsePidLines(out);
-    } catch {
-      return [];
-    }
-  }
-
-  private pidsOnPortFromSs(port: number): number[] {
-    try {
-      const out = execFileSync('ss', ['-ltnp'], {
-        encoding: 'utf-8',
-        timeout: 3000,
-        stdio: ['pipe', 'pipe', 'ignore'],
-      });
-      if (!out) return [];
-
-      const pids = new Set<number>();
-      for (const line of out.split('\n')) {
-        if (!line.includes(`:${port}`)) continue;
-        const matches = line.matchAll(/pid=(\d+)/g);
-        for (const match of matches) {
-          const pid = parseInt(match[1], 10);
-          if (!isNaN(pid)) pids.add(pid);
-        }
-      }
-      return Array.from(pids);
-    } catch {
-      return [];
-    }
-  }
-
-  private pidsOnPortFromNetstat(port: number): number[] {
-    try {
-      const out = execFileSync('netstat', ['-lntp'], {
-        encoding: 'utf-8',
-        timeout: 3000,
-        stdio: ['pipe', 'pipe', 'ignore'],
-      });
-      if (!out) return [];
-
-      const pids = new Set<number>();
-      for (const line of out.split('\n')) {
-        if (!line.includes(`:${port}`)) continue;
-        const m = line.match(/\s(\d+)\/[^\s]+\s*$/);
-        if (!m) continue;
-        const pid = parseInt(m[1], 10);
-        if (!isNaN(pid)) pids.add(pid);
-      }
-      return Array.from(pids);
-    } catch {
-      return [];
-    }
-  }
-
-  private parsePidLines(text: string): number[] {
-    return Array.from(
-      new Set(
-        text
-          .split('\n')
-          .map(s => parseInt(s.trim(), 10))
-          .filter(n => !isNaN(n)),
-      ),
-    );
-  }
-
-  private pidsOnPortFromProcfs(port: number): number[] {
-    if (process.platform !== 'linux') return [];
-
-    const socketInodes = this.socketInodesListeningOnPort(port);
-    if (socketInodes.size === 0) return [];
-
-    const pids = new Set<number>();
-    let procEntries: string[] = [];
-    try {
-      procEntries = fs.readdirSync('/proc');
-    } catch {
-      return [];
-    }
-
-    for (const entry of procEntries) {
-      if (!/^\d+$/.test(entry)) continue;
-      const pid = parseInt(entry, 10);
-      if (!pid || isNaN(pid)) continue;
-
-      const fdDir = `/proc/${entry}/fd`;
-      let fds: string[] = [];
-      try {
-        fds = fs.readdirSync(fdDir);
-      } catch {
-        continue;
-      }
-
-      let matched = false;
-      for (const fd of fds) {
-        try {
-          const link = fs.readlinkSync(path.join(fdDir, fd));
-          const m = link.match(/^socket:\[(\d+)\]$/);
-          if (!m) continue;
-          if (!socketInodes.has(m[1])) continue;
-          pids.add(pid);
-          matched = true;
-          break;
-        } catch {
-          // Per-fd permission/race errors are expected under /proc.
-        }
-      }
-
-      if (matched) continue;
-    }
-
-    return Array.from(pids);
-  }
-
-  private socketInodesListeningOnPort(port: number): Set<string> {
-    const inodes = new Set<string>();
-    const targetHexPort = port.toString(16).toUpperCase().padStart(4, '0');
-    const parseFile = (procFile: string) => {
-      let text = '';
-      try {
-        text = fs.readFileSync(procFile, 'utf-8');
-      } catch {
-        return;
-      }
-
-      for (const line of text.split('\n').slice(1)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const cols = trimmed.split(/\s+/);
-        if (cols.length < 10) continue;
-
-        const localAddr = cols[1] ?? '';
-        const state = cols[3] ?? '';
-        const inode = cols[9] ?? '';
-        const localPortHex = localAddr.split(':')[1]?.toUpperCase();
-
-        // TCP LISTEN state is 0A.
-        if (state !== '0A') continue;
-        if (localPortHex !== targetHexPort) continue;
-        if (!inode) continue;
-        inodes.add(inode);
-      }
-    };
-
-    parseFile('/proc/net/tcp');
-    parseFile('/proc/net/tcp6');
-    return inodes;
-  }
-
-  private readonly runtimePattern = /node|next|vite|npm|pnpm|yarn/;
-
-  /**
-   * Find dev-server processes whose working directory is one of `cwds`.
-   *
-   * Linux (cloud): authoritative `/proc/<pid>/cwd` match — version-independent,
-   * unlike scanning a command line that for `next dev` never contains the cwd.
-   * Other platforms: fall back to a `ps aux` command-line substring match
-   * (best-effort; the port + Next-lock channels remain the primary signals).
-   */
-  private findProcessesByCwd(cwds: string[]): DetectedDevServer[] {
-    return process.platform === 'linux'
-      ? this.findProcessesByCwdProcfs(cwds)
-      : this.findProcessesByCwdPs(cwds);
-  }
-
-  private findProcessesByCwdProcfs(cwds: string[]): DetectedDevServer[] {
-    const targets = cwds.map(c => path.resolve(c));
-    let entries: string[] = [];
-    try {
-      entries = fs.readdirSync('/proc');
-    } catch {
-      return [];
-    }
-
-    const found: DetectedDevServer[] = [];
-    for (const entry of entries) {
-      if (!/^\d+$/.test(entry)) continue;
-      const pid = parseInt(entry, 10);
-      if (!pid || isNaN(pid)) continue;
-
-      let cwd: string;
-      try {
-        cwd = fs.readlinkSync(`/proc/${entry}/cwd`);
-      } catch {
-        continue; // process gone or no permission
-      }
-      const resolved = path.resolve(cwd);
-      const matchedCwd = targets.find(t => resolved === t || resolved.startsWith(t + path.sep));
-      if (!matchedCwd) continue;
-
-      // Filter to actual runtimes via comm/cmdline so we don't kill, e.g., an
-      // editor or shell that happens to sit in the workspace dir.
-      let comm = '';
-      try { comm = fs.readFileSync(`/proc/${entry}/comm`, 'utf-8').trim(); } catch { /* ignore */ }
-      let cmdline = '';
-      try { cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf-8').replace(/\0/g, ' ').trim(); } catch { /* ignore */ }
-      if (!this.runtimePattern.test(comm) && !this.runtimePattern.test(cmdline)) continue;
-
-      found.push({ source: 'process-tree', pid, cwd: matchedCwd, command: (cmdline || comm).slice(0, 200) });
-    }
-    return found;
-  }
-
-  private findProcessesByCwdPs(cwds: string[]): DetectedDevServer[] {
-    let psOutput = '';
-    try {
-      psOutput = execFileSync('ps', ['aux'], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: ['pipe', 'pipe', 'ignore'],
-      });
-    } catch {
-      return [];
-    }
-
-    const found: DetectedDevServer[] = [];
-    for (const line of psOutput.split('\n')) {
-      if (!this.runtimePattern.test(line)) continue;
-      const matchedCwd = cwds.find(c => c && line.includes(c));
-      if (!matchedCwd) continue;
-
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 11) continue;
-      const pid = parseInt(parts[1], 10);
-      if (isNaN(pid)) continue;
-
-      found.push({
-        source: 'process-tree',
-        pid,
-        cwd: matchedCwd,
-        command: parts.slice(10).join(' ').slice(0, 200),
-      });
-    }
-    return found;
-  }
-
-  // ─── cleanup ────────────────────────────────────────────────────────
-
-  /**
-   * Kill every detected server (de-duped by PID), then verify each one is
-   * actually dead. Returns split list so callers can decide what to do
-   * about survivors (rare — usually means a permission issue).
-   */
-  async forceCleanup(servers: DetectedDevServer[]): Promise<ForceCleanupResult> {
-    const uniquePids = Array.from(new Set(servers.map(s => s.pid)));
-    if (uniquePids.length === 0) return { killed: [], survived: [] };
-
-    this.log('info', `Cleaning up ${uniquePids.length} stale dev process(es): ` +
-      uniquePids.join(', '));
-
-    // Also clean Next dev locks for any cwd we know about — defensive even
-    // when the recorded PID was already dead (so we leave a clean slate).
-    const cwds = Array.from(new Set(servers.map(s => s.cwd).filter((c): c is string => !!c)));
-    for (const cwd of cwds) {
-      await this.cleanupStaleLocks(cwd);
-    }
-
-    for (const pid of uniquePids) {
-      try {
-        await this.killTree(pid);
-      } catch (err: any) {
-        logger.debug(`killTree(${pid}) error: ${err.message}`, LOG);
-      }
-    }
-
-    const survived: number[] = [];
-    const killed: number[] = [];
-    for (const pid of uniquePids) {
-      if (this.isAlive(pid)) survived.push(pid);
-      else killed.push(pid);
-    }
-
-    if (survived.length > 0) {
-      this.log('warn', `forceCleanup: ${survived.length} process(es) still alive after escalation: ` +
-        survived.join(', '));
-    }
-
-    return { killed, survived };
-  }
-
-  /**
-   * Block until all `cwds` have no Next dev lock AND all `ports` are
-   * unbound, OR until `timeoutMs` elapses. Returns `true` on clean state,
-   * `false` on timeout.
-   */
-  async waitForCleanState(opts: WaitForCleanStateOptions): Promise<boolean> {
-    const timeoutMs = opts.timeoutMs ?? 5000;
-    const intervalMs = opts.intervalMs ?? 100;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      const lockClean = opts.cwds.every(cwd => this.readNextLock(cwd) === undefined);
-      const portClean = opts.ports.every(p => this.pidsOnPort(p).length === 0);
-      if (lockClean && portClean) return true;
-      await sleep(intervalMs);
-    }
-    return false;
-  }
-
   // ─── helpers ────────────────────────────────────────────────────────
 
   /** True if a PID is currently alive (kill 0 doesn't actually signal). */
@@ -750,7 +397,7 @@ export class DevProcessControl {
 /**
  * Recognise dev-server "port already in use / another instance" errors
  * across runtimes. Used by PreviewService spawn-retry to decide whether
- * a fresh spawn after cleanup is worth trying.
+ * a fresh spawn on a freshly-allocated port is worth trying.
  *
  * Patterns are intentionally narrow — generic compile errors must not
  * trigger retry, otherwise we mask bugs by re-running them.
