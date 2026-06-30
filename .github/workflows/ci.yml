@@ -145,7 +145,11 @@ jobs:
     env:
       ANT_SERVER_MODE: local
       ANT_REDIS_URL: redis://localhost:6379
-      ANT_ENCRYPTION_KEY: ci-boot-smoke-encryption-key-0001
+      # ANT_ENCRYPTION_KEY is generated at runtime (see the "Generate ephemeral
+      # encryption key" step) rather than hardcoded — an explicitly-set malformed
+      # key now fails fast (P4 O6 / CredentialsStore), and committing a 64-hex
+      # literal would trip secret scanners. The boot-smoke is ephemeral local mode,
+      # so a fresh per-run key is fine (no credentials are persisted/read back).
       ANT_WORKSPACE_BASE_PATH: /tmp/ant-workspaces
       # server.ts binds process.env.PORT (default 8080); ANT_CLI_PORT is not read.
       PORT: "4100"
@@ -158,6 +162,8 @@ jobs:
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:shared
+      - name: Generate ephemeral encryption key
+        run: echo "ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Boot API server (local mode) and assert capabilities.billing === false
         run: |
           mkdir -p /tmp/ant-workspaces
