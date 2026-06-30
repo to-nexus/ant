@@ -47,10 +47,20 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
 - **Dev-only acceptance.** Dev/build-time-only advisories (vite/vitest/esbuild/
   rollup) are bumped if safe; if a safe bump breaks the build they are
   **audit-ignored with a documented rationale** rather than force-upgraded.
-- **SSOT for accepted advisories** = the `overrides:` block in
-  [pnpm-workspace.yaml](../../pnpm-workspace.yaml) (inline comment per entry,
-  e.g. the `tsx`/esbuild GHSA note) **plus** the narrative in this section.
-  Do not scatter audit-ignore rationale across multiple files.
+- **SSOT for accepted advisories** = the `overrides:` block (runtime fixes) +
+  the `auditConfig.ignoreGhsas:` block (accepted dev-only GHSAs, one inline
+  comment each) in [pnpm-workspace.yaml](../../pnpm-workspace.yaml), **plus** the
+  narrative here. Do not scatter audit-ignore rationale across multiple files.
+- **State (2026-06-30, P3).** `pnpm audit` exits clean (runtime vulns = 0).
+  Runtime fixes applied: js-yaml/uuid (ant-cli) + mermaid/yaml (ant-ui) bumped;
+  body-parser/qs/follow-redirects/mdast-util-to-hast/dompurify/ip-address/uuid/
+  brace-expansion(2.0.x)/postcss/shell-quote/@babel/core/rollup pinned via
+  `overrides`. Accepted dev-only residuals (7 GHSAs, all vite/vitest/esbuild
+  dev-server or build-tool, unreachable in CI/prod) are listed in
+  `auditConfig.ignoreGhsas`; closing them needs a vite 5→6 major on ant-ui
+  (breaking), deferred. **`vitest` is pinned `~4.0.18`** (NOT `^`) because 4.1+
+  requires vite 6's `module-runner` export and breaks ant-ui's vite-5 test run —
+  re-widen only together with the vite 6 upgrade.
 - **Native-binary build gate.** pnpm `postinstall` scripts are blocked by
   default; the whitelist is `allowBuilds:` in
   [pnpm-workspace.yaml](../../pnpm-workspace.yaml) (`@vscode/ripgrep`/`sharp`
