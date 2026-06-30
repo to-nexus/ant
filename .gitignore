@@ -11,6 +11,10 @@ package-lock.json
 .env.*.local
 !.env.example.local
 .env.backup
+.env.bak
+*.bak
+# Ad-hoc env copies (e.g. "env (1)" from editor/download dupes)
+env (*)
 
 # Build outputs
 dist/

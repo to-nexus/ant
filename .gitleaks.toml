@@ -22,4 +22,7 @@ regexes = [
   # Placeholder key in packages/ant-cli/tests/http/cookie-domain-derivation.test.ts
   # — the literal string is its own proof it is not a real credential.
   '''test-secret-at-least-32-characters-long-xx''',
+  # Prompt-template example key in the node-api rules template (history only)
+  # — a self-evidently fake placeholder, not a real credential.
+  '''sk-1234567890abcdef''',
 ]

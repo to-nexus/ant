@@ -115,6 +115,21 @@ jobs:
             | tar -xz -C /tmp gitleaks
           /tmp/gitleaks dir . -c .gitleaks.toml --no-banner --redact --exit-code 1
 
+      # Full git-history scan. DISABLED until the history purge + force-push lands
+      # (see .claude/plans/ant-ant-cloud-magical-meadow.md, Phase 2): pre-purge
+      # history still contains the leaked .env backups, so this would fail.
+      # To ENABLE after the purge:
+      #   1. remove `if: ${{ false }}` below
+      #   2. add `with: { fetch-depth: 0 }` to this job's actions/checkout step
+      #      (the history scan needs the full clone, not the default shallow one)
+      - name: Secret scan — git history (gitleaks)
+        if: ${{ false }}
+        run: |
+          VER=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          /tmp/gitleaks git . -c .gitleaks.toml --no-banner --redact --exit-code 1
+
   boot-smoke:
     runs-on: ubuntu-latest
     services:
