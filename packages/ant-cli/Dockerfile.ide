@@ -1,7 +1,10 @@
 # ANT IDE image — extends gitpod/openvscode-server with ANT tools + warm-pool entrypoint.
 # Build via GitHub Actions → push to AWS ECR ({env}/ant-ide:<tag>).
-# Base image pinned by @sha256 after first stable build.
-FROM gitpod/openvscode-server:latest
+# Base image pinned to the :latest digest resolved 2026-06-30 (multi-arch index)
+# for reproducible builds. Re-pin by querying the registry:
+#   docker manifest inspect gitpod/openvscode-server:latest
+# The tag is retained for human readability; the @sha256 digest is authoritative.
+FROM gitpod/openvscode-server:latest@sha256:5e7b8750749f282940a799ed59ccd02fac698ef6744f9113ac01c0ef8e76485e
 
 USER root
 
