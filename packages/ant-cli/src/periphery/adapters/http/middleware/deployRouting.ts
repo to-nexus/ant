@@ -14,10 +14,17 @@ import type { DeployState } from '../../../../core/ports/portRegistry';
 export interface DeployTarget {
   targetHost: string;
   targetPort: number;
+  /**
+   * Whether the matched package is a backend `process` (vs a static frontend).
+   * The proxy strips the `/deploy/{urlKey}` prefix for a process target (the
+   * backend serves bare paths) and keeps it for a static target (the bundle is
+   * built with that base path) — mirrors `resolvePreviewTarget.isFrontend`.
+   */
+  isProcess: boolean;
 }
 
 /**
- * Pick the upstream static-server host:port for a parsed deploy URL.
+ * Pick the upstream server host:port for a parsed deploy URL.
  *
  *   5-part urlKey → match `packages[].slug` against `packageSlug(serviceName)`.
  *   4-part urlKey → only valid for single-package deploys. Multi-package deploys
@@ -34,12 +41,12 @@ export function resolveDeployTarget(
   const pkgs = state.packages || [];
   if (pkgs.length === 0) return null;
 
-  let port: number | null = null;
+  let pkg: DeployState['packages'][number] | undefined;
   if (serviceName) {
     const wantedSlug = packageSlug(serviceName);
-    port = pkgs.find((p) => p.slug === wantedSlug)?.port ?? null;
+    pkg = pkgs.find((p) => p.slug === wantedSlug);
   } else if (pkgs.length === 1) {
-    port = pkgs[0].port;
+    pkg = pkgs[0];
   } else {
     logger.warn(
       `[Deploy] 4-part urlKey '${urlKey}' rejected for multi-package deploy — caller must use 5-part`,
@@ -48,10 +55,11 @@ export function resolveDeployTarget(
     return null;
   }
 
-  if (port == null) return null;
+  if (!pkg || pkg.port == null) return null;
 
   return {
     targetHost: state.host || 'localhost',
-    targetPort: port,
+    targetPort: pkg.port,
+    isProcess: pkg.kind === 'process',
   };
 }

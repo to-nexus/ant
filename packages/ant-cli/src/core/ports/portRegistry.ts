@@ -232,6 +232,20 @@ export interface DeployPackage {
   slug: string;
   framework: DeployFramework;
   /**
+   * What kind of deploy server backs this package:
+   *   - `'static'`  — built artifact served by a static file server (frontend).
+   *   - `'process'` — long-lived backend process (API server).
+   * Absent on records from old BE builds → treat as `'static'`.
+   * Orthogonal to `framework` (the build/artifact shape).
+   */
+  kind?: 'static' | 'process';
+  /**
+   * Detected language/framework for a `process` package — lets the shared
+   * `ProcessSpawner` dispatch by language (Node/Go/Python/…) on first deploy
+   * and on rehydration. Absent for static frontends.
+   */
+  projectProfile?: { language: string; framework?: string };
+  /**
    * Absolute path to THIS package's directory.
    * Used as `cwd` for `next start` and as the build root for `runBuild`.
    * For single-frontend projects this equals `DeployState.workspacePath`.

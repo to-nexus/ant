@@ -25,11 +25,12 @@ function makeState(overrides: Partial<DeployState>): DeployState {
   };
 }
 
-function pkg(slug: string, port: number) {
+function pkg(slug: string, port: number, kind: 'static' | 'process' = 'static') {
   return {
     name: slug,
     slug,
     framework: 'nextjs',
+    kind,
     workspacePath: `/tmp/deploy/${slug}`,
     buildOutputDir: `/tmp/deploy/${slug}/.next`,
     basePath: `/deploy/org--user--proj--feat--${slug}`,
@@ -46,6 +47,16 @@ describe('resolveDeployTarget', () => {
     expect(resolveDeployTarget(state, undefined, 'org--user--proj--feat')).toEqual({
       targetHost: '10.0.0.5',
       targetPort: 30001,
+      isProcess: false,
+    });
+  });
+
+  it('process (backend) package → isProcess true (proxy strips the prefix)', () => {
+    const state = makeState({ packages: [pkg('api', 30001, 'process')] });
+    expect(resolveDeployTarget(state, undefined, 'org--user--proj--feat')).toEqual({
+      targetHost: '10.0.0.5',
+      targetPort: 30001,
+      isProcess: true,
     });
   });
 
@@ -58,7 +69,7 @@ describe('resolveDeployTarget', () => {
     const state = makeState({ packages: [pkg('web', 30001), pkg('admin', 30002)] });
     expect(
       resolveDeployTarget(state, 'admin', 'org--user--proj--feat--admin'),
-    ).toEqual({ targetHost: '10.0.0.5', targetPort: 30002 });
+    ).toEqual({ targetHost: '10.0.0.5', targetPort: 30002, isProcess: false });
   });
 
   it('5-part slug mismatch → null', () => {
@@ -74,7 +85,7 @@ describe('resolveDeployTarget', () => {
     const state = makeState({ packages: [pkg('apps-web', 30001)] });
     expect(
       resolveDeployTarget(state, 'apps/web', 'org--user--proj--feat--apps-web'),
-    ).toEqual({ targetHost: '10.0.0.5', targetPort: 30001 });
+    ).toEqual({ targetHost: '10.0.0.5', targetPort: 30001, isProcess: false });
   });
 
   it('state.host empty → falls back to localhost', () => {
@@ -82,6 +93,7 @@ describe('resolveDeployTarget', () => {
     expect(resolveDeployTarget(state, undefined, 'org--user--proj--feat')).toEqual({
       targetHost: 'localhost',
       targetPort: 30001,
+      isProcess: false,
     });
   });
 

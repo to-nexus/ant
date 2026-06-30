@@ -175,12 +175,17 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
         res.status(404).json({ error: 'Deploy package not found' });
         return;
       }
-      const { targetHost, targetPort } = target;
-      // Static server's basePath = `/deploy/${urlKey}`, so we re-prepend
-      // `/deploy/<urlKey>` to req.url (which had `/deploy/` stripped by the
-      // Express mount).
-      const basePath = `/deploy/${urlKey}`;
-      const targetPath = `${basePath}${req.url.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/'}`;
+      const { targetHost, targetPort, isProcess } = target;
+      // req.url had `/deploy/` stripped by the Express mount; strip the urlKey
+      // segment too to get the bare app path.
+      const barePath = req.url.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+      // Keep-vs-strip — identical rule to the preview proxy:
+      //   static (frontend): bundle is built with base path `/deploy/{urlKey}`,
+      //     so re-prepend it + rewrite Set-Cookie/Location against it.
+      //   process (backend): routes live at root, no prefix baked in → forward
+      //     the bare path with no basePath so headers pass through verbatim.
+      const basePath = isProcess ? undefined : `/deploy/${urlKey}`;
+      const targetPath = isProcess ? barePath : `/deploy/${urlKey}${barePath}`;
       const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
       const upstreamHost = `${targetHost}:${targetPort}`;
 

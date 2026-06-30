@@ -68,6 +68,14 @@ export interface DeployStatusPackage {
   slug: string;
   framework: DeployFramework;
   /**
+   * What kind of deploy server backs this package:
+   *   - `'static'`  — built artifact served by a static file server (frontend).
+   *   - `'process'` — long-lived backend process (API server).
+   * Absent on records from old BE builds → treat as `'static'`.
+   * Orthogonal to `framework` (which is the build/artifact shape).
+   */
+  kind?: 'static' | 'process';
+  /**
    * Static-server port. `0` indicates the package is hibernated and a port
    * has not yet been allocated for the current pod.
    */
