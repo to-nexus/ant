@@ -1,0 +1,38 @@
+# Build context = monorepo root for all images (ant-cli, ant-ui, ant-cli IDE).
+# Docker resolves this single .dockerignore relative to that context, so it
+# applies to every image build. Keep it conservative: only exclude paths that
+# are reinstalled/rebuilt inside the image or must never enter it (secrets, VCS).
+
+# --- Version control ---
+.git
+.gitignore
+
+# --- Dependencies (reinstalled via `pnpm install` in every stage) ---
+**/node_modules
+
+# --- Build outputs (recompiled inside the builder stage) ---
+**/dist
+**/.vite
+**/coverage
+
+# --- Tests (no image build step runs them; runtime images copy only src/) ---
+**/tests
+
+# --- Secrets: mirror .gitignore's secret rules ---
+# Excludes packages/ant-cli/.env (real backend secrets) and *.local overrides,
+# while KEEPING the committed public build config that the ant-ui/ant-site Vite
+# builds depend on (.env.development / .env.production / .env.example.*).
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.backup
+**/.env.bak
+env (*)
+# Keep the committed example (mirrors .gitignore's `!.env.example.local`).
+!**/.env.example.local
+
+# --- Editor / OS noise ---
+.DS_Store
+**/*.log
+.claude
+.cursor
