@@ -603,14 +603,14 @@ export function ArtifactsSection({
       key={`section-${sectionPrefix ?? 'root'}-${String(belongsToSpotlight)}`}
       eyebrow={title}
       accent={accent ?? DOMAIN_ACCENT_MAP[sectionPrefix ?? ''] ?? 'violet'}
-      count={null}
       expanded={belongsToSpotlight}
       collapsedLabel={collapsedLabel}
       collapsedAction={collapsedAction}
       action={headerAction}
+      fill
     >
       <div
-        style={dropWrapperStyle}
+        style={{ ...dropWrapperStyle, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
         data-drop-dir={rootDropEnabled ? sectionPrefix : undefined}
         data-drop-blocked={rootDropEnabled && rootIsStructural ? '' : undefined}
         onDragOver={(e) => {
@@ -697,7 +697,7 @@ export function ArtifactsSection({
             {t('panel.emptySection', { title: title.toLowerCase() })}
           </div>
         ) : (
-          <RowList ariaLabel={title} maxHeight={384}>
+          <RowList ariaLabel={title} fill>
             {nodes.map((node) => renderNode(node, 0))}
           </RowList>
         )}

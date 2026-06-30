@@ -1,6 +1,7 @@
 
 import { useState, type MouseEvent } from 'react';
-import { ChevronRight, GitBranch, Monitor, X } from 'lucide-react';
+import { ChevronRight, GitBranch, X } from 'lucide-react';
+import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
 
 interface FeatureRowProps {
   name: string;
@@ -17,8 +18,6 @@ interface FeatureRowProps {
   onSwitch: () => void;
   /** Active row: clear selection (return to base branch / no feature). */
   onClear?: () => void;
-  /** Active row: enter Preview Editor (monitor icon + 「에디터」 label). */
-  onOpenPreviewEditor?: () => void;
   /** Inactive row: delete the feature. Surfaces on hover/focus. */
   onDelete?: () => void;
   /** When set, the delete affordance is rendered disabled with this tooltip. */
@@ -49,7 +48,6 @@ export function FeatureRow({
   disabledReason,
   onSwitch,
   onClear,
-  onOpenPreviewEditor,
   onDelete,
   deleteBlockedReason,
 }: FeatureRowProps) {
@@ -89,17 +87,15 @@ export function FeatureRow({
         padding: '6px 10px',
         borderRadius: 6,
         cursor: disabled ? 'not-allowed' : isActive ? 'default' : 'pointer',
+        ...selectedRowStyle('pink', isActive),
         background: isActive
-          ? 'color-mix(in srgb, var(--pink-300) 18%, transparent)'
+          ? 'var(--select-fill-pink)'
           : hover
             ? 'var(--bg-hover)'
             : 'transparent',
-        border: isActive
-          ? '1px solid color-mix(in srgb, var(--pink-500) 35%, transparent)'
-          : '1px solid transparent',
         opacity: disabled ? 0.5 : 1,
         minWidth: 0,
-        transition: 'background var(--dur-fast)',
+        transition: 'background var(--dur-fast), border-color var(--dur-fast)',
       }}
     >
       <GitBranch
@@ -117,8 +113,7 @@ export function FeatureRow({
           flex: 1,
           minWidth: 0,
           fontSize: 12,
-          fontWeight: isActive ? 600 : 500,
-          color: isActive ? 'var(--pink-700)' : 'var(--text-2)',
+          ...selectedRowLabel(isActive, 'var(--text-2)'),
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -226,43 +221,6 @@ export function FeatureRow({
 
       {isActive && (
         <>
-          {onOpenPreviewEditor && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenPreviewEditor();
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--pink-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-3)';
-              }}
-              title="Preview Editor 열기"
-              style={{
-                height: 22,
-                padding: '0 8px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                borderRadius: 6,
-                fontSize: 10,
-                fontWeight: 700,
-                color: 'var(--text-3)',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                flexShrink: 0,
-                transition: 'all var(--dur-fast)',
-              }}
-            >
-              <Monitor size={12} />
-              Preview
-            </button>
-          )}
           {onClear && (
             <button
               type="button"

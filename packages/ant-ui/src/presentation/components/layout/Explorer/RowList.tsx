@@ -5,6 +5,13 @@ interface RowListProps {
   children: ReactNode;
   /** Max height of the scrollable area in px. Default 240 per spec §5.4. */
   maxHeight?: number;
+  /**
+   * Fill mode: grow to consume the parent's remaining height (instead of a
+   * fixed `maxHeight` cap) and scroll internally. The parent must be a flex
+   * column with `minHeight: 0`. Used by the Artifacts tree so it occupies
+   * the full Explorer height with no dead space below.
+   */
+  fill?: boolean;
   /** Optional aria-label for assistive tech. */
   ariaLabel?: string;
 }
@@ -21,14 +28,16 @@ interface RowListProps {
  *    no border, no surface background, no padding. Visual separation
  *    between rows comes from each row's own hover/active background.
  */
-export function RowList({ children, maxHeight = 240, ariaLabel }: RowListProps) {
+export function RowList({ children, maxHeight = 240, fill = false, ariaLabel }: RowListProps) {
   return (
     <div
       role="list"
       aria-label={ariaLabel}
       className="aurora-scroll"
       style={{
-        maxHeight,
+        ...(fill
+          ? { flex: 1, minHeight: 0, maxHeight: 'none' }
+          : { maxHeight }),
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',

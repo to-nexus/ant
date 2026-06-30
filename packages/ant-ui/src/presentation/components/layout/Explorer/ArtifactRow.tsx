@@ -102,8 +102,10 @@ export function ArtifactRow({
             : hover
               ? 'var(--bg-hover)'
               : 'transparent',
-          borderLeft: isSelected ? '2px solid var(--violet-500)' : '2px solid transparent',
-          transition: 'background var(--dur-fast)',
+          borderLeft: isSelected
+            ? '3px solid var(--select-rail-violet)'
+            : '3px solid transparent',
+          transition: 'background var(--dur-fast), border-color var(--dur-fast)',
           minHeight: 22,
         };
         if (isHighlighted) {
@@ -169,8 +171,8 @@ export function ArtifactRow({
                 flex: 1,
                 minWidth: 0,
                 fontSize: 11.5,
-                color: isSelected ? 'var(--violet-700)' : 'var(--text-2)',
-                fontWeight: isSelected ? 600 : isUnseen ? 700 : level === 0 ? 600 : 500,
+                color: isSelected ? 'var(--select-fg)' : 'var(--text-2)',
+                fontWeight: isSelected ? 700 : isUnseen ? 700 : level === 0 ? 600 : 500,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',

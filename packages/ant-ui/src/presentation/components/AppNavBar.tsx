@@ -11,6 +11,7 @@ import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
+import { selectedSegmentStyle } from './aurora/selection';
 
 export interface AppNavBarProps {
   // No props needed - uses hooks directly
@@ -188,22 +189,11 @@ export function AppNavBar({}: AppNavBarProps) {
               <button
                 onClick={() => setMainView('agents')}
                 className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
-                style={
-                  mainView === 'agents'
-                    ? {
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--violet-200)',
-                        color: 'var(--violet-700)',
-                        boxShadow: 'var(--shadow-xs)',
-                        borderRadius: 'var(--r-sm)',
-                      }
-                    : {
-                        background: 'transparent',
-                        border: '1px solid transparent',
-                        color: 'var(--text-3)',
-                        borderRadius: 'var(--r-sm)',
-                      }
-                }
+                style={{
+                  ...selectedSegmentStyle(mainView === 'agents'),
+                  boxShadow: mainView === 'agents' ? 'var(--shadow-xs)' : 'none',
+                  borderRadius: 'var(--r-sm)',
+                }}
               >
                 <Bot className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
@@ -213,22 +203,11 @@ export function AppNavBar({}: AppNavBarProps) {
               <button
                 onClick={handleCodeIdeViewSwitch}
                 className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
-                style={
-                  mainView === 'codeIde'
-                    ? {
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--violet-200)',
-                        color: 'var(--violet-700)',
-                        boxShadow: 'var(--shadow-xs)',
-                        borderRadius: 'var(--r-sm)',
-                      }
-                    : {
-                        background: 'transparent',
-                        border: '1px solid transparent',
-                        color: 'var(--text-3)',
-                        borderRadius: 'var(--r-sm)',
-                      }
-                }
+                style={{
+                  ...selectedSegmentStyle(mainView === 'codeIde'),
+                  boxShadow: mainView === 'codeIde' ? 'var(--shadow-xs)' : 'none',
+                  borderRadius: 'var(--r-sm)',
+                }}
                 title={selectedProject ? t('viewMode.openEditor') : t('viewMode.selectProjectFirst')}
               >
                 <Code2 className="w-3.5 h-3.5" />
@@ -301,7 +280,8 @@ export function AppNavBar({}: AppNavBarProps) {
                         className="w-full px-3 py-1.5 text-left text-sm flex items-center justify-between"
                         style={{
                           background: selected ? 'var(--bg-active)' : 'transparent',
-                          color: selected ? 'var(--violet-700)' : 'var(--text-2)',
+                          color: selected ? 'var(--select-fg)' : 'var(--text-2)',
+                          fontWeight: selected ? 700 : 500,
                         }}
                         onMouseEnter={(e) => {
                           if (!selected) {

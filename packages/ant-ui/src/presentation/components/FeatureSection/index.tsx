@@ -3,7 +3,7 @@ import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Monitor } from 'lucide-react';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { CreationWizardModal } from '../CreationWizardModal';
 import { SectionShell } from '../layout/Explorer/SectionShell';
@@ -138,45 +138,80 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
     <div>
       <SectionShell
         eyebrow={t('explorer:feature.title', { defaultValue: 'Feature' })}
-        count={visibleFeatures.length}
         accent="pink"
         action={
-          <button
-            type="button"
-            onClick={handleOpenWizard}
-            disabled={!policy.canCreateFeature}
-            onMouseEnter={(e) => {
-              if (!policy.canCreateFeature) return;
-              e.currentTarget.style.background = 'var(--bg-hover)';
-              e.currentTarget.style.color = 'var(--pink-600)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--text-3)';
-            }}
-            title={
-              !policy.canCreateFeature
-                ? policy.createFeatureDisabledReason || undefined
-                : t('explorer:featureDropdown.featureNamePlaceholder', { defaultValue: 'New feature' })
-            }
-            aria-label={t('explorer:feature.create', { defaultValue: 'New feature' })}
-            style={{
-              height: 22,
-              width: 22,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6,
-              color: 'var(--text-3)',
-              background: 'transparent',
-              border: 'none',
-              cursor: policy.canCreateFeature ? 'pointer' : 'not-allowed',
-              opacity: policy.canCreateFeature ? 1 : 0.5,
-              transition: 'all var(--dur-fast)',
-            }}
-          >
-            <Plus size={12} />
-          </button>
+          <>
+            {selectedFeature && (
+              <button
+                type="button"
+                onClick={handleOpenPreviewEditor}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                  e.currentTarget.style.color = 'var(--pink-600)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-3)';
+                }}
+                aria-label="Preview Editor"
+                title="Preview Editor 열기"
+                style={{
+                  height: 22,
+                  padding: '0 8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  borderRadius: 6,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: 'var(--text-3)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all var(--dur-fast)',
+                }}
+              >
+                <Monitor size={12} />
+                Preview
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenWizard}
+              disabled={!policy.canCreateFeature}
+              onMouseEnter={(e) => {
+                if (!policy.canCreateFeature) return;
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--pink-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
+              title={
+                !policy.canCreateFeature
+                  ? policy.createFeatureDisabledReason || undefined
+                  : t('explorer:featureDropdown.featureNamePlaceholder', { defaultValue: 'New feature' })
+              }
+              aria-label={t('explorer:feature.create', { defaultValue: 'New feature' })}
+              style={{
+                height: 22,
+                width: 22,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6,
+                color: 'var(--text-3)',
+                background: 'transparent',
+                border: 'none',
+                cursor: policy.canCreateFeature ? 'pointer' : 'not-allowed',
+                opacity: policy.canCreateFeature ? 1 : 0.5,
+                transition: 'all var(--dur-fast)',
+              }}
+            >
+              <Plus size={12} />
+            </button>
+          </>
         }
       >
         {visibleFeatures.length === 0 ? (
@@ -206,7 +241,6 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
                   disabledReason={policy.disabledReason || undefined}
                   onSwitch={() => handleSwitchFeature(feature.name)}
                   onClear={isActive ? handleClearFeature : undefined}
-                  onOpenPreviewEditor={isActive ? handleOpenPreviewEditor : undefined}
                   onDelete={
                     !isActive && !deleteBlocked
                       ? () => handleDelete(feature.name)

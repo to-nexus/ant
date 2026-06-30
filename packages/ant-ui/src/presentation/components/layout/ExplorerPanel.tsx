@@ -97,7 +97,9 @@ export function ExplorerPanel({
       <div
         style={{
           flex: 1,
-          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
           padding: '10px 8px',
           minHeight: 0,
           background: 'var(--surface-1)',
@@ -140,8 +142,12 @@ export function ExplorerPanel({
           </div>
         ) : connectionStatus === 'connected' ? (
           <>
-            <ProjectSection explorerWidth={width} />
-            <FeatureSection explorerWidth={width} />
+            <div style={{ flex: '0 0 auto' }}>
+              <ProjectSection explorerWidth={width} />
+            </div>
+            <div style={{ flex: '0 0 auto' }}>
+              <FeatureSection explorerWidth={width} />
+            </div>
             <ArtifactsPanel explorerWidth={width} />
 
             {onboardingSkipped && projects.length === 0 && (
