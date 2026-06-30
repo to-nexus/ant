@@ -655,7 +655,9 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: [] },
+    // Revising system design on an existing codebase needs the same techTier
+    // grounding as gen-sys-* (was [] — under-specified, not a deliberate opt-out).
+    basis: { tiers: SYS_TIERS },
   },
 
   // ── UI Design: Gen ─────────────────────────
@@ -732,7 +734,10 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
     chatRequiresRefs: false,
-    basis: { tiers: PLAN_TIERS },
+    // Code-grounded design doc → activate techTier grounding (same gate as
+    // gen-sys-*). A spec written against an existing codebase must reference the
+    // real stack's conventions; the design-side techTier partials supply that.
+    basis: { tiers: SYS_TIERS },
   },
   'rev-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
@@ -745,7 +750,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: [] },
+    // Revising a spec on an existing codebase needs techTier grounding (was []).
+    basis: { tiers: SYS_TIERS },
   },
 
   // ── Code: Gen (3 pipeline-specific intents) ──

@@ -147,12 +147,17 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
   const expectations: Array<{ intent: IntentId; tiers: ReadonlyArray<TierKey> }> = [
     { intent: 'gen-plan', tiers: ['gameContentTier'] },
     { intent: 'rev-plan', tiers: [] },
-    { intent: 'gen-spec', tiers: ['gameContentTier'] },
-    { intent: 'rev-spec', tiers: [] },
+    // Code-grounded design docs (spec + system) activate techTier so the doc
+    // can reference the real stack's conventions — gen-spec/rev-spec/rev-sys now
+    // mirror gen-sys-* (SYS_TIERS). For an existing codebase the FE wizard still
+    // suppresses the techTier step (hasCodebase runtime suppressor); BE docGen
+    // injection omits hasCodebase from its runtime, so the grounding still flows.
+    { intent: 'gen-spec', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'rev-spec', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-fe', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-be', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-full', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'rev-sys', tiers: [] },
+    { intent: 'rev-sys', tiers: ['techTier', 'gameContentTier'] },
     // figma source is the visualTier authority — wizard tier intentionally
     // elided so the user is not forced to override what figma already
     // decides on action-tab entry.
@@ -177,15 +182,29 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     expect(new Set(slot!.tiers ?? [])).toEqual(new Set(tiers));
   });
 
-  it('service-domain plan/spec wizards collapse (D23 effect)', () => {
-    // PLAN_TIERS / SPEC_TIERS = [gameContentTier], which is game-only.
-    // Service domain therefore has zero active tiers → wizard hides.
-    for (const intent of ['gen-plan', 'rev-plan', 'gen-spec', 'rev-spec'] as const) {
+  it('service-domain plan wizards collapse (D23 effect — plan only)', () => {
+    // PLAN_TIERS = [gameContentTier], which is game-only. Service domain
+    // therefore has zero active tiers → wizard hides. NOTE: spec intents
+    // (gen-spec/rev-spec) intentionally NO LONGER collapse — they activate
+    // techTier (SYS_TIERS) so a code-grounded spec references the real stack.
+    // For service domain a greenfield spec now exposes the techTier step
+    // (mirroring gen-sys-*); an existing codebase suppresses it at runtime.
+    for (const intent of ['gen-plan', 'rev-plan'] as const) {
       const slot = getConfigSlots(intent)?.basis;
       const activeForService = TIER_KEYS.filter(t =>
         isTierActive(t, slot, 'service', {}),
       );
       expect(activeForService).toEqual([]);
+    }
+  });
+
+  it('service-domain spec wizards expose techTier (greenfield), suppressed on existing codebase', () => {
+    for (const intent of ['gen-spec', 'rev-spec'] as const) {
+      const slot = getConfigSlots(intent)?.basis;
+      // greenfield: techTier active (wizard asks the stack, like gen-sys)
+      expect(isTierActive('techTier', slot, 'service', {})).toBe(true);
+      // existing codebase: runtime suppressor hides the step
+      expect(isTierActive('techTier', slot, 'service', { hasCodebase: true })).toBe(false);
     }
   });
 
@@ -204,8 +223,12 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     }
   });
 
-  it('all rev-* intents expose zero configurable tiers', () => {
-    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-game-art', 'rev-spec', 'rev-code'];
+  it('rev-* intents expose zero configurable tiers (except code-grounded design revise)', () => {
+    // rev-sys / rev-spec now activate techTier (SYS_TIERS) so a revise grounded
+    // on existing code references the real stack — same gate as gen-sys-*. The
+    // remaining rev-* stay tier-less (the document/code under review encodes the
+    // basis, or the surface is frontend-by-design).
+    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-ui', 'rev-game-art', 'rev-code'];
     for (const intent of REV_INTENTS) {
       const slot = getConfigSlots(intent)?.basis;
       expect(slot).toBeDefined();

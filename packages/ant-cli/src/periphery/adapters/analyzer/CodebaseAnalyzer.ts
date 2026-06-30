@@ -2,8 +2,9 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import { CodebaseAnalyzerPort } from "../../../core/ports";
 import { CodebaseProfile } from "../../../core/types";
+import { ProjectEnvironment } from "../../../core/types/environment";
 import { EnvironmentDetector } from "./EnvironmentDetector";
-import { buildTechTier, type TechTier, type Stack } from "@ant/shared";
+import { buildTechTier, type TechTier, type Stack, type Language } from "@ant/shared";
 
 /**
  * CodebaseAnalyzer - Detects language, framework, and environment from source code
@@ -57,22 +58,78 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
   }
 
   /**
+   * Map a detected ProjectEnvironment to a TechTier stack. NODE_CLI / CONFIG
+   * intentionally map to `undefined` (no false frontend). Single SSOT for the
+   * env→stack mapping — shared by analyzeAsTechTier and detectStack.
+   */
+  private envToStack(primary?: ProjectEnvironment): Stack | undefined {
+    return primary === ProjectEnvironment.BROWSER ? 'frontend'
+      : primary === ProjectEnvironment.NODE_API ? 'backend'
+      : primary === ProjectEnvironment.FULLSTACK ? 'fullstack'
+      : undefined;
+  }
+
+  /**
    * Analyze codebase and return a normalized TechTier.
    * Wraps analyze() output through buildTechTier() for consistent normalization.
    */
   async analyzeAsTechTier(filesBlock: string, workingDir: string): Promise<TechTier> {
     const profile = await this.analyze(filesBlock, workingDir);
-    const { ProjectEnvironment } = await import('../../../core/types/environment');
-    const stack: Stack | undefined = profile.environment?.primary === ProjectEnvironment.BROWSER ? 'frontend'
-      : profile.environment?.primary === ProjectEnvironment.NODE_API ? 'backend'
-      : profile.environment?.primary === ProjectEnvironment.FULLSTACK ? 'fullstack'
-      : undefined;
-    
+    const stack = this.envToStack(profile.environment?.primary);
+
     const techTier = buildTechTier(profile, stack);
     if (profile.packageManager) {
       techTier.packageManager = profile.packageManager as TechTier['packageManager'];
     }
     return techTier;
+  }
+
+  /**
+   * Lightweight stack/language/framework detection from a working directory.
+   * Delegates to EnvironmentDetector (reads package.json + file structure) and
+   * maps the result to a TechTier stack. Returns `undefined` when the signal is
+   * low-confidence (greenfield / empty dir / default fallback) so callers never
+   * assert a guessed stack. `language` is always populated alongside `stack` so
+   * the basis renderer (which skips tiers without a language) can emit the
+   * framework partial.
+   */
+  async detectStack(workingDir: string): Promise<{ stack?: Stack; language?: Language; framework?: string } | undefined> {
+    try {
+      const env = await this.environmentDetector.detect(workingDir);
+      // Low confidence = catch-fallback / default-browser / node-cli fallback.
+      // Treat as "no signal" rather than trusting a guessed frontend default.
+      if (env.confidence === 'low') return undefined;
+
+      const stack = this.envToStack(env.primary);
+      if (!stack) return undefined;
+
+      const rawFramework = stack === 'frontend'
+        ? env.framework?.frontend
+        : stack === 'backend'
+          ? env.framework?.backend
+          : (env.framework?.backend ?? env.framework?.frontend);
+      const framework = rawFramework && rawFramework !== 'none' ? String(rawFramework) : undefined;
+
+      const language = await this.detectLanguageFromDir(workingDir);
+      return { stack, language, framework };
+    } catch (error) {
+      console.warn('[CodebaseAnalyzer] detectStack failed:', (error as Error)?.message);
+      return undefined;
+    }
+  }
+
+  /**
+   * Best-effort language detection from a working directory without a
+   * files-block: a `go.mod` marker means Go, otherwise TypeScript (the only
+   * two languages the tier system models). Used by detectStack.
+   */
+  private async detectLanguageFromDir(workingDir: string): Promise<Language> {
+    try {
+      await fs.access(join(workingDir, 'go.mod'));
+      return 'go';
+    } catch {
+      return 'typescript';
+    }
   }
   
   /**

@@ -355,7 +355,10 @@ export class AutoInjectionResolver {
     if (!fw) return null;
     const allowed = job === 'code'
       ? ['nextjs', 'react', 'react-native', 'nestjs', 'gin']
-      : ['nextjs', 'go'];
+      // Design-side techTier partials now mirror the code set (one shared SSOT
+      // gap was filled). Keep both lists aligned so the standalone callers of
+      // resolveTechTierInjections agree with the renderBasis/includeBasis path.
+      : ['nextjs', 'go', 'nestjs', 'react', 'react-native', 'gin'];
     if (allowed.includes(fw)) return fw;
     if (fw.includes('next')) return 'nextjs';
     return null;
@@ -400,12 +403,14 @@ export class AutoInjectionResolver {
     }
 
     if (job === 'design') {
-      // Design job currently has framework files only (nextjs, go).
-      // `framework/go.md` is named after the language because the historical
-      // entry was "Go API backend" rather than a specific Go web framework —
-      // accept `language === 'go' && stack === 'backend'` as a synonym so
-      // callers (e.g. text-search fallback producing a pseudo-techTier with
-      // just `language: 'go'`) resolve to the same file.
+      // Design framework partials now mirror the code set (nextjs, go, nestjs,
+      // react, react-native, gin). `framework/go.md` is named after the language
+      // because the historical entry was "Go API backend" rather than a specific
+      // Go web framework — accept `language === 'go' && stack === 'backend'` as a
+      // synonym so callers (e.g. text-search fallback producing a pseudo-techTier
+      // with just `language: 'go'`) resolve to the same file. (The actual prompt
+      // injection of framework + language variants is driven by renderTechTier
+      // via includeBasis/renderBasis; this list keeps standalone callers aligned.)
       if (framework) {
         paths.push(`jobs/design/basis/techTier/framework/${framework}`);
       } else {
