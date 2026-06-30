@@ -36,6 +36,28 @@ export interface PreviewPackage {
    * urlKey to expose.
    */
   urlKey?: string;
+
+  // ── ANT-owned process identity (cleanup-by-identity SSOT) ──
+  // Persisted at spawn time so cleanup targets ONLY processes this pod
+  // provably spawned, scoped to `(podId, serverKey)`. Replaces the old
+  // OS port/cwd scan whose bare port number was treated as a global
+  // process identity when it was only pod-local — the cross-project kill
+  // root cause. All optional for read-tolerance: stale entries written by
+  // older builds simply lack them (a redeploy restarts every ant-preview
+  // pod, so no live preview carries an old-schema record across the cutover).
+  /** Leader PID of the spawned dev-server group. */
+  pid?: number;
+  /**
+   * Process-group id. Equals `pid` by the `detached:true` spawn contract
+   * (ProcessSpawner) — persisted explicitly so cleanup can `kill(-pgid)`
+   * the whole group even after the leader shell has exited (the re-parented
+   * dev server still holds the port within the same group).
+   */
+  pgid?: number;
+  /** Hostname of the pod that spawned this process (`os.hostname()`). */
+  podId?: string;
+  /** Spawn timestamp (ms epoch) for diagnostics / PID-reuse reasoning. */
+  spawnedAt?: number;
 }
 
 export interface PreviewRuntimeIssue {

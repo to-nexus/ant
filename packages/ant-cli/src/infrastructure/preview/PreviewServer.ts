@@ -186,8 +186,8 @@ export class PreviewServer {
       component: 'PreviewServer'
     });
 
-    // Initialize port management
-    this.portManager = new PortManager();
+    // Initialize port management (Redis-authoritative — globally-unique claims)
+    this.portManager = new PortManager(this.stateStore);
     
     // Initialize preview service with Redis
     const workspaceRoot = this.options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH;
@@ -212,6 +212,16 @@ export class PreviewServer {
       workspacesPath: workspaceRoot,
     });
 
+    // Reap previews this pod owned before a Node-process restart (the detached
+    // dev-server groups survive a restart inside a living container and still
+    // hold their ports). Reaps by persisted pgid + releases the port claims so
+    // a fresh start begins from a clean slate. Best-effort — never blocks boot.
+    try {
+      await this.previewService.reconcileOwnedPreviews();
+    } catch (err: any) {
+      logger.warn('[PreviewServer] reconcileOwnedPreviews failed (continuing)', { component: 'PreviewServer' }, { err: err?.message ?? String(err) });
+    }
+
     // Register cross-process cleanup subscriber. ProjectService (API) publishes
     // requests on `ant:lifecycle:cleanup:request`; we run the matching cleanup
     // and ack on `ant:lifecycle:cleanup:ack` so the API can confirm before
@@ -232,6 +242,14 @@ export class PreviewServer {
               throw new Error('cleanup request scope=feature missing featureName');
             }
             await this.previewService.cleanupFeature(msg.organizationId, msg.userId, msg.projectId, msg.featureName);
+          } else if (msg.scope === 'preview-stop') {
+            // Single-serverKey stop fanned out so the OWNING pod reaps its
+            // live handles. No-op on non-owning pods (the broadcast reaches
+            // every pod). See PreviewService.publishPreviewStop.
+            if (!msg.featureName) {
+              throw new Error('cleanup request scope=preview-stop missing featureName');
+            }
+            await this.previewService.stopPreviewIfOwned(msg.organizationId, msg.userId, msg.projectId, msg.featureName);
           }
           const ack: CleanupAckPayload = { requestId: msg.requestId, source: 'preview', success: true };
           await this.stateStore.publish(REDIS_KEYS.LIFECYCLE.CLEANUP_ACK, ack);
@@ -1278,6 +1296,13 @@ export class PreviewServer {
         logger.warn('[PreviewServer] Error unsubscribing connections-refresh channel', { component: 'PreviewServer' }, err);
       }
       this.connectionsRefreshUnsubscribe = undefined;
+    }
+
+    // Stop the PortManager TTL-refresh loop (claims TTL-expire on their own).
+    try {
+      this.portManager?.dispose();
+    } catch (err) {
+      logger.warn('[PreviewServer] Error disposing PortManager', { component: 'PreviewServer' }, err);
     }
 
     // Cleanup preview service

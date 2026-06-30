@@ -18,7 +18,15 @@ import type { UserContext } from '../../../../../core/types/user';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { logger } from '../../../../../utils/logger';
 
-export type CleanupScope = 'project' | 'feature';
+/**
+ * Cleanup scope on the `ant:lifecycle:cleanup:request` channel:
+ *   - `project` / `feature`: project / feature deletion cascade (ack-awaited).
+ *   - `preview-stop`: single-serverKey preview stop fanned out so the OWNING
+ *     pod (the one holding the live `ChildProcess` handles) reaps via its
+ *     local `killTree`. A non-owning pod that receives a stop request publishes
+ *     this so it never has to touch a remote pod's host. Fire-and-forget.
+ */
+export type CleanupScope = 'project' | 'feature' | 'preview-stop';
 
 export interface CleanupRequestPayload {
   requestId: string;

@@ -11,11 +11,12 @@ import type { PackageInfo } from '../../src/periphery/adapters/http/services/Pre
  *   When `next dev` exits early with "Another next dev server is already
  *   running", the previous startPreview behaviour reported it as a hard
  *   failure to the user. With `spawnWithConflictRetry` the orchestrator
- *   now detects the port-conflict signature, runs DevProcessControl
- *   cleanup (killTree + Next lock + waitForCleanState), and retries spawn
- *   ONCE. Other failure modes must NOT trigger retry — that would mask
- *   real bugs (compile errors, missing deps, etc.) by burning the user's
- *   time looping on them.
+ *   now detects the port-conflict signature, RELEASES the conflicted port +
+ *   ALLOCATES a fresh one (Redis-NX allocation makes a conflict mean an
+ *   unowned squatter, which is cross-project-unsafe to kill), cleans the Next
+ *   lock, and retries spawn ONCE. Other failure modes must NOT trigger retry —
+ *   that would mask real bugs (compile errors, missing deps, etc.) by burning
+ *   the user's time looping on them.
  *
  * We test the private method directly because the lifecycle policy
  * (settling window, retry budget, conflict pattern matching) is the
@@ -58,10 +59,11 @@ function buildPkg(): PackageInfo {
 interface RetryHarness {
   svc: PreviewService;
   dev: {
-    detect: ReturnType<typeof vi.fn>;
-    forceCleanup: ReturnType<typeof vi.fn>;
     cleanupStaleLocks: ReturnType<typeof vi.fn>;
-    waitForCleanState: ReturnType<typeof vi.fn>;
+  };
+  portManager: {
+    release: ReturnType<typeof vi.fn>;
+    allocate: ReturnType<typeof vi.fn>;
   };
   spawner: {
     spawn: ReturnType<typeof vi.fn>;
@@ -85,14 +87,17 @@ function buildHarness(spawnPlan: Array<{
 }>): RetryHarness {
   const svc = new PreviewService();
   const dev = {
-    detect: vi.fn(async () => [{ source: 'process-tree' as const, pid: 99_999 }]),
-    forceCleanup: vi.fn(async () => ({ killed: [99_999], survived: [] })),
     cleanupStaleLocks: vi.fn(async () => undefined),
-    waitForCleanState: vi.fn(async () => true),
+  };
+  // Fresh port handed out on each conflict reallocation.
+  const portManager = {
+    release: vi.fn(),
+    allocate: vi.fn(async () => 31_000),
   };
   const harness: RetryHarness = {
     svc,
     dev,
+    portManager,
     spawner: {} as any,
     spawnCalls: 0,
     promoteExitCalls: 0,
@@ -127,6 +132,7 @@ function buildHarness(spawnPlan: Array<{
 
   (svc as any).processSpawner = spawner;
   (svc as any).dev = dev;
+  (svc as any).portManager = portManager;
 
   return harness;
 }
@@ -157,7 +163,9 @@ describe('PreviewService.spawnWithConflictRetry', () => {
     expect(harness.spawnCalls).toBe(1);
     expect(opts.baseExit).toHaveBeenCalledTimes(1);
     expect(opts.baseExit).toHaveBeenCalledWith(1, null, (result as FakeChild).pid);
-    expect(harness.dev.detect).not.toHaveBeenCalled();
+    // No reallocation on a non-conflict failure.
+    expect(harness.portManager.allocate).not.toHaveBeenCalled();
+    expect(harness.portManager.release).not.toHaveBeenCalled();
 
     // Stderr tail must be surfaced to the log feed so the user sees WHY
     // the package crashed. Without this, the dead frontend produced
@@ -181,13 +189,18 @@ describe('PreviewService.spawnWithConflictRetry', () => {
       { exit: { afterMs: 30, code: 1, stderr: 'Another next dev server is already running' } },
     ]);
     const opts = RUN_OPTS(harness);
+    const pkg = buildPkg();
 
-    const result = await (harness.svc as any).spawnWithConflictRetry(buildPkg(), 3099, opts);
+    const result = await (harness.svc as any).spawnWithConflictRetry(pkg, 3099, opts);
 
     // Exactly two attempts, no third.
     expect(harness.spawnCalls).toBe(2);
     expect(opts.baseExit).toHaveBeenCalledTimes(1);
     expect(opts.baseExit).toHaveBeenCalledWith(1, null, (result as FakeChild).pid);
-    // Second attempt's exit went to baseExit (not absorbed).
+    // The conflict triggered exactly one release + reallocate (1-shot retry),
+    // and the package now carries the fresh port (not the conflicted 3099).
+    expect(harness.portManager.release).toHaveBeenCalledWith(3099);
+    expect(harness.portManager.allocate).toHaveBeenCalledTimes(1);
+    expect(pkg.port).toBe(31_000);
   }, 15_000);
 });

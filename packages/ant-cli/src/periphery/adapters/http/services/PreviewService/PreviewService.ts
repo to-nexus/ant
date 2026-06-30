@@ -24,7 +24,10 @@ import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../../../../utils/userConfig';
-import { DevProcessControl, isPortConflictOutput } from '../../../../../core/process/DevProcessControl';
+import { DevProcessControl, isPortConflictOutput, OwnedProcessRecord } from '../../../../../core/process/DevProcessControl';
+import { REDIS_KEYS } from '../../../../../core/constants/redis';
+import type { CleanupRequestPayload } from '../ProjectService/previewCleanup';
+import { randomUUID } from 'crypto';
 
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -571,9 +574,10 @@ export class PreviewService {
         // 'stopped' and disables the cancel button + clears the log feed
         // until the next 'installing' broadcast lands.
         //
-        // stopPreview already polls `waitForCleanState` (3s) for ports +
-        // Next dev locks, so we don't need an additional wait here — the
-        // SSOT guarantee lives inside stopPreview, not at every caller.
+        // stopPreview already reaps the owned process groups (killAndWait on
+        // live handles + killOwned on persisted identities) and clears Next
+        // dev locks, so we don't need an additional wait here — the SSOT
+        // guarantee lives inside stopPreview, not at every caller.
         await this.stopPreview(tenantId, userId, projectId, feature, {
           suppressStoppedBroadcast: true,
         });
@@ -614,26 +618,19 @@ export class PreviewService {
       }
     }
     
-    // Pre-flight cleanup: kill any lingering dev processes for this codebase
-    // BEFORE we start spawning. The previous behaviour only scanned the
-    // workspace root via `killOrphanProcesses(localPath)`, which missed
-    // (a) detached `next dev` grandchildren whose ps line referenced only
-    // the package cwd (e.g. `apps/hub`), and (b) Next dev locks
-    // (`.next/dev/server.json`) that block the new spawn even when the
-    // recorded PID is dead.
-    //
-    // Pre-spawn we don't yet know per-package cwds (structure detection
-    // happens further down), so we sweep the workspace root first; the
-    // package-cwd sweep happens at the spawn site below where the cwds
-    // are known. See B' in the preview-cleanup plan.
-    const fs = await import('fs');
-    const preflightFound = await this.dev.detect({ cwds: [localPath], ports: [] });
-    if (preflightFound.length > 0) {
+    // Pre-flight cleanup: reap any prior dev processes WE spawned for THIS
+    // serverKey before starting (e.g. a previous start that crashed without
+    // releasing). Identity-scoped via persisted (pid, pgid, podId) — it can
+    // never match another project's process, unlike the old OS port/cwd scan
+    // whose bare port number was only pod-local. Then clear stale framework
+    // dev locks for filesystem hygiene.
+    const priorRecords = await this.ownedRecordsFor(tenantId, userId, projectId, feature);
+    if (priorRecords.length > 0) {
       this.appendLog(serverKey, 'stdout',
-        `⚠️  Detected ${preflightFound.length} stale dev process(es) under ${localPath}. Cleaning up before start...`);
-      await this.dev.forceCleanup(preflightFound);
-      await this.dev.waitForCleanState({ cwds: [localPath], ports: [], timeoutMs: 5_000 });
+        `⚠️  Reaping ${priorRecords.length} prior preview process(es) for this feature before start...`);
+      await this.dev.killOwned(priorRecords, { graceMs: 4_000 });
     }
+    await this.dev.cleanupStaleLocks(localPath).catch(() => { /* best-effort */ });
     
     // Check if installing
     if (this.installingProjects.has(serverKey)) {
@@ -752,8 +749,8 @@ export class PreviewService {
       
       // Allocate ports for all packages
       for (const pkg of orderedPackages) {
-        const pkgPort = this.portManager 
-          ? await this.portManager.allocate() 
+        const pkgPort = this.portManager
+          ? await this.portManager.allocate('dev-server', { podId: os.hostname(), serverKey })
           : 3000 + processes.length;
         pkg.port = pkgPort;
         if (!backendPort && pkg.type === 'backend') {
@@ -848,18 +845,15 @@ export class PreviewService {
         }
       }
 
-      // Per-package pre-flight: now that ports are allocated and cwds known,
-      // sweep each package cwd + port for stale dev processes/locks. This
-      // closes the gap where a previous run's `next dev` survived in
-      // `apps/hub` but the workspace-root sweep above didn't match.
+      // Per-package pre-flight: now that cwds are known, clear stale framework
+      // dev locks (filesystem hygiene). The old port/cwd OS scan is removed —
+      // with NX (Redis-authoritative) allocation the just-allocated ports are
+      // provably unclaimed, so there is no living owner to detect-and-kill, and
+      // any prior process WE owned was already reaped by the owned-record sweep
+      // above. Port collisions are now structurally impossible across pods.
       const allPkgCwds = orderedPackages.map(p => p.path);
-      const allPkgPorts = orderedPackages.map(p => p.port!).filter((n): n is number => typeof n === 'number');
-      const pkgFlightFound = await this.dev.detect({ cwds: allPkgCwds, ports: allPkgPorts });
-      if (pkgFlightFound.length > 0) {
-        this.appendLog(serverKey, 'stdout',
-          `⚠️  Detected ${pkgFlightFound.length} stale dev process(es) on package ports/cwds. Cleaning up...`);
-        await this.dev.forceCleanup(pkgFlightFound);
-        await this.dev.waitForCleanState({ cwds: allPkgCwds, ports: allPkgPorts, timeoutMs: 5_000 });
+      for (const cwd of allPkgCwds) {
+        await this.dev.cleanupStaleLocks(cwd).catch(() => { /* best-effort */ });
       }
 
       // Spawn processes with connections (filtered by source in ProcessSpawner).
@@ -886,7 +880,10 @@ export class PreviewService {
 
         pkg.process = childProcess;
         processes.push(childProcess);
-        spawned.push({ child: childProcess, cwd: pkg.path, port: pkgPort });
+        // `pkg.port` may differ from `pkgPort` if spawnWithConflictRetry
+        // reallocated on a port conflict — record the live one so failure
+        // cleanup releases the port actually in use.
+        spawned.push({ child: childProcess, cwd: pkg.path, port: pkg.port! });
       }
 
       // Record spawn timestamp for early-exit detection
@@ -896,6 +893,13 @@ export class PreviewService {
       // `urlKey` so the proxy can route `/{4part}--{slug}/...` requests directly
       // to the matching frontend dev server, and so the FE can render an
       // "Open" button per accessible frontend.
+      //
+      // Also persist ANT-owned process identity (pid/pgid/podId/spawnedAt) so
+      // every later cleanup targets ONLY the exact process this pod spawned,
+      // scoped to (podId, serverKey). `pgid === pid` by the `detached:true`
+      // spawn contract (ProcessSpawner).
+      const ownerPodId = os.hostname();
+      const ownerSpawnedAt = Date.now();
       const packagePorts: PreviewPackage[] = orderedPackages
         .filter(p => typeof p.port === 'number')
         .map(p => ({
@@ -904,6 +908,10 @@ export class PreviewService {
           type: p.type,
           port: p.port as number,
           urlKey: p.urlKey,
+          pid: p.process?.pid,
+          pgid: p.process?.pid,
+          podId: ownerPodId,
+          spawnedAt: ownerSpawnedAt,
         }));
       
       // 4. Update Redis with full port/package info + phase: 'starting'
@@ -1328,8 +1336,8 @@ export class PreviewService {
    *      handlers (onLog/onExit/onError) and return.
    *   4. If the child exits inside the window AND its accumulated stderr
    *      matches a port-conflict pattern (`isPortConflictOutput`) AND
-   *      retry budget remains → DPC cleanup + waitForCleanState + 1 more
-   *      spawn attempt.
+   *      retry budget remains → clear the Next lock, RELEASE the conflicted
+   *      port + ALLOCATE a fresh one, then 1 more spawn attempt.
    *   5. Anything else → forward the captured exit to the caller's
    *      `baseExit` so normal error reporting / cleanupIfAllDead runs.
    *
@@ -1355,6 +1363,12 @@ export class PreviewService {
     const SETTLING_MS = 6_000;
     const MAX_ATTEMPTS = 2;  // 1 initial + 1 retry
 
+    // Mutable across attempts: a genuine port conflict reallocates a FRESH
+    // port (release + allocate) rather than hunting-and-killing whatever holds
+    // the old one. With NX allocation the conflict means a non-ANT process (or
+    // a TTL-expired-then-reclaimed race) holds it — killing it would be
+    // cross-project-unsafe, so we sidestep to a new port instead.
+    let currentPort = port;
     let attempt = 0;
     while (attempt < MAX_ATTEMPTS) {
       attempt += 1;
@@ -1370,7 +1384,7 @@ export class PreviewService {
       let resolveSettled!: () => void;
       const settledP = new Promise<void>(r => { resolveSettled = r; });
 
-      const child = this.processSpawner.spawn(pkg, port, {
+      const child = this.processSpawner.spawn(pkg, currentPort, {
         serverKey: opts.serverKey,
         packageUrlKey: opts.packageUrlKey,
         projectRoot: opts.projectRoot,
@@ -1434,23 +1448,32 @@ export class PreviewService {
         return child;
       }
 
-      // Conflict + retry budget available → cleanup and try once more.
-      opts.baseLog('stdout',
-        `↻ Port conflict detected on ${pkg.name} (port ${port}). Cleaning stale dev server and retrying once...`);
+      // Conflict + retry budget available → release this port and reallocate a
+      // FRESH one, then retry. We do NOT hunt-and-kill whatever holds the old
+      // port: a Redis-NX-allocated port we just received should be unclaimed,
+      // so a conflict means an unowned squatter — killing it is cross-project
+      // -unsafe. Sidestepping to a new port is both safe and version-agnostic.
       try {
-        const found = await this.dev.detect({ cwds: [pkg.path], ports: [port] });
-        if (found.length > 0) await this.dev.forceCleanup(found);
         await this.dev.cleanupStaleLocks(pkg.path);
-        await this.dev.waitForCleanState({
-          cwds: [pkg.path],
-          ports: [port],
-          timeoutMs: 5_000,
-        });
+        if (this.portManager) {
+          this.portManager.release(currentPort);
+          const fresh = await this.portManager.allocate('dev-server', {
+            podId: os.hostname(),
+            serverKey: opts.serverKey,
+          });
+          currentPort = fresh;
+          pkg.port = fresh;  // propagate to caller (Redis registration / spawned record)
+          opts.baseLog('stdout',
+            `↻ Port conflict on ${pkg.name} — reallocated to port ${fresh} and retrying once...`);
+        } else {
+          opts.baseLog('stdout',
+            `↻ Port conflict on ${pkg.name} (port ${currentPort}) — retrying once...`);
+        }
       } catch (cleanupErr: any) {
         opts.baseLog('stderr',
-          `⚠️  Conflict cleanup encountered an error (continuing retry): ${cleanupErr?.message || cleanupErr}`);
+          `⚠️  Conflict reallocation encountered an error (continuing retry): ${cleanupErr?.message || cleanupErr}`);
       }
-      // Loop continues → next spawn attempt.
+      // Loop continues → next spawn attempt (on the fresh port).
     }
 
     // Defensive — loop always either returns or continues; we never reach here.
@@ -1715,9 +1738,20 @@ export class PreviewService {
     
     const hasLocalProcesses = processes && processes.length > 0;
     const isRunningInRedis = redisState?.running === true;
-    
+
     if (!hasLocalProcesses && !isRunningInRedis) {
       return { success: false, error: 'Preview server not running' };
+    }
+
+    // Cross-pod stop: when this pod does NOT hold the live handles but the
+    // preview is running on a DIFFERENT pod, that pod's process can only be
+    // reaped by its own local `killTree`. Broadcast a `preview-stop` so the
+    // owning pod reaps via the established cleanup-request channel. We still
+    // unregister Redis below (cleans dead-pod residue + frees the port claim);
+    // the owning pod's own stop reaps based on local handles, not Redis state,
+    // so there is no race. Fire-and-forget — no ack wait on the user's stop.
+    if (!hasLocalProcesses && isRunningInRedis && redisState?.podId && redisState.podId !== os.hostname()) {
+      await this.publishPreviewStop(tenantId, userId, projectId, feature);
     }
 
     // Abort any running health check
@@ -1768,18 +1802,9 @@ export class PreviewService {
     }
     
     // Kill local processes via DevProcessControl.killTree (descendant aware
-    // + SIGKILL escalation), then verify ports/lock files are clear.
+    // + SIGKILL escalation), then reap any owned-but-handle-less survivors.
     let stoppedCount = 0;
-    const portsToKill: number[] = [];
     const cwdsToClean: string[] = [];
-    if (this.portRegistry) {
-      try {
-        const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
-        for (const pkg of state?.packages || []) {
-          if (pkg.port) portsToKill.push(pkg.port);
-        }
-      } catch { /* best-effort */ }
-    }
     const localPathForCwds = this.previewServerPaths.get(serverKey);
     if (localPathForCwds) cwdsToClean.push(localPathForCwds);
 
@@ -1796,25 +1821,18 @@ export class PreviewService {
       stoppedCount = processes.length;
     }
 
-    // Safety net: kill anything still on the allocated ports + clean Next
-    // dev locks. Both go through the SSOT detect/forceCleanup path so we
-    // don't reimplement port + lock heuristics here.
-    if (portsToKill.length > 0 || cwdsToClean.length > 0) {
-      const survivors = await this.dev.detect({ cwds: cwdsToClean, ports: portsToKill });
-      if (survivors.length > 0) {
-        await this.dev.forceCleanup(survivors);
-      }
-      for (const cwd of cwdsToClean) {
-        await this.dev.cleanupStaleLocks(cwd);
-      }
-      // Wait until ports are actually unbound + lock files gone before we
-      // proceed to unregister. This shrinks the window where a fast
-      // forceRestart caller can race a not-yet-dead `next dev`.
-      await this.dev.waitForCleanState({
-        cwds: cwdsToClean,
-        ports: portsToKill,
-        timeoutMs: 3_000,
-      });
+    // Safety net: reap any process WE recorded for this serverKey that the
+    // live-handle killAndWait above didn't cover (e.g. after a Node restart
+    // the handles are gone but the detached group survives). Identity-scoped
+    // via persisted pgid — `killOwned` acts ONLY on records whose podId is
+    // this host, so it can never reach another project or another pod's
+    // process. Then clear stale framework dev locks for filesystem hygiene.
+    const ownedRecords = await this.ownedRecordsFor(tenantId, userId, projectId, feature, redisState);
+    if (ownedRecords.length > 0) {
+      await this.dev.killOwned(ownedRecords, { graceMs: 3_000 });
+    }
+    for (const cwd of cwdsToClean) {
+      await this.dev.cleanupStaleLocks(cwd);
     }
     
     // Read connections from Redis BEFORE unregister (so we can include them in broadcast)
@@ -2241,6 +2259,141 @@ export class PreviewService {
       await this.stopPreview(organizationId, userId, projectId, featureName);
     } catch (err) {
       logger.warn(`[PreviewService] cleanupFeature stop failed (continuing)`, { component: 'PreviewService' }, { organizationId, userId, projectId, featureName, err });
+    }
+  }
+
+  // ==========================================
+  // Owned-identity reaping (cross-pod-safe cleanup SSOT)
+  // ==========================================
+
+  /**
+   * Build the ANT-owned process records for a serverKey from the persisted
+   * Redis preview state. `killOwned` itself filters to this pod (podId ===
+   * os.hostname()), so cross-pod records are simply skipped — passing them
+   * is harmless. `preloaded` lets callers reuse a state they already fetched.
+   */
+  private async ownedRecordsFor(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    preloaded?: PreviewState | null,
+  ): Promise<OwnedProcessRecord[]> {
+    let state = preloaded ?? null;
+    if (!state && this.portRegistry) {
+      try {
+        state = await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+      } catch { /* best-effort */ }
+    }
+    const records: OwnedProcessRecord[] = [];
+    for (const pkg of state?.packages || []) {
+      if (typeof pkg.pid === 'number' && pkg.pid > 0 && pkg.podId) {
+        records.push({ pid: pkg.pid, pgid: pkg.pgid, podId: pkg.podId });
+      }
+    }
+    return records;
+  }
+
+  /**
+   * Fan out a single-serverKey stop on the shared lifecycle channel so the
+   * OWNING pod (the one holding the live handles) reaps via `stopPreviewIfOwned`.
+   * Fire-and-forget (no ack wait) — see `CleanupScope` `'preview-stop'`.
+   */
+  private async publishPreviewStop(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): Promise<void> {
+    if (!this.stateStore) return;
+    const payload: CleanupRequestPayload = {
+      requestId: randomUUID(),
+      scope: 'preview-stop',
+      organizationId: tenantId,
+      userId,
+      projectId,
+      featureName: feature,
+    };
+    try {
+      await this.stateStore.publish(REDIS_KEYS.LIFECYCLE.CLEANUP_REQUEST, payload);
+    } catch (err: any) {
+      logger.warn(`[PreviewService] publishPreviewStop failed (best-effort): ${err?.message ?? err}`, { component: 'PreviewService' });
+    }
+  }
+
+  /**
+   * Stop a preview ONLY if this pod owns the live process handles. Invoked by
+   * the `preview-stop` cleanup-request subscriber on every pod; the no-op on
+   * non-owning pods is what makes the broadcast safe — only the owner reaps.
+   */
+  async stopPreviewIfOwned(
+    organizationId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): Promise<void> {
+    const serverKey = this.createServerKey(organizationId, userId, projectId, feature);
+    if (!this.previewServers.has(serverKey)) return; // not owned here
+    try {
+      await this.stopPreview(organizationId, userId, projectId, feature);
+    } catch (err) {
+      logger.warn(`[PreviewService] stopPreviewIfOwned failed (continuing)`, { component: 'PreviewService' }, { serverKey, err });
+    }
+  }
+
+  /**
+   * Reconcile previews this pod owned before a Node-process restart inside a
+   * living container: the detached dev-server groups survive (still holding
+   * their ports) but the live `ChildProcess` handles are gone. List the Redis
+   * previews indexed under this hostname, reap each by persisted pgid, release
+   * its port claims, and unregister. Called once from PreviewServer boot.
+   *
+   * A full CONTAINER restart destroys the PID namespace, so persisted numbers
+   * resolve to nothing → `kill(-pgid)` is a harmless ESRCH no-op (the dev
+   * servers already died with the container). The TTL'd Redis claim is the
+   * backstop for that case.
+   */
+  async reconcileOwnedPreviews(): Promise<void> {
+    if (!this.portRegistry) return;
+    const host = os.hostname();
+    let previews: PreviewState[] = [];
+    try {
+      previews = await this.portRegistry.listPreviewsByPod(host);
+    } catch (err: any) {
+      logger.warn(`[PreviewService] reconcileOwnedPreviews list failed: ${err?.message ?? err}`, { component: 'PreviewService' });
+      return;
+    }
+    if (previews.length === 0) return;
+
+    logger.warn(`[PreviewService] Reconciling ${previews.length} owned preview(s) from a prior process on ${host}`, { component: 'PreviewService' });
+
+    for (const state of previews) {
+      const records: OwnedProcessRecord[] = [];
+      for (const pkg of state.packages || []) {
+        if (typeof pkg.pid === 'number' && pkg.pid > 0) {
+          records.push({ pid: pkg.pid, pgid: pkg.pgid, podId: pkg.podId || host });
+        }
+      }
+      if (records.length > 0) {
+        await this.dev.killOwned(records, { graceMs: 2_000 }).catch(() => { /* best-effort */ });
+      }
+
+      // Release every port claim this preview held.
+      if (this.portManager) {
+        const ports = new Set<number>();
+        if (state.port) ports.add(state.port);
+        if (state.backendPort) ports.add(state.backendPort);
+        for (const pkg of state.packages || []) {
+          if (pkg.port) ports.add(pkg.port);
+        }
+        for (const p of ports) {
+          try { this.portManager.release(p); } catch { /* best-effort */ }
+        }
+      }
+
+      try {
+        await this.portRegistry.unregisterPreview(state.tenantId, state.userId, state.projectId, state.feature);
+      } catch { /* best-effort */ }
     }
   }
 

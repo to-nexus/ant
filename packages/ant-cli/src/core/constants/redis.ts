@@ -162,6 +162,22 @@ export const REDIS_KEYS = {
     DEPLOY: `${REDIS_DOMAINS.INFRA}:deploy:`,
     /** Deploy list (SET) - ant:infra:deploy:list */
     DEPLOY_LIST: `${REDIS_DOMAINS.INFRA}:deploy:list`,
+    /**
+     * Port allocation claim (SET NX) - ant:infra:port:{type}:{port}
+     *
+     * Redis-authoritative dynamic port allocator. A claim is an atomic
+     * `SET key value NX EX ttl`, making a port number globally unique across
+     * every ant-preview pod (the old pod-local in-memory `usedPorts` set let
+     * two pods hand out the same number — the root of cross-project preview
+     * kills). The value carries the owner `{podId, serverKey, pid}` for
+     * diagnostics; the TTL is the dead-pod backstop (a crashed pod's claims
+     * self-expire back into the pool). SSOT: `PortManager`.
+     */
+    PORT_CLAIM: (type: string, port: number): string =>
+      `${REDIS_DOMAINS.INFRA}:port:${type}:${port}`,
+    /** Per-type allocation cursor (INCR) - ant:infra:port:cursor:{type} */
+    PORT_CURSOR: (type: string): string =>
+      `${REDIS_DOMAINS.INFRA}:port:cursor:${type}`,
   },
   
   /** Index keys (ant:index:*) */
@@ -369,6 +385,13 @@ export const REDIS_TTL = {
     PORT_MAPPING: 24 * 60 * 60,  // 24 hours
     PREVIEW_CONFIG: 30 * 24 * 60 * 60,  // 30 days (user config, persists across preview restarts)
     DEPLOY: 7 * 24 * 60 * 60,           // 7 days (deployed static builds)
+    /**
+     * Port allocation claim. Moderate window refreshed by PortManager's
+     * in-pod TTL refresh while the claim is live; a dead pod's claims lapse
+     * after this and return to the pool. Must comfortably exceed the refresh
+     * interval (TTL/3) so a live claim never expires mid-use.
+     */
+    PORT_CLAIM: 10 * 60,                // 10 minutes
   },
   
   /** Transfer TTLs */

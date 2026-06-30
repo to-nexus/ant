@@ -39,8 +39,11 @@ export function initializeServices(
   
   // Initialize PortManager and PortRegistry
   // Always use RedisStateStore as PortRegistry (it implements both StateStorePort and PortRegistryPort)
-  const portManager = new PortManager();
   const factory = getInfrastructureFactory();
+  // Redis-authoritative allocator: inject the shared stateStore so IDE port
+  // claims are globally unique across pods (collision-free for free — the
+  // IDE/Deploy ranges inherit the same NX allocator as preview).
+  const portManager = new PortManager(factory.getStateStore());
   const portRegistry: PortRegistryPort = factory.getStateStore() as unknown as PortRegistryPort;
   logger.info('Using RedisStateStore as PortRegistry', { component: 'ServiceInitializer' });
   
