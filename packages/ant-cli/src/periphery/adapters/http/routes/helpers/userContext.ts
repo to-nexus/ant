@@ -4,6 +4,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { INDIVIDUAL_ORG_ID, LOCAL_ORG_ID, deriveKindFromOrgId } from '@ant/shared';
+import { logger } from '../../../../../utils/logger';
+
+// Fires at most once: local-mode tenant inference is only safe when the
+// workspace holds a single org/user. With multiple tenants the inference is
+// ambiguous and requests silently fall back to the `local` tenant — a
+// cross-tenant data-exposure footgun outside the single-developer assumption.
+let warnedMultiTenant = false;
+function warnAmbiguousLocalTenant(reason: string): void {
+  if (warnedMultiTenant) return;
+  warnedMultiTenant = true;
+  logger.warn(
+    `⚠️  Local-mode tenant inference is ambiguous (${reason}); falling back to the 'local' tenant. ` +
+      'Local server mode assumes a single developer — set JWT auth (cloud mode) for multi-tenant isolation.',
+    { component: 'userContext' },
+  );
+}
 
 /**
  * Single sink for "is the BE running in local mode?". Reading
@@ -25,6 +41,7 @@ let inferredLocalDefault: { organizationId: string; userId: string } | null | un
  */
 export function __resetInferredLocalDefaultForTests(): void {
   inferredLocalDefault = undefined;
+  warnedMultiTenant = false;
 }
 
 export function inferLocalDefaultTenant(): { organizationId: string; userId: string } | null {
@@ -61,6 +78,9 @@ export function inferLocalDefaultTenant(): { organizationId: string; userId: str
         inferredLocalDefault = { organizationId: org, userId: users[0] };
         return inferredLocalDefault;
       }
+      if (users.length > 1) warnAmbiguousLocalTenant(`${users.length} users under org '${org}'`);
+    } else if (orgs.length > 1) {
+      warnAmbiguousLocalTenant(`${orgs.length} org folders`);
     }
   } catch {
     // ignore
@@ -116,6 +136,9 @@ function inferTenantByProjectId(projectId: string): { organizationId: string; us
     }
 
     if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      warnAmbiguousLocalTenant(`projectId '${projectId}' exists under ${candidates.length} tenants`);
+    }
   } catch {
     // ignore
   }

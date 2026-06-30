@@ -27,6 +27,27 @@ function mostRecentServerPort(ctx: ToolExecutionContext): number | undefined {
   return withPort.reduce((a, b) => (b.startedAt > a.startedAt ? b : a)).port;
 }
 
+/**
+ * SSRF guard: the ONLY legitimate target of this tool is the dev server the LLM
+ * started on this host (run_command keep_running), which binds loopback. So an
+ * absolute URL is accepted only when its host is loopback — `localhost`,
+ * 127.0.0.0/8, ::1, or the unspecified bind 0.0.0.0. Everything else (cloud
+ * metadata 169.254.169.254, RFC-1918 internals, public hosts) is rejected so a
+ * crafted `url` cannot pivot the runtime into the internal network.
+ */
+function isLoopbackHost(hostname: string): boolean {
+  // `URL.hostname` already strips IPv6 brackets and the port.
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '::1' || h === '0.0.0.0' || h === '::') return true;
+  if (h === '127.0.0.1') return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const octets = m.slice(1, 5).map(Number);
+    if (octets.every(o => o >= 0 && o <= 255) && octets[0] === 127) return true;
+  }
+  return false;
+}
+
 export async function handleHttpRequest(
   ctx: ToolExecutionContext,
   args: { url?: string; method?: string; headers?: Record<string, string>; body?: string; port?: number; follow_redirects?: boolean },
@@ -56,6 +77,21 @@ export async function handleHttpRequest(
   let url: string;
   const isAbsolute = /^https?:\/\//i.test(rawUrl);
   if (isAbsolute) {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return { content: `[http_request] Malformed URL "${rawUrl}".`, sideEffects: [] };
+    }
+    if (!isLoopbackHost(parsed.hostname)) {
+      return {
+        content:
+          `[http_request] Refusing to fetch "${parsed.protocol}//${parsed.host}": only loopback hosts ` +
+          '(localhost / 127.0.0.0/8 / ::1) are allowed. This tool targets the local dev server you started; ' +
+          'pass a relative path (e.g. "/api/...") or a loopback URL.',
+        sideEffects: [],
+      };
+    }
     url = rawUrl;
   } else {
     const port = args.port ?? mostRecentServerPort(ctx);

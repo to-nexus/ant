@@ -48,9 +48,20 @@ interface K8sMetadata {
   deletionTimestamp?: string;  // Set when pod is being deleted
 }
 
+interface K8sSecurityContext {
+  runAsNonRoot?: boolean;
+  runAsUser?: number;
+  runAsGroup?: number;
+  allowPrivilegeEscalation?: boolean;
+  capabilities?: { drop?: string[]; add?: string[] };
+  seccompProfile?: { type: string };
+}
+
 interface K8sPod {
   metadata: K8sMetadata;
   spec: {
+    automountServiceAccountToken?: boolean;
+    securityContext?: K8sSecurityContext;
     containers: Array<{
       name: string;
       image: string;
@@ -59,6 +70,7 @@ interface K8sPod {
       command?: string[];
       args?: string[];
       env?: Array<{ name: string; value: string }>;
+      securityContext?: K8sSecurityContext;
       resources?: {
         limits?: { cpu?: string; memory?: string };
         requests?: { cpu?: string; memory?: string };
@@ -389,12 +401,30 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         }
       },
       spec: {
+        // The IDE container does not call the K8s API — never mount the SA
+        // token (defence against token theft from a compromised shell).
+        automountServiceAccountToken: false,
+        // Pod-level hardening: run as a fixed non-root uid. openvscode-server's
+        // image user is uid 1000, so this confirms (not changes) the identity.
+        securityContext: {
+          runAsNonRoot: true,
+          runAsUser: 1000,
+          runAsGroup: 1000,
+        },
         containers: [{
           name: 'openvscode-server',
           image: this.options.image,
           // Default open folder for openvscode-server. Mirrors Docker's WorkingDir.
           workingDir: '/workspace',
           ports: [{ containerPort: 3000 }],  // openvscode-server uses port 3000
+          // Container-level hardening: no privilege escalation, drop all Linux
+          // capabilities (the editor server needs none).
+          securityContext: {
+            runAsNonRoot: true,
+            runAsUser: 1000,
+            allowPrivilegeEscalation: false,
+            capabilities: { drop: ['ALL'] },
+          },
           // Command to start openvscode-server without authentication
           // ANT already has Google OIDC auth at the API layer, so IDE-level auth is unnecessary
           // --server-base-path: Required for proxy routing (all static assets use this base path)
