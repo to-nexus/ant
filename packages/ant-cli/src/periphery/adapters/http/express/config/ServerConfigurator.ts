@@ -9,6 +9,8 @@ import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
+import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
+import { assertProxyOwnership } from '../../middleware/proxyOwnership';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 
@@ -136,21 +138,36 @@ export class ServerConfigurator {
         res.status(401).json({ error: 'Authentication required for IDE access' });
         return;
       }
+      let payload;
       try {
-        const payload = jwtService.verify(token);
-        req.user = {
-          id: payload.sub,
-          email: payload.email,
-          organizationId: payload.org,
-        };
-        req.organization = {
-          id: payload.org,
-          name: payload.org,
-        };
-        next();
+        payload = jwtService.verify(token);
       } catch {
         res.status(401).json({ error: 'Invalid session for IDE access' });
+        return;
       }
+
+      // Ownership gate: the IDE serverKey embeds the owning (tenant, user) as
+      // its first two segments. A valid session for a DIFFERENT owner must not
+      // reach another account's IDE pod — JWT validity alone is not enough
+      // (urlKeys are enumerable). Unparseable keys fall through unchanged; the
+      // proxy itself returns 404 for those.
+      const serverKey = req.path.split('/').filter(Boolean)[0];
+      const owner = serverKey ? parseIDEKey(serverKey) : null;
+      if (owner && !assertProxyOwnership(payload, owner)) {
+        res.status(403).json({ error: 'Forbidden: IDE belongs to another account' });
+        return;
+      }
+
+      req.user = {
+        id: payload.sub,
+        email: payload.email,
+        organizationId: payload.org,
+      };
+      req.organization = {
+        id: payload.org,
+        name: payload.org,
+      };
+      next();
     });
   }
 

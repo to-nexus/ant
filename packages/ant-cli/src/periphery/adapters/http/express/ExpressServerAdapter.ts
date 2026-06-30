@@ -14,6 +14,8 @@ import { UserContext } from '../../../../core/types/user';
 import { WorkspaceServicePort } from '../../../../core/ports/workspace';
 import { logger } from '../../../../utils/logger';
 import { createIDEWebSocketHandler } from '../middleware/ideProxy';
+import { assertProxyOwnership } from '../middleware/proxyOwnership';
+import { parseIDEKey } from '../../../../infrastructure/state/redisKeyUtils';
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { initializeRateLimiters } from '../middleware/rateLimiter';
 
@@ -286,11 +288,27 @@ export class ExpressServerAdapter implements
               socket.destroy();
               return;
             }
+            let payload;
             try {
-              wsJwtService.verify(token);
+              payload = wsJwtService.verify(token);
             } catch {
               logger.warn('IDE WebSocket upgrade rejected: invalid JWT', { component: 'IDEProxy' });
               socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+
+            // Ownership gate (symmetric with the IDE HTTP guard): the serverKey
+            // owns (tenant, user) in its first two segments. A valid session
+            // for another owner must not tunnel into this pod.
+            const pathWithoutPrefix = url.substring('/ide/'.length);
+            const slash = pathWithoutPrefix.indexOf('/');
+            const serverKey =
+              slash === -1 ? pathWithoutPrefix.split('?')[0] : pathWithoutPrefix.substring(0, slash);
+            const owner = serverKey ? parseIDEKey(serverKey) : null;
+            if (owner && !assertProxyOwnership(payload, owner)) {
+              logger.warn('IDE WebSocket upgrade rejected: ownership mismatch', { component: 'IDEProxy' });
+              socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
               socket.destroy();
               return;
             }
