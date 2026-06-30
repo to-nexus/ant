@@ -9,8 +9,10 @@ import {
 
 /**
  * Preview manifest loader — the single declared source for provisioning
- * commands. The loader degrades to an empty result on any absence / parse /
- * shape error: a broken manifest must NOT crash the preview start.
+ * commands. Canonical shape is `provision` / `commands` (matching the
+ * vocabulary the contract teaches). The loader degrades to an empty result on
+ * any absence / parse / shape error, and WARNS on a present-but-nonconforming
+ * manifest so an un-provisioned preview is never silent.
  */
 
 function withTempRoot(write: ((dir: string) => void) | null, assert: (dir: string) => void) {
@@ -36,15 +38,15 @@ describe('readPreviewManifest', () => {
 
   it('malformed JSON → empty result (no throw)', () => {
     withTempRoot(
-      (dir) => writeManifest(dir, '{ "preview": { not valid json '),
+      (dir) => writeManifest(dir, '{ "provision": { not valid json '),
       (dir) => expect(readPreviewManifest(dir)).toEqual({ root: [], byPackage: {} }),
     );
   });
 
-  it('root setupCommands → loaded into root, byPackage empty', () => {
+  it('root provision.commands → loaded into root, byPackage empty', () => {
     withTempRoot(
       (dir) => writeManifest(dir, JSON.stringify({
-        preview: { setupCommands: ['npx prisma db push --skip-generate'] },
+        provision: { commands: ['npx prisma db push --skip-generate'] },
       })),
       (dir) => {
         const m = readPreviewManifest(dir);
@@ -54,13 +56,31 @@ describe('readPreviewManifest', () => {
     );
   });
 
-  it('monorepo per-package setupCommands → loaded into byPackage keyed by source', () => {
+  it('decorative keys ($schema / name / description) are ignored, commands still loaded', () => {
     withTempRoot(
       (dir) => writeManifest(dir, JSON.stringify({
-        preview: {
+        $schema: 'https://ant.dev/schema/manifest.json',
+        name: 'classboard-backend',
+        provision: {
+          description: 'apply prisma schema',
+          commands: ['npx prisma generate', 'npx prisma db push --skip-generate'],
+        },
+      })),
+      (dir) => {
+        const m = readPreviewManifest(dir);
+        expect(m.root).toEqual(['npx prisma generate', 'npx prisma db push --skip-generate']);
+        expect(m.byPackage).toEqual({});
+      },
+    );
+  });
+
+  it('monorepo provision.packages[src].commands → keyed by source', () => {
+    withTempRoot(
+      (dir) => writeManifest(dir, JSON.stringify({
+        provision: {
           packages: {
-            'apps/api': { setupCommands: ['npx prisma migrate deploy'] },
-            'apps/worker': { setupCommands: ['npm run db:seed'] },
+            'apps/api': { commands: ['npx prisma migrate deploy'] },
+            'apps/worker': { commands: ['npm run db:seed'] },
           },
         },
       })),
@@ -78,9 +98,9 @@ describe('readPreviewManifest', () => {
   it('root + per-package combined', () => {
     withTempRoot(
       (dir) => writeManifest(dir, JSON.stringify({
-        preview: {
-          setupCommands: ['npm run migrate:all'],
-          packages: { 'apps/api': { setupCommands: ['npm run seed'] } },
+        provision: {
+          commands: ['npm run migrate:all'],
+          packages: { 'apps/api': { commands: ['npm run seed'] } },
         },
       })),
       (dir) => {
@@ -91,29 +111,39 @@ describe('readPreviewManifest', () => {
     );
   });
 
-  it('schema validation: non-string / empty entries dropped, no preview key → empty', () => {
+  it('schema validation: non-string / empty entries dropped', () => {
     withTempRoot(
       (dir) => writeManifest(dir, JSON.stringify({
-        preview: {
-          setupCommands: ['valid', 42, '', '  ', null],
+        provision: {
+          commands: ['valid', 42, '', '  ', null],
           packages: {
-            'apps/api': { setupCommands: 'not-an-array' },
-            'apps/ok': { setupCommands: ['ok'] },
+            'apps/api': { commands: 'not-an-array' },
+            'apps/ok': { commands: ['ok'] },
           },
         },
       })),
       (dir) => {
         const m = readPreviewManifest(dir);
         expect(m.root).toEqual(['valid']);
-        // 'apps/api' has a non-array setupCommands → dropped (no empty key)
+        // 'apps/api' has a non-array commands → dropped (no empty key)
         expect(m.byPackage).toEqual({ 'apps/ok': ['ok'] });
       },
     );
   });
 
-  it('manifest without a preview key → empty result', () => {
+  it('present but no "provision" object (e.g. legacy/wrong key) → empty result (warned, not coerced)', () => {
     withTempRoot(
-      (dir) => writeManifest(dir, JSON.stringify({ somethingElse: true })),
+      // The exact mis-keyed shape that caused the silent un-provisioned preview:
+      (dir) => writeManifest(dir, JSON.stringify({
+        preview: { setupCommands: ['npx prisma db push'] },
+      })),
+      (dir) => expect(readPreviewManifest(dir)).toEqual({ root: [], byPackage: {} }),
+    );
+  });
+
+  it('provision object present but no commands anywhere → empty result (warned)', () => {
+    withTempRoot(
+      (dir) => writeManifest(dir, JSON.stringify({ provision: { description: 'todo' } })),
       (dir) => expect(readPreviewManifest(dir)).toEqual({ root: [], byPackage: {} }),
     );
   });
