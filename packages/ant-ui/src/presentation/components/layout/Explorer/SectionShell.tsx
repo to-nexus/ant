@@ -5,9 +5,7 @@ export type SectionAccent = 'violet' | 'pink' | 'orange' | 'cool';
 
 interface SectionShellProps {
   eyebrow: string;
-  /** Optional count chip. When `null`/`undefined`, no chip is rendered. */
-  count?: number | null;
-  /** Accent for the count chip. Default: violet. */
+  /** Accent for the collapsed-state eyebrow badge. Default: violet. */
   accent?: SectionAccent;
   /** Right-aligned action slot (buttons / badges). Shown only when expanded. */
   action?: ReactNode;
@@ -19,6 +17,12 @@ interface SectionShellProps {
   collapsedLabel?: string;
   /** Right-aligned action slot shown only when collapsed AND `collapsedLabel` is set. */
   collapsedAction?: ReactNode;
+  /**
+   * Fill mode: the section grows to consume the parent's remaining height and
+   * lets its (expanded) children flex + scroll internally. The parent must be
+   * a flex column with `minHeight: 0`. Used by the Artifacts section.
+   */
+  fill?: boolean;
   children: ReactNode;
 }
 
@@ -39,29 +43,32 @@ export const ACCENT_VAR: Record<SectionAccent, string> = {
  * When collapsed AND `collapsedLabel` is provided, the title row becomes:
  *   ┌ chevron ─ [accent badge with eyebrow] ─ collapsedLabel (mono) ── collapsedAction ┐
  *   (children hidden)
- *
- * The count chip is suppressed entirely when `count` is `null` /
- * `undefined`. Artifacts therefore never renders a number on its
- * header (spec §1.1.6).
  */
 export function SectionShell({
   eyebrow,
-  count,
   accent = 'violet',
   action,
   indicator,
   expanded = true,
   collapsedLabel,
   collapsedAction,
+  fill = false,
   children,
 }: SectionShellProps) {
   const [open, setOpen] = useState(expanded);
   const accentColor = ACCENT_VAR[accent];
   const showCollapsedLabel = !open && !!collapsedLabel;
-  const showCount = open && count != null;
+
+  const fillActive = fill && open;
 
   return (
-    <section style={{ marginBottom: 4 }}>
+    <section
+      style={
+        fillActive
+          ? { marginBottom: 4, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }
+          : { marginBottom: 4 }
+      }
+    >
       <header
         style={{
           display: 'flex',
@@ -149,20 +156,6 @@ export function SectionShell({
             </>
           )}
           {!showCollapsedLabel && indicator}
-          {showCount && (
-            <span
-              style={{
-                padding: '1px 7px',
-                borderRadius: 999,
-                background: `color-mix(in srgb, ${accentColor} 14%, transparent)`,
-                color: accentColor,
-                fontSize: 10,
-                fontWeight: 800,
-              }}
-            >
-              {count}
-            </span>
-          )}
         </button>
         {open
           ? action && (
@@ -190,7 +183,17 @@ export function SectionShell({
               </div>
             )}
       </header>
-      {open && <div style={{ padding: '4px 0 6px' }}>{children}</div>}
+      {open && (
+        <div
+          style={
+            fillActive
+              ? { padding: '4px 0 6px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }
+              : { padding: '4px 0 6px' }
+          }
+        >
+          {children}
+        </div>
+      )}
     </section>
   );
 }

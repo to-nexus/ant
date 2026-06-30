@@ -1,6 +1,7 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, Settings, X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
+import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
 
 export type ProjectDotAccent = 'violet' | 'pink' | 'orange' | 'cool';
 
@@ -23,8 +24,6 @@ interface ProjectRowProps {
   onSwitch: () => void;
   /** Active row: ✕ clears selection. */
   onClear?: () => void;
-  /** Active row: settings button (project config). */
-  onSettings?: () => void;
   /** Optional right-side adornment (e.g. small status text). */
   rightSlot?: ReactNode;
 }
@@ -52,7 +51,6 @@ export function ProjectRow({
   disabledReason,
   onSwitch,
   onClear,
-  onSettings,
   rightSlot,
 }: ProjectRowProps) {
   const [hover, setHover] = useState(false);
@@ -94,16 +92,14 @@ export function ProjectRow({
         padding: '6px 10px',
         borderRadius: 6,
         cursor: disabled ? 'not-allowed' : isActive ? 'default' : 'pointer',
+        ...selectedRowStyle('violet', isActive),
         background: isActive
-          ? 'color-mix(in srgb, var(--violet-300) 20%, transparent)'
+          ? 'var(--select-fill-violet)'
           : hover
             ? 'var(--bg-hover)'
             : 'transparent',
-        border: isActive
-          ? '1px solid color-mix(in srgb, var(--violet-400) 40%, transparent)'
-          : '1px solid transparent',
         opacity: disabled ? 0.5 : 1,
-        transition: 'background var(--dur-fast)',
+        transition: 'background var(--dur-fast), border-color var(--dur-fast)',
       }}
     >
       {/* 8px accent dot inside 12px cell — always glows (handoff spec) */}
@@ -136,8 +132,7 @@ export function ProjectRow({
           flex: 1,
           minWidth: 0,
           fontSize: 12,
-          fontWeight: isActive ? 600 : 500,
-          color: isActive ? 'var(--violet-700)' : 'var(--text-1)',
+          ...selectedRowLabel(isActive, 'var(--text-1)'),
         }}
       >
         {name}
@@ -186,41 +181,6 @@ export function ProjectRow({
 
       {isActive && (
         <>
-          {onSettings && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSettings();
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--violet-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-3)';
-              }}
-              aria-label="Project settings"
-              title="프로젝트 설정"
-              style={{
-                height: 22,
-                width: 22,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 6,
-                color: 'var(--text-3)',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                flexShrink: 0,
-                transition: 'all var(--dur-fast)',
-              }}
-            >
-              <Settings size={12} />
-            </button>
-          )}
           {onClear && (
             <button
               type="button"

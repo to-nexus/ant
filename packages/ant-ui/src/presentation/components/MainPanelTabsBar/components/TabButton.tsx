@@ -102,7 +102,7 @@ export function TabButton({
         background: 'oklch(from var(--bg-surface) l c h / 0.85)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
-        color: 'var(--violet-700)',
+        color: 'var(--select-fg)',
         boxShadow: 'none',
       }
     : {

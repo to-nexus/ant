@@ -494,8 +494,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   }
 
   return (
-    <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
-      <div className="space-y-1">
+    <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+    >
+      <div
+        className="space-y-1"
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+      >
         <ArtifactsSection
           title={t('panel.title', 'Artifacts')}
           accent="orange"

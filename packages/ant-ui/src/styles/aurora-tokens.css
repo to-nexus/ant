@@ -182,6 +182,14 @@
   --intent-amber-bg:   oklch(94% 0.05 85);   --intent-amber-fg:   oklch(56% 0.14 85);
   --intent-emerald-bg: oklch(94% 0.05 155);  --intent-emerald-fg: oklch(50% 0.15 155);
   --intent-cyan-bg:    oklch(94% 0.05 200);  --intent-cyan-fg:    oklch(52% 0.12 200);
+
+  /* ---- Selection semantics — high-contrast label + brand accent ---- */
+  --select-fg:          var(--text-1);    /* selected label — maximum contrast */
+  --select-bg:          var(--bg-surface); /* elevated fill for selected segmented control (tabs) */
+  --select-fill-violet: color-mix(in srgb, var(--violet-400) 24%, var(--bg-surface));
+  --select-fill-pink:   color-mix(in srgb, var(--pink-400)   22%, var(--bg-surface));
+  --select-rail-violet: var(--violet-500);
+  --select-rail-pink:   var(--pink-500);
 }
 
 /* ============================================================================
@@ -239,6 +247,14 @@
   --intent-amber-bg:   oklch(32% 0.09 85);   --intent-amber-fg:   oklch(82% 0.13 85);
   --intent-emerald-bg: oklch(30% 0.09 155);  --intent-emerald-fg: oklch(80% 0.14 155);
   --intent-cyan-bg:    oklch(30% 0.08 200);  --intent-cyan-fg:    oklch(80% 0.12 200);
+
+  /* ---- Selection semantics — high-contrast label + brand accent ---- */
+  --select-fg:          var(--text-1);    /* selected label — maximum contrast */
+  --select-bg:          var(--bg-surface); /* elevated fill for selected segmented control (tabs) */
+  --select-fill-violet: color-mix(in srgb, var(--violet-400) 30%, var(--bg-surface));
+  --select-fill-pink:   color-mix(in srgb, var(--pink-400)   28%, var(--bg-surface));
+  --select-rail-violet: var(--violet-500);
+  --select-rail-pink:   var(--pink-500);
 }
 
 /* ============================================================================

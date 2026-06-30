@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { selectedSegmentStyle } from './selection';
 
 /**
  * BoardViewModeToggle — pill segmented control for view-mode selection.
@@ -67,9 +68,7 @@ export function BoardViewModeToggle<V extends string = string>(
               gap: 6,
               padding: '6px 14px',
               borderRadius: 999,
-              background: active ? 'var(--bg-surface)' : 'transparent',
-              color: active ? 'var(--violet-700)' : 'var(--text-3)',
-              border: 'none',
+              ...selectedSegmentStyle(active),
               fontFamily: 'inherit',
               fontSize: 12,
               fontWeight: 700,

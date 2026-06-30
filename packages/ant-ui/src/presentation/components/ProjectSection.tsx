@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus } from 'lucide-react';
+import { Plus, Settings } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createProject } from '@/infrastructure/http/api';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -122,45 +122,77 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     <div>
       <SectionShell
         eyebrow={t('workspace.title')}
-        count={projects.length}
         accent="violet"
         action={
-          <button
-            type="button"
-            onClick={handleOpenWizard}
-            disabled={!policy.canChangeProject}
-            onMouseEnter={(e) => {
-              if (!policy.canChangeProject) return;
-              e.currentTarget.style.background = 'var(--bg-hover)';
-              e.currentTarget.style.color = 'var(--violet-600)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--text-3)';
-            }}
-            title={
-              !policy.canChangeProject
-                ? policy.disabledReason || undefined
-                : t('workspace.inputPlaceholder')
-            }
-            aria-label={t('workspace.inputPlaceholder')}
-            style={{
-              height: 22,
-              width: 22,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6,
-              color: 'var(--text-3)',
-              background: 'transparent',
-              border: 'none',
-              cursor: policy.canChangeProject ? 'pointer' : 'not-allowed',
-              opacity: policy.canChangeProject ? 1 : 0.5,
-              transition: 'all var(--dur-fast)',
-            }}
-          >
-            <Plus size={12} />
-          </button>
+          <>
+            {selectedProject && (
+              <button
+                type="button"
+                onClick={handleConfigClick}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                  e.currentTarget.style.color = 'var(--violet-600)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-3)';
+                }}
+                aria-label="Project settings"
+                title="프로젝트 설정"
+                style={{
+                  height: 22,
+                  width: 22,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 6,
+                  color: 'var(--text-3)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all var(--dur-fast)',
+                }}
+              >
+                <Settings size={12} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenWizard}
+              disabled={!policy.canChangeProject}
+              onMouseEnter={(e) => {
+                if (!policy.canChangeProject) return;
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--violet-600)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-3)';
+              }}
+              title={
+                !policy.canChangeProject
+                  ? policy.disabledReason || undefined
+                  : t('workspace.inputPlaceholder')
+              }
+              aria-label={t('workspace.inputPlaceholder')}
+              style={{
+                height: 22,
+                width: 22,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6,
+                color: 'var(--text-3)',
+                background: 'transparent',
+                border: 'none',
+                cursor: policy.canChangeProject ? 'pointer' : 'not-allowed',
+                opacity: policy.canChangeProject ? 1 : 0.5,
+                transition: 'all var(--dur-fast)',
+              }}
+            >
+              <Plus size={12} />
+            </button>
+          </>
         }
       >
         {projects.length === 0 ? (
@@ -190,7 +222,6 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
                     disabledReason={policy.disabledReason || undefined}
                     onSwitch={() => handleSwitchProject(name)}
                     onClear={isActive ? handleClearProject : undefined}
-                    onSettings={isActive ? handleConfigClick : undefined}
                   />
                 );
               })}
