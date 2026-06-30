@@ -117,15 +117,18 @@ jobs:
             | tar -xz -C /tmp gitleaks
           /tmp/gitleaks dir . -c .gitleaks.toml --no-banner --redact --exit-code 1
 
-      # Full git-history scan. Enabled after the history purge + force-push
-      # removed the leaked .env backups from main's history. Requires the full
-      # clone (fetch-depth: 0 on the checkout above).
+      # Full git-history scan of the CURRENT branch (HEAD ancestry only, via
+      # --log-opts). Enabled after the history purge removed the leaked .env
+      # backups from main. Scoped to HEAD — not all branches — so a dirty side
+      # branch (e.g. an old branch carrying a fixture) can't fail main's gate;
+      # the canonical branch is what this guarantees clean. Needs the full clone
+      # (fetch-depth: 0 on the checkout above).
       - name: Secret scan — git history (gitleaks)
         run: |
           VER=8.30.1
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
             | tar -xz -C /tmp gitleaks
-          /tmp/gitleaks git . -c .gitleaks.toml --no-banner --redact --exit-code 1
+          /tmp/gitleaks git . --log-opts="HEAD" -c .gitleaks.toml --no-banner --redact --exit-code 1
 
   boot-smoke:
     runs-on: ubuntu-latest
