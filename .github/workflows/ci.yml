@@ -67,6 +67,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the gitleaks history scan below
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -115,15 +117,10 @@ jobs:
             | tar -xz -C /tmp gitleaks
           /tmp/gitleaks dir . -c .gitleaks.toml --no-banner --redact --exit-code 1
 
-      # Full git-history scan. DISABLED until the history purge + force-push lands
-      # (see .claude/plans/ant-ant-cloud-magical-meadow.md, Phase 2): pre-purge
-      # history still contains the leaked .env backups, so this would fail.
-      # To ENABLE after the purge:
-      #   1. remove `if: ${{ false }}` below
-      #   2. add `with: { fetch-depth: 0 }` to this job's actions/checkout step
-      #      (the history scan needs the full clone, not the default shallow one)
+      # Full git-history scan. Enabled after the history purge + force-push
+      # removed the leaked .env backups from main's history. Requires the full
+      # clone (fetch-depth: 0 on the checkout above).
       - name: Secret scan — git history (gitleaks)
-        if: ${{ false }}
         run: |
           VER=8.30.1
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
