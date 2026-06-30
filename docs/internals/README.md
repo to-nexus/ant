@@ -87,6 +87,13 @@ For binding rules with regression-guard test names, see
   / hooks layout invariants.
 - [ui-async-policy.md](ui-async-policy.md) — frontend async UI policy.
 
+### Security
+
+- [security-posture.md](security-posture.md) — 5-axis security SSOT
+  (secrets / dependencies / CI gates / container-k8s / auth-tenant).
+- [security-hardening-handoff.md](security-hardening-handoff.md) — active
+  remediation worklist & phase dashboard (resumable across sessions).
+
 ## Conventions
 
 These documents:
