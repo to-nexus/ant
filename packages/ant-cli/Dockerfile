@@ -25,7 +25,7 @@
 FROM node:22 AS builder
 
 # Install build dependencies for native modules (sharp, argon2, etc.)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
