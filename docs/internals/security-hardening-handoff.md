@@ -13,7 +13,7 @@
 | P0 | both | 핸드오프 doc 승격 + 보안 posture baseline + 의존성 audit 정책 | — | ✅ |
 | **P1** | ant | **Proxy-family 인가 (IDE O11 / Preview O13 / SA토큰 O12)** | **CRIT** | ✅ |
 | P2 | ant | 컨테이너 하드닝 (Dockerfile.ide digest / ant-ui cat .env / .dockerignore) | H/M | ✅ |
-| P3 | ant | 의존성 취약점 (런타임 우선 bump / dev-only audit-ignore) | M | ⬜ |
+| P3 | ant | 의존성 취약점 (런타임 우선 bump / dev-only audit-ignore) | M | 🔄 |
 | P4 | ant | 앱-레이어 (암호화키 fail-fast / http_request SSRF / K8s securityContext / 로컬모드 warn) | M | ⬜ |
 | P5 | ant-cloud | Actions SHA 핀 + workflow permissions + SECURITY.md | H/M | ⬜ |
 | P6 | ant-cloud | deploy ticket 가드 + auth 디버그 로깅 | M | ⬜ |
@@ -141,6 +141,28 @@
 **[검증]** `pnpm build`(테스트 게이트) green. `pnpm audit` 런타임 취약점 0(수용분만 잔존, 근거 문서화).
 **[완료조건]** 런타임 취약점 해소 + dev-only 처리 결정 기록. §0 P3=✅.
 
+**[현황 캡처 — 2026-06-30 `pnpm audit`]** 총 37건 (critical 2 / high 5 / moderate 25 / low 5). 각 top-level 패키지를 dependencies(런타임) vs devDependencies(빌드/테스트)로 분류:
+
+- **critical/high 5건은 전부 dev-only** — 프로덕션 이미지/브라우저 번들에 미포함:
+  - `vitest`(CRIT, UI server arbitrary file read), `concurrently`→`shell-quote`(CRIT), `rollup`(HIGH), `vite`(HIGH×) — 모두 test/build 툴체인. → O2 트랙: 안전 bump 시도, 깨지면 audit-ignore + 본 근거.
+- **런타임 취약점은 전부 moderate 이하** (O1 트랙):
+
+  | 패키지 | 선언 위치 | 현재→패치 | 위협 | 처리 |
+  |---|---|---|---|---|
+  | `js-yaml` | ant-cli dep `^4.1.1` | →4.1.2 | merge-key DoS | direct bump (patch) |
+  | `follow-redirects` | http-proxy-middleware 경유 | →1.15.12 | **auth 헤더 cross-domain 누출 (P1 프록시 인접 — 우선)** | `overrides` |
+  | `body-parser` | express 경유 | →2.2.1 | urlencoded DoS | `overrides` |
+  | `qs` | express / rate-limit 경유 | →6.15.2 | stringify/arrayLimit DoS (3 advisory) | `overrides` |
+  | `mermaid` | ant-ui dep `^11.14.0` | →11.14.1 | classDef/config XSS + gantt DoS (FE) | direct bump (patch) |
+  | `dompurify` | mermaid 경유 | →3.4.11 | IN_PLACE/shadow-root XSS 다수 (FE) | mermaid bump 후 잔존 시 `overrides` |
+  | `mdast-util-to-hast` | react-markdown/rehype-raw 경유 | →13.2.1 | unsanitized class attr XSS (FE) | `overrides` |
+  | `uuid` | ant-cli dep `^11.1.0` (+langgraph/bullmq/dockerode 경유) | →11.1.1 | buf bounds (저익스플로잇) | bump + `overrides` |
+  | `brace-expansion` | @google/genai 등 경유 | →2.0.3 | zero-step DoS | `overrides` |
+  | `ip-address` | express-rate-limit 경유 | →10.1.1 | Address6 HTML XSS (미사용 경로) | `overrides` |
+  | `yaml` | ant-ui dep `^2.8.2` | →2.8.3 | nested YAML 스택오버플로 DoS | direct bump (patch) |
+
+  핵심: 런타임 취약점은 전부 patch-level bump 또는 transitive `overrides` 로 닫히며 major-bump breaking 위험 없음. `@ant/shared` 런타임 무변. **실제 bump/overrides 적용은 다음 단계** (이번 턴은 검토만).
+
 ---
 
 ### P4 — 앱-레이어 저비용 픽스 (ant)
@@ -218,4 +240,5 @@ ant 커밋=main 직접(자동 브랜치 금지, 영어 메시지, task 파일만
 - 2026-06-30 **P0 완료** — (1) plan→`docs/internals/security-hardening-handoff.md` git-tracked 승격, (2) `docs/internals/security-posture.md` 5축 SSOT 신설(secrets/deps/CI/container-k8s/auth-tenant), (3) `ant-cloud/SECURITY.md` 신설(멀티테넌트 톤), (4) 의존성 audit-ignore 근거 위치 확정 = posture Axis 2 narrative + `pnpm-workspace.yaml` overrides 인라인 주석, (5) `docs/internals/README.md` 에 Security 섹션 색인 추가. ant 기존 `SECURITY.md` 는 그대로(중복 신설 안 함). 커밋/푸시 미실행(사용자 확인 대기). 다음=P1(Proxy 인가, CRIT, 단독 PR).
 - 2026-06-30 **P1 완료** — Open Question=owner-only 확정(사용자 승인). (1) 신규 SSOT 헬퍼 `periphery/adapters/http/middleware/proxyOwnership.ts` — `assertProxyOwnership(payload, {tenantId,userId})` 순수 비교 + `authorizeProxyToken(token, jwt, owner)`(local skip/verify/compare). owner=urlKey 앞 2 세그먼트(4/5-part 무관). (2) **IDE HTTP** [ServerConfigurator.ts](packages/ant-cli/src/periphery/adapters/http/express/config/ServerConfigurator.ts) verify 후 `parseIDEKey`+소유권 대조, 불일치 403(파싱 불가 key 는 기존대로 통과). (3) **IDE WS** [ExpressServerAdapter.ts](packages/ant-cli/src/periphery/adapters/http/express/ExpressServerAdapter.ts) payload 캡처+serverKey 파싱+대조, 불일치 403 close. (4) **Preview HTTP** [previewProxy.ts](packages/ant-cli/src/periphery/adapters/http/middleware/previewProxy.ts) 에 `jwtService`/`cookieName` 주입(인증 전무→owner-only), main+fallback(Referer/cookie) 양 경로 게이트, 불일치 403. [PreviewServer.ts:522](packages/ant-cli/src/infrastructure/preview/PreviewServer.ts) 에서 `createJwtServiceFromEnv()` 주입. (5) **Preview WS** [PreviewServer.ts:1162](packages/ant-cli/src/infrastructure/preview/PreviewServer.ts) payload 캡처+소유권 대조 추가, 불일치 destroy. (6) **deploy 수렴**: HTTP `isAuthorizedForPrivateDeploy` + WS 게이트의 비교 라인을 `assertProxyOwnership` 호출로 교체(동작 무변). 로컬모드(jwt undefined)는 4 경로 모두 skip 유지. 테스트: 신규 `tests/http/proxyOwnership.test.ts`(9) + `tests/preview/previewOwnershipGate.test.ts`(5), 회귀 `tests/{http,preview,deploy,ide,auth,cloud-ide}` 489 passed, `pnpm build`(test gate) green, tsc clean. **미해결**: O12 `automountServiceAccountToken:false` 는 P1 옵션이었으나 미적용 → P4 에서 처리. 다음=P2.
 - 2026-06-30 **P0/P1 커밋 완료(main 직접, push 미실행)** — 권장 분리대로 2 커밋: (1) `269dce6a` `docs(security): ...` = P0 docs 3종(README+posture+핸드오프). (2) `a1021b96` `fix(security): enforce owner-only authorization on all proxy paths` = P1 코드 6 + 테스트 2. **커밋 제외(보안작업 무관)**: `.claude/settings.json`(세션 permission allowlist), `docs/internals/ant.code-workspace`(로컬 VSCode 설정) — 둘 다 작업트리에 의도적 잔존. `ant-cloud/SECURITY.md`(P0)는 별도 레포라 ant-cloud 에서 별도 커밋 필요(미실행). push 는 사용자 확인 대기. 다음=P2.
-- 2026-06-30 **P2 완료(미커밋)** — 컨테이너 하드닝 3종. (O3) [Dockerfile.ide](packages/ant-cli/Dockerfile.ide) `FROM gitpod/openvscode-server:latest` → `latest@sha256:5e7b8750749f282940a799ed59ccd02fac698ef6744f9113ac01c0ef8e76485e` (멀티아크 인덱스 digest, Docker Hub registry API 로 resolve — `docker manifest inspect` 데몬 불요). re-pin 절차 주석 동봉. (O4) [ant-ui Dockerfile](packages/ant-ui/Dockerfile) 빌드 스텝의 `echo "Environment variables:" && cat ./packages/ant-ui/.env.*` 제거 (빌드로그 env 내용 누출 차단); dev→prod `cp` 동작과 not-found warn 은 보존. (O5) 루트 [.dockerignore](.dockerignore) 신설 — 빌드 컨텍스트가 cli/ui/ide 모두 모노레포 루트라 단일 파일이 전부 커버. `.git`/`**/node_modules`/`**/dist`/`**/tests`/`**/.vite`/`**/coverage` + **시크릿 규칙은 .gitignore 미러**(`**/.env`·`**/*.local` 제외하되 `!**/.env.example.local` negation 으로 tracked 예시 유지). 핵심: `packages/ant-cli/.env`(실 백엔드 시크릿) 컨텍스트 진입 차단, ant-ui/ant-site 빌드가 의존하는 공개 `.env.production`/`.env.development`(VITE_ 공개 var) 는 유지. **검증**: O4 셸 구문 `sh -n` OK; .dockerignore env 시맨틱 7-case 시뮬레이션 ALL OK (cli/.env 제외·ui/.env.production 유지·development.local 제외 등); ant-ui `legacy-sweep.mjs`=`../src/` 만 스캔이라 `tests` 제외 무해 확인. ⚠️ **docker build 실증 미실행** — 로컬 docker 데몬 down. O3=FROM 라인만 / O4=동작 보존 / O5=정적 검증 완료라 저위험이나, 데몬 가용 시 `docker build` cli/ui/ide green + ripgrep `test -x` 게이트 재확인 권장. 다음=P3.
+- 2026-06-30 **P2 완료(미커밋)** — 컨테이너 하드닝 3종. (O3) [Dockerfile.ide](packages/ant-cli/Dockerfile.ide) `FROM gitpod/openvscode-server:latest` → `latest@sha256:5e7b8750749f282940a799ed59ccd02fac698ef6744f9113ac01c0ef8e76485e` (멀티아크 인덱스 digest, Docker Hub registry API 로 resolve — `docker manifest inspect` 데몬 불요). re-pin 절차 주석 동봉. (O4) [ant-ui Dockerfile](packages/ant-ui/Dockerfile) 빌드 스텝의 `echo "Environment variables:" && cat ./packages/ant-ui/.env.*` 제거 (빌드로그 env 내용 누출 차단); dev→prod `cp` 동작과 not-found warn 은 보존. (O5) 루트 [.dockerignore](.dockerignore) 신설 — 빌드 컨텍스트가 cli/ui/ide 모두 모노레포 루트라 단일 파일이 전부 커버. `.git`/`**/node_modules`/`**/dist`/`**/tests`/`**/.vite`/`**/coverage` + **시크릿 규칙은 .gitignore 미러**(`**/.env`·`**/*.local` 제외하되 `!**/.env.example.local` negation 으로 tracked 예시 유지). 핵심: `packages/ant-cli/.env`(실 백엔드 시크릿) 컨텍스트 진입 차단, ant-ui/ant-site 빌드가 의존하는 공개 `.env.production`/`.env.development`(VITE_ 공개 var) 는 유지. **검증**: O4 셸 구문 `sh -n` OK; .dockerignore env 시맨틱 7-case 시뮬레이션 ALL OK (cli/.env 제외·ui/.env.production 유지·development.local 제외 등); ant-ui `legacy-sweep.mjs`=`../src/` 만 스캔이라 `tests` 제외 무해 확인. ⚠️ **docker build 실증 미실행** — 로컬 docker 데몬 down. O3=FROM 라인만 / O4=동작 보존 / O5=정적 검증 완료라 저위험이나, 데몬 가용 시 `docker build` cli/ui/ide green + ripgrep `test -x` 게이트 재확인 권장. P2 커밋: `898621b3` (핸드오프 doc 갱신 동봉). 다음=P3.
+- 2026-06-30 **P3 검토 단계 완료(🔄 진행중, 미적용)** — `pnpm audit` 현황 캡처 + 런타임/dev-only 분류 (상세 표는 §5 P3 [현황 캡처]). 총 37건(crit 2/high 5/mod 25/low 5). 핵심 결론: **critical/high 5건 전부 dev-only**(vitest/concurrently>shell-quote/rollup/vite — 프로덕션 미포함) → O2 audit-ignore 후보. **런타임 취약점 전부 moderate 이하**, 전건 patch-level bump 또는 transitive `overrides` 로 closeable (major-breaking 위험 없음). 우선순위 1위 = `follow-redirects`→1.15.12 (http-proxy-middleware 경유, auth 헤더 cross-domain 누출 — P1 프록시 인접). 사용자 지시(검토부터)에 따라 **실제 bump/overrides 미적용** — 다음 턴에서 O1(런타임 bump+overrides) → O2(dev-only) → `pnpm build` 게이트 + `pnpm audit` 재확인 순으로 적용 예정.
