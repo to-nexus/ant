@@ -22,6 +22,23 @@
 
 **권장 순서**: P0 → **P1(최우선)** → P2 → P3 → P4 → P5 → P6 → P7 → H. P1만 동작-변경 위험이 있으니 단독 PR 권장. P2~P4는 독립적이라 순서 무관.
 
+### 🧭 재개 상태 (2026-06-30, 새 탭은 여기부터)
+
+- **다음 작업 = P4** (앱-레이어 저비용 픽스, ant 레포, §5 참조). P5~P7 은 ant-cloud(`/Users/probe/dev/ant-cloud`).
+- **완료**: P0·P1·P2·P3 (전부 ant 레포). 상세·검증결과는 §9 진행로그.
+- **커밋 상태** — `ant` `main` 직접, **전부 미푸시**(push 는 사용자 확인 후 — main push = dev 자동배포 트리거):
+  | 커밋 | 내용 |
+  |---|---|
+  | `269dce6a` | P0 docs (posture/handoff/README) |
+  | `a1021b96` | P1 proxy owner-only 인가 (코드6+테스트2) |
+  | `ff490e1e` | P0/P1 커밋 SHA 로그 기록 |
+  | `898621b3` | P2 컨테이너 하드닝 (digest/cat-env/.dockerignore) |
+  | `37145a7a` | P3 audit 검토 기록 |
+  | `068d9678` | P3 의존성 하드닝 (런타임 CVE 0 + dev-only 수용) |
+- **의도적 미커밋 잔존**(작업트리, 보안작업 무관 → add 금지): `.claude/settings.json`(세션 permission allowlist), `docs/internals/ant.code-workspace`(로컬 VSCode 설정).
+- **이월/별도 레포 TODO**: ① `ant-cloud/SECURITY.md`(P0 에서 생성, ant-cloud 레포라 거기서 별도 커밋 필요 — 미실행). ② O12 `automountServiceAccountToken:false`(P1 옵션이었으나 P4 O8 로 이월). ③ docker build 실증(P2, 로컬 데몬 down 으로 정적검증만) — 데몬 가용 시 cli/ui/ide 빌드 green 재확인 권장.
+- **검증 명령 재현**(ant 레포 루트): `env -u GITHUB_TOKEN -u GH_TOKEN pnpm audit`(exit 0 = 런타임0/수용분 ignored), `pnpm test:cli`(4905 passed), `pnpm build:cli`·`pnpm build:ui`.
+
 ---
 
 ## §1. 잠긴 결정 (사용자 승인)
