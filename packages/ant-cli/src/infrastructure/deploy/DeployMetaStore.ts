@@ -19,7 +19,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { DeployFramework } from '../../core/ports/portRegistry';
+import type { DeployFramework, ServiceConnection } from '../../core/ports/portRegistry';
 import type { DeployVisibility } from '@ant/shared';
 
 export interface DeployMetaPackage {
@@ -28,6 +28,17 @@ export interface DeployMetaPackage {
   /** URL-safe identifier — derived via `packageSlug(name)` and deduped. */
   slug: string;
   framework: DeployFramework;
+  /**
+   * `'static'` (built artifact + static server) or `'process'` (backend
+   * process). Absent on records written before backend deploy shipped →
+   * `read()` / `liftV1` default to `'static'`.
+   */
+  kind?: 'static' | 'process';
+  /**
+   * Detected language/framework for a `process` package — lets the shared
+   * `ProcessSpawner` dispatch by language on rehydration. Absent for static.
+   */
+  projectProfile?: { language: string; framework?: string };
   /**
    * Absolute path to THIS package's directory inside the deploy workspace.
    * Used as `cwd` for `next start` on rehydration. For single-frontend
@@ -60,6 +71,16 @@ export interface DeployMeta {
    * `'public'` (the historical, always-served behavior).
    */
   visibility?: DeployVisibility;
+  /**
+   * Service connections resolved at deploy time (DB URLs, mock toggles,
+   * ant-project links). Persisted so a hibernated backend `process` package
+   * wakes with the SAME env it built/started with — without this a rehydrated
+   * backend boots with no connection env and ECONNREFUSEs. Absent for
+   * frontend-only deploys (and old records).
+   */
+  connections?: ServiceConnection[];
+  /** Deploy workspace root used as `projectRoot` for two-level .env loading. */
+  projectRoot?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -106,6 +127,8 @@ function liftV1(meta: DeployMetaV1): DeployMeta {
         name: V1_LIFT_SLUG,
         slug: V1_LIFT_SLUG,
         framework: meta.framework,
+        // v1 deploys were frontend-only static artifacts.
+        kind: 'static',
         // v1 always built and served at the deploy workspace root.
         workspacePath: meta.workspacePath,
         buildOutputDir: meta.buildOutputDir,
@@ -135,6 +158,10 @@ export class DeployMetaStore {
       if (parsed.version === 2) {
         // Records written before the visibility field default to public.
         if (parsed.visibility == null) parsed.visibility = 'public';
+        // Records written before backend deploy default every package to static.
+        for (const p of parsed.packages) {
+          if (p.kind == null) p.kind = 'static';
+        }
         return parsed;
       }
       if (parsed.version === 1) return liftV1(parsed);

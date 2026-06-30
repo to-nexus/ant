@@ -2,9 +2,9 @@
  * DeployService
  *
  * Orchestrates the deploy lifecycle:
- * 1. Detect frontend packages (single or multi)
- * 2. Run production build for EACH package (with per-package basePath)
- * 3. Start a static server per package
+ * 1. Detect deployable apps — frontends (kind:'static') + backends (kind:'process'), any language
+ * 2. Prepare each app (frontend: framework build w/ basePath; backend: language-aware dep install)
+ * 3. Serve per app — static file server (frontend) or long-lived process via ProcessSpawner (backend)
  * 4. Register deploy state in Redis (packages[] is SSOT)
  * 5. Persist re-hydration metadata to workspace (.deploy/meta.json v2)
  * 6. Broadcast status via SSE
@@ -26,11 +26,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
+import type { ServiceConnection } from '../../core/ports/portRegistry';
 import type { DeployVisibility } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
+import { startProcessServer } from './ProcessServer';
 import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
 import { resolveDeployWorkspacePath, syncDeployWorkspace, installDeployDependencies } from './DeployWorkspace';
+import { DependencyInstaller } from '../../periphery/adapters/http/services/PreviewService/managers/DependencyInstaller';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import {
   toUrlKey,
@@ -105,6 +108,8 @@ export class DeployService {
   private stateStore: StateStorePort;
   private workspacesBasePath: string;
   private metaStore = new DeployMetaStore();
+  /** Language-aware dependency install for backend (`process`) packages — SSOT shared with preview. */
+  private dependencyInstaller = new DependencyInstaller();
   private activeDeploys = new Map<string, ActiveDeploy>();
   /**
    * Monotonically increasing generation per deploy key.
@@ -274,28 +279,58 @@ export class DeployService {
   }
 
   /**
-   * Discover deployable frontend packages in the deploy workspace.
-   *
-   * Reuses `ProjectStructureDetector` (the same detector PreviewService
-   * uses) — SSOT for "what frontends does this project have?". Filters to
-   * `type === 'frontend'` only, since the static-server primitives in this
-   * service only support frontend artifacts.
-   *
-   * Returns packages sorted by `path` so slug deduplication and
-   * Redis serialization are deterministic across rebuilds.
+   * Load the saved service connections for this feature (the same preview-config
+   * SSOT preview reads). Best-effort — a failure degrades to no connections
+   * (mock toggles still default-ON via the package `.env`).
    */
-  private async detectFrontendPackages(workspacePath: string): Promise<PackageInfo[]> {
+  private async loadDeployConnections(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): Promise<ServiceConnection[] | undefined> {
+    try {
+      const config = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
+      return config?.connections ?? undefined;
+    } catch (err: any) {
+      logger.warn(`[Deploy] loadDeployConnections failed: ${err.message}`, { component: 'DeployService' });
+      return undefined;
+    }
+  }
+
+  /**
+   * Discover deployable apps (buildable entries) in the deploy workspace —
+   * frontends AND backends, treated uniformly.
+   *
+   * Reuses `ProjectStructureDetector` (the same detector PreviewService uses) —
+   * SSOT for "what apps does this project have?". A frontend deploys as a
+   * static artifact (`kind: 'static'`); a backend deploys as a long-lived
+   * process (`kind: 'process'`) run by the shared `ProcessSpawner`, which is
+   * language-agnostic (Node / Go / Python / Rust / Java / Makefile) — ANT is a
+   * universal framework, so deploy runs whatever preview can run.
+   *
+   * Ordering: backend(s) first, then frontends — the backend port must be live
+   * before a sibling frontend (which may proxy to it) starts; `executeBuild`
+   * loops serially. Within a kind, sort by `path` so slug dedup / Redis
+   * serialization stay deterministic across rebuilds.
+   */
+  private async detectDeployablePackages(workspacePath: string): Promise<PackageInfo[]> {
     const detector = new ProjectStructureDetector();
     const structure = await detector.detect(workspacePath);
-    return structure.packages
+
+    const frontends = structure.packages
       .filter(p => p.type === 'frontend')
       .sort((a, b) => a.path.localeCompare(b.path));
+
+    const backends = structure.packages
+      .filter(p => p.type === 'backend')
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    return [...backends, ...frontends];
   }
 
   /**
    * Assign URL-safe `slug` (deduped) + per-package `urlKey` to every
-   * frontend package. Identical contract to `PreviewService` so producers
-   * and consumers agree on the same identifier for any given package name.
+   * deployable app (frontend or backend). Identical contract to
+   * `PreviewService` so producers and consumers agree on the same identifier
+   * for any given package name.
    */
   private assignDeployIdentity(packages: PackageInfo[], serverKey: string): void {
     const used = new Set<string>();
@@ -330,7 +365,7 @@ export class DeployService {
    *   2. active `code` job rejected (snapshotting a tree mid-write would
    *      yield half-written source files in the deployed build)
    *   3. snapshot codebase → deploy workspace (incremental)
-   *   4. detect frontend packages — must be at least 1
+   *   4. detect deployable apps (frontends + backends, any language) — must be at least 1
    *   5. allocate N ports, register Redis state, spawn executeBuild
    */
   async startDeploy(
@@ -389,35 +424,43 @@ export class DeployService {
       };
     }
 
-    // 4) Detect frontend packages. Backend-only / unsupported projects fail fast.
-    const frontends = await this.detectFrontendPackages(deployWorkspacePath);
-    if (frontends.length === 0) {
+    // 4) Detect deployable apps (frontends + backends, any language). Empty → fail fast.
+    const apps = await this.detectDeployablePackages(deployWorkspacePath);
+    if (apps.length === 0) {
       return {
         success: false,
         reason: 'no-deployable-package',
-        message: 'No frontend package found to deploy. Deploy requires at least one frontend (Vite, Next.js, CRA, or static).',
+        message: 'No deployable app found. Deploy requires at least one frontend (Vite, Next.js, CRA, static) or a backend.',
       };
     }
 
     const serverKey = `${tenantId}:${userId}:${projectId}:${feature}`;
-    this.assignDeployIdentity(frontends, serverKey);
+    this.assignDeployIdentity(apps, serverKey);
 
-    // 5) Allocate one port per package, then build the initial DeployPackage[].
+    // 5) Allocate one port per app, then build the initial DeployPackage[].
     const allocatedPorts: number[] = [];
     const packagesState: DeployPackage[] = [];
     try {
-      for (const fp of frontends) {
+      for (const app of apps) {
         const port = await this.portManager.allocate('deploy');
         allocatedPorts.push(port);
-        const framework = detectFramework(fp.path);
-        const buildOutputDir = getBuildOutputDir(fp.path, framework);
-        const urlKey = fp.urlKey!;
+        const isProcess = app.type === 'backend';
+        // Backend artifact shape is not a frontend framework — `framework` stays
+        // 'unknown'; `kind` carries the static-vs-process distinction.
+        const framework = isProcess ? 'unknown' : detectFramework(app.path);
+        // A backend `process` runs from its package dir (no static artifact);
+        // `buildOutputDir = package dir` so rehydrate validation has a real path.
+        const buildOutputDir = isProcess ? app.path : getBuildOutputDir(app.path, framework);
+        const urlKey = app.urlKey!;
         const basePath = `/deploy/${urlKey}`;
         packagesState.push({
-          name: fp.name,
-          slug: fp.slug!,
+          name: app.name,
+          slug: app.slug!,
           framework,
-          workspacePath: fp.path,
+          kind: isProcess ? 'process' : 'static',
+          // Carried so the spawner can dispatch by language on (re)hydration.
+          projectProfile: app.projectProfile,
+          workspacePath: app.path,
           buildOutputDir,
           basePath,
           port,
@@ -495,14 +538,25 @@ export class DeployService {
     const handles: StaticServerHandle[] = [];
     const tagFor = (pkg: DeployPackage) => packages.length > 1 ? `[${pkg.slug}] ` : '';
 
+    // Service connections (DB URLs, mock toggles, ant-project links) — same SSOT
+    // preview reads. Injected into backend `process` packages so they boot with
+    // the same env (mock-default-ON), and persisted in meta for rehydration.
+    const connections = await this.loadDeployConnections(tenantId, userId, projectId, feature);
+
     try {
       // Install once at the deploy workspace root before any package build.
       // Deploy has its OWN real node_modules (no symlink into codebase) so
       // Turbopack never sees a root-escaping link. Persisted across deploys →
       // warm install is a near-no-op. Failure aborts the whole deploy.
+      //
+      // Node-only step: gated on a root package.json. A non-Node project (e.g.
+      // a Go/Python backend-only deploy) has none — its per-package deps are
+      // installed by the language-aware DependencyInstaller in the loop below.
       try {
-        await installDeployDependencies(workspacePath, (line) =>
-          this.broadcastLog(tenantId, userId, projectId, feature, line));
+        if (fs.existsSync(path.join(workspacePath, 'package.json'))) {
+          await installDeployDependencies(workspacePath, (line) =>
+            this.broadcastLog(tenantId, userId, projectId, feature, line));
+        }
       } catch (err: any) {
         for (const p of packages) { p.phase = 'error'; p.error = err.message; }
         await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
@@ -530,31 +584,55 @@ export class DeployService {
         pkg.phase = 'building';
         await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, { phase: 'building', packages });
 
-        const buildResult = await runBuild(pkg.workspacePath, pkg.basePath, (line) => {
+        const onBuildLog = (line: string) =>
           this.broadcastLog(tenantId, userId, projectId, feature, `${tag}${line}`);
-        });
+
+        // Backend (`process`) → language-aware dependency install via the shared
+        // DependencyInstaller (npm-workspace is a no-op after the root install;
+        // Go/Python/Rust/Java resolve here). The process runs from its package
+        // dir, so there is no static artifact to produce. Frontend (`static`) →
+        // framework build with base-path injection. Normalize both to ok/error.
+        let buildOk: boolean;
+        let buildErr: string | undefined;
+        let buildLogs: string[] | undefined;
+
+        if (pkg.kind === 'process') {
+          try {
+            await this.dependencyInstaller.installIfNeeded(
+              pkg.workspacePath, pkg.name, (_type, msg) => onBuildLog(msg), pkg.projectProfile,
+            );
+            buildOk = true;
+          } catch (err: any) {
+            buildOk = false;
+            buildErr = err.message;
+          }
+        } else {
+          const buildResult = await runBuild(pkg.workspacePath, pkg.basePath, onBuildLog);
+          buildOk = buildResult.success;
+          buildErr = buildResult.error;
+          buildLogs = buildResult.logs;
+          // refresh outputDir from buildResult (e.g. nextjs static export → out/)
+          if (buildResult.success) pkg.buildOutputDir = buildResult.outputDir;
+        }
 
         if (isStale()) return;
 
-        if (!buildResult.success) {
+        if (!buildOk) {
           pkg.phase = 'error';
-          pkg.error = buildResult.error;
+          pkg.error = buildErr;
           // Keep going for OTHER packages — partial success is still useful.
           await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
             phase: aggregatePhase(packages),
             packages,
-            error: buildResult.error,
-            buildLog: buildResult.logs,
+            error: buildErr,
+            buildLog: buildLogs,
           });
           await this.broadcastStatus(tenantId, userId, projectId, feature, {
             phase: aggregatePhase(packages),
-            error: buildResult.error,
+            error: buildErr,
           });
           continue;
         }
-
-        // refresh outputDir from buildResult (e.g. nextjs static export → out/)
-        pkg.buildOutputDir = buildResult.outputDir;
 
         // Serve phase
         pkg.phase = 'deploying';
@@ -565,20 +643,32 @@ export class DeployService {
         await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: aggregatePhase(packages) });
 
         try {
-          const handle = await startStaticServer({
-            framework: pkg.framework,
-            outputDir: pkg.buildOutputDir,
-            port: pkg.port,
-            basePath: pkg.basePath,
-            workspacePath: pkg.workspacePath,
-          });
+          const handle = pkg.kind === 'process'
+            ? await startProcessServer({
+                port: pkg.port,
+                serverKey: key, // `tenant:user:project:feature`
+                name: pkg.name,
+                workspacePath: pkg.workspacePath,
+                projectProfile: pkg.projectProfile,
+                connections,
+                projectRoot: workspacePath,
+                packageSource: path.relative(workspacePath, pkg.workspacePath) || undefined,
+                onLog: onBuildLog,
+              })
+            : await startStaticServer({
+                framework: pkg.framework,
+                outputDir: pkg.buildOutputDir,
+                port: pkg.port,
+                basePath: pkg.basePath,
+                workspacePath: pkg.workspacePath,
+              });
           handles.push(handle);
           pkg.phase = 'running';
           await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}✅ Deployed at ${pkg.url}`);
         } catch (err: any) {
           pkg.phase = 'error';
           pkg.error = err.message;
-          await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}❌ Static server failed: ${err.message}`);
+          await this.broadcastLog(tenantId, userId, projectId, feature, `${tag}❌ ${pkg.kind === 'process' ? 'Backend' : 'Static'} server failed: ${err.message}`);
         }
       }
 
@@ -599,11 +689,17 @@ export class DeployService {
           name: p.name,
           slug: p.slug,
           framework: p.framework,
+          kind: p.kind ?? 'static',
+          projectProfile: p.projectProfile,
           workspacePath: p.workspacePath,
           buildOutputDir: p.buildOutputDir,
           basePath: p.basePath,
           urlKey: p.urlKey,
         }));
+
+      // Persist connections only when a backend process is running — a static-only
+      // deploy needs no connection env on rehydration.
+      const hasRunningProcess = metaPackages.some(p => p.kind === 'process');
 
       if (metaPackages.length > 0) {
         try {
@@ -613,6 +709,8 @@ export class DeployService {
             workspacePath,
             packages: metaPackages,
             visibility: initialState.visibility,
+            connections: hasRunningProcess ? connections : undefined,
+            projectRoot: workspacePath,
             createdAt: now,
             updatedAt: now,
           });
@@ -796,19 +894,32 @@ export class DeployService {
           throw err;
         }
 
-        const handle = await startStaticServer({
-          framework: mp.framework,
-          outputDir: mp.buildOutputDir,
-          port,
-          basePath: mp.basePath,
-          workspacePath: mp.workspacePath,
-        });
+        const handle = mp.kind === 'process'
+          ? await startProcessServer({
+              port,
+              serverKey: key, // `tenant:user:project:feature`
+              name: mp.name,
+              workspacePath: mp.workspacePath,
+              projectProfile: mp.projectProfile,
+              connections: meta.connections,
+              projectRoot: meta.projectRoot ?? meta.workspacePath,
+              packageSource: path.relative(meta.projectRoot ?? meta.workspacePath, mp.workspacePath) || undefined,
+            })
+          : await startStaticServer({
+              framework: mp.framework,
+              outputDir: mp.buildOutputDir,
+              port,
+              basePath: mp.basePath,
+              workspacePath: mp.workspacePath,
+            });
         handles.push(handle);
 
         packagesState.push({
           name: mp.name,
           slug: mp.slug,
           framework: mp.framework,
+          kind: mp.kind ?? 'static',
+          projectProfile: mp.projectProfile,
           workspacePath: mp.workspacePath,
           buildOutputDir: mp.buildOutputDir,
           basePath: mp.basePath,
@@ -939,6 +1050,7 @@ export class DeployService {
         name: mp.name,
         slug: mp.slug,
         framework: mp.framework,
+        kind: mp.kind ?? 'static',
         workspacePath: mp.workspacePath,
         buildOutputDir: mp.buildOutputDir,
         basePath: mp.basePath,

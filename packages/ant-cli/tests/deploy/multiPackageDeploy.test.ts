@@ -55,6 +55,8 @@ describe('DeployMetaStore v1 → v2 lift', () => {
     expect(pkg.name).toBe('root');
     expect(pkg.slug).toBe('root');
     expect(pkg.framework).toBe('nextjs');
+    // v1 deploys were frontend-only → lift defaults kind to 'static'.
+    expect(pkg.kind).toBe('static');
     expect(pkg.workspacePath).toBe(workspacePath);
     expect(pkg.buildOutputDir).toBe(path.join(workspacePath, '.next'));
     expect(pkg.basePath).toBe('/deploy/org--user--proj--feat');
@@ -71,6 +73,7 @@ describe('DeployMetaStore v1 → v2 lift', () => {
           name: 'apps/web',
           slug: 'apps-web',
           framework: 'nextjs',
+          kind: 'static',
           workspacePath: path.join(workspacePath, 'apps', 'web'),
           buildOutputDir: path.join(workspacePath, 'apps', 'web', '.next'),
           basePath: '/deploy/org--user--proj--feat--apps-web',
@@ -80,6 +83,7 @@ describe('DeployMetaStore v1 → v2 lift', () => {
           name: 'apps/admin',
           slug: 'apps-admin',
           framework: 'vite',
+          kind: 'static',
           workspacePath: path.join(workspacePath, 'apps', 'admin'),
           buildOutputDir: path.join(workspacePath, 'apps', 'admin', 'dist'),
           basePath: '/deploy/org--user--proj--feat--apps-admin',
@@ -136,6 +140,7 @@ describe('DeployMetaStore v1 → v2 lift', () => {
           name: 'web',
           slug: 'web',
           framework: 'vite',
+          kind: 'static',
           workspacePath,
           buildOutputDir: path.join(workspacePath, 'dist'),
           basePath: '/deploy/org--user--proj--feat',

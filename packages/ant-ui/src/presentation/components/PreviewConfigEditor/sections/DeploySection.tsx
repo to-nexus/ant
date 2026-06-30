@@ -8,10 +8,14 @@ import {
   ArrowRight,
   Moon,
   Box,
+  Server,
   Globe,
   Lock,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
+import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import type { DeployStatus, DeployVisibility } from '@/infrastructure/http/api';
 import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
 import { BoardViewModeToggle } from '@/presentation/components/aurora/BoardViewModeToggle';
@@ -294,13 +298,16 @@ export function DeploySection({
         >
           <DeployUrlChip
             label={
-              isHibernated
-                ? t('preview.deploy.wake', 'Wake up')
-                : t('preview.deploy.open', 'Open')
+              openable[0]?.kind === 'process'
+                ? t('preview.deploy.apiEndpoint', 'API endpoint')
+                : isHibernated
+                  ? t('preview.deploy.wake', 'Wake up')
+                  : t('preview.deploy.open', 'Open')
             }
             url={singleOpenUrl}
             onOpen={() => onOpenDeployUrl(singleOpenUrl)}
             hibernated={isHibernated}
+            isProcess={openable[0]?.kind === 'process'}
             big
           />
         </div>
@@ -325,6 +332,7 @@ export function DeploySection({
               url={pkg.url as string}
               onOpen={() => onOpenDeployUrl(pkg.url || undefined)}
               hibernated={isHibernated}
+              isProcess={pkg.kind === 'process'}
             />
           ))}
         </div>
@@ -390,21 +398,41 @@ function DeployUrlChip({
   url,
   onOpen,
   hibernated,
+  isProcess = false,
   big = false,
 }: {
   label: string;
   url: string;
   onOpen: () => void;
   hibernated: boolean;
+  /** Backend (`process`) package — the URL is an API base, not a browseable page. */
+  isProcess?: boolean;
   big?: boolean;
 }) {
   const grad = hibernated
     ? 'var(--gradient-cool)'
     : 'var(--gradient-aurora)';
+  const [copied, setCopied] = useState(false);
+  // A backend's URL is an API base — copy the absolute URL to paste into another
+  // project's `url` connection, rather than opening it as a page.
+  const handleClick = () => {
+    if (!isProcess) {
+      onOpen();
+      return;
+    }
+    try {
+      void navigator.clipboard?.writeText(`${PREVIEW_BASE()}${url}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable — no-op */
+    }
+  };
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={handleClick}
+      title={isProcess ? `Copy API URL: ${PREVIEW_BASE()}${url}` : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -435,7 +463,7 @@ function DeployUrlChip({
           flexShrink: 0,
         }}
       >
-        <Box size={12} strokeWidth={2.5} />
+        {isProcess ? <Server size={12} strokeWidth={2.5} /> : <Box size={12} strokeWidth={2.5} />}
         {hibernated && (
           <Moon
             size={10}
@@ -467,9 +495,29 @@ function DeployUrlChip({
             fontWeight: 700,
             color: 'var(--text-1)',
             letterSpacing: '-0.005em',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
           }}
         >
           {label}
+          {isProcess && (
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                color: 'var(--violet-700)',
+                background: 'var(--violet-100, oklch(95% 0.03 290))',
+                border: '1px solid var(--violet-300)',
+                borderRadius: 'var(--r-sm)',
+                padding: '1px 5px',
+                textTransform: 'uppercase',
+              }}
+            >
+              API
+            </span>
+          )}
         </span>
         <span
           style={{
@@ -485,11 +533,19 @@ function DeployUrlChip({
           {url}
         </span>
       </span>
-      <ArrowRight
-        size={14}
-        strokeWidth={2}
-        style={{ color: 'var(--text-3)', flexShrink: 0 }}
-      />
+      {isProcess ? (
+        copied ? (
+          <Check size={14} strokeWidth={2.4} style={{ color: 'oklch(50% 0.16 155)', flexShrink: 0 }} />
+        ) : (
+          <Copy size={14} strokeWidth={2} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+        )
+      ) : (
+        <ArrowRight
+          size={14}
+          strokeWidth={2}
+          style={{ color: 'var(--text-3)', flexShrink: 0 }}
+        />
+      )}
     </button>
   );
 }

@@ -6,10 +6,8 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
-import { toToggleFramework } from '../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
-import { setToggleDefaultIfAbsent } from '../detectors/ConnectionDetector/envFileWriter';
-import { detectFramework } from '../../../../../../infrastructure/deploy';
 import { loadProjectEnv as loadProjectEnvShared, connectionsToEnv as connectionsToEnvShared } from './envAssembly';
+import { backfillMockToggles } from './mockToggles';
 
 export interface SpawnOptions {
   serverKey: string;
@@ -74,34 +72,16 @@ export class ProcessSpawner {
   }
 
   /**
-   * Ensure every business connection of this package has its mock toggle
-   * present in the package `.env` (default `true`), writing it when absent.
-   * Replaces the former runtime `mockToggleDefaults` injection: default-ON now
-   * lives in the file (one SSOT), so the generated factory reads a real value
-   * and a greenfield app boots mocked instead of hitting ECONNREFUSED.
-   *
-   * Idempotent — `setToggleDefaultIfAbsent` skips when any framework-prefixed
-   * variant already exists, so an explicit `.env` toggle (user opting into the
-   * real backend via the UI) is preserved. Per-connection grain; the toggle
-   * name is the detector-stored `virtualization.toggleEnvVar` (SSOT).
+   * Ensure business-connection mock toggles default to ON in the package
+   * `.env`. Delegates to the shared {@link backfillMockToggles} SSOT (also used
+   * by the deploy-side `ProcessServer`).
    */
   private backfillMockToggles(
     connections: ServiceConnection[] | undefined,
     packageSource: string | undefined,
     pkgPath: string,
   ): void {
-    if (!connections?.length) return;
-    const business = connections.filter(
-      c => c.virtualization &&
-        (c.source === '*' || !packageSource || c.source === packageSource),
-    );
-    if (business.length === 0) return;
-
-    const framework = toToggleFramework(detectFramework(pkgPath));
-    const envPath = path.join(pkgPath, '.env');
-    for (const conn of business) {
-      setToggleDefaultIfAbsent(envPath, conn.virtualization!.toggleEnvVar, framework);
-    }
+    backfillMockToggles(connections, packageSource, pkgPath);
   }
 
   /**

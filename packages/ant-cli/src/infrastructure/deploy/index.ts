@@ -4,3 +4,5 @@ export { runBuild, detectFramework, getBuildOutputDir } from './BuildRunner';
 export type { BuildResult } from './BuildRunner';
 export { startStaticServer } from './StaticServer';
 export type { StaticServerHandle, StaticServerOptions } from './StaticServer';
+export { startProcessServer } from './ProcessServer';
+export type { ProcessServerOptions } from './ProcessServer';
