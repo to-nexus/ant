@@ -20,9 +20,9 @@ import type { PreviewManifestResult } from './previewManifest';
  * ANT infra is ORM/stack-agnostic: it executes the commands the code-gen LLM
  * declared, it does NOT infer them. There is no ORM auto-detection and no
  * Redis fallback.
- *   - Root commands (`preview.setupCommands`) run at the project root cwd with
+ *   - Root commands (`provision.commands`) run at the project root cwd with
  *     all connections (`packageSource='*'`).
- *   - Per-package commands (`preview.packages[src].setupCommands`) run in that
+ *   - Per-package commands (`provision.packages[src].commands`) run in that
  *     package's cwd (matched by `packageSource = path.relative(root, pkg.path)`)
  *     with that package's resolved env, so a `prisma migrate deploy` sees the
  *     exact `DATABASE_URL` the app will use.
