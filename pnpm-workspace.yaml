@@ -14,6 +14,22 @@ allowBuilds:
   ssh2: false
   '@google/genai': false
 
+# P3 security-hardening (2026-06-30) — accepted dev-only advisories.
+# All are vite/vitest/esbuild dev-server or build-tool vulns, NOT shipped in any
+# runtime image or browser bundle and NOT reachable in CI (`vite build` / `vitest
+# run`, no listening dev server) — closing them requires a vite 5→6 major bump on
+# ant-ui (breaking), deferred. Runtime vulns are kept at zero via overrides below;
+# this list lets `pnpm audit` exit clean so a NEW runtime vuln is what surfaces.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-5xrq-8626-4rwp  # vitest: UI-server arbitrary file read (UI server never run)
+    - GHSA-v2wj-q39q-566r  # vite: server.fs.deny bypass via queries (dev server)
+    - GHSA-p9ff-h696-f583  # vite: arbitrary file read via dev server
+    - GHSA-fx2h-pf6j-xcff  # vite: server.fs.deny bypass on Windows alt paths (dev server)
+    - GHSA-4w7w-66w2-5vf9  # vite: path traversal in optimized deps .map (dev server)
+    - GHSA-v6wh-96g9-6wx3  # vite>launch-editor: NTLMv2 hash disclosure (Windows dev only)
+    - GHSA-67mh-4wv8-2f99  # esbuild: dev server accepts any-origin requests (dev server)
+
 # Trivy CI fix — 전이 의존성 CVE patch (pnpm 11 워크스페이스는 overrides 를 여기서만 인식)
 overrides:
   handlebars: '^4.7.9'
@@ -31,3 +47,29 @@ overrides:
   '@grpc/grpc-js': '^1.14.4'
   # tsx<4.22 pulls esbuild ~0.25 (GHSA-gv7w-rqvm-qjhr, fixed 0.28.1); 4.22+ pulls esbuild ~0.28
   tsx: '^4.22.4'
+  # P3 security-hardening (2026-06-30) — runtime transitive CVE patches.
+  # follow-redirects: auth-header cross-domain leak (proxy-adjacent, top priority).
+  'follow-redirects': '^1.15.12'
+  # body-parser/qs: DoS via malformed urlencoded/stringify (express 5 transitive).
+  'body-parser': '^2.2.1'
+  'qs': '^6.15.2'
+  # react-markdown/rehype-raw transitive — unsanitized class attr XSS.
+  'mdast-util-to-hast': '^13.2.1'
+  # mermaid transitive — IN_PLACE / shadow-root XSS chain (FE bundle).
+  'dompurify': '^3.4.11'
+  # express-rate-limit transitive — Address6 HTML XSS.
+  'ip-address': '^10.1.1'
+  # uuid: buf bounds check (langgraph/bullmq/dockerode transitive; direct dep also bumped).
+  'uuid': '^11.1.1'
+  # brace-expansion: zero-step DoS — scope to the vulnerable 2.0.x range only,
+  # leaving 1.x consumers untouched (mirrors the minimatch@<X pattern above).
+  'brace-expansion@>=2.0.0 <2.0.3': '^2.0.3'
+  # postcss: CSS-stringify XSS — build-time only (tailwind/vite), safe patch within 8.x.
+  'postcss': '^8.5.10'
+  # shell-quote: quote() newline-escape bug (concurrently dev script transitive).
+  'shell-quote': '^1.8.4'
+  # @babel/core: sourceMappingURL arbitrary file read (@vitejs/plugin-react transitive).
+  '@babel/core': '^7.29.1'
+  # rollup: path-traversal arbitrary file write (build-time, via vite/vitest);
+  # in-major bump (4.x), safe with vite 5's rollup ^4 peer range.
+  'rollup': '^4.59.0'
