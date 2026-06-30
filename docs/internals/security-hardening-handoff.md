@@ -36,7 +36,7 @@
   | `37145a7a` | P3 audit 검토 기록 |
   | `068d9678` | P3 의존성 하드닝 (런타임 CVE 0 + dev-only 수용) |
   | `0a7bd7e2` | 재개상태 블록 (P4 next) |
-  | `a47d4ba4` | P4 앱-레이어 4픽스 (O6/O7/O8+O12/O9 + 테스트 14) |
+  | `6ebacea8` | P4 앱-레이어 4픽스 (O6/O7/O8+O12/O9 + 테스트 14) |
 - **의도적 미커밋 잔존**(작업트리, 보안작업 무관 → add 금지): `.claude/settings.json`(세션 permission allowlist), `docs/internals/ant.code-workspace`(로컬 VSCode 설정).
 - **이월/별도 레포 TODO**: ① `ant-cloud/SECURITY.md`(P0 에서 생성, ant-cloud 레포라 거기서 별도 커밋 필요 — 미실행, P5 에서 합침). ② docker build 실증(P2, 로컬 데몬 down 으로 정적검증만) — 데몬 가용 시 cli/ui/ide 빌드 green 재확인 권장. ③ **P4 O8 securityContext 런타임 실증**: openvscode-server pod 가 uid1000 로 EFS subPath 쓰기 가능한지 — 정적 필드만 검증됨, 이미지 기본 user 가 1000 이라 무변경 기대이나 클러스터 미실증.
 - **검증 명령 재현**(ant 레포 루트): `env -u GITHUB_TOKEN -u GH_TOKEN pnpm audit`(exit 0 = 런타임0/수용분 ignored), `pnpm test:cli`(**4919 passed**, 8 skip), `pnpm build:cli`·`pnpm build:ui`.
