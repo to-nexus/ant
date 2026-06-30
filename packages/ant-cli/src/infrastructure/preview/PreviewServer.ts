@@ -31,6 +31,7 @@ import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middlewar
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { parseCookieHeader } from '../../periphery/adapters/http/middleware/proxyForwarding';
+import { assertProxyOwnership } from '../../periphery/adapters/http/middleware/proxyOwnership';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
@@ -517,15 +518,19 @@ export class PreviewServer {
     });
 
     // 4. Preview Proxy - MUST be before body parsers and JWT auth
-    // No authentication required: proxies user's dev server output
-    // Routes: /:urlKey/* where urlKey = tenantId--userId--projectId--feature
+    // Owner-only access: previews are gated on the owning tenant/user via the
+    // JWT cookie (undefined jwtService in local mode → owner-accessible). The
+    // proxy runs before cookie-parser, so it parses the raw Cookie header
+    // itself. Routes: /:urlKey/* where urlKey = tenantId--userId--projectId--feature
     this.app.use(createPreviewProxyMiddleware({
       portRegistry: this.stateStore,
       pathPrefix: '',
       getBackendPort: async ({ tenantId, userId, projectId, feature }) => {
         const state = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
         return state?.backendPort || null;
-      }
+      },
+      jwtService: createJwtServiceFromEnv(),
+      cookieName: JwtService.cookieName,
     }));
 
     // 4b. Deploy proxy — serves deployed static builds via /deploy/:urlKey/*
@@ -1134,8 +1139,7 @@ export class PreviewServer {
                 let authorized = false;
                 if (token) {
                   try {
-                    const payload = jwtService.verify(token);
-                    authorized = payload.org === parsed.tenantId && payload.sub === parsed.userId;
+                    authorized = assertProxyOwnership(jwtService.verify(token), parsed);
                   } catch { authorized = false; }
                 }
                 if (!authorized) { socket.destroy(); return; }
@@ -1158,12 +1162,13 @@ export class PreviewServer {
 
           // Preview path: cloud mode requires JWT (upgrade bypasses Express middleware).
           const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
+          let previewPayload: { org: string; sub: string } | undefined;
           if (isCloudMode) {
             const jwtService = createJwtServiceFromEnv();
             if (jwtService) {
               const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
               if (!token) { socket.destroy(); return; }
-              try { jwtService.verify(token); } catch { socket.destroy(); return; }
+              try { previewPayload = jwtService.verify(token); } catch { socket.destroy(); return; }
             }
           }
 
@@ -1183,6 +1188,13 @@ export class PreviewServer {
           }
 
           const { tenantId, userId, projectId, feature, serviceName } = parsed;
+
+          // Owner-only gate (symmetric with the HTTP proxy): a valid session
+          // for another owner must not tunnel into this preview's HMR/runtime.
+          if (previewPayload && !assertProxyOwnership(previewPayload, { tenantId, userId })) {
+            socket.destroy();
+            return;
+          }
           const mapping = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
           if (!mapping) {
             socket.destroy();

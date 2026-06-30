@@ -38,6 +38,7 @@ import {
   streamUpstreamResponse,
 } from './proxyForwarding';
 import { resolveDeployTarget } from './deployRouting';
+import { assertProxyOwnership } from './proxyOwnership';
 
 /**
  * Minimal JWT-verify surface the gate needs. `undefined` in local mode
@@ -69,8 +70,7 @@ export function isAuthorizedForPrivateDeploy(
   const token = parseCookieHeader(req.headers.cookie)[cookieName];
   if (!token) return false;
   try {
-    const payload = jwtService.verify(token);
-    return payload.org === tenantId && payload.sub === userId;
+    return assertProxyOwnership(jwtService.verify(token), { tenantId, userId });
   } catch {
     return false;
   }

@@ -26,8 +26,10 @@ import {
   extractForwardingContext,
   fetchWithTransportRetry,
   forwardRequestBody,
+  parseCookieHeader,
   streamUpstreamResponse,
 } from './proxyForwarding';
+import { authorizeProxyToken, type ProxyJwtVerifier } from './proxyOwnership';
 
 const FAVICON_PATHS = new Set(['/favicon.ico', '/favicon.svg', '/favicon.png']);
 
@@ -75,6 +77,14 @@ export interface PreviewProxyConfig {
     feature: string;
     serverKey: string;
   }) => number | undefined | null | Promise<number | undefined | null>;
+  /**
+   * JWT verifier for the owner-only access gate. `undefined` in local mode
+   * (single tenant) → previews are always owner-accessible. Owner is the
+   * (tenant, user) baked into the urlKey's first two segments.
+   */
+  jwtService?: ProxyJwtVerifier;
+  /** Session cookie name (e.g. `JwtService.cookieName`). */
+  cookieName?: string;
 }
 
 /**
@@ -111,8 +121,15 @@ function extractUrlKeyFromReferer(refererStr: string): string | null {
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '', getBackendPort } = config;
-  
+  const { portRegistry, pathPrefix = '', getBackendPort, jwtService } = config;
+  const cookieName = config.cookieName ?? 'ant_session';
+
+  // Owner-only access gate. Runs before cookie-parser (see PreviewServer mount
+  // order), so the raw Cookie header is parsed here. Local mode (no jwtService)
+  // → always authorized.
+  const isOwner = (req: Request, owner: { tenantId: string; userId: string }): boolean =>
+    authorizeProxyToken(parseCookieHeader(req.headers.cookie)[cookieName], jwtService, owner);
+
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
     // ✅ Skip reserved API/system routes — handled by Express route handlers
     if (RESERVED_PATHS.some(p => req.path.startsWith(p))) {
@@ -162,6 +179,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         const parsed = parseUrlKey(urlKey);
         if (parsed) {
           const { tenantId, userId, projectId, feature } = parsed;
+
+          // Owner-only gate on the Referer/cookie-recovered urlKey too — a
+          // sub-resource request must not reach another account's preview.
+          if (!isOwner(req, { tenantId, userId })) {
+            res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
+            return;
+          }
 
           try {
             const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
@@ -225,6 +249,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     }
     
     const { tenantId, userId, projectId, feature, serviceName } = parsed;
+
+    // Owner-only gate: only the urlKey owner's session may proxy here.
+    if (!isOwner(req, { tenantId, userId })) {
+      res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
+      return;
+    }
+
     const internalKey = fromUrlKey(urlKey);
     
     logger.debug(`Parsed urlKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}${serviceName ? ', service=' + serviceName : ''}`, { component: 'PreviewProxy' });
