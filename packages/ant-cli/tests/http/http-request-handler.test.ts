@@ -74,4 +74,39 @@ describe('handleHttpRequest', () => {
     const r = await handleHttpRequest(ctx(), { url: '/ok', port });
     expect(r.content as string).toContain(`url: http://localhost:${port}/ok`);
   });
+
+  describe('SSRF guard (absolute url host allowlist)', () => {
+    it('rejects cloud metadata IP and does not probe', async () => {
+      const r = await handleHttpRequest(ctx(), { url: 'http://169.254.169.254/latest/meta-data/' });
+      expect(r.content as string).toContain('only loopback hosts');
+      expect(r.content as string).not.toContain('status:');
+      expect(r.sideEffects).toEqual([]);
+    });
+
+    it('rejects a public host', async () => {
+      const r = await handleHttpRequest(ctx(), { url: 'http://example.com/' });
+      expect(r.content as string).toContain('only loopback hosts');
+    });
+
+    it('rejects an RFC-1918 internal host', async () => {
+      const r = await handleHttpRequest(ctx(), { url: 'http://10.0.0.5:6379/' });
+      expect(r.content as string).toContain('only loopback hosts');
+    });
+
+    it('allows localhost', async () => {
+      const r = await handleHttpRequest(ctx(), { url: `http://localhost:${port}/ok` });
+      expect(r.content as string).toContain('status: 200');
+    });
+
+    it('allows 127.0.0.0/8 loopback', async () => {
+      const r = await handleHttpRequest(ctx(), { url: `http://127.0.0.1:${port}/ok` });
+      expect(r.content as string).toContain('status: 200');
+    });
+
+    it('rejects a malformed absolute url', async () => {
+      const r = await handleHttpRequest(ctx(), { url: 'http://[bad' });
+      expect(r.content as string).toMatch(/Malformed URL|only loopback hosts/);
+      expect(r.sideEffects).toEqual([]);
+    });
+  });
 });

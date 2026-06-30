@@ -207,22 +207,27 @@ export class CredentialsStore {
     const keyString = process.env.ANT_ENCRYPTION_KEY?.trim();
     
     if (keyString) {
-      // Validate key length: AES-256 requires 64 hex chars (32 bytes)
+      // An explicitly-set key is an operator intent: if it is malformed we
+      // MUST fail loudly rather than silently fall back to a file / random key.
+      // A silent fallback would encrypt credentials under a key the operator
+      // never chose, so a later valid-key boot can no longer decrypt them.
+      // The file / auto-generated fallback below applies ONLY when the env var
+      // is unset.
       if (keyString.length !== 64) {
-        logger.error(`❌ ANT_ENCRYPTION_KEY has invalid length: ${keyString.length} (expected 64 hex chars)`, { component: 'CredentialsStore' });
-        logger.error('   Generate a valid key with: openssl rand -hex 32', { component: 'CredentialsStore' });
-        // Fall through to file-based or auto-generated key
-      } else if (!/^[0-9a-fA-F]+$/.test(keyString)) {
-        logger.error('❌ ANT_ENCRYPTION_KEY contains invalid characters (expected hex only)', { component: 'CredentialsStore' });
-        // Fall through to file-based or auto-generated key
-      } else {
-        // ✅ Valid key from environment
-        if (!CredentialsStore.loggedKeySource.has('env')) {
-          CredentialsStore.loggedKeySource.add('env');
-          logger.info('✅ Using ANT_ENCRYPTION_KEY from environment', { component: 'CredentialsStore' });
-        }
-        return Buffer.from(keyString, 'hex');
+        throw new Error(
+          `ANT_ENCRYPTION_KEY has invalid length: ${keyString.length} (expected 64 hex chars). ` +
+            'Generate a valid key with: openssl rand -hex 32',
+        );
       }
+      if (!/^[0-9a-fA-F]+$/.test(keyString)) {
+        throw new Error('ANT_ENCRYPTION_KEY contains invalid characters (expected hex only).');
+      }
+      // ✅ Valid key from environment
+      if (!CredentialsStore.loggedKeySource.has('env')) {
+        CredentialsStore.loggedKeySource.add('env');
+        logger.info('✅ Using ANT_ENCRYPTION_KEY from environment', { component: 'CredentialsStore' });
+      }
+      return Buffer.from(keyString, 'hex');
     }
     
     // 2. Try file in workspaces/.ant/encryption.key

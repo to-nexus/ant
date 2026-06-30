@@ -192,6 +192,34 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     expect(drift).toBe(false);
   });
 
+  it('pod is hardened: no SA token, non-root pod + container securityContext, caps dropped (O8/O12)', () => {
+    const orch = makeOrch();
+    const spec = (orch as any).createPodSpec(
+      'org:user:proj:_base',
+      'ide-org-user-proj-base',
+      fx.mainCodebase,
+      userContext,
+      '_base',
+    );
+
+    // O12 — SA token never mounted into the IDE container.
+    expect(spec.spec.automountServiceAccountToken).toBe(false);
+
+    // O8 — pod-level non-root identity.
+    expect(spec.spec.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      runAsUser: 1000,
+    });
+
+    // O8 — container-level: no privilege escalation, all caps dropped.
+    const container = spec.spec.containers[0];
+    expect(container.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ['ALL'] },
+    });
+  });
+
   it('readinessProbe gates Service Endpoints on openvscode-server HTTP, not just phase=Running', () => {
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
