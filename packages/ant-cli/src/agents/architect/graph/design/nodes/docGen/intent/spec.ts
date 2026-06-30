@@ -16,7 +16,7 @@ import { DesignGraphState } from '../../../state';
 import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
-import { designDirOf, ARTIFACT_PREFIX } from '@ant/shared';
+import { designDirOf, ARTIFACT_PREFIX, getConfigSlots } from '@ant/shared';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
@@ -173,6 +173,32 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // Build context parts for Block 2 (disk-only data not in pool)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const contextParts: string[] = [];
+
+  // TechTier grounding — a spec written against an existing codebase must
+  // reference the real stack's conventions (routing, global prefix, entry
+  // points). Rendered via `renderBasis` (the same SSOT the code plan node uses)
+  // rather than build()'s techContext path, which would re-trigger
+  // AutoInjectionResolver and double-render spec base.md's manual
+  // action-context / document-language partials. The `gen-spec` / `rev-spec`
+  // basis slot is `SYS_TIERS` (techTier active); greenfield basis (no techTier)
+  // renders empty, so this is silent when there is nothing to ground.
+  //
+  // Spec tasks carry no per-task techTiers, so pass them through as-is
+  // (undefined) and let renderBasis fall back to the full basis.techTier —
+  // both slots for a fullstack codebase. Collapsing via getTechTier
+  // (frontend-priority) would drop backend grounding for a fullstack spec.
+  const taskTechTiers = (state.currentTask as DesignTask | undefined)?.techTiers;
+  const basisSlot = state.resolvedAction?.intent
+    ? getConfigSlots(state.resolvedAction.intent)?.basis
+    : undefined;
+  const basisSection = await promptBuilder.renderBasis(
+    state.resolvedAction?.basis,
+    'design',
+    taskTechTiers,
+    state.resolvedAction?.domain,
+    basisSlot,
+  );
+  if (basisSection) contextParts.push(basisSection);
 
   // Existing spec for refactor mode (load from disk — pool may not have latest version)
   if (jobMode === 'refactor') {

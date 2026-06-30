@@ -15,6 +15,7 @@ import { ArtifactPoolView } from '../../../../../../core/prompt/builder/Artifact
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
+import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
@@ -607,7 +608,19 @@ export async function decomposeSystemDesign(
   // comparisons in `validateAndFixTargetFiles` work; wildcards stay intact and
   // the validator decides between MSA expansion vs `-main.md` collapse.
   const resolvedTargetFiles = state.resolvedAction?.target?.map(stripDesignTargetPrefix);
-  const detectedEnv: Stack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' : state.resolvedAction?.intent?.includes('-be') ? 'backend' : 'fullstack';
+  let detectedEnv: Stack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' : state.resolvedAction?.intent?.includes('-be') ? 'backend' : 'fullstack';
+  // No explicit stack suffix (e.g. `rev-sys`) → don't blindly assume fullstack;
+  // anchor the FALLBACK stack to the real codebase when one exists. The
+  // LLM-emitted `<techTier>` still wins downstream (see line ~864); this only
+  // sharpens the no-stack fallback so a single-stack project isn't over-scoped.
+  {
+    const intentId = state.resolvedAction?.intent ?? '';
+    const hasStackSuffix = intentId.includes('-fe') || intentId.includes('-be') || intentId.includes('-full');
+    if (!hasStackSuffix) {
+      const anchored = await resolveDesignBasisTechTier(state);
+      if (anchored?.stack) detectedEnv = anchored.stack;
+    }
+  }
 
   // For prompt: use resolvedTargetFiles as the authority for file constraints
   const promptExistingFiles = jobMode === 'refactor'

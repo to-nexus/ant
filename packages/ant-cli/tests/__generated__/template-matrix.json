@@ -1286,13 +1286,43 @@
       "basis-registry"
     ]
   },
+  "jobs/design/basis/techTier/framework/gin": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "jobs/design/basis/techTier/framework/go": {
     "sources": [
       "auto-injection",
       "render-call"
     ]
   },
+  "jobs/design/basis/techTier/framework/nestjs": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "jobs/design/basis/techTier/framework/nextjs": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/techTier/framework/react-native": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/techTier/framework/react": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/techTier/language/typescript-browser": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/techTier/language/typescript-node": {
     "sources": [
       "basis-registry"
     ]

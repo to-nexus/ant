@@ -19,7 +19,8 @@ import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY } from "@ant/shared";
+import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { generateMnemonic } from "../../../../../../utils/humanId";
@@ -279,23 +280,21 @@ export async function decomposeSpec(
     { targetFile, slug, title, sectionCount: tasks.length, jobMode }
   );
 
-  // Spec uses project-level profile; stack inferred from intent
-  const specStack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' as const
-    : state.resolvedAction?.intent?.includes('-be') ? 'backend' as const
-    : undefined;
-  const specTechTier = buildTechTier(state.profile, specStack);
-  console.log(`✅ TechTier: stack=${specStack || 'unset'}, language=${specTechTier.language}, framework=${specTechTier.framework || 'none'}`);
-
-  // Sync to RAC basis.techTier so getTechTier(state) returns it
-  const tierKey = specStack ?? 'frontend';
-  const basisTechTierConfig: TechTierConfig = {
-    stack: specStack,
-    [tierKey]: { ...specTechTier, stack: tierKey as 'frontend' | 'backend' },
-  };
-  state.resolvedAction = {
-    ...state.resolvedAction!,
-    basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
-  };
+  // Anchor techTier to the EXISTING codebase via the single design-side owner
+  // (resolveDesignBasisTechTier), NOT the intent-id suffix. Spec intents have no
+  // -fe/-be variant, so the old `?? 'frontend'` default mislabeled every backend
+  // project. Greenfield / undetectable → leave basis.techTier unset (no
+  // fabrication); renderTechTierSection early-returns when no stack is present.
+  const resolvedTechTier = await resolveDesignBasisTechTier(state);
+  if (resolvedTechTier) {
+    console.log(`✅ TechTier (codebase-anchored): stack=${resolvedTechTier.stack}, fe=${resolvedTechTier.frontend?.framework || resolvedTechTier.frontend?.language || 'none'}, be=${resolvedTechTier.backend?.framework || resolvedTechTier.backend?.language || 'none'}`);
+    state.resolvedAction = {
+      ...state.resolvedAction!,
+      basis: { ...state.resolvedAction?.basis, techTier: resolvedTechTier },
+    };
+  } else {
+    console.log('ℹ️ TechTier: no existing-codebase signal; leaving basis.techTier unset (greenfield-safe)');
+  }
 
   state.jobId = ctx.newJobId;
   state.jobTiming = ctx.newJobTiming;
