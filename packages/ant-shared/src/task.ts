@@ -68,7 +68,11 @@ export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   'claude-opus-4-8': 1_000_000,
   'claude-sonnet-4-6': 1_000_000,
   'claude-haiku-4-5-20251001': 200_000,
-  // OpenAI / Gemini follow when wired
+  // Gemini — creator/visual job text turns (detect / direct / engrave / explain).
+  // The `*-image-preview` render/sketch models never reach getModelContextWindow
+  // (they go through GeminiImageClient, not beginNodePhase), so they are omitted.
+  'gemini-3.1-pro-preview': 1_000_000,
+  // OpenAI follows when wired
 };
 
 /**
@@ -100,6 +104,36 @@ export function getModelContextWindow(modelId: string | undefined | null): numbe
     );
   }
   return window;
+}
+
+/**
+ * Non-fatal variant for the token-gauge denominator seed. An unknown or missing
+ * model id degrades the gauge (falls back to `DEFAULT_FALLBACK_CONTEXT_WINDOW`
+ * + a one-time warn) instead of crashing the job.
+ *
+ * The gauge is UI chrome — its denominator being off by a factor is a cosmetic
+ * regression, whereas throwing here aborts the whole graph node (the Gemini
+ * visual job crashed at its first node for exactly this reason). Callers that
+ * need a contractually-correct window must use the strict `getModelContextWindow`
+ * and register the model in `MODEL_CONTEXT_WINDOWS`. Version-independence: a new
+ * model id must never be able to crash a job over gauge accuracy.
+ */
+const warnedUnknownModelIds = new Set<string>();
+export function getModelContextWindowOrDefault(modelId: string | undefined | null): number {
+  if (modelId) {
+    const window = MODEL_CONTEXT_WINDOWS[modelId];
+    if (window !== undefined) return window;
+  }
+  const key = modelId ?? '<missing>';
+  if (!warnedUnknownModelIds.has(key)) {
+    warnedUnknownModelIds.add(key);
+    console.warn(
+      `[getModelContextWindowOrDefault] Unknown modelId "${key}" — using ` +
+      `DEFAULT_FALLBACK_CONTEXT_WINDOW (${DEFAULT_FALLBACK_CONTEXT_WINDOW}) for the token gauge. ` +
+      `Register it in MODEL_CONTEXT_WINDOWS (@ant/shared/task.ts) for an accurate denominator.`,
+    );
+  }
+  return DEFAULT_FALLBACK_CONTEXT_WINDOW;
 }
 
 /** LLM token consumption for a task or aggregate */

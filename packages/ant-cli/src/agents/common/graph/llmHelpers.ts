@@ -8,7 +8,7 @@
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
-import { TaskTokenUsage, PhaseTokenUsage, TokenUsageByModel, getModelContextWindow } from '@ant/shared';
+import { TaskTokenUsage, PhaseTokenUsage, TokenUsageByModel, getModelContextWindowOrDefault } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
 import { getEstimatingLabel, resolveNodePhaseLabel, type UILocale } from './timing/estimatingLabels';
 
@@ -118,7 +118,7 @@ export function beginNodePhase(
     ...(label && { label }),
     tokenUsage: initTokenUsage(),
     mode: 'live',
-    contextWindow: getModelContextWindow(modelName),
+    contextWindow: getModelContextWindowOrDefault(modelName),
     modelId: modelName,
     ...(typeof workerId === 'number' && { workerId }),
     ...(typeof taskName === 'string' && taskName.length > 0 && { taskName }),
@@ -528,7 +528,7 @@ export function upsertPhaseTokenUsage(
       label,
       tokenUsage: { ...usage, callCount: usage.callCount ?? 1 },
       mode: 'live',
-      contextWindow: getModelContextWindow(modelName),
+      contextWindow: getModelContextWindowOrDefault(modelName),
       modelId: modelName,
     });
   }

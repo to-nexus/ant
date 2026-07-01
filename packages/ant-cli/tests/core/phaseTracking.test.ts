@@ -61,6 +61,26 @@ describe('withPhaseTracking — phase snapshot seed', () => {
     expect(observed[0]?.contextWindow).toBe(1_000_000); // claude-opus-4-8
   });
 
+  it('does NOT throw when the model id is unregistered — gauge falls back, job survives', async () => {
+    // Crash-class guard: the Gemini visual job crashed here because
+    // getModelContextWindow threw on an unregistered id. beginNodePhase must
+    // degrade the gauge, never abort the node. (Applies to any future model.)
+    const state: StateWithDeps = { deps: { llm: { modelName: 'some-unwired-model-vNext' } } };
+
+    await expect(
+      withPhaseTracking('detect', (_s: StateWithDeps) => ({}) as any)(state),
+    ).resolves.toBeDefined();
+
+    expect(state.currentPhaseTokenUsage?.contextWindow).toBe(1_000_000); // DEFAULT_FALLBACK
+    expect(state.currentPhaseTokenUsage?.modelId).toBe('some-unwired-model-vNext');
+  });
+
+  it('resolves the registered Gemini (creator/visual) model to its real window', async () => {
+    const state: StateWithDeps = { deps: { llm: { modelName: 'gemini-3.1-pro-preview' } } };
+    await withPhaseTracking('detect', (_s: StateWithDeps) => ({}) as any)(state);
+    expect(state.currentPhaseTokenUsage?.contextWindow).toBe(1_000_000);
+  });
+
   it('resolves English label by default and Korean when _uiLocale is ko', async () => {
     const en: StateWithDeps = { deps: { llm: TEST_LLM } };
     await withPhaseTracking('plan', (_s: StateWithDeps) => ({}) as any)(en);
