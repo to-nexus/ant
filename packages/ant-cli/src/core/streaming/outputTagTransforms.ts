@@ -186,8 +186,8 @@ function formatReferences(references: any[], language: UserLanguage): string {
 
   formatted += '\n';
   formatted += isKorean
-    ? `💡 필요시 \`search_reference_code\` 도구로 해당 레포의 코드를 검색합니다.`
-    : `💡 Will use \`search_reference_code\` tool to search code from these repositories.`;
+    ? `💡 이 프로젝트들의 코드를 직접 열람합니다 (읽기 전용: list/read/search).`
+    : `💡 Will read these projects' code directly (read-only: list / read / search).`;
 
   return formatted;
 }

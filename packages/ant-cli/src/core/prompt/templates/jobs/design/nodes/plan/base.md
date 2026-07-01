@@ -18,6 +18,8 @@ architectural decisions.
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/shared/injections/reference-codebase}}
+
 {{#if hasTools}}
 {{> jobs/design/nodes/plan/injections/plan-tools-batch}}
 {{/if}}

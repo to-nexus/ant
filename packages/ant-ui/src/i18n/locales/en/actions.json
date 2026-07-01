@@ -3,7 +3,6 @@
   "subtitle": "Select a task to see what's needed and how to get started",
   "ctaButton": "All actions",
   "showAll": "View all actions",
-
   "actions": {
     "plan": {
       "label": "Create PRD",
@@ -48,7 +47,6 @@
       "comingSoonMessage": "This feature is currently under development. Usage is not recommended."
     }
   },
-
   "basis": {
     "title": "Tech Preset",
     "language": "Language",
@@ -98,7 +96,6 @@
       }
     }
   },
-
   "domain": {
     "label": "Domain",
     "description": "Choose game vs. service domain",
@@ -110,7 +107,6 @@
       }
     }
   },
-
   "section": {
     "basis": "Basis",
     "refs": "References",
@@ -126,7 +122,6 @@
     "mirrorsRefs": "Updates Refs",
     "mirrorsRefsHint": "The selected reference documents will be updated in place"
   },
-
   "target": {
     "reviseHint": "Select files in Refs to determine targets",
     "codebase": "Codebase",
@@ -136,11 +131,9 @@
     "willBeCreated": "will be created",
     "viewInIde": "View in IDE"
   },
-
   "toast": {
     "navigated": "Navigated from {{from}} to {{to}}"
   },
-
   "footer": {
     "chatStart": "Start via Chat",
     "build": "BUILD",
@@ -148,7 +141,6 @@
     "contextRequired": "Context files are required",
     "refsRequired": "Reference files are required"
   },
-
   "emptySlot": {
     "missing": "No {{name}} found",
     "addFile": "Add file...",
@@ -158,7 +150,6 @@
     "noFiles": "no files",
     "viewInExplorer": "View in explorer"
   },
-
   "buildDirective": {
     "gen-plan": "Please create a product requirements document based on the source materials",
     "gen-plan_game": "Please create a game design document based on the source materials",
@@ -180,5 +171,12 @@
     "explain-plan": "Please explain the PRD",
     "explain-plan_game": "Please explain the GDD",
     "explain-visual": "Please explain the visual assets"
+  },
+  "referenceCodebase": {
+    "title": "Reference projects",
+    "hint": "Attach related projects so this job can read their code (read-only). Pick a project and branch.",
+    "loading": "Loading projects…",
+    "none": "No other projects in this workspace.",
+    "error": "Could not load projects."
   }
 }

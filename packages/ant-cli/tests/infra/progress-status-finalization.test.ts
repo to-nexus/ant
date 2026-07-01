@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { handleListFiles } from '../../src/agents/common/tool/handlers/listFiles';
 import { handleSearchReferenceCode } from '../../src/agents/common/tool/handlers/searchReferenceCode';
+import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 
 describe('progress status finalization', () => {
   it('listFiles removes listing_files progress when readDirectory throws', async () => {
@@ -28,97 +32,57 @@ describe('progress status finalization', () => {
     expect(removeStatus).toHaveBeenCalledWith('listing-card', 'listing_files');
   });
 
-  it('searchReferenceCode chains merge indexes for searched_reference and explored statuses', async () => {
-    const showStatus = vi.fn(async (key: string) => {
-      if (key === 'searching_reference') return 'searching-card';
-      if (key === 'exploring') return 'exploring-card';
-      return undefined;
-    });
+  // ── search_reference_code (ripgrep/git, no vector DB) ──
+  let base: string;
+  let wr: UnifiedWorkspaceResolver;
 
-    const ctx = {
+  beforeAll(() => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'ref-status-'));
+    const be = path.join(base, 'o', 'u', 'reference-repo', 'codebase');
+    fs.mkdirSync(be, { recursive: true });
+    fs.writeFileSync(path.join(be, 'a.ts'), 'export const x = 1;\n');
+    wr = new UnifiedWorkspaceResolver(base);
+  });
+
+  afterAll(() => fs.rmSync(base, { recursive: true, force: true }));
+
+  function refCtx(showStatus: any) {
+    return {
       chatStatus: { showStatus },
       referenceRequests: [{ project: 'reference-repo' }],
-      retriever: {
-        retrieve: vi.fn(async () => ({
-          code: 'export const x = 1;',
-          stats: { filesLoaded: 2, estimatedTokens: 10 },
-          files: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }],
-        })),
-      },
-      vectorDB: {},
-      git: {},
-      workspaceResolver: {
-        getCodebasePath: () => '/tmp/reference-repo/codebase',
-      },
+      workspaceResolver: wr,
       userId: 'u',
       organizationId: 'o',
-      resolvedActionMode: 'generate',
-      workingDir: '/tmp/workspace',
-      fileSystem: { getRootPath: () => '/tmp/workspace' },
+      workingDir: base,
     } as any;
+  }
 
-    const result = await handleSearchReferenceCode(ctx, {
+  it('searchReferenceCode emits searched_reference terminal with merge index on match', async () => {
+    const showStatus = vi.fn(async (key: string) => (key === 'searching_reference' ? 'searching-card' : undefined));
+    const result = await handleSearchReferenceCode(refCtx(showStatus), {
       project: 'reference-repo',
-      query: 'query',
+      pattern: 'const x',
     });
 
     expect(result.error).toBeUndefined();
     expect(showStatus).toHaveBeenCalledWith(
       'searched_reference',
-      expect.objectContaining({
-        project: 'reference-repo',
-        filesCount: 2,
-        _mergeIndex: 'searching-card',
-      }),
-    );
-    expect(showStatus).toHaveBeenCalledWith(
-      'explored',
-      expect.objectContaining({
-        filesCount: 2,
-        _mergeIndex: 'exploring-card',
-      }),
+      expect.objectContaining({ project: 'reference-repo', _mergeIndex: 'searching-card' }),
     );
   });
 
   it('searchReferenceCode emits searched_reference terminal on error with merge index', async () => {
-    const showStatus = vi.fn(async (key: string) => {
-      if (key === 'searching_reference') return 'searching-card';
-      return undefined;
-    });
+    const showStatus = vi.fn(async (key: string) => (key === 'searching_reference' ? 'searching-card' : undefined));
+    // Registered but not a real tenant project → resolve throws inside the try,
+    // so the terminal searched_reference still fires with the merge index.
+    const ctx = refCtx(showStatus);
+    ctx.referenceRequests = [{ project: 'ghost' }];
+    const result = await handleSearchReferenceCode(ctx, { project: 'ghost', pattern: 'x' });
 
-    const ctx = {
-      chatStatus: { showStatus },
-      referenceRequests: [{ project: 'reference-repo' }],
-      retriever: {
-        retrieve: vi.fn(async () => {
-          throw new Error('retriever failed');
-        }),
-      },
-      vectorDB: {},
-      git: {},
-      workspaceResolver: {
-        getCodebasePath: () => '/tmp/reference-repo/codebase',
-      },
-      userId: 'u',
-      organizationId: 'o',
-      resolvedActionMode: 'generate',
-      workingDir: '/tmp/workspace',
-      fileSystem: { getRootPath: () => '/tmp/workspace' },
-    } as any;
-
-    const result = await handleSearchReferenceCode(ctx, {
-      project: 'reference-repo',
-      query: 'query',
-    });
-
-    expect(result.error).toContain('retriever failed');
+    expect(result.error).toBeTruthy();
     expect(showStatus).toHaveBeenCalledWith(
       'searched_reference',
-      expect.objectContaining({
-        project: 'reference-repo',
-        filesCount: 0,
-        _mergeIndex: 'searching-card',
-      }),
+      expect.objectContaining({ project: 'ghost', filesCount: 0, _mergeIndex: 'searching-card' }),
     );
   });
 });

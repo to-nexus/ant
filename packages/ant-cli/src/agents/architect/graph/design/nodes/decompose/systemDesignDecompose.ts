@@ -24,6 +24,7 @@ import { resolveDesignTargetFiles } from "../../../../../../core/types/detection
 import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { assignedNotInCatalog, resolveCatalogEntry } from "./catalogLookup";
+import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -634,7 +635,9 @@ export async function decomposeSystemDesign(
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
+  const refCat = await referenceCatalogVars(state);
   const prompt = await promptAdapter.render(TEMPLATE_PATHS.designDecomposeSystem.base, {
+    ...refCat,
     documentName: decomposeCtx.documentName,
     refs: decomposeCtx.refs,
     context: decomposeCtx.context,

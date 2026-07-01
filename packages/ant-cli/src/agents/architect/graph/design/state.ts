@@ -60,6 +60,15 @@ export interface DesignGraphState extends TriageableState {
   resolvedAction?: ResolvedActionContext;
 
   /**
+   * Cross-project code references (reference-codebase tools). Seeded from
+   * `resolvedAction.referenceTargets` (explicit) / `<references>` tag (infer)
+   * and appended at runtime by `register_reference`. Mirrors the code job's
+   * channel — MUST be a declared graph channel (see design/graph.ts) or it is
+   * dropped across node transitions.
+   */
+  referenceRequests?: Array<{ project: string; branch?: string; reason?: string }>;
+
+  /**
    * Phase C — Detect node output cache for escalation reuse. See
    * `code/state.ts` `detect` JSDoc for the cross-job rationale.
    */

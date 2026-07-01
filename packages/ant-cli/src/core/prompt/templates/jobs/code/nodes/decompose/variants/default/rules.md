@@ -1087,6 +1087,8 @@ The body is the literal `build` or `opt-out`. Default `build` — the app ships 
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
+{{> jobs/shared/injections/reference-codebase-register}}
+
 {{#if visualTierActive}}
 **(N+3). `<visualTier>` tag** (visual design policy detection):
 

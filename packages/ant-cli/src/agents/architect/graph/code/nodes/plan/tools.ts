@@ -12,11 +12,15 @@ import type { ArchitectGraphState } from '../../state';
 import type { ToolDefinition } from '../../../../../../core/ports/llm';
 import { getToolsByNamesWithTemplates, TOOL_SETS, ToolName } from '../../../../../common/tool/toolSchemas';
 import { allowsPersistentProcesses } from '../../tasks/_shared/verify/persistentProcessGate';
+import { hasReferenceSurface } from '../../../../../common/tool/reference/gate';
 
 export async function getTools(state: ArchitectGraphState): Promise<ToolDefinition[]> {
   const names: ToolName[] = [...TOOL_SETS.planExplore];
-  if (state.referenceRequests && state.referenceRequests.length > 0) {
-    names.push(ToolName.SEARCH_REFERENCE);
+  // Discovery-driven: expose the reference tools whenever the tenant has a
+  // sibling project the LLM might register mid-plan (register-first is enforced
+  // by the handlers). See reference/gate.ts.
+  if (await hasReferenceSurface(state)) {
+    names.push(...TOOL_SETS.reference);
   }
   // Runtime route-verification tool — reproducer plan tool-loop may probe a
   // live server. Gate via the shared SSOT predicate (R1, never task.type).

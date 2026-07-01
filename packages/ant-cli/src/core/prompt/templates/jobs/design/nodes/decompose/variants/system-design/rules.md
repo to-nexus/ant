@@ -383,6 +383,8 @@ Include a `<references>` meta tag when a reference project is observed:
 
 Place it alongside the other meta tags, before `<tasks>`. The body is a JSON-encoded array.
 
+{{> jobs/shared/injections/reference-codebase-register}}
+
 ### Constraint
 
 Only include projects **explicitly mentioned** in directive. Do NOT infer or assume references.

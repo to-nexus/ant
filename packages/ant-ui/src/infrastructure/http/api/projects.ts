@@ -5,6 +5,21 @@ export function fetchProjects(): Promise<string[]> {
   return apiGet(`${API_BASE()}/projects`);
 }
 
+export interface ReferenceCatalogEntry {
+  project: string;
+  branches: string[];
+}
+
+/**
+ * Reference-codebase catalog for the current tenant: sibling projects (and their
+ * selectable git refs) that can be attached to an action as cross-project code
+ * references. `exclude` drops the current project from the list.
+ */
+export function fetchReferenceCatalog(exclude?: string): Promise<ReferenceCatalogEntry[]> {
+  const qs = exclude ? `?exclude=${encodeURIComponent(exclude)}` : '';
+  return apiGet(`${API_BASE()}/projects/reference-catalog${qs}`);
+}
+
 /**
  * Create a project. Pass `opts.force = true` to overwrite a stale existing
  * directory (server-side cascade deletes first). The 409 path returns an

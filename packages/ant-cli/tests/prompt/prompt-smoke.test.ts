@@ -694,6 +694,13 @@ describe('Template Smoke Tests', () => {
       // (priority 650–669); every other band leaves the block empty by design.
       // See `.claude/plans/clear-hinting-fruit-shiny-catmull.md`.
       'jobs/code/base/injections/seam/connectivity-closure',
+      // Reference-codebase partials are wrapped entirely in
+      // {{#if hasReferenceCatalog}} (no {{else}}) — same Contract pattern as
+      // analysis-block. They activate only when the tenant has sibling
+      // projects to register/read; a solo workspace leaves them empty by
+      // design. See the reference-codebase feature.
+      'jobs/shared/injections/reference-codebase-register',
+      'jobs/shared/injections/reference-codebase',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

@@ -17,6 +17,7 @@ import type { PromptBuildConfig } from '../../../../../../core/prompt/builder/Pr
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
 import { ARTIFACT_PREFIX } from '@ant/shared';
+import { referenceCatalogVars } from '../../../../../common/tool/reference/catalogVars';
 import {
   selectArtifacts,
 } from '../../../../../../core/prompt/builder/ArtifactPipeline';
@@ -57,6 +58,7 @@ export async function buildPlanPromptBlocks(
   const totalSections: number = taskAny?.totalSections ?? 1;
   const sectionScope: string = taskAny?.sectionScope ?? '';
 
+  const refCat = await referenceCatalogVars(state);
   const config: PromptBuildConfig = {
     // designPlan triple includes a `rules` field; the design plan node
     // intentionally renders rules as a partial inside `base.md` rather than
@@ -72,6 +74,7 @@ export async function buildPlanPromptBlocks(
     },
     artifacts: selectedArtifacts,
     vars: {
+      ...refCat,
       intentGroup,
       currentTask: {
         id: task.id,

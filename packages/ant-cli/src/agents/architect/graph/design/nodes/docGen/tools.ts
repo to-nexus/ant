@@ -15,6 +15,7 @@ import type { ToolDefinition } from '../../../../../../core/ports/llm';
 import type { DesignGraphState } from '../../state';
 import { getToolsByNames, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
 import { ToolName } from '../../../../../common/tool/toolCatalog';
+import { hasReferenceSurface } from '../../../../../common/tool/reference/gate';
 import { isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 
@@ -60,6 +61,12 @@ export async function getTools(
   else if (isSpecFigma) tools = getToolsByNames(TOOL_SETS.specFigma);
   else if (useSourceFileTool) tools = [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL];
   else tools = getToolsByNames(TOOL_SETS.design);
+
+  // Discovery-driven: sibling-project reference tools (read-only; register-first
+  // enforced by handlers). Added across all design docGen intents.
+  if (await hasReferenceSurface(state)) {
+    tools = [...tools, ...getToolsByNames(TOOL_SETS.reference)];
+  }
 
   return applyPlanGate(state, tools);
 }

@@ -96,7 +96,11 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.resolvedAction) {
           initial.resolvedAction = session.state.resolvedAction;
         }
-        
+
+        if (session.state.referenceRequests) {
+          initial.referenceRequests = session.state.referenceRequests;
+        }
+
         if (session.state.figmaConfig) {
           initial.figmaConfig = session.state.figmaConfig;
         }

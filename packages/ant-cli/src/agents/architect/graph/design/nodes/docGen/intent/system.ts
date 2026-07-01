@@ -16,6 +16,7 @@ import { designDirOf, effectiveTechTier, getTechTier, getRACDocuments, ARTIFACT_
 import type { ResolvedArtifact, TechTier } from '@ant/shared';
 import { PromptBuilder } from '../../../../../../../core/prompt/builder/PromptBuilder';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
+import { referenceCatalogVars } from '../../../../../../common/tool/reference/catalogVars';
 import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder/ArtifactRoleResolver';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
@@ -212,6 +213,10 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // tail. See `.claude/plans/plan-docgen-parallel-spring.md`.
     const { planText, runtimeContext } = buildRuntimeContext(state);
 
+    // Reference-codebase usage vars — sibling-project catalog for the usage
+    // partial (register + read mid-docGen).
+    const refCat = await referenceCatalogVars(state);
+
     const designConfig: PromptBuildConfig = {
       templates: TEMPLATE_PATHS.designSystem,
       intent,
@@ -234,6 +239,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       },
       artifacts: getRACDocuments(resolvedActionWithDocs),
       vars: {
+        ...refCat,
         currentTask: state.currentTask ? {
           name: state.currentTask.name,
           type: state.currentTask.type,
@@ -248,7 +254,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         sectionScope: sectionScope || undefined,
         filteredCatalog: filteredCatalog || undefined,
         isSpecDriven: false,
-        referenceRequests: [],
+        referenceRequests: state.referenceRequests || [],
         resolvedAction: resolvedActionWithDocs || null,
         userLanguage: state.context?.userLanguage || 'en',
         designDomain: state.resolvedAction?.domain,

@@ -18,6 +18,7 @@
 import { ArchitectGraphState } from "../../state";
 import type { ToolDefinition } from "../../../../../../core/ports/llm";
 import { getToolsByNamesWithTemplates, TOOL_SETS, ToolName } from "../../../../../common/tool/toolSchemas";
+import { hasReferenceSurface } from "../../../../../common/tool/reference/gate";
 import { isUiTask } from "../../tasks/ui/model/is";
 import { isFeatureTask } from "../../tasks/feature/model/is";
 import { isDesignSystemTask } from "../../tasks/design-system/model/is";
@@ -53,15 +54,17 @@ export async function getTools(state: ArchitectGraphState): Promise<ToolDefiniti
   const promptPort = state.deps?.promptBuilder;
 
   if (state.resolvedAction?.mode === 'explain') {
-    return getToolsByNamesWithTemplates([...TOOL_SETS.codeExplain], promptPort);
+    const explainNames = [...TOOL_SETS.codeExplain];
+    if (await hasReferenceSurface(state)) explainNames.push(...TOOL_SETS.reference);
+    return getToolsByNamesWithTemplates(explainNames, promptPort);
   }
-
-  const hasReferences = state.referenceRequests && state.referenceRequests.length > 0;
 
   let toolNames: ToolName[] = [...TOOL_SETS.codeBasic];
 
-  if (hasReferences) {
-    toolNames.push(ToolName.SEARCH_REFERENCE);
+  // Discovery-driven: expose reference tools whenever a sibling project exists
+  // (register-first enforced by handlers). See reference/gate.ts.
+  if (await hasReferenceSurface(state)) {
+    toolNames.push(...TOOL_SETS.reference);
   }
 
   // Runtime route-verification tool — only when persistent processes are

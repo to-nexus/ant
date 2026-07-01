@@ -1,101 +1,122 @@
 /**
- * search_reference_code handler — context-injected version
+ * search_reference_code handler — ripgrep/git-grep over a registered reference
+ * project (sibling ANT project). Read-only, NO vector DB. dir-mode runs ripgrep
+ * with cwd = the sibling codebase root; git-mode runs `git grep` against the
+ * branch's tree (no checkout).
+ *
+ * `pattern` is a ripgrep/git-grep regex; `file_pattern` is a ripgrep glob
+ * (dir-mode only). Mirrors the native `search_code` contract so the LLM reuses
+ * the same mental model.
  */
 
+import { spawn } from 'node:child_process';
+import { rgPath } from '@vscode/ripgrep';
 import type { ToolExecutionContext, ToolResult } from '../types';
+import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
+import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
+import { refGitGrep } from '../reference/refGit';
+
+const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
+const MAX_RESULT_LINES = 500;
+const PER_FILE_MAX_COUNT = 200;
+
+async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(rgPath, args, { cwd });
+    } catch (err) {
+      resolve({ stdout: '', stderr: (err as Error).message, code: 2 });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    proc.stdout?.on('data', (c: Buffer) => (stdout += c.toString()));
+    proc.stderr?.on('data', (c: Buffer) => (stderr += c.toString()));
+    proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+    proc.on('error', (err) => resolve({ stdout: '', stderr: err.message, code: 2 }));
+  });
+}
 
 export async function handleSearchReferenceCode(
   ctx: ToolExecutionContext,
-  args: { project: string; query: string; maxFiles?: number },
+  args: { project: string; pattern: string; file_pattern?: string; branch?: string },
 ): Promise<ToolResult> {
-  const { project, query, maxFiles = 5 } = args;
-  let searchingIndex: string | undefined;
+  const { project, pattern, file_pattern, branch } = args;
+  if (!project || !pattern) {
+    const msg = 'search_reference_code requires "project" and "pattern"';
+    return { content: msg, error: msg };
+  }
+  if (!isRegistered(ctx, project)) {
+    const msg = notRegisteredError(project, ctx);
+    return { content: msg, error: msg };
+  }
 
-  console.log(`   🔍 Searching reference project: ${project}`);
-  console.log(`   Query: "${query}"`);
+  const deps = getRefDeps(ctx);
+  if ('error' in deps) return { content: deps.error, error: deps.error };
+
+  const searchingIndex = await ctx.chatStatus.showStatus('searching_reference', { project, query: pattern });
 
   try {
-    const refRequest = ctx.referenceRequests?.find((r: any) => r.project === project);
-    if (!refRequest) {
-      const content = `❌ ERROR: Reference project "${project}" was not registered.\n\nAvailable reference projects: ${ctx.referenceRequests?.map((r: any) => r.project).join(', ') || 'none'}\n\nPlease mention the reference project in your directive to register it.`;
-      return { content };
+    const resolution = await resolveReferenceCodebase(deps.workspaceResolver, deps.userContext, {
+      project,
+      branch,
+    });
+
+    let lines: string[];
+    if (resolution.mode === 'git') {
+      const out = await refGitGrep(resolution.gitDir, resolution.ref, pattern, file_pattern);
+      lines = out.split('\n').filter(Boolean);
+    } else {
+      const rgArgs = [
+        '--no-heading',
+        '--line-number',
+        '--color', 'never',
+        '--max-count', String(PER_FILE_MAX_COUNT),
+        '--max-filesize', '1M',
+        ...DEFAULT_EXCLUDES.flatMap((ex) => ['--glob', `!${ex}`]),
+        ...(file_pattern ? ['--glob', file_pattern] : []),
+        '--', pattern, '.',
+      ];
+      const { stdout, stderr, code } = await runRipgrep(rgArgs, resolution.absPath);
+      if (code === 2) {
+        const msg =
+          (stderr.trim() || 'ripgrep exited with error') +
+          '\n\nHint: `pattern` is a ripgrep regex (Rust regex syntax).';
+        await ctx.chatStatus.showStatus('searched_reference', { project, filesCount: 0, error: msg, _mergeIndex: searchingIndex });
+        return { content: `Error: ${msg}`, error: msg };
+      }
+      lines = stdout.split('\n').filter(Boolean).map((l) => (l.startsWith('./') ? l.slice(2) : l));
     }
 
-    if (!ctx.retriever || !ctx.vectorDB || !ctx.git || !ctx.workspaceResolver) {
-      const msg = 'Required dependencies not available (retriever, vectorDB, git, workspaceResolver)';
-      return { content: msg, error: msg };
+    if (lines.length === 0) {
+      await ctx.chatStatus.showStatus('searched_reference', { project, filesCount: 0, _mergeIndex: searchingIndex });
+      return { content: `No matches for "${pattern}" in reference project "${project}".` };
     }
 
-    searchingIndex = await ctx.chatStatus.showStatus('searching_reference', { project, query });
-
-    const userContext = {
-      userId: ctx.userId || 'local',
-      organizationId: ctx.organizationId || 'local',
-    };
-
-    const refCodebasePath = ctx.workspaceResolver.getCodebasePath(userContext, project);
-
-    const searchResult = await ctx.retriever.retrieve(
-      query,
-      refCodebasePath,
-      { git: ctx.git, vectorDB: ctx.vectorDB },
-      {
-        maxFiles: Math.min(maxFiles, 10),
-        maxTokens: 15000,
-        mode: ctx.resolvedActionMode || 'generate',
-      },
+    let truncated = '';
+    if (lines.length > MAX_RESULT_LINES) {
+      truncated = `\n\n[Search truncated: first ${MAX_RESULT_LINES} of ${lines.length} matches. Narrow the pattern or use file_pattern.]`;
+      lines = lines.slice(0, MAX_RESULT_LINES);
+    }
+    const matchedFiles = Array.from(
+      new Set(lines.map((l) => (l.match(/^([^:]+):\d+:/) || [])[1]).filter(Boolean)),
     );
-
-    if (!searchResult.code || searchResult.code.trim().length === 0) {
-      console.log(`   ⚠️  No relevant code found in ${project}\n`);
-      await ctx.chatStatus.showStatus('searched_reference', {
-        project,
-        filesCount: 0,
-        error: 'No relevant code found',
-        _mergeIndex: searchingIndex,
-      });
-
-      const content = `⚠️  No relevant code found in reference project "${project}" for query: "${query}"\n\nTry:\n- Using different keywords\n- Being more specific about what you need\n- Searching for broader concepts`;
-      return { content };
-    }
-
-    console.log(`   Retrieved ${searchResult.stats.filesLoaded} relevant files (${searchResult.stats.estimatedTokens} tokens)\n`);
-
-    const filesList = searchResult.files?.map((f: any) => `[${project}] ${f.path}`) || [];
-
     await ctx.chatStatus.showStatus('searched_reference', {
       project,
-      filesCount: searchResult.stats.filesLoaded,
+      filesCount: matchedFiles.length,
       _mergeIndex: searchingIndex,
     });
 
-    if (filesList.length > 0) {
-      const exploringIndex = await ctx.chatStatus.showStatus('exploring', { filesCount: 0, totalFiles: 0 });
-      await ctx.chatStatus.showStatus('explored', {
-        filesCount: searchResult.stats.filesLoaded,
-        filesList,
-        _mergeIndex: exploringIndex,
-      });
-    }
-
-    const content = `Retrieved ${searchResult.stats.filesLoaded} relevant file(s) in "${project}":\n\n${searchResult.code}\n\n**Note:** This code is from the reference project "${project}". Use it to understand APIs, data structures, and implementation patterns. Do NOT modify these files.`;
-    return { content };
+    return { content: `[${project}] matches:\n\n${lines.join('\n')}${truncated}` };
   } catch (e) {
-    const errorMsg = (e as Error).message;
-    console.error(`   ❌ Failed to search reference project: ${errorMsg}\n`);
+    const msg = e instanceof ReferenceTargetError ? e.message : (e as Error).message;
+    console.error(`[searchReferenceCode] ❌ ${msg}`);
     try {
-      await ctx.chatStatus.showStatus('searched_reference', {
-        project,
-        filesCount: 0,
-        error: errorMsg,
-        _mergeIndex: searchingIndex,
-      });
-    } catch (statusErr) {
-      console.warn('   ⚠️  Failed to emit searched_reference error status:', statusErr);
+      await ctx.chatStatus.showStatus('searched_reference', { project, filesCount: 0, error: msg, _mergeIndex: searchingIndex });
+    } catch {
+      /* ignore status errors */
     }
-    return {
-      content: `❌ ERROR: Failed to search reference project "${project}"\nQuery: "${query}"\nError: ${errorMsg}`,
-      error: errorMsg,
-    };
+    return { content: `Error: ${msg}`, error: msg };
   }
 }

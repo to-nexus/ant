@@ -1754,6 +1754,18 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/reference-codebase-register": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/reference-codebase": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/role-guide": {
     "sources": [
       "partial-ref",

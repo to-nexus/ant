@@ -12,16 +12,19 @@ import {
   getIntentLabel,
   pickDefaultUiSourceRefs,
   listActiveTiers,
+  supportsReferenceCodebase,
+  type ReferenceTarget,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
-import { FileText, BookOpen, Crosshair, Layers } from 'lucide-react';
+import { FileText, BookOpen, Crosshair, Layers, Link2 } from 'lucide-react';
 import {
   Section,
   SlotEntryList,
   TargetDisplay,
+  ReferenceTargetPicker,
   resolveSlotEntries,
   listDir,
 } from './config';
@@ -38,6 +41,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const { t, i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
+  const selectedProject = useStore(s => s.selectedProject);
   const fileTree = useStore(s => s.fileTree);
   const highlightArtifactDirs = useStore(s => s.highlightArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
@@ -384,6 +388,23 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 </p>
               )}
             </Section>
+
+            {/* Reference projects (cross-project code) — code + spec/system-design intents */}
+            {supportsReferenceCodebase(intentId) && (
+              <Section
+                title={t('referenceCodebase.title')}
+                icon={Link2}
+                iconColor="text-[var(--sky-500)]"
+              >
+                <ReferenceTargetPicker
+                  excludeProject={selectedProject}
+                  selected={actionMetadata.referenceTargets ?? []}
+                  onChange={(next: ReferenceTarget[]) =>
+                    updateActionMetadata({ referenceTargets: next.length > 0 ? next : undefined })
+                  }
+                />
+              </Section>
+            )}
 
             {/* Target */}
             <Section

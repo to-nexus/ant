@@ -7,7 +7,7 @@
 
 import type { DesignSubdir } from './canonical';
 import type { Domain, IntentGroup } from './detection';
-import type { Basis, TechTierConfig } from './rac';
+import type { Basis, TechTierConfig, ReferenceTarget } from './rac';
 
 // ============================================
 // Action Definitions
@@ -460,6 +460,13 @@ export interface ActionMetadata {
     refs?: PathOrFolder[];
     context?: PathOrFolder[];
   };
+  /**
+   * Cross-project code references pinned in the action's reference picker.
+   * Rides the existing actionMetadata payload; seeded into
+   * `resolvedAction.referenceTargets` → `state.referenceRequests` at resolve.
+   * Orthogonal to `refs`/`context` (those are current-feature artifacts).
+   */
+  referenceTargets?: ReferenceTarget[];
 }
 
 /**

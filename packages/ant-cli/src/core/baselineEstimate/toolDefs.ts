@@ -25,7 +25,8 @@ const ARCH_LIST: LooseToolDef[] = Object.values(ARCHITECT_TOOLS).map(normalize);
 
 const CODE_TOOLS: LooseToolDef[] = ARCH_LIST.filter(t =>
   ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir',
-   'run_command', 'search_reference_code', 'search_web',
+   'run_command', 'search_reference_code', 'register_reference',
+   'read_reference_file', 'list_reference_files', 'search_web',
    'figma_get_metadata', 'figma_get_design_context', 'figma_get_screenshot',
    'figma_get_variable_defs'].includes(t.name),
 );

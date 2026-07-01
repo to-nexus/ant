@@ -478,6 +478,19 @@ export interface ResolvedArtifact {
 // ResolvedActionContext (RAC)
 // ============================================
 
+/**
+ * A cross-project code reference target. Points at a sibling ANT project (same
+ * tenant) and, optionally, a git ref. `branch` is a raw git ref; when omitted it
+ * resolves to the project's `branchBase` (main). An ant feature maps to the git
+ * branch `feature/{name}` — the FE picker emits that form. The reference tools
+ * (`register_reference` / `read_reference_file` / `list_reference_files` /
+ * `search_reference_code`) read (never write) this project's codebase.
+ */
+export interface ReferenceTarget {
+  project: string;
+  branch?: string;
+}
+
 export interface ResolvedActionContext {
   intent?: IntentId;
   intentGroup?: IntentGroup;
@@ -513,6 +526,15 @@ export interface ResolvedActionContext {
 
   /** Progressive basis — techTier populated by decompose (or explicit preset), visualTier reserved. */
   basis?: Basis;
+
+  /**
+   * Cross-project code references the user pinned explicitly in the action.
+   * Seeded into `state.referenceRequests` at resolve, unioned with entries the
+   * LLM registers at runtime (`register_reference` tool) or at decompose
+   * (`<references>` tag). Does NOT count toward `hasExplicitFields` /
+   * `computeRacScope` — it is orthogonal to the current-feature RAC whitelist.
+   */
+  referenceTargets?: ReferenceTarget[];
 
   source: 'explicit' | 'infer';
   hasExplicitFields: boolean;
@@ -561,6 +583,7 @@ export function resolveToRAC(
     refs?: string[];
     context?: string[];
     domain?: Domain;
+    referenceTargets?: ReferenceTarget[];
   },
   source?: 'explicit' | 'infer',
   basis?: Basis,
@@ -580,6 +603,9 @@ export function resolveToRAC(
     context,
     domain: slots?.domain,
     basis,
+    // Cross-project references are orthogonal to the current-feature RAC
+    // whitelist — deliberately NOT counted in `hasExplicitFields`.
+    referenceTargets: slots?.referenceTargets?.length ? slots.referenceTargets : undefined,
     source: source ?? 'infer',
     hasExplicitFields: !!(
       slots?.target?.length || refs?.length || context?.length
@@ -615,7 +641,7 @@ function dedup(arr: string[]): string[] {
 export function mergeWithMetadata(
   inferred: InferredAction,
   metadata?: ActionMetadata,
-): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: Domain; basis?: Basis } {
+): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: Domain; basis?: Basis; referenceTargets?: ReferenceTarget[] } {
   const mergedRefs = normalizeUiSourceRefs(
     dedup([...(inferred.refs || []), ...(metadata?.refs || [])]),
   );
@@ -633,6 +659,7 @@ export function mergeWithMetadata(
     context: mergedCtx.length > 0 ? mergedCtx : undefined,
     domain,
     basis: metadata?.basis,
+    referenceTargets: metadata?.referenceTargets?.length ? metadata.referenceTargets : undefined,
   };
 }
 

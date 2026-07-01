@@ -46,6 +46,7 @@ import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorC
 import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
 import { layoutValidityFloorVars } from "../../../tasks/_shared/helpers/layoutValidityFloor";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
+import { referenceCatalogVars } from "../../../../../../common/tool/reference/catalogVars";
 
 export interface BuildPlanPromptResult {
   prompt: string;
@@ -246,7 +247,11 @@ export async function buildPlanPrompt(
   // `connectivity-closure.md`, so the parent sees ONE contract (regions)
   // instead of the dual contract that drove the flat-plan escape hatch.
   const seamClassifyingParent = task.type === 'seam' && seamBand === undefined;
+  // Reference-codebase usage vars — sibling-project catalog for the
+  // reference-codebase usage partial (register + read mid-plan).
+  const refCatVars = await referenceCatalogVars(state);
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
+    ...refCatVars,
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`

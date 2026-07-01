@@ -98,6 +98,19 @@ export function createProjectsRoutes(deps: {
     }
   });
   
+  // Reference-codebase catalog — sibling projects the current tenant can
+  // register as cross-project code references (FE reference picker).
+  router.get('/projects/reference-catalog', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : undefined;
+      const catalog = await deps.projectService.listReferenceCatalog(userContext, exclude);
+      res.json(catalog);
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'Projects');
+    }
+  });
+
   // Create a new project
   router.post('/projects', validateBody(createProjectSchema), async (req: Request, res: Response) => {
     try {

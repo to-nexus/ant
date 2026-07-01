@@ -47,6 +47,7 @@ import {
 } from "../../../../../../core/prompt/builder/serviceVirtualization";
 import { isAuthSessionLifecycleActive } from "../../../../../../core/prompt/builder/authSessionGate";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
+import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { activeExecuteHook } from "../../tasks/_shared/verify/activeHooks";
@@ -395,6 +396,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.log(`📐 [Execute] basis present: stack=${_basisDiag.techTier?.stack || 'none'}, visualTier=${_basisDiag.visualTier ? Object.keys(_basisDiag.visualTier).join(',') : 'none'}`);
   }
 
+  // Reference-codebase usage vars — sibling-project catalog for the
+  // reference-codebase usage partial (register + read mid-execute).
+  const refCatVars = await referenceCatalogVars(state);
+
   const config: PromptBuildConfig = {
     templates: {
       base: templateBase,
@@ -422,6 +427,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     },
     artifacts: getRACDocuments(resolvedActionWithDocs),
     vars: {
+      ...refCatVars,
       currentTask: state.currentTask ? {
         name: state.currentTask.name,
         type: state.currentTask.type,

@@ -63,6 +63,8 @@ feature without ambiguity.
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/shared/injections/reference-codebase}}
+
 {{> jobs/design/base/injections/document-language}}
 
 {{> jobs/design/nodes/execute/variants/spec/rules}}

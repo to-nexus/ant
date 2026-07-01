@@ -15,7 +15,9 @@
     "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"],
     "game-art-design-policy": [],
     "codebase-channel": ["codebaseRole", "codebaseEntryPoints"],
-    "handoff-code-shape-discipline": []
+    "handoff-code-shape-discipline": [],
+    "reference-codebase-register": ["hasReferenceCatalog", "referenceCatalog"],
+    "reference-codebase": ["hasReferenceCatalog", "referenceCatalog"]
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],

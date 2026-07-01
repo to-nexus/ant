@@ -30,6 +30,7 @@ import { emitDetectOutcome, type DetectPathsCompressed } from '../../../../../co
 import { compressPathsByFolder } from '../../../../../core/context/compressPathsByFolder.js';
 import type { FileSystemPort } from '../../../../../core/ports/filesystem.js';
 import { inferRacWithTools } from './inferRacWithTools.js';
+import { mergeReferenceRequests } from '../../../../common/tool/reference/merge.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult, type DetectAugment } from './types.js';
 
@@ -116,7 +117,7 @@ export function createDetectNode<T extends DetectableState>(
       // Phase 1: Branch on explicit
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       let intentId: string;
-      let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').Domain };
+      let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').Domain; referenceTargets?: import('@ant/shared').ReferenceTarget[] };
       let source: 'explicit' | 'infer';
       let basis: import('@ant/shared').Basis | undefined;
       let reasoning: InferredAction['reasoning'] | undefined;
@@ -163,6 +164,8 @@ export function createDetectNode<T extends DetectableState>(
           // Phase 1 (10.2): explicit > infer. ActionMetadata.domain set via
           // DomainToggle / `@domain:` mention bypasses LLM inference.
           domain: metadata.domain,
+          // Cross-project references picked in the action (orthogonal to refs/context).
+          referenceTargets: metadata.referenceTargets,
         };
         source = 'explicit';
         basis = metadata.basis;
@@ -218,6 +221,7 @@ export function createDetectNode<T extends DetectableState>(
           refs: merged.refs,
           context: merged.context,
           domain: merged.domain,
+          referenceTargets: merged.referenceTargets,
         };
         source = 'infer';
         basis = merged.basis;
@@ -269,10 +273,23 @@ export function createDetectNode<T extends DetectableState>(
         ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts || [])
         : undefined;
 
+      // Seed cross-project reference registrations from the explicit picker /
+      // inferred `<references>` in ActionMetadata. Runtime `register_reference`
+      // calls union onto this (via the tool node). Only emit when the state
+      // owns the channel (code/design) — planner has no such channel.
+      const seededReferenceRequests =
+        resolvedAction.referenceTargets && resolvedAction.referenceTargets.length > 0
+          ? mergeReferenceRequests(
+              (state as any).referenceRequests,
+              resolvedAction.referenceTargets,
+            )
+          : undefined;
+
       return {
         resolvedAction,
         resolvedArtifacts,
         ...(updatedArtifacts !== undefined ? { artifacts: updatedArtifacts } : {}),
+        ...(seededReferenceRequests ? { referenceRequests: seededReferenceRequests } : {}),
         ...inferStateUpdates,
         tokenUsage: state.tokenUsage,
         recursionCount: state.recursionCount,
