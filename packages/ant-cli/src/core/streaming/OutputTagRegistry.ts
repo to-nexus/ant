@@ -718,7 +718,7 @@ register({
   chatLineKind: 'rendered_payload',
   transform: transformReferences,
   promptContract:
-    'Emit `<references>[...JSON array...]</references>` to register reference repositories. The body is a JSON array — empty array allowed.',
+    'Emit `<references>[...JSON array...]</references>` to register sibling projects as read-only code references (read directly with list/read/search_reference_code, or register more at runtime via register_reference). The body is a JSON array — empty array allowed.',
 });
 
 register({

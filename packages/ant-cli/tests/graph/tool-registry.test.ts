@@ -84,11 +84,14 @@ describe('JOB_TOOL_MATRIX', () => {
     expect(codeTools).toContain(ToolName.SEARCH_REFERENCE);
   });
 
-  it('Design job should include Figma but not SEARCH_REFERENCE', () => {
+  it('Design job should include Figma and the reference-codebase tools', () => {
     const designTools = JOB_TOOL_MATRIX[JobType.DESIGN];
     expect(designTools).toContain(ToolName.FIGMA_DESIGN_CTX);
     expect(designTools).toContain(ToolName.READ_SOURCE_DOC);
-    expect(designTools).not.toContain(ToolName.SEARCH_REFERENCE);
+    // Cross-project code exploration (read-only) is now available to design
+    // jobs (gen-spec / rev-spec / system-design) — discovery-driven gating.
+    expect(designTools).toContain(ToolName.REGISTER_REFERENCE);
+    expect(designTools).toContain(ToolName.SEARCH_REFERENCE);
   });
 
   // Regression: `codebaseGate.rejectRunCommand` unconditionally rejects
@@ -379,12 +382,14 @@ describe('Registry presets (catalog-driven)', () => {
     }
   });
 
-  it('createDesignToolRegistry should NOT include SEARCH_REFERENCE or RUN_COMMAND', async () => {
+  it('createDesignToolRegistry includes reference tools but NOT RUN_COMMAND', async () => {
     const { createDesignToolRegistry } = await import('../../src/agents/common/tool/presets');
     const registry = createDesignToolRegistry();
 
     expect(registry.has(ToolName.READ_FILE)).toBe(true);
-    expect(registry.has(ToolName.SEARCH_REFERENCE)).toBe(false);
+    // Cross-project code exploration (read-only) is available to design jobs.
+    expect(registry.has(ToolName.REGISTER_REFERENCE)).toBe(true);
+    expect(registry.has(ToolName.SEARCH_REFERENCE)).toBe(true);
     // RUN_COMMAND is reserved for code/execute — design plan + docGen are
     // document-producing phases where `codebaseGate.rejectRunCommand`
     // unconditionally rejects shell execution.

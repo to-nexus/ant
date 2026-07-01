@@ -19,6 +19,7 @@
 import type { ToolDefinition } from '../../../../../../core/ports/llm';
 import type { DesignGraphState } from '../../state';
 import { getToolsByNames, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
+import { hasReferenceSurface } from '../../../../../common/tool/reference/gate';
 import { isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 
 export async function getTools(state: DesignGraphState): Promise<ToolDefinition[]> {
@@ -28,8 +29,9 @@ export async function getTools(state: DesignGraphState): Promise<ToolDefinition[
     (intentGroup === 'design-ui' &&
       isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)));
 
-  if (figmaActive) {
-    return getToolsByNames(TOOL_SETS.designPlanFigma);
-  }
-  return getToolsByNames(TOOL_SETS.designPlanExplore);
+  const names = [...(figmaActive ? TOOL_SETS.designPlanFigma : TOOL_SETS.designPlanExplore)];
+  // Discovery-driven: sibling-project reference tools (read-only; register-first
+  // enforced by handlers). See reference/gate.ts.
+  if (await hasReferenceSurface(state)) names.push(...TOOL_SETS.reference);
+  return getToolsByNames(names);
 }

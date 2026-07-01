@@ -73,6 +73,7 @@ function buildBasePatch(state: DesignGraphState): Partial<SessionState> {
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     resolvedAction: state.resolvedAction,
+    referenceRequests: state.referenceRequests ?? [],
     directive: state.directive,
     directives: buildDirectivesArray(state.directive),
     userLanguage: state.context.userLanguage as SessionState["userLanguage"],

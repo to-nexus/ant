@@ -28,14 +28,19 @@ export enum ToolName {
   READ_SOURCE_DOC      = 'read_source_doc',
   READ_ANT_SOURCE      = 'read_ant_source',
   READ_WORKSPACE_FILE  = 'read_workspace_file',
+  READ_REFERENCE_FILE  = 'read_reference_file',
   // ── Read (scope: live run state — completed-task scope/manifest) ──
   READ_STATE           = 'read_state',
 
-  // ── List (scope: codebase, artifact, ant-source, workspace) ──
+  // ── List (scope: codebase, artifact, ant-source, workspace, reference) ──
   LIST_FILES           = 'list_files',
   LIST_ASSETS          = 'list_assets',
   LIST_ANT_FILES       = 'list_ant_files',
   LIST_WORKSPACE_FILES = 'list_workspace_files',
+  LIST_REFERENCE_FILES = 'list_reference_files',
+
+  // ── Reference registration (cross-project code exploration) ──
+  REGISTER_REFERENCE   = 'register_reference',
 
   // ── Search (scope: codebase, web, reference project, ant-source) ──
   SEARCH_CODE          = 'search_code',
@@ -87,11 +92,15 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.READ_SOURCE_DOC]:      '📖 Reading source doc',
   [ToolName.READ_ANT_SOURCE]:      '📖 Reading Ant source',
   [ToolName.READ_WORKSPACE_FILE]:  '📖 Reading workspace file',
+  [ToolName.READ_REFERENCE_FILE]:  '📖 Reading reference file',
   // List
   [ToolName.LIST_FILES]:           '📂 Listing files',
   [ToolName.LIST_ASSETS]:          '📦 Listing assets',
   [ToolName.LIST_ANT_FILES]:       '📂 Listing Ant files',
   [ToolName.LIST_WORKSPACE_FILES]: '📂 Listing workspace files',
+  [ToolName.LIST_REFERENCE_FILES]: '📂 Listing reference files',
+  // Reference registration
+  [ToolName.REGISTER_REFERENCE]:   '🔗 Registering reference project',
   // Search
   [ToolName.SEARCH_CODE]:          '🔍 Searching code',
   [ToolName.SEARCH_WEB]:           '🌐 Searching web',
@@ -135,6 +144,11 @@ export const CACHEABLE_TOOLS: ReadonlySet<ToolName> = new Set([
   ToolName.SEARCH_CODE,
   ToolName.READ_SOURCE_DOC,
   ToolName.LIST_ASSETS,
+  // Reference reads are pure (project+branch+path in args) → cacheable.
+  // register_reference is NOT cacheable (it emits a state side-effect).
+  ToolName.READ_REFERENCE_FILE,
+  ToolName.LIST_REFERENCE_FILES,
+  ToolName.SEARCH_REFERENCE,
 ]);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -166,7 +180,10 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.SEARCH_CODE,
     // Read (live run-state scope — completed-task full scope + manifest)
     ToolName.READ_STATE,
-    // Read / Search (reference project scope)
+    // Reference project scope (cross-project code exploration)
+    ToolName.REGISTER_REFERENCE,
+    ToolName.READ_REFERENCE_FILE,
+    ToolName.LIST_REFERENCE_FILES,
     ToolName.SEARCH_REFERENCE,
     // Search (web)
     ToolName.SEARCH_WEB,
@@ -194,6 +211,11 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Read (artifact scope)
     ToolName.READ_SOURCE_DOC,
     ToolName.LIST_ASSETS,
+    // Reference project scope (cross-project code exploration — read-only)
+    ToolName.REGISTER_REFERENCE,
+    ToolName.READ_REFERENCE_FILE,
+    ToolName.LIST_REFERENCE_FILES,
+    ToolName.SEARCH_REFERENCE,
     // Search (web)
     ToolName.SEARCH_WEB,
     // Write
@@ -251,7 +273,12 @@ export const TOOL_SETS = {
   fileOps: [ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.DELETE_FILE, ToolName.MKDIR] as ToolName[],
   fileBrowsing: [ToolName.LIST_FILES, ToolName.SEARCH_CODE] as ToolName[],
   shell: [ToolName.RUN_COMMAND] as ToolName[],
-  reference: [ToolName.SEARCH_REFERENCE] as ToolName[],
+  reference: [
+    ToolName.REGISTER_REFERENCE,
+    ToolName.READ_REFERENCE_FILE,
+    ToolName.LIST_REFERENCE_FILES,
+    ToolName.SEARCH_REFERENCE,
+  ] as ToolName[],
 
   codeBasic: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
@@ -347,6 +374,9 @@ import {
   handleMkdir,
   handleSearchWeb,
   handleSearchReferenceCode,
+  handleRegisterReference,
+  handleReadReferenceFile,
+  handleListReferenceFiles,
   handleRunCommand,
   handleHttpRequest,
   handleFigmaTool,
@@ -366,6 +396,9 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.HTTP_REQUEST,     handleHttpRequest],
     [ToolName.SEARCH_WEB,       handleSearchWeb],
     [ToolName.SEARCH_REFERENCE, handleSearchReferenceCode],
+    [ToolName.REGISTER_REFERENCE,   handleRegisterReference],
+    [ToolName.READ_REFERENCE_FILE,  handleReadReferenceFile],
+    [ToolName.LIST_REFERENCE_FILES, handleListReferenceFiles],
     // Figma: handler needs tool name argument, so we use a factory
     [ToolName.FIGMA_DESIGN_CTX, (ctx, args) => handleFigmaTool(ctx, args, ToolName.FIGMA_DESIGN_CTX)],
     [ToolName.FIGMA_SCREENSHOT, (ctx, args) => handleFigmaTool(ctx, args, ToolName.FIGMA_SCREENSHOT)],

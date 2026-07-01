@@ -504,20 +504,12 @@ Static analysis cannot validate behavioral correctness.
 {{/if}}
 {{/if}}
 
+{{> jobs/shared/injections/reference-codebase}}
 {{#if referenceRequests}}
-## 📚 REFERENCE PROJECTS
-
+Already registered this job:
 {{#each referenceRequests}}
 - **{{this.project}}**{{#if this.branch}} ({{this.branch}}){{/if}}
 {{/each}}
-
-Use `search_reference_code` tool to query these projects. See rules for constraints.
-
-════════════════════════════════════════════════════════════════════════════════
-{{else}}
-## 📚 REFERENCE PROJECTS
-
-NONE available.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

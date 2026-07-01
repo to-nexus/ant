@@ -385,4 +385,6 @@ CodeGen will verify exact paths using `list_files` tool.
 {{> jobs/code/nodes/plan/injections/test-code-protocol }}
 {{/if}}
 
+{{> jobs/shared/injections/reference-codebase}}
+
 {{> jobs/code/nodes/plan/rules}}

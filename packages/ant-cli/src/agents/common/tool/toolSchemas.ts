@@ -222,26 +222,69 @@ export const ARCHITECT_TOOLS = {
     },
   },
 
-  search_reference_code: {
-    name: 'search_reference_code',
-    description: 'Search reference project using semantic search (vector DB). This is the ONLY way to access reference project code since you don\'t know the file paths. Describe what you need and relevant files will be returned with their content.',
+  register_reference: {
+    name: 'register_reference',
+    description:
+      'Register a related project (a sibling project in your workspace) as a code reference so you can read its source directly. Call this the moment you realize another project holds contracts/APIs/types you must match. After registering, use list_reference_files / read_reference_file / search_reference_code with the same project name. Read-only — you can never modify a reference project.',
     input_schema: {
       type: 'object' as const,
       properties: {
         project: {
           type: 'string',
-          description: 'Reference project name (e.g., "ant-pong-be")',
+          description: 'Reference project name from your workspace (e.g., "my-backend").',
         },
-        query: {
+        branch: {
           type: 'string',
-          description: 'Detailed description of what code you need. Examples: "WebSocket gateway implementation and message handlers", "room management API endpoints and DTOs", "game state types and interfaces"',
-        },
-        maxFiles: {
-          type: 'number',
-          description: 'Maximum number of files to return (default: 5, max: 10)',
+          description: 'Optional git ref. Omit for the default branch (main). A feature is "feature/{name}".',
         },
       },
-      required: ['project', 'query'],
+      required: ['project'],
+    },
+  },
+  read_reference_file: {
+    name: 'read_reference_file',
+    description:
+      'Read one file from a registered reference project. Path is relative to that project\'s codebase root. Large files require startLine/endLine. Register the project first with register_reference.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project: { type: 'string', description: 'Registered reference project name.' },
+        path: { type: 'string', description: 'File path relative to the reference codebase root.' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+        startLine: { type: 'number', description: 'Optional 1-based start line (inclusive).' },
+        endLine: { type: 'number', description: 'Optional 1-based end line (inclusive).' },
+      },
+      required: ['project', 'path'],
+    },
+  },
+  list_reference_files: {
+    name: 'list_reference_files',
+    description:
+      'List a directory in a registered reference project. Register the project first with register_reference.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project: { type: 'string', description: 'Registered reference project name.' },
+        directory: { type: 'string', description: 'Directory relative to the reference codebase root (default: root).' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+        pattern: { type: 'string', description: 'Optional substring filter on entry names.' },
+      },
+      required: ['project'],
+    },
+  },
+  search_reference_code: {
+    name: 'search_reference_code',
+    description:
+      'Search a registered reference project\'s code. `pattern` is a ripgrep/regex; `file_pattern` is an optional glob. Register the project first with register_reference.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project: { type: 'string', description: 'Registered reference project name.' },
+        pattern: { type: 'string', description: 'Ripgrep regex to search for (Rust regex syntax).' },
+        file_pattern: { type: 'string', description: 'Optional ripgrep glob to scope the search (e.g. "**/*.ts").' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+      },
+      required: ['project', 'pattern'],
     },
   },
   list_assets: {

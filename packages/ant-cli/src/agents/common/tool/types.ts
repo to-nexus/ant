@@ -310,7 +310,8 @@ export type ToolSideEffect =
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate; cacheReplayed?: boolean }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string; port?: number }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
-  | { type: 'figmaSuccess' };
+  | { type: 'figmaSuccess' }
+  | { type: 'referenceRegistered'; project: string; branch?: string };
 
 export interface ToolResult {
   content: string | any[];

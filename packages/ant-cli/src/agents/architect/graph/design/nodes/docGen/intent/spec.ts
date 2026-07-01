@@ -24,6 +24,7 @@ import { composeMessages } from '../../../../../../../core/utils/messageComposer
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
+import { referenceCatalogVars } from '../../../../../../common/tool/reference/catalogVars';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -125,6 +126,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     );
   }
 
+  const refCat = await referenceCatalogVars(state);
   const config: PromptBuildConfig = {
     templates: TEMPLATE_PATHS.designSpec,
     pipeline: {
@@ -133,6 +135,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     },
     artifacts: selectedArtifacts,
     vars: {
+      ...refCat,
       targetFile,
       title,
       detectedMode: jobMode,

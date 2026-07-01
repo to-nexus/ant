@@ -19,6 +19,7 @@ import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createDesignToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import { CACHEABLE_TOOLS } from '../../../../../common/tool/toolCatalog';
+import { mergeReferenceRequests } from '../../../../../common/tool/reference/merge';
 import type { ToolExecutionContext, ToolSideEffect } from '../../../../../common/tool/types';
 import { createDesignToolHandlers } from './designToolAdapters';
 import { pickAssetsRoot } from './handlers';
@@ -132,6 +133,10 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       figmaConfig: state.figmaConfig,
       userId: state.context?.userId,
       organizationId: state.context?.organizationId,
+      // Reference-codebase tools — sibling-project resolution + registration gate.
+      workspaceResolver: state.deps?.workspaceResolver,
+      referenceRequests: state.referenceRequests,
+      resolvedActionMode: state.resolvedAction?.mode,
       taskId: state.currentTask?.id,
       assetsRoot,
       sourceDocuments: state.artifacts,
@@ -206,7 +211,18 @@ const toolNodeFn = createToolNode<DesignGraphState>({
 
   },
 
-  buildReturn(state, { updatedHistory, updatedCache, hookUpdates }) {
+  buildReturn(state, { updatedHistory, updatedCache, executionEvents, hookUpdates }) {
+    // Reference-registration channel writer (mirrors the code tool node).
+    const refDeltas = (executionEvents || []).flatMap(e =>
+      (e.result.sideEffects || [])
+        .filter((ef): ef is { type: 'referenceRegistered'; project: string; branch?: string } =>
+          ef.type === 'referenceRegistered')
+        .map(ef => ({ project: ef.project, branch: ef.branch })),
+    );
+    const mergedReferenceRequests = refDeltas.length
+      ? mergeReferenceRequests(state.referenceRequests, refDeltas)
+      : undefined;
+
     return {
       conversations: { [activeConvKey(state)]: updatedHistory },
       files: state.files,
@@ -221,6 +237,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
         ...state.llmResponse!,
         toolCalls: [],
       },
+      ...(mergedReferenceRequests ? { referenceRequests: mergedReferenceRequests } : {}),
       ...hookUpdates,
     };
   },

@@ -46,6 +46,7 @@ import {
   recordUserTurnMeta,
 } from "../../../../../../core/executionTier";
 import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
+import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import {
   JsonSyntaxViolation,
@@ -383,8 +384,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
 
+  // Reference-codebase catalog (cross-project code exploration). Lists sibling
+  // ANT projects in the tenant so the LLM can register one via `<references>`
+  // (pre-seed) or `register_reference` (runtime). Empty when no siblings exist.
+  const { referenceCatalog, hasReferenceCatalog } = await referenceCatalogVars(state);
+
   const enrichedVars = {
     ...decomposeVars,
+    referenceCatalog,
+    hasReferenceCatalog,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`

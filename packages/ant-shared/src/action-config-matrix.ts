@@ -499,7 +499,20 @@ const GDD_OUTPUT: OutputSpec = output('gdd', '.md', L.gdd, false);
 const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT, GDD_OUTPUT];
 
 import type { IntentId } from './actions';
+import { deriveFromIntent } from './actions';
 import type { Domain } from './detection';
+
+/**
+ * Cross-project code exploration (reference-codebase tools) applies to jobs that
+ * write or design against code: code jobs and the spec / system-design design
+ * intents. UI / game-art / plan / ask do not read sibling source. Drives the FE
+ * reference picker's visibility; the BE tools themselves are additionally
+ * discovery-gated on the tenant actually having a sibling project.
+ */
+export function supportsReferenceCodebase(intent: IntentId): boolean {
+  const group = deriveFromIntent(intent).intentGroup;
+  return group === 'code' || group === 'design-spec' || group === 'design-system';
+}
 
 /**
  * Resolve the single plan-job output for a given workspace domain.

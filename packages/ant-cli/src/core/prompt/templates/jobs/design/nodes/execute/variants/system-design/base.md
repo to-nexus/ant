@@ -529,4 +529,6 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 
 **If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
 
+{{> jobs/shared/injections/reference-codebase}}
+
 {{{runtimeContext}}}

@@ -15,6 +15,7 @@ import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { computeRacScope, decideRacGate } from '../decompose/racGate';
+import { mergeReferenceRequests } from '../../../../../common/tool/reference/merge';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { hooksIfActive } from '../../tasks/_shared/registry';
@@ -306,12 +307,27 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       (e.result.sideEffects || []).some(ef => MUTATION_SIDE_EFFECTS.has(ef.type)),
     );
 
+    // Reference-registration channel writer (single writer = tool node).
+    // `register_reference` handlers emit `referenceRegistered` side-effects;
+    // merge them into `state.referenceRequests` so read/list/search_reference
+    // gate open and the entry persists to checkpoint + chat render + RAG.
+    const refDeltas = executionEvents.flatMap(e =>
+      (e.result.sideEffects || [])
+        .filter((ef): ef is { type: 'referenceRegistered'; project: string; branch?: string } =>
+          ef.type === 'referenceRegistered')
+        .map(ef => ({ project: ef.project, branch: ef.branch })),
+    );
+    const mergedReferenceRequests = refDeltas.length
+      ? mergeReferenceRequests(state.referenceRequests, refDeltas)
+      : undefined;
+
     const base: Partial<ArchitectGraphState> = {
       llmResponse: { ...state.llmResponse!, toolCalls: [] },
       toolResults: [...(state.toolResults || []), ...allToolResults],
       planText: state.planText,
       recursionCount: (state.recursionCount || 0) + 1,
       recursionLimit: state.recursionLimit,
+      ...(mergedReferenceRequests ? { referenceRequests: mergedReferenceRequests } : {}),
       // Execute-phase tool batch only — plan-phase batches never touch this
       // signal, so a plan-tool-loop edit_file (which is rare but legal in
       // diagnostic exploration) does not mistakenly suppress a downstream

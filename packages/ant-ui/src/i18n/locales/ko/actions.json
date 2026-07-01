@@ -3,7 +3,6 @@
   "subtitle": "작업을 선택하면 필요한 준비물과 실행 방법을 안내합니다",
   "ctaButton": "액션",
   "showAll": "모든 액션 보기",
-
   "actions": {
     "plan": {
       "label": "기획서 작성",
@@ -67,7 +66,6 @@
       "comingSoonMessage": "이 기능은 현재 개발 중입니다. 사용을 권장하지 않습니다."
     }
   },
-
   "basis": {
     "title": "기술 프리셋",
     "language": "언어",
@@ -117,7 +115,6 @@
       }
     }
   },
-
   "domain": {
     "label": "도메인",
     "description": "게임 / 서비스 도메인 선택",
@@ -129,7 +126,6 @@
       }
     }
   },
-
   "section": {
     "basis": "베이시스",
     "refs": "참조",
@@ -145,7 +141,6 @@
     "mirrorsRefs": "참조 문서 수정",
     "mirrorsRefsHint": "참조(Refs)에서 선택한 문서가 수정 대상이 됩니다"
   },
-
   "target": {
     "reviseHint": "참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다",
     "codebase": "코드베이스",
@@ -155,11 +150,9 @@
     "willBeCreated": "생성 예정",
     "viewInIde": "IDE에서 보기"
   },
-
   "toast": {
     "navigated": "{{from}} → {{to}}(으)로 이동했습니다"
   },
-
   "footer": {
     "chatStart": "채팅으로 시작",
     "build": "BUILD",
@@ -168,7 +161,6 @@
     "contextRequired": "컨텍스트 파일이 필요합니다",
     "refsRequired": "참조 파일이 필요합니다"
   },
-
   "emptySlot": {
     "missing": "{{name}} 파일이 없습니다",
     "addFile": "파일 추가...",
@@ -178,7 +170,6 @@
     "noFiles": "파일 없음",
     "viewInExplorer": "보러가기"
   },
-
   "buildDirective": {
     "gen-plan": "소스 문서를 기반으로 기획서를 작성해주세요",
     "gen-plan_game": "소스 문서를 기반으로 게임 기획서를 작성해주세요",
@@ -200,5 +191,12 @@
     "explain-plan": "기획서를 설명해주세요",
     "explain-plan_game": "게임 기획서를 설명해주세요",
     "explain-visual": "이미지 에셋을 설명해주세요"
+  },
+  "referenceCodebase": {
+    "title": "참조 프로젝트",
+    "hint": "이 작업이 관련 프로젝트의 코드를 읽을 수 있도록 연결합니다 (읽기 전용). 프로젝트와 브랜치를 선택하세요.",
+    "loading": "프로젝트 불러오는 중…",
+    "none": "이 워크스페이스에 다른 프로젝트가 없습니다.",
+    "error": "프로젝트를 불러오지 못했습니다."
   }
 }

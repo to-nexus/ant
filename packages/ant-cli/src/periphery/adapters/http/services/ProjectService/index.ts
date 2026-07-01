@@ -94,6 +94,20 @@ export class ProjectService {
   async listProjects(userContext: UserContext): Promise<string[]> {
     return this.projectCrud.listProjects(userContext);
   }
+
+  /**
+   * Reference-codebase catalog for the current tenant: every OTHER project and
+   * its selectable git refs (`main` + `feature/{name}`). Feeds the FE reference
+   * picker and mirrors what the LLM sees at decompose. Tenant-scoped by
+   * `userContext`.
+   */
+  async listReferenceCatalog(
+    userContext: UserContext,
+    excludeProject?: string,
+  ): Promise<Array<{ project: string; branches: string[] }>> {
+    const { buildReferenceCatalog } = await import('../../../../../agents/common/tool/reference/catalog');
+    return buildReferenceCatalog(this.workspaceResolver, userContext, { excludeProject });
+  }
   
   /**
    * Create a project, with optional force-recreate.

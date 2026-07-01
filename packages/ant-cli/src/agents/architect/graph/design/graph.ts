@@ -472,6 +472,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
     resolvedAction: state.resolvedAction,
+    referenceRequests: state.referenceRequests,
     artifacts: state.artifacts,
     directive: state.directive,
     existingDesignDocs: state.existingDesignDocs,
@@ -722,6 +723,10 @@ export const DesignGraphChannels = {
   workspaceConfig: Annotation<any>,
   designError: Annotation<any>,
   artifacts: Annotation<any>,
+  // Cross-project reference targets (reference-codebase tools). Declared so the
+  // tool node's register_reference writes survive node transitions — an
+  // undeclared channel is dropped each hop.
+  referenceRequests: Annotation<any>,
   existingDesignDocs: Annotation<any>,
   profile: Annotation<any>,
   taskQueue: Annotation<any>,
