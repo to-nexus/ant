@@ -721,6 +721,8 @@ export const CodeGraphChannels = {
       figmaStartNodeId: Annotation<any>,
       boundary: Annotation<any>,
       awaitingDecomposeClarify: Annotation<any>,
+      clarifyRoundsUsed: Annotation<any>,
+      clarifyPhase: Annotation<any>,
       executionTier: Annotation<any>,
       analysis: Annotation<any>,
       directHints: Annotation<any>,

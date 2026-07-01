@@ -4,6 +4,7 @@
     "directive": ["directive"],
     "memory": ["content"],
     "output-tag-policy": [],
+    "clarify-policy": ["clarifyBudget", "blockingMode"],
     "visual-source-authority": [],
     "ui-design-policy": [],
     "diagram-contract": [],

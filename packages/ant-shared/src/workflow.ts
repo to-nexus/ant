@@ -59,6 +59,12 @@ export interface WorkflowRealtimeState {
   recursionCount?: number;
   recursionLimit?: number;
 
+  // Clarify tracking (piggybacked on workflow SSE). Lets the FE distinguish a
+  // user-actionable "waiting for you" pause from a failure/limit pause.
+  awaitingClarify?: boolean;
+  clarifyRoundsUsed?: number;
+  clarifyBudget?: number;
+
   // LLM model info (updated on each node entry that uses LLM)
   llmInfo?: LLMInfo | null;
 }

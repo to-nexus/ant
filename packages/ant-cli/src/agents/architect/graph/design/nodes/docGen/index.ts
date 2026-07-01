@@ -30,7 +30,8 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
-import { parseClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
+import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
+import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
 import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
@@ -417,33 +418,44 @@ export async function docGen(
     const prevEscalation = state._doneCheckEscalation || 0;
     const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
 
-    // Spec clarify detection: if LLM response contains <clarify> tags, pause for user input.
-    // Content-level clarify — asks about spec document gaps within the committed
-    // design-spec intent, so NOT gated by `isIntentCommitted`.
-    if (intentGroup === 'design-spec') {
-      const clarifyBlocks = parseClarifyTags(textResponse);
-      if (clarifyBlocks.length > 0) {
-        console.log(`💬 [DocGen/Spec] Clarify block detected, pausing for user input`);
+    // Spec clarify detection via the shared gate (policy + budget + turn-
+    // terminating). The matrix enables the `docgen` phase only for `gen-spec`,
+    // so this is spec-only by construction. Content-level clarify — asks about
+    // spec document gaps within the committed intent, so NOT gated by
+    // `isIntentCommitted`. Presentation is docGen-specific (free-form bullet
+    // list forwarded as a chat message, not choice cards), injected via `send`.
+    {
+      const clarifyIntent = state.resolvedAction?.intent as IntentId | undefined;
+      const clarifyGate = clarifyIntent
+        ? await applyClarifyGate({
+            responseText: textResponse,
+            intent: clarifyIntent,
+            phase: 'docgen',
+            clarifyRoundsUsed: state.clarifyRoundsUsed,
+            send: async (blocks) => {
+              // docGen's prompt uses the bare `<clarify>` body syntax (no
+              // attribute); the parser stores the full body as `question`.
+              const clarifyContent = blocks.map((b) => b.question).join('\n\n');
+              await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
+              await chatAPI.finalizeMessage();
+            },
+          })
+        : { paused: false as const, cleanedText: textResponse, blocks: [], stateUpdates: {} };
+      if (clarifyGate.paused) {
+        console.log(`💬 [DocGen/Spec] clarify — pausing for user input`);
 
-        // docGen's prompt uses the bare `<clarify>` body syntax (no attribute,
-        // free-form bullet list). The parser stores the full body as `question`.
-        const clarifyContent = clarifyBlocks.map(b => b.question).join('\n\n');
-
-        // Send clarify content as a chat message
-        await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
-        await chatAPI.finalizeMessage();
-        
         await saveClarifyCheckpoint(state, { kind: 'docgen', nodeHistory });
-        
+
         // Clear estimating activity
         if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
           state.deps.kanbanUpdate.clearEstimatingActivity();
         }
-        
+
         return {
           files,
           conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
           awaitingClarify: true,
+          ...clarifyGate.stateUpdates,
           llmResponse: { textResponse, done: true },
           _docGenCallIndex: newCallIndex,
           _noOutputCallCount: 0,

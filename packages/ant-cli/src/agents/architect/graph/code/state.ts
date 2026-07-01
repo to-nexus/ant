@@ -246,6 +246,13 @@ export interface ArchitectGraphState extends TriageableState {
   // Decompose clarify: LLM needs user clarification before completing decomposition
   awaitingDecomposeClarify?: boolean;
 
+  // Clarify budget tracking (job-scoped). `clarifyRoundsUsed` bounds re-asks
+  // across the whole job; `clarifyPhase` records the emitting phase so the
+  // realtime signal + resume can name it. Written only on a clarify pause via
+  // the shared `applyClarifyGate` helper. See clarify-policy-matrix (SSOT).
+  clarifyRoundsUsed?: number;
+  clarifyPhase?: import('@ant/shared').ClarifyPhase;
+
   // ✅ Reference Requests (registered in decompose, loaded per-task in plan)
   referenceRequests?: Array<{project: string; branch?: string}>;
   

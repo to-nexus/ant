@@ -73,6 +73,8 @@ function buildBasePatch(state: DesignGraphState): Partial<SessionState> {
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     resolvedAction: state.resolvedAction,
+    clarifyRoundsUsed: state.clarifyRoundsUsed,
+    clarifyPhase: state.clarifyPhase,
     referenceRequests: state.referenceRequests ?? [],
     directive: state.directive,
     directives: buildDirectivesArray(state.directive),

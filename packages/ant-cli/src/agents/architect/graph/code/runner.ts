@@ -191,6 +191,12 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         if (sRaw.awaitingDecomposeClarify) {
           initial.awaitingDecomposeClarify = true;
         }
+        if (typeof sRaw.clarifyRoundsUsed === 'number') {
+          initial.clarifyRoundsUsed = sRaw.clarifyRoundsUsed;
+        }
+        if (sRaw.clarifyPhase) {
+          initial.clarifyPhase = sRaw.clarifyPhase;
+        }
         if (sRaw._specClarifyBypassed === true) {
           initial._specClarifyBypassed = true;
         }

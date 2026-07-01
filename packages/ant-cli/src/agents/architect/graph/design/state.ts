@@ -228,6 +228,12 @@ export interface DesignGraphState extends TriageableState {
   // ✅ Detect clarify: paused waiting for user to choose between spec and system-design
   awaitingDetectClarify?: boolean;
 
+  // Clarify budget tracking (job-scoped) — written via shared applyClarifyGate.
+  // SSOT: clarify-policy-matrix. `clarifyRoundsUsed` bounds re-asks;
+  // `clarifyPhase` names the emitting phase for the realtime signal.
+  clarifyRoundsUsed?: number;
+  clarifyPhase?: import('@ant/shared').ClarifyPhase;
+
   // ✅ Structured existing design documents (loaded at resolve, used by decompose)
   // Key = filename (e.g. "api-contract-main.md", "ui-tokens.json"), Value = content
   // Unified map eliminates fragmented feDesign/feDesigns/beDesign/beDesigns distinction

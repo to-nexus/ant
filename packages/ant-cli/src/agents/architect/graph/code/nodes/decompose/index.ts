@@ -16,7 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, basePriorityFor } from "../../state";
 import { renderPriorityBandGuide } from "../../state.priorityGuide";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -37,15 +37,22 @@ import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, deriveBandFromPriority } from "./responseParser";
 import { computeRacScope } from "./racGate";
 import { saveAnalysisForDebug } from "./saveAnalysisText";
-import type { BaseTask, TaskType } from "@ant/shared";
+import type { BaseTask, TaskType, IntentId } from "@ant/shared";
 import {
   ExecutionTierId,
   validateExecutionTier,
   ExecutionTierViolation,
   buildExecutionTierViolationFraming,
   recordUserTurnMeta,
+  parseExecutionTierTag,
 } from "../../../../../../core/executionTier";
-import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
+import {
+  isIntentCommitted,
+  buildIntentClarifyTemplateVars,
+  applyClarifyGate,
+  parseClarifyTags,
+  type ClarifyGateResult,
+} from "../../../../../common/clarify";
 import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import {
@@ -389,8 +396,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // (pre-seed) or `register_reference` (runtime). Empty when no siblings exist.
   const { referenceCatalog, hasReferenceCatalog } = await referenceCatalogVars(state);
 
+  // Clarify guidance vars — surface budget/mode to the gated clarify-policy
+  // partial in decompose rules.md. Tier is unknown at prompt-build time (the
+  // LLM emits it), so the prompt-level gate uses enabled+phase+budget only;
+  // the runtime `applyClarifyGate` applies the tier floor precisely.
+  const _clarifyIntentForPrompt = (state.actionMetadata?.intent ?? state.resolvedAction?.intent) as
+    | IntentId
+    | undefined;
+  const _clarifyActive = !!_clarifyIntentForPrompt && isClarifyActive(_clarifyIntentForPrompt, 'decompose');
+  const _clarifyPolicy = _clarifyIntentForPrompt ? getClarifyPolicy(_clarifyIntentForPrompt) : undefined;
+
   const enrichedVars = {
     ...decomposeVars,
+    clarifyActive: _clarifyActive,
+    clarifyBudget: _clarifyPolicy?.clarifyBudget,
+    blockingMode: _clarifyPolicy?.blockingMode,
     referenceCatalog,
     hasReferenceCatalog,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
@@ -605,8 +625,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
-  const { createClarifyContext } = await import('../../../../../common/clarify');
-  const clarifyCtx = createClarifyContext();
+  // Content clarify is a turn-terminating `<clarify>` emission detected AFTER
+  // the tool loop (STEP 4.5), replacing the former CLARIFY_TOOL. `clarifyIntent`
+  // is the committed intent used to gate via the clarify-policy matrix.
+  const clarifyIntent = (state.actionMetadata?.intent ?? state.resolvedAction?.intent) as
+    | IntentId
+    | undefined;
+  let clarifyPaused: ClarifyGateResult | undefined;
 
   // Tier Entry Node retry contract (C-2 from plan):
   //
@@ -758,7 +783,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       //      contract (`discovery-tool RAC bypass (2026-04)` regression invariant).
       const { ARCHITECT_TOOLS } = await import('../../../../../common/tool/toolSchemas');
       const { handleReadFile, handleListFiles } = await import('../../../../../common/tool/handlers');
-      const { CLARIFY_TOOL, handleClarify } = await import('../../../../../common/clarify');
       const { decideRacGate } = await import('./racGate');
       const racScope = computeRacScope(state.resolvedAction);
 
@@ -787,14 +811,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         activePhase: 'plan',
       };
 
-      const allTools = [ARCHITECT_TOOLS.read_file, ARCHITECT_TOOLS.list_files, CLARIFY_TOOL];
+      const allTools = [ARCHITECT_TOOLS.read_file, ARCHITECT_TOOLS.list_files];
       const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
         tools: allTools,
         toolHandler: async (name, args) => {
-          if (name === 'clarify') {
-            return handleClarify(args as { question: string; options?: string[] }, clarifyCtx);
-          }
-
           // RAC gate. `decideRacGate` derives codebase vs sibling from
           // the same `normalizeToCodebasePath` SSOT every other tool
           // callsite uses, replacing the deleted discoveryTools' explicit
@@ -836,10 +856,30 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       throw error;
     }
 
-    // If clarify was triggered at any attempt, pause — do NOT retry. A
-    // clarify emission at a retry attempt still represents an
-    // intent-level decision the user must make.
-    if (clarifyCtx.clarifySent) break;
+    // Content clarify (turn-terminating `<clarify>`) — check BEFORE
+    // parseLLMResponse so a clarify-only response (no `<tasks>`/`<executionTier>`)
+    // does not trip the tier/task validators. This is the pre-fan-out gate:
+    // decompose is single-threaded, so pausing here never freezes a live queue.
+    if (clarifyIntent && parseClarifyTags(rawResponse).length > 0) {
+      const gate = await applyClarifyGate({
+        responseText: rawResponse,
+        intent: clarifyIntent,
+        phase: 'decompose',
+        tier: parseExecutionTierTag(rawResponse),
+        clarifyRoundsUsed: state.clarifyRoundsUsed,
+      });
+      if (gate.paused) {
+        clarifyPaused = gate;
+        break;
+      }
+      // Gate declined (inactive here / budget exhausted): reframe + retry so
+      // the LLM proceeds to emit tasks instead of dead-ending on a stripped
+      // clarify. Falls through to parseLLMResponse on the last attempt.
+      if (gate.proceedNote && attempt < MAX_ATTEMPTS) {
+        prompts.user = originalUserPrompt + '\n\n' + gate.proceedNote;
+        continue;
+      }
+    }
 
     try {
       parsed = parseLLMResponse(rawResponse);
@@ -985,15 +1025,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4.5: Check if clarify was triggered during tool loop
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (clarifyCtx.clarifySent) {
-    console.log('⏸️  [Decompose] Clarify tool invoked — pausing for user response');
+  if (clarifyPaused) {
+    console.log('⏸️  [Decompose] <clarify> emitted — pausing for user response');
 
     if (state.deps?.session && state.context.featureFolder) {
       try {
         // CRITICAL: FileSessionAdapter.updateArtifacts replaces session.state
         // wholesale. Load the existing state first and merge the pause markers
         // so jobId / jobTiming / tokenUsage / estimatingTokenUsage / profile /
-        // userLanguage / etc. survive the pause.
+        // userLanguage / etc. survive the pause. `resolvedAction` is persisted
+        // so the continuation job reconstructs the artifact pool (context-loss
+        // invariant); `stateUpdates` carries clarifyRoundsUsed/clarifyPhase.
         const existing = await state.deps.session.load(
           state.context.project,
           state.context.featureFolder,
@@ -1007,6 +1049,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             state: {
               ...(existing?.state || {}),
               awaitingDecomposeClarify: true,
+              ...clarifyPaused.stateUpdates,
               resolvedAction: state.resolvedAction,
               directive: state.directive,
               overrideDirective: state.overrideDirective,
@@ -1020,6 +1063,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     return {
       ...state,
       awaitingDecomposeClarify: true,
+      ...clarifyPaused.stateUpdates,
       _phaseTimings: { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart },
     };
   }
@@ -1029,11 +1073,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // The retry loop at STEP 4 has already produced a parsed response whose
   // <executionTier> tag satisfies the mode-specific contract (see
-  // validateExecutionTier). clarifySent exits via the STEP 4.5 early
-  // return above, so both `parsed` and `executionTier` are defined here.
+  // validateExecutionTier). A `<clarify>` emission exits via the STEP 4.5
+  // early return above, so both `parsed` and `executionTier` are defined here.
   if (!parsed || executionTier === undefined) {
     // Defensive — should be unreachable because the retry loop only
-    // breaks on a validated tier OR on clarifySent (handled above).
+    // breaks on a validated tier OR on a clarify pause (handled above).
     throw new Error('[Decompose] Internal invariant violated: parsed/executionTier missing after retry loop');
   }
   const {

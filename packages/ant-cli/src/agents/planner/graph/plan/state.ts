@@ -25,6 +25,8 @@ export const PlanAnnotation = Annotation.Root({
   phaseTokenUsages: Annotation<any>,
   executionTier: Annotation<any>,
   awaitingClarify: Annotation<any>,
+  clarifyRoundsUsed: Annotation<any>,
+  clarifyPhase: Annotation<any>,
   featureContext: Annotation<any>,
   turnId: Annotation<any>,
 } as const);
@@ -82,6 +84,10 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * answer to NODE_GENERATE before the LLM call. Cleared by the helper.
    */
   awaitingClarify?: boolean;
+
+  /** Clarify budget tracking (job-scoped) — written via shared applyClarifyGate. */
+  clarifyRoundsUsed?: number;
+  clarifyPhase?: import('@ant/shared').ClarifyPhase;
 
   /**
    * Cross-job feature context loaded from feature.jsonl (T2 user_turn +

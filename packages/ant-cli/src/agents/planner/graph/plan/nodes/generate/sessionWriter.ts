@@ -49,7 +49,11 @@ export async function saveConversationToSession(
   generatedDocument: string | undefined,
   currentConversationHistory?: Array<{ role: string; content: any }>,
   compaction?: ConversationCompaction,
-  opts?: { awaitingClarify?: boolean },
+  opts?: {
+    awaitingClarify?: boolean;
+    clarifyRoundsUsed?: number;
+    clarifyPhase?: import('@ant/shared').ClarifyPhase;
+  },
 ): Promise<void> {
   const featurePath = state.featurePath;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
@@ -121,6 +125,10 @@ export async function saveConversationToSession(
     // saveClarifyCheckpoint(kind:'docgen')). Always write so a non-clarify
     // save resets the flag (cannot leave it stale from a prior run).
     sessionData.state.awaitingClarify = opts?.awaitingClarify === true ? true : undefined;
+    // Clarify budget round-trip: persist so the next runner restores it and the
+    // gate bounds re-asks across continuation jobs (see runner.ts restore).
+    sessionData.state.clarifyRoundsUsed = opts?.clarifyRoundsUsed;
+    sessionData.state.clarifyPhase = opts?.clarifyPhase;
     if (currentConversationHistory?.length) {
       try {
         sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = await pruneConversationHistory(currentConversationHistory);

@@ -32,7 +32,8 @@ import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
 import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './buildSystemPrompt';
-import { parseClarifyTags, stripClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
+import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
+import type { IntentId } from '@ant/shared';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
 
 /**
@@ -291,38 +292,32 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Final PRD path — finalize orchestrator but keep message open for choice card
   await orchestrator.finalize(true);
   
-  // === Check for <clarify> tags in response ===
-  // Planner surface uses `<clarify question="...">` with `<option>` children;
-  // blocks without any option would render as a plain text prompt, which
-  // the PRD flow never expects (the rules.md mandates every clarify carries
-  // lettered options). Preserve the legacy strict filter at this site.
-  const clarifyBlocks = parseClarifyTags(responseText).filter(b => b.options.length > 0);
-  if (clarifyBlocks.length > 0) {
-    console.log(`💬 [Planner:Generate] Found ${clarifyBlocks.length} clarify block(s), sending choice cards`);
-    
-    const cleanedResponseText = stripClarifyTags(responseText);
+  // === Clarify gate (turn-terminating, shared SSOT) ===
+  // `applyClarifyGate` owns the policy check + budget + parse + sendClarify +
+  // default-and-proceed. `requireOptions:true` preserves the planner's legacy
+  // strict filter (every PRD clarify must carry lettered options). The
+  // `onBeforeSend` callback flushes the buffered lead-in message BEFORE the
+  // card so chat orders prose → card (`orchestrator.finalize(true)` above
+  // skipped finalizeMessage to keep the turn open).
+  const clarifyIntent = state.resolvedAction?.intent as IntentId | undefined;
+  const clarifyGate = clarifyIntent
+    ? await applyClarifyGate({
+        responseText,
+        intent: clarifyIntent,
+        phase: 'generate',
+        clarifyRoundsUsed: state.clarifyRoundsUsed,
+        requireOptions: true,
+        onBeforeSend: () => chatAPI.finalizeMessage(),
+      })
+    : { paused: false as const, cleanedText: responseText, blocks: [], stateUpdates: {} };
+  if (clarifyGate.paused) {
+    console.log(`💬 [Planner:Generate] clarify — pausing (${clarifyGate.blocks.length} block(s))`);
 
-    // ✅ Drain text buffer (lead-in message) BEFORE emitting the clarify card
-    // so chat.jsonl orders assistant_message → choice_presented; UI then renders
-    // the prose above the card. `orchestrator.finalize(true)` was called earlier
-    // with hasToolCalls=true, which intentionally skips finalizeMessage so a
-    // pending tool/file card can ride the same turn — but for the clarify-card
-    // path we want the buffered text flushed now. Without this, the post-graph
-    // finalize runs after sendClarify and the message ends up below the card.
-    // Mirrors design docGen's spec clarify path which calls finalizeMessage()
-    // before persisting its checkpoint.
-    await chatAPI.finalizeMessage();
+    const cleanedResponseText = clarifyGate.cleanedText;
 
-    try {
-      const { sendClarify } = await import('../../../../../common/clarify');
-      await sendClarify(clarifyBlocks);
-    } catch (error) {
-      console.warn('⚠️ [Planner:Generate] Failed to send clarify card:', error);
-    }
-    
     const clarifyHistory = [...updatedHistory, { role: 'assistant', content: cleanedResponseText }];
-    // ✅ Persist awaitingClarify=true so the next run's runner restores RAC
-    // + conversations and short-circuits triage/detect via
+    // ✅ Persist awaitingClarify=true (+ budget) so the next run's runner
+    // restores RAC + conversations and short-circuits triage/detect via
     // routeAfterPlannerResolve. Without this, the next run loses original
     // intent and re-asks the same clarify questions.
     await saveConversationToSession(
@@ -331,7 +326,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       undefined,
       clarifyHistory,
       compactionMeta,
-      { awaitingClarify: true },
+      { awaitingClarify: true, ...clarifyGate.stateUpdates },
     );
 
     if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
@@ -368,6 +363,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       tokenUsage: state.tokenUsage,
       recursionCount,
       awaitingClarify: true,
+      ...clarifyGate.stateUpdates,
     };
   }
   

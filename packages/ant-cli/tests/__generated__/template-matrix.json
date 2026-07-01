@@ -1689,6 +1689,12 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/clarify-policy": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/codebase-channel": {
     "sources": [
       "render-call",

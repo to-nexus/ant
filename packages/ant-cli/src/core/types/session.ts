@@ -267,6 +267,14 @@ export interface SessionState {
   awaitingDetectClarify?: boolean;
   awaitingClarify?: boolean;
 
+  /**
+   * Clarify budget tracking (job-scoped), persisted so a continuation job
+   * restores it and the shared `applyClarifyGate` bounds re-asks across jobs.
+   * SSOT: clarify-policy-matrix.
+   */
+  clarifyRoundsUsed?: number;
+  clarifyPhase?: import('@ant/shared').ClarifyPhase;
+
   // ============================================
   // Session Redesign (5-tier execution model)
   // ============================================

@@ -18,9 +18,9 @@
  * committed, those re-adjudications have no standing.
  *
  * Content-level clarifications (planner PRD-gap questions, visual
- * sketch-variant selection, design spec content gaps, decompose
- * `CLARIFY_TOOL`) are NOT gated by this predicate — they ask about
- * content within the committed intent, not about the intent itself.
+ * sketch-variant selection, design spec content gaps, decompose's
+ * `<clarify>` tag via `applyClarifyGate`) are NOT gated by this predicate —
+ * they ask about content within the committed intent, not the intent itself.
  *
  * See also: `AGENTS.md` "Retry Authority SSOT" — the class of bug
  * this predicate prevents is phase nodes overturning upstream decisions
