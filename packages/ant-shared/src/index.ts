@@ -43,6 +43,7 @@ export * from './game-content-tier-registry';
 export * from './tier-matrix';
 export * from './rac';
 export * from './prompt-policy-matrix';
+export * from './clarify-policy-matrix';
 export * from './deploy';
 export * from './org';
 export * from './sse-events';

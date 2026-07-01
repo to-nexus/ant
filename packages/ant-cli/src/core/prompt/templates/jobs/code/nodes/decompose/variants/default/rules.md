@@ -1099,3 +1099,7 @@ The body is the literal `build` or `opt-out`. Default `build` — the app ships 
 - Use XML tags directly, NOT inside markdown code blocks
 - NO ```xml or ``` markers
 - Just raw XML tags with JSON content inside
+
+{{#if clarifyActive}}
+{{> jobs/shared/injections/clarify-policy}}
+{{/if}}

@@ -152,6 +152,13 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         console.log(`🔄 [PlanRunner] Restoring awaitingClarify state from session`);
         initialState.isResume = true;
         initialState.awaitingClarify = true;
+        // Clarify budget round-trip so the gate bounds re-asks across jobs.
+        if (typeof session.state.clarifyRoundsUsed === 'number') {
+          initialState.clarifyRoundsUsed = session.state.clarifyRoundsUsed;
+        }
+        if (session.state.clarifyPhase) {
+          initialState.clarifyPhase = session.state.clarifyPhase;
+        }
 
         if (session.state.conversations) {
           initialState.conversations = { ...initialState.conversations, ...session.state.conversations };

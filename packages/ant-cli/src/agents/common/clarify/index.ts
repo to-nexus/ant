@@ -3,7 +3,9 @@
  * agent graph (code decompose, design detect/docGen, planner, visual).
  *
  * Surfaces:
- *   - `CLARIFY_TOOL` / `handleClarify` / `ClarifyContext` — LLM tool loop
+ *   - `applyClarifyGate` — the ONE turn-terminating content-clarify gate
+ *     (policy check + budget + parse + sendClarify + default-and-proceed).
+ *     Trigger is the `<clarify>` tag only; the former CLARIFY_TOOL is retired.
  *   - `sendClarify` — direct ChatAPIClient transport
  *   - `parseClarifyTags` / `stripClarifyTags` — post-stream response parser
  *   - `isIntentCommitted` / `buildIntentClarifyTemplateVars` — intent-level
@@ -17,12 +19,6 @@
 export type { ClarifyBlock, ClarifyOption } from './types';
 export { sendClarify } from './transport';
 export {
-  CLARIFY_TOOL,
-  createClarifyContext,
-  handleClarify,
-} from './tool';
-export type { ClarifyContext } from './tool';
-export {
   parseClarifyTags,
   stripClarifyTags,
 } from './tags';
@@ -33,3 +29,5 @@ export {
 export type { IntentCommittedState } from './gate';
 export { consumeAwaitingClarify } from './continuation';
 export type { ClarifyContinuableState } from './continuation';
+export { applyClarifyGate } from './phaseGate';
+export type { ClarifyGateInput, ClarifyGateResult } from './phaseGate';

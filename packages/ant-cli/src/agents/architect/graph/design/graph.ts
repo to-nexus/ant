@@ -771,6 +771,8 @@ export const DesignGraphChannels = {
   _assetValidationRetried: Annotation<any>,
   awaitingDetectClarify: Annotation<any>,
   awaitingClarify: Annotation<any>,
+  clarifyRoundsUsed: Annotation<any>,
+  clarifyPhase: Annotation<any>,
   _figmaConsecutiveErrors: Annotation<any>,
   _figmaConnectionLost: Annotation<any>,
   boundary: Annotation<any>,

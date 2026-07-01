@@ -169,7 +169,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         console.log(`🔄 [DesignRunner] Restoring awaitingDetectClarify state from session`);
         initial.isResume = true;
         initial.awaitingDetectClarify = true;
-        
+
         if (session.state.directive) {
           initial.directive = session.state.directive;
         }
@@ -178,17 +178,21 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }
+        if (typeof session.state.clarifyRoundsUsed === 'number') initial.clarifyRoundsUsed = session.state.clarifyRoundsUsed;
+        if (session.state.clarifyPhase) initial.clarifyPhase = session.state.clarifyPhase;
       } else if (session?.state && session.state.awaitingClarify) {
         console.log(`🔄 [DesignRunner] Restoring awaitingClarify state from session`);
         initial.isResume = true;
         initial.awaitingClarify = true;
-        
+
         if (session.state.conversations) {
           initial.conversations = session.state.conversations;
         }
         if (session.state.resolvedAction) {
           initial.resolvedAction = session.state.resolvedAction;
         }
+        if (typeof session.state.clarifyRoundsUsed === 'number') initial.clarifyRoundsUsed = session.state.clarifyRoundsUsed;
+        if (session.state.clarifyPhase) initial.clarifyPhase = session.state.clarifyPhase;
         if (session.state.directive) {
           initial.directive = session.state.directive;
         }
