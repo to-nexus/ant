@@ -123,6 +123,33 @@ export class KanbanService {
    * 2. Estimating state (job running but no data yet)
    * 3. Session file (persistent state for completed/paused jobs)
    */
+
+  /**
+   * Redis is the SSOT for "what job is currently running" for a feature.
+   * Returns the jobId of a job of `jobType` that Redis reports as running,
+   * or undefined. Used to prefer the actually-running job over a
+   * present-but-stale `session.state.jobId` (e.g. the visual runner writes
+   * its jobId to the session only at completion, so a resume leaves the
+   * prior turn's id — and its completed session — on disk for the whole run).
+   */
+  private async discoverRunningJobId(
+    projectId: string,
+    featureName: string,
+    jobType: string,
+  ): Promise<string | undefined> {
+    if (!this.stateStore) return undefined;
+    try {
+      const featureJobs = await this.stateStore.listJobsByFeature(projectId, featureName);
+      const runningJob = featureJobs.find(
+        j => j.status === 'running' && j.type === jobType
+      );
+      return runningJob?.jobId;
+    } catch (error) {
+      if (process.env.DEBUG_KANBAN === '1') console.error(`   Failed to discover running job from Redis:`, error);
+      return undefined;
+    }
+  }
+
   async getKanbanData(
     projectId: string,
     featureName: string,
@@ -161,26 +188,30 @@ export class KanbanService {
     const completedTasksDetails = sessionState.completedTasksDetails || [];
     const currentTask = sessionState.currentTask || null;
     
-    // ✅ Fallback: 세션 파일에 jobId가 없으면 Redis에서 실행 중인 job 탐색
-    // Planner 등 세션 파일에 jobId를 기록하지 않는 에이전트를 위한 처리
-    if (!sessionJobId && this.stateStore) {
-      try {
-        const featureJobs = await this.stateStore.listJobsByFeature(projectId, featureName);
-        const runningJob = featureJobs.find(
-          j => j.status === 'running' && j.type === jobType
-        );
-        if (runningJob) {
-          sessionJobId = runningJob.jobId;
-          dlog(`   Discovered running job from Redis: ${sessionJobId} (type: ${jobType})`);
-        }
-      } catch (error) {
-        derr(`   Failed to discover running job from Redis:`, error);
+    // ✅ Redis is the SSOT for "what's running" (Unified Distributed System
+    // Principle). Prefer any job of this type that Redis reports as running
+    // over `session.state.jobId`, which can be absent (Planner never writes
+    // it) OR stale — the visual runner writes its jobId only at completion,
+    // so a resume leaves the PRIOR turn's id (and its completed session) on
+    // disk for the whole run. Trusting that stale id made getKanbanData
+    // report the wrong, not-running job (`isRunning=false`) for the entire
+    // live job. A running job in Redis wins regardless of the session flag.
+    let adoptedLiveJob = false;
+    const runningJobId = await this.discoverRunningJobId(projectId, featureName, jobType);
+    if (runningJobId) {
+      if (runningJobId !== sessionJobId) {
+        dlog(`   Redis reports running ${jobType} job ${runningJobId}; preferring over session jobId ${sessionJobId || 'none'}`);
       }
+      sessionJobId = runningJobId;
+      adoptedLiveJob = true; // a currently-running job is, by definition, not completed
     }
-    
+
     const hasInterruption = !!sessionState.interruption;
     const hasTasksRemaining = sessionTaskQueue.length > 0 || !!currentTask;
-    const isJobCompleted = !!sessionState.jobTiming?.completedAt && !hasInterruption && !hasTasksRemaining;
+    // When we adopted a live-running job, the (possibly stale) session's
+    // `completedAt` must NOT mark it completed — that flag describes the
+    // prior turn's session, not the running job we just adopted.
+    const isJobCompleted = !adoptedLiveJob && !!sessionState.jobTiming?.completedAt && !hasInterruption && !hasTasksRemaining;
     
     dlog(`   Session jobId: ${sessionJobId || 'none'}`);
     dlog(`   Has interruption: ${hasInterruption}`);
