@@ -3,7 +3,7 @@ import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
-import type { OrganizationKind } from '@ant/shared';
+import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
 import type { OrgMembership } from '@ant/auth-client/types';
 
 export interface AuthActions {
@@ -114,9 +114,14 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
             import('@/infrastructure/http/api'),
             import('@/infrastructure/http/api/kanban'),
           ]);
+          // Non-task jobs (plan / visual) have no kanban board — the BE route
+          // only serves design/code/learn, so fetching would 400. Their
+          // progress surfaces via workflow SSE + chat, not a board.
           const [session, kanbanData, history] = await Promise.all([
             fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType),
-            fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
+            isNonTaskJob(jobType)
+              ? Promise.resolve(null)
+              : fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
             fetchJobHistory(state.selectedProject!, state.selectedFeature!),
           ]);
 
@@ -126,16 +131,21 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           }
 
           set({ session: session || undefined });
-          get().updateKanban(kanbanData);
+          if (kanbanData) get().updateKanban(kanbanData);
           console.log(`[Store] ✅ Session + kanban loaded for ${jobType}`);
 
           // Auto-select the most-recent jobId when the jobType-scoped kanban
           // has no jobId but the history does. The history is now feature-wide,
           // so filter to THIS type — picking a job type must not auto-select a
           // different type's job (that would re-converge the identity back).
+          //
+          // Skip for non-task jobs (they never have a board jobId, so this
+          // would always yank the view onto the latest historical plan/visual
+          // job) and while a job start is in flight (a redirect that just
+          // enqueued a new job must not be clobbered by a stale one).
           const hasBoardJobId = !!kanbanData?.jobId;
           const sameType = history.jobs.filter((j) => j.type === jobType);
-          if (!hasBoardJobId && sameType.length > 0) {
+          if (!hasBoardJobId && sameType.length > 0 && !isNonTaskJob(jobType) && !get().jobStartPending) {
             const latest = sameType[0];
             console.log(
               `[Store] ↩️ No current jobId for '${jobType}', auto-selecting latest: ${latest.jobId}`,

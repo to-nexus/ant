@@ -14,7 +14,6 @@ interface TriageChoiceOptions {
 }
 
 export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
-  const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
   const { i18n } = useTranslation();
   const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
@@ -69,11 +68,25 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
         }
         // Carry the exact resolved intent so the target job runs it directly
         // (explicit metadata) instead of re-inferring and possibly drifting.
-        await runJob(targetAgent, response.suggestedJob, response.directive, {
+        // `forceStart` guarantees the target job is enqueued even when the
+        // redirect's directive is empty (pending.originalDirective).
+        const newJobId = await runJob(targetAgent, response.suggestedJob, response.directive, {
           skipTriage: true,
+          forceStart: true,
           actionMetadata: response.switchIntentId ? { intent: response.switchIntentId as any } : undefined,
         });
-        setSelectedJobType(response.suggestedJob as any);
+        // Bind identity to the NEW job, fetch-free. NOT setSelectedJobType:
+        // its eager kanban fetch 400s for non-task targets (plan/visual) and
+        // then auto-selects a stale historical job, hijacking the view onto a
+        // dead jobId. applyJobIdentity sets jobType/agent/currentJobId only;
+        // runJob's setRunning already bound the workflow SSE to newJobId.
+        if (newJobId) {
+          useStore.getState().applyJobIdentity({
+            jobType: response.suggestedJob as any,
+            agent: targetAgent,
+            jobId: newJobId,
+          });
+        }
       }
 
       if (response.type === 'continue' && response.action === 'proceedAnyway') {
