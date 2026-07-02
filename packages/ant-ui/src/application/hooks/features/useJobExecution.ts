@@ -53,28 +53,30 @@ export function useJobExecution() {
     agent: string,
     jobType: string,
     directive?: string,
-    options?: { skipTriage?: boolean; actionMetadata?: import('@ant/shared').ActionMetadata },
-  ) => {
+    options?: { skipTriage?: boolean; forceStart?: boolean; actionMetadata?: import('@ant/shared').ActionMetadata },
+  ): Promise<string | undefined> => {
     const state = useStore.getState();
-    const { 
-      isRunning, 
-      selectedProject, 
-      selectedFeature, 
-      kanban: kanbanData 
+    const {
+      isRunning,
+      selectedProject,
+      selectedFeature,
+      kanban: kanbanData
     } = state;
-    
-    // ✅ Allow redirect to bypass isRunning check (previous job completed but state not yet updated)
-    // When directive is provided, it's a redirect from triage - force start new job
-    const isRedirect = !!directive;
-    
+
+    // ✅ Allow redirect to bypass isRunning check (previous job completed but state not yet updated).
+    // `forceStart` makes this explicit for triage redirects: the redirect's
+    // directive (pending.originalDirective) may be empty, so inferring from
+    // `!!directive` alone can silently refuse to start the target job.
+    const isRedirect = options?.forceStart === true || !!directive;
+
     if (!selectedProject) {
       console.log('[useJobExecution] ❌ No project selected');
-      return;
+      return undefined;
     }
-    
+
     if (isRunning && !isRedirect) {
       console.log('[useJobExecution] ❌ Job already running (isRunning=true, isRedirect=false)');
-      return;
+      return undefined;
     }
     
     // ✅ If redirect, clear running state first
@@ -149,12 +151,20 @@ export function useJobExecution() {
           showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
         }
       }
-      return;
+      return undefined;
     }
 
     // ✅ Start new job
     setRunning(true, undefined, 'generate'); // Default mode
     useStore.getState().setCreditBlockActive?.(false); // clear any prior block
+
+    // Resolve the caller with the started jobId so a redirect can bind
+    // identity to the NEW job (via applyJobIdentity) instead of racing a
+    // session/kanban reload that would auto-select a stale historical job.
+    let resolveJobId: (id?: string) => void = () => {};
+    const jobIdPromise = new Promise<string | undefined>((resolve) => {
+      resolveJobId = resolve;
+    });
 
     try {
       const jobExecution = executeCodeJob({
@@ -175,7 +185,8 @@ export function useJobExecution() {
       jobExecution.onJobIdReady(async (jobId) => {
         console.log('[useJobExecution] Job started with ID:', jobId);
         setRunning(true, jobId);
-        
+        resolveJobId(jobId);
+
         // Fetch queue position once (SSE will clear it when job starts running)
         try {
           const position = await fetchQueuePosition(jobId);
@@ -226,11 +237,14 @@ export function useJobExecution() {
       });
       
       console.log('[useJobExecution] Job execution started successfully');
+      return await jobIdPromise;
     } catch (error) {
       console.error('[useJobExecution] Failed to start job:', error);
       setRunning(false);
       setCurrentJob(null);
       if (isCreditBlock(error)) useStore.getState().setCreditBlockActive?.(true);
+      resolveJobId(undefined);
+      return undefined;
     }
   }, [setRunning, setStopping, setCurrentJob, setSession, refreshFileTree]);
 
