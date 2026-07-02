@@ -356,22 +356,28 @@ async function deliverSvgSketches(
 
     const sketchPath = path.join(outputDir, filename);
     const thumbPath = path.join(outputDir, thumbFilename);
+    const imagePath = `assets/gen/sketches/${filename}`;
 
     fs.writeFileSync(sketchPath, sketch.code, 'utf-8');
 
+    let thumbOk = false;
     try {
       await sharp(Buffer.from(sketch.code))
         .resize(200, 200, { fit: 'inside' })
         .jpeg({ quality: 70 })
         .toFile(thumbPath);
+      thumbOk = true;
     } catch (err: any) {
-      console.warn(`⚠️ [Visual:Deliver] SVG thumbnail failed for sketch ${sketch.index}:`, err.message);
+      console.warn(`⚠️ [Visual:Deliver] SVG thumbnail failed for sketch ${sketch.index}, using SVG directly:`, err.message);
     }
 
     sketchEntries.push({
       index: sketch.index,
-      imagePath: `assets/gen/sketches/${filename}`,
-      thumbnailPath: `assets/gen/sketches/${thumbFilename}`,
+      imagePath,
+      // Fall back to the SVG itself when rasterization failed — the browser
+      // renders valid SVG directly, so the card row shows the image instead
+      // of a broken-thumbnail placeholder (the jpeg was never written).
+      thumbnailPath: thumbOk ? `assets/gen/sketches/${thumbFilename}` : imagePath,
     });
   }
 

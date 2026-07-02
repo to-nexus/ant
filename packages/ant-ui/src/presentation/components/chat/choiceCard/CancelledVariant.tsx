@@ -41,7 +41,13 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     return t('cancelled.taskCancelled');
   })();
 
-  const canResume = !isRunning && jobId && state.selectedProject && state.selectedFeature && !!reason;
+  // Respect the BE's `canResume` verdict (job-type-aware: false for plan/visual
+  // on infrastructure interruptions, which can only restart, not resume). Fall
+  // back to `!!reason` only when the kanban interruption isn't loaded yet, so a
+  // durable cancelled card from a genuinely-resumable job still offers Resume.
+  const beCanResume = kanbanData?.interruption?.canResume;
+  const resumeAllowed = beCanResume === undefined ? !!reason : beCanResume === true;
+  const canResume = !isRunning && jobId && state.selectedProject && state.selectedFeature && resumeAllowed;
 
   const handleResume = async () => {
     if (!canResume || state.isSelected || !state.selectedProject || !state.selectedFeature || !jobId) return;

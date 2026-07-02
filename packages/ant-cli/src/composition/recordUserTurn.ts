@@ -76,7 +76,7 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
   // for explicit (chat user-message) and inferred (detect node) flows.
   // Failure / missing FS degrades to raw paths via the helper's own guards.
   const fileSystemForEnrich =
-    params.fileSystem ?? deriveFileSystem(featurePath, actionMetadata);
+    params.fileSystem ?? (await deriveFileSystem(featurePath, actionMetadata));
   const enrichedActionMetadata = await enrichActionMetadataWithFolders(
     actionMetadata,
     fileSystemForEnrich,
@@ -130,18 +130,18 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
  * to compress. Avoids the AdapterFactory call on every empty-metadata
  * (ask / inline-ask) recordUserTurn.
  */
-function deriveFileSystem(
+async function deriveFileSystem(
   featurePath: string,
   meta: import('@ant/shared').ActionMetadata | undefined,
-): FileSystemPort | undefined {
+): Promise<FileSystemPort | undefined> {
   if (!meta) return undefined;
   if (!(meta.target?.length || meta.refs?.length || meta.context?.length)) return undefined;
   try {
-    // Lazy require to avoid a top-level circular import (AdapterFactory
+    // Lazy dynamic import to avoid a top-level circular import (AdapterFactory
     // pulls in HTTP/Redis adapters that don't belong in this helper's
-    // dependency graph at module load).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { AdapterFactory } = require('../infrastructure/adapters/AdapterFactory');
+    // dependency graph at module load). MUST be `import()` not `require()` —
+    // the cloud build bundles this as ESM where `require` is undefined.
+    const { AdapterFactory } = await import('../infrastructure/adapters/AdapterFactory');
     return AdapterFactory.createFileSystemAdapterWithPath(featurePath);
   } catch (err) {
     console.warn('[recordUserTurn] failed to build FileSystem for actionMetadata enrichment:', err);

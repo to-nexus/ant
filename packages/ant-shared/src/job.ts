@@ -29,6 +29,22 @@ export function isNonTaskJob(jobType: string | undefined | null): jobType is Non
   return jobType === 'plan' || jobType === 'visual';
 }
 
+/**
+ * Whether a job type supports *mid-graph* resume — i.e. resuming continues
+ * from where it stopped (a task-queue checkpoint) instead of restarting the
+ * whole graph. Only task-decomposable jobs (code/design/learn) checkpoint
+ * mid-execution. plan/visual persist a session (context) but have no mid-graph
+ * checkpoint, so an infrastructure interruption cannot be meaningfully
+ * "resumed" — resuming re-runs generation from the start.
+ *
+ * Used with `isInfrastructureInterruption` (interruption.ts) to gate
+ * `interruption.canResume`: the FE must not offer a "resume from where it
+ * stopped" button for plan/visual after a server_crash / worker_stalled / …
+ */
+export function isMidGraphResumable(jobType: string | undefined | null): boolean {
+  return jobType === 'code' || jobType === 'design' || jobType === 'learn';
+}
+
 /** Sessionable + non-task — the union actually persisted to disk under `sessions/{agent}/`. */
 export const SESSIONABLE_JOB_TYPES = ['code', 'design', 'learn', 'plan', 'visual'] as const satisfies readonly SessionableJobType[];
 
