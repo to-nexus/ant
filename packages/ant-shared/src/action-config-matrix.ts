@@ -1151,7 +1151,16 @@ export function getDefaultTargetPaths(
   if (!target) return undefined;
 
   if (target.kind === 'revise') {
-    return opts?.refs?.length === 1 ? opts.refs : undefined;
+    if (opts?.refs?.length === 1) return opts.refs;
+    // No-ref fallback for `rev-plan`: a triage redirect from another job
+    // (e.g. code → plan) carries intent only, with no selected ref. Unlike
+    // other revise intents (rev-code / rev-sys / rev-ui — which revise one of
+    // several arbitrary files and genuinely need a ref), the plan has a single
+    // canonical document — the same file `gen-plan` writes (plan/prd.md |
+    // plan/gdd.md). Fall back to it so the revise target resolves instead of
+    // leaving `target` empty (which crashes the planner generate guard).
+    if (intent === 'rev-plan') return getDefaultTargetPaths('gen-plan', domain);
+    return undefined;
   }
 
   if (target.kind !== 'generate') return undefined;
