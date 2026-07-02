@@ -20,6 +20,7 @@ import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, isEnvResume } from '../../../common/graph/runnerHelpers';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';
+import { isInfrastructureInterruption, isMidGraphResumable } from '@ant/shared';
 
 export interface PlanRunnerParams {
   directive: string;
@@ -301,7 +302,10 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               reason,
               message: `Plan interrupted: ${reason}`,
               timestamp: new Date().toISOString(),
-              canResume: true,
+              // plan has no mid-graph checkpoint — an infrastructure interruption
+              // (SIGTERM / crash / sleep) can only restart, not resume "from where
+              // it stopped", so don't offer Resume. Non-infra pauses keep it.
+              canResume: isInfrastructureInterruption(reason) ? isMidGraphResumable('plan') : true,
             },
           };
           // Only override conversations when non-empty (preserve existing from prior run)

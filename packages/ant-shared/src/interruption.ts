@@ -27,6 +27,28 @@ export type InterruptionReason =
   | 'awaiting_clarify'      // Turn ended on a <clarify> card; user-actionable, resumes on answer
   | 'unknown';              // Unknown reason
 
+/**
+ * Infrastructure/lifecycle interruption reasons — the process/worker/host died
+ * or the lock lapsed, as opposed to a model-level, user, or task-logic pause.
+ * For these, "resume from where it stopped" only makes sense when the job type
+ * checkpoints mid-graph (see `isMidGraphResumable` in job.ts). A non-checkpointing
+ * job (plan/visual) can only *restart*, so its `canResume` must be false here.
+ */
+export const INFRASTRUCTURE_INTERRUPTION_REASONS: readonly InterruptionReason[] = [
+  'server_crash',
+  'process_crash',
+  'server_shutdown',
+  'system_sleep',
+  'lock_expired',
+  'worker_stalled',
+];
+
+export function isInfrastructureInterruption(
+  reason: InterruptionReason | string | undefined | null,
+): boolean {
+  return !!reason && (INFRASTRUCTURE_INTERRUPTION_REASONS as readonly string[]).includes(reason);
+}
+
 /** Details about a job interruption */
 export interface InterruptionDetails {
   reason: InterruptionReason;

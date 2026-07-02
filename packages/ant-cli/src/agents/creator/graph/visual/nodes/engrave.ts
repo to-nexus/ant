@@ -70,7 +70,23 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
 
       svgCode = svgCode.trim();
       if (svgCode.startsWith('```')) {
-        svgCode = svgCode.replace(/^```(?:svg|xml)?\n?/, '').replace(/\n?```$/, '');
+        svgCode = svgCode.replace(/^```(?:svg|xml)?\n?/, '').replace(/\n?```$/, '').trim();
+      }
+
+      // Robustly extract the <svg>…</svg> region. The model sometimes wraps the
+      // SVG in prose ("Here is the logo:") or adds a trailing note, leaving the
+      // saved file starting with a non-`<` char — then both sharp/librsvg AND
+      // the browser fail to render it (log: "Start tag expected '<' not found").
+      const svgMatch = svgCode.match(/<svg[\s\S]*<\/svg>/i);
+      if (svgMatch) svgCode = svgMatch[0];
+
+      // Validate: a complete SVG element must open with <svg and close with
+      // </svg>. A truncated generation (log: "Couldn't find end of Start Tag")
+      // has no closing tag and must be dropped, not saved as a broken candidate.
+      const isValidSvg = /^<svg[\s>]/i.test(svgCode) && /<\/svg>\s*$/i.test(svgCode);
+      if (!isValidSvg) {
+        console.error(`❌ [Visual:Engrave] Variation ${i + 1} produced invalid/incomplete SVG — dropped`);
+        continue;
       }
 
       svgSketches.push({ code: svgCode, prompt: sketchPrompt, index: i });
