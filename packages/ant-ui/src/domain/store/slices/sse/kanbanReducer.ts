@@ -1,6 +1,7 @@
 import type { KanbanData } from '@/infrastructure/http/api';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { removeFromStorage, STORAGE_KEYS } from '../../storage';
+import { isStaleJobUpdate } from './isStaleJobUpdate';
 
 /**
  * Core kanban state reducer. Handles field preservation (jobTiming, recursion,
@@ -171,6 +172,17 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
 
     if (interruptionWasDismissed) {
       console.log('[Store] ⏸️ Ignoring session data - interruption was dismissed (Resume in progress)');
+      set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
+      return;
+    }
+
+    // Stale-jobId guard (mirrors chatSseHandler's job_status guard via the
+    // shared `isStaleJobUpdate` predicate). While a run is active, a
+    // session-sourced update carrying a DIFFERENT jobId is a prior/other
+    // job's out-of-order snapshot — it must not reassign `currentJobId` or
+    // flip `isRunning` off. Apply the kanban data only.
+    if (isStaleJobUpdate(kanbanJobId, state.currentJobId)) {
+      console.log(`[Store] 🛡️ Kanban: ignoring run-state from stale job ${kanbanJobId} (current: ${state.currentJobId})`);
       set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
       return;
     }

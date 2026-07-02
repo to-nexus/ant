@@ -25,6 +25,7 @@ import {
   enqueueStreamingDelta,
   flushStreamingDeltaBatch,
 } from './streamingDeltaBatch';
+import { isStaleJobUpdate } from './isStaleJobUpdate';
 
 const MAIN_WORKER_SCOPE = '_main_';
 const STREAMING_FILE_STATUS = new Set(['file_create', 'file_edit']);
@@ -236,7 +237,7 @@ function handleNonChatEvent(event: any, set: any, get: any) {
           console.log('[Store] 🛡️ Skipping setRunning(false) - new job start pending');
           break;
         }
-        if (event.jobId && cs.currentJobId && event.jobId !== cs.currentJobId) {
+        if (isStaleJobUpdate(event.jobId, cs.currentJobId)) {
           console.log(`[Store] 🛡️ Skipping setRunning(false) for stale job ${event.jobId} (current: ${cs.currentJobId})`);
           break;
         }

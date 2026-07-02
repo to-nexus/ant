@@ -631,6 +631,29 @@ export async function orchestrator(params: {
       // `<detect>` chat card renders folder-compressed paths consistently.
       const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath);
 
+      // ✅ Record user_turn (feature.jsonl + chat.jsonl) — visual was the ONLY
+      // agent branch that skipped this, so its worker chat lines (art-direction
+      // reasoning + sketch choice cards) were emitted with a null turnId and
+      // orphaned from the FE's optimistic user turn (chat SSOT §6). `seedTurnId`
+      // reuses the id pre-allocated by /chat/user-message so the durable record
+      // and the worker's chat lines share the FE's turnId. mode is unknown for
+      // visual (Detect runs inside the graph) → undefined. isResume=true skips
+      // the append and re-propagates the existing turnId — see recordUserTurn JSDoc.
+      await recordUserTurn({
+        featurePath,
+        jobType: 'visual',
+        jobId: jobId || 'unknown',
+        directive: overrideDirective || input,
+        projectId: project,
+        featureName,
+        isResume,
+        turnId: seedTurnId,
+        session,
+        actionMetadata,
+      }).catch(err => {
+        console.warn('[Orchestrator:Visual] Failed to record user_turn:', err);
+      });
+
       const { runVisualGraph } = await import("../agents/creator/graph/visual/runner");
 
       const result = await runVisualGraph({
