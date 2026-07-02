@@ -41,6 +41,7 @@ import { logger } from '../../../../../utils/logger';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { BullMQJobQueue } from '../../../../../infrastructure/queue/BullMQJobQueue';
 import type { InterruptionDetails } from '../../../../../core/types';
+import { isMidGraphResumable } from '@ant/shared';
 import type { JobCleanupManager } from '../managers/JobCleanupManager';
 import type { JobStateTracker } from '../managers/JobStateTracker';
 import type { KanbanService } from '../../services';
@@ -123,6 +124,18 @@ async function recoverOrphanedRunningJobs(
         continue;
       }
 
+      // Liveness guard: if the BullMQ lock is still fresh, a worker is actively
+      // extending it on another pod — the job is alive, not orphaned. Pausing it
+      // here produces a false "server terminated / resume" card that the worker's
+      // normal completion then overwrites (grim-padding-grove cross-pod race,
+      // e.g. surfaced during a rolling redeploy that boots a new API pod mid-job).
+      // Genuinely dead workers stop extending → the lock decays and the BullMQ
+      // stalled handler recovers them instead.
+      if (await jobQueue.isJobLockFresh(job.jobId)) {
+        logger.info(`Job ${job.jobId} lock is fresh — worker alive on another pod, skipping recovery`, { component: COMPONENT });
+        continue;
+      }
+
       // Per-job idempotency: stalled handler on another pod may already be processing this job
       const jobLock = await stateStore.acquireLock(`${PER_JOB_LOCK_PREFIX}${job.jobId}`, PER_JOB_LOCK_TTL);
       if (!jobLock) {
@@ -147,10 +160,16 @@ async function recoverOrphanedRunningJobs(
       const mapping = await stateStore.getJobMapping(job.jobId);
       const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
 
+      // Only decomposable jobs (code/design/learn) checkpoint mid-graph, so
+      // only they can resume "from where it stopped". plan/visual would just
+      // restart — offering Resume there is misleading, so surface as notify-only.
+      const resumable = isMidGraphResumable(jobType);
       const interruption: InterruptionDetails = {
         reason: 'server_crash',
-        message: 'Server was terminated unexpectedly. You can resume this job.',
-        canResume: true,
+        message: resumable
+          ? 'Server was terminated unexpectedly. You can resume this job.'
+          : 'Server was terminated unexpectedly. This job did not finish.',
+        canResume: resumable,
         timestamp: new Date().toISOString(),
       };
 

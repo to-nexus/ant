@@ -353,6 +353,29 @@ export class BullMQJobQueue implements JobQueuePort {
   // JobQueuePort Implementation
   // ============================================
 
+  /**
+   * True when the BullMQ processing lock for `jobId` is *fresh* — a live worker
+   * is actively extending it. Workers extend every `LOCK_DURATION/2` (2.5min),
+   * so a TTL still in the upper half of `LOCK_DURATION` means the worker touched
+   * the lock within the last ~2.5min and is alive. A TTL above `LOCK_DURATION`
+   * is a stale lock from an older config → not fresh.
+   *
+   * Used by `StaleJobRecovery` to avoid pausing a job whose worker is still
+   * running on another pod (cross-pod false "server_crash" card). Genuinely
+   * dead workers stop extending → the lock decays and the BullMQ stalled
+   * handler catches them instead.
+   */
+  async isJobLockFresh(jobId: string): Promise<boolean> {
+    try {
+      const client = await this.queue.client;
+      const lockKey = `bull:${this.queue.name}:${jobId}:lock`;
+      const ttl = await client.pttl(lockKey);
+      return ttl > LOCK_DURATION / 2 && ttl <= LOCK_DURATION;
+    } catch {
+      return false; // on error, do not block recovery
+    }
+  }
+
   async enqueue(payload: JobPayload): Promise<string> {
     const jobId = payload.jobId || this.generateJobId();
 
