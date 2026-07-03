@@ -47,9 +47,11 @@ import {
   upsertConnectionAnnotation,
   mirrorConnectionToEnv,
   removeConnectionAnnotation,
+  removeEnvKey,
+  syncEnvStructureFromExample,
 } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
 import { detectFramework } from '../deploy';
-import { toToggleFramework } from '../../core/prompt/builder/serviceVirtualization/connectionModel';
+import { toToggleFramework, frameworkTogglePrefix } from '../../core/prompt/builder/serviceVirtualization/connectionModel';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
 import { sendErrorResponse } from '../../periphery/adapters/http/routes/helpers/errorResponse';
 import { REDIS_KEYS } from '../../core/constants/redis';
@@ -404,6 +406,28 @@ export class PreviewServer {
       logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
     }
 
+    // Structure sync (gen-code backstop): ensure `.env` has a key for every
+    // connection declared in `.env.example` (fill-if-absent, values preserved).
+    // Fires on the post-code-job CONNECTIONS_REFRESH + the Auto-Detect button, so
+    // a connection the code job just declared materializes into the runtime `.env`
+    // without clobbering any user-entered value. Deletion is not done here.
+    try {
+      const sources = new Set(
+        connections.map(c => (c.source && c.source !== '*' ? c.source : '')),
+      );
+      for (const subdir of sources) {
+        const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+        const framework = toToggleFramework(detectFramework(pkgDir));
+        syncEnvStructureFromExample(
+          path.join(pkgDir, '.env.example'),
+          path.join(pkgDir, '.env'),
+          framework,
+        );
+      }
+    } catch (syncErr: any) {
+      logger.warn(`[PreviewServer] Env structure sync failed: ${syncErr.message}`, { component: 'PreviewServer' });
+    }
+
     // Enrich docker connections with live infrastructure status
     const infraManager = new InfrastructureManager();
     const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -439,10 +463,10 @@ export class PreviewServer {
       }
     }
 
-    // Re-detection reads from `.env.example` (the SSOT) directly. Panel edits
-    // are persisted there deterministically on Save, so the fresh detection
-    // already reflects the user's intent — no overlay/merge needed.
-    // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
+    // `.env.example` (structure) + `.env` (value/toggle) are the SSOT; detection
+    // reads both, so the result faithfully reflects the files — no overlay/merge
+    // and no clobber (the value round-trips through `.env`). Redis preview-config
+    // is a derived cache refreshed here (strip runtime status — PREVIEW state owns it).
     const configConnections = connections.map(({ status, ...rest }: any) => rest);
     await this.stateStore.savePreviewConfig(
       userContext.organizationId,
@@ -791,29 +815,28 @@ export class PreviewServer {
           feature
         );
 
-        // Auto-detect connections if registry is empty and project files exist
+        // `.env.example` (structure) + `.env` (value/toggle) are the SSOT. Always
+        // re-detect from files so the panel reflects the current file state;
+        // Redis preview-config is a derived cache, refreshed here (never the
+        // authority). Cached connections are the fallback when the workspace or
+        // structure is transiently unavailable.
         let connections = config?.connections || [];
-        if (connections.length === 0) {
-          try {
-            const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
-            if (fs.existsSync(workspacePath)) {
-              const detector = new ProjectStructureDetector();
-              const structure = await detector.detect(workspacePath);
-              if (structure) {
-                const connectionDetector = new ConnectionDetector();
-                connections = connectionDetector.detect(workspacePath, structure, serverKey);
-                if (connections.length > 0) {
-                  await this.stateStore.savePreviewConfig(
-                    userContext.organizationId, userContext.userId, projectId, feature,
-                    { connections }
-                  );
-                  logger.info(`[PreviewServer] Auto-detected ${connections.length} connections for ${projectId}/${feature}`, { component: 'PreviewServer' });
-                }
-              }
+        try {
+          const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+          if (fs.existsSync(workspacePath)) {
+            const detector = new ProjectStructureDetector();
+            const structure = await detector.detect(workspacePath);
+            if (structure) {
+              const connectionDetector = new ConnectionDetector();
+              connections = connectionDetector.detect(workspacePath, structure, serverKey);
+              await this.stateStore.savePreviewConfig(
+                userContext.organizationId, userContext.userId, projectId, feature,
+                { connections }
+              );
             }
-          } catch (detectErr: any) {
-            logger.warn(`[PreviewServer] Connection auto-detect failed: ${detectErr.message}`, { component: 'PreviewServer' });
           }
+        } catch (detectErr: any) {
+          logger.warn(`[PreviewServer] Connection detect failed, using cached config: ${detectErr.message}`, { component: 'PreviewServer' });
         }
 
         res.json({
@@ -899,7 +922,18 @@ export class PreviewServer {
           for (const conn of removedConns) {
             const subdir = conn.source && conn.source !== '*' ? conn.source : '';
             const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+            // Structure delete: drop the annotation from .env.example AND the
+            // value/toggle keys from .env (explicit removal knows the envVar,
+            // so this is the one safe place to delete .env keys).
             removeConnectionAnnotation(path.join(pkgDir, '.env.example'), conn);
+            const envPath = path.join(pkgDir, '.env');
+            removeEnvKey(envPath, conn.envVar);
+            if (conn.virtualization?.toggleEnvVar) {
+              const framework = toToggleFramework(detectFramework(pkgDir));
+              const prefix = frameworkTogglePrefix(framework);
+              removeEnvKey(envPath, conn.virtualization.toggleEnvVar);
+              if (prefix) removeEnvKey(envPath, `${prefix}${conn.virtualization.toggleEnvVar}`);
+            }
           }
         }
 

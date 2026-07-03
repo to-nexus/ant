@@ -12,6 +12,8 @@ import {
   upsertConnectionAnnotation,
   removeConnectionAnnotation,
   mirrorConnectionToEnv,
+  removeEnvKey,
+  syncEnvStructureFromExample,
 } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/envFileWriter';
 import { detectFromAnnotations } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/parseEnvAnnotations';
 import type { ServiceConnection } from '../../src/core/ports/portRegistry';
@@ -81,17 +83,21 @@ describe('removeConnectionAnnotation (.env.example)', () => {
   });
 });
 
-describe('mirrorConnectionToEnv (§5 value invariant)', () => {
+describe('mirrorConnectionToEnv (.env is the value SSOT)', () => {
   let dir: string;
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-envwriter-')); });
   afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
   const envp = () => path.join(dir, '.env');
   const read = () => (fs.existsSync(envp()) ? fs.readFileSync(envp(), 'utf-8') : '');
 
-  it('virtualized business → empty value (no fabricated localhost)', () => {
+  it('business: persists the user-entered value verbatim (.env owns the value)', () => {
     mirrorConnectionToEnv(envp(), conn({ value: 'https://api.stripe.com' }));
-    const c = read();
-    expect(c).toMatch(/^STRIPE_API_KEY=\s*$/m);
+    expect(read()).toContain('STRIPE_API_KEY=https://api.stripe.com');
+  });
+
+  it('business: empty value stays empty (no fabricated default)', () => {
+    mirrorConnectionToEnv(envp(), conn({ value: '' }));
+    expect(read()).toMatch(/^STRIPE_API_KEY=\s*$/m);
   });
 
   it('business: persists the active toggle value (false) to .env', () => {
@@ -234,5 +240,65 @@ describe('annotation write with comments between annotation and KEY', () => {
     expect(c).toContain('# @connection business api\n');
     expect(c).toContain('# @connection business other');
     expect(c.split('\n').filter(l => l.includes('@connection business api')).length).toBe(1);
+  });
+});
+
+describe('removeEnvKey (.env structure delete)', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-envwriter-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  const envp = () => path.join(dir, '.env');
+
+  it('removes the target KEY line, preserving the rest', () => {
+    fs.writeFileSync(envp(), 'A=1\nSTRIPE_API_KEY=secret\nB=2\n');
+    removeEnvKey(envp(), 'STRIPE_API_KEY');
+    const c = fs.readFileSync(envp(), 'utf-8');
+    expect(c).not.toContain('STRIPE_API_KEY');
+    expect(c).toContain('A=1');
+    expect(c).toContain('B=2');
+  });
+
+  it('is a no-op when the key or file is absent', () => {
+    expect(() => removeEnvKey(envp(), 'MISSING')).not.toThrow();
+    fs.writeFileSync(envp(), 'A=1\n');
+    removeEnvKey(envp(), 'MISSING');
+    expect(fs.readFileSync(envp(), 'utf-8')).toContain('A=1');
+  });
+});
+
+describe('syncEnvStructureFromExample (.env.example → .env, value-preserving)', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-envwriter-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  const ex = () => path.join(dir, '.env.example');
+  const envp = () => path.join(dir, '.env');
+  const readEnv = () => (fs.existsSync(envp()) ? fs.readFileSync(envp(), 'utf-8') : '');
+
+  it('adds a missing connection value key (empty) + business mock-on toggle default', () => {
+    fs.writeFileSync(ex(), '# @connection business stripe-api\nSTRIPE_API_KEY=\n');
+    fs.writeFileSync(envp(), 'EXISTING=1\n');
+    syncEnvStructureFromExample(ex(), envp(), 'next');
+    const c = readEnv();
+    expect(c).toMatch(/^STRIPE_API_KEY=\s*$/m);
+    expect(c).toContain('NEXT_PUBLIC_USE_MOCK_STRIPE_API=true');
+    expect(c).toContain('EXISTING=1');
+  });
+
+  it('PRESERVES an existing .env value/toggle (never clobbers user edits)', () => {
+    fs.writeFileSync(ex(), '# @connection business stripe-api\nSTRIPE_API_KEY=\n');
+    fs.writeFileSync(envp(), 'STRIPE_API_KEY=live-key\nNEXT_PUBLIC_USE_MOCK_STRIPE_API=false\n');
+    syncEnvStructureFromExample(ex(), envp(), 'next');
+    const c = readEnv();
+    expect(c).toContain('STRIPE_API_KEY=live-key');
+    expect(c).toContain('NEXT_PUBLIC_USE_MOCK_STRIPE_API=false');
+    // No duplicate/overwritten toggle
+    expect(c).not.toContain('NEXT_PUBLIC_USE_MOCK_STRIPE_API=true');
+  });
+
+  it('does NOT delete a .env key absent from .env.example (plain user config)', () => {
+    fs.writeFileSync(ex(), '# @connection business stripe-api\nSTRIPE_API_KEY=\n');
+    fs.writeFileSync(envp(), 'USER_ONLY=keepme\n');
+    syncEnvStructureFromExample(ex(), envp(), 'next');
+    expect(readEnv()).toContain('USER_ONLY=keepme');
   });
 });
