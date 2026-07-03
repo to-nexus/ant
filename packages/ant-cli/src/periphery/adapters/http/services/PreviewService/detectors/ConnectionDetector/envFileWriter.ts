@@ -4,7 +4,9 @@ import { parseEnvLine } from './utils';
 import { findNextEnvLine } from './parseEnvAnnotations';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
 import {
+  deriveToggleVar,
   frameworkTogglePrefix,
+  isMockToggleVar,
   parseAnnotationLine,
   resolutionToModifier,
   serializeAnnotationLine,
@@ -226,22 +228,24 @@ export function upsertConnectionAnnotation(
 }
 
 /**
- * Mirror a connection's runtime value into `.env` per the §5 value invariant:
- * `infrastructure` → its localhost/compose value, virtualized `business`
- * (incl. self / ant-project) → empty. Business connections also persist their
- * virtualization toggle's active value (the panel toggle is deferred to Save).
+ * Mirror a connection's runtime value + toggle into `.env` — the value SSOT.
+ *
+ * `.env` owns the actual runtime value for EVERY category (the app reads this
+ * file; `.env.example` stays value-less for secret safety). We write
+ * `conn.value` verbatim — the user-entered value from the panel, or a
+ * detector/materializer default. Nothing is fabricated: a connection with no
+ * value (greenfield business / ant-project) still writes empty. Business
+ * connections additionally persist their virtualization toggle's active value
+ * (Save is the single place the panel toggle lands).
  */
 export function mirrorConnectionToEnv(
   envPath: string,
   conn: ServiceConnection,
   framework?: DeployFramework,
 ): void {
-  const mirrorValue = conn.category === 'infrastructure' ? conn.value || '' : '';
-  setEnvValue(envPath, conn.envVar, mirrorValue);
+  setEnvValue(envPath, conn.envVar, conn.value || '');
 
   if (conn.category === 'business' && conn.virtualization) {
-    // Write the chosen toggle value, not just a default — Save is the single
-    // place the panel toggle lands, so the active state must be persisted.
     setToggleEnvValue(
       envPath,
       conn.virtualization.toggleEnvVar,
@@ -268,4 +272,72 @@ export function removeConnectionAnnotation(
   if (bound.length === 0) return;
   for (let j = bound.length - 1; j >= 0; j--) lines.splice(bound[j], 1);
   fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
+}
+
+/**
+ * Delete a `KEY=...` line from `.env` (skips blanks/comments; preserves order).
+ * Used by the explicit connection-removal flow — the only place a `.env` key is
+ * deleted, because there the removed connection's `envVar` is known. Blind
+ * structure sync never deletes (a `.env` key absent from `.env.example` may be
+ * plain user config). No-op when the key or file is absent.
+ */
+export function removeEnvKey(envPath: string, key: string): void {
+  if (!fs.existsSync(envPath)) return;
+  const original = fs.readFileSync(envPath, 'utf-8');
+  const lines = original.split('\n');
+  const idx = findKeyLineIndex(lines, key);
+  if (idx === -1) return;
+  lines.splice(idx, 1);
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+}
+
+/**
+ * Structure sync: `.env.example` (structure SSOT) → `.env` (value SSOT).
+ *
+ * Ensures every connection KEY declared in `.env.example` exists in `.env`
+ * WITHOUT touching values already present — `.env` owns the value/toggle SSOT:
+ *   - value key absent in `.env`  → add empty (business/greenfield correct;
+ *     infra localhost defaults are authored once at gen-code, then preserved)
+ *   - business toggle key absent  → add mock-on default (`setToggleDefaultIfAbsent`)
+ *   - existing keys               → preserved verbatim (never clobbered)
+ *
+ * Deletion is intentionally NOT performed here: a `.env` key absent from
+ * `.env.example` is indistinguishable from plain user config. Explicit
+ * connection removal (which knows the `envVar`) drops the `.env` key via
+ * `removeEnvKey`. Called at gen-code completion and on panel annotation change.
+ */
+export function syncEnvStructureFromExample(
+  envExamplePath: string,
+  envPath: string,
+  framework?: DeployFramework,
+): void {
+  if (!fs.existsSync(envExamplePath)) return;
+  const lines = fs.readFileSync(envExamplePath, 'utf-8').split('\n');
+
+  const envKeys = new Set<string>();
+  if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const [k] = parseEnvLine(trimmed);
+      if (k) envKeys.add(k);
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const annotation = parseAnnotationLine(lines[i]);
+    if (!annotation) continue;
+    const next = findNextEnvLine(lines, i + 1);
+    if (!next) continue;
+    const [envVar] = parseEnvLine(next);
+    if (!envVar || isMockToggleVar(envVar)) continue;
+
+    if (!envKeys.has(envVar)) {
+      setEnvValue(envPath, envVar, '');
+      envKeys.add(envVar);
+    }
+    if (annotation.category === 'business') {
+      setToggleDefaultIfAbsent(envPath, deriveToggleVar(annotation.name), framework);
+    }
+  }
 }

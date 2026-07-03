@@ -6,7 +6,7 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
-import { loadProjectEnv as loadProjectEnvShared, connectionsToEnv as connectionsToEnvShared } from './envAssembly';
+import { loadProjectEnv as loadProjectEnvShared } from './envAssembly';
 import { backfillMockToggles } from './mockToggles';
 
 export interface SpawnOptions {
@@ -61,14 +61,6 @@ export class ProcessSpawner {
    */
   loadProjectEnv(packagePath: string, projectRoot?: string): Record<string, string> {
     return loadProjectEnvShared(packagePath, projectRoot);
-  }
-
-  /**
-   * Build merged environment from connections, filtered by package source.
-   * Only injects env vars belonging to the target package (or global '*').
-   */
-  private connectionsToEnv(connections?: ServiceConnection[], packageSource?: string): Record<string, string> {
-    return connectionsToEnvShared(connections, packageSource);
   }
 
   /**
@@ -197,14 +189,14 @@ export class ProcessSpawner {
     // Mock-toggle default-ON lives in `.env` (one SSOT): backfill any missing
     // business toggle to `true` BEFORE loading, so the file the factory reads
     // always carries it (greenfield mock-boot, no ECONNREFUSED).
+    // `.env` (+ .env.local) is the value/toggle SSOT — the app reads it directly.
+    // backfillMockToggles keeps the greenfield mock-on default IN the file.
     this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
-    const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {
       ...process.env,
       ...projectEnv,
-      ...connectionsEnv,
       PORT: port.toString(),
       NODE_ENV: 'development',
       BROWSER: 'none',
@@ -322,18 +314,18 @@ export class ProcessSpawner {
     
     this.ensureConfigFiles(pkg.path, options.onLog);
 
+    // `.env` (+ .env.local) is the value/toggle SSOT — the app reads it directly.
+    // backfillMockToggles keeps the greenfield mock-on default IN the file.
     this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
-    const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {
       ...process.env,
       ...projectEnv,
-      ...connectionsEnv,
       PORT: port.toString(),
       ...(options.extraEnv || {})
     };
-    
+
     logger.warn(`[Preview] Starting ${language} ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
     logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${language}) on port ${port}...`);

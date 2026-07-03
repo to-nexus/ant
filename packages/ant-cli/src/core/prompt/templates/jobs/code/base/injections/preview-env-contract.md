@@ -123,7 +123,7 @@ See `preview-setup.md` for framework-specific base path configuration.
 - Root `.env.example` holds variables shared across services (e.g., infrastructure URLs consumed by multiple services)
 - Per-service `.env.example` holds service-scoped variables (e.g., API keys, service-specific settings, PORT default)
 - Both levels use `@connection` annotation for connection variables
-- ALWAYS create `.env` alongside each `.env.example`, mirroring every key; assign values by connection category per the `.env` value invariant in §5 (infrastructure → localhost; virtualized `business` → empty)
+- Create `.env` alongside each `.env.example` ONLY when `.env` does not yet exist (initial scaffolding); assign values by connection category per the `.env` value invariant in §5 (infrastructure → localhost; virtualized `business` → empty). NEVER overwrite an existing `.env` — its values and toggles are the user-owned runtime SSOT (edited through the preview panel; missing keys are materialized deterministically by the platform, not by you)
 - Single-service projects: root-level only (no per-service split needed)
 
 ### Why
@@ -270,7 +270,7 @@ When two concerns are genuinely separate external services with distinct endpoin
 
 ### .env / .env.example Discipline
 
-Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. Author exactly one per-connection toggle per connection — do NOT author a master broadcast toggle (`<PREFIX>USE_MOCK`): with a per-connection toggle on every connection it is redundant, and the preview UI exposes no master control, so it is unmanageable from the connection switch. (The runtime still honours a master toggle as a fallback if a human adds one; it is simply not part of the generated deliverable.) `.env` MUST mirror `.env.example` keys — and a virtualized business connection's URL / endpoint value stays **empty** in `.env` (the toggle is `true` and the mock resolves it; a `localhost:PORT` value would be a fabricated address for a dependency with no real local endpoint). See the `.env` value invariant by connection category in §5. Adapter-specific config that ONLY the virtualized adapter reads MUST also appear in `.env.example` so the contract is self-documenting.
+Every business `@connection` MUST have its toggle line in `.env.example` with a comment describing what virtualization provides. Author exactly one per-connection toggle per connection — do NOT author a master broadcast toggle (`<PREFIX>USE_MOCK`): with a per-connection toggle on every connection it is redundant, and the preview UI exposes no master control, so it is unmanageable from the connection switch. (The runtime still honours a master toggle as a fallback if a human adds one; it is simply not part of the generated deliverable.) At initial scaffolding `.env` mirrors `.env.example` keys, and a virtualized business connection's URL / endpoint value starts **empty** in `.env` (the toggle default is `true` and the mock resolves it; do NOT fabricate a `localhost:PORT` address for a dependency with no real local endpoint). Thereafter `.env` is the runtime SSOT: the user may enter a real value and flip the toggle to `false` through the preview panel — you never overwrite those. See the `.env` value invariant by connection category in §5. Adapter-specific config that ONLY the virtualized adapter reads MUST also appear in `.env.example` so the contract is self-documenting.
 
 The toggle line in `.env.example` is the template default (mock-on). The preview connection switch does NOT rewrite `.env.example`; flipping a service to its real adapter writes the toggle value into `.env` (the runtime file), leaving the `.env.example` default intact.
 
@@ -385,12 +385,12 @@ Before completing any task that creates `config.example.toml`, verify every `@co
 If `DATABASE_URL` already has `@connection`, do NOT also add `DB_HOST`, `DB_PORT`, `DB_PASSWORD`, `DB_NAME` for the same service. The URL variable is the single source of truth. Decomposed variables cause the platform to detect duplicate connections for the same service.
 
 **`.env.example` / `.env` sync is EASILY BROKEN.**
-Any task that adds or modifies environment variables MUST update BOTH files:
-- `.env.example` with annotation and placeholder value
-- `.env` with the same keys, values assigned by connection category per the `.env` value invariant in §5 (infrastructure → localhost; virtualized `business` → empty)
-If only one file is updated, either the platform cannot detect the connection OR the application fails at runtime.
+Any task that adds or modifies a connection updates the two files with DIFFERENT ownership:
+- `.env.example` — the structure SSOT: add/update the `@connection` annotation and a value-less placeholder key. Always your responsibility.
+- `.env` — the runtime value/toggle SSOT, owned by the user (preview panel) and materialized deterministically by the platform. Add a MISSING key here only when creating `.env` for the first time; NEVER overwrite a key that already exists (that would erase a user-entered value/toggle).
+If `.env.example` is not updated, the platform cannot detect the connection.
 
-**Invariant — `.env` value population by connection category (SSOT)**: At task completion, `.env` MUST mirror **all variable keys** present in `.env.example`. The VALUE assigned to each key is decided by what the key is — NOT by a blanket "resolve to localhost" rule:
+**Invariant — `.env.example` value-less; `.env` value population by connection category**: `.env.example` NEVER carries a real value (secret-safe, git-tracked). When a key is FIRST materialized into `.env` (absent before), its value is decided by what the key is — NOT by a blanket "resolve to localhost" rule. Existing `.env` keys are preserved verbatim:
 
 - `infrastructure` `@connection` (a real local dependency run via docker-compose — database / cache / queue) → resolved localhost / compose value (e.g. `postgresql://localhost:5432/app`). The endpoint actually exists locally.
 - `business` `@connection` (virtualized by default; this includes the `self` and `ant-project:` modifiers) → **empty value, identical to `.env.example`**. The virtualized adapter — or the platform proxy for `self` / `ant-project` — resolves this dependency at runtime; the running workspace has NO real local endpoint for it, so a concrete `localhost:PORT` value is a fabricated address that points at nothing and contradicts Service Virtualization (§4.5). The connection is reached through its adapter, not through a value you invent here.
