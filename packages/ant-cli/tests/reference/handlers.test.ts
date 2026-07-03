@@ -21,7 +21,7 @@ const noopChatStatus: any = {
 let base: string;
 let wr: UnifiedWorkspaceResolver;
 
-function ctx(referenceRequests: any[] = []): any {
+function ctx(referenceRequests: any[] = [], project?: string, featureFolder?: string): any {
   return {
     fileSystem: undefined,
     chatStatus: noopChatStatus,
@@ -29,6 +29,8 @@ function ctx(referenceRequests: any[] = []): any {
     workspaceResolver: wr,
     userId: 'u',
     organizationId: 'o',
+    project,
+    featureFolder,
     referenceRequests,
   };
 }
@@ -55,6 +57,32 @@ describe('reference handlers', () => {
     const r = await handleRegisterReference(ctx(), { project: 'ghost' });
     expect(r.error).toBeTruthy();
     expect(r.sideEffects).toBeUndefined();
+  });
+
+  it('register_reference rejects registering the current project (self)', async () => {
+    const r = await handleRegisterReference(ctx([], 'be'), { project: 'be' });
+    expect(r.error).toBeTruthy();
+    expect(r.error).toContain('current project');
+    expect(r.sideEffects).toBeUndefined();
+  });
+
+  it('register_reference defaults an omitted branch to the connection-linked feature', async () => {
+    // Current project "app" links to sibling "be" at feature "dev" via @connection.
+    const appCodebase = path.join(base, 'o', 'u', 'app', 'codebase');
+    fs.writeFileSync(
+      path.join(appCodebase, '.env.example'),
+      '# @connection business backend ant-project:be:dev\nBACKEND_URL=\n',
+    );
+    // A "dev" worktree for "be" so the branch resolves dir-mode on disk.
+    const beDev = path.join(base, 'o', 'u', 'be', 'features', 'dev', 'codebase');
+    fs.mkdirSync(beDev, { recursive: true });
+    fs.writeFileSync(path.join(beDev, 'marker.ts'), 'export const X = 1;\n');
+
+    const r = await handleRegisterReference(ctx([], 'app'), { project: 'be' });
+    expect(r.error).toBeUndefined();
+    expect(r.sideEffects).toEqual([
+      { type: 'referenceRegistered', project: 'be', branch: 'feature/dev' },
+    ]);
   });
 
   it('read_reference_file errors when the project is not registered', async () => {

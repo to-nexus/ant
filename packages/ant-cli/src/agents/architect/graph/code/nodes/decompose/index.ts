@@ -1089,6 +1089,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specClarify: rawSpecClarify,
   } = parsed;
 
+  // References are for OTHER projects only. Drop any self-registration the LLM
+  // emitted in the <references> tag so the current project never enters the
+  // reference pool (the resolveReferenceCodebase guard is the runtime backstop).
+  const currentProject = state.context?.project;
+  const filteredReferenceRequests = referenceRequests?.filter(
+    (r) => !currentProject || r.project !== currentProject,
+  );
+
   // Defense-in-depth: when the upstream pipeline has already committed to
   // an intent (ActionsPanel explicit OR @-mention actionMetadata), the LLM
   // has no standing to emit `<specClarify>` — its three options all
@@ -1241,7 +1249,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     executionTier,
     computeRacScope(state.resolvedAction),
   );
-  logTaskSummary(tasks, referenceRequests);
+  logTaskSummary(tasks, filteredReferenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.5: Apply techTier from decompose response
@@ -1594,7 +1602,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ...state,  // ✅ Includes tokenUsage accumulated from decompose LLM call
     taskQueue,
     featureTasks,
-    referenceRequests: referenceRequests || state.referenceRequests || [],
+    referenceRequests: filteredReferenceRequests || state.referenceRequests || [],
     totalSubtasks: tasks.length + 1,
     subtaskIndex: 0,
     completedTasks: state.completedTasks || [],

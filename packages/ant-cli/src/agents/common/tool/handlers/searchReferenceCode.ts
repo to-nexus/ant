@@ -58,10 +58,12 @@ export async function handleSearchReferenceCode(
   const searchingIndex = await ctx.chatStatus.showStatus('searching_reference', { project, query: pattern });
 
   try {
-    const resolution = await resolveReferenceCodebase(deps.workspaceResolver, deps.userContext, {
-      project,
-      branch,
-    });
+    const resolution = await resolveReferenceCodebase(
+      deps.workspaceResolver,
+      deps.userContext,
+      { project, branch },
+      ctx.project,
+    );
 
     let lines: string[];
     if (resolution.mode === 'git') {
