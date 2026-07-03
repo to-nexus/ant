@@ -97,8 +97,9 @@ describe('nodes/checkTaskStatus/evaluate', () => {
       currentTask: { id: 'tc', name: 'tc', type: 'test-code', priority: 10 } as any,
     });
     const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
-    // test-code hook would have added incomplete_implementation, but
-    // fileErrors block the hook from running.
+    // test-code no longer publishes a check hook (single-owner: FV gate owns
+    // "test suite exists" — RCA equal-nursing-drift), so no
+    // incomplete_implementation can ever be produced here regardless.
     expect(result.violations.every(v => v.type !== 'incomplete_implementation')).toBe(true);
   });
 
