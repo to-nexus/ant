@@ -33,6 +33,7 @@ import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchU
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
 import type { InterruptionReason } from '@ant/shared';
+import { buildInfrastructureInterruption } from '@ant/shared';
 import { readCgroupMemoryLimit, readCgroupMemoryUsage, deriveDefaultHeapMb } from '../../periphery/system/cgroupLimits';
 import * as fs from 'fs';
 
@@ -1153,16 +1154,71 @@ export class JobWorker {
       clearInterval(this.eventLoopWatchdog);
       this.eventLoopWatchdog = null;
     }
-    const activeJobs = Array.from(this.runningProcesses.keys());
+    const entries = Array.from(this.runningProcesses.entries());
+    const activeJobs = entries.map(([jid]) => jid);
     logger.warn(`JobWorker shutting down — active jobs: [${activeJobs.join(', ')}]`, { component: 'JobWorker' });
 
-    // Set kill reasons in parallel before sending SIGTERM
-    await Promise.all(activeJobs.map(jid => this.setKillReason(jid, 'server_shutdown')));
+    // This worker process is about to exit, so a child's RESULT will never reach
+    // BullMQ's queueEvents.completed. Mirror the `stalled` handler and publish the
+    // server_shutdown interruption DIRECTLY to JOB_STATUS_UPDATES so the
+    // always-alive API server runs RouteConfigurator → pauseJob (chat cancelled
+    // card + kanban reset) immediately, instead of relying on the ~3-5min stalled
+    // net. The worker has no ChatService/cleanupJobState deps, so publishing is
+    // the only channel available to it.
+    //
+    // Ordering is deliberate and load-bearing:
+    //  - PUBLISH FIRST (before killing the child / worker.close()) so it lands
+    //    within a possibly very short pod grace window.
+    //  - Do NOT write updateJobStatus('paused') here: leaving status='running'
+    //    keeps the BullMQ stalled net armed as a fallback if this publish is cut
+    //    short. Writing 'paused' would make the stalled handler / StaleJobRecovery
+    //    skip it (they gate on status running/queued). 'paused' is written by the
+    //    API-side pauseJob once it receives the publish.
+    //  - POISON before publishing so a late child onCheckpoint cannot resurrect
+    //    the projection (same crash-boundary invariant the stalled handler uses).
+    await Promise.all(entries.map(async ([jobId, child]) => {
+      try {
+        await this.stateStore.acquireLock(`ant:job-poisoned:${jobId}`, 600).catch(() => false);
+        await this.setKillReason(jobId, 'server_shutdown');
 
-    for (const [jobId, process] of this.runningProcesses) {
-      logger.info(`Terminating job process: ${jobId} (reason=server_shutdown)`, { component: 'JobWorker', jobId });
-      process.kill('SIGTERM');
-    }
+        let projectId: string | undefined;
+        let featureName: string | undefined;
+        let userEmail: string | undefined;
+        let jobType: string | undefined;
+        try {
+          const mapping = await this.stateStore.getJobMapping(jobId);
+          if (mapping) {
+            projectId = mapping.projectId;
+            featureName = mapping.featureName;
+            jobType = mapping.jobType;
+            if (mapping.userContext) {
+              userEmail = `${mapping.userContext.userId}@${mapping.userContext.organizationId}`;
+            }
+          }
+        } catch { /* best-effort */ }
+
+        await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
+          type: 'failed',
+          jobId,
+          status: 'paused',
+          projectId,
+          featureName,
+          userEmail,
+          // Single owner for infra canResume: plan/visual → false, code/design/learn → true.
+          interruption: buildInfrastructureInterruption('server_shutdown', jobType),
+          timestamp: new Date().toISOString(),
+        });
+
+        // Best-effort child stop. Do NOT await exit — the publish already reached
+        // Redis and the poison flag blocks any late-checkpoint resurrection.
+        logger.info(`Terminating job process: ${jobId} (reason=server_shutdown)`, { component: 'JobWorker', jobId });
+        child?.kill('SIGTERM');
+      } catch (err) {
+        logger.error(`Failed to publish server_shutdown interruption: ${jobId}`, { component: 'JobWorker', jobId }, err);
+      } finally {
+        this.runningProcesses.delete(jobId);
+      }
+    }));
 
     if (this.worker) {
       // Wait for current jobs to complete (30 second timeout)
