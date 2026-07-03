@@ -1,9 +1,11 @@
 /**
  * Interruption Types
- * 
+ *
  * Defines why and how a job was interrupted.
  * Used in session state, Kanban UI, and resume logic.
  */
+
+import { isMidGraphResumable } from './job';
 
 /** Categorizes why a job was interrupted */
 export type InterruptionReason =
@@ -60,4 +62,47 @@ export interface InterruptionDetails {
   /** Code job: sample violations when verification failed */
   violations?: Array<{ type: string; message: string }>;
   metadata?: Record<string, any>;
+}
+
+/**
+ * Single owner for infrastructure-interruption `InterruptionDetails`.
+ *
+ * `canResume` is computed by the DOCUMENTED rule (see the
+ * `INFRASTRUCTURE_INTERRUPTION_REASONS` docstring above): only mid-graph
+ * checkpointing job types (code/design/learn) can resume from where they
+ * stopped; plan/visual can only restart, so `canResume` is false. Producers
+ * (`JobWorker.shutdown`, the job-runner SIGTERM handler, `StaleJobRecovery`)
+ * MUST route infra reasons through here so the flag cannot drift per site.
+ */
+export function buildInfrastructureInterruption(
+  reason: InterruptionReason,
+  jobType: string | undefined | null,
+  message?: string,
+): InterruptionDetails {
+  const canResume = isMidGraphResumable(jobType);
+  return {
+    reason,
+    message: message ?? defaultInfrastructureMessage(reason, canResume),
+    timestamp: new Date().toISOString(),
+    canResume,
+  };
+}
+
+function defaultInfrastructureMessage(reason: InterruptionReason, canResume: boolean): string {
+  const tail = canResume ? 'You can resume this job.' : 'This job did not finish.';
+  switch (reason) {
+    case 'server_shutdown':
+      return `Server is shutting down. ${tail}`;
+    case 'server_crash':
+    case 'process_crash':
+      return `Server was terminated unexpectedly. ${tail}`;
+    case 'worker_stalled':
+      return `Worker process became unresponsive. ${tail}`;
+    case 'system_sleep':
+      return `System went to sleep and the job was interrupted. ${tail}`;
+    case 'lock_expired':
+      return `The job lock expired. ${tail}`;
+    default:
+      return `Job interrupted (${reason}). ${tail}`;
+  }
 }

@@ -42,7 +42,8 @@ import { abortJob, isJobAborted } from './jobAbort';
 import { REDIS_KEYS, REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
 import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
 import { createTLSOptions } from '../infrastructure/utils/redis';
-import type { InterruptionReason } from '../core/types/session';
+import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
+import { buildInfrastructureInterruption } from '@ant/shared';
 
 interface JobParams {
   jobId: string;
@@ -383,40 +384,24 @@ process.on('SIGTERM', async () => {
  * `ServerLifecycleManager`, and `StaleJobRecovery` so downstream consumers
  * (RouteConfigurator → finalize/pauseJob, JobCleanupManager, ChatService
  * cancelled card) receive a consistent payload regardless of the kill path.
+ *
+ * `user_stopped` is a terminal (finalize) path with its own semantics. Every
+ * other SIGTERM kill reason is an infrastructure interruption, so its
+ * `canResume` MUST come from the single owner (`buildInfrastructureInterruption`)
+ * which gates on `isMidGraphResumable(jobType)` — otherwise plan/visual jobs
+ * would surface a false "resume" affordance after a server_shutdown / crash.
  */
-function buildSigtermInterruption(reason: InterruptionReason) {
-  const timestamp = new Date().toISOString();
-  switch (reason) {
-    case 'user_stopped':
-      return {
-        reason,
-        message: 'Task stopped by user',
-        timestamp,
-        canResume: true,
-        metadata: { stoppedBy: 'user_action' },
-      };
-    case 'server_shutdown':
-      return {
-        reason,
-        message: 'Server is shutting down',
-        timestamp,
-        canResume: true,
-      };
-    case 'server_crash':
-      return {
-        reason,
-        message: 'Server was terminated unexpectedly. You can resume this job.',
-        timestamp,
-        canResume: true,
-      };
-    default:
-      return {
-        reason,
-        message: `Job interrupted: ${reason}`,
-        timestamp,
-        canResume: true,
-      };
+function buildSigtermInterruption(reason: InterruptionReason): InterruptionDetails {
+  if (reason === 'user_stopped') {
+    return {
+      reason,
+      message: 'Task stopped by user',
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: { stoppedBy: 'user_action' },
+    };
   }
+  return buildInfrastructureInterruption(reason, process.env.ANT_JOB_TYPE);
 }
 
 // Run
