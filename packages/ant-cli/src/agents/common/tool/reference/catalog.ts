@@ -18,6 +18,12 @@ export interface ReferenceCatalogEntry {
   project: string;
   /** Git refs offered for this project: `main` + `feature/{name}` per ant feature. */
   branches: string[];
+  /**
+   * Feature this project is linked to via the current project's
+   * `@connection … ant-project:{project}:{feature}` annotation, when present.
+   * The authoritative "which branch to read" answer — surfaced as recommended.
+   */
+  connectedFeature?: string;
 }
 
 /** Render a catalog as a compact markdown list for prompt injection. */
@@ -26,6 +32,9 @@ export function formatReferenceCatalog(entries: ReferenceCatalogEntry[]): string
   return entries
     .map((e) => {
       const branches = e.branches.length ? ` (branches: ${e.branches.join(', ')})` : '';
+      if (e.connectedFeature) {
+        return `- ${e.project} — linked at feature "${e.connectedFeature}" (use branch feature/${e.connectedFeature})${branches}`;
+      }
       return `- ${e.project}${branches}`;
     })
     .join('\n');
@@ -111,7 +120,7 @@ export async function listProjectFeatures(
 export async function buildReferenceCatalog(
   workspaceResolver: WorkspaceResolver,
   userContext: UserContext,
-  opts: { excludeProject?: string } = {},
+  opts: { excludeProject?: string; connectionBranches?: Map<string, string> } = {},
 ): Promise<ReferenceCatalogEntry[]> {
   const projects = await listTenantProjects(workspaceResolver, userContext);
   const catalog: ReferenceCatalogEntry[] = [];
@@ -121,6 +130,7 @@ export async function buildReferenceCatalog(
     catalog.push({
       project,
       branches: ['main', ...features.map((f) => `feature/${f}`)],
+      connectedFeature: opts.connectionBranches?.get(project),
     });
   }
   return catalog;

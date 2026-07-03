@@ -10,12 +10,14 @@
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { getRefDeps } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, listRootEntries, ReferenceTargetError } from '../reference/resolve';
+import { buildConnectionBranchMap } from '../reference/connectionBranches';
 
 export async function handleRegisterReference(
   ctx: ToolExecutionContext,
   args: { project: string; branch?: string },
 ): Promise<ToolResult> {
-  const { project, branch } = args;
+  const { project } = args;
+  let { branch } = args;
   if (!project) {
     return { content: 'register_reference requires "project"', error: 'register_reference requires "project"' };
   }
@@ -25,11 +27,30 @@ export async function handleRegisterReference(
     return { content: deps.error, error: deps.error };
   }
 
+  // Default an omitted branch to the connection-linked feature (the authoritative
+  // "which branch" answer from the current project's `@connection` annotations),
+  // instead of falling through to `main`.
+  if (!branch && ctx.project) {
+    try {
+      const codebaseRoot = deps.workspaceResolver.getCodebasePath(
+        deps.userContext,
+        ctx.project,
+        ctx.featureFolder,
+      );
+      const connected = (await buildConnectionBranchMap(codebaseRoot)).get(project);
+      if (connected) branch = `feature/${connected}`;
+    } catch {
+      // no connection hint — resolver defaults to main
+    }
+  }
+
   try {
-    const resolution = await resolveReferenceCodebase(deps.workspaceResolver, deps.userContext, {
-      project,
-      branch,
-    });
+    const resolution = await resolveReferenceCodebase(
+      deps.workspaceResolver,
+      deps.userContext,
+      { project, branch },
+      ctx.project,
+    );
 
     let bootstrap = '';
     if (resolution.mode === 'dir') {

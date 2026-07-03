@@ -23,4 +23,13 @@ reference project.
 
 **Constraint**: Register only projects the task genuinely depends on. Match the
 other project's actual code — do not invent its interfaces.
+
+**Constraint**: References are for OTHER projects only. Never register your own
+current project (any branch of it) — your own code is the codebase channel;
+read it with `search_code` / `read_file` on `codebase/…`, not via a reference.
+
+**Branch selection**: When a project is shown as linked at a feature, register
+that branch — it is the authoritative target. When a project is NOT linked and
+exposes multiple branches, do not guess — ask which branch with a `<clarify>`
+question.
 {{/if}}

@@ -14,6 +14,15 @@ code. Do NOT register unrelated projects.
 **Constraint**: Registration is a pointer, not a copy. A reference project's code
 is read-only — it is never modified by this job.
 
+**Constraint**: References are for OTHER projects only. Never register your own
+current project (any branch of it) — your own code is the codebase channel;
+read it with `search_code` / `read_file` on `codebase/…`, not via a reference.
+
+**Branch selection**: When a project is shown as linked at a feature, register
+that branch — it is the authoritative target. When a project is NOT linked and
+exposes multiple branches, do not guess — ask which branch with a `<clarify>`
+question.
+
 To pre-register at decomposition time, emit a `<references>` tag (a JSON array;
 `branch` is optional and defaults to the project's main branch; `feature/{name}`
 selects a feature branch):

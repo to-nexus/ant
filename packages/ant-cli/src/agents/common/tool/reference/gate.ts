@@ -7,12 +7,13 @@
  */
 
 import { listTenantProjects } from './catalog';
+import { currentProjectOf } from './currentProject';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 
 interface GateStateLike {
   referenceRequests?: Array<{ project: string }>;
   deps?: { workspaceResolver?: unknown };
-  context?: { userId?: string; organizationId?: string; projectName?: string };
+  context?: { userId?: string; organizationId?: string; project?: string };
 }
 
 export async function hasReferenceSurface(state: GateStateLike): Promise<boolean> {
@@ -25,7 +26,7 @@ export async function hasReferenceSurface(state: GateStateLike): Promise<boolean
   };
   try {
     const projects = await listTenantProjects(workspaceResolver, userContext);
-    const current = state.context?.projectName;
+    const current = currentProjectOf(state);
     return projects.some((p) => p !== current);
   } catch {
     return false;

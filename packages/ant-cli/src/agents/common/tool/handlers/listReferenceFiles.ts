@@ -28,10 +28,12 @@ export async function handleListReferenceFiles(
   if ('error' in deps) return { content: deps.error, error: deps.error };
 
   try {
-    const resolution = await resolveReferenceCodebase(deps.workspaceResolver, deps.userContext, {
-      project,
-      branch,
-    });
+    const resolution = await resolveReferenceCodebase(
+      deps.workspaceResolver,
+      deps.userContext,
+      { project, branch },
+      ctx.project,
+    );
 
     let items: string[];
     if (resolution.mode === 'git') {

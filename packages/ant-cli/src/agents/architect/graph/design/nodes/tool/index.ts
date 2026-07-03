@@ -121,7 +121,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       chatStatus: createChatStatusReporter(),
       workingDir: state.context?.featurePath || process.cwd(),
       featurePath: state.context?.featurePath,
-      project: state.context?.projectName,
+      project: state.context?.project,
       featureFolder: state.context?.featureFolder,
       git: state.deps?.git as any,
       command: state.deps?.command as any,

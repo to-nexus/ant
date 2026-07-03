@@ -55,7 +55,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       chatStatus: createChatStatusReporter(),
       workingDir: state.context?.featurePath || process.cwd(),
       featurePath: state.context?.featurePath,
-      project: state.context?.projectName,
+      project: state.context?.project,
       featureFolder: state.context?.featureFolder,
       command: state.deps?.command as any,
       git: state.deps?.git as any,

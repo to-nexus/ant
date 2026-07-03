@@ -34,9 +34,25 @@ export async function resolveReferenceCodebase(
   workspaceResolver: WorkspaceResolver,
   userContext: UserContext,
   target: { project: string; branch?: string },
+  currentProject?: string,
 ): Promise<ReferenceResolution> {
   const { project } = target;
   const branch = target.branch?.trim() || undefined;
+
+  // References are for OTHER projects only. The current project's code — every
+  // branch — is the job's own codebase channel; reading it through the
+  // git/worktree-backed reference resolver returns a divergent (often empty)
+  // committed view, which is what sent the `north-gaining-globe` job
+  // branch-hunting. The project name is discoverable from user input (e.g. a
+  // preview URL slug), so the catalog exclusion alone cannot prevent this —
+  // this guard is the load-bearing gate.
+  if (currentProject && project === currentProject) {
+    throw new ReferenceTargetError(
+      `"${project}" is your current project — do not register it as a reference. ` +
+        `Your own code (every branch) is available through the codebase channel: ` +
+        `use search_code / read_file on codebase/…. References are for OTHER projects only.`,
+    );
+  }
 
   const projects = await listTenantProjects(workspaceResolver, userContext);
   if (!projects.includes(project)) {

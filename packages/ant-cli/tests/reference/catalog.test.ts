@@ -6,7 +6,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
-import { buildReferenceCatalog } from '../../src/agents/common/tool/reference/catalog';
+import {
+  buildReferenceCatalog,
+  formatReferenceCatalog,
+} from '../../src/agents/common/tool/reference/catalog';
 import { hasReferenceSurface } from '../../src/agents/common/tool/reference/gate';
 
 const uc = { userId: 'u', organizationId: 'o' };
@@ -38,7 +41,7 @@ describe('buildReferenceCatalog', () => {
   });
 
   it('hasReferenceSurface is true when a sibling exists', async () => {
-    const state = { deps: { workspaceResolver: wr }, context: { ...uc, projectName: 'app' } };
+    const state = { deps: { workspaceResolver: wr }, context: { ...uc, project: 'app' } };
     expect(await hasReferenceSurface(state)).toBe(true);
   });
 
@@ -46,8 +49,23 @@ describe('buildReferenceCatalog', () => {
     const solo = fs.mkdtempSync(path.join(os.tmpdir(), 'ref-solo-'));
     fs.mkdirSync(path.join(solo, 'o', 'u', 'app', 'codebase'), { recursive: true });
     const soloWr = new UnifiedWorkspaceResolver(solo);
-    const state = { deps: { workspaceResolver: soloWr }, context: { ...uc, projectName: 'app' } };
+    // Uses the real `context.project` field — the former `projectName` phantom
+    // silently yielded `undefined`, leaking the current project into the surface.
+    const state = { deps: { workspaceResolver: soloWr }, context: { ...uc, project: 'app' } };
     expect(await hasReferenceSurface(state)).toBe(false);
     fs.rmSync(solo, { recursive: true, force: true });
+  });
+
+  it('annotates a connection-linked sibling with the recommended branch', async () => {
+    const branches = new Map<string, string>([['be', 'staging']]);
+    const catalog = await buildReferenceCatalog(wr, uc, {
+      excludeProject: 'app',
+      connectionBranches: branches,
+    });
+    const be = catalog.find((c) => c.project === 'be');
+    expect(be?.connectedFeature).toBe('staging');
+    const rendered = formatReferenceCatalog(catalog);
+    expect(rendered).toContain('linked at feature "staging"');
+    expect(rendered).toContain('use branch feature/staging');
   });
 });
