@@ -15,8 +15,6 @@
  *   - conversations.convKey        — per-task conversation scope (pre-wiring;
  *                                    phase layer still shares
  *                                    `CONV_KEYS.NODE_EXECUTE`).
- *   - check.evaluate               — async disk scan for real test files
- *                                    via `detectTestFilesFromDisk`.
  *   - execute                      — skipExamples flag only (NON-forking:
  *                                    no templatePaths swap; rides the shared
  *                                    default execute template whose
@@ -51,6 +49,19 @@
  * surfaces retry violations back through `composeViolationsText`.
  *
  * Intentionally absent:
+ *   - check.evaluate — a test-code batch does NOT self-assert "test files
+ *     exist in the workspace". That invariant is workspace-wide (non-local)
+ *     and is owned by a SINGLE task — the Final Verification task, whose
+ *     build/test gate runs the suite (`vitest run` fails on zero tests).
+ *     A per-batch disk-scan guard was fatal for a legitimately config-only
+ *     batch (runner config / test-entry wiring, no `*.test.*` of its own):
+ *     it emitted `<done>` correctly, the guard found no test files (the
+ *     sibling slice batches that write them are serialized AFTER it in the
+ *     same `parallelGroup`), and the resulting retryable violation drove
+ *     the plan retry budget to exhaustion → whole-run drain, unrecoverable
+ *     across resume (RCA: equal-nursing-drift, 2026-07-03). Single-owner at
+ *     the FV gate dissolves the config-first ↔ tests-exist circular
+ *     dependency.
  *   - check.noDoneSignalHint — the generic "Break down the task scope"
  *     hint is correct for test-code; only verification overrides.
  *   - scheduling consumer flags `preUiBarrier / preDocBarrier /
@@ -66,7 +77,6 @@ import type { TaskHooks } from '../_shared/types';
 
 import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
-import { evaluate } from './hooks/check';
 import { executeHook } from './hooks/execute';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { guard as commandGuard } from './hooks/command';
@@ -82,7 +92,6 @@ import { guard as commandGuard } from './hooks/command';
 export const hooks: TaskHooks = {
   scheduling: { preTestgenBarrier, blocksDoc },
   conversations: { convKey },
-  check: { evaluate },
   execute: executeHook,
   plan: {
     extraTemplateVars: planExtraTemplateVars,

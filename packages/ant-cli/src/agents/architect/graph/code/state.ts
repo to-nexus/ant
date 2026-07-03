@@ -49,7 +49,7 @@ export type ViolationType =
   | 'file_operation_failed'     // edit search-block / duplicate-edit etc. — checkTaskStatus/evaluate
   | 'cross_worker_conflict'     // file owned by another parallel worker — checkTaskStatus/evaluate (parallel only)
   | 'no_done_signal'            // reached checkTaskStatus without <done> (Safety Net forced exit) — checkTaskStatus/evaluate
-  | 'incomplete_implementation' // test-code task signalled done but no test files on disk — test-code/hooks/check
+  | 'incomplete_implementation' // reserved: "test suite exists" is single-owned by the Final Verification gate, not per test-code batch (RCA: equal-nursing-drift). No active producer; retained for a future FV-level disk-scan owner.
   | 'other';                    // fallback for unclassified errors — _common/errorHandler.ts
 
 /**

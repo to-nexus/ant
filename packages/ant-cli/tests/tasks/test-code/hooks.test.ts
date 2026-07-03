@@ -4,14 +4,14 @@
  * Locks the contract for T6 call-site flips:
  *   - scheduling.preTestgenBarrier  — true (block while feature/setup runs)
  *   - conversations.convKey         — `node:execute:test-code:<id>`
- *   - check.evaluate                — async; returns violation when no
- *                                     test files are found on disk, null
- *                                     when at least one exists
+ *   - check                         — INTENTIONALLY ABSENT. The "test suite
+ *                                     exists" invariant is single-owned by the
+ *                                     Final Verification gate, not per
+ *                                     test-code batch (RCA: equal-nursing-drift).
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
 
 import {
@@ -19,7 +19,6 @@ import {
   blocksDoc,
 } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/scheduling';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/conversations';
-import { evaluate as checkEvaluate } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/check';
 import * as planHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/plan';
 import * as commandHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/command';
 import { hooks as testCodeBundle, isTestCodeTask } from '../../../src/agents/architect/graph/code/tasks/test-code';
@@ -39,37 +38,9 @@ function task(id: string, overrides: Partial<CodeTask> = {}): CodeTask {
   } as CodeTask;
 }
 
-function stateWithFeaturePath(featurePath?: string): ArchitectGraphState {
-  return { context: { featurePath } } as unknown as ArchitectGraphState;
-}
-
-function mkTmpFeature(contents: Record<string, string> = {}): string {
-  // detectTestFilesFromDisk scans `${featurePath}/codebase` — mirror that layout.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-testcode-hook-'));
-  const codebaseRoot = path.join(dir, 'codebase');
-  fs.mkdirSync(codebaseRoot, { recursive: true });
-  for (const [relPath, body] of Object.entries(contents)) {
-    const abs = path.join(codebaseRoot, relPath);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, body, 'utf8');
-  }
-  return dir;
-}
-
-const tmpDirs: string[] = [];
 afterEach(() => {
-  while (tmpDirs.length > 0) {
-    const d = tmpDirs.pop()!;
-    try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* best-effort */ }
-  }
   vi.restoreAllMocks();
 });
-
-function tmpFeature(contents: Record<string, string> = {}): string {
-  const d = mkTmpFeature(contents);
-  tmpDirs.push(d);
-  return d;
-}
 
 describe('tasks/_shared/registry — test-code entry', () => {
   it('returns the test-code bundle', () => {
@@ -81,7 +52,11 @@ describe('tasks/_shared/registry — test-code entry', () => {
     // doc tasks wait for tests to finish before describing the codebase.
     expect(hooks?.scheduling?.blocksDoc).toBe(true);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
-    expect(hooks?.check?.evaluate).toBe(checkEvaluate);
+    // Single-owner (RCA equal-nursing-drift): test-code publishes NO check
+    // hook. "Test suite exists" is a workspace-wide invariant owned solely by
+    // the Final Verification gate; a per-batch disk-scan guard deadlocked a
+    // config-only batch against its serialized sibling slices.
+    expect(hooks?.check).toBeUndefined();
     // test-code is NON-forking: it rides the shared plan/execute templates,
     // so it publishes `plan.extraTemplateVars` (type-specific vars) NOT
     // `plan.buildPrompt`, and NO `toolLoopLogTemplate`. The command guard is
@@ -93,16 +68,17 @@ describe('tasks/_shared/registry — test-code entry', () => {
     expect(hooks?.command?.guard).toBe(commandHook.guard);
   });
 
-  it('bundle publishes scheduling + conversations + check + plan + command slots', () => {
+  it('bundle publishes scheduling + conversations + plan + command slots (NO check)', () => {
     // Slot-level absence — lock parity with ui/design-system precedents
     // so a future drive-by hook addition forces an explicit test update.
     expect(testCodeBundle.decompose).toBeUndefined();
     expect(testCodeBundle.tool).toBeUndefined();
     expect(testCodeBundle.router).toBeUndefined();
     expect(testCodeBundle.orchestrator).toBeUndefined();
-    // check.evaluate is published; but noDoneSignalHint is NOT —
-    // generic "Break down the task scope" is correct for test-code.
-    expect(testCodeBundle.check?.noDoneSignalHint).toBeUndefined();
+    // Single-owner regression guard (equal-nursing-drift): the check slot is
+    // absent entirely — the FV gate owns "test suite exists". Re-adding a
+    // per-batch check must be an explicit, reviewed decision.
+    expect(testCodeBundle.check).toBeUndefined();
     // NON-forking: extraTemplateVars is published; buildPrompt is NOT —
     // test-code composes the shared `jobs/code/nodes/plan/base` template
     // (like ui/design-system) and only contributes type-specific vars.
@@ -139,41 +115,6 @@ describe('tasks/test-code/hooks/scheduling', () => {
 describe('tasks/test-code/hooks/conversations', () => {
   it('convKey — task-id-scoped', () => {
     expect(convHook.convKey(task('t1'))).toBe('node:execute:test-code:t1');
-  });
-});
-
-describe('tasks/test-code/hooks/check', () => {
-  it('evaluate — returns violation when no test files exist', async () => {
-    const featurePath = tmpFeature({
-      'src/main.ts': 'export const x = 1;',
-    });
-    const v = await checkEvaluate(stateWithFeaturePath(featurePath));
-    expect(v).not.toBeNull();
-    expect(v?.type).toBe('incomplete_implementation');
-    expect(v?.isRetryable).toBe(true);
-    expect(v?.message).toContain('test-code');
-  });
-
-  it('evaluate — returns null when a *.test.ts file exists', async () => {
-    const featurePath = tmpFeature({
-      'src/main.ts': 'export const x = 1;',
-      'src/main.test.ts': 'import { x } from "./main";',
-    });
-    const v = await checkEvaluate(stateWithFeaturePath(featurePath));
-    expect(v).toBeNull();
-  });
-
-  it('evaluate — returns null when a *.spec.js file exists', async () => {
-    const featurePath = tmpFeature({
-      'src/legacy.spec.js': 'test("a", () => {});',
-    });
-    const v = await checkEvaluate(stateWithFeaturePath(featurePath));
-    expect(v).toBeNull();
-  });
-
-  it('evaluate — returns violation when featurePath is undefined', async () => {
-    const v = await checkEvaluate(stateWithFeaturePath(undefined));
-    expect(v?.type).toBe('incomplete_implementation');
   });
 });
 
