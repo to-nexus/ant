@@ -79,8 +79,13 @@ describe('getDefaultTargetPaths — matrix-derived defaults', () => {
     expect(getDefaultTargetPaths('gen-visual-logo')).toEqual(['assets/gen']);
   });
 
-  it('rev-plan → undefined (kind: revise has no synthesisable target)', () => {
-    expect(getDefaultTargetPaths('rev-plan')).toBeUndefined();
+  it('rev-plan (no ref) → falls back to the canonical plan doc ["plan/prd.md"]', () => {
+    // Unlike other revise intents, `rev-plan` has a single canonical
+    // document. A triage redirect (code → plan) carries intent only with
+    // no ref, so the revise branch falls back to the same file `gen-plan`
+    // writes rather than leaving the target empty (see action-config-matrix
+    // ccaa1cc5 — otherwise the planner generate guard crashes).
+    expect(getDefaultTargetPaths('rev-plan')).toEqual(['plan/prd.md']);
   });
 
   it('gen-code-sys → undefined (kind: codebase has no file target)', () => {
@@ -205,10 +210,12 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     ]);
   });
 
-  it('rev-plan (kind: revise) + target:undefined → RAC.target stays undefined', async () => {
-    // Revise intents have no synthesisable file target — the FE picks the
-    // ref-as-target via locked refsSingleSelect. Fallback must NOT invent
-    // a path here.
+  it('rev-plan (kind: revise) + no ref + service domain → RAC.target = ["plan/prd.md"]', async () => {
+    // `rev-plan` is the one revise intent with a single canonical document.
+    // A triage redirect (code → plan) enqueues intent only with no selected
+    // ref, so the fallback resolves to the same file `gen-plan` writes
+    // (domain-aware: prd.md for service). Other revise intents still stay
+    // undefined without a ref — see the pure-unit coverage above.
     const node = createDetectNode(makeNoopStrategy());
     const state = makeState(
       { intent: 'rev-plan', explicit: true, domain: 'service' },
@@ -217,7 +224,7 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
 
     const result = await node(state);
 
-    expect(result.resolvedAction!.target).toBeUndefined();
+    expect(result.resolvedAction!.target).toEqual(['plan/prd.md']);
   });
 });
 
