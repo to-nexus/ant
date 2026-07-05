@@ -169,6 +169,12 @@ export function DeploySection({
         'A code job is running on this feature. Deploy is available once it completes.',
       );
     }
+    if (disabledReason === 'tier-not-allowed') {
+      return t(
+        'preview.deploy.disabled.tierNotAllowed',
+        'Upgrade to Pro or Max to deploy. Preview is free for all tiers.',
+      );
+    }
     return undefined;
   })();
 

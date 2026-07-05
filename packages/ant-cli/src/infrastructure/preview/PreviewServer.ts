@@ -37,6 +37,8 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
+import { isBillingEnabled } from '../../core/config/billingCapability';
+import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
@@ -1000,6 +1002,28 @@ export class PreviewServer {
             message: 'Deploy is only available on feature branches',
           });
           return;
+        }
+
+        // Free-tier gate: preview is open to all, deploy requires a paid plan.
+        // Billing-guarded so local/OSS (noop ledger reports 'free') keeps deploy open.
+        if (isBillingEnabled()) {
+          try {
+            const bal = await getInfrastructureFactory()
+              .getCreditLedger()
+              .getBalance(userContext.organizationId, userContext.userId);
+            if (bal.tier === 'free') {
+              res.status(403).json({
+                success: false,
+                reason: 'tier-not-allowed',
+                message: 'Deploy requires Pro or Max. Preview is free for all tiers.',
+              });
+              return;
+            }
+          } catch (err) {
+            logger.warn('[PreviewServer] deploy tier check failed — rejecting', { component: 'PreviewServer' }, err as any);
+            res.status(500).json({ success: false, reason: 'internal-error', message: 'Tier verification failed.' });
+            return;
+          }
         }
 
         logger.warn(`[PreviewServer] POST /projects/${projectId}/deploy (user=${userContext.userId}, feature=${feature})`, {

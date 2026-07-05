@@ -8,6 +8,7 @@
 import type { JobTiming } from './job';
 import type { InterruptionDetails } from './interruption';
 import type { UiSource } from './canonical';
+import type { ExecutionTierId } from './session-log';
 import { MODEL_REGISTRY } from './models';
 
 // ============================================
@@ -400,6 +401,20 @@ export type BaseTask =
   | DocTask
   | ExplainTask;
 
+/**
+ * Billing SSOT — is this a USER-FACING work task that the per-task platform fee
+ * counts? Excludes the internal gate/remediation machinery (`verification` +
+ * `error`) so batchSplit / Tier-2 escalation / remediation cycles never inflate
+ * the bill. Kept here (next to `BaseTask`) so both the live meter
+ * (`KanbanBroadcaster`) and terminal settle (`finalizeTerminalJob`) share one
+ * predicate without a core→agents import inversion. A completed task's `type` is
+ * authoritative at count time, matching `isVerificationTask`/`isErrorTask`.
+ */
+export function isBillableWorkTask(task: { type?: string } | null | undefined): boolean {
+  const t = task?.type;
+  return t !== undefined && t !== 'verification' && t !== 'error';
+}
+
 // ============================================
 // Active Job Info (SSE initial state)
 // ============================================
@@ -447,6 +462,14 @@ export interface KanbanData {
    * NOT in cost (rates differ per model). Populated alongside `tokenUsage`.
    */
   tokenUsageByModel?: TokenUsageByModel;
+
+  /**
+   * Job's execution tier (0..4), once decompose has determined it. Carried on
+   * the snapshot — same reason as {@link KanbanData.tokenUsageByModel} — so the
+   * billing meter/settle can index the platform-fee base matrix without reaching
+   * into graph state. Undefined for non-code jobs / before tier is set.
+   */
+  executionTier?: ExecutionTierId;
 
   // Estimating phase token usage (decompose + detectEnvironment, before tasks)
   estimatingTokenUsage?: TaskTokenUsage;

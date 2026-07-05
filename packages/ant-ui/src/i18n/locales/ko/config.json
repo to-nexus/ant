@@ -8,6 +8,8 @@
     "paymentMethod": "결제 수단",
     "activity": "사용 내역",
     "thisJob": "현재 작업",
+    "runFee": "실행 수수료",
+    "aiPassthrough": "AI",
     "testModeTitle": "테스트 모드",
     "testModeBody": "결제는 시뮬레이션입니다. 4242 4242 4242 4242 카드는 승인, 4000 0000 0000 0002 카드는 거절됩니다. 실제 청구는 없습니다.",
     "customAmount": "직접 입력",

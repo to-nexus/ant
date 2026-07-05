@@ -22,8 +22,8 @@ import type {
   KanbanBroadcastMessage,
   DecomposableJobType
 } from '../types/task';
-import type { JobTiming, PhaseTokenUsage, TokenUsageByModel } from '@ant/shared';
-import { computeJobCostUsd, computeModelCostBreakdownUsd } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId } from '@ant/shared';
+import { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask } from '@ant/shared';
 import type { CreditLedgerPort } from '../ports/creditLedger';
 import { 
   getRealtimeBroadcastChannel,
@@ -67,6 +67,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedTokenUsage?: TaskTokenUsage;
   /** Per-model job-level usage — billing settle SSOT. Persisted in the snapshot. */
   private cachedTokenUsageByModel?: TokenUsageByModel;
+  /** Job execution tier (once decompose sets it) — persisted so the fee meter can index the base matrix. */
+  private cachedExecutionTier?: ExecutionTierId;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
   private cachedPhaseTokenUsages?: PhaseTokenUsage[];
   /**
@@ -253,6 +255,21 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Record the job's execution tier (set once by decompose). Persisted in every
+   * snapshot so the billing meter/settle can index the platform-fee base matrix
+   * without reaching into graph state. No re-broadcast needed on its own.
+   */
+  updateExecutionTier(tier: ExecutionTierId | undefined): void {
+    if (tier === undefined) return;
+    this.cachedExecutionTier = tier;
+  }
+
+  /** User-facing task count (excludes verification/error) for the per-task fee. */
+  private billableTaskCount(): number {
+    return this.cachedCompletedTasks.filter(isBillableWorkTask).length;
+  }
+
+  /**
    * Live incremental debit. Throttled by wall-clock so a burst of LLM calls
    * doesn't hammer Redis. Computes the job-cumulative USD cost from the merged
    * per-model usage and debits the positive delta via the ledger's monotonic
@@ -282,6 +299,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
           userId: user,
           cumulativeUsd: usd,
           modelBreakdown,
+          // Neutral platform-fee facts — cloud ledger computes the fee and folds
+          // it into the same cumulative target (base once tier is known, per-task
+          // as user-facing tasks complete). OSS passes facts only, no fee math.
+          jobType: this.jobType,
+          executionTier: this.cachedExecutionTier,
+          billableTaskCount: this.billableTaskCount(),
         })
         .then((snap) => {
           this.lastMeteredBalanceMicro = snap.microCredits;
@@ -554,6 +577,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionLimit: recursionLimit ?? 50,
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
+      ...(this.cachedExecutionTier != null && { executionTier: this.cachedExecutionTier }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
@@ -590,6 +614,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionLimit,
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
+      ...(this.cachedExecutionTier != null && { executionTier: this.cachedExecutionTier }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),

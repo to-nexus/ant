@@ -47,6 +47,8 @@ export interface TaskQueueSnapshot {
   tokenUsage?: TaskTokenUsage;
   /** Per-model job-level usage — billing settle SSOT (priced per model). */
   tokenUsageByModel?: TokenUsageByModel;
+  /** Execution tier (0..4) once decompose set it — billing fee-matrix index. */
+  executionTier?: import('@ant/shared').ExecutionTierId;
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   currentPhaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];

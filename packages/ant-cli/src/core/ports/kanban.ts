@@ -12,7 +12,7 @@
  */
 
 import { BaseTask, TaskTokenUsage } from '../types/task';
-import type { JobTiming, PhaseTokenUsage, TokenUsageByModel } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId } from '@ant/shared';
 
 export interface TaskQueueUpdatePort {
   /**
@@ -71,6 +71,14 @@ export interface TaskQueueUpdatePort {
    * accurate cost — `tokenUsage` is the model-agnostic sum.
    */
   updateTokenUsageByModel?(byModel: TokenUsageByModel): void;
+
+  /**
+   * Record the job's execution tier once decompose determines it. Cached and
+   * persisted in the snapshot so the billing meter/settle can index the
+   * platform-fee base matrix without reaching into graph state. No-op if the
+   * implementation doesn't meter credits.
+   */
+  updateExecutionTier?(tier: ExecutionTierId | undefined): void;
 
   /**
    * Live credit-metering signal. The broadcaster debits the running job's

@@ -1077,6 +1077,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // breaks on a validated tier OR on a clarify pause (handled above).
     throw new Error('[Decompose] Internal invariant violated: parsed/executionTier missing after retry loop');
   }
+
+  // Publish the resolved tier to the broadcaster so it lands in the snapshot —
+  // the billing meter/settle indexes the platform-fee base matrix by tier.
+  state.deps?.kanbanUpdate?.updateExecutionTier?.(executionTier);
   const {
     tasks,
     referenceRequests,

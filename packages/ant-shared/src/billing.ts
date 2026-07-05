@@ -8,26 +8,36 @@
  *   - credits    — the customer-facing abstraction. Revenue unit.
  *
  * Economic model:
- *   - 1 credit  := $0.01 of LIST cost at purchase (100 credits = $1.00 paid).
- *   - consumption applies a per-account `markup`: a job whose list cost is $C
- *     burns `C × markup` dollars-worth of credits.
+ *   - 1 credit  := $1 (par). A credit reads like a dollar — bought at par and
+ *     consumed at par for LLM cost (pass-through).
+ *   - LLM cost is PASS-THROUGH: `markup = 1.0`, ANT takes no margin on Anthropic
+ *     calls. A job whose list cost is $C burns exactly C credits of LLM cost.
+ *   - REVENUE = a per-job platform fee (base matrix by job kind × execution tier,
+ *     plus a per-user-facing-task increment) charged in credits at run time. This
+ *     fee is ANT's margin; its magnitude lives in the cloud catalog. The `markup`
+ *     field is retained (default 1.0) for future per-account promos only.
  *
- * Credits are stored as INTEGER micro-credits (credit × 1000) so atomic Redis
- * INCR/DECR never loses sub-credit precision on small jobs.
+ * Credits are stored as INTEGER micro-credits (credit × 100_000, i.e. atomic
+ * unit $0.00001) so atomic Redis INCR/DECR never loses sub-cent precision on
+ * small jobs. Display rounds to $0.01; the ledger stays exact.
  *
  * ── OSS / cloud seam ────────────────────────────────────────────────────
  * This file is OSS-resident and holds only NEUTRAL shapes + math. The
- * COMMERCIAL values (markup magnitude, plan prices, credit-package offering)
+ * COMMERCIAL values (platform-fee matrix, plan prices, credit-package offering)
  * live BE-side in the cloud catalog module and reach the FE via the
  * server-driven `GET /billing/catalog` + `BalanceSnapshot`. Nothing here
  * encodes the resale offering, so the OSS bundle ships no pricing.
  */
 
-/** Micro-credits per displayed credit. Balances are stored in micro-credits. */
-export const MICRO_PER_CREDIT = 1000;
+/**
+ * Micro-credits per displayed credit. Balances are stored in micro-credits.
+ * At `1 credit = $1`, the atomic unit is $0.00001 — fine enough that per-job
+ * debits stay exact and no cent-level truncation margin accrues.
+ */
+export const MICRO_PER_CREDIT = 100_000;
 
-/** USD list cost represented by one displayed credit (at purchase). */
-export const USD_PER_CREDIT = 0.01;
+/** USD represented by one displayed credit. Par: 1 credit = $1. */
+export const USD_PER_CREDIT = 1.0;
 
 /** Subscription tier identity. Prices/allotments are server-driven (catalog). */
 export type SubscriptionTier = 'free' | 'pro' | 'max';
@@ -53,8 +63,17 @@ export const LEGACY_TIER_MAP: Readonly<Record<string, SubscriptionTier>> = {
   pro: 'max',
 };
 
-/** Current billing-account schema version (bumped at the tier rename). */
-export const BILLING_SCHEMA_VERSION = 2;
+/**
+ * Current billing-account schema version.
+ *   v2 — tier rename (free/starter/pro → free/pro/max).
+ *   v3 — pricing cutover (1 credit = $0.01 → $1). Accounts below v3 are re-seeded
+ *        (balance/ledger cleared, re-granted at the new unit). The tier-vocabulary
+ *        migration stays keyed on `< 2` so a v2 account's tier is NOT re-mapped.
+ */
+export const BILLING_SCHEMA_VERSION = 3;
+
+/** Schema boundary below which the legacy tier VOCABULARY map applies. */
+export const TIER_VOCAB_SCHEMA_VERSION = 2;
 
 /**
  * Normalize a raw tier value. With `legacy = true` (schemaVersion `< 2`) the
@@ -101,8 +120,8 @@ export interface PlanInfo {
 
 /**
  * Purchasable credit package as exposed by `GET /billing/catalog`. Price is at
- * FACE VALUE (`priceUsd === credits × USD_PER_CREDIT`); margin lives in the
- * consumption markup, not the sale.
+ * FACE VALUE (`priceUsd === credits × USD_PER_CREDIT`, i.e. par); margin lives
+ * in the per-job platform fee, not the sale.
  */
 export interface CreditPackageInfo {
   id: string;
@@ -182,10 +201,16 @@ export interface CreditTransaction {
   kind: CreditTransactionKind;
   /** Signed micro-credit delta. */
   microCredits: number;
-  /** Precise internal USD list cost (debit rows). */
+  /** Precise internal USD list cost — LLM pass-through portion (debit rows). */
   usdCost?: number;
   /** Per-model USD breakdown (debit rows). */
   modelBreakdown?: Record<string, number>;
+  /**
+   * Platform-fee portion of a debit, in micro-credits (base + per-task). Lets
+   * the customer surface itemize "run fee" vs "AI (pass-through)". Present on
+   * `debit` rows once a platform fee applied.
+   */
+  platformFeeMicroCredits?: number;
   jobId?: string;
   projectId?: string;
   featureName?: string;
