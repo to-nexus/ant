@@ -33,6 +33,7 @@ import {
 } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
+import { CODEBASE_WALK_IGNORE } from "../../../../../../core/codebase/walkIgnore";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, deriveBandFromPriority } from "./responseParser";
 import { computeRacScope } from "./racGate";
@@ -157,7 +158,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   //   - `hasCompactedArtifacts`                — gates rules.md reading-strategy
   // No artifact content is ever truncated; oversized docs become outlines
   // the LLM can re-expand via `read_file(path, startLine, endLine)`.
-  const racInjection = prepareRacInjection(state);
+  // Size the artifact budget against the ACTUAL decompose model window (not the
+  // 128K fallback) so a large real window isn't needlessly starved.
+  const { resolveModelContextWindow } = await import(
+    '../../../../../../periphery/adapters/llm/LLMClientFactory'
+  );
+  const decomposeCtxWindow = resolveModelContextWindow(
+    { jobType: 'code', nodeType: 'decompose' },
+    state.workspaceConfig,
+  );
+  const racInjection = prepareRacInjection(state, decomposeCtxWindow);
   const {
     documents,
     hasDocuments,
@@ -191,11 +201,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const fsPort = state.deps?.fileSystem;
   if (fsPort) {
     try {
-      const allFiles = await fsPort.listFiles('codebase', [
-        'node_modules', '.git', 'vendor', '__pycache__', 'dist', 'build',
-        '.next', '.nuxt', '.output', 'coverage', '.turbo',
-        '*.sum', '*.lock',
-      ]);
+      const allFiles = await fsPort.listFiles('codebase', [...CODEBASE_WALK_IGNORE]);
 
       // listFiles returns paths relative to the feature root (e.g. "codebase/src/foo.ts").
       // Normalize to codebase-relative for rule matching.

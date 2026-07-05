@@ -135,6 +135,28 @@ function computeArtifactBudgetChars(modelContextLimitTokens: number): number {
   return Math.floor(artifactBudgetTokens * WORST_CASE_CHARS_PER_TOKEN);
 }
 
+/**
+ * Hard ceiling (last resort) — the point past which the assembled prompt would
+ * actually overflow the model input window and get rejected with a 400. Unlike
+ * `computeArtifactBudgetChars` (a conservative SOFT target we compact toward
+ * and may overshoot after outlining), exceeding THIS means whole artifacts must
+ * be dropped. Excludes only the SAFETY margin + the 8K artifact carve so the
+ * "compact & keep, proceed over soft budget" behaviour is preserved for normal
+ * pools; only a pathological COUNT of stubs (e.g. a walked node_modules) trips it.
+ */
+function computeArtifactHardCapChars(modelContextLimitTokens: number): number {
+  const hardCapTokens = Math.max(
+    0,
+    modelContextLimitTokens
+      - OUTPUT_RESERVE_TOKENS
+      - THINKING_RESERVE_TOKENS
+      - TOOL_DEF_RESERVE_TOKENS
+      - TOOL_RESULT_RESERVE_TOKENS
+      - SYSTEM_PROMPT_RESERVE_TOKENS,
+  );
+  return Math.floor(hardCapTokens * WORST_CASE_CHARS_PER_TOKEN);
+}
+
 // ────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────
@@ -270,11 +292,44 @@ export function prepareRacInjection(
       total = sumContentChars(refs) + sumContentChars(context);
     }
 
-    if (total > artifactBudgetChars) {
+    // 2c — hard cap (last resort). Compaction shrinks per-file SIZE but never
+    // COUNT; a pathological number of already-outlined stubs (fixed per-file
+    // overhead × N — e.g. a walked node_modules) can still exceed the model
+    // window. Only when past the HARD ceiling do we DROP whole artifacts,
+    // lowest Authority first (context before ref), largest first — no silent
+    // truncation, the dropped set is logged loudly. Between the soft budget and
+    // the hard cap we keep the historical "proceed, everything outlined" path.
+    const hardCapChars = computeArtifactHardCapChars(ctxLimit);
+    if (total > hardCapChars) {
+      const dropped: string[] = [];
+      const dropLargest = (arr: ResolvedArtifact[]): ResolvedArtifact[] => {
+        let largest: ResolvedArtifact | undefined;
+        for (const a of arr) {
+          if (!largest || (a.content?.length || 0) > (largest.content?.length || 0)) largest = a;
+        }
+        if (!largest) return arr;
+        dropped.push(largest.path);
+        return arr.filter(a => a.path !== largest!.path);
+      };
+      while (total > hardCapChars && context.length > 0) {
+        context = dropLargest(context);
+        total = sumContentChars(refs) + sumContentChars(context);
+      }
+      while (total > hardCapChars && refs.length > 0) {
+        refs = dropLargest(refs);
+        total = sumContentChars(refs) + sumContentChars(context);
+      }
       console.warn(
-        `⚠️  [DesignSelector] Grand-total still exceeds artifact budget after demotion: ` +
-        `${total.toLocaleString()} chars > ${artifactBudgetChars.toLocaleString()} chars budget. ` +
-        `Proceeding — every artifact has already been outlined.`,
+        `⚠️  [DesignSelector] Grand-total exceeded the model hard cap after outlining ` +
+        `(${hardCapChars.toLocaleString()} chars); dropped ${dropped.length} whole ` +
+        `artifact(s) to fit the window: ${dropped.join(', ')}. ` +
+        `They remain reachable on demand via read_file.`,
+      );
+    } else if (total > artifactBudgetChars) {
+      console.warn(
+        `⚠️  [DesignSelector] Grand-total exceeds the soft artifact budget after outlining: ` +
+        `${total.toLocaleString()} chars > ${artifactBudgetChars.toLocaleString()} — proceeding ` +
+        `(within model hard cap ${hardCapChars.toLocaleString()}).`,
       );
     }
   }

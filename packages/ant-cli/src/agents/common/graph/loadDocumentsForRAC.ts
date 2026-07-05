@@ -31,6 +31,7 @@ import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/sha
 import { ARTIFACT_PREFIX, uiSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
 import { isBinaryPath } from '../../../core/utils/binaryExtensions';
+import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
 
 export function loadResolvedArtifacts(
   resolvedAction: ResolvedActionContext,
@@ -86,6 +87,16 @@ function appendPath(
   relativePath: string,
   role: 'ref' | 'context',
 ): void {
+  // Codebase channel (token-cost-0 contract). The `codebaseSlot` path is `''`
+  // and code-anchored intents also anchor on `codebase/`. The codebase is
+  // NEVER eager-loaded into the pool: it is served via the codebase manifest
+  // (`listFiles('codebase')` in decompose) + the `codebase-channel` partial +
+  // on-demand `read_file` / `list_files` tools. Eager-walking it here both
+  // duplicates that channel and (for installed deps) explodes the prompt — the
+  // `fern-grading-knife` 7.85M-token crash walked 22,131 node_modules files.
+  // A directory enters as a reference, not as exploded content.
+  if (isCodebaseScopedPath(relativePath)) return;
+
   const absolute = path.join(featurePath, relativePath);
   let stat: fs.Stats;
   try {
@@ -147,6 +158,16 @@ function isHandoffPath(rel: string): boolean {
   return rel === handoffRoot || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
 }
 
+/**
+ * Codebase-scoped RAC paths: the empty `codebaseSlot` path (`''`, which would
+ * `path.join` to the feature root) and anything under `codebase/`. These are
+ * served by the codebase channel (manifest + tools), never the eager pool.
+ */
+function isCodebaseScopedPath(rel: string): boolean {
+  const norm = rel.trim().replace(/^\.?\//, '').replace(/\/+$/, '');
+  return norm === '' || norm === 'codebase' || norm.startsWith('codebase/');
+}
+
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -175,8 +196,13 @@ function* walkDir(dirAbs: string): Iterable<string> {
   for (const e of entries) {
     const childAbs = path.join(dirAbs, e.name);
     if (e.isDirectory()) {
+      // Hygiene for any non-codebase directory ref (e.g. curated UiSource
+      // subgroups): never descend into dependency/build output. Codebase
+      // itself is already excluded upstream (`isCodebaseScopedPath`).
+      if (isIgnoredWalkDir(e.name)) continue;
       yield* walkDir(childAbs);
     } else if (e.isFile()) {
+      if (isIgnoredWalkFile(e.name)) continue;
       yield childAbs;
     }
   }

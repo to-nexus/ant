@@ -338,10 +338,16 @@ function emptyRef(): SlotDef {
  * and plan/design jobs in existing-project workspaces (context, auto).
  *
  * The two roles share UI/lock semantics; only Authority axis differs.
- * Pool-load behaviour: codebase path is `''` so `loadResolvedArtifacts`
- * naturally never walks it into the pool (token cost 0). The
- * `codebase-channel` partial gate is derived from `deriveCodebaseRole`,
- * not from pool inspection.
+ * Pool-load behaviour (token cost 0): the codebase is served via the codebase
+ * manifest (`listFiles('codebase')`) + the `codebase-channel` partial +
+ * on-demand `read_file` / `list_files` tools — it is NEVER eager-loaded into
+ * the pool. `loadResolvedArtifacts` enforces this by skipping codebase-scoped
+ * refs (`isCodebaseScopedPath`: empty `''` or under `codebase/`); note that
+ * `path.join(featurePath, '')` === `featurePath`, so without that guard the
+ * empty path WOULD walk the whole feature tree (the `fern-grading-knife`
+ * 22,131-node_modules-file / 7.85M-token decompose crash). The
+ * `codebase-channel` partial gate is derived from `deriveCodebaseRole`, not
+ * from pool inspection.
  */
 function codebaseSlot(role: 'ref' | 'context', opts?: { auto?: boolean }): SlotDef {
   return {
