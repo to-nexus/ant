@@ -9,6 +9,7 @@
  *   2. setLLMClientFactory() → in-process override (unit test)
  */
 
+import { getModelContextWindowOrDefault } from '@ant/shared';
 import { LLMClient } from '../../../core/ports/llm';
 import { ImageGenerationPort } from '../../../core/ports/imageGeneration';
 import { AnthropicLLMClient } from './AnthropicLLMClient';
@@ -98,6 +99,18 @@ function resolveModelForContext(
 
   // Fall back to job default
   return jobConfig.default || defaultModel;
+}
+
+/**
+ * Resolve the context-window (tokens) of the model that WILL be used for a
+ * given job/node context — without instantiating a client. Callers use this to
+ * size prompt/artifact budgets against the ACTUAL model instead of a fallback.
+ */
+export function resolveModelContextWindow(
+  context: LLMContext | undefined,
+  workspaceConfig: any,
+): number {
+  return getModelContextWindowOrDefault(resolveModelForContext(context, workspaceConfig));
 }
 
 /**
