@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isOverloadedError, summarizeFailureCause } from '../../src/core/utils/apiErrorClassify';
+import { isOverloadedError, isPromptTooLongError, summarizeFailureCause } from '../../src/core/utils/apiErrorClassify';
+
+// Exact error.message shape captured in the `fern-grading-knife` decompose
+// crash — a codebase directory ref walked node_modules into the pool.
+const PROMPT_TOO_LONG_MSG =
+  '400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 7851659 tokens > 1000000 maximum"},"request_id":"req_011CciZGTXSuHne13oQsRvHh"}';
 
 // Exact error.message shape captured in the `upper-knowing-mound` job's
 // debug log when 3 UI tasks failed terminally on an Anthropic capacity outage.
@@ -23,6 +28,21 @@ describe('isOverloadedError', () => {
     expect(isOverloadedError('verification failed: build error TS2304')).toBe(false);
     expect(isOverloadedError(undefined)).toBe(false);
     expect(isOverloadedError(null)).toBe(false);
+  });
+});
+
+describe('isPromptTooLongError', () => {
+  it('detects the deterministic "prompt is too long" 400 payload', () => {
+    expect(isPromptTooLongError(PROMPT_TOO_LONG_MSG)).toBe(true);
+    expect(isPromptTooLongError(new Error(PROMPT_TOO_LONG_MSG))).toBe(true);
+  });
+
+  it('does NOT flag transient / unrelated errors', () => {
+    expect(isPromptTooLongError(OVERLOADED_MSG)).toBe(false);
+    expect(isPromptTooLongError('{"error":{"type":"rate_limit_error"}}')).toBe(false);
+    expect(isPromptTooLongError('TypeError: foo is not a function')).toBe(false);
+    expect(isPromptTooLongError(undefined)).toBe(false);
+    expect(isPromptTooLongError(null)).toBe(false);
   });
 });
 
