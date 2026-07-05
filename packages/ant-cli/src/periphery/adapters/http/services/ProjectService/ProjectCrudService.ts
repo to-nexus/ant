@@ -9,6 +9,7 @@ import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { GitBootstrapSSOT } from '../GitService/remote/operations/BaseGitSetupOperation';
 import { DeletionVerificationError } from './errors';
+import { DEFAULT_MODELS } from '@ant/shared';
 
 /**
  * ProjectCrudService
@@ -112,8 +113,8 @@ export class ProjectCrudService {
     
     // ✅ Get LLM config from environment variables
     const envModel = process.env.AI_MODEL_NAME;
-    const modelOpus = envModel || 'claude-opus-4-8';
-    const modelSonnet = envModel || 'claude-sonnet-4-6';
+    const modelOpus = envModel || DEFAULT_MODELS.opusTier;
+    const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
     
     // ✅ Read effective GitHub owner: user override > org config
     const effectiveOwner = await this.resolveEffectiveGitHubOwner(userContext);
@@ -406,8 +407,8 @@ export class ProjectCrudService {
     
     // Get environment variable defaults for LLM (per-job)
     const envModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
-    const fallbackOpus = envModel || 'claude-opus-4-8';
-    const fallbackSonnet = envModel || 'claude-sonnet-4-6';
+    const fallbackOpus = envModel || DEFAULT_MODELS.opusTier;
+    const fallbackSonnet = envModel || DEFAULT_MODELS.sonnetTier;
     
     try {
       const configData = await fs.promises.readFile(configPath, 'utf-8');

@@ -8,6 +8,7 @@
 import type { JobTiming } from './job';
 import type { InterruptionDetails } from './interruption';
 import type { UiSource } from './canonical';
+import { MODEL_REGISTRY } from './models';
 
 // ============================================
 // Task Types
@@ -62,18 +63,15 @@ export interface TaskTiming {
  * snapshots carry the resolved number on `PhaseTokenUsage.contextWindow` so
  * the gauge does not need to know modelId at all.
  */
-export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
-  // Anthropic — Opus 4.8 / Sonnet 4.6 expose 1M by default on the Claude API
-  // (no beta header required since 4.6). Haiku 4.5 is 200k-only.
-  'claude-opus-4-8': 1_000_000,
-  'claude-sonnet-4-6': 1_000_000,
-  'claude-haiku-4-5-20251001': 200_000,
-  // Gemini — creator/visual job text turns (detect / direct / engrave / explain).
-  // The `*-image-preview` render/sketch models never reach getModelContextWindow
-  // (they go through GeminiImageClient, not beginNodePhase), so they are omitted.
-  'gemini-3.1-pro-preview': 1_000_000,
-  // OpenAI follows when wired
-};
+// Derived from the MODEL_REGISTRY SSOT (@ant/shared/models.ts) — every entry
+// that declares a `contextWindow`. Add/size a model there, not here. Image-only
+// Gemini models carry no contextWindow (they never reach getModelContextWindow),
+// so they are naturally excluded.
+export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = Object.fromEntries(
+  Object.values(MODEL_REGISTRY)
+    .filter((m) => m.contextWindow !== undefined)
+    .map((m) => [m.id, m.contextWindow as number]),
+);
 
 /**
  * Fallback context window used by UI surfaces (e.g. `TurnTokenGauge`'s

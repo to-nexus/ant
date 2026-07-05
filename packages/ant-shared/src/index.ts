@@ -57,5 +57,6 @@ export * from './chat-status';
 export * from './chat-events';
 export * from './system-config';
 export * from './baseline';
+export * from './models';
 export * from './pricing';
 export * from './billing';

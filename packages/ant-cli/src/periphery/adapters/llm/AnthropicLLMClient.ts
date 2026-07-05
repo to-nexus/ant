@@ -14,7 +14,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
-import { getModelContextWindow } from '@ant/shared';
+import { getModelContextWindow, getThinkingMode } from '@ant/shared';
 
 /**
  * Anthropic Messages API accepted content block shapes.
@@ -67,46 +67,51 @@ export class AnthropicLLMClient implements LLMClient {
     this.modelName = config.modelName;
   }
 
-  // Opus 4.7+ rejects `thinking.type.enabled` and requires adaptive thinking
-  // with `output_config.effort`; Sonnet 4.6 and earlier still use the legacy
-  // enabled + budget_tokens shape.
+  // Thinking-API dispatch is per-model via the MODEL_REGISTRY SSOT
+  // (`getThinkingMode`), NOT a name heuristic. Adaptive-thinking models
+  // (Sonnet 5, Opus 4.6/4.7/4.8, Fable 5) REJECT the legacy `budget_tokens`
+  // shape with a 400; only `extended` models (Haiku 4.5) accept it. Unknown
+  // `claude-*` ids default to adaptive so a future model never re-introduces
+  // the rejected shape.
   //
-  // Effort mapping: Anthropic publishes no numeric equivalence between
-  // `budget_tokens: N` and adaptive `effort`, but documents that `medium`
-  // "may skip thinking entirely for very simple queries" while `high`
-  // (default) "always thinks". Sonnet's budget_tokens guaranteed thinking;
-  // medium does not. Map thinkingBudget by tier so high-budget callers
-  // (DECOMPOSE/PLAN/REVISE=10000, CODE_EXECUTE=5000) keep the always-thinks
-  // guarantee. `high` is the SDK default so it is safe with any SDK version.
+  // Effort mapping (adaptive): Anthropic publishes no numeric equivalence
+  // between `budget_tokens: N` and adaptive `effort`, but documents that
+  // `medium` "may skip thinking entirely for very simple queries" while `high`
+  // (default) "always thinks". Map thinkingBudget by tier so high-budget
+  // callers (DECOMPOSE/PLAN/REVISE=10000, CODE_EXECUTE=5000) keep the
+  // always-thinks guarantee. `high` is the SDK default, safe with any version.
   private buildThinkingParams(
     enableThinking: boolean,
     thinkingBudget: number,
   ): Record<string, any> {
     if (!enableThinking) return {};
 
-    if (this.modelName.includes('opus-')) {
-      const effort = thinkingBudget >= 5000 ? 'high' : 'medium';
+    if (getThinkingMode(this.modelName) === 'extended') {
       return {
-        thinking: { type: 'adaptive' },
-        output_config: { effort },
+        thinking: {
+          type: 'enabled',
+          budget_tokens: thinkingBudget,
+        },
       };
     }
 
+    // adaptive (default for unknown claude-* ids)
+    const effort = thinkingBudget >= 5000 ? 'high' : 'medium';
     return {
-      thinking: {
-        type: 'enabled',
-        budget_tokens: thinkingBudget,
-      },
+      thinking: { type: 'adaptive' },
+      output_config: { effort },
     };
   }
 
   // Idle timeout matches the request regime. 90s assumes a non-thinking
   // call (TCP-appears-open / Mac sleep). Anthropic adaptive thinking can
   // be silent >180s between message_start and first thinking_delta on
-  // large prompts (plum-meeting-ember docGen incident).
+  // large prompts (plum-meeting-ember docGen incident). Gated on the
+  // adaptive-thinking regime (per-model via MODEL_REGISTRY), not a name
+  // heuristic — Sonnet 5 is adaptive and needs the same 300s window.
   private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {
     if (!enableThinking) return 90_000;
-    return this.modelName.includes('opus-') && thinkingBudget >= 5000 ? 300_000 : 180_000;
+    return getThinkingMode(this.modelName) === 'adaptive' && thinkingBudget >= 5000 ? 300_000 : 180_000;
   }
 
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {

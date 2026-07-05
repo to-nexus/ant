@@ -72,6 +72,7 @@ export function getModelDisplayName(modelName: string): string {
 }
 
 import type { Domain } from '@ant/shared';
+import { DEFAULT_MODELS } from '@ant/shared';
 
 /**
  * Workspace Configuration
@@ -176,12 +177,14 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 /**
  * Default workspace config
  * If AI_MODEL_NAME env var is set, all jobs use that model (override).
- * Otherwise, plan/design/code/learn default to Sonnet; reviewer/doc default to Opus.
+ * Otherwise, plan/design/code/learn default to the Sonnet tier; reviewer/doc
+ * default to the Opus tier. Tier ids come from the DEFAULT_MODELS SSOT
+ * (@ant/shared/models.ts) — never hardcode a model id here.
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
   const envModel = process.env.AI_MODEL_NAME;
-  const modelOpus = envModel || 'claude-opus-4-8';
-  const modelSonnet = envModel || 'claude-sonnet-4-6';
+  const modelOpus = envModel || DEFAULT_MODELS.opusTier;
+  const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
   
   return {
     projectName,

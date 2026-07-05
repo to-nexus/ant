@@ -154,7 +154,10 @@ export function LLMModelsSection({
 }: LLMModelsSectionProps) {
   const { t } = useTranslation('config');
 
-  const gridTemplate = `200px 150px ${NODE_COLUMNS.map(() => 'minmax(130px, 1fr)').join(' ')}`;
+  // Column widths sized so model chips fit their (suffix-free) display names
+  // without truncation; the outer overflowX:auto still scrolls when all node
+  // columns exceed the viewport.
+  const gridTemplate = `200px 160px ${NODE_COLUMNS.map(() => 'minmax(160px, 1fr)').join(' ')}`;
 
   return (
     <SectionCard
@@ -174,7 +177,7 @@ export function LLMModelsSection({
           <div style={{ overflowX: 'auto' }}>
             <div
               style={{
-                minWidth: 720,
+                minWidth: 840,
                 display: 'grid',
                 gridTemplateColumns: gridTemplate,
                 fontFamily: 'var(--font-display)',

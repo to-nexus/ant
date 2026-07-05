@@ -367,9 +367,29 @@ export function ModelSelectChip({
           {showAsCustom
             ? t('projectEditor.custom')
             : displayModel
-              ? `${displayModel.displayName}${isInherited ? ` (${t('projectEditor.jobDefault')})` : ''}`
+              ? displayModel.displayName
               : placeholder || t('projectEditor.selectModel')}
         </span>
+        {/* Inherited-default marker lives OUTSIDE the truncating label (flexShrink:0)
+            so it never eats the model name's width. Full text on hover. */}
+        {isInherited && (
+          <span
+            aria-label={t('projectEditor.jobDefault')}
+            title={t('projectEditor.jobDefault')}
+            style={{
+              flexShrink: 0,
+              fontSize: 9,
+              fontWeight: 700,
+              lineHeight: 1,
+              padding: '2px 4px',
+              borderRadius: 'var(--r-sm)',
+              opacity: 0.65,
+              border: '1px solid currentColor',
+            }}
+          >
+            ↳
+          </span>
+        )}
         <ChevronGlyph open={isOpen} />
       </button>
       {dropdown}

@@ -16,31 +16,23 @@
  */
 
 import type { TaskTokenUsage } from './task';
+import { MODEL_REGISTRY, type ModelRate } from './models';
 
-/** Per-model token rates, USD per 1M tokens. */
-export interface ModelRate {
-  /** Fresh (uncached) input tokens. */
-  input: number;
-  /** Output (completion) tokens. */
-  output: number;
-  /** Cache write, 5-minute TTL (~1.25x base input). */
-  cacheWrite5m: number;
-  /** Cache write, 1-hour TTL (~2x base input). */
-  cacheWrite1h: number;
-  /** Cache read / hit (~0.1x base input). */
-  cacheRead: number;
-}
+// `ModelRate` now lives in the MODEL_REGISTRY SSOT (@ant/shared/models.ts) and
+// is exported from there; the barrel (index.ts) surfaces it, so existing
+// `import { ModelRate } from '@ant/shared'` call sites keep working. It is not
+// re-exported here (that would collide with the models.ts star export).
 
 /**
- * Rate card SSOT. Keyed by the exact model id carried on
- * `LLMClient.modelName`. Update this map (and only this map) when adding a
- * model — same discipline as `MODEL_CONTEXT_WINDOWS`.
+ * Rate card — DERIVED from the MODEL_REGISTRY SSOT (@ant/shared/models.ts):
+ * every entry that declares a `rate`. Keyed by the exact model id carried on
+ * `LLMClient.modelName`. Add a model's rate in the registry, not here.
  */
-export const MODEL_RATE_CARD: Readonly<Record<string, ModelRate>> = {
-  'claude-opus-4-8': { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
-  'claude-sonnet-4-6': { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
-  'claude-haiku-4-5-20251001': { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
-};
+export const MODEL_RATE_CARD: Readonly<Record<string, ModelRate>> = Object.fromEntries(
+  Object.values(MODEL_REGISTRY)
+    .filter((m) => m.rate !== undefined)
+    .map((m) => [m.id, m.rate as ModelRate]),
+);
 
 /**
  * The most-expensive known model. Used as the conservative fallback rate when
