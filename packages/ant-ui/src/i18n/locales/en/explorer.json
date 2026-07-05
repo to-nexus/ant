@@ -213,6 +213,8 @@
     "phaseStarting": "Starting",
     "phaseInstalling": "Installing",
     "cannotStart": "No runnable project detected (needs package.json with dev/start script)",
+    "codeJobRunning": "A code job is running on this feature. Preview is available once it completes.",
+    "controlsStopping": "Stopping the server…",
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",

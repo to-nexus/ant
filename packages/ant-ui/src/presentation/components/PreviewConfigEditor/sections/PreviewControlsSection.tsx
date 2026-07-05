@@ -115,7 +115,7 @@ export function PreviewControlsSection({
   isReady,
   previewStatus,
   isPreviewLoading,
-  isJobRunning,
+  isCodeJobRunning,
   restartRequired,
   dismissedSet,
   onStart,
@@ -129,7 +129,7 @@ export function PreviewControlsSection({
   isReady: boolean;
   previewStatus: PreviewStatus | undefined;
   isPreviewLoading: boolean;
-  isJobRunning: boolean;
+  isCodeJobRunning: boolean;
   /** A saved toggle/config change awaits a restart to take effect. */
   restartRequired?: boolean;
   dismissedSet: Set<string>;
@@ -164,8 +164,8 @@ export function PreviewControlsSection({
     isRunning && isReady && openableFrontends.length > 1;
 
   // Disabled tooltips
-  const startDisabledTitle = isJobRunning
-    ? t('preview.jobRunning', 'A job is running')
+  const startDisabledTitle = isCodeJobRunning
+    ? t('preview.codeJobRunning', 'A code job is running on this feature. Preview is available once it completes.')
     : isPreviewLoading
       ? t('preview.cannotStart', 'Cannot start preview')
       : undefined;
@@ -259,27 +259,32 @@ export function PreviewControlsSection({
               lineHeight: 1.5,
             }}
           >
-            {isJobRunning
-              ? t('preview.jobRunning', 'A job is running')
+            {isCodeJobRunning
+              ? t('preview.codeJobRunning', 'A code job is running on this feature. Preview is available once it completes.')
               : phase === 'running' && isReady
                 ? t(
                     'preview.controlsReady',
                     '서버가 준비되었습니다. 아래에서 패키지를 열 수 있습니다.',
                   )
-                : phase === 'starting' || phase === 'installing'
+                : phase === 'stopping'
                   ? t(
-                      'preview.controlsBooting',
-                      '서버를 부팅하고 있습니다…',
+                      'preview.controlsStopping',
+                      '서버를 중지하고 있습니다…',
                     )
-                  : phase === 'error'
+                  : phase === 'starting' || phase === 'installing'
                     ? t(
-                        'preview.controlsErrorHint',
-                        '오류 메시지를 확인하고 다시 시작해 주세요.',
+                        'preview.controlsBooting',
+                        '서버를 부팅하고 있습니다…',
                       )
-                    : t(
-                        'preview.controlsIdleHint',
-                        '시작 버튼으로 프리뷰 서버를 켭니다.',
-                      )}
+                    : phase === 'error'
+                      ? t(
+                          'preview.controlsErrorHint',
+                          '오류 메시지를 확인하고 다시 시작해 주세요.',
+                        )
+                      : t(
+                          'preview.controlsIdleHint',
+                          '시작 버튼으로 프리뷰 서버를 켭니다.',
+                        )}
           </p>
         </div>
 
@@ -298,10 +303,10 @@ export function PreviewControlsSection({
             <button
               type="button"
               onClick={onStart}
-              disabled={isJobRunning || isPreviewLoading}
+              disabled={isCodeJobRunning || isPreviewLoading}
               title={startDisabledTitle}
               style={
-                isJobRunning || isPreviewLoading
+                isCodeJobRunning || isPreviewLoading
                   ? c3vBigBtn({
                       bg: 'var(--bg-surface-2)',
                       fg: 'var(--text-4)',
