@@ -1,71 +1,34 @@
 import { Router, Request, Response } from 'express';
+import { MODEL_REGISTRY, DEFAULT_MODELS } from '@ant/shared';
 
 /**
  * Available LLM Models API
- * 
+ *
  * Returns list of available models with display names and metadata
  */
 
 export interface LLMModelInfo {
-  id: string;                    // Model identifier (e.g., "claude-sonnet-4-20250929")
-  displayName: string;           // Human-readable name (e.g., "CLAUDE SONNET 4")
+  id: string;                    // Model identifier (e.g., "claude-sonnet-5")
+  displayName: string;           // Human-readable name (e.g., "Sonnet 5")
   provider: 'anthropic' | 'openai' | 'google';
   description?: string;          // Brief description
   recommended?: boolean;         // Whether this is a recommended model
   capabilities?: string[];       // e.g., ["coding", "reasoning", "fast"]
 }
 
-// Available models registry
-const AVAILABLE_MODELS: LLMModelInfo[] = [
-  {
-    id: 'claude-sonnet-4-6',
-    displayName: 'Sonnet 4.6',
-    provider: 'anthropic',
-    description: 'Latest Claude Sonnet model, best for coding',
-    recommended: true,
-    capabilities: ['coding', 'reasoning', 'large-context']
-  },
-  {
-    id: 'claude-opus-4-8',
-    displayName: 'Opus 4.8',
-    provider: 'anthropic',
-    description: 'Most capable Claude model, best for complex reasoning',
-    recommended: false,
-    capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis']
-  },
-  {
-    id: 'gemini-3.1-pro-preview',
-    displayName: 'Gemini 3.1 Pro',
-    provider: 'google',
-    description: 'Advanced reasoning and prompt engineering for visual jobs',
-    recommended: true,
-    capabilities: ['reasoning', 'prompt-engineering']
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    displayName: 'Gemini 3 Flash',
-    provider: 'google',
-    description: 'Fast classification and triage for visual jobs',
-    recommended: false,
-    capabilities: ['fast', 'classification']
-  },
-  {
-    id: 'gemini-3-pro-image-preview',
-    displayName: 'Gemini 3 Pro Image',
-    provider: 'google',
-    description: 'High-quality image generation for final renders',
-    recommended: true,
-    capabilities: ['image-generation', 'high-quality']
-  },
-  {
-    id: 'gemini-3.1-flash-image-preview',
-    displayName: 'Gemini 3.1 Flash Image',
-    provider: 'google',
-    description: 'Fast image generation for draft exploration',
-    recommended: false,
-    capabilities: ['image-generation', 'fast']
-  },
-];
+// Available models — DERIVED from the MODEL_REGISTRY SSOT (@ant/shared/models.ts):
+// every entry marked `selectable !== false`, in registry order. Add/hide a model
+// there, not here, so this endpoint can never drift from the pricing/context SSOTs.
+const AVAILABLE_MODELS: LLMModelInfo[] = Object.values(MODEL_REGISTRY)
+  .filter((m) => m.selectable !== false)
+  .map((m) => ({
+    id: m.id,
+    displayName: m.displayName,
+    provider: m.provider,
+    description: m.description,
+    recommended: m.recommended,
+    capabilities: m.capabilities,
+  }));
 
 /**
  * Create models routes
@@ -81,7 +44,7 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: 'claude-opus-4-8'
+        default: DEFAULT_MODELS.opusTier
       });
     } catch (error) {
       console.error('[Models API] Error:', error);

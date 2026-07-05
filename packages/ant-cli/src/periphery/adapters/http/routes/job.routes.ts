@@ -14,7 +14,7 @@ import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots } from '@ant/shared';
+import { getConfigSlots, DEFAULT_MODELS } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -470,7 +470,7 @@ export function createJobRoutes(deps: {
     const modelId =
       (req.query.modelId as string | undefined) ||
       process.env.AI_MODEL_NAME ||
-      'claude-opus-4-8';
+      DEFAULT_MODELS.opusTier;
 
     if (!intent || !projectId || !featureName) {
       res.status(400).json({ error: 'intent, projectId, featureName are required' });

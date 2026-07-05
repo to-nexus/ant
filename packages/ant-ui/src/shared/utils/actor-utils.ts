@@ -1,8 +1,10 @@
 /**
  * Actor Utility Functions
- * 
+ *
  * External Actor 정보를 정규화하고 관리하는 유틸리티
  */
+
+import { DEFAULT_MODELS } from '@ant/shared';
 
 export interface ActorInfo {
   id: string;
@@ -22,7 +24,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     id: 'llm',
     displayName: 'LLM',
     provider: 'Anthropic',  // Default (overridden by config)
-    model: 'claude-sonnet-4-6',     // Default (overridden by config)
+    model: DEFAULT_MODELS.sonnetTier,     // Default (overridden by config)
     icon: '🤖'
   },
   'embedding-model': {

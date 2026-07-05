@@ -1,3 +1,4 @@
+import { DEFAULT_MODELS } from '@ant/shared';
 import { API_BASE, apiGet } from './client';
 
 export interface LLMModelInfo {
@@ -35,6 +36,7 @@ export async function checkHealth(): Promise<boolean> {
 export function fetchAvailableModels(): Promise<AvailableModelsResponse> {
   return apiGet<AvailableModelsResponse>(`${API_BASE()}/models`).catch(() => ({
     models: [],
-    default: 'claude-sonnet-4-6',
+    // Mirror the BE /models default (DEFAULT_MODELS SSOT) on fetch failure.
+    default: DEFAULT_MODELS.opusTier,
   }));
 }

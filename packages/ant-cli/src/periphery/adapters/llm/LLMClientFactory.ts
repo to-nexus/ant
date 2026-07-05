@@ -16,6 +16,7 @@ import { OpenAILLMClient } from './OpenAILLMClient';
 import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
+import { DEFAULT_MODELS } from '@ant/shared';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google';
 
@@ -70,7 +71,7 @@ function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-opus-4-8';
+  const defaultModel = process.env.AI_MODEL_NAME || DEFAULT_MODELS.opusTier;
   
   // If no context provided, use default
   if (!context) {

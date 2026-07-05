@@ -40,13 +40,14 @@ export const LLM_MAX_TOKENS = {
 
   // Default for plan / execute / verify / docgen.
   //
-  // Anthropic model output ceilings (per Anthropic docs, 2026-04):
-  //   - Sonnet 4.6 / 4.5 / 4 (codebase default for code.*): 64K ceiling
-  //   - Opus 4.8 / 4.7 / 4.6 (env override / reviewer): 128K ceiling
-  //   - Opus 4 (deprecated, retires 2026-06-15): 32K hard limit
+  // Anthropic model output ceilings (per Anthropic docs, 2026-06):
+  //   - Sonnet 5 (codebase default for code.*) / Opus 4.6/4.7/4.8: 128K ceiling
+  //   - Sonnet 4.6 / 4.5 (legacy): 64K ceiling
+  //   - Opus 4 (deprecated, retired 2026-06-15): 32K hard limit
   //
-  // 64K is the safe default: matches Sonnet's ceiling, well within Opus 4.8's.
-  // With thinkingBudget 10K, text space = ~54K; with 5K, ~59K.
+  // 64K is the safe default: within every current model's ceiling (Sonnet 5
+  // and Opus 4.8 both allow 128K, so this is conservative, not a cap forced by
+  // the model). With thinkingBudget 10K, text space = ~54K; with 5K, ~59K.
   //
   // Why bumped 32K → 64K (safe-braking-eagle RCA):
   // The legacy 32K cap caused silent mid-stream truncation in plan (parent
