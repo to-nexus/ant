@@ -287,6 +287,46 @@ export const ARCHITECT_TOOLS = {
       required: ['project', 'pattern'],
     },
   },
+  read_ant_source: {
+    name: 'read_ant_source',
+    description:
+      'Read a file from Ant\'s OWN source or docs — the platform running this job (NOT the app you are building). Use when a runtime/serving/build symptom cannot be explained from the app alone (e.g. reproduces only in preview/deploy, not locally) to see how the platform serves apps. Read-only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: { type: 'string', description: 'File path relative to the source root (e.g. "periphery/adapters/http/middleware/deployProxy.ts").' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source: "cli" (backend/serving), "ui" (frontend), "docs". Default: cli.' },
+      },
+      required: ['path'],
+    },
+  },
+  list_ant_files: {
+    name: 'list_ant_files',
+    description:
+      'List a directory in Ant\'s own source or docs. Use to discover platform source structure before reading (e.g. the preview/deploy middleware). Read-only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: { type: 'string', description: 'Directory path relative to the source root.' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source. Default: cli.' },
+      },
+      required: ['path'],
+    },
+  },
+  search_ant_code: {
+    name: 'search_ant_code',
+    description:
+      'Search Ant\'s own source or docs for a substring. Use to locate where the platform implements a behavior (e.g. basePath injection, proxy routing) when diagnosing an app↔platform boundary symptom. Read-only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Substring to search for (2-100 chars).' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source. Default: cli.' },
+        filePattern: { type: 'string', description: 'Optional file suffix filter (e.g. "*.ts", "*.md"). Default: *.ts (cli/ui) or *.md (docs).' },
+      },
+      required: ['query'],
+    },
+  },
   list_assets: {
     name: 'list_assets',
     description: 'List all runtime asset files under assets/. Use this to document asset mappings for ui-assets.json. Optional subdirectory filter.',

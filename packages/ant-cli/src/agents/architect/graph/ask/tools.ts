@@ -7,7 +7,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver.js';
+import {
+  readAntSource as coreReadAntSource,
+  listAntFiles as coreListAntFiles,
+  searchAntCode as coreSearchAntCode,
+  sanitizeOutput,
+  FORBIDDEN_PATTERNS,
+  type AntSource as AskSource,
+} from '../../../common/tool/antSource/core';
 
 // ============================================================
 // Path Security (Blacklist approach)
@@ -15,108 +22,11 @@ import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathReso
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
 
-/**
- * Forbidden path patterns (blacklist)
- * Only block security-sensitive paths; allow everything else
- */
-const FORBIDDEN_PATTERNS = [
-  // Security-sensitive files
-  /\.env/i,
-  /secret/i,
-  /credentials?/i,
-  /password/i,
-  /private[-_]?key/i,
-  /api[-_]?key/i,
-  
-  // Infrastructure (may contain deployment configs)
-  /infrastructure\/auth\//,
-  /infrastructure\/networking\//,
-  
-  // Build artifacts and dependencies
-  /node_modules\//,
-  /\.git\//,
-  /dist\//,
-  /\.next\//,
-  /coverage\//,
-];
-
-/**
- * Get ant-cli root path
- */
-function getCliRoot(): string {
-  const cliRoot = WorkspacePathResolver.getCliRoot();
-  // Go from dist to src for actual source files
-  if (cliRoot.includes('/dist')) {
-    return cliRoot.replace('/dist', '/src');
-  }
-  return cliRoot;
-}
-
-/**
- * Get ant-ui root path
- */
-function getUiRoot(): string {
-  const cliRoot = getCliRoot();
-  // ant-cli/src -> ../../ant-ui (packages/ant-cli/src -> packages/ant-ui)
-  return path.resolve(cliRoot, '../../ant-ui');
-}
-
-/**
- * Get monorepo docs root path
- * docs/ is at the monorepo root level (sibling of packages/)
- */
-function getDocsRoot(): string {
-  const cliRoot = getCliRoot();
-  // ant-cli/src -> ../../../docs (packages/ant-cli/src -> docs)
-  return path.resolve(cliRoot, '../../../docs');
-}
-
-/** Source type for ask tools */
-type AskSource = 'cli' | 'ui' | 'docs';
-
-/**
- * Resolve root path for a given source
- */
-function resolveSourceRoot(source: AskSource): string {
-  switch (source) {
-    case 'cli': return getCliRoot();
-    case 'ui': return getUiRoot();
-    case 'docs': return getDocsRoot();
-  }
-}
-
-/**
- * Validate path against blacklist (security-only filtering)
- */
-function validatePath(relativePath: string, _source: AskSource): { valid: boolean; reason?: string } {
-  // Normalize path
-  const normalized = path.normalize(relativePath).replace(/\\/g, '/');
-  
-  // Check for path traversal
-  if (normalized.includes('..')) {
-    return { valid: false, reason: 'Path traversal not allowed' };
-  }
-  
-  // Check blacklist only
-  for (const pattern of FORBIDDEN_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return { valid: false, reason: `Security: access denied` };
-    }
-  }
-  
-  return { valid: true };
-}
-
-/**
- * Sanitize output to mask sensitive information
- */
-function sanitizeOutput(content: string): string {
-  // Mask potential secrets (very conservative)
-  return content
-    .replace(/(['"])[A-Za-z0-9+/=]{32,}(['"])/g, '$1[REDACTED]$2')  // Base64-like strings
-    .replace(/(['"])sk-[A-Za-z0-9]{20,}(['"])/g, '$1[REDACTED]$2')  // API keys
-    .replace(/password\s*[:=]\s*['"][^'"]+['"]/gi, 'password=[REDACTED]');
-}
+// Ant-source read/list/search logic (cli/ui/docs scope) + its security
+// helpers (FORBIDDEN_PATTERNS, sanitizeOutput) now live in the shared core
+// module (common/tool/antSource/core.ts) so the code/design jobs reuse them.
+// The three exports below are thin delegations kept for the ask tool node's
+// existing imports + ASK_TOOLS schema.
 
 // ============================================================
 // Tool Definitions
@@ -129,208 +39,26 @@ export interface ToolResult {
 }
 
 /**
- * Read a file from Ant source code
+ * Read a file from Ant source code — delegates to the shared core.
  */
 export async function readAntSource(args: { path: string; source?: AskSource }): Promise<ToolResult> {
-  const source = args.source || 'cli';
-  const relativePath = args.path;
-  
-  if (DEBUG) {
-    console.log(`📖 [AskTool] readAntSource: ${source}/${relativePath}`);
-  }
-  
-  // Validate path
-  const validation = validatePath(relativePath, source);
-  if (!validation.valid) {
-    return { success: false, error: validation.reason };
-  }
-  
-  // Resolve full path
-  const rootPath = resolveSourceRoot(source);
-  const fullPath = path.join(rootPath, relativePath);
-  
-  // Check file exists
-  if (!fs.existsSync(fullPath)) {
-    return { success: false, error: `File not found: ${relativePath}` };
-  }
-  
-  // Read and sanitize
-  try {
-    const content = fs.readFileSync(fullPath, 'utf-8');
-    const sanitized = sanitizeOutput(content);
-    
-    // Limit content length (higher for docs since rubrics/guides need full content)
-    const maxLength = source === 'docs' ? 50000 : 10000;
-    if (sanitized.length > maxLength) {
-      return {
-        success: true,
-        content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
-      };
-    }
-    
-    return { success: true, content: sanitized };
-  } catch (error: any) {
-    return { success: false, error: `Failed to read file: ${error.message}` };
-  }
+  return coreReadAntSource(args);
 }
 
 /**
- * List files in a directory
+ * List files in an Ant source directory — delegates to the shared core.
  */
 export async function listAntFiles(args: { path: string; source?: AskSource }): Promise<ToolResult> {
-  const source = args.source || 'cli';
-  const relativePath = args.path;
-  
-  if (DEBUG) {
-    console.log(`📂 [AskTool] listAntFiles: ${source}/${relativePath}`);
-  }
-  
-  // Basic path validation (allow directories)
-  const normalized = path.normalize(relativePath).replace(/\\/g, '/');
-  if (normalized.includes('..')) {
-    return { success: false, error: 'Path traversal not allowed' };
-  }
-  
-  // Check blacklist
-  for (const pattern of FORBIDDEN_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return { success: false, error: `Forbidden path: ${pattern}` };
-    }
-  }
-  
-  // Resolve full path
-  const rootPath = resolveSourceRoot(source);
-  const fullPath = path.join(rootPath, relativePath);
-  
-  // Check directory exists
-  if (!fs.existsSync(fullPath)) {
-    return { success: false, error: `Directory not found: ${relativePath}` };
-  }
-  
-  if (!fs.statSync(fullPath).isDirectory()) {
-    return { success: false, error: `Not a directory: ${relativePath}` };
-  }
-  
-  try {
-    const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-    const items = entries
-      .filter(e => !e.name.startsWith('.'))  // Skip hidden files
-      .map(e => ({
-        name: e.name,
-        type: e.isDirectory() ? 'dir' : 'file',
-      }));
-    
-    return {
-      success: true,
-      content: JSON.stringify(items, null, 2),
-    };
-  } catch (error: any) {
-    return { success: false, error: `Failed to list directory: ${error.message}` };
-  }
+  return coreListAntFiles(args);
 }
 
 /**
- * Search for text in Ant source code
+ * Search Ant source code — delegates to the shared core.
  */
-export async function searchAntCode(args: { 
-  query: string; 
-  source?: AskSource;
-  filePattern?: string;
-}): Promise<ToolResult> {
-  const source = args.source || 'cli';
-  const query = args.query;
-  const filePattern = args.filePattern || (source === 'docs' ? '*.md' : '*.ts');
-  
-  if (DEBUG) {
-    console.log(`🔍 [AskTool] searchAntCode: "${query}" in ${source} (${filePattern})`);
-  }
-  
-  // Validate query
-  if (!query || query.length < 2) {
-    return { success: false, error: 'Query too short (min 2 chars)' };
-  }
-  
-  if (query.length > 100) {
-    return { success: false, error: 'Query too long (max 100 chars)' };
-  }
-  
-  const rootPath = resolveSourceRoot(source);
-  
-  // Simple recursive search (limited)
-  const results: { file: string; line: number; content: string }[] = [];
-  const maxResults = 20;
-  
-  function searchDir(dir: string, relativeTo: string) {
-    if (results.length >= maxResults) return;
-    
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        if (results.length >= maxResults) return;
-        if (entry.name.startsWith('.')) continue;
-        if (entry.name === 'node_modules') continue;
-        
-        const fullPath = path.join(dir, entry.name);
-        const relPath = path.relative(relativeTo, fullPath);
-        
-        // Skip forbidden paths
-        const isForbidden = FORBIDDEN_PATTERNS.some(p => p.test(relPath));
-        if (isForbidden) continue;
-        
-        if (entry.isDirectory()) {
-          searchDir(fullPath, relativeTo);
-        } else if (entry.isFile()) {
-          // Check file pattern
-          if (filePattern !== '*' && !entry.name.endsWith(filePattern.replace('*', ''))) {
-            continue;
-          }
-          
-          // Check whitelist
-          const validation = validatePath(relPath, source);
-          if (!validation.valid) continue;
-          
-          try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            const lines = content.split('\n');
-            
-            lines.forEach((line, idx) => {
-              if (results.length >= maxResults) return;
-              if (line.toLowerCase().includes(query.toLowerCase())) {
-                results.push({
-                  file: relPath,
-                  line: idx + 1,
-                  content: line.substring(0, 200),
-                });
-              }
-            });
-          } catch {
-            // Skip unreadable files
-          }
-        }
-      }
-    } catch {
-      // Skip inaccessible directories
-    }
-  }
-  
-  searchDir(rootPath, rootPath);
-  
-  if (results.length === 0) {
-    return { success: true, content: 'No matches found' };
-  }
-  
-  const output = results
-    .map(r => `${r.file}:${r.line}: ${r.content}`)
-    .join('\n');
-  
-  return {
-    success: true,
-    content: results.length >= maxResults 
-      ? `${output}\n\n[... more results truncated, showing first ${maxResults} ...]`
-      : output,
-  };
+export async function searchAntCode(args: { query: string; source?: AskSource; filePattern?: string }): Promise<ToolResult> {
+  return coreSearchAntCode(args);
 }
+
 
 // ============================================================
 // Tool Schema for LLM

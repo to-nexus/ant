@@ -26,6 +26,8 @@ import {
   isUrlKey,
   parseUrlKey,
 } from '../services/PreviewService/utils/serverKeyUtils';
+import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
+import { isSubdomainRouting, getDeployBaseDomain } from '../../../../core/config/previewRouting';
 import type { DeployState } from '../../../../core/ports/portRegistry';
 import {
   buildCleanHeaders,
@@ -39,6 +41,32 @@ import {
 } from './proxyForwarding';
 import { resolveDeployTarget } from './deployRouting';
 import { assertProxyOwnership } from './proxyOwnership';
+
+/**
+ * Rewrite the `/_next/image` optimizer `url` param to include the deploy
+ * basePath — parity with the preview proxy's `rewriteNextImagePath`.
+ *
+ * A Next.js app built with basePath `/deploy/<urlKey>` emits optimizer URLs
+ * as `/deploy/<urlKey>/_next/image?url=%2Fimages%2Fx` — the endpoint carries
+ * the basePath but the `url` param stays the authored root-absolute `/images/x`
+ * (next/image never prefixes the src). The optimizer resolves that param with
+ * `new URL(url, origin)`, ignoring basePath, so it fetches `/images/x` while
+ * `public/` is served at `/deploy/<urlKey>/images/x` → 404 → optimizer 400.
+ * Prepending the basePath to the param makes the internal fetch resolve.
+ * Idempotent: skips params already carrying the prefix.
+ */
+export function rewriteNextImagePath(path: string, basePathPrefix: string): string {
+  if (!path.includes('/_next/image')) return path;
+  try {
+    const urlObj = new URL(`http://localhost${path}`);
+    const imageUrl = urlObj.searchParams.get('url');
+    if (!imageUrl || imageUrl.startsWith(basePathPrefix)) return path;
+    urlObj.searchParams.set('url', `${basePathPrefix}${imageUrl}`);
+    return urlObj.pathname + urlObj.search;
+  } catch {
+    return path;
+  }
+}
 
 /**
  * Minimal JWT-verify surface the gate needs. `undefined` in local mode
@@ -128,11 +156,73 @@ export interface DeployProxyDeps {
   jwtService?: DeployProxyJwtService;
   /** Session cookie name (e.g. `JwtService.cookieName`). */
   cookieName?: string;
+  /**
+   * Subdomain routing only: resolve a Host DNS label to a deploy's coordinates
+   * (+ optional serviceName for multi-package). Provided by DeployService.
+   * Absent → subdomain deploy routing is unavailable and requests fall through.
+   */
+  resolveLabel?(label: string): Promise<{
+    tenantId: string;
+    userId: string;
+    projectId: string;
+    feature: string;
+    serviceName?: string;
+  } | null>;
 }
 
 export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
   const cookieName = deps.cookieName ?? 'ant_session';
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // ── Subdomain routing (Phase 2) ──
+    // Deploy apps live at their own `{label}.<deployBaseDomain>` host root. The
+    // Host label is resolved to a deploy via DeployService.resolveLabel; the app
+    // is served at root (verbatim path, no `/deploy/{urlKey}` prefix, no image
+    // rewrite). Hosts not under the deploy base domain fall through so the
+    // preview proxy (also root-mounted in this mode) can handle them.
+    if (isSubdomainRouting()) {
+      const label = extractLabelFromHost(req.headers.host, getDeployBaseDomain());
+      if (!label || !deps.resolveLabel) return next();
+      const coords = await deps.resolveLabel(label);
+      if (!coords) return next();
+      const { tenantId, userId, projectId, feature, serviceName } = coords;
+
+      const deployState = await deps.ensureRunning(tenantId, userId, projectId, feature);
+      if (!deployState) {
+        res.status(404).json({ error: 'Deploy unavailable' });
+        return;
+      }
+      if (
+        deployState.visibility === 'private' &&
+        !isAuthorizedForPrivateDeploy(req, deps.jwtService, cookieName, tenantId, userId)
+      ) {
+        res.status(404).json({ error: 'Deploy unavailable' });
+        return;
+      }
+
+      const target = resolveDeployTarget(deployState, serviceName, '');
+      if (!target) {
+        res.status(404).json({ error: 'Deploy package not found' });
+        return;
+      }
+      const { targetHost, targetPort } = target;
+      const targetUrl = `http://${targetHost}:${targetPort}${req.url}`; // verbatim — root served
+      try {
+        const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+        const response = await fetchWithTransportRetry(targetUrl, {
+          method: req.method,
+          headers,
+          ...forwardRequestBody(req),
+          ...forwardRequestAbort(req),
+        } as RequestInit);
+        await streamUpstreamResponse(response, res, { upstreamHost: `${targetHost}:${targetPort}` });
+        deps.touchDeploy(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
+      } catch (error: any) {
+        logger.warn(`[Deploy] Subdomain proxy error: ${error.message}`, { component: 'DeployProxy' });
+        res.status(502).json({ error: 'Deploy server unreachable' });
+      }
+      return;
+    }
+
     const pathAfterDeploy = req.path; // Already has /deploy/ stripped by app.use('/deploy/', ...)
     const segments = pathAfterDeploy.split('/').filter(Boolean);
     const urlKey = segments[0];
@@ -185,7 +275,13 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
       //   process (backend): routes live at root, no prefix baked in → forward
       //     the bare path with no basePath so headers pass through verbatim.
       const basePath = isProcess ? undefined : `/deploy/${urlKey}`;
-      const targetPath = isProcess ? barePath : `/deploy/${urlKey}${barePath}`;
+      // Static (frontend): re-prepend the deploy basePath, then fix the
+      // `/_next/image` optimizer `url` param so it resolves against public/
+      // under the basePath (parity with the preview proxy). Process (backend):
+      // routes live at root, no rewrite.
+      const targetPath = isProcess
+        ? barePath
+        : rewriteNextImagePath(`/deploy/${urlKey}${barePath}`, `/deploy/${urlKey}`);
       const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
       const upstreamHost = `${targetHost}:${targetPort}`;
 

@@ -112,6 +112,15 @@ export class AutoInjectionResolver {
       injections.push(`${commonPrefix}/memory`);
     }
 
+    // Always-on (code·design): platform + dependency source-diagnosis guidance.
+    // NOT presence-gated — the framework the app uses and Ant's own platform
+    // source always exist, so there is no presence to gate on. Travels with the
+    // ant-source tools exposed to CODE/DESIGN in JOB_TOOL_MATRIX. Teaches WHEN
+    // to inspect platform/dependency source (app↔infra boundary symptoms).
+    if (job === 'code' || job === 'design') {
+      injections.push(`${commonPrefix}/shared-source-diagnosis`);
+    }
+
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Tier A: visual-source-authority (frontend static policy)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

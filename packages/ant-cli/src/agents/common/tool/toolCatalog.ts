@@ -185,6 +185,10 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_REFERENCE_FILE,
     ToolName.LIST_REFERENCE_FILES,
     ToolName.SEARCH_REFERENCE,
+    // Ant-source self-diagnosis (platform + framework source, always-on)
+    ToolName.READ_ANT_SOURCE,
+    ToolName.LIST_ANT_FILES,
+    ToolName.SEARCH_ANT_CODE,
     // Search (web)
     ToolName.SEARCH_WEB,
     // Write
@@ -216,6 +220,10 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_REFERENCE_FILE,
     ToolName.LIST_REFERENCE_FILES,
     ToolName.SEARCH_REFERENCE,
+    // Ant-source self-diagnosis (platform + framework source, always-on)
+    ToolName.READ_ANT_SOURCE,
+    ToolName.LIST_ANT_FILES,
+    ToolName.SEARCH_ANT_CODE,
     // Search (web)
     ToolName.SEARCH_WEB,
     // Write
@@ -269,6 +277,16 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
 // specific phases/contexts within a job (e.g., plan exploration,
 // explain mode, UI design variants).
 
+// Ant-source self-diagnosis tools — spread into every code/design work set so
+// the LLM ALWAYS sees them (always-on, not presence-gated). Reads Ant's own
+// in-image platform source + framework deps when a symptom can't be explained
+// from the app alone. See jobs/shared/injections/shared-source-diagnosis.md.
+const ANT_SOURCE_TOOLS: ToolName[] = [
+  ToolName.READ_ANT_SOURCE,
+  ToolName.LIST_ANT_FILES,
+  ToolName.SEARCH_ANT_CODE,
+];
+
 export const TOOL_SETS = {
   fileOps: [ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.DELETE_FILE, ToolName.MKDIR] as ToolName[],
   fileBrowsing: [ToolName.LIST_FILES, ToolName.SEARCH_CODE] as ToolName[],
@@ -283,11 +301,13 @@ export const TOOL_SETS = {
   codeBasic: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   planExplore: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.SEARCH_WEB, ToolName.RUN_COMMAND,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   // Design plan-LLM read-only exploration. NO file-write tools and NO
@@ -296,6 +316,7 @@ export const TOOL_SETS = {
   designPlanExplore: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   // Figma-augmented design plan exploration — adds Figma MCP read tools
@@ -305,16 +326,18 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
-  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
-  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
+  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
 
   // Design docGen default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent.
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   // SEARCH_CODE included so existing-project workspaces can satisfy the
@@ -323,12 +346,14 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   uiDesign: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   uiDesignFigma: [
@@ -337,6 +362,7 @@ export const TOOL_SETS = {
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   // Spec-Figma design variant — see JOB_TOOL_MATRIX[JobType.DESIGN]
@@ -346,6 +372,7 @@ export const TOOL_SETS = {
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+    ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   figmaExplore: [
@@ -377,6 +404,9 @@ import {
   handleRegisterReference,
   handleReadReferenceFile,
   handleListReferenceFiles,
+  handleReadAntSource,
+  handleListAntFiles,
+  handleSearchAntCode,
   handleRunCommand,
   handleHttpRequest,
   handleFigmaTool,
@@ -399,6 +429,10 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.REGISTER_REFERENCE,   handleRegisterReference],
     [ToolName.READ_REFERENCE_FILE,  handleReadReferenceFile],
     [ToolName.LIST_REFERENCE_FILES, handleListReferenceFiles],
+    // ant-source self-diagnosis (ctx-independent — reads Ant's own in-image source)
+    [ToolName.READ_ANT_SOURCE,      handleReadAntSource],
+    [ToolName.LIST_ANT_FILES,       handleListAntFiles],
+    [ToolName.SEARCH_ANT_CODE,      handleSearchAntCode],
     // Figma: handler needs tool name argument, so we use a factory
     [ToolName.FIGMA_DESIGN_CTX, (ctx, args) => handleFigmaTool(ctx, args, ToolName.FIGMA_DESIGN_CTX)],
     [ToolName.FIGMA_SCREENSHOT, (ctx, args) => handleFigmaTool(ctx, args, ToolName.FIGMA_SCREENSHOT)],

@@ -18,7 +18,8 @@
     "codebase-channel": ["codebaseRole", "codebaseEntryPoints"],
     "handoff-code-shape-discipline": [],
     "reference-codebase-register": ["hasReferenceCatalog", "referenceCatalog"],
-    "reference-codebase": ["hasReferenceCatalog", "referenceCatalog"]
+    "reference-codebase": ["hasReferenceCatalog", "referenceCatalog"],
+    "shared-source-diagnosis": []
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],

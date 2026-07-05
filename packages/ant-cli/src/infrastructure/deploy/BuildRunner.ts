@@ -62,11 +62,18 @@ export function getBuildOutputDir(workspacePath: string, framework: DeployFramew
   }
 }
 
+/** A root/empty basePath means "serve at host root" (subdomain routing) — no prefix to bake. */
+function isRootBasePath(basePath: string): boolean {
+  return basePath === '' || basePath === '/';
+}
+
 /**
- * Build environment variables for base path injection.
+ * Build environment variables for base path injection. Returns {} at the host
+ * root (subdomain routing) so no framework basePath/asset-prefix is baked.
  */
 function buildEnvWithBasePath(basePath: string, framework: DeployFramework): Record<string, string> {
   const env: Record<string, string> = {};
+  if (isRootBasePath(basePath)) return env;
 
   switch (framework) {
     case 'vite':
@@ -183,6 +190,7 @@ async function ensureDependencies(
  * Build CLI args for base path injection.
  */
 function buildArgsWithBasePath(basePath: string, framework: DeployFramework): string[] {
+  if (isRootBasePath(basePath)) return [];
   switch (framework) {
     case 'vite':
       return ['--base', basePath];

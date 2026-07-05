@@ -1778,6 +1778,13 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/shared-source-diagnosis": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/ui-design-policy": {
     "sources": [
       "policy-map",

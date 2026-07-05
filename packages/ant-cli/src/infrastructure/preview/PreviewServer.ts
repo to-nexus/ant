@@ -26,6 +26,7 @@ import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
+import { isSubdomainRouting } from '../../core/config/previewRouting';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
@@ -582,14 +583,24 @@ export class PreviewServer {
     // tenant/user via the JWT cookie (undefined jwtService in local mode →
     // owner-accessible). The proxy runs before cookie-parser, so it parses the
     // raw Cookie header itself.
-    this.app.use('/deploy/', createDeployProxyMiddleware({
+    const deployProxy = createDeployProxyMiddleware({
       ensureRunning: (t, u, p, f) => this.deployService.ensureRunning(t, u, p, f),
       touchDeploy: (t, u, p, f) => this.stateStore.touchDeploy(t, u, p, f),
       updateDeploy: (t, u, p, f, patch) => this.stateStore.updateDeploy(t, u, p, f, patch as any),
       broadcastStatus: (t, u, p, f, status) => this.deployService.broadcastStatus(t, u, p, f, status as any),
       jwtService: createJwtServiceFromEnv(),
       cookieName: JwtService.cookieName,
-    }));
+      // Subdomain routing: resolve a deploy Host label to its coordinates.
+      resolveLabel: (label) => this.deployService.resolveDeployLabel(label),
+    });
+    // Path routing mounts deploy at `/deploy/`; subdomain routing serves deploy
+    // apps at their own host root, so the proxy must be a root catch-all (it
+    // self-gates on the deploy base domain and defers other hosts via next()).
+    if (isSubdomainRouting()) {
+      this.app.use(deployProxy);
+    } else {
+      this.app.use('/deploy/', deployProxy);
+    }
 
     // 5. Cookie parser (required for JWT cookie auth)
     this.app.use(cookieParser());

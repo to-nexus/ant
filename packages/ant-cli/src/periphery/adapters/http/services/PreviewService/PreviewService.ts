@@ -8,6 +8,8 @@ import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, PreviewEr
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey, toUrlKey, toUrlKeyWithService, packageSlug } from './utils/serverKeyUtils';
+import { subdomainAppUrlForUrlKey } from './utils/previewLabel';
+import { isSubdomainRouting } from '../../../../../core/config/previewRouting';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
@@ -430,6 +432,17 @@ export class PreviewService {
    * stale Redis records written by older builds — they had no `packages` at
    * all and a single top-level port).
    */
+  /**
+   * Public URL for a frontend package's urlKey.
+   *   path routing      → `/{urlKey}` (relative, on the shared preview host).
+   *   subdomain routing → `https://{label}.<baseDomain>` (per-app host root);
+   *                       falls back to `/{urlKey}` if no base domain configured.
+   */
+  private previewUrlForKey(urlKey: string): string {
+    if (isSubdomainRouting()) return subdomainAppUrlForUrlKey(urlKey) ?? `/${urlKey}`;
+    return `/${urlKey}`;
+  }
+
   private computeTopLevelUrl(
     packages: PreviewPackage[] | undefined,
     legacyPort: number | undefined,
@@ -437,13 +450,13 @@ export class PreviewService {
   ): string | null {
     const frontends = (packages || []).filter(p => p.type === 'frontend');
     if (frontends.length === 1) {
-      return frontends[0].urlKey ? `/${frontends[0].urlKey}` : `/${toUrlKey(serverKey)}`;
+      return this.previewUrlForKey(frontends[0].urlKey || toUrlKey(serverKey));
     }
     if (frontends.length === 0) {
       // Legacy fallback: backend-only state with port set, or stale state
       // missing `packages`. Single 4-part URL is still useful to stale
       // clients (e.g. cross-project proxy).
-      return legacyPort ? `/${toUrlKey(serverKey)}` : null;
+      return legacyPort ? this.previewUrlForKey(toUrlKey(serverKey)) : null;
     }
     return null;
   }
@@ -456,7 +469,7 @@ export class PreviewService {
   private enrichPackagesWithUrl(packages: PreviewPackage[]): Array<PreviewPackage & { url: string | null }> {
     return packages.map(p => ({
       ...p,
-      url: p.type === 'frontend' && p.urlKey ? `/${p.urlKey}` : null,
+      url: p.type === 'frontend' && p.urlKey ? this.previewUrlForKey(p.urlKey) : null,
     }));
   }
 
@@ -539,8 +552,8 @@ export class PreviewService {
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const urlKey = toUrlKey(serverKey);
-    const proxyUrl = `/${urlKey}`;
-    
+    const proxyUrl = this.previewUrlForKey(urlKey);
+
     // Clear previous session logs on new start
     this.logManager.clearLogs(serverKey);
     
