@@ -158,16 +158,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   //   - `hasCompactedArtifacts`                — gates rules.md reading-strategy
   // No artifact content is ever truncated; oversized docs become outlines
   // the LLM can re-expand via `read_file(path, startLine, endLine)`.
-  // Size the artifact budget against the ACTUAL decompose model window (not the
-  // 128K fallback) so a large real window isn't needlessly starved.
-  const { resolveModelContextWindow } = await import(
-    '../../../../../../periphery/adapters/llm/LLMClientFactory'
-  );
-  const decomposeCtxWindow = resolveModelContextWindow(
-    { jobType: 'code', nodeType: 'decompose' },
-    state.workspaceConfig,
-  );
-  const racInjection = prepareRacInjection(state, decomposeCtxWindow);
+  const racInjection = prepareRacInjection(state);
   const {
     documents,
     hasDocuments,

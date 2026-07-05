@@ -25,6 +25,19 @@ export function isOverloadedError(error: { message?: string } | string | null | 
 }
 
 /**
+ * True when the failure is a deterministic "request too large" error — the
+ * assembled prompt exceeded the model's context window (Anthropic 400
+ * `invalid_request_error`, "prompt is too long"). This is NOT transient and NOT
+ * resumable: retrying/resuming re-sends the same oversized request. The request
+ * itself is ill-formed (too many / too large references selected), so the job
+ * must fail explicitly and the user must narrow the request.
+ */
+export function isPromptTooLongError(error: { message?: string } | string | null | undefined): boolean {
+  const msg = (typeof error === 'string' ? error : error?.message) || '';
+  return /prompt is too long/i.test(msg);
+}
+
+/**
  * Collapse a raw Anthropic error message into a short, user-readable cause.
  * Keeps raw JSON out of the choice card. Falls back to the trimmed message.
  */

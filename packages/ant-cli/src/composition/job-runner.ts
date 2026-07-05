@@ -44,6 +44,7 @@ import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
 import { createTLSOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { buildInfrastructureInterruption } from '@ant/shared';
+import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
 
 interface JobParams {
   jobId: string;
@@ -259,18 +260,35 @@ async function runJob(params: JobParams): Promise<void> {
       jobId: params.jobId
     }, error);
 
-    reportProgress('failed', error.message);
+    // Deterministic "request too large" (prompt exceeds the model context
+    // window) is NOT an infra crash and NOT resumable — resuming re-sends the
+    // same oversized request. Fail explicitly with a clear, actionable reason
+    // and no resume affordance (canResume:false → dismiss-only card).
+    const promptTooLong = isPromptTooLongError(error);
+    const interruption = promptTooLong
+      ? {
+          reason: 'api_error' as InterruptionReason,
+          message:
+            'The request is too large for the model context window (the assembled prompt exceeded the maximum). ' +
+            'This usually means too many or too large reference files were selected. ' +
+            'Reduce the selected references and start a new job.',
+          timestamp: new Date().toISOString(),
+          canResume: false,
+        }
+      : {
+          reason: 'process_crash' as InterruptionReason,
+          message: error.message || 'Unexpected error occurred.',
+          timestamp: new Date().toISOString(),
+          canResume: true,
+        };
+
+    reportProgress('failed', interruption.message);
     reportResult(false, {
       success: false,
       job: params.jobType,
-      interruption: {
-        reason: 'process_crash',
-        message: error.message || 'Unexpected error occurred.',
-        timestamp: new Date().toISOString(),
-        canResume: true,
-      },
-    }, error.message);
-    
+      interruption,
+    }, interruption.message);
+
     throw error;
   }
 }
