@@ -8,6 +8,7 @@ import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../.
 import { resolveRunScript } from '../detectors/PackageDetector';
 import { loadProjectEnv as loadProjectEnvShared } from './envAssembly';
 import { backfillMockToggles } from './mockToggles';
+import { isSubdomainRouting } from '../../../../../../core/config/previewRouting';
 
 export interface SpawnOptions {
   serverKey: string;
@@ -163,7 +164,11 @@ export class ProcessSpawner {
     // Universal:  ANT_BASE_PATH          → generic fallback for custom setups
     //
     const basePathEnv: Record<string, string> = {};
-    if (pkg.type === 'frontend' && options.packageUrlKey) {
+    // Subdomain routing serves each app at its own host ROOT — no basePath.
+    // Injecting one would make the framework prefix every URL under a path
+    // that does not exist on the subdomain host. Path routing keeps the
+    // per-package prefix so the proxy can route without HTML rewriting.
+    if (pkg.type === 'frontend' && options.packageUrlKey && !isSubdomainRouting()) {
       // Per-package basePath. For multi-frontend monorepos this is a
       // 5-part urlKey carrying the package slug, so each frontend dev
       // server is reachable at a unique URL prefix without overlap.

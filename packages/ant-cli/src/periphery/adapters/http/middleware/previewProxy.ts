@@ -19,6 +19,8 @@ import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
+import { toDnsLabel, extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
+import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
 import { resolvePreviewTarget } from './previewRouting';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
@@ -117,6 +119,51 @@ function extractUrlKeyFromReferer(refererStr: string): string | null {
   return null;
 }
 
+interface SubdomainPreviewMatch {
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+  internalKey: string;
+  previewHost: string;
+  entryPort: number;
+  previewPackages: any[];
+}
+
+/**
+ * Resolve a subdomain DNS label to a running preview by RECOMPUTE-and-MATCH
+ * over the active preview set (the label function is deterministic, the active
+ * set per host is small — no extra Redis index needed). Matches the label
+ * against each frontend package's urlKey (single → 4-part `toUrlKey`).
+ */
+async function resolvePreviewByLabel(
+  portRegistry: PortRegistryPort,
+  label: string,
+): Promise<SubdomainPreviewMatch | null> {
+  const previews = await portRegistry.listPreviews();
+  for (const st of previews as any[]) {
+    const serverKey = `${st.tenantId}:${st.userId}:${st.projectId}:${st.feature}`;
+    const pkgs: any[] = st.packages || [];
+    const frontends = pkgs.filter((p) => p.type === 'frontend');
+    const hit =
+      frontends.some((p) => toDnsLabel(p.urlKey || toUrlKey(serverKey)) === label) ||
+      toDnsLabel(toUrlKey(serverKey)) === label;
+    if (hit) {
+      return {
+        tenantId: st.tenantId,
+        userId: st.userId,
+        projectId: st.projectId,
+        feature: st.feature,
+        internalKey: serverKey,
+        previewHost: st.host || 'localhost',
+        entryPort: st.port,
+        previewPackages: pkgs,
+      };
+    }
+  }
+  return null;
+}
+
 /**
  * Create preview proxy middleware
  */
@@ -135,7 +182,66 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     if (RESERVED_PATHS.some(p => req.path.startsWith(p))) {
       return next();
     }
-    
+
+    // ── Subdomain routing (Phase 2) ──
+    // Identifier is the Host DNS label, app served at ROOT. No path prefix, no
+    // basePath, no `/_next/image` rewrite, no Referer/cookie recovery — the host
+    // uniquely identifies the app, so root-absolute assets (`/images/x`) route
+    // correctly by construction.
+    if (isSubdomainRouting()) {
+      const label = extractLabelFromHost(req.headers.host, getPreviewBaseDomain());
+      if (!label) return next();
+
+      const match = await resolvePreviewByLabel(portRegistry, label);
+      if (!match) {
+        res.status(404).json({ error: 'Preview not found' });
+        return;
+      }
+      const { tenantId, userId, projectId, feature, internalKey, previewHost, entryPort } = match;
+
+      if (!isOwner(req, { tenantId, userId })) {
+        res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
+        return;
+      }
+      await portRegistry.touchPreview(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
+
+      // Fullstack: `/api/*` → backend port; everything else → the app at root.
+      let targetPort = entryPort;
+      if (typeof getBackendPort === 'function' && (req.path === '/api' || req.path.startsWith('/api/'))) {
+        try {
+          const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
+          if (typeof backendPort === 'number' && backendPort > 0) targetPort = backendPort;
+        } catch { /* fall through to frontend */ }
+      }
+
+      const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
+      try {
+        const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
+        const response = await fetchWithTransportRetry(targetUrl, {
+          method: req.method,
+          headers: cleanHeaders,
+          ...forwardRequestBody(req),
+        } as RequestInit);
+
+        if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
+          res.status(200)
+            .setHeader('Content-Type', 'image/svg+xml')
+            .setHeader('Cache-Control', 'public, max-age=3600')
+            .end(DEFAULT_FAVICON_SVG);
+          return;
+        }
+
+        await streamUpstreamResponse(response, res, {
+          upstreamHost: `${previewHost}:${targetPort}`,
+          cacheControl: 'no-cache, no-store, must-revalidate',
+        });
+      } catch (error: any) {
+        logger.error(`[Preview] Subdomain fetch error: ${error.message}`, { component: 'PreviewProxy' });
+        res.status(502).json({ error: 'Bad Gateway' });
+      }
+      return;
+    }
+
     // ✅ Extract first path segment to check if it's a urlKey
     const urlPath = req.url.split('?')[0];
     const pathAfterPrefix = pathPrefix ? urlPath.substring(pathPrefix.length) : urlPath;

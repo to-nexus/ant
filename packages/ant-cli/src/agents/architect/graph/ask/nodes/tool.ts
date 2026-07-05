@@ -17,9 +17,6 @@ import { createNoopChatStatusReporter } from '../../../../common/tool/chatStatus
 import type { ToolHandler } from '../../../../common/tool/types';
 import { ToolName } from '../../../../common/tool/toolCatalog';
 import {
-  readAntSource,
-  listAntFiles,
-  searchAntCode,
   readWorkspaceFile,
   listWorkspaceFiles,
 } from '../tools';
@@ -39,9 +36,9 @@ function getRegistry(): ToolRegistry {
       };
     };
 
-  _registry.register(ToolName.READ_ANT_SOURCE, wrap(readAntSource));
-  _registry.register(ToolName.LIST_ANT_FILES, wrap(listAntFiles));
-  _registry.register(ToolName.SEARCH_ANT_CODE, wrap(searchAntCode));
+  // ant-source read/list/search are now auto-registered by createAskToolRegistry
+  // from the shared catalog (TOOL_HANDLERS). Only the workspace-scope readers,
+  // which depend on runtime feature-path state, are registered here.
   _registry.register(ToolName.READ_WORKSPACE_FILE, wrap(readWorkspaceFile));
   _registry.register(ToolName.LIST_WORKSPACE_FILES, wrap(listWorkspaceFiles));
 

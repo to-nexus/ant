@@ -15,6 +15,7 @@ export { handleSearchReferenceCode } from './searchReferenceCode';
 export { handleRegisterReference } from './registerReference';
 export { handleReadReferenceFile } from './readReferenceFile';
 export { handleListReferenceFiles } from './listReferenceFiles';
+export { handleReadAntSource, handleListAntFiles, handleSearchAntCode } from './antSource';
 export { handleRunCommand } from './runCommand';
 export { handleHttpRequest } from './httpProbe';
 export { handleFigmaTool } from './figma';

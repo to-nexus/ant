@@ -407,9 +407,18 @@ describe('Registry presets (catalog-driven)', () => {
     expect(registry.has(ToolName.SEARCH_WEB)).toBe(true);
   });
 
-  it('createAskToolRegistry should be empty (Ask tools registered at runtime)', async () => {
+  it('createAskToolRegistry auto-registers ant-source handlers (shared catalog SSOT); workspace tools stay runtime-registered', async () => {
     const { createAskToolRegistry } = await import('../../src/agents/common/tool/presets');
     const registry = createAskToolRegistry();
-    expect(registry.names().length).toBe(0);
+    // ant-source read/list/search moved into the shared TOOL_HANDLERS (reused
+    // by code/design self-diagnosis), so the ASK preset now auto-registers them
+    // from the catalog matrix instead of being empty.
+    expect(registry.has(ToolName.READ_ANT_SOURCE)).toBe(true);
+    expect(registry.has(ToolName.LIST_ANT_FILES)).toBe(true);
+    expect(registry.has(ToolName.SEARCH_ANT_CODE)).toBe(true);
+    // Workspace-scope readers depend on runtime feature-path state → still
+    // registered at runtime by the ask tool node, not in the catalog.
+    expect(registry.has(ToolName.READ_WORKSPACE_FILE)).toBe(false);
+    expect(registry.has(ToolName.LIST_WORKSPACE_FILES)).toBe(false);
   });
 });

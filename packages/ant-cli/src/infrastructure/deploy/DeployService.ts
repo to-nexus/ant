@@ -39,7 +39,10 @@ import {
   toUrlKey,
   toUrlKeyWithService,
   packageSlug,
+  parseUrlKey,
 } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { subdomainAppUrlForUrlKey, toDnsLabel } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
+import { isSubdomainRouting } from '../../core/config/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
 import { logger } from '../../utils/logger';
@@ -90,6 +93,24 @@ const MAX_IDLE_CHECK_MS = 10 * 60 * 1000; // 10 min ceiling
  *   any starting   → starting
  *   else           → first non-running phase encountered (best-effort)
  */
+/**
+ * Base path a deploy artifact is built + served under.
+ *   path routing      → `/deploy/{urlKey}` (framework basePath prefix).
+ *   subdomain routing → `/` (served at the per-app host root, no prefix).
+ */
+function deployBasePathFor(urlKey: string): string {
+  return isSubdomainRouting() ? '/' : `/deploy/${urlKey}`;
+}
+
+/**
+ * Public URL for a deploy package. Subdomain routing → `https://{label}.<base>`
+ * (falls back to basePath if no base domain configured); path routing → basePath.
+ */
+function deployUrlFor(urlKey: string, basePath: string): string {
+  if (isSubdomainRouting()) return subdomainAppUrlForUrlKey(urlKey) ?? basePath;
+  return basePath;
+}
+
 function aggregatePhase(packages: Array<{ phase: DeployPhase }>): DeployPhase {
   if (packages.length === 0) return 'idle';
   if (packages.some(p => p.phase === 'error')) return 'error';
@@ -452,7 +473,7 @@ export class DeployService {
         // `buildOutputDir = package dir` so rehydrate validation has a real path.
         const buildOutputDir = isProcess ? app.path : getBuildOutputDir(app.path, framework);
         const urlKey = app.urlKey!;
-        const basePath = `/deploy/${urlKey}`;
+        const basePath = deployBasePathFor(urlKey);
         packagesState.push({
           name: app.name,
           slug: app.slug!,
@@ -465,7 +486,8 @@ export class DeployService {
           basePath,
           port,
           urlKey,
-          url: basePath, // deploy URL == basePath (same prefix)
+          // path routing: URL == basePath prefix. subdomain routing: per-app host.
+          url: deployUrlFor(urlKey, basePath),
           phase: 'building',
         });
       }
@@ -807,6 +829,38 @@ export class DeployService {
    * missing, ports exhausted). Callers must treat this as
    * "unavailable — user must re-deploy".
    */
+  /**
+   * Subdomain routing: resolve a Host DNS label to a deploy's coordinates by
+   * RECOMPUTE-and-MATCH over the active deploy set (deterministic label; small
+   * set — no extra Redis index). Returns the matched package's `serviceName`
+   * (5-part urlKey) so the proxy can route multi-package deploys.
+   */
+  async resolveDeployLabel(label: string): Promise<{
+    tenantId: string; userId: string; projectId: string; feature: string; serviceName?: string;
+  } | null> {
+    let deploys: DeployState[];
+    try {
+      deploys = await this.stateStore.listDeploys();
+    } catch (err: any) {
+      logger.warn(`[Deploy] resolveDeployLabel list failed: ${err.message}`, { component: 'DeployService' });
+      return null;
+    }
+    for (const d of deploys) {
+      const serverKey = `${d.tenantId}:${d.userId}:${d.projectId}:${d.feature}`;
+      for (const p of d.packages || []) {
+        const uk = p.urlKey || toUrlKey(serverKey);
+        if (toDnsLabel(uk) === label) {
+          const serviceName = parseUrlKey(uk)?.serviceName;
+          return { tenantId: d.tenantId, userId: d.userId, projectId: d.projectId, feature: d.feature, serviceName };
+        }
+      }
+      if (toDnsLabel(toUrlKey(serverKey)) === label) {
+        return { tenantId: d.tenantId, userId: d.userId, projectId: d.projectId, feature: d.feature };
+      }
+    }
+    return null;
+  }
+
   async ensureRunning(
     tenantId: string, userId: string, projectId: string, feature: string
   ): Promise<DeployState | null> {
@@ -925,7 +979,7 @@ export class DeployService {
           basePath: mp.basePath,
           port,
           urlKey: mp.urlKey,
-          url: mp.basePath,
+          url: deployUrlFor(mp.urlKey, mp.basePath),
           phase: 'running',
         });
       }
@@ -1056,7 +1110,7 @@ export class DeployService {
         basePath: mp.basePath,
         port: 0,
         urlKey: mp.urlKey,
-        url: mp.basePath,
+        url: deployUrlFor(mp.urlKey, mp.basePath),
         phase: 'hibernated',
       }));
       return {
