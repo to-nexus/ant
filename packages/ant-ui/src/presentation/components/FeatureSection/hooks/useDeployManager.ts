@@ -6,6 +6,7 @@ import {
   selectDeployLogs,
   selectIsDeployLoading,
 } from '@/domain/store/slices/deploySlice';
+import { selectHasActiveCodeJob } from '@/domain/store/slices/jobSlice';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import * as consoleLogCache from '@/infrastructure/persistence/consoleLogCache';
 import {
@@ -71,7 +72,7 @@ export function useDeployManager(
   // feature by the SSE kanban handler, so this read is already feature-safe.
   // Other job types (design/plan/learn/ask/inline-ask) do not touch the
   // source tree and therefore do not invalidate a deploy.
-  const hasActiveCodeJob = useStore((s: any) => Boolean(s.activeJobs?.code));
+  const hasActiveCodeJob = useStore(selectHasActiveCodeJob);
 
   const disabledReason: DeployDisabledReason | undefined = (() => {
     if (!selectedFeature) return 'no-feature-selected';

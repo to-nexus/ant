@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Spinner } from '../common/async';
 import { useStore } from '@/domain/store';
+import { selectHasActiveCodeJob } from '@/domain/store/slices/jobSlice';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
 import { useDeployManager } from '../FeatureSection/hooks/useDeployManager';
@@ -57,7 +58,10 @@ export function PreviewConfigEditor() {
   const selectedFeature = useStore((s) => s.selectedFeature);
   const setPendingChatInput = useStore((s) => s.setPendingChatInput);
 
-  const isJobRunning = useStore((s) => s.isRunning);
+  // Preview reads the same code-job gate as deploy (SSOT): only a code job
+  // mutates the source tree the dev server serves. A running plan/design/ask
+  // job no longer blocks preview Start.
+  const isCodeJobRunning = useStore(selectHasActiveCodeJob);
 
   // Read preview VM through the single selector; actions only come from
   // the manager facade (no SSE registration in this component).
@@ -326,7 +330,7 @@ export function PreviewConfigEditor() {
             isReady={isReady}
             previewStatus={previewStatus}
             isPreviewLoading={isPreviewLoading}
-            isJobRunning={isJobRunning}
+            isCodeJobRunning={isCodeJobRunning}
             restartRequired={vm.restartRequired}
             dismissedSet={dismissedSet}
             onStart={handleStart}

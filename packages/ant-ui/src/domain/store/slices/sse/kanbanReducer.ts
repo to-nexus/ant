@@ -187,13 +187,27 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
       return;
     }
 
+    // Prune the completing job from `activeJobs` on the SAME transition that
+    // flips `isRunning` off, so the two SOTs stay converged even if the
+    // un-gated by-type clear in sseSlice missed this broadcast. Non-current
+    // concurrent jobs are pruned by their own by-type clear (sseSlice.ts).
+    const activeJobs = state.activeJobs ?? {};
+    const prunedActiveJobs = Object.fromEntries(
+      Object.entries(activeJobs).filter(([, e]: [string, any]) => e?.jobId !== kanbanJobId),
+    );
+    const activeJobsUpdate =
+      Object.keys(prunedActiveJobs).length !== Object.keys(activeJobs).length
+        ? { activeJobs: prunedActiveJobs }
+        : {};
+
     set({
       kanban: { ...data, isEstimating: false, estimatingLabel: undefined, estimatingStartedAt: undefined, estimatingNodeId: undefined },
       runningJobsByFeature: updatedRunningJobs,
       currentJobId: kanbanJobId,
       isRunning: false,
       currentMode: undefined,
-      jobStartPending: false
+      jobStartPending: false,
+      ...activeJobsUpdate,
     });
 
     removeFromStorage(STORAGE_KEYS.RUNNING_TASK);

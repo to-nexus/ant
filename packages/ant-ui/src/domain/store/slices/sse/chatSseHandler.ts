@@ -217,6 +217,10 @@ function handleNonChatEvent(event: any, set: any, get: any) {
       if (event.status === 'completed' || event.status === 'failed') {
         if (event.jobId) {
           get().removeVirtualEditorTabsByJobId?.(event.jobId);
+          // A terminal event for ANY job prunes it from activeJobs, regardless
+          // of the current-job run-state guards below (defense-in-depth: this
+          // channel has no BE producer today, but stays correct if revived).
+          get().clearActiveJobByJobId?.(event.jobId);
         }
         const cs = get();
 

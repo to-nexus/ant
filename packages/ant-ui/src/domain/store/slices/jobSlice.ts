@@ -16,6 +16,14 @@ export interface JobActions {
   setInlineAskContext: (context: InlineAskContext | null) => void;
   setActiveJob: (jobType: string, entry: ActiveJobEntry) => void;
   clearActiveJob: (jobType: string) => void;
+  /**
+   * Remove whichever `activeJobs` entry owns `jobId`, regardless of its type.
+   * Terminal owner for the map: a job that reached a terminal transition must
+   * leave `activeJobs` even if the terminal kanban broadcast is skipped
+   * (shared-session-slot guard). Keeps `activeJobs` from diverging from
+   * `isRunning`. No-op when no entry matches.
+   */
+  clearActiveJobByJobId: (jobId: string) => void;
   syncViewToJobType: (jobType: string) => void;
   /**
    * Switch the kanban view to a different jobId in the feature. Restores the
@@ -96,6 +104,13 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     // This prevents stale "in progress" state that blocks feature deletion
     // (previously only cleared by updateKanban's final broadcast, which may not arrive reliably)
     let runningJobsUpdate: Record<string, any> = {};
+    // Prune the terminating job from `activeJobs` on the SAME transition that
+    // clears `isRunning`. `setRunning(false)` is only invoked from robust
+    // terminal paths (local user-stop / failure / cli) — the SSE kanban path
+    // writes `isRunning` directly in the reducer — so this cannot fire on a
+    // stale SSE "not running". Without it, a skipped terminal kanban broadcast
+    // leaves `activeJobs.code` stale, blocking deploy/preview until a reload.
+    let activeJobsUpdate: Record<string, any> = {};
     if (!isRunning) {
       const { selectedProject, selectedFeature, runningJobsByFeature } = get();
       const featureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
@@ -104,6 +119,15 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
         delete updated[featureKey];
         runningJobsUpdate = { runningJobsByFeature: updated };
         console.log(`[Store] 📌 Cleared runningJobsByFeature for ${featureKey} (job stopped)`);
+      }
+      if (prevJobId) {
+        const activeJobs = get().activeJobs;
+        const pruned = Object.fromEntries(
+          Object.entries(activeJobs).filter(([, e]: [string, any]) => e?.jobId !== prevJobId),
+        );
+        if (Object.keys(pruned).length !== Object.keys(activeJobs).length) {
+          activeJobsUpdate = { activeJobs: pruned };
+        }
       }
     }
     
@@ -124,6 +148,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       ...(isRunning ? { lastJobFailed: false } : {}),
       // ✅ Clear runningJobsByFeature for current feature when job stops
       ...runningJobsUpdate,
+      // ✅ Prune the terminating job from activeJobs (SSOT: converge with isRunning)
+      ...activeJobsUpdate,
     });
 
     if (isRunning && jobId) {
@@ -197,6 +223,19 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     const activeJobs = { ...get().activeJobs };
     delete activeJobs[jobType];
     set({ activeJobs });
+  },
+
+  clearActiveJobByJobId: (jobId) => {
+    if (!jobId) return;
+    const activeJobs = { ...get().activeJobs };
+    let mutated = false;
+    for (const [type, entry] of Object.entries(activeJobs)) {
+      if ((entry as ActiveJobEntry | undefined)?.jobId === jobId) {
+        delete activeJobs[type];
+        mutated = true;
+      }
+    }
+    if (mutated) set({ activeJobs });
   },
 
   selectJobId: async (jobId, opts) => {
@@ -318,4 +357,14 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     }
   },
 });
+
+/**
+ * SSOT for "a code job is actively writing files on this feature". A code job
+ * takes a snapshot of / mutates the source tree, so it must gate both the
+ * deploy CTA (a half-written snapshot breaks the build) and the preview Start
+ * CTA. Other job types (plan/design/learn/ask) don't touch the source tree.
+ * Both preview and deploy read THIS selector — do not inline `activeJobs.code`.
+ */
+export const selectHasActiveCodeJob = (s: { activeJobs?: Record<string, ActiveJobEntry> }): boolean =>
+  Boolean(s.activeJobs?.code);
 
