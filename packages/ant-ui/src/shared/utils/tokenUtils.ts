@@ -300,10 +300,15 @@ export function formatUsd(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-/** Format a credit amount compactly (e.g. "1.2K"). */
+/**
+ * Format a credit amount, currency-style. At `1 credit = $1` a credit reads like
+ * a dollar, so show 2 decimals for normal wallet magnitudes (never round cents
+ * away). Only very large balances compact to K/M to stay legible.
+ */
 export function formatCredits(credits: number): string {
-  if (credits > 0 && credits < 1) return credits.toFixed(2);
-  return formatTokenCount(Math.round(credits));
+  const abs = Math.abs(credits);
+  if (abs >= 100_000) return formatTokenCount(Math.round(credits));
+  return credits.toFixed(2);
 }
 
 /**

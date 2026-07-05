@@ -245,7 +245,8 @@
       "idle": "Not deployed",
       "disabled": {
         "noFeatureSelected": "Select a feature branch to deploy",
-        "codeJobActive": "A code job is running on this feature. Deploy is available once it completes."
+        "codeJobActive": "A code job is running on this feature. Deploy is available once it completes.",
+        "tierNotAllowed": "Upgrade to Pro or Max to deploy. Preview is free for all tiers."
       }
     }
   }

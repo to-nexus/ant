@@ -24,7 +24,8 @@ import type { DeployStatus, DeployLogEntry, DeployVisibility } from '@/infrastru
  */
 export type DeployDisabledReason =
   | 'no-feature-selected'
-  | 'code-job-active';
+  | 'code-job-active'
+  | 'tier-not-allowed';
 
 export interface UseDeployManagerResult {
   status: DeployStatus | undefined;
@@ -74,9 +75,17 @@ export function useDeployManager(
   // source tree and therefore do not invalidate a deploy.
   const hasActiveCodeJob = useStore(selectHasActiveCodeJob);
 
+  // Deploy is a paid-plan feature: free tier can preview but not deploy. Only
+  // gate when billing is on (local/OSS leaves deploy open). Tier comes from the
+  // billing balance snapshot; undefined balance ⇒ treat as not-free (don't block
+  // before the snapshot loads — the BE gate is the authority).
+  const billingEnabled = useStore((s: any) => s.billingEnabled);
+  const userTier = useStore((s: any) => s.billingBalance?.data?.tier);
+
   const disabledReason: DeployDisabledReason | undefined = (() => {
     if (!selectedFeature) return 'no-feature-selected';
     if (hasActiveCodeJob) return 'code-job-active';
+    if (billingEnabled && userTier === 'free') return 'tier-not-allowed';
     return undefined;
   })();
   const canDeploy = disabledReason === undefined;

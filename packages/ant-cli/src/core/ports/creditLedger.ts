@@ -24,11 +24,26 @@ export interface ReserveResult {
   requiredMicro: number;
 }
 
-export interface SettleArgs {
+/**
+ * Neutral facts (no pricing) the OSS side passes so the CLOUD ledger can compute
+ * the per-job platform fee from its catalog. LLM cost stays pass-through; the fee
+ * is folded into the same cumulative debit. The fee magnitude lives ONLY in the
+ * cloud catalog — nothing here encodes it.
+ */
+export interface PlatformFeeFacts {
+  /** Job kind — indexes the fee base matrix (`code`/`plan`/`design`/…). */
+  jobType: string;
+  /** Execution tier 0..4 (code jobs only) — indexes the code base-matrix row. */
+  executionTier?: number;
+  /** Count of user-facing tasks (`isBillableWorkTask`) — drives the per-task fee. */
+  billableTaskCount: number;
+}
+
+export interface SettleArgs extends PlatformFeeFacts {
   jobId: string;
   orgId: string;
   userId: string;
-  /** Precise internal USD list cost (from per-model pricing). */
+  /** Precise internal USD list cost — LLM pass-through (from per-model pricing). */
   usdCost: number;
   /** Per-model USD breakdown (operator/admin display). */
   modelBreakdown?: Record<string, number>;
@@ -38,11 +53,11 @@ export interface SettleArgs {
   note?: string;
 }
 
-export interface DebitCumulativeArgs {
+export interface DebitCumulativeArgs extends PlatformFeeFacts {
   jobId: string;
   orgId: string;
   userId: string;
-  /** Job-cumulative precise USD list cost so far (from per-model pricing). */
+  /** Job-cumulative precise USD list cost so far (LLM pass-through). */
   cumulativeUsd: number;
   /** Per-model USD breakdown of the cumulative cost (operator/admin display). */
   modelBreakdown?: Record<string, number>;

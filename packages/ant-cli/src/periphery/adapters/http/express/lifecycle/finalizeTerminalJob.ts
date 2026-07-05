@@ -192,14 +192,21 @@ export async function finalizeTerminalJob(
       const snapshot = await stateStore.getTaskQueue(jobId);
       const byModel = snapshot?.tokenUsageByModel;
       if (byModel && Object.keys(byModel).length > 0) {
-        const { computeJobCostUsd, computeModelCostBreakdownUsd } = await import('@ant/shared');
+        const { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask } =
+          await import('@ant/shared');
         const { usd, unknownModelIds } = computeJobCostUsd(byModel as Record<string, any>);
+        // Neutral platform-fee facts — the cloud ledger computes the fee from its
+        // catalog and folds it into the same cumulative debit (LLM stays pass-through).
+        const billableTaskCount = (snapshot?.completedTasks ?? []).filter(isBillableWorkTask).length;
         await ledger.settle({
           jobId,
           orgId: userContext.organizationId,
           userId: userContext.userId,
           usdCost: usd,
           modelBreakdown: computeModelCostBreakdownUsd(byModel as Record<string, any>),
+          jobType,
+          executionTier: snapshot?.executionTier,
+          billableTaskCount,
           projectId,
           featureName,
           ...(unknownModelIds.length > 0 && {

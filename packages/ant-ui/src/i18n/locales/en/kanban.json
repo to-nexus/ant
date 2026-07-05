@@ -42,9 +42,9 @@
     "outputDescription": "billable · not cacheable",
     "noTokenData": "No token usage data yet",
     "overhead": "Overhead",
-    "creditsConsumed": "Credits used",
+    "creditsConsumed": "AI credits (pass-through)",
     "creditsUnit": "credits",
-    "estimatedCost": "Cost (USD)"
+    "estimatedCost": "AI cost (USD)"
   },
   "task": {
     "paused": "Paused",

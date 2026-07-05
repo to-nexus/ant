@@ -8,6 +8,8 @@
     "paymentMethod": "Payment method",
     "activity": "Usage & activity",
     "thisJob": "this job",
+    "runFee": "run fee",
+    "aiPassthrough": "AI",
     "testModeTitle": "Test mode",
     "testModeBody": "Payments are simulated. Use card 4242 4242 4242 4242 to approve, or 4000 0000 0000 0002 to decline. No real charge is made.",
     "customAmount": "Custom amount",

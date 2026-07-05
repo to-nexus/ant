@@ -511,19 +511,20 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
             />
           </Section>
 
-          {/* Cost & Credit — precise per-model cost. Token → USD → credit,
-              fully transparent (no role gate). */}
+          {/* AI (pass-through) cost — precise per-model token cost. This is the
+              token-attributable AI charge only; the per-job platform fee and the
+              total job charge live in the credit (payment) badge, not here. */}
           {costUsd !== undefined && costUsd > 0 && (
             <Section>
               <StatRow
                 labelColor="var(--text-3)"
                 valueColor="var(--text-3)"
-                label={t('tokenStats.estimatedCost', 'Cost (USD)')}
+                label={t('tokenStats.estimatedCost', 'AI cost (USD)')}
                 value={formatUsd(costUsd)}
               />
               <StatRow
                 strong
-                label={t('tokenStats.creditsConsumed', 'Credits used')}
+                label={t('tokenStats.creditsConsumed', 'AI credits (pass-through)')}
                 value={formatCredits(creditsFromUsd(costUsd, markup))}
               />
             </Section>
