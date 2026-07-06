@@ -4,7 +4,7 @@ import { AuthState, AuthStatus } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
-import type { OrgMembership } from '@ant/auth-client/types';
+import type { OrgMembership, AuthApprovalStatus } from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
@@ -31,6 +31,8 @@ export interface AuthActions {
     userId?: string,
     orgKind?: OrganizationKind,
     memberships?: OrgMembership[],
+    approvalStatus?: AuthApprovalStatus,
+    testAccountLevel?: number,
   ) => void;
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
@@ -67,6 +69,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   authStatus: initialAuthStatus,
   needsOnboarding: false,
   suggestedOrganizationName: null,
+  approvalStatus: undefined,
+  testAccountLevel: 0,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
   selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'plan',
 
@@ -162,7 +166,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     }
   },
 
-  setUser: (email, organization, name, picture, userId, orgKind, memberships) => {
+  setUser: (email, organization, name, picture, userId, orgKind, memberships, approvalStatus, testAccountLevel) => {
     set({
       userEmail: email,
       userOrganization: organization,
@@ -171,6 +175,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       userId,
       userOrgKind: orgKind,
       memberships: memberships ?? [],
+      approvalStatus,
+      testAccountLevel: testAccountLevel ?? 0,
       authStatus: 'verified',
     });
     saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
@@ -203,6 +209,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       userId: undefined,
       userOrgKind: undefined,
       memberships: [],
+      approvalStatus: undefined,
+      testAccountLevel: 0,
       authStatus: 'expired',
       needsOnboarding: false,
       suggestedOrganizationName: null,

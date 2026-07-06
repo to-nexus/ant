@@ -352,6 +352,14 @@ export interface AuthState {
    * for the post-onboarding state.
    */
   suggestedOrganizationName: string | null;
+  /**
+   * Cloud account approval state from `/auth/me`. `undefined` (legacy / local /
+   * pre-verify) is treated as approved by `selectIsApproved`. Not persisted to
+   * localStorage — JWT-derived, replayed on every `/auth/me`.
+   */
+  approvalStatus: 'pending' | 'approved' | 'denied' | undefined;
+  /** Test-account level (0 = normal, ≥1 = test-payment enabled). */
+  testAccountLevel: number;
   selectedAgent: string;
   selectedJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
 }

@@ -18,6 +18,12 @@ export interface OrgMembership {
   role: 'owner' | 'member';
 }
 
+/**
+ * Cloud account approval state. MUST stay in lockstep with `@ant/shared`
+ * `ApprovalStatus` — mirrored locally (this package has no `@ant/shared` dep).
+ */
+export type AuthApprovalStatus = 'pending' | 'approved' | 'denied';
+
 export interface AuthUser {
   email: string;
   userId: string;
@@ -26,6 +32,12 @@ export interface AuthUser {
   orgKind?: OrgKind;
   name?: string;
   picture?: string;
+  /** Cloud approval state. Absent from legacy servers ⇒ treat as `approved`. */
+  approvalStatus?: AuthApprovalStatus;
+  /** Super-admin flag (env-authoritative on the server). Absent ⇒ false. */
+  isAdmin?: boolean;
+  /** Test-account level (0 = normal, ≥1 = test-payment enabled). Absent ⇒ 0. */
+  testAccountLevel?: number;
 }
 
 /**

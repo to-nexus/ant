@@ -118,6 +118,19 @@ export interface CreditLedgerPort {
   listTransactions(orgId: string, userId: string, limit: number): Promise<CreditTransaction[]>;
 
   /**
+   * Admin-issued refund — credit-ledger adjustment ONLY (no payment-provider
+   * call while the provider is mock). Mirrors `topUp` (idempotent per
+   * `idempotencyKey`, appends a `'refund'` row with `note = reason`, increments
+   * the balance) and returns the fresh balance for the admin surface.
+   */
+  refund(
+    orgId: string,
+    userId: string,
+    credits: number,
+    opts: { idempotencyKey: string; reason?: string; adminEmail?: string },
+  ): Promise<BalanceSnapshot>;
+
+  /**
    * Change the subscription tier and grant the new tier's included credits
    * immediately (fresh cycle). Idempotent per `idempotencyKey`. Used by the
    * subscribe route after a successful charge. Returns the fresh balance.

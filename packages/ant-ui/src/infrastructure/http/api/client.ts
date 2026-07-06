@@ -231,7 +231,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * When a job/chat start is rejected because the account is not approved, reflect
+ * the reported status into the auth slice so the banner appears and the composer
+ * disables immediately (e.g. after an admin revokes access mid-session) without
+ * waiting for the next `/auth/me`.
+ */
+async function reflectApprovalRejection(code: string): Promise<void> {
+  try {
+    const { useStore } = await import('@/domain/store');
+    const status = code === 'ACCOUNT_DENIED' ? 'denied' : 'pending';
+    useStore.setState({ approvalStatus: status } as any);
+  } catch {
+    /* best-effort */
+  }
+}
+
 function throwApiError(status: number, body: Record<string, unknown>): never {
+  const code = body.code as string | undefined;
+  if (status === 403 && (code === 'ACCOUNT_PENDING_APPROVAL' || code === 'ACCOUNT_DENIED')) {
+    void reflectApprovalRejection(code);
+  }
   const message = (body.error as string) || (body.message as string) || `HTTP ${status}`;
   throw new ApiError(message, status, body);
 }

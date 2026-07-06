@@ -3,6 +3,7 @@ import type {
   OrganizationRepositoryPort,
   OrganizationSummary,
 } from '../../../core/ports/organizationRepository';
+import type { ApprovalStatus, AdminConfig } from '@ant/shared';
 
 /**
  * No-op `OrganizationRepositoryPort` — the dormant fallback the factory selects
@@ -84,5 +85,35 @@ export class NoopOrganizationRepository implements OrganizationRepositoryPort {
     skipped: number;
   }> {
     return { orgsCreated: 0, usersCreated: 0, membershipsCreated: 0, skipped: 0 };
+  }
+
+  // -------- Approval / admin (local = always approved, no admin surface) --------
+
+  async getUserApproval(): Promise<ApprovalStatus> {
+    return 'approved';
+  }
+
+  async setUserApproval(): Promise<void> {
+    // intentional no-op
+  }
+
+  async setTestAccountLevel(): Promise<void> {
+    // intentional no-op
+  }
+
+  async listUsers(): Promise<UserRecord[]> {
+    return [];
+  }
+
+  async getAdminConfig(): Promise<AdminConfig> {
+    return { defaultApprovalMode: 'auto-approve', updatedAt: new Date(0).toISOString(), updatedBy: '' };
+  }
+
+  async setAdminConfig(): Promise<void> {
+    // intentional no-op
+  }
+
+  async syncSuperAdmins(): Promise<void> {
+    // intentional no-op
   }
 }

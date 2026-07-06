@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
@@ -117,6 +118,16 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
+
+    // Approval gate — a chat turn can spawn work, so an unapproved account is
+    // blocked here too (this route previously had no pre-flight gate at all).
+    // No-op on OSS/local (Noop repo → approved).
+    const notApproved = await checkApproval(userContext);
+    if (notApproved) {
+      res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApproved.status) });
+      return;
+    }
+
     const { generateTurnId } = await import('../../../../composition/recordUserTurn');
     const turnId = generateTurnId();
 

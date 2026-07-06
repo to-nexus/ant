@@ -112,6 +112,13 @@ export async function fetchAuthMeDetailed(
       orgKind,
       name: u.name,
       picture: u.picture,
+      // Legacy servers omit these — default to approved / non-admin / level 0.
+      approvalStatus:
+        u.approvalStatus === 'pending' || u.approvalStatus === 'denied' || u.approvalStatus === 'approved'
+          ? u.approvalStatus
+          : 'approved',
+      isAdmin: u.isAdmin === true,
+      testAccountLevel: typeof u.testAccountLevel === 'number' ? u.testAccountLevel : 0,
     },
     activeOrg,
     memberships,
