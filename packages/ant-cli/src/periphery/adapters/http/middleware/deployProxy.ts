@@ -184,6 +184,76 @@ export interface DeployProxyDeps {
   } | null>;
 }
 
+/** Deploy coordinates a proxy request resolves to. */
+interface DeployCoords {
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+}
+
+/**
+ * Proxy a deploy request with self-heal, shared by the subdomain (root-served)
+ * and path (`/deploy/<urlKey>`) branches so both recover identically.
+ *
+ * `proxyOnce(state)` performs the branch-specific target resolve + fetch +
+ * stream and THROWS on a transport failure (dead/stale host:port). On failure
+ * we flip the record to `hibernated` — which makes the next `ensureRunning`
+ * re-spawn the deploy on THIS pod instead of returning the stale cross-pod
+ * record — then retry once. Only after the retry fails is the deploy marked
+ * unavailable and a 502 returned. A response already committed to the wire
+ * (headers sent) cannot be retried, so we bail without a second attempt.
+ */
+async function serveDeployWithSelfHeal(
+  deps: DeployProxyDeps,
+  coords: DeployCoords,
+  initialState: DeployState,
+  res: Response,
+  proxyOnce: (state: DeployState) => Promise<void>,
+): Promise<void> {
+  const { tenantId, userId, projectId, feature } = coords;
+  try {
+    await proxyOnce(initialState);
+    deps.touchDeploy(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
+    return;
+  } catch (error: any) {
+    logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'DeployProxy' });
+    if (res.headersSent) {
+      // Response already streaming — cannot recover or re-send status.
+      res.end();
+      return;
+    }
+
+    // Host/port stale (rolled/crashed pod). Mark hibernated so ensureRunning
+    // re-spawns on this pod, then attempt a single rehydrate retry.
+    try {
+      await deps.updateDeploy(tenantId, userId, projectId, feature, { phase: 'hibernated' });
+    } catch { /* ignore */ }
+
+    try {
+      const retry = await deps.ensureRunning(tenantId, userId, projectId, feature);
+      if (retry) {
+        try {
+          await proxyOnce(retry);
+          deps.touchDeploy(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
+          return;
+        } catch (retryErr: any) {
+          logger.warn(`[Deploy] Proxy retry failed: ${retryErr.message}`, { component: 'DeployProxy' });
+        }
+      }
+    } catch { /* ignore */ }
+
+    await deps
+      .updateDeploy(tenantId, userId, projectId, feature, { phase: 'unavailable', error: error.message })
+      .catch(() => { /* best-effort */ });
+    await deps.broadcastStatus(tenantId, userId, projectId, feature, {
+      phase: 'unavailable',
+      error: error.message,
+    });
+    if (!res.headersSent) res.status(502).json({ error: 'Deploy server unreachable' });
+  }
+}
+
 export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
   const cookieName = deps.cookieName ?? 'ant_session';
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -221,27 +291,31 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
         return;
       }
 
-      const target = resolveDeployTarget(deployState, serviceName, '');
-      if (!target) {
-        res.status(404).json({ error: 'Deploy package not found' });
-        return;
-      }
-      const { targetHost, targetPort } = target;
-      const targetUrl = `http://${targetHost}:${targetPort}${req.url}`; // verbatim — root served
-      try {
-        const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
-        const response = await fetchWithTransportRetry(targetUrl, {
-          method: req.method,
-          headers,
-          ...forwardRequestBody(req),
-          ...forwardRequestAbort(req),
-        } as RequestInit);
-        await streamUpstreamResponse(response, res, { upstreamHost: `${targetHost}:${targetPort}` });
-        deps.touchDeploy(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
-      } catch (error: any) {
-        logger.warn(`[Deploy] Subdomain proxy error: ${error.message}`, { component: 'DeployProxy' });
-        res.status(502).json({ error: 'Deploy server unreachable' });
-      }
+      // Root-served: forward the path verbatim (no basePath). Self-heal on a
+      // stale/dead target — identical recovery to the path branch below.
+      await serveDeployWithSelfHeal(
+        deps,
+        { tenantId, userId, projectId, feature },
+        deployState,
+        res,
+        async (state) => {
+          const target = resolveDeployTarget(state, serviceName, '');
+          if (!target) {
+            if (!res.headersSent) res.status(404).json({ error: 'Deploy package not found' });
+            return;
+          }
+          const { targetHost, targetPort } = target;
+          const targetUrl = `http://${targetHost}:${targetPort}${req.url}`; // verbatim — root served
+          const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+          const response = await fetchWithTransportRetry(targetUrl, {
+            method: req.method,
+            headers,
+            ...forwardRequestBody(req),
+            ...forwardRequestAbort(req),
+          } as RequestInit);
+          await streamUpstreamResponse(response, res, { upstreamHost: `${targetHost}:${targetPort}` });
+        },
+      );
       return;
     }
 
@@ -281,94 +355,52 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
       return;
     }
 
-    const tryProxy = async (state: NonNullable<typeof deployState>): Promise<void> => {
-      const target = resolveDeployTarget(state, serviceName, urlKey);
-      if (!target) {
-        res.status(404).json({ error: 'Deploy package not found' });
-        return;
-      }
-      const { targetHost, targetPort, isProcess } = target;
-      // req.url had `/deploy/` stripped by the Express mount; strip the urlKey
-      // segment too to get the bare app path.
-      const barePath = req.url.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
-      // Keep-vs-strip — identical rule to the preview proxy:
-      //   static (frontend): bundle is built with base path `/deploy/{urlKey}`,
-      //     so re-prepend it + rewrite Set-Cookie/Location against it.
-      //   process (backend): routes live at root, no prefix baked in → forward
-      //     the bare path with no basePath so headers pass through verbatim.
-      const basePath = isProcess ? undefined : `/deploy/${urlKey}`;
-      // Static (frontend): re-prepend the deploy basePath, then fix the
-      // `/_next/image` optimizer `url` param so it resolves against public/
-      // under the basePath (parity with the preview proxy). Process (backend):
-      // routes live at root, no rewrite.
-      const targetPath = isProcess
-        ? barePath
-        : rewriteNextImagePath(`/deploy/${urlKey}${barePath}`, `/deploy/${urlKey}`);
-      const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
-      const upstreamHost = `${targetHost}:${targetPort}`;
-
-      const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
-      // Transient transport errors (spawn race, brief socket reset) are
-      // absorbed here. Only after all retry attempts fail does control fall
-      // through to the outer catch's rehydrate path.
-      const response = await fetchWithTransportRetry(targetUrl, {
-        method: req.method,
-        headers,
-        ...forwardRequestBody(req),
-        ...forwardRequestAbort(req),
-      } as RequestInit);
-
-      await streamUpstreamResponse(response, res, { basePath, upstreamHost });
-
-      deps.touchDeploy(tenantId, userId, projectId, feature).catch(() => {
-        /* best-effort */
-      });
-    };
-
-    try {
-      await tryProxy(deployState);
-    } catch (error: any) {
-      logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'DeployProxy' });
-
-      // Host/port stale (e.g. another pod's entry) — mark hibernated and
-      // attempt a single rehydrate retry on this pod.
-      try {
-        await deps.updateDeploy(tenantId, userId, projectId, feature, { phase: 'hibernated' });
-      } catch {
-        /* ignore */
-      }
-
-      try {
-        const retry = await deps.ensureRunning(tenantId, userId, projectId, feature);
-        if (retry) {
-          try {
-            await tryProxy(retry);
-            return;
-          } catch (retryErr: any) {
-            logger.warn(`[Deploy] Proxy retry failed: ${retryErr.message}`, {
-              component: 'DeployProxy',
-            });
-          }
+    // Path-served: re-prepend the `/deploy/<urlKey>` basePath. Self-heal on a
+    // stale/dead target — identical recovery to the subdomain branch above.
+    await serveDeployWithSelfHeal(
+      deps,
+      { tenantId, userId, projectId, feature },
+      deployState,
+      res,
+      async (state) => {
+        const target = resolveDeployTarget(state, serviceName, urlKey);
+        if (!target) {
+          if (!res.headersSent) res.status(404).json({ error: 'Deploy package not found' });
+          return;
         }
-      } catch {
-        /* ignore */
-      }
+        const { targetHost, targetPort, isProcess } = target;
+        // req.url had `/deploy/` stripped by the Express mount; strip the urlKey
+        // segment too to get the bare app path.
+        const barePath = req.url.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+        // Keep-vs-strip — identical rule to the preview proxy:
+        //   static (frontend): bundle is built with base path `/deploy/{urlKey}`,
+        //     so re-prepend it + rewrite Set-Cookie/Location against it.
+        //   process (backend): routes live at root, no prefix baked in → forward
+        //     the bare path with no basePath so headers pass through verbatim.
+        const basePath = isProcess ? undefined : `/deploy/${urlKey}`;
+        // Static (frontend): re-prepend the deploy basePath, then fix the
+        // `/_next/image` optimizer `url` param so it resolves against public/
+        // under the basePath (parity with the preview proxy). Process (backend):
+        // routes live at root, no rewrite.
+        const targetPath = isProcess
+          ? barePath
+          : rewriteNextImagePath(`/deploy/${urlKey}${barePath}`, `/deploy/${urlKey}`);
+        const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
+        const upstreamHost = `${targetHost}:${targetPort}`;
 
-      await deps
-        .updateDeploy(tenantId, userId, projectId, feature, {
-          phase: 'unavailable',
-          error: error.message,
-        })
-        .catch(() => {
-          /* best-effort */
-        });
-      await deps.broadcastStatus(tenantId, userId, projectId, feature, {
-        phase: 'unavailable',
-        error: error.message,
-      });
-      logger.warn(`[Deploy] Marked unavailable: ${urlKey}`, { component: 'DeployProxy' });
+        const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+        // Transient transport errors (spawn race, brief socket reset) are
+        // absorbed by fetchWithTransportRetry. A persistently dead target throws
+        // out to serveDeployWithSelfHeal's rehydrate path.
+        const response = await fetchWithTransportRetry(targetUrl, {
+          method: req.method,
+          headers,
+          ...forwardRequestBody(req),
+          ...forwardRequestAbort(req),
+        } as RequestInit);
 
-      res.status(502).json({ error: 'Deploy server unreachable' });
-    }
+        await streamUpstreamResponse(response, res, { basePath, upstreamHost });
+      },
+    );
   };
 }
