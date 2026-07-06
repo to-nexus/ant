@@ -77,16 +77,36 @@ Managed alternative (Cloudflare for SaaS) is noted there — it replaces steps 1
 
 ### B. Developer using Ant — per domain (two DNS records)
 
-1. In the deploy panel → **Custom Domain** → enter the hostname and pick the
-   package (frontend/backend; select which one for multi-package deploys).
-2. Add the two records Ant shows, at your own DNS provider:
-   - **TXT** `_ant-challenge.<hostname>` = `<token>` (ownership proof)
-   - **CNAME** `<hostname>` → the platform CNAME target
-     (apex/root domain: an **A record** → the NLB EIPs instead)
-3. Click **Verify**. Once active, the first HTTPS visit auto-issues the
-   certificate; your domain serves the deploy with the URL bar unchanged.
+You only ever add **two DNS records** at your own registrar (Gabia, Cloudflare,
+Route53, …). No servers, certificates, or builds. Steps:
 
-You never touch servers, certificates, or builds — the two DNS records are all.
+1. Deploy the feature first (a domain needs something to point at).
+2. Deploy panel → **Custom Domain** → enter the hostname, pick the package
+   (frontend/backend; choose which one for multi-package deploys) → Add.
+3. Ant shows exactly two records — copy them into your DNS provider.
+4. Click **Verify** (DNS can take minutes to propagate; retry if not found yet).
+5. Visit `https://<your-domain>` — the cert auto-issues on first hit and the
+   deploy serves at your domain, URL bar unchanged.
+
+**Worked example — subdomain `app.jhcompany.com`** (recommended: uses CNAME, so
+if our IPs change you don't have to touch anything):
+
+```
+TXT     _ant-challenge.app.jhcompany.com   =  ant-verify-3f9a…     (ownership)
+CNAME   app.jhcompany.com                  →  ant-domains.cross.nexus   (connect)
+```
+
+**Worked example — apex/root `jhcompany.com`** (DNS forbids CNAME at the root, so
+use A records to the NLB IPs; requires `ANT_CUSTOM_DOMAIN_APEX_IPS` to be set):
+
+```
+TXT   _ant-challenge.jhcompany.com   =  ant-verify-3f9a…     (ownership)
+A     jhcompany.com                  →  3.34.11.22           (connect, NLB EIP)
+A     jhcompany.com                  →  13.125.33.44
+```
+
+If apex support is not provisioned, use a subdomain (`app.` / `www.`) instead —
+a common pattern is to serve the app on `www` and redirect the root to it.
 
 ## Limits
 
