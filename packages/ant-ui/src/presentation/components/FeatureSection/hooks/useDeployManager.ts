@@ -13,7 +13,7 @@ import {
   startDeploy,
   stopDeploy,
   getDeployStatus,
-  PREVIEW_BASE,
+  resolveAppUrl,
 } from '@/infrastructure/http/api';
 import type { DeployStatus, DeployLogEntry, DeployVisibility } from '@/infrastructure/http/api';
 
@@ -277,7 +277,7 @@ export function useDeployManager(
       ?? deployStatus?.packages?.find(p => p.phase === 'running')?.url
       ?? deployStatus?.packages?.[0]?.url;
     if (resolved) {
-      window.open(`${PREVIEW_BASE()}${resolved}`, '_blank');
+      window.open(resolveAppUrl(resolved), '_blank');
     }
   }, [deployStatus?.url, deployStatus?.packages]);
 

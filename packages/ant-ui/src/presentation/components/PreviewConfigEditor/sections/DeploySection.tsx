@@ -15,7 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
-import { PREVIEW_BASE } from '@/infrastructure/http/api';
+import { resolveAppUrl } from '@/infrastructure/http/api';
 import type { DeployStatus, DeployVisibility } from '@/infrastructure/http/api';
 import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
 import { BoardViewModeToggle } from '@/presentation/components/aurora/BoardViewModeToggle';
@@ -427,7 +427,7 @@ function DeployUrlChip({
       return;
     }
     try {
-      void navigator.clipboard?.writeText(`${PREVIEW_BASE()}${url}`);
+      void navigator.clipboard?.writeText(resolveAppUrl(url));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -438,7 +438,7 @@ function DeployUrlChip({
     <button
       type="button"
       onClick={handleClick}
-      title={isProcess ? `Copy API URL: ${PREVIEW_BASE()}${url}` : undefined}
+      title={isProcess ? `Copy API URL: ${resolveAppUrl(url)}` : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
