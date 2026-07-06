@@ -66,7 +66,7 @@ Nothing here is per-user; once done, issuance and routing are automatic.
    `X-Forwarded-Host`. Certificate storage **must be shared across replicas**
    (`caddy-storage-redis` on the existing ElastiCache) or replicas double-issue
    and hit Let's Encrypt limits.
-3. **DNS**: create the stable CNAME target (e.g. `domains.cross.nexus`) → NLB.
+3. **DNS**: create the stable CNAME target (e.g. `ant-domains.cross.nexus`) → NLB.
 4. **ant-preview env**: set `ANT_CUSTOM_DOMAIN_CNAME_TARGET` (required to enable),
    optionally `ANT_CUSTOM_DOMAIN_APEX_IPS` (apex support) and
    `ANT_TLS_ASK_SECRET`.

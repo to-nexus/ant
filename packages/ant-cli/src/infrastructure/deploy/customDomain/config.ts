@@ -18,7 +18,7 @@ export function isCustomDomainEnabled(): boolean {
 }
 
 /**
- * Stable CNAME target users point a SUBDOMAIN at (e.g. `domains.cross.nexus`),
+ * Stable CNAME target users point a SUBDOMAIN at (e.g. `ant-domains.cross.nexus`),
  * resolving to the NLB in front of Caddy. `undefined` when not provisioned.
  */
 export function getCustomDomainCnameTarget(): string | undefined {
