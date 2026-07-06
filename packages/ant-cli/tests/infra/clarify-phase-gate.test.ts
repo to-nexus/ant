@@ -17,16 +17,27 @@ import { applyClarifyGate } from '../../src/agents/common/clarify/phaseGate';
 const CLARIFY = '<clarify question="Which DB?"><option>a) Postgres</option><option>b) SQLite</option></clarify>';
 
 describe('clarify policy matrix', () => {
-  it('wired gen intents are enabled (plan/spec/code)', () => {
-    for (const id of ['gen-plan', 'gen-spec', 'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code'] as IntentId[]) {
+  it('wired gen intents are enabled (plan/spec/code/system-design)', () => {
+    for (const id of ['gen-plan', 'gen-spec', 'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
+      'gen-sys-fe', 'gen-sys-be', 'gen-sys-full'] as IntentId[]) {
       expect(getClarifyPolicy(id).clarifyEnabled).toBe(true);
     }
   });
 
-  it('deferred/disabled intents are off (visual, design-non-spec, explain/figma/ask/learn)', () => {
+  it('system-design clarify fires at the decompose phase only (pre-fan-out seam)', () => {
+    for (const id of ['gen-sys-fe', 'gen-sys-be', 'gen-sys-full'] as IntentId[]) {
+      expect(getClarifyPolicy(id).clarifyPhases).toEqual(['decompose']);
+      // Tierless-style: no minTier, so a clarify-only response (no tier tag) is not floored.
+      expect(isClarifyActive(id, 'decompose')).toBe(true);
+      expect(isClarifyActive(id, 'docgen')).toBe(false);
+    }
+  });
+
+  it('deferred/disabled intents are off (visual, ui/game-art design, review/explain/ask/learn)', () => {
     for (const id of [
-      'gen-visual-logo', 'gen-sys-fe', 'gen-ui-desc', 'gen-game-art-desc',
+      'gen-visual-logo', 'gen-ui-desc', 'gen-game-art-desc',
       'explain-code', 'gen-ui-figma', 'ask-general', 'gen-learn', 'rev-plan',
+      'rev-sys', 'explain-sys',
     ] as IntentId[]) {
       expect(getClarifyPolicy(id).clarifyEnabled).toBe(false);
     }

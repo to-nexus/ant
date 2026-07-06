@@ -205,13 +205,20 @@ export async function saveDecomposeCheckpoint(
 }
 
 /**
- * Clarify pause: either the docGen spec-clarify tag fired (kind='docgen')
- * or the detect node paused for the user to pick between spec/system
- * (kind='detect'). docgen form carries the current docGen node history.
+ * Clarify pause: one of three phases fired —
+ * - `docgen`:   docGen spec-clarify tag; carries the current docGen node history.
+ * - `decompose`: system-design decompose clarify; `clarifyPhase='decompose'`
+ *   discriminates the resume target (routeAfterResolve → decompose).
+ * - `detect`:   detect node paused for the user to pick spec/system.
+ *
+ * `awaitingClarify` is NOT in `buildBasePatch`, so each clarify branch must
+ * set it explicitly. `clarifyRoundsUsed` / `clarifyPhase` round-trip via the
+ * base patch — the caller applies the gate's stateUpdates onto `state` before
+ * this write so the incremented budget persists.
  */
 export async function saveClarifyCheckpoint(
   state: DesignGraphState,
-  opts: { kind: "docgen" | "detect"; nodeHistory?: ConversationMessage[] },
+  opts: { kind: "docgen" | "decompose" | "detect"; nodeHistory?: ConversationMessage[] },
 ): Promise<void> {
   const patch: Partial<SessionState> = { ...buildBasePatch(state) };
   if (opts.kind === "docgen") {
@@ -219,6 +226,9 @@ export async function saveClarifyCheckpoint(
     if (opts.nodeHistory) {
       patch.conversations = { [CONV_KEYS.NODE_DOCGEN]: opts.nodeHistory };
     }
+  } else if (opts.kind === "decompose") {
+    patch.awaitingClarify = true;
+    patch.clarifyPhase = "decompose";
   } else {
     patch.awaitingDetectClarify = true;
   }
