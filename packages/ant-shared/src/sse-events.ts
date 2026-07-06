@@ -20,6 +20,7 @@
  */
 
 import type { GitSnapshot, GitOperationState, GitPatState } from './git';
+import type { CustomDomainStatus, CustomDomainCertStatus, CustomDomainTarget } from './deploy';
 
 /**
  * Discriminator for SSE messages routed through the unified stream.
@@ -37,7 +38,8 @@ export type SSEMessageType =
   | 'bridge'
   | 'idePhase'
   | 'projectDeletionPhase'
-  | 'featureDeletionPhase';
+  | 'featureDeletionPhase'
+  | 'customDomainStatus';
 
 /**
  * Generic phase status shared by every phased-operation SSE event
@@ -160,6 +162,23 @@ export type FeatureDeletionErrorShape = PhasedOperationErrorShape<FeatureDeletio
 };
 
 /**
+ * Payload for `customDomainStatus` SSE events — pushes a custom domain's
+ * verification / certificate progress to the FE deploy panel in realtime.
+ * `sessionKey = `${projectId}:${feature}:${hostname}`` disambiguates concurrent
+ * domain operations. Custom domains are deploy-only (never preview).
+ */
+export type CustomDomainStatusEventData = {
+  projectId: string;
+  feature: string;
+  hostname: string;
+  target: CustomDomainTarget;
+  status: CustomDomainStatus;
+  certStatus?: CustomDomainCertStatus;
+  sessionKey: string;
+  error?: string;
+};
+
+/**
  * Payload for `gitState` events. Discriminated on `cause` so each scenario
  * gets its required fields enforced at the type level.
  */
@@ -197,6 +216,7 @@ export interface SSEMessageMap {
   idePhase: IdePhaseEventData;
   projectDeletionPhase: ProjectDeletionPhaseEventData;
   featureDeletionPhase: FeatureDeletionPhaseEventData;
+  customDomainStatus: CustomDomainStatusEventData;
 }
 
 // Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.

@@ -168,6 +168,20 @@ export interface DeployProxyDeps {
     feature: string;
     serviceName?: string;
   } | null>;
+  /**
+   * Custom-domain routing (deploy-only): resolve a user-owned Host to a
+   * deploy's coordinates. Tried when the Host is NOT under the deploy base
+   * domain (i.e. `extractLabelFromHost` yields no label). Provided by
+   * DeployService. Absent → custom-domain routing unavailable; requests fall
+   * through. Preview is intentionally NOT covered (deploy-only feature).
+   */
+  resolveCustomDomain?(host: string): Promise<{
+    tenantId: string;
+    userId: string;
+    projectId: string;
+    feature: string;
+    serviceName?: string;
+  } | null>;
 }
 
 export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
@@ -180,9 +194,17 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
     // rewrite). Hosts not under the deploy base domain fall through so the
     // preview proxy (also root-mounted in this mode) can handle them.
     if (isSubdomainRouting()) {
+      // 1) Platform subdomain (`{label}.<deployBaseDomain>`, via ALB): resolve
+      //    the DNS label to a deploy.
       const label = extractLabelFromHost(req.headers.host, getDeployBaseDomain());
-      if (!label || !deps.resolveLabel) return next();
-      const coords = await deps.resolveLabel(label);
+      let coords = label && deps.resolveLabel ? await deps.resolveLabel(label) : null;
+      // 2) Custom domain (user-owned host, via NLB+Caddy → X-Forwarded-Host):
+      //    the host is NOT under the deploy base domain, so no label was found.
+      //    Look it up in the custom-domain registry (active-only). Deploy-only.
+      if (!coords && deps.resolveCustomDomain) {
+        const externalHost = extractForwardingContext(req).externalHost || req.headers.host || '';
+        coords = await deps.resolveCustomDomain(externalHost);
+      }
       if (!coords) return next();
       const { tenantId, userId, projectId, feature, serviceName } = coords;
 

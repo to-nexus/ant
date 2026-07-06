@@ -13,7 +13,7 @@
 
 import { UserContext } from '../types/user';
 import { TaskQueueSnapshot, JobProjectMapping } from '../types/task';
-import type { JobType } from '@ant/shared';
+import type { JobType, CustomDomain } from '@ant/shared';
 
 // Re-export for consumers
 export type { TaskQueueSnapshot, JobProjectMapping };
@@ -408,6 +408,38 @@ export interface StateStorePort {
    * List all active deploys
    */
   listDeploys(): Promise<DeployState[]>;
+
+  // ============================================
+  // Port Registry - Custom Domains (Deploy-only)
+  // ============================================
+
+  /**
+   * Register (or overwrite) a custom domain, keyed by lowercased hostname.
+   * Also adds it to the global list and the per-deploy reverse index.
+   * Persisted without TTL — removed only via `deleteCustomDomain` or the
+   * feature/project cleanup cascade.
+   */
+  registerCustomDomain(domain: CustomDomain): Promise<void>;
+
+  /** Look up a custom domain by hostname (case-insensitive). */
+  getCustomDomainByHost(hostname: string): Promise<CustomDomain | null>;
+
+  /** All custom domains attached to a given deploy. */
+  listCustomDomainsForDeploy(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): Promise<CustomDomain[]>;
+
+  /** Patch status / certStatus / error / verifiedAt on an existing record. No-op if absent. */
+  updateCustomDomainStatus(
+    hostname: string,
+    patch: Partial<Pick<CustomDomain, 'status' | 'certStatus' | 'error' | 'verifiedAt'>>,
+  ): Promise<void>;
+
+  /** Remove a custom domain (key + list + reverse index). */
+  deleteCustomDomain(hostname: string): Promise<void>;
 
   // ============================================
   // Port Registry - IDE (Full State Management)

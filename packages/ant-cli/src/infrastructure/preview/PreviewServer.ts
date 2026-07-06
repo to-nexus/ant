@@ -26,7 +26,8 @@ import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
-import { isSubdomainRouting } from '../../core/config/previewRouting';
+import { isSubdomainRouting, getDeployBaseDomain } from '../../core/config/previewRouting';
+import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
@@ -38,6 +39,7 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
+import { CustomDomainService } from '../deploy/customDomain/CustomDomainService';
 import { isBillingEnabled } from '../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { extractUserContext } from '../../periphery/adapters/http/routes/helpers/userContext';
@@ -167,6 +169,7 @@ export class PreviewServer {
   private app: Express;
   private previewService!: PreviewService;
   private deployService!: DeployService;
+  private customDomainService!: CustomDomainService;
   private portManager!: PortManager;
   private stateStore!: StateStorePort & PortRegistryPort;
   private server: any;
@@ -217,6 +220,11 @@ export class PreviewServer {
       stateStore: this.stateStore,
       workspacesPath: workspaceRoot,
     });
+
+    // Custom-domain management (deploy-only). Serving/routing lives in the
+    // deploy proxy (DeployService.resolveCustomDomain); this owns the
+    // register/verify/list/delete management plane.
+    this.customDomainService = new CustomDomainService(this.stateStore);
 
     // Reap previews this pod owned before a Node-process restart (the detached
     // dev-server groups survive a restart inside a living container and still
@@ -545,6 +553,30 @@ export class PreviewServer {
       });
     });
 
+    // 3b. Custom-domain TLS ask endpoint (Caddy on-demand TLS).
+    // Caddy pauses the TLS handshake for an unknown SNI and asks here whether a
+    // certificate may be issued. Answer 200 ONLY for a verified (`active`)
+    // custom domain whose target deploy is alive — this is the abuse gate that
+    // stops arbitrary domains from triggering Let's Encrypt issuance. Mounted
+    // before the proxies + auth so it is reachable without a session. Internal
+    // only (NetworkPolicy); an optional shared secret adds defense-in-depth.
+    this.app.get('/internal/tls-ask', async (req: Request, res: Response) => {
+      const secret = process.env.ANT_TLS_ASK_SECRET;
+      if (secret && req.headers['x-ant-tls-ask-secret'] !== secret) {
+        res.status(403).end();
+        return;
+      }
+      const domain = String(req.query.domain || '').split(':')[0].toLowerCase().replace(/\.$/, '');
+      if (!domain) { res.status(400).end(); return; }
+      const coords = await this.deployService.resolveCustomDomain(domain);
+      if (!coords) { res.status(404).end(); return; }
+      const state = await this.deployService.ensureRunning(
+        coords.tenantId, coords.userId, coords.projectId, coords.feature,
+      );
+      if (!state) { res.status(404).end(); return; }
+      res.status(200).end();
+    });
+
     // 4. Preview Proxy - MUST be before body parsers and JWT auth
     // Owner-only access: previews are gated on the owning tenant/user via the
     // JWT cookie (undefined jwtService in local mode → owner-accessible). The
@@ -575,6 +607,8 @@ export class PreviewServer {
       cookieName: JwtService.cookieName,
       // Subdomain routing: resolve a deploy Host label to its coordinates.
       resolveLabel: (label) => this.deployService.resolveDeployLabel(label),
+      // Custom-domain routing (deploy-only): resolve a user-owned Host.
+      resolveCustomDomain: (host) => this.deployService.resolveCustomDomain(host),
     });
     // Path routing mounts deploy at `/deploy/`; subdomain routing serves deploy
     // apps at their own host root, so the proxy must be a root catch-all (it
@@ -1120,6 +1154,110 @@ export class PreviewServer {
     });
 
     // ==========================================
+    // Custom Domains (deploy-only)
+    // ==========================================
+    // A user-owned domain attached to a deployed package. Same feature-branch +
+    // cloud constraints as deploy. Serving is handled by the deploy proxy; these
+    // routes are the management plane (register → verify → active, list, delete).
+
+    /** Shared guard: validate feature and build deploy coords from the request. */
+    const customDomainCoords = (
+      req: Request,
+      res: Response,
+      feature: string | undefined,
+    ): { organizationId: string; userId: string; projectId: string; feature: string } | null => {
+      if (!feature || feature === 'main') {
+        res.status(400).json({ success: false, reason: 'base-branch-not-allowed', message: 'Custom domains are only available on feature branches' });
+        return null;
+      }
+      const userContext = extractUserContext(req);
+      return { organizationId: userContext.organizationId, userId: userContext.userId, projectId: req.params.id, feature };
+    };
+
+    /** POST /projects/:id/custom-domain — register (returns DNS setup instructions). */
+    this.app.post('/projects/:id/custom-domain', async (req: Request, res: Response) => {
+      try {
+        const c = customDomainCoords(req, res, req.body?.feature);
+        if (!c) return;
+        const hostname = req.body?.hostname;
+        const target = req.body?.target === 'backend' ? 'backend' : 'frontend';
+        const slug = typeof req.body?.slug === 'string' && req.body.slug ? req.body.slug : undefined;
+        if (!hostname || typeof hostname !== 'string') {
+          res.status(400).json({ success: false, reason: 'invalid-hostname', message: 'hostname is required' });
+          return;
+        }
+        const result = await this.customDomainService.register(
+          { tenantId: c.organizationId, userId: c.userId, projectId: c.projectId, feature: c.feature },
+          hostname, target, slug, new Date().toISOString(),
+        );
+        if (!result.ok) {
+          const code = result.reason === 'not-enabled' ? 503 : result.reason === 'already-taken' ? 409 : 400;
+          res.status(code).json({ success: false, reason: result.reason, message: result.message });
+          return;
+        }
+        res.status(201).json({ success: true, domain: result.domain, dns: result.dns });
+      } catch (error: any) {
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    /** GET /projects/:id/custom-domain/status?feature=... — list domains for the deploy. */
+    this.app.get('/projects/:id/custom-domain/status', async (req: Request, res: Response) => {
+      try {
+        const c = customDomainCoords(req, res, req.query.feature as string | undefined);
+        if (!c) return;
+        const domains = await this.customDomainService.list(
+          { tenantId: c.organizationId, userId: c.userId, projectId: c.projectId, feature: c.feature },
+        );
+        res.json({ success: true, enabled: this.customDomainService.isEnabled(), domains });
+      } catch (error: any) {
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    /** POST /projects/:id/custom-domain/verify — trigger ownership (TXT) verification. */
+    this.app.post('/projects/:id/custom-domain/verify', async (req: Request, res: Response) => {
+      try {
+        const c = customDomainCoords(req, res, req.body?.feature);
+        if (!c) return;
+        const hostname = req.body?.hostname;
+        if (!hostname || typeof hostname !== 'string') {
+          res.status(400).json({ success: false, reason: 'invalid-hostname', message: 'hostname is required' });
+          return;
+        }
+        const domain = await this.customDomainService.verify(
+          { tenantId: c.organizationId, userId: c.userId, projectId: c.projectId, feature: c.feature },
+          hostname, new Date().toISOString(),
+        );
+        if (!domain) { res.status(404).json({ success: false, reason: 'not-found', message: 'Domain not found' }); return; }
+        res.json({ success: true, domain });
+      } catch (error: any) {
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    /** DELETE /projects/:id/custom-domain?feature=...&hostname=... — remove a domain. */
+    this.app.delete('/projects/:id/custom-domain', async (req: Request, res: Response) => {
+      try {
+        const c = customDomainCoords(req, res, (req.query.feature as string | undefined) ?? req.body?.feature);
+        if (!c) return;
+        const hostname = (req.query.hostname as string | undefined) ?? req.body?.hostname;
+        if (!hostname || typeof hostname !== 'string') {
+          res.status(400).json({ success: false, reason: 'invalid-hostname', message: 'hostname is required' });
+          return;
+        }
+        const ok = await this.customDomainService.delete(
+          { tenantId: c.organizationId, userId: c.userId, projectId: c.projectId, feature: c.feature },
+          hostname,
+        );
+        if (!ok) { res.status(404).json({ success: false, reason: 'not-found', message: 'Domain not found' }); return; }
+        res.json({ success: true });
+      } catch (error: any) {
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    // ==========================================
     // Admin/Debug Endpoints
     // ==========================================
 
@@ -1181,6 +1319,46 @@ export class PreviewServer {
           const urlPath = req.url || '/';
           const segments = urlPath.split('/').filter(Boolean);
           const firstSegment = segments[0] || '';
+
+          // Subdomain / custom-domain deploy WS (deploy-only): in subdomain mode
+          // the app is served at its own host root, so the WS Upgrade arrives at
+          // a bare path with the deploy identified by Host. Resolve via the deploy
+          // DNS label (platform subdomain) or the custom-domain registry (user
+          // host, forwarded as X-Forwarded-Host by Caddy) and tunnel verbatim.
+          if (isSubdomainRouting()) {
+            const hostHeader =
+              (req.headers['x-forwarded-host'] as string | undefined) || req.headers.host;
+            const label = extractLabelFromHost(hostHeader, getDeployBaseDomain());
+            let coords = label ? await this.deployService.resolveDeployLabel(label) : null;
+            if (!coords) coords = await this.deployService.resolveCustomDomain(hostHeader || '');
+            if (coords) {
+              const state = await this.deployService.ensureRunning(
+                coords.tenantId, coords.userId, coords.projectId, coords.feature,
+              );
+              if (!state) { socket.destroy(); return; }
+              if (state.visibility === 'private') {
+                const jwtService = createJwtServiceFromEnv();
+                if (jwtService) {
+                  const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
+                  let authorized = false;
+                  if (token) {
+                    try {
+                      authorized = assertProxyOwnership(jwtService.verify(token), {
+                        tenantId: coords.tenantId, userId: coords.userId,
+                      });
+                    } catch { authorized = false; }
+                  }
+                  if (!authorized) { socket.destroy(); return; }
+                }
+              }
+              const target = resolveDeployTarget(state, coords.serviceName, '');
+              if (!target) { socket.destroy(); return; }
+              // Root-served: forward the path verbatim (no basePath prefix).
+              openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath);
+              return;
+            }
+            // No deploy Host match → fall through (may be a preview subdomain WS).
+          }
 
           // Deploy path: `/deploy/<urlKey>/...` — public artifact serving, no JWT
           // (matches the HTTP-side mount at `app.use('/deploy/', ...)`). Routes

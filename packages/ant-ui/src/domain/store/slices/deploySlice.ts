@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
-import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
+import type { DeployStatus, DeployLogEntry, CustomDomainWithDns } from '@/infrastructure/http/api';
+import type { CustomDomainStatusEventData } from '@ant/shared';
 import { selectIsAuthBlocked } from '../selectors/auth';
 
 export interface PerFeatureDeployState {
@@ -30,6 +31,10 @@ export const isTerminalDeployPhase = (
 export interface DeploySliceState {
   /** Map keyed by `${projectId}:${featureName}` — isolates state per feature. */
   deployByFeature: Record<string, PerFeatureDeployState>;
+  /** Custom domains per feature key. `undefined` = not yet fetched. */
+  customDomainsByFeature: Record<string, CustomDomainWithDns[]>;
+  /** Whether custom-domain infra is enabled, per feature key (from status fetch). */
+  customDomainEnabledByFeature: Record<string, boolean>;
 }
 
 export interface DeployActions {
@@ -42,6 +47,10 @@ export interface DeployActions {
   setDeployStopGuard: (key: string, until: number) => void;
   removeDeployEntry: (key: string) => void;
   refreshDeployStatus: (projectId: string, featureName: string) => Promise<void>;
+  // Custom domains
+  setCustomDomains: (key: string, domains: CustomDomainWithDns[], enabled: boolean) => void;
+  applyCustomDomainEvent: (key: string, evt: CustomDomainStatusEventData) => void;
+  refreshCustomDomains: (projectId: string, featureName: string) => Promise<void>;
 }
 
 export type DeploySlice = DeploySliceState & DeployActions;
@@ -109,8 +118,28 @@ export function selectDeployStopGuardUntil(
   return s.deployByFeature[key]?.stopGuardUntil ?? 0;
 }
 
+const EMPTY_DOMAINS: CustomDomainWithDns[] = Object.freeze([]) as unknown as CustomDomainWithDns[];
+
+export function selectCustomDomains(
+  s: { customDomainsByFeature: Record<string, CustomDomainWithDns[]> },
+  key: string | null,
+): CustomDomainWithDns[] {
+  if (!key) return EMPTY_DOMAINS;
+  return s.customDomainsByFeature[key] ?? EMPTY_DOMAINS;
+}
+
+export function selectCustomDomainEnabled(
+  s: { customDomainEnabledByFeature: Record<string, boolean> },
+  key: string | null,
+): boolean {
+  if (!key) return false;
+  return s.customDomainEnabledByFeature[key] ?? false;
+}
+
 export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, get) => ({
   deployByFeature: {},
+  customDomainsByFeature: {},
+  customDomainEnabledByFeature: {},
 
   setDeployStatus: (key, status) => {
     set((state: any) => ({
@@ -197,6 +226,49 @@ export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, g
     } catch (error) {
       console.error('Failed to refresh deploy status:', error);
       get().setDeployStatus(key, undefined);
+    }
+  },
+
+  setCustomDomains: (key, domains, enabled) => {
+    set((state: any) => ({
+      customDomainsByFeature: { ...state.customDomainsByFeature, [key]: domains },
+      customDomainEnabledByFeature: { ...state.customDomainEnabledByFeature, [key]: enabled },
+    }));
+  },
+
+  applyCustomDomainEvent: (key, evt) => {
+    set((state: any) => {
+      const cur: CustomDomainWithDns[] = state.customDomainsByFeature[key] ?? [];
+      // 'removed' is signalled by status='error' + error='removed' from the service.
+      if (evt.status === 'error' && evt.error === 'removed') {
+        return {
+          customDomainsByFeature: {
+            ...state.customDomainsByFeature,
+            [key]: cur.filter((d) => d.hostname !== evt.hostname),
+          },
+        };
+      }
+      const next = cur.map((d) =>
+        d.hostname === evt.hostname
+          ? { ...d, status: evt.status, certStatus: evt.certStatus ?? d.certStatus, error: evt.error }
+          : d,
+      );
+      // Unknown hostname (e.g. registered on another tab) → trigger a refresh via
+      // absence; leave list unchanged here (the manager hook re-fetches on open).
+      return { customDomainsByFeature: { ...state.customDomainsByFeature, [key]: next } };
+    });
+  },
+
+  refreshCustomDomains: async (projectId, featureName) => {
+    const key = makeFeatureKey(projectId, featureName);
+    if (!key) return;
+    if (selectIsAuthBlocked(get() as any)) return;
+    try {
+      const { listCustomDomains } = await import('@/infrastructure/http/api');
+      const res = await listCustomDomains(projectId, featureName);
+      get().setCustomDomains(key, res.domains ?? [], !!res.enabled);
+    } catch (error) {
+      console.error('Failed to refresh custom domains:', error);
     }
   },
 });

@@ -861,6 +861,37 @@ export class DeployService {
     return null;
   }
 
+  /**
+   * Custom-domain routing (deploy-only): resolve a user-owned Host to a
+   * deploy's coordinates. Unlike `resolveDeployLabel` (recompute-and-match),
+   * this is a direct registry lookup keyed by hostname. Returns null unless the
+   * domain is `active` (verified) — an unverified/pending domain must never
+   * route traffic. `serviceName` is the stored package slug (idempotent through
+   * `packageSlug`), so the proxy resolves the correct package for multi-package
+   * deploys; single-package deploys omit it.
+   */
+  async resolveCustomDomain(host: string): Promise<{
+    tenantId: string; userId: string; projectId: string; feature: string; serviceName?: string;
+  } | null> {
+    const hostname = (host || '').split(':')[0].toLowerCase().replace(/\.$/, '');
+    if (!hostname) return null;
+    let domain: Awaited<ReturnType<typeof this.stateStore.getCustomDomainByHost>>;
+    try {
+      domain = await this.stateStore.getCustomDomainByHost(hostname);
+    } catch (err: any) {
+      logger.warn(`[CustomDomain] lookup failed for ${hostname}: ${err.message}`, { component: 'DeployService' });
+      return null;
+    }
+    if (!domain || domain.status !== 'active') return null;
+    return {
+      tenantId: domain.tenantId,
+      userId: domain.userId,
+      projectId: domain.projectId,
+      feature: domain.feature,
+      serviceName: domain.slug,
+    };
+  }
+
   async ensureRunning(
     tenantId: string, userId: string, projectId: string, feature: string
   ): Promise<DeployState | null> {

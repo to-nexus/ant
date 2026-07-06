@@ -118,3 +118,72 @@ export interface DeployLogEntry {
   type: 'stdout' | 'stderr';
   message: string;
 }
+
+/**
+ * Custom-domain lifecycle status.
+ *
+ *   pending_dns → verifying → active
+ *              ↘ error (any step)
+ *
+ *   - pending_dns: registered; waiting for the user's DNS records (TXT + CNAME/A).
+ *   - verifying:   TXT challenge seen once; confirming ownership.
+ *   - active:      ownership confirmed. The domain routes to the deploy and is
+ *                  eligible for on-demand certificate issuance (the `tls-ask`
+ *                  gate returns 200 only for `active`).
+ *   - error:       verification failed / target deploy gone; see `error`.
+ */
+export type CustomDomainStatus = 'pending_dns' | 'verifying' | 'active' | 'error';
+
+/**
+ * Which deploy package kind a custom hostname fronts. One hostname → one
+ * package (frontend OR backend); a fullstack app uses two distinct hostnames.
+ */
+export type CustomDomainTarget = 'frontend' | 'backend';
+
+/**
+ * TLS certificate provisioning state for the hostname. Issuance is on-demand
+ * (Caddy) at first HTTPS access, so `none`/`pending` are normal before the
+ * first hit; ANT does not issue certs itself.
+ */
+export type CustomDomainCertStatus = 'none' | 'pending' | 'issued' | 'error';
+
+/**
+ * A user-owned domain attached to a DEPLOY (never a preview). Keyed by
+ * `hostname` (lowercased) in the state store; the tuple
+ * `(tenantId,userId,projectId,feature[,slug])` identifies the target package.
+ */
+export interface CustomDomain {
+  /** Fully-qualified hostname, lowercased (e.g. `app.mycompany.com`). SSOT key. */
+  hostname: string;
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+  /** Deploy package slug for multi-package deploys; omitted for single-package. */
+  slug?: string;
+  /** Which package kind this hostname serves. */
+  target: CustomDomainTarget;
+  /** TXT challenge token: `_ant-challenge.<hostname>` must equal this value. */
+  verificationToken: string;
+  status: CustomDomainStatus;
+  certStatus?: CustomDomainCertStatus;
+  error?: string;
+  /** ISO timestamp of registration. */
+  createdAt: string;
+  /** ISO timestamp when ownership was confirmed (status → active). */
+  verifiedAt?: string;
+}
+
+/**
+ * DNS records the user must create, returned by the register endpoint and
+ * rendered by the UI. `apex` distinguishes CNAME (subdomain) vs A (root domain).
+ */
+export interface CustomDomainDnsInstructions {
+  /** TXT ownership record. */
+  txt: { name: string; value: string };
+  /** Connection record: CNAME target for subdomains, or A-record IPs for apex. */
+  connection:
+    | { kind: 'cname'; name: string; value: string }
+    | { kind: 'a'; name: string; values: string[] };
+  apex: boolean;
+}
