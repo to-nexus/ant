@@ -61,6 +61,7 @@ For binding rules with regression-guard test names, see
 - [27-visual-processor.md](27-visual-processor.md)
 - [28-context-management.md](28-context-management.md)
 - [29-debug-logging.md](29-debug-logging.md)
+- [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
 
 ### Frontend
 
@@ -80,6 +81,7 @@ For binding rules with regression-guard test names, see
 - [38-service-virtualization.md](38-service-virtualization.md)
 - [39-code-job-prompt-injection-matrix.md](39-code-job-prompt-injection-matrix.md)
 - [40-org-model.md](40-org-model.md) — kind axis, shared `individual` org, account switch, visibility
+- [41-task-priority-band-system.md](41-task-priority-band-system.md) — type / band / priority three-axis SSOT
 
 ### Layout
 
