@@ -40,7 +40,7 @@ export interface ModelSpec {
   id: string;
   /** Human-readable label shown in the model picker, e.g. "Sonnet 5". */
   displayName: string;
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
   description?: string;
   /** Highlighted with a ★ in the picker. */
   recommended?: boolean;
@@ -112,6 +112,25 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
     thinkingMode: 'extended',
     selectable: false,
+  },
+  // DeepSeek — OpenAI-compatible API, reuses OpenAILLMClient with an injected
+  // baseURL/provider (LLMClientFactory). Top-tier V4 model; 1M context.
+  'deepseek-v4-pro': {
+    id: 'deepseek-v4-pro',
+    displayName: 'DeepSeek V4 Pro',
+    provider: 'deepseek',
+    description: 'DeepSeek V4 Pro — top-tier reasoning + coding, 1M context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context'],
+    contextWindow: 1_000_000,
+    // Standard (cache-miss) list price — conservative to avoid under-charging.
+    // DeepSeek has no separate cache-write fee and the OpenAI stream path does
+    // not report cacheCreationTokens, so cacheWrite* mirror input (unused).
+    rate: { input: 0.435, output: 0.87, cacheWrite5m: 0.435, cacheWrite1h: 0.435, cacheRead: 0.003625 },
+    // Non-Anthropic: never send Anthropic thinking params. DeepSeek's own
+    // thinking control is injected separately in OpenAILLMClient (provider gate).
+    thinkingMode: 'none',
+    selectable: true,
   },
   // Gemini — creator/visual job models. Not billed through MODEL_RATE_CARD.
   // Only the pro (text) model reaches getModelContextWindow; image models go

@@ -10,7 +10,7 @@ import { MODEL_REGISTRY, DEFAULT_MODELS } from '@ant/shared';
 export interface LLMModelInfo {
   id: string;                    // Model identifier (e.g., "claude-sonnet-5")
   displayName: string;           // Human-readable name (e.g., "Sonnet 5")
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
   description?: string;          // Brief description
   recommended?: boolean;         // Whether this is a recommended model
   capabilities?: string[];       // e.g., ["coding", "reasoning", "fast"]
