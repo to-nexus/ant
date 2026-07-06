@@ -78,11 +78,19 @@ function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
     return retryableErrors.includes(apiError.error.type);
   }
   
-  // Check generic error with status code
+  // 429 rate limit (M9) — retryable, but status<500 so the check below misses it.
+  // DeepSeek/OpenAI both signal overload as 429; without this it throws
+  // immediately and drains the task.
+  if (apiError.status === 429) {
+    console.log('[Retry] 429 rate limit - will retry');
+    return true;
+  }
+
+  // Check generic error with status code (500 / 503 server + overload)
   if (apiError.status && apiError.status >= 500) {
     return true;
   }
-  
+
   return false;
 }
 

@@ -18,7 +18,7 @@ import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
 import { DEFAULT_MODELS } from '@ant/shared';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google';
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek';
 
 interface LLMConfig {
   temperature?: number;
@@ -53,7 +53,11 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
   if (normalized.startsWith('gemini')) {
     return 'google';
   }
-  
+
+  if (normalized.startsWith('deepseek')) {
+    return 'deepseek';
+  }
+
   // Default to anthropic
   console.warn(`[LLM] Unknown model prefix: ${modelName}, defaulting to anthropic`);
   return 'anthropic';
@@ -193,7 +197,21 @@ export function createLLMClient(
         temperature,
         maxTokens,
       });
-    
+
+    case 'deepseek':
+      // OpenAI-compatible API — reuse OpenAILLMClient with an injected baseURL
+      // and provider tag so the shared stream path knows to attach DeepSeek's
+      // thinking param and label events honestly.
+      return new OpenAILLMClient(agentJob, {
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        baseURL: 'https://api.deepseek.com',
+        provider: 'deepseek',
+        modelName,
+        temperature,
+        maxTokens,
+        timeout,
+      });
+
     default:
       throw new Error(`Unsupported LLM provider: ${provider}`);
   }

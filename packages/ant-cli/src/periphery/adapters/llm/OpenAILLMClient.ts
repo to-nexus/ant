@@ -6,6 +6,7 @@
  */
 
 import OpenAI from 'openai';
+import { randomUUID } from 'node:crypto';
 import {
   LLMClient,
   LLMStreamEvent,
@@ -22,13 +23,21 @@ import { withRetryStream } from '../../../core/utils/retry';
 
 export class OpenAILLMClient implements LLMClient {
   private client: OpenAI;
-  public readonly provider = 'openai';
+  /**
+   * Provider tag. Defaults to 'openai' but the factory injects 'deepseek' when
+   * this client is reused for DeepSeek's OpenAI-compatible endpoint. Drives the
+   * DeepSeek-only `thinking` param and honest event/log labelling.
+   */
+  public readonly provider: string;
   public readonly modelName: string;
+  private readonly temperature: number;
 
   constructor(
     private agentJob?: string,
     config?: {
       apiKey?: string;
+      baseURL?: string;
+      provider?: string;
       modelName?: string;
       temperature?: number;
       maxTokens?: number;
@@ -37,8 +46,12 @@ export class OpenAILLMClient implements LLMClient {
   ) {
     this.client = new OpenAI({
       apiKey: config?.apiKey || process.env.OPENAI_API_KEY,
+      baseURL: config?.baseURL,
       timeout: config?.timeout || 180000, // 3 minutes
     });
+
+    this.provider = config?.provider ?? 'openai';
+    this.temperature = config?.temperature ?? 0.7;
 
     // ✅ modelName은 반드시 명시적으로 제공되어야 함
     if (!config?.modelName) {
@@ -47,7 +60,7 @@ export class OpenAILLMClient implements LLMClient {
         'Please provide it via config or ensure workspaceConfig.llmModels is properly configured.'
       );
     }
-    
+
     this.modelName = config.modelName;
   }
 
@@ -61,7 +74,7 @@ export class OpenAILLMClient implements LLMClient {
     options?: Record<string, any>
   ): Promise<LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
-    console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=invoke messages=${messages.length}`);
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=invoke messages=${messages.length}`);
     
     const toDataUrl = (img: any): string => {
       const mediaType = img?.source?.media_type;
@@ -98,7 +111,7 @@ export class OpenAILLMClient implements LLMClient {
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeChatContent(m.content),
       })),
-      temperature: 0.7,
+      temperature: options?.temperature ?? this.temperature,
       max_tokens: options?.maxTokens || 16000,
     });
 
@@ -130,10 +143,12 @@ export class OpenAILLMClient implements LLMClient {
     yield* withRetryStream(
       () => this._streamInternal(messages, options),
       {
-        maxAttempts: 4,
+        // Parity with the Anthropic path (8). DeepSeek 429/500/503 are common
+        // under load; retry.ts classifies 429 + status>=500 as retryable.
+        maxAttempts: 8,
         initialDelayMs: 2000,
         backoffMultiplier: 2,
-        retryableErrors: ['overloaded_error', 'api_error'],
+        retryableErrors: ['overloaded_error', 'api_error', 'rate_limit_exceeded', 'rate_limit_error'],
         retryMarker: { type: 'retry' as const },
       }
     );
@@ -151,11 +166,20 @@ export class OpenAILLMClient implements LLMClient {
     }
   ): AsyncIterable<LLMStreamEvent> {
     const toolsCount = options?.tools?.length || 0;
-    console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
-    
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
+
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     const openAIMessages = this.convertToOpenAIMessages(messages);
-    
+    const temperature = options?.temperature ?? this.temperature;
+
+    // M7 — DeepSeek dual-mode control. Default 'enabled' (surfaces reasoning +
+    // keeps V4 tool-calling). Set DEEPSEEK_THINKING=disabled for non-thinking
+    // (temperature honored, lower latency). Never attached on the real OpenAI path.
+    // Field is absent from the OpenAI SDK type, hence the cast at the create site.
+    const providerExtra: Record<string, unknown> = this.provider === 'deepseek'
+      ? { thinking: { type: process.env.DEEPSEEK_THINKING === 'disabled' ? 'disabled' : 'enabled' } }
+      : {};
+
     const toolsConfig = options?.tools?.length ? {
       tools: options.tools.map(t => ({
         type: 'function' as const,
@@ -177,9 +201,10 @@ export class OpenAILLMClient implements LLMClient {
           model: this.modelName,
           messages: openAIMessages,
           ...toolsConfig,
-          temperature: 0.7,
+          temperature,
           max_tokens: options?.maxTokens || 16000,
           stream: true,
+          stream_options: { include_usage: true },
         });
         yield* this._processChatCompletionsStream(stream);
         return;
@@ -189,20 +214,25 @@ export class OpenAILLMClient implements LLMClient {
         model: this.modelName,
         messages: openAIMessages,
         ...toolsConfig,
-        temperature: 0.7,
+        temperature,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
       });
       yield* this._processResponsesStream(stream);
     } else {
+      // B1 (M2) — include_usage makes usage arrive in a final choices-empty
+      // chunk (DeepSeek's only usage delivery). providerExtra adds DeepSeek's
+      // thinking param and is empty for real OpenAI.
       const stream = await this.client.chat.completions.create({
         model: this.modelName,
         messages: openAIMessages,
         ...toolsConfig,
-        temperature: 0.7,
+        temperature,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
-      });
+        stream_options: { include_usage: true },
+        ...providerExtra,
+      } as any);
       yield* this._processChatCompletionsStream(stream);
     }
   }
@@ -336,41 +366,75 @@ export class OpenAILLMClient implements LLMClient {
   private async *_processChatCompletionsStream(stream: any): AsyncIterable<LLMStreamEvent> {
     // ✅ Buffer for accumulating tool call arguments (OpenAI streams them incrementally)
     const toolCallBuffers = new Map<number, { id: string; name: string; arguments: string }>();
-    
-    // ✅ Track token usage
+    // M4 — fallback key when a provider (DeepSeek) omits delta.tool_calls[].index,
+    // so multiple concurrent tool calls never collapse into one buffer.
+    let autoToolIndex = 0;
+
+    // ✅ Track token usage + stop reason across the whole stream.
     let tokenUsage: TaskTokenUsage | undefined;
+    let stopReason: LLMStreamEvent['stopReason'];
+
+    const metadata = () => ({
+      provider: this.provider,
+      model: this.modelName,
+      timestamp: new Date().toISOString(),
+    });
+
+    // B1 (M2) — capture usage from ANY chunk, not just the finish_reason one.
+    // DeepSeek delivers usage in a trailing choices-empty chunk after the
+    // finish_reason chunk, so reading it only inside the finish block loses it.
+    const captureUsage = (chunk: any) => {
+      if (!chunk.usage) return;
+      tokenUsage = {
+        inputTokens: chunk.usage.prompt_tokens || 0,
+        outputTokens: chunk.usage.completion_tokens || 0,
+        totalTokens: chunk.usage.total_tokens || 0,
+        // M13 — surface cache hits when the provider reports them (additive; no
+        // billing-formula impact). Present on DeepSeek/OpenAI prompt caching.
+        ...(chunk.usage.prompt_tokens_details?.cached_tokens
+          ? { cacheReadTokens: chunk.usage.prompt_tokens_details.cached_tokens }
+          : {}),
+      };
+    };
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
+      captureUsage(chunk);
+
+      const delta = chunk.choices[0]?.delta;
+
+      const content = delta?.content;
       if (content) {
-        yield {
-          type: 'text',
-          text: content,
-          index: 0,  // OpenAI doesn't use multiple content blocks like Anthropic
-          metadata: {
-            provider: 'openai',
-            model: this.modelName,
-            timestamp: new Date().toISOString(),
-          },
-        };
+        yield { type: 'text', text: content, index: 0, metadata: metadata() };
+      }
+
+      // S2 (M6 surfacing) — DeepSeek streams chain-of-thought in
+      // delta.reasoning_content. Surface as a thinking event (no signature).
+      // ⚠️ reasoning_content is NEVER fed back into request messages (would 400);
+      // convertToOpenAIMessages strips thinking blocks — locked by regression test.
+      const reasoning = delta?.reasoning_content;
+      if (reasoning) {
+        yield { type: 'thinking', thinking: reasoning, index: 0, metadata: metadata() };
       }
 
       // Tool calls (OpenAI format) - accumulate arguments across chunks
-      const toolCalls = chunk.choices[0]?.delta?.tool_calls;
+      const toolCalls = delta?.tool_calls;
       if (toolCalls && toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
-          const index = toolCall.index;
-          
+          // M4 — honor the provider index when present; otherwise fall back to a
+          // monotonic counter so index-less deltas don't merge.
+          const index = toolCall.index ?? autoToolIndex++;
+
           if (!toolCallBuffers.has(index)) {
             toolCallBuffers.set(index, {
-              id: toolCall.id || `call_${Date.now()}`,
+              // M5 — UUID avoids same-millisecond id collisions across calls.
+              id: toolCall.id || `call_${randomUUID()}`,
               name: toolCall.function?.name || '',
               arguments: '',
             });
           }
-          
+
           const buffer = toolCallBuffers.get(index)!;
-          
+
           // Update id and name if provided (first chunk has them)
           if (toolCall.id) {
             buffer.id = toolCall.id;
@@ -378,7 +442,7 @@ export class OpenAILLMClient implements LLMClient {
           if (toolCall.function?.name) {
             buffer.name = toolCall.function.name;
           }
-          
+
           // Accumulate arguments (streamed incrementally)
           if (toolCall.function?.arguments) {
             buffer.arguments += toolCall.function.arguments;
@@ -386,21 +450,13 @@ export class OpenAILLMClient implements LLMClient {
         }
       }
 
-      // Check for finish - emit accumulated tool calls
+      // Observe finish — record the stop reason and emit accumulated tool calls,
+      // but DEFER the `done` event until the loop ends so the trailing
+      // usage-only chunk is reflected (B1).
       if (chunk.choices[0]?.finish_reason) {
-        // ✅ Capture usage from final chunk
-        if (chunk.usage) {
-          tokenUsage = {
-            inputTokens: chunk.usage.prompt_tokens || 0,
-            outputTokens: chunk.usage.completion_tokens || 0,
-            totalTokens: chunk.usage.total_tokens || 0,
-          };
-        }
-
         // Map OpenAI finish_reason to the unified stopReason enum.
         // OpenAI 'length' === Anthropic 'max_tokens' (output ceiling hit).
         const rawFinish = chunk.choices[0].finish_reason;
-        let stopReason: LLMStreamEvent['stopReason'];
         switch (rawFinish) {
           case 'stop': stopReason = 'end_turn'; break;
           case 'length': stopReason = 'max_tokens'; break;
@@ -410,44 +466,38 @@ export class OpenAILLMClient implements LLMClient {
 
         // Emit all accumulated tool calls
         for (const [index, buffer] of toolCallBuffers.entries()) {
-          if (buffer.name && buffer.arguments) {
-            try {
-              const parsedInput = JSON.parse(buffer.arguments);
-              yield {
-                type: 'tool_use',
-                toolUse: {
-                  id: buffer.id,
-                  name: buffer.name,
-                  input: parsedInput,
-                  type: 'function' as const,
-                },
-                index,
-                metadata: {
-                  provider: 'openai',
-                  model: this.modelName,
-                  timestamp: new Date().toISOString(),
-                },
-              };
-            } catch (error) {
-              console.error(`[OpenAILLMClient] Failed to parse tool call arguments for ${buffer.name}:`, error);
-              console.error(`[OpenAILLMClient] Raw arguments:`, buffer.arguments);
-            }
+          if (!buffer.name) continue;
+          let parsedInput: Record<string, any>;
+          try {
+            // Empty args = tool with no parameters → {}
+            const argStr = buffer.arguments.trim();
+            parsedInput = argStr ? JSON.parse(argStr) : {};
+          } catch (error) {
+            // B3 (M10) — parse failure must NOT drop the tool_use, or the tool
+            // loop finishes with 0 tool calls and returns a silent empty
+            // response. Fall back to {} like the Anthropic path.
+            console.error(`[OpenAILLMClient] Failed to parse tool call arguments for ${buffer.name}:`, error);
+            console.error(`[OpenAILLMClient] Raw arguments:`, buffer.arguments);
+            parsedInput = {};
           }
+          yield {
+            type: 'tool_use',
+            toolUse: { id: buffer.id, name: buffer.name, input: parsedInput, type: 'function' as const },
+            index,
+            metadata: metadata(),
+          };
         }
-
-        yield {
-          type: 'done',
-          done: true,
-          usage: tokenUsage,  // ✅ Include final token usage
-          stopReason,
-          metadata: {
-            provider: 'openai',
-            model: this.modelName,
-            timestamp: new Date().toISOString(),
-          },
-        };
       }
     }
+
+    // B1 — single terminal done event, after the trailing usage chunk.
+    yield {
+      type: 'done',
+      done: true,
+      usage: tokenUsage,
+      stopReason,
+      metadata: metadata(),
+    };
   }
   
   /**

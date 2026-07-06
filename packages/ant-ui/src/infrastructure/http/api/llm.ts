@@ -4,7 +4,7 @@ import { API_BASE, apiGet } from './client';
 export interface LLMModelInfo {
   id: string;
   displayName: string;
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
   description?: string;
   recommended?: boolean;
   capabilities?: string[];
