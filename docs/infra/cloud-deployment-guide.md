@@ -434,13 +434,21 @@ Full list: `GET /models` endpoint.
 
 ### 3.2 Container Run Commands
 
+Cloud processes run **tsx-from-source** (not `node dist/...`): the `@ant/cloud` overlay's
+package entry is TypeScript, so it loads only under tsx via the `cloudPlugin` seam. api /
+realtime / job share the `ant-cloud-cli` image (`Dockerfile.cli`, target `cloud-cli`);
+preview uses the `cloud-preview` target of the same Dockerfile (adds language runtimes).
+
 | Server | Command |
 |------|---------|
-| ant-api | `node dist/server.js` |
-| ant-realtime | `node dist/start-realtime-server.js` |
-| ant-job | `node dist/start-job-worker.js` |
-| ant-preview | `node dist/start-preview-server.js` |
+| ant-api | `pnpm --filter @ant/cloud start:api-server` |
+| ant-realtime | `pnpm --filter @ant/cloud start:realtime-server` |
+| ant-job | `pnpm --filter @ant/cloud start:job-worker` |
+| ant-preview | `pnpm --filter @ant/cloud start:preview-server` |
 | visual-processor | `uvicorn app:create_app --factory --host 0.0.0.0 --port 4103 --no-access-log --workers ${UVICORN_WORKERS}` |
+
+> OSS / self-hosted (`ANT_SERVER_MODE=local`) still runs the esbuild `dist/` bundles from
+> the OSS `Dockerfile`; the tsx commands above are cloud-only (overlay present).
 
 ### 3.3 Key Configuration Principles
 
