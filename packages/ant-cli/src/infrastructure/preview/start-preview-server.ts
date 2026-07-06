@@ -23,6 +23,7 @@ import 'dotenv/config';
 import { createPreviewServer } from './PreviewServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
+import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 
 async function main(): Promise<void> {
   const startTime = new Date().toISOString();
@@ -40,6 +41,12 @@ async function main(): Promise<void> {
   }
 
   logCorsConfigSummary();
+
+  // Warm-load the cloud overlay before the deploy tier gate reads the credit
+  // ledger (parity with API / realtime / worker composition roots). Without
+  // this the factory's cloud getters would degrade to Noop and report a
+  // phantom `tier: 'free'`, rejecting every paid-tier deploy.
+  await getInfrastructureFactory().initCloud();
 
   try {
     await createPreviewServer();

@@ -82,6 +82,7 @@ describe('composition roots — await initCloud() before wiring routes', () => {
     'composition/server.ts',
     'infrastructure/realtime/start-realtime-server.ts',
     'infrastructure/worker/start-job-worker.ts',
+    'infrastructure/preview/start-preview-server.ts',
   ]) {
     it(`${root} awaits initCloud()`, () => {
       expect(stripComments(read(root))).toMatch(/await\s+[^;]*initCloud\s*\(\s*\)/);

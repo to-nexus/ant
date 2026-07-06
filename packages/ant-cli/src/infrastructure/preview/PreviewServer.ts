@@ -40,6 +40,7 @@ import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
 import { isBillingEnabled } from '../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
+import { extractUserContext } from '../../periphery/adapters/http/routes/helpers/userContext';
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
@@ -342,24 +343,6 @@ export class PreviewServer {
   }
 
   /**
-   * Extract user context from JWT-authenticated request.
-   * In cloud mode, req.user is populated by JWT middleware.
-   * In local mode, falls back to 'local:local'.
-   */
-  private extractUserContext(req: Request): { organizationId: string; userId: string } {
-    // Cloud mode: JWT middleware populates req.user with verified JWT payload
-    if (req.user && req.user.id) {
-      return {
-        organizationId: req.user.organizationId || 'unknown',
-        userId: req.user.id,
-      };
-    }
-
-    // Local mode fallback (JWT middleware not applied)
-    return { organizationId: 'local', userId: 'local' };
-  }
-
-  /**
    * Resolve workspace path for a project (feature-aware)
    */
   private resolveWorkspacePath(
@@ -642,7 +625,7 @@ export class PreviewServer {
     this.app.post('/projects/:id/start', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body?.feature || 'main';
         const port = req.body?.port;
         const forceRestart = req.body?.forceRestart !== false;
@@ -681,7 +664,7 @@ export class PreviewServer {
     this.app.post('/projects/:id/stop', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body?.feature || 'main';
 
         logger.warn(`[PreviewServer] POST /projects/${projectId}/stop (user=${userContext.userId}, feature=${feature})`, {
@@ -709,7 +692,7 @@ export class PreviewServer {
     this.app.get('/projects/:id/status', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.query.feature as string || 'main';
         // getPreviewStatus reads from Redis (source of truth), with local memory fallback.
         // This guarantees consistent state across pods in multi-pod deployments.
@@ -780,7 +763,7 @@ export class PreviewServer {
     this.app.get('/projects/:id/validate', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
 
         const feature = req.query.feature as string || 'main';
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
@@ -810,7 +793,7 @@ export class PreviewServer {
     this.app.get('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.query.feature as string || 'main';
         const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
@@ -871,7 +854,7 @@ export class PreviewServer {
     this.app.put('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body.feature || 'main';
         const { connections } = req.body;
 
@@ -968,7 +951,7 @@ export class PreviewServer {
     this.app.post('/projects/:id/detect-connections', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body.feature || req.query.feature as string || 'main';
 
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
@@ -1003,7 +986,7 @@ export class PreviewServer {
     this.app.post('/projects/:id/deploy', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body?.feature;
 
         if (!feature || feature === 'main') {
@@ -1077,7 +1060,7 @@ export class PreviewServer {
     this.app.post('/projects/:id/deploy/stop', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.body?.feature;
 
         if (!feature || feature === 'main') {
@@ -1110,7 +1093,7 @@ export class PreviewServer {
     this.app.get('/projects/:id/deploy/status', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
-        const userContext = this.extractUserContext(req);
+        const userContext = extractUserContext(req);
         const feature = req.query.feature as string | undefined;
 
         if (!feature || feature === 'main') {

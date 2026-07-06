@@ -181,6 +181,25 @@ export class InfrastructureFactory {
   }
 
   /**
+   * SSOT for "should this cloud adapter be real?". Returns the overlay when it
+   * must be used, or null when a Noop is correct (OSS/local). It NEVER lets a
+   * cloud-mode process silently fall back to Noop: a null `cloudModule` in cloud
+   * mode means some process skipped `initCloud()` at boot — a DI bug that must
+   * fail loud rather than report a phantom `tier: 'free'`. Mirrors the Vector-DB
+   * "no NoOp imposter inside the normal flow" invariant.
+   */
+  private cloudFor(adapter: string): CloudModule | null {
+    if (!isBillingEnabled()) return null; // OSS/local → Noop is correct
+    if (!this.cloudModule) {
+      throw new Error(
+        `[InfrastructureFactory] ${adapter} requested in cloud mode before initCloud() completed — ` +
+          'call getInfrastructureFactory().initCloud() at process boot.',
+      );
+    }
+    return this.cloudModule;
+  }
+
+  /**
    * Set dependencies (required for IDE orchestrator with Docker)
    */
   setDependencies(portManager: PortManager, portRegistry: PortRegistryPort): void {
@@ -243,12 +262,13 @@ export class InfrastructureFactory {
    */
   getOrganizationRepository(): OrganizationRepositoryPort {
     if (!this.organizationRepository) {
-      if (!this.cloudModule) {
+      const cloud = this.cloudFor('OrganizationRepository');
+      if (!cloud) {
         // OSS / local: dormant org/transfer routes get a NPE-safe no-op repo.
         this.organizationRepository = new NoopOrganizationRepository();
       } else {
         const stateStore = this.getStateStore() as RedisStateStore;
-        this.organizationRepository = this.cloudModule.createOrganizationRepository({
+        this.organizationRepository = cloud.createOrganizationRepository({
           redis: stateStore.getRedisClient(),
         });
         logger.info('Using cloud OrganizationRepository', {
@@ -270,12 +290,13 @@ export class InfrastructureFactory {
    */
   getCreditLedger(): CreditLedgerPort {
     if (!this.creditLedger) {
-      if (!isBillingEnabled() || !this.cloudModule) {
+      const cloud = this.cloudFor('CreditLedger');
+      if (!cloud) {
         // Cloud-capability seam: OSS / local runs with no metering.
         this.creditLedger = new NoopCreditLedger();
       } else {
         const stateStore = this.getStateStore() as RedisStateStore;
-        this.creditLedger = this.cloudModule.createCreditLedger({
+        this.creditLedger = cloud.createCreditLedger({
           redis: stateStore.getRedisClient(),
         });
         logger.info('Using cloud CreditLedger', { component: 'InfrastructureFactory' });
@@ -291,10 +312,11 @@ export class InfrastructureFactory {
    */
   getPaymentProvider(): PaymentProviderPort {
     if (!this.paymentProvider) {
-      if (!isBillingEnabled() || !this.cloudModule) {
+      const cloud = this.cloudFor('PaymentProvider');
+      if (!cloud) {
         this.paymentProvider = new NoopPaymentProvider();
       } else {
-        this.paymentProvider = this.cloudModule.createPaymentProvider(this.getCreditLedger());
+        this.paymentProvider = cloud.createPaymentProvider(this.getCreditLedger());
         logger.info('Using cloud PaymentProvider', { component: 'InfrastructureFactory' });
       }
     }
