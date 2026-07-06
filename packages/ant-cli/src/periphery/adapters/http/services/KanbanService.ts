@@ -7,6 +7,7 @@ import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task'
 import type { SessionState } from '../../../../core/types/session';
 import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { projectSessionStateToKanban } from '../../../../core/realtime/projectSessionStateToKanban';
+import { buildInfrastructureInterruption } from '@ant/shared';
 
 /**
  * KanbanService
@@ -378,6 +379,44 @@ export class KanbanService {
     }
     
     // Priority 3: SESSION DATA (job completed or no session)
+    //
+    // Read-side self-heal (focal-jetting-ember RCA): an orphaned job — one
+    // that crashed mid-execution (deploy / SIGKILL / OOM) while its
+    // interruption projection never landed — persists `runningTasks` /
+    // `currentTask` in the session with NO `interruption`. The pure projector
+    // gates paused-mode on `!!sessionState.interruption`, so without it the
+    // leftover tasks freeze in `inProgress` with `isRunning=false, paused=false`
+    // (a stuck board, no Resume/Dismiss affordance) and no cancelled card.
+    // The write-side handoff (poison-gated child → API-side pauseJob) can miss
+    // for several reasons, so recover on the READ side here where Redis is
+    // authoritative: when the job is definitively not running yet leftover work
+    // remains and no interruption was recorded, synthesize a default
+    // `server_crash` interruption (canResume derived from jobType by the shared
+    // single owner) so the projector moves the tasks to `todo` (paused) and
+    // surfaces the interruption. `isJobCompleted` (completedAt + no
+    // interruption + no remaining work) already excludes genuinely-finished
+    // jobs — kept out of the pure projector so its direct-call invariant
+    // (unmarked running stays inProgress when isActuallyRunning=false) is
+    // preserved.
+    const hasLeftoverRunning = (((sessionState as any).runningTasks?.length) ?? 0) > 0;
+    const isOrphanedUncarded =
+      !isActuallyRunning &&
+      !isJobCompleted &&
+      !hasInterruption &&
+      (hasTasksRemaining || hasLeftoverRunning);
+
+    if (isOrphanedUncarded) {
+      const synthesized = buildInfrastructureInterruption('server_crash', jobType);
+      const healedSession = {
+        ...sessionData,
+        state: { ...sessionState, interruption: synthesized },
+      };
+      console.log(
+        `[KanbanService] SELF-HEAL orphaned uncarded job=${sessionJobId ?? 'none'} jobType=${jobType} canResume=${synthesized.canResume}`,
+      );
+      return this.buildSessionKanbanData(healedSession, sessionJobId, jobType, false);
+    }
+
     return this.buildSessionKanbanData(sessionData, sessionJobId, jobType, isActuallyRunning);
   }
 

@@ -68,7 +68,9 @@ export class ExpressServerAdapter implements
   private app: Express;
   private server: any;
   private running: boolean = false;
-  
+  // Periodic stale-job reconciliation tick (focal-jetting-ember RCA). Cleared on stop().
+  private staleRecoveryTimer?: NodeJS.Timeout;
+
   // Singleton instance for global access
   private static instance: ExpressServerAdapter | null = null;
   
@@ -248,15 +250,32 @@ export class ExpressServerAdapter implements
 
     // Run stale job recovery BEFORE accepting connections so that Redis
     // state is clean by the time the Realtime server (or any client) reads it.
+    const staleRecoveryDeps = {
+      cleanupJobState: this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
+      stateTracker: this.stateTracker,
+      kanbanService: this.deps.kanbanService,
+    };
     try {
-      await recoverStaleJobs({
-        cleanupJobState: this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
-        stateTracker: this.stateTracker,
-        kanbanService: this.deps.kanbanService,
-      });
+      await recoverStaleJobs(staleRecoveryDeps);
     } catch (err) {
       logger.warn('Stale job recovery error (non-fatal)', { component: 'ExpressServerAdapter' }, err);
     }
+
+    // Periodic reconciliation (focal-jetting-ember RCA): boot-time recovery
+    // alone misses orphans whose crash happens AFTER this pod booted and whose
+    // kanban-serving pod never restarts (so it never re-runs recovery). Run
+    // recoverStaleJobs on an interval so the single owner
+    // (StaleJobRecovery → pauseJob → cleanupJobState Phase B) keeps sweeping
+    // orphaned jobs into resumable-pause + cancelled card. Cluster-safe via the
+    // existing RECOVERY_LOCK_KEY global lock (concurrent/overlapping ticks —
+    // cross-pod OR same-pod — early-return), so this changes cadence, not the
+    // number of card emitters. `.unref()` so the timer never blocks process exit.
+    this.staleRecoveryTimer = setInterval(() => {
+      recoverStaleJobs(staleRecoveryDeps).catch((err) => {
+        logger.warn('Periodic stale job recovery error (non-fatal)', { component: 'ExpressServerAdapter' }, err);
+      });
+    }, 90_000);
+    this.staleRecoveryTimer.unref();
 
     await new Promise<void>((resolve, reject) => {
       try {
@@ -329,8 +348,13 @@ export class ExpressServerAdapter implements
       return;
     }
     
+    if (this.staleRecoveryTimer) {
+      clearInterval(this.staleRecoveryTimer);
+      this.staleRecoveryTimer = undefined;
+    }
+
     await this.lifecycleManager.shutdown();
-    
+
     // Close HTTP server
     return new Promise((resolve) => {
       if (!this.server || !this.server.listening) {

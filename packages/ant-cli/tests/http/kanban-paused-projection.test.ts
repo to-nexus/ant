@@ -132,3 +132,120 @@ describe('KanbanService paused-session projection (grim-padding-grove safety net
     expect(k.completed.map((t: any) => t.id)).toEqual(['c1']);
   });
 });
+
+/**
+ * Regression — `KanbanService.getKanbanData` read-side self-heal (focal-jetting-ember).
+ *
+ * An orphaned job (crashed mid-execution during a deploy; interruption
+ * projection never landed) persists `runningTasks` with NO `interruption`.
+ * The pure projector correctly keeps those in `inProgress` when called
+ * directly (the four NO-OP cases above), because it has no Redis authority.
+ * getKanbanData DOES have Redis authority (`isActuallyRunning`), so it must
+ * synthesize a default `server_crash` interruption and route through the
+ * paused projection — turning the stuck `isRunning=false paused=false ip=1`
+ * board into a resumable pause. This is the layer where the fix lives; the
+ * pure projector stays unchanged (proven by the NO-OP tests above).
+ */
+describe('KanbanService getKanbanData orphaned self-heal (focal-jetting-ember)', () => {
+  function makeService(sessionData: any, stateStore: any) {
+    const workspaceResolver = { getFeaturePath: () => '/tmp/feat' } as any;
+    const svc = new KanbanService('/tmp/ws-kanban-test', workspaceResolver, stateStore);
+    (svc as any).safeReadSession = async () => sessionData;
+    return svc;
+  }
+
+  const userContext = { organizationId: 'individual', userId: 'u' } as any;
+
+  it('repro: orphaned runningTasks + no interruption → paused todo + synthesized server_crash (canResume for code)', async () => {
+    const sessionData = buildSession({
+      jobId: 'focal-jetting-ember',
+      taskQueue: [],
+      runningTasks: [task('restore-next-image-optimized')],
+      completedTasks: [],
+      completedTasksDetails: [],
+      // interruption UNSET — the poison-gated child never wrote it
+    });
+    const stateStore = {
+      listJobsByFeature: async () => [],           // no running job of this type
+      getJobStatus: async () => null,              // Redis has no 'running' record
+      getTaskQueue: async () => null,
+    };
+
+    const svc = makeService(sessionData, stateStore);
+    const k = await svc.getKanbanData('jhedu', 'base', 'code', undefined, undefined, undefined, userContext);
+
+    expect(k.dataSource).toBe('session');
+    expect(k.inProgress).toHaveLength(0);
+    const t = k.todo.find((x: any) => x.id === 'restore-next-image-optimized');
+    expect(t).toBeTruthy();
+    expect(t.interrupted).toBe(true);
+    expect(k.interruption?.reason).toBe('server_crash');
+    expect(k.interruption?.canResume).toBe(true);
+  });
+
+  it('plan job: same orphaned shape → synthesized interruption but canResume=false', async () => {
+    const sessionData = buildSession({
+      jobId: 'some-plan-job',
+      taskQueue: [task('q1')],
+      runningTasks: [],
+      completedTasks: [],
+      completedTasksDetails: [],
+    });
+    const stateStore = {
+      listJobsByFeature: async () => [],
+      getJobStatus: async () => null,
+      getTaskQueue: async () => null,
+    };
+
+    const svc = makeService(sessionData, stateStore);
+    const k = await svc.getKanbanData('p', 'f', 'plan', undefined, undefined, undefined, userContext);
+
+    expect(k.interruption?.reason).toBe('server_crash');
+    expect(k.interruption?.canResume).toBe(false);
+  });
+
+  it('NO-OP: completed job (completedAt, no leftover) is NOT self-healed', async () => {
+    const sessionData = buildSession({
+      jobId: 'done-job',
+      taskQueue: [],
+      runningTasks: [],
+      completedTasks: ['c1'],
+      completedTasksDetails: [{ id: 'c1', name: 'c1' }],
+      jobTiming: { startedAt: 't0', completedAt: 't1' },
+    });
+    const stateStore = {
+      listJobsByFeature: async () => [],
+      getJobStatus: async () => null,
+      getTaskQueue: async () => null,
+    };
+
+    const svc = makeService(sessionData, stateStore);
+    const k = await svc.getKanbanData('p', 'f', 'code', undefined, undefined, undefined, userContext);
+
+    expect(k.interruption).toBeUndefined();
+    expect(k.todo).toHaveLength(0);
+    expect(k.inProgress).toHaveLength(0);
+    expect(k.completed.map((t: any) => t.id)).toEqual(['c1']);
+  });
+
+  it('NO-OP: genuinely running job (Redis running + live snapshot) takes the LIVE branch', async () => {
+    const sessionData = buildSession({
+      jobId: 'live-job',
+      taskQueue: [],
+      runningTasks: [],
+      completedTasks: [],
+      completedTasksDetails: [],
+    });
+    const stateStore = {
+      listJobsByFeature: async () => [{ jobId: 'live-job', status: 'running', type: 'code' }],
+      getJobStatus: async () => ({ status: 'running', startedAt: new Date().toISOString() }),
+      getTaskQueue: async () => ({ queue: [], currentTasks: [task('cur')], completedTasks: [] }),
+    };
+
+    const svc = makeService(sessionData, stateStore);
+    const k = await svc.getKanbanData('p', 'f', 'code', undefined, undefined, undefined, userContext);
+
+    expect(k.dataSource).toBe('live');
+    expect(k.inProgress.map((t: any) => t.id)).toEqual(['cur']);
+  });
+});

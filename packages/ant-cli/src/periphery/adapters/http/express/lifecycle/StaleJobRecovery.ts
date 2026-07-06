@@ -181,19 +181,18 @@ async function recoverOrphanedRunningJobs(
         continue;
       }
 
+      // POISON FLAG — acquire BEFORE pauseJob so a worker child still alive on
+      // a not-yet-drained pod (rolling redeploy) has its un-gated `onCheckpoint`
+      // (code/graph.ts, design/checkpoint.ts) short-circuited and cannot re-write
+      // `state.runningTasks` UNMARKED after cleanup projects the interrupted
+      // state. Mirrors the `/stop` route (job.routes.ts) and the stalled handlers
+      // (JobWorker.ts / BullMQJobQueue.ts). `pauseJob` releases it after cleanup
+      // (pauseJob.ts); idempotent via acquireLock NX, failure tolerated (600s TTL
+      // auto-expires). Closes the grim-padding-grove KNOWN GAP.
+      await stateStore.acquireLock(`ant:job-poisoned:${job.jobId}`, 600).catch(() => false);
+
       // SSOT — pauseJob handles cleanupJobState + updateJobStatus('paused')
       // while preserving Redis state so `/resume` can restart the job.
-      //
-      // KNOWN GAP (grim-padding-grove RCA, deferred): unlike the `/stop` route
-      // and the stalled handlers, this path never ACQUIRES the poison lock
-      // (`ant:job-poisoned:{id}`) before pausing — `pauseJob` only releases it.
-      // During a rolling redeploy a worker child can still be alive on a
-      // not-yet-drained pod; with no poison flag its un-gated `onCheckpoint`
-      // (code/graph.ts) re-writes `state.runningTasks` UNMARKED after cleanup,
-      // clobbering this projection. The read-side net in
-      // KanbanService.buildSessionKanbanData makes the UX correct anyway.
-      // Candidate fix (needs deploy-ordering validation): acquire the poison
-      // lock here before pauseJob, mirroring the stalled handler.
       await pauseJob(
         { cleanupJobState: deps.cleanupJobState },
         {
