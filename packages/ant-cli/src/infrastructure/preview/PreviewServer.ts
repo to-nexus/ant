@@ -26,7 +26,7 @@ import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
-import { isSubdomainRouting, getDeployBaseDomain } from '../../core/config/previewRouting';
+import { isSubdomainRouting, getDeployBaseDomain, getPreviewBaseDomain } from '../../core/config/previewRouting';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
@@ -46,7 +46,7 @@ import { extractUserContext } from '../../periphery/adapters/http/routes/helpers
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
-import { resolvePreviewTarget } from '../../periphery/adapters/http/middleware/previewRouting';
+import { resolvePreviewTarget, resolvePreviewLabel } from '../../periphery/adapters/http/middleware/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import {
@@ -1357,7 +1357,40 @@ export class PreviewServer {
               openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath);
               return;
             }
-            // No deploy Host match → fall through (may be a preview subdomain WS).
+
+            // Preview subdomain WS: the app is served at its own host root, so
+            // the HMR Upgrade arrives at a bare path (no urlKey). Resolve the
+            // Host label via the preview base domain and tunnel per-package
+            // through the SAME resolvePreviewLabel + resolvePreviewTarget SSOTs
+            // as the HTTP proxy — symmetric with the deploy branch above.
+            const previewLabel = extractLabelFromHost(hostHeader, getPreviewBaseDomain());
+            const pMatch = previewLabel
+              ? resolvePreviewLabel(await this.stateStore.listPreviews(), previewLabel)
+              : null;
+            if (pMatch) {
+              // Cloud mode requires a valid owner session (upgrade bypasses Express middleware).
+              const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
+              if (isCloudMode) {
+                const jwtService = createJwtServiceFromEnv();
+                if (jwtService) {
+                  const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
+                  if (!token) { socket.destroy(); return; }
+                  try {
+                    if (!assertProxyOwnership(jwtService.verify(token), { tenantId: pMatch.tenantId, userId: pMatch.userId })) {
+                      socket.destroy(); return;
+                    }
+                  } catch { socket.destroy(); return; }
+                }
+              }
+              const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
+              const target = resolvePreviewTarget({ host: pMatch.host, packages: pMatch.packages }, pMatch.serviceName, internalKey);
+              const targetHost = target?.targetHost ?? pMatch.host;
+              const targetPort = target?.targetPort ?? pMatch.port;
+              // Root-served: forward the path verbatim (no basePath prefix).
+              openRawTunnel(req, socket, head, targetHost, targetPort, urlPath);
+              return;
+            }
+            // No deploy/preview Host match → fall through (path-mode WS, if any).
           }
 
           // Deploy path: `/deploy/<urlKey>/...` — public artifact serving, no JWT

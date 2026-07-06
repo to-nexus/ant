@@ -19,9 +19,9 @@ import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
-import { toDnsLabel, extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
+import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
 import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
-import { resolvePreviewTarget } from './previewRouting';
+import { resolvePreviewTarget, resolvePreviewLabel } from './previewRouting';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
   escapeRegExp as sharedEscapeRegExp,
@@ -119,51 +119,6 @@ function extractUrlKeyFromReferer(refererStr: string): string | null {
   return null;
 }
 
-interface SubdomainPreviewMatch {
-  tenantId: string;
-  userId: string;
-  projectId: string;
-  feature: string;
-  internalKey: string;
-  previewHost: string;
-  entryPort: number;
-  previewPackages: any[];
-}
-
-/**
- * Resolve a subdomain DNS label to a running preview by RECOMPUTE-and-MATCH
- * over the active preview set (the label function is deterministic, the active
- * set per host is small — no extra Redis index needed). Matches the label
- * against each frontend package's urlKey (single → 4-part `toUrlKey`).
- */
-async function resolvePreviewByLabel(
-  portRegistry: PortRegistryPort,
-  label: string,
-): Promise<SubdomainPreviewMatch | null> {
-  const previews = await portRegistry.listPreviews();
-  for (const st of previews as any[]) {
-    const serverKey = `${st.tenantId}:${st.userId}:${st.projectId}:${st.feature}`;
-    const pkgs: any[] = st.packages || [];
-    const frontends = pkgs.filter((p) => p.type === 'frontend');
-    const hit =
-      frontends.some((p) => toDnsLabel(p.urlKey || toUrlKey(serverKey)) === label) ||
-      toDnsLabel(toUrlKey(serverKey)) === label;
-    if (hit) {
-      return {
-        tenantId: st.tenantId,
-        userId: st.userId,
-        projectId: st.projectId,
-        feature: st.feature,
-        internalKey: serverKey,
-        previewHost: st.host || 'localhost',
-        entryPort: st.port,
-        previewPackages: pkgs,
-      };
-    }
-  }
-  return null;
-}
-
 /**
  * Create preview proxy middleware
  */
@@ -192,12 +147,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const label = extractLabelFromHost(req.headers.host, getPreviewBaseDomain());
       if (!label) return next();
 
-      const match = await resolvePreviewByLabel(portRegistry, label);
+      const match = resolvePreviewLabel(await portRegistry.listPreviews(), label);
       if (!match) {
         res.status(404).json({ error: 'Preview not found' });
         return;
       }
-      const { tenantId, userId, projectId, feature, internalKey, previewHost, entryPort } = match;
+      const { tenantId, userId, projectId, feature, serviceName, host: previewHost, port: entryPort, packages: previewPackages } = match;
+      const internalKey = `${tenantId}:${userId}:${projectId}:${feature}`;
 
       if (!isOwner(req, { tenantId, userId })) {
         res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
@@ -205,8 +161,15 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
       await portRegistry.touchPreview(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
 
-      // Fullstack: `/api/*` → backend port; everything else → the app at root.
+      // Per-package frontend routing (multi-frontend): the matched Host label
+      // carries the package's `serviceName`. `resolvePreviewTarget` (SSOT,
+      // shared with the path branch + WS upgrade) returns null for a 4-part /
+      // single-frontend / unmatched label → keep the entry port.
       let targetPort = entryPort;
+      const svc = resolvePreviewTarget({ host: previewHost, packages: previewPackages }, serviceName, internalKey);
+      if (svc) targetPort = svc.targetPort;
+
+      // Fullstack: `/api/*` → backend port (wins over the per-package frontend).
       if (typeof getBackendPort === 'function' && (req.path === '/api' || req.path.startsWith('/api/'))) {
         try {
           const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });

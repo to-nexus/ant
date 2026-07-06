@@ -135,6 +135,54 @@ describe('previewProxy subdomain routing', () => {
   });
 });
 
+describe('previewProxy subdomain routing — multi-frontend per-package', () => {
+  const ADMIN_UK = 'org--user--proj--feat--apps-admin-web';
+  const USER_UK = 'org--user--proj--feat--apps-user-web';
+  const multiPkgs = [
+    { name: 'apps/admin-web', slug: 'apps-admin-web', type: 'frontend', port: 3001, urlKey: ADMIN_UK },
+    { name: 'apps/user-web', slug: 'apps-user-web', type: 'frontend', port: 3002, urlKey: USER_UK },
+  ];
+
+  // Regression: each app subdomain must reach its OWN dev-server port. The
+  // pre-fix resolver returned the shared entry port for every label, so both
+  // apps rendered admin.
+  it('routes each app label to its own package port (not the shared entry)', async () => {
+    const registry = mockRegistry(multiPkgs, 3001); // entry = admin port
+    const mw = createPreviewProxyMiddleware({ portRegistry: registry });
+
+    await mw(mockReq('/', `${ADMIN_UK}.${BASE}`), mockRes(), mockNext());
+    expect(lastUrl).toBe('http://127.0.0.1:3001/');
+
+    lastUrl = undefined;
+    await mw(mockReq('/', `${USER_UK}.${BASE}`), mockRes(), mockNext());
+    expect(lastUrl).toBe('http://127.0.0.1:3002/');
+  });
+
+  it('the 4-part (top-level) label resolves to the entry port', async () => {
+    const registry = mockRegistry(multiPkgs, 3001);
+    const mw = createPreviewProxyMiddleware({ portRegistry: registry });
+    await mw(mockReq('/', `${LABEL}.${BASE}`), mockRes(), mockNext());
+    expect(lastUrl).toBe('http://127.0.0.1:3001/');
+  });
+});
+
+describe('resolvePreviewLabel (single label SSOT, mirrors resolveDeployLabel)', () => {
+  it('matches a 5-part label to its serviceName; 4-part → no serviceName; miss → null', async () => {
+    const { resolvePreviewLabel } = await import('../../src/periphery/adapters/http/middleware/previewRouting');
+    const previews = [{
+      ...SERVER, host: '127.0.0.1', port: 3001, packages: [
+        { name: 'apps/admin-web', slug: 'apps-admin-web', type: 'frontend', port: 3001, urlKey: 'org--user--proj--feat--apps-admin-web' },
+        { name: 'apps/user-web', slug: 'apps-user-web', type: 'frontend', port: 3002, urlKey: 'org--user--proj--feat--apps-user-web' },
+      ],
+    }];
+    expect(resolvePreviewLabel(previews as any, 'org--user--proj--feat--apps-user-web'))
+      .toMatchObject({ ...SERVER, serviceName: 'apps-user-web', port: 3001 });
+    expect(resolvePreviewLabel(previews as any, LABEL))
+      .toMatchObject({ ...SERVER, serviceName: undefined });
+    expect(resolvePreviewLabel(previews as any, 'no--such--label--x')).toBeNull();
+  });
+});
+
 describe('DeployService.resolveDeployLabel', () => {
   it('matches a deploy label to its coordinates (+ serviceName for 5-part)', async () => {
     const { DeployService } = await import('../../src/infrastructure/deploy/DeployService');
