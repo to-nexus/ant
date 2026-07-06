@@ -70,15 +70,31 @@ const CLARIFY_POLICY_MATRIX: Record<IntentId, ClarifyPolicy> = {
   'explain-plan': DISABLED,
 
   // ── System Design ──────────────────────────
-  // Non-spec design gen (system/ui/game-art) routes through the design
-  // `decompose` node, which is NOT yet wired to the clarify gate. Declared
-  // DISABLED (matches pre-existing behavior — these never had clarify) until
-  // the design-decompose gate lands; the `detect` phase gate is likewise
-  // deferred. Only design-spec (docGen) is wired. Extending is a one-line
-  // matrix change + node wiring.
-  'gen-sys-fe': DISABLED,
-  'gen-sys-be': DISABLED,
-  'gen-sys-full': DISABLED,
+  // System-design gen routes through the design `decompose` node, which is
+  // the single-threaded pre-fan-out seam (system design fans out to multiple
+  // parallel doc-writing tasks in execute, so clarify MUST fire at decompose
+  // — post-fan-out workers must never clarify). The `detect` phase gate is
+  // still deferred. UI / game-art decompose gates are a future one-line
+  // matrix change + handler wiring (same mechanism). `rev-sys` / `explain-sys`
+  // stay off (explain is read-only; review has no ambiguity boundary).
+  'gen-sys-fe': {
+    clarifyEnabled: true,
+    clarifyPhases: ['decompose'],
+    clarifyBudget: 2,
+    blockingMode: 'proceed-if-sufficient',
+  },
+  'gen-sys-be': {
+    clarifyEnabled: true,
+    clarifyPhases: ['decompose'],
+    clarifyBudget: 2,
+    blockingMode: 'proceed-if-sufficient',
+  },
+  'gen-sys-full': {
+    clarifyEnabled: true,
+    clarifyPhases: ['decompose'],
+    clarifyBudget: 2,
+    blockingMode: 'proceed-if-sufficient',
+  },
   'rev-sys': DISABLED,
   'explain-sys': DISABLED,
 

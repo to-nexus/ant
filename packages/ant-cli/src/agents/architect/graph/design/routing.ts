@@ -17,6 +17,14 @@ export function routeAfterResolve(s: DesignGraphState): string {
     return 'detect';
   }
 
+  if (isResume && s.awaitingClarify && s.clarifyPhase === 'decompose' && hasNewDirective) {
+    // System-design decompose clarify: re-enter decompose (NOT plan) so the
+    // decomposition itself is redone with the user's answer. `clarifyPhase`
+    // discriminates this from the docGen clarify path below.
+    console.log(`🔀 [Resolve→Router] isResume + awaitingClarify(decompose) + newDirective → decompose (clarify resume)`);
+    return 'decompose';
+  }
+
   if (isResume && s.awaitingClarify && hasNewDirective) {
     // Clarify response is fresh information; route through plan so the
     // LLM gets to re-decide candidates / outline against the new
@@ -91,6 +99,12 @@ export function routeAfterFigmaExplore(s: DesignGraphState): string {
 }
 
 export function routeAfterDecompose(s: DesignGraphState): string {
+  // System-design decompose emitted a `<clarify>` — pause the turn. The user's
+  // answer enqueues a continuation that re-enters decompose (routeAfterResolve).
+  if (s.awaitingClarify && s.clarifyPhase === 'decompose') {
+    console.log(`⏸️  [Design Decompose→Router] awaitingClarify(decompose) → __end__`);
+    return '__end__';
+  }
   const concurrency = getTaskConcurrency();
   if (concurrency > 1) {
     console.log(`[Design Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);

@@ -21,8 +21,10 @@ import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, isClarifyActive, getClarifyPolicy, type IntentId } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
+import { applyClarifyGate, parseClarifyTags } from "../../../../../common/clarify";
+import { saveClarifyCheckpoint } from "../../session/checkpoint";
 import { assignedNotInCatalog, resolveCatalogEntry } from "./catalogLookup";
 import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 
@@ -636,7 +638,16 @@ export async function decomposeSystemDesign(
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const refCat = await referenceCatalogVars(state);
-  const prompt = await promptAdapter.render(TEMPLATE_PATHS.designDecomposeSystem.base, {
+
+  // Clarify guidance vars — gate the `clarify-policy` partial in rules.md.
+  // Tier is unknown at prompt-build time (the LLM emits it), so the
+  // prompt-level gate uses enabled+phase+budget only; the runtime
+  // `applyClarifyGate` (below) applies any tier floor precisely.
+  const clarifyIntent = state.resolvedAction?.intent as IntentId | undefined;
+  const clarifyActive = !!clarifyIntent && isClarifyActive(clarifyIntent, 'decompose');
+  const clarifyPolicy = clarifyIntent ? getClarifyPolicy(clarifyIntent) : undefined;
+
+  let prompt = await promptAdapter.render(TEMPLATE_PATHS.designDecomposeSystem.base, {
     ...refCat,
     documentName: decomposeCtx.documentName,
     refs: decomposeCtx.refs,
@@ -648,7 +659,20 @@ export async function decomposeSystemDesign(
     environment: detectedEnv,
     resolvedTargetFiles,
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
+    clarifyActive,
+    clarifyBudget: clarifyPolicy?.clarifyBudget,
+    blockingMode: clarifyPolicy?.blockingMode,
   });
+
+  // Clarify continuation: if the previous run paused on a decompose clarify,
+  // clear the pause marker so routeAfterDecompose proceeds when this fresh
+  // decomposition emits tasks. The user's answer already reached the prompt
+  // via `decomposeCtx.directive` — resolve/runner fold `overrideDirective`
+  // into `directive` on resume, the same machinery the spec-modification
+  // resume branch relies on (design/routing.ts). No manual re-injection here.
+  if (state.awaitingClarify === true && state.clarifyPhase === 'decompose') {
+    state.awaitingClarify = false;
+  }
 
   await safeLogPrompt(
     state.context.featurePath,
@@ -833,6 +857,48 @@ export async function decomposeSystemDesign(
     console.error(`❌ [SystemDecompose] LLM call failed: ${lastError.message}`);
   }
 
+  // Content clarify (turn-terminating `<clarify>`) — check BEFORE parse so a
+  // clarify-only response (no `<tasks>`/`<executionTier>`) does not trip the
+  // task/tier validators. Pre-fan-out gate: system-design decompose is
+  // single-threaded, so pausing here never freezes a live worker queue
+  // (system design fans out to parallel doc-writing tasks only AFTER this).
+  if (rawResponse && clarifyIntent && parseClarifyTags(rawResponse).length > 0) {
+    const gate = await applyClarifyGate({
+      responseText: rawResponse,
+      intent: clarifyIntent,
+      phase: 'decompose',
+      tier: parseExecutionTierTag(rawResponse),
+      clarifyRoundsUsed: state.clarifyRoundsUsed,
+    });
+    if (gate.paused) {
+      // Apply the gate deltas (awaitingClarify / clarifyPhase / incremented
+      // clarifyRoundsUsed) onto `state` so the checkpoint AND the returned
+      // state agree on the pause markers and budget.
+      Object.assign(state, gate.stateUpdates);
+      await saveClarifyCheckpoint(state, { kind: 'decompose' });
+      if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+        state.deps.kanbanUpdate.clearEstimatingActivity();
+      }
+      return {
+        ...state,
+        jobId: ctx.newJobId,
+        llmResponse: { textResponse: gate.cleanedText, done: true },
+      } as any;
+    }
+    // Gate declined (budget exhausted / inactive): reframe + re-call once so the
+    // LLM emits tasks instead of dead-ending on a stripped clarify.
+    if (gate.proceedNote) {
+      prompt += '\n\n' + gate.proceedNote;
+      streamingHook.reset();
+      try {
+        rawResponse = await callLLM();
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`❌ [SystemDecompose] LLM re-call after clarify decline failed: ${lastError.message}`);
+      }
+    }
+  }
+
   if (rawResponse) {
     try {
       response = await parseAndValidate(rawResponse);
@@ -996,5 +1062,9 @@ export async function decomposeSystemDesign(
     _estimatingTokenUsage: estimatingTokenUsage,
     executionTier,
     boundary: BOUNDARY.HEAVYWEIGHT,
+    // Clear any decompose-clarify pause markers on the success path so a
+    // resumed job does not re-pause (routeAfterDecompose reads these).
+    awaitingClarify: false,
+    clarifyPhase: undefined,
   } as any;
 }

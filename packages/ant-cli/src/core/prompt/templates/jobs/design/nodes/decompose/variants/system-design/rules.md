@@ -1,3 +1,13 @@
+{{#if clarifyActive}}
+## Clarify (optional — only when you genuinely cannot decompose)
+
+{{> jobs/shared/injections/clarify-policy}}
+
+**Constraint**: When you emit `<clarify>`, output the `<clarify>` block ALONE — do NOT emit `<executionTier>`, `<tasks>`, or any other meta tag in the same turn. The job pauses until the user answers, then re-enters this decomposition with their input.
+
+---
+
+{{/if}}
 ## ExecutionTier Classification
 
 **Observation target**: The breadth of work implied by the directive, the mode, and the reference documents (if any) supplied in this prompt.

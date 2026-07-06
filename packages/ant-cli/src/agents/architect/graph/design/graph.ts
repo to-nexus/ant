@@ -849,11 +849,11 @@ export function buildDesignGraph() {
     { learn: "learn", decompose: "decompose" } as any
   );
   
-  // ✅ Decompose → conditional: parallel or sequential
+  // ✅ Decompose → conditional: parallel / sequential / __end__ (clarify pause)
   graph.addConditionalEdges(
     "decompose" as any,
     designRouting.routeAfterDecompose as any,
-    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+    { parallelOrchestrator: "parallelOrchestrator", plan: "plan", __end__: "__end__" } as any
   );
   
   // ✅ ParallelOrchestrator → learn (after all tasks are done)
