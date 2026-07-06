@@ -44,12 +44,6 @@ export interface BillingActions {
   cancelSubscription: () => Promise<PurchaseOutcome>;
   /** Set/clear the chat recharge-CTA flag (job start/resume blocked on credits). */
   setCreditBlockActive: (active: boolean) => void;
-  /**
-   * DEV-only arbitrary credit top-up (no card). Resolves to the outcome (never
-   * throws); on success the balance + usage are refreshed. Disabled server-side
-   * once a real payment gateway is wired (403 → `{ ok:false, status:'error' }`).
-   */
-  topUpCustomCredits: (credits: number) => Promise<PurchaseOutcome>;
 }
 
 export type BillingSlice = BillingSliceState & BillingActions;
