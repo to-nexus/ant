@@ -162,6 +162,12 @@ export const REDIS_KEYS = {
     DEPLOY: `${REDIS_DOMAINS.INFRA}:deploy:`,
     /** Deploy list (SET) - ant:infra:deploy:list */
     DEPLOY_LIST: `${REDIS_DOMAINS.INFRA}:deploy:list`,
+    /** Custom domain record (deploy-only), keyed by lowercased hostname - ant:infra:customdomain:{hostname} */
+    CUSTOM_DOMAIN: `${REDIS_DOMAINS.INFRA}:customdomain:`,
+    /** Custom domain list (SET of hostnames) - ant:infra:customdomain:list */
+    CUSTOM_DOMAIN_LIST: `${REDIS_DOMAINS.INFRA}:customdomain:list`,
+    /** Custom domains for a deploy (SET of hostnames) - ant:infra:customdomain:byDeploy:{deployKey} */
+    CUSTOM_DOMAIN_BY_DEPLOY: `${REDIS_DOMAINS.INFRA}:customdomain:byDeploy:`,
     /**
      * Port allocation claim (SET NX) - ant:infra:port:{type}:{port}
      *

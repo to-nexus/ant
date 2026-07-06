@@ -40,6 +40,7 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import type { PreviewStructureType } from '../../core/ports/preview';
+import type { CustomDomain } from '@ant/shared';
 import { createIDEKey, createPreviewKey, createDeployKey, parseIDEKey, parsePreviewKey, parseDeployKey } from './redisKeyUtils';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import {
@@ -586,6 +587,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       REDIS_KEYS.INFRA.DEPLOY_LIST,
     );
 
+    // Custom domains — keyed by hostname (not portKey), so infraSweep can't
+    // parse them. Sweep via the per-deploy reverse index instead.
+    const customDomainCount = await this.sweepCustomDomains((deployKey) => {
+      const parsed = parseDeployKey(deployKey);
+      return !!parsed && parsed.projectId === projectId && parsed.tenantId === organizationId && parsed.userId === userId;
+    });
+
     logger.info(`[StateStore] cleanupProject done`, { component: 'RedisStateStore' }, {
       projectId,
       ideCount,
@@ -594,7 +602,44 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       previewCount,
       previewConfigCount,
       deployCount,
+      customDomainCount,
     });
+  }
+
+  /**
+   * Delete custom-domain records (+ list/reverse-index members) whose owning
+   * deployKey matches the predicate. Best-effort; used by cleanup cascades.
+   */
+  private async sweepCustomDomains(matchDeployKey: (deployKey: string) => boolean): Promise<number> {
+    const prefix = REDIS_KEYS.INFRA.CUSTOM_DOMAIN_BY_DEPLOY;
+    let cursor = '0';
+    let removed = 0;
+    try {
+      const byDeploySets: string[] = [];
+      do {
+        const [next, keys] = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+        cursor = next;
+        for (const fullKey of keys) {
+          const deployKey = fullKey.substring(prefix.length);
+          if (matchDeployKey(deployKey)) byDeploySets.push(fullKey);
+        }
+      } while (cursor !== '0');
+
+      for (const byDeployKey of byDeploySets) {
+        const hostnames = await this.redis.smembers(byDeployKey);
+        const pipeline = this.redis.pipeline();
+        for (const h of hostnames) {
+          pipeline.del(this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, h));
+          pipeline.srem(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_LIST, h);
+        }
+        pipeline.del(byDeployKey);
+        await pipeline.exec();
+        removed += hostnames.length;
+      }
+    } catch (err) {
+      logger.warn(`[StateStore] custom-domain sweep failed`, { component: 'RedisStateStore' }, { err });
+    }
+    return removed;
   }
 
   /**
@@ -640,10 +685,15 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
         await this.redis.del(indexKey);
       }
 
+      // Custom domains attached to THIS feature's deploy.
+      const featureDeployKey = createDeployKey(organizationId, userId, projectId, featureName);
+      const customDomainCount = await this.sweepCustomDomains((dk) => dk === featureDeployKey);
+
       logger.info(`[StateStore] cleanupFeature done`, { component: 'RedisStateStore' }, {
         projectId,
         featureName,
         jobCount: jobIds.length,
+        customDomainCount,
       });
     } catch (err) {
       logger.warn(`[StateStore] cleanupFeature failed (continuing)`, { component: 'RedisStateStore' }, {
@@ -1030,6 +1080,82 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
         state.lastAccessedAt = new Date(state.lastAccessedAt);
         return state;
       });
+  }
+
+  // ============================================
+  // Port Registry - Custom Domains (Deploy-only)
+  // ============================================
+
+  async registerCustomDomain(domain: CustomDomain): Promise<void> {
+    const hostname = domain.hostname.toLowerCase();
+    const record: CustomDomain = { ...domain, hostname };
+    const deployKey = createDeployKey(domain.tenantId, domain.userId, domain.projectId, domain.feature);
+    const key = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, hostname);
+    const byDeployKey = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_BY_DEPLOY, deployKey);
+
+    // Persisted WITHOUT TTL — a user's domain mapping must not silently expire
+    // while the deploy lives. Removed only via deleteCustomDomain / cleanup cascade.
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(record));
+    pipeline.sadd(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_LIST, hostname);
+    pipeline.sadd(byDeployKey, hostname);
+    await pipeline.exec();
+    logger.info(`[CustomDomain] Registered: ${hostname} -> ${deployKey}`, { component: 'RedisStateStore' });
+  }
+
+  async getCustomDomainByHost(hostname: string): Promise<CustomDomain | null> {
+    const key = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, hostname.toLowerCase());
+    const data = await this.redis.get(key);
+    if (!data) return null;
+    return JSON.parse(data) as CustomDomain;
+  }
+
+  async listCustomDomainsForDeploy(
+    tenantId: string, userId: string, projectId: string, feature: string,
+  ): Promise<CustomDomain[]> {
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const byDeployKey = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_BY_DEPLOY, deployKey);
+    const hostnames = await this.redis.smembers(byDeployKey);
+    if (hostnames.length === 0) return [];
+    const keys = hostnames.map(h => this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, h));
+    const values = await this.redis.mget(...keys);
+
+    // Clean up stale reverse-index members whose primary key is gone.
+    const staleMembers = hostnames.filter((_, i) => values[i] === null);
+    if (staleMembers.length > 0) {
+      this.redis.srem(byDeployKey, ...staleMembers).catch(() => {});
+      this.redis.srem(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_LIST, ...staleMembers).catch(() => {});
+    }
+
+    return values.filter((v): v is string => v !== null).map(v => JSON.parse(v) as CustomDomain);
+  }
+
+  async updateCustomDomainStatus(
+    hostname: string,
+    patch: Partial<Pick<CustomDomain, 'status' | 'certStatus' | 'error' | 'verifiedAt'>>,
+  ): Promise<void> {
+    const key = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, hostname.toLowerCase());
+    const data = await this.redis.get(key);
+    if (!data) return;
+    const record: CustomDomain = JSON.parse(data);
+    Object.assign(record, patch);
+    await this.redis.set(key, JSON.stringify(record));
+  }
+
+  async deleteCustomDomain(hostname: string): Promise<void> {
+    const h = hostname.toLowerCase();
+    const key = this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN, h);
+    const data = await this.redis.get(key);
+    const pipeline = this.redis.pipeline();
+    pipeline.del(key);
+    pipeline.srem(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_LIST, h);
+    if (data) {
+      const record: CustomDomain = JSON.parse(data);
+      const deployKey = createDeployKey(record.tenantId, record.userId, record.projectId, record.feature);
+      pipeline.srem(this.key(REDIS_KEYS.INFRA.CUSTOM_DOMAIN_BY_DEPLOY, deployKey), h);
+    }
+    await pipeline.exec();
+    logger.info(`[CustomDomain] Deleted: ${h}`, { component: 'RedisStateStore' });
   }
 
   // ============================================

@@ -28,6 +28,7 @@ import { ServiceConnectionsSection } from './sections/ServiceConnectionsSection'
 import { PreviewControlsSection } from './sections/PreviewControlsSection';
 import { StatusConsoleSection } from './sections/StatusConsoleSection';
 import { DeploySection, deployPhaseToSignal } from './sections/DeploySection';
+import { CustomDomainSection } from './sections/CustomDomainSection';
 import { ConsoleStreamSwitch } from './components/ConsoleStreamSwitch';
 import type { ConsoleStream } from './components/ConsoleStreamSwitch';
 import type { SignalRingState } from '@/presentation/components/ConfigEditor/aurora';
@@ -386,6 +387,12 @@ export function PreviewConfigEditor() {
             onDeploy={handleDeploy}
             onStopDeploy={handleStopDeploy}
             onOpenDeployUrl={openDeployUrl}
+          />
+
+          <CustomDomainSection
+            selectedProject={selectedProject}
+            selectedFeature={selectedFeature}
+            deployStatus={deployStatusData}
           />
         </TwoColLayout>
 
