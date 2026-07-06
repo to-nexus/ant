@@ -44,12 +44,12 @@ describe('custom-domain verification helpers', () => {
   });
 
   it('builds CNAME instructions for subdomains, A instructions for apex', () => {
-    const sub = buildDnsInstructions('app.example.com', 'tok', { cnameTarget: 'domains.cross.nexus', apexIps: ['1.1.1.1'] });
+    const sub = buildDnsInstructions('app.example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1'] });
     expect(sub.apex).toBe(false);
-    expect(sub.connection).toEqual({ kind: 'cname', name: 'app.example.com', value: 'domains.cross.nexus' });
+    expect(sub.connection).toEqual({ kind: 'cname', name: 'app.example.com', value: 'ant-domains.cross.nexus' });
     expect(sub.txt).toEqual({ name: '_ant-challenge.app.example.com', value: 'tok' });
 
-    const apex = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'domains.cross.nexus', apexIps: ['1.1.1.1', '2.2.2.2'] });
+    const apex = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1', '2.2.2.2'] });
     expect(apex.apex).toBe(true);
     expect(apex.connection).toEqual({ kind: 'a', name: 'example.com', values: ['1.1.1.1', '2.2.2.2'] });
   });
@@ -75,9 +75,9 @@ describe('custom-domain config gate', () => {
   it('disabled without a CNAME target, enabled with it', () => {
     delete process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET;
     expect(isCustomDomainEnabled()).toBe(false);
-    process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'domains.cross.nexus';
+    process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.cross.nexus';
     expect(isCustomDomainEnabled()).toBe(true);
-    expect(getCustomDomainCnameTarget()).toBe('domains.cross.nexus');
+    expect(getCustomDomainCnameTarget()).toBe('ant-domains.cross.nexus');
   });
 
   it('parses comma-separated apex IPs', () => {
@@ -103,7 +103,7 @@ function fakeStore() {
 }
 
 describe('CustomDomainService', () => {
-  beforeEach(() => { process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'domains.cross.nexus'; });
+  beforeEach(() => { process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.cross.nexus'; });
   afterEach(() => { delete process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET; vi.restoreAllMocks(); });
 
   it('register stores a pending_dns record + returns DNS instructions', async () => {

@@ -31,7 +31,7 @@ DNS-01 is unusable here (it needs the user's DNS API); HTTP-01 / TLS-ALPN-01
 work with just the user's CNAME/A record pointing at us.
 
 ```
-user domain ──(CNAME→domains.cross.nexus | apex A→NLB EIP)──▶ NLB(:80/:443)
+user domain ──(CNAME→ant-domains.cross.nexus | apex A→NLB EIP)──▶ NLB(:80/:443)
    └▶ Caddy (on-demand TLS; ask ant-preview:8080/internal/tls-ask)
         └▶ ant-preview (Host-routed via custom-domain registry → deploy)
 # existing {label}.ant-deploy.cross.nexus keeps its ALB + wildcard ACM path.
@@ -44,7 +44,7 @@ user domain ──(CNAME→domains.cross.nexus | apex A→NLB EIP)──▶ NLB(
 2. **Caddy Deployment + Service** (manifest below). Certificate storage MUST be
    shared across replicas — use the `caddy-storage-redis` module against the
    existing ElastiCache, else replicas double-issue and hit Let's Encrypt limits.
-3. **Route53**: `domains.cross.nexus` → NLB (the CNAME target users point at).
+3. **Route53**: `ant-domains.cross.nexus` → NLB (the CNAME target users point at).
 4. **ant-preview env**: set `ANT_CUSTOM_DOMAIN_CNAME_TARGET`,
    `ANT_CUSTOM_DOMAIN_APEX_IPS`, `ANT_TLS_ASK_SECRET` (see `.env.example.cloud`).
 5. **NetworkPolicy**: `/internal/tls-ask` reachable only from Caddy.
@@ -56,7 +56,7 @@ After this, there is **no per-user infra work** — issuance and routing are aut
 1. In the deploy panel, "Add custom domain" → enter hostname + pick package.
 2. Create the two DNS records ANT shows:
    - TXT `_ant-challenge.<hostname>` = `<token>` (ownership proof)
-   - CNAME `<hostname>` → `domains.cross.nexus` (apex: A record → NLB EIPs)
+   - CNAME `<hostname>` → `ant-domains.cross.nexus` (apex: A record → NLB EIPs)
 3. Click Verify. Once active, the first HTTPS hit triggers automatic cert issuance.
 
 ## Reference Caddyfile
