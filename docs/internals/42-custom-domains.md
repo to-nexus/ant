@@ -88,21 +88,21 @@ Route53, …). No servers, certificates, or builds. Steps:
 5. Visit `https://<your-domain>` — the cert auto-issues on first hit and the
    deploy serves at your domain, URL bar unchanged.
 
-**Worked example — subdomain `app.jhcompany.com`** (recommended: uses CNAME, so
+**Worked example — subdomain `app.mycompany.com`** (recommended: uses CNAME, so
 if our IPs change you don't have to touch anything):
 
 ```
-TXT     _ant-challenge.app.jhcompany.com   =  ant-verify-3f9a…     (ownership)
-CNAME   app.jhcompany.com                  →  ant-domains.cross.nexus   (connect)
+TXT     _ant-challenge.app.mycompany.com   =  ant-verify-3f9a…     (ownership)
+CNAME   app.mycompany.com                  →  ant-domains.cross.nexus   (connect)
 ```
 
-**Worked example — apex/root `jhcompany.com`** (DNS forbids CNAME at the root, so
+**Worked example — apex/root `mycompany.com`** (DNS forbids CNAME at the root, so
 use A records to the NLB IPs; requires `ANT_CUSTOM_DOMAIN_APEX_IPS` to be set):
 
 ```
-TXT   _ant-challenge.jhcompany.com   =  ant-verify-3f9a…     (ownership)
-A     jhcompany.com                  →  3.34.11.22           (connect, NLB EIP)
-A     jhcompany.com                  →  13.125.33.44
+TXT   _ant-challenge.mycompany.com   =  ant-verify-3f9a…     (ownership)
+A     mycompany.com                  →  3.34.11.22           (connect, NLB EIP)
+A     mycompany.com                  →  13.125.33.44
 ```
 
 If apex support is not provisioned, use a subdomain (`app.` / `www.`) instead —
