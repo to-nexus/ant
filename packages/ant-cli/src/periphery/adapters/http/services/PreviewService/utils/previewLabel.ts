@@ -13,7 +13,7 @@
 
 import { createHash } from 'crypto';
 import { toUrlKey, toUrlKeyWithService } from './serverKeyUtils';
-import { getPreviewBaseDomain } from '../../../../../../core/config/previewRouting';
+import { getPreviewBaseDomain, getDeployBaseDomain } from '../../../../../../core/config/previewRouting';
 
 const MAX_LABEL = 63;
 
@@ -73,17 +73,22 @@ export function labelForPackage(serverKey: string, opts: { pkgUrlKey?: string; s
 }
 
 /**
- * Public https URL for an app on its per-app subdomain. Returns null when no
- * base domain is configured (subdomain mode not fully provisioned) so callers
- * can fall back to the path-prefix URL.
+ * Public https URL for an app on its per-app subdomain. Returns null when the
+ * base domain is not configured (subdomain mode not fully provisioned) so
+ * callers can fall back to the path-prefix URL. The base MUST be passed in so
+ * preview and deploy pick their own base — they live under distinct hosts.
  */
-export function subdomainAppUrl(label: string): string | null {
-  const base = getPreviewBaseDomain();
+function subdomainUrl(label: string, base: string | undefined): string | null {
   return base ? `https://${label}.${base}` : null;
 }
 
-/** Convenience: subdomain URL for a urlKey (derives the label). */
-export function subdomainAppUrlForUrlKey(urlKey: string): string | null {
-  return subdomainAppUrl(toDnsLabel(urlKey));
+/** Preview subdomain URL for a urlKey (preview base domain). */
+export function previewSubdomainAppUrlForUrlKey(urlKey: string): string | null {
+  return subdomainUrl(toDnsLabel(urlKey), getPreviewBaseDomain());
+}
+
+/** Deploy subdomain URL for a urlKey (deploy base domain). */
+export function deploySubdomainAppUrlForUrlKey(urlKey: string): string | null {
+  return subdomainUrl(toDnsLabel(urlKey), getDeployBaseDomain());
 }
 

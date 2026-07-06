@@ -13,6 +13,10 @@ import {
   getPreviewBaseDomain,
   getDeployBaseDomain,
 } from '../../src/core/config/previewRouting';
+import {
+  previewSubdomainAppUrlForUrlKey,
+  deploySubdomainAppUrlForUrlKey,
+} from '../../src/periphery/adapters/http/services/PreviewService/utils/previewLabel';
 
 const BASE = 'ant-preview.test';
 const SERVER = { tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat' };
@@ -75,6 +79,19 @@ describe('previewRouting config SSOT', () => {
     expect(getPreviewRoutingMode()).toBe('path');
     expect(isSubdomainRouting()).toBe(false);
     expect(getDeployBaseDomain()).toBeUndefined();
+  });
+});
+
+describe('preview vs deploy subdomain URL (base-domain per surface)', () => {
+  // LABEL === toDnsLabel(LABEL) — the 4-part urlKey is already a valid DNS label.
+  it('preview URL uses the preview base; deploy URL uses the explicit deploy base', () => {
+    process.env.ANT_DEPLOY_BASE_DOMAIN = 'ant-deploy.test';
+    expect(previewSubdomainAppUrlForUrlKey(LABEL)).toBe(`https://${LABEL}.${BASE}`);
+    expect(deploySubdomainAppUrlForUrlKey(LABEL)).toBe(`https://${LABEL}.ant-deploy.test`);
+  });
+
+  it('deploy URL falls back to `deploy.<previewBase>` when no explicit deploy base', () => {
+    expect(deploySubdomainAppUrlForUrlKey(LABEL)).toBe(`https://${LABEL}.deploy.${BASE}`);
   });
 });
 
