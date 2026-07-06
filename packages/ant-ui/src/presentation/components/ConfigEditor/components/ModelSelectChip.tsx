@@ -8,6 +8,7 @@ const PROVIDER_ICON: Record<string, string> = {
   anthropic: '⬡',
   google: '◈',
   openai: '◉',
+  deepseek: '⬢',
 };
 
 interface ProviderAccent {
@@ -31,6 +32,11 @@ const PROVIDER_ACCENT: Record<string, ProviderAccent> = {
     fg: 'oklch(45% 0.16 155)',
     bg: 'oklch(94% 0.05 155 / 0.9)',
     ring: 'oklch(72% 0.14 155)',
+  },
+  deepseek: {
+    fg: 'oklch(45% 0.17 285)',
+    bg: 'oklch(94% 0.06 285 / 0.9)',
+    ring: 'oklch(72% 0.15 285)',
   },
 };
 
@@ -138,7 +144,7 @@ export function ModelSelectChip({
     acc[m.provider].push(m);
     return acc;
   }, {});
-  const providerOrder = ['anthropic', 'google', 'openai'].filter((p) => grouped[p]);
+  const providerOrder = ['anthropic', 'google', 'openai', 'deepseek'].filter((p) => grouped[p]);
 
   const handleSelect = (modelId: string) => {
     onChange(modelId);
