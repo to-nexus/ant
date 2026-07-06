@@ -84,7 +84,14 @@ export async function handleGracefulShutdown(reason: string, timeoutMs = 1800): 
     // If handleInterruption takes too long (e.g. stuck acquiring lock),
     // we bail out so the process can exit before SIGKILL arrives.
     const interruptionPromise = activeOrchestrator.handleInterruption(reason).then(() => {
-      console.log(`[GracefulShutdown] ✅ Orchestrator interrupted and checkpoint saved`);
+      // NOTE: this only means the interruption handler returned — it does NOT
+      // assert the checkpoint was persisted. The onCheckpoint write is gated by
+      // the poison flag (code/graph.ts, design/checkpoint.ts); when poisoned it
+      // logs `Checkpoint skipped — job poisoned` and the API-side pauseJob owns
+      // the durable projection instead. See the orchestrator logs for the
+      // authoritative persist outcome (focal-jetting-ember RCA — the prior
+      // unconditional "checkpoint saved" log was misleading).
+      console.log(`[GracefulShutdown] ✅ Orchestrator interruption handled (checkpoint persistence gated by poison flag — see orchestrator logs)`);
     });
 
     const timeoutPromise = new Promise<void>((resolve) => {
