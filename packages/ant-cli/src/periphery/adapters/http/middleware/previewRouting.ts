@@ -17,7 +17,8 @@
  */
 
 import { logger } from '../../../../utils/logger';
-import { packageSlug } from '../services/PreviewService/utils/serverKeyUtils';
+import { packageSlug, toUrlKey, parseUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
+import { toDnsLabel } from '../services/PreviewService/utils/previewLabel';
 
 export interface PreviewTarget {
   targetHost: string;
@@ -68,4 +69,72 @@ export function resolvePreviewTarget(
     targetPort: pkg.port,
     isFrontend: pkg.type === 'frontend',
   };
+}
+
+/**
+ * Minimal structural view of a preview registry record for label resolution —
+ * `PreviewState` (from `listPreviews`) satisfies it.
+ */
+export interface PreviewLabelPool {
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+  host?: string;
+  port: number; // entry port
+  packages?: ReadonlyArray<{ type: string; port: number; slug?: string; urlKey?: string }>;
+}
+
+export interface PreviewLabelMatch {
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+  /** 5th urlKey segment of the matched frontend (multi-frontend); undefined for a 4-part / single-frontend / top-level label. */
+  serviceName?: string;
+  host: string;
+  /** Entry (first frontend) port — the fallback when no per-package serviceName. */
+  port: number;
+  packages: ReadonlyArray<{ type: string; port: number; slug?: string; urlKey?: string }>;
+}
+
+/**
+ * Subdomain routing: resolve a Host DNS label to a preview's coordinates by
+ * RECOMPUTE-and-MATCH over the active preview set (deterministic label; small
+ * set — no extra Redis index). Mirrors `DeployService.resolveDeployLabel`.
+ *
+ * Returns the matched frontend package's `serviceName` (5-part urlKey) so the
+ * caller can route multi-frontend previews per-package via `resolvePreviewTarget`.
+ * A 4-part serverKey match (single frontend / top-level label) yields no
+ * `serviceName`, so the caller falls back to the entry `port`.
+ *
+ * SSOT: the single preview label resolver, shared by the HTTP proxy and the WS
+ * upgrade handler — symmetric with the single `resolvePreviewTarget` port SSOT.
+ */
+export function resolvePreviewLabel(
+  previews: ReadonlyArray<PreviewLabelPool>,
+  label: string,
+): PreviewLabelMatch | null {
+  for (const st of previews) {
+    const serverKey = `${st.tenantId}:${st.userId}:${st.projectId}:${st.feature}`;
+    const frontends = (st.packages || []).filter((p) => p.type === 'frontend');
+    const matched = frontends.find((p) => toDnsLabel(p.urlKey || toUrlKey(serverKey)) === label);
+    const matchesEntry = toDnsLabel(toUrlKey(serverKey)) === label;
+    if (matched || matchesEntry) {
+      const serviceName = matched
+        ? parseUrlKey(matched.urlKey || toUrlKey(serverKey))?.serviceName
+        : undefined;
+      return {
+        tenantId: st.tenantId,
+        userId: st.userId,
+        projectId: st.projectId,
+        feature: st.feature,
+        serviceName,
+        host: st.host || 'localhost',
+        port: st.port,
+        packages: st.packages || [],
+      };
+    }
+  }
+  return null;
 }
