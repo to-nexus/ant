@@ -8,7 +8,7 @@ import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, PreviewEr
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey, toUrlKey, toUrlKeyWithService, packageSlug } from './utils/serverKeyUtils';
-import { subdomainAppUrlForUrlKey } from './utils/previewLabel';
+import { previewSubdomainAppUrlForUrlKey } from './utils/previewLabel';
 import { isSubdomainRouting } from '../../../../../core/config/previewRouting';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
@@ -439,7 +439,7 @@ export class PreviewService {
    *                       falls back to `/{urlKey}` if no base domain configured.
    */
   private previewUrlForKey(urlKey: string): string {
-    if (isSubdomainRouting()) return subdomainAppUrlForUrlKey(urlKey) ?? `/${urlKey}`;
+    if (isSubdomainRouting()) return previewSubdomainAppUrlForUrlKey(urlKey) ?? `/${urlKey}`;
     return `/${urlKey}`;
   }
 

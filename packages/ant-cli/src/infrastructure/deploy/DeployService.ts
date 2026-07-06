@@ -41,7 +41,7 @@ import {
   packageSlug,
   parseUrlKey,
 } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
-import { subdomainAppUrlForUrlKey, toDnsLabel } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
+import { deploySubdomainAppUrlForUrlKey, toDnsLabel } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { isSubdomainRouting } from '../../core/config/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
@@ -107,7 +107,7 @@ function deployBasePathFor(urlKey: string): string {
  * (falls back to basePath if no base domain configured); path routing → basePath.
  */
 function deployUrlFor(urlKey: string, basePath: string): string {
-  if (isSubdomainRouting()) return subdomainAppUrlForUrlKey(urlKey) ?? basePath;
+  if (isSubdomainRouting()) return deploySubdomainAppUrlForUrlKey(urlKey) ?? basePath;
   return basePath;
 }
 
