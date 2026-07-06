@@ -59,6 +59,14 @@ export const getPreviewBase = (): string => {
 
 export const PREVIEW_BASE = () => getPreviewBase();
 
+/**
+ * Resolve an app (preview/deploy) URL returned by the backend.
+ * Subdomain routing returns an absolute URL on the app's OWN host → use verbatim.
+ * Path routing returns a root-relative path → prefix the preview origin.
+ */
+export const resolveAppUrl = (pathOrUrl: string): string =>
+  /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${PREVIEW_BASE()}${pathOrUrl}`;
+
 /** Server base URL without path prefix (for /ide/* etc.) */
 export const SERVER_BASE = () => getBackendBase();
 

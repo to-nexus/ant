@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Spinner } from '../common/async';
 import { useStore } from '@/domain/store';
 import { selectHasActiveCodeJob } from '@/domain/store/slices/jobSlice';
-import { PREVIEW_BASE } from '@/infrastructure/http/api';
+import { resolveAppUrl } from '@/infrastructure/http/api';
 import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
 import { useDeployManager } from '../FeatureSection/hooks/useDeployManager';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
@@ -194,7 +194,7 @@ export function PreviewConfigEditor() {
          )?.url
       ?? undefined;
     if (resolved) {
-      window.open(`${PREVIEW_BASE()}${resolved}`, '_blank');
+      window.open(resolveAppUrl(resolved), '_blank');
     }
   }, [vm.url, previewStatus?.packages]);
 
