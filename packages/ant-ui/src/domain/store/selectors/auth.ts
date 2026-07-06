@@ -57,6 +57,17 @@ export function selectIsAuthBlocked(state: StoreState): boolean {
   return state.authStatus === 'verifying';
 }
 
+/**
+ * Cloud account approval gate. `false` ONLY when the server explicitly reports
+ * a non-approved status (`pending` / `denied`). Local mode, legacy servers, and
+ * the pre-verify window all read `undefined` → approved (fail-open, matching the
+ * BE gate's posture; the BE always re-checks at job/chat start).
+ */
+export function selectIsApproved(state: StoreState): boolean {
+  const s = state.approvalStatus;
+  return s !== 'pending' && s !== 'denied';
+}
+
 /** Role in the active org (`'owner' | 'member'`), from memberships. */
 export function selectActiveUserRole(state: StoreState): 'owner' | 'member' | undefined {
   const m = state.memberships.find((x) => x.organizationId === state.userOrganization);

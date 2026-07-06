@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
+import { ApprovalBanner } from '@/presentation/components/common/ApprovalBanner';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useKanban } from '@/application/hooks/features/useKanban';
@@ -158,6 +159,8 @@ function AppShell() {
             result.user.userId,
             result.user.orgKind,
             result.memberships,
+            result.user.approvalStatus,
+            result.user.testAccountLevel,
           );
           useStore.getState().setOnboardingState(
             result.needsOnboarding,
@@ -220,6 +223,8 @@ function AppShell() {
           result.user.userId,
           result.user.orgKind,
           result.memberships,
+          result.user.approvalStatus,
+          result.user.testAccountLevel,
         );
         if (!hadEmail) {
           if (!result.needsOnboarding) {
@@ -584,7 +589,8 @@ function AppShell() {
       >
         {/* ✅ GNB uses hooks directly - no props needed */}
         <AppNavBar />
-        
+        <ApprovalBanner />
+
         {/* Main Layout — both views are always mounted; `display` toggles
             visibility so the IDE iframe (VSCode session + WebSocket) survives
             tab switches. Re-mount is triggered only by feature change or an

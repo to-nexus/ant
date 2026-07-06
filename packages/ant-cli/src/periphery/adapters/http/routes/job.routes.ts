@@ -9,6 +9,7 @@ import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
@@ -295,6 +296,25 @@ export function createJobRoutes(deps: {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
 
+      // Approval gate (stronger than credits): an unapproved account cannot
+      // start work. Re-checked every start, so admin revocation takes effect
+      // immediately. No-op on OSS/local (Noop repo → approved).
+      const notApprovedStart = await checkApproval(userContext);
+      if (notApprovedStart) {
+        const code = approvalErrorCode(notApprovedStart.status);
+        await emitConflictAssistantMessage(
+          projectId,
+          featureName,
+          seedTurnId,
+          `approval-${seedTurnId ?? Date.now()}`,
+          userContext,
+          code === 'ACCOUNT_DENIED'
+            ? '계정이 비활성화되었습니다. 관리자에게 문의해 주세요.'
+            : '관리자 승인 대기 중입니다. 승인 후 작업을 시작할 수 있습니다.',
+        );
+        return res.status(403).json({ error: 'Account is not approved.', code });
+      }
+
       // Credit pre-flight gate: block a NEW job when the balance is below the
       // minimum start floor. The live meter + settle debit during/after the
       // job; this gate stops a genuinely empty account from starting work.
@@ -395,6 +415,12 @@ export function createJobRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
+
+      // Approval gate — an unapproved account cannot start a learn job.
+      const notApprovedLearn = await checkApproval(userContext);
+      if (notApprovedLearn) {
+        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedLearn.status) });
+      }
 
       // Credit pre-flight gate — a learn job runs LLM indexing work.
       const lowLearn = await checkStartCredits(userContext);
@@ -724,6 +750,12 @@ export function createJobRoutes(deps: {
     try {
       const userContext = extractUserContext(req);
 
+      // Approval gate — an unapproved account cannot resume a job either.
+      const notApprovedResume = await checkApproval(userContext);
+      if (notApprovedResume) {
+        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedResume.status) });
+      }
+
       // Credit pre-flight gate: a paused job can only resume if the account is
       // back above the minimum start floor (e.g. after a top-up). Mirrors the
       // fresh-start gate so an insufficient_credits pause stays paused until paid.
@@ -876,6 +908,12 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
+
+      // Approval gate — continue = resume-with-new-directive; same block.
+      const notApprovedContinue = await checkApproval(userContext);
+      if (notApprovedContinue) {
+        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedContinue.status) });
+      }
 
       // Credit pre-flight gate (continue = resume-with-new-directive).
       const lowContinue = await checkStartCredits(userContext);

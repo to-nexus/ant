@@ -33,6 +33,8 @@ export const REDIS_DOMAINS = {
   BASELINE: `${APP_PREFIX}:baseline`,
   /** Credit billing — balance / ledger / account / in-flight hold (per org+user). */
   BILLING: `${APP_PREFIX}:billing`,
+  /** Cloud-mode admin config (global default-approval policy). */
+  ADMIN: `${APP_PREFIX}:admin`,
 } as const;
 
 // ============================================
@@ -290,6 +292,18 @@ export const REDIS_KEYS = {
     USER: `${REDIS_DOMAINS.AUTH}:user:`,
     /** Email → userId lookup - ant:auth:user:byEmail:{emailLower} (string) */
     USER_BY_EMAIL: `${REDIS_DOMAINS.AUTH}:user:byEmail:`,
+    /**
+     * All user ids (SET) - ant:auth:user:index. Enables admin enumeration
+     * (users are otherwise reachable only via the byEmail lookup). Backfilled
+     * via SCAN on first listUsers call.
+     */
+    USER_INDEX: `${REDIS_DOMAINS.AUTH}:user:index`,
+  },
+
+  /** Cloud-mode admin (ant:admin:*) */
+  ADMIN: {
+    /** Global default-approval policy - ant:admin:config (JSON) */
+    CONFIG: `${REDIS_DOMAINS.ADMIN}:config`,
   },
 
   /**

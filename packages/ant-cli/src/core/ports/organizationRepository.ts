@@ -14,7 +14,13 @@
  */
 
 import type { Organization, Membership, MembershipRole, UserRecord } from '../auth/types';
-import type { OrganizationKind } from '@ant/shared';
+import type {
+  OrganizationKind,
+  ApprovalStatus,
+  AdminConfig,
+  DefaultApprovalMode,
+  AdminUserListQuery,
+} from '@ant/shared';
 
 export interface OrganizationSummary {
   id: string;
@@ -112,4 +118,43 @@ export interface OrganizationRepositoryPort {
   backfillFromWorkspaceTree(
     entries: Array<{ userId: string; email?: string; organizationId: string }>,
   ): Promise<{ orgsCreated: number; usersCreated: number; membershipsCreated: number; skipped: number }>;
+
+  // -------- Approval / admin (cloud-only; Noop = always approved) --------
+
+  /**
+   * Read a user's approval state. Returns `'approved'` when the field is absent
+   * (legacy / unmanaged — never retroactively pended). This is the gate read
+   * consumed by the OSS job/chat start routes.
+   */
+  getUserApproval(userId: string): Promise<ApprovalStatus>;
+
+  /**
+   * Set a user's approval state to any of approved/pending/denied (bidirectional
+   * control — applies to already-approved and legacy users too). Records
+   * `approvedAt` + `approvedBy`. No-op when the user does not exist.
+   */
+  setUserApproval(userId: string, status: ApprovalStatus, adminEmail: string): Promise<void>;
+
+  /** Set the test-account level (0 = normal, ≥1 = test-payment enabled). */
+  setTestAccountLevel(userId: string, level: number, adminEmail: string): Promise<void>;
+
+  /**
+   * Enumerate users for the admin dashboard. Backed by a `USER_INDEX` SET
+   * (backfilled from `SCAN` on first call). Optional `status` filters by
+   * approval state.
+   */
+  listUsers(query?: AdminUserListQuery): Promise<UserRecord[]>;
+
+  /** Global default-approval policy (defaults to `auto-approve`). */
+  getAdminConfig(): Promise<AdminConfig>;
+
+  /** Set the global default-approval policy. */
+  setAdminConfig(mode: DefaultApprovalMode, adminEmail: string): Promise<void>;
+
+  /**
+   * Reconcile the DB `isSuperAdmin` flag against the env allowlist: emails in
+   * the list are flagged + force-approved, emails no longer present are cleared.
+   * Ensures the `USER_INDEX` backfill has run first.
+   */
+  syncSuperAdmins(emails: string[]): Promise<void>;
 }

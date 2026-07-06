@@ -10,7 +10,7 @@
  * forward compatibility now).
  */
 
-import type { OrganizationKind } from '@ant/shared';
+import type { OrganizationKind, ApprovalStatus } from '@ant/shared';
 
 export interface Organization {
   /** Slugified organization id — primary key. */
@@ -52,4 +52,18 @@ export interface UserRecord {
   /** Org the user is currently active in (matches JWT `org` claim). */
   currentOrganizationId: string | null;
   createdAt: string;
+  /**
+   * Cloud account approval ("verification") state. `undefined` ⇒ legacy /
+   * unmanaged, treated as `approved` (never retroactively pended). Set at signup
+   * from the global default policy and mutated by admins. OSS/local ignore it.
+   */
+  approvalStatus?: ApprovalStatus;
+  /** ISO-8601 of last approval change. */
+  approvedAt?: string;
+  /** Admin email that last set the approval state. */
+  approvedBy?: string;
+  /** Projection of `ANT_SUPER_ADMIN_EMAILS` (env is authoritative for gating). */
+  isSuperAdmin?: boolean;
+  /** 0/undefined = normal; ≥1 = test-payment enabled (2/3 reserved). */
+  testAccountLevel?: number;
 }

@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, ChevronDown } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { selectServerMode } from '@/domain/store/selectors/auth';
+import { selectServerMode, selectIsApproved } from '@/domain/store/selectors/auth';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -44,6 +44,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isAuthenticated = serverMode === 'local' || !!userEmail;
+  const isApproved = useStore((state) => selectIsApproved(state));
+  const approvalStatus = useStore((state) => state.approvalStatus);
 
   const chatPolicy = useChatPolicy(messageCount);
   const { stopJob } = useJobExecution();
@@ -161,6 +163,29 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
               <span>{t('input.send')}</span>
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Cloud account not yet approved (or denied) — the BE hard-blocks job/chat
+  // start with a 403, so disable the composer with a clear message rather than
+  // let the user type into a dead box.
+  if (isAuthenticated && !isApproved) {
+    return (
+      <div className="p-3 relative">
+        <div
+          className="px-3 py-3 text-sm leading-relaxed"
+          style={{
+            background: 'var(--bg-surface-2)',
+            border: '1px solid var(--border-1)',
+            borderRadius: 'var(--r-md)',
+            color: 'var(--text-3)',
+          }}
+        >
+          {approvalStatus === 'denied'
+            ? '이 계정은 비활성화되었습니다. 작업/채팅을 시작할 수 없습니다. 관리자에게 문의해 주세요.'
+            : '관리자 승인 대기 중입니다. 승인이 완료되면 작업과 채팅을 시작할 수 있습니다.'}
         </div>
       </div>
     );

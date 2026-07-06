@@ -70,6 +70,10 @@ export class NoopCreditLedger implements CreditLedgerPort {
     // intentional no-op
   }
 
+  async refund(): Promise<BalanceSnapshot> {
+    return this.freeSnapshot();
+  }
+
   async listTransactions(): Promise<CreditTransaction[]> {
     return [];
   }
