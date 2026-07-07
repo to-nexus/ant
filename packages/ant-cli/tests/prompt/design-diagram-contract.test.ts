@@ -98,7 +98,9 @@ describe('design base/system.md is universal-only (post architectural-design rel
 
   it('keeps universal blocks (operational forbidden + writing rules + diagram-contract)', () => {
     expect(base).toMatch(/Operational Concerns/);
-    expect(base).toMatch(/If it's not in the PRD/);
+    // Neutralized (game-domain-plan-snug-dusk P1): the always-on design base is
+    // domain-neutral — "PRD" → "requirements document (PRD / GDD)".
+    expect(base).toMatch(/If it's not in the requirements document/);
     expect(base).toMatch(/UNIVERSAL WRITING RULES/);
     expect(base).toMatch(/\*\*Conciseness\*\*/);
     expect(base).toMatch(/\*\*Bullet Lists\*\*/);
@@ -118,7 +120,7 @@ describe('execute/variants/system-design carries architectural identity', () => 
   it('declares architectural design specialization', () => {
     expect(file).toMatch(/<design_specialization>/);
     expect(file).toMatch(/ARCHITECTURAL DESIGN DOCUMENT/);
-    expect(file).toMatch(/paired with the PRD/);
+    expect(file).toMatch(/paired with the requirements document/);
   });
 
   it('owns Three-Tier Abstraction + WHAT vs HOW + Forbidden Content', () => {
@@ -170,7 +172,7 @@ describe('plan/variants both carry their identity (compact form)', () => {
     const file = read('jobs/design/nodes/plan/variants/system-design/base.md');
     expect(file).toMatch(/<design_specialization>/);
     expect(file).toMatch(/ARCHITECTURAL DESIGN DOCUMENT/);
-    expect(file).toMatch(/paired with the PRD/);
+    expect(file).toMatch(/paired with the requirements document/);
   });
 
   it('plan/variants/spec/base.md mentions self-contained spec identity', () => {

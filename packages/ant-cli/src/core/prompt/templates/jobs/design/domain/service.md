@@ -130,4 +130,15 @@ For each major external dependency (APIs, storage, queues), document:
 ❌ Concrete state management library names and hook usage  
 ❌ Mount/unmount timing or view lifecycle mechanics  
 
+### 6. Unstated Requirements — Do NOT invent (Service-Specific)
+
+The base rules forbid inventing cross-cutting requirements the requirements document did not state; for a service these are the categories that most tempt over-production:
+
+- Accessibility standards (WCAG, ARIA, a11y) unless the PRD explicitly requires them
+- Testing strategies unless the PRD mentions testing
+- Security compliance (SOC2, HIPAA, GDPR) unless the PRD requires them
+- Performance SLAs (99.9% uptime) unless the PRD specifies them
+- Internationalization (i18n) unless the PRD mentions multiple languages
+- Analytics/tracking unless the PRD requests it
+
 This guide is **service-domain specific** and MUST NOT be injected for game projects.

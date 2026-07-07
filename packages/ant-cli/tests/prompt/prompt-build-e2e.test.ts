@@ -487,6 +487,60 @@ describe('E2E: Plan', () => {
 });
 
 // ============================================
+// 7b. Plan domain overlay — MUST render even when `basis` is undefined
+// (game-domain-plan-snug-dusk P0-B: the domain overlay is domain-driven, not
+// basis-driven. gen-plan never populates `basis` — before the fix the whole
+// basis section, incl. the domain overlay, was silently dropped, so a game
+// plan lost its GDD skeleton and a neutralized service base would lose PRD
+// framing too.)
+// ============================================
+
+describe('E2E: Plan domain overlay with undefined basis', () => {
+  async function buildPlan(domain: 'game' | 'service' | undefined): Promise<PromptBuildResult> {
+    const rac = resolveToRAC(
+      'gen-plan' as IntentId,
+      (domain ? { domain } : {}) as any,
+      'infer',
+      undefined, // basis intentionally undefined — the regression condition
+    );
+    const config: PromptBuildConfig = {
+      templates: {
+        base: 'jobs/plan/nodes/plan/variants/default/base',
+        rules: 'jobs/plan/nodes/plan/variants/default/rules',
+      },
+      intent: 'gen-plan' as IntentId,
+      pipeline: { includeBasis: true },
+      basis: undefined,
+      techContext: { resolvedAction: rac },
+      vars: { directive: 'Make a match-3 game', isKorean: false },
+    };
+    return promptBuilder.build(config);
+  }
+
+  it('game domain → GDD overlay injected despite undefined basis', async () => {
+    const result = await buildPlan('game');
+    assertNoFailedTemplates(result);
+    expect(result.sections.profiles).toContain('Domain Identity — Game');
+    expect(result.sections.profiles).toContain('Plan-Overlay — Game Domain');
+    // and NOT the service skeleton
+    expect(result.sections.profiles).not.toContain('Plan-Overlay — Service Domain');
+  });
+
+  it('service domain → PRD overlay injected despite undefined basis (no regression)', async () => {
+    const result = await buildPlan('service');
+    assertNoFailedTemplates(result);
+    expect(result.sections.profiles).toContain('Domain Identity — Service');
+    expect(result.sections.profiles).toContain('Plan-Overlay — Service Domain');
+  });
+
+  it('undefined domain → defaults to service overlay (base/rules are domain-neutral, must not be frameless)', async () => {
+    const result = await buildPlan(undefined);
+    assertNoFailedTemplates(result);
+    expect(result.sections.profiles).toContain('Plan-Overlay — Service Domain');
+  });
+});
+
+// ============================================
 // Cross-cutting: Refactor mode
 // ============================================
 

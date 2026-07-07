@@ -38,7 +38,7 @@ export function getTargetPath(state: PlanGraphState): string | undefined {
 export async function buildSystemPrompt(
   state: PlanGraphState,
   compaction: { entries: ConversationMessage[]; summary?: string; wasCompacted: boolean },
-): Promise<string> {
+): Promise<{ prompt: string; injectedTemplates: string[]; basisInjected: boolean }> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available in state.deps');
 
@@ -105,5 +105,12 @@ export async function buildSystemPrompt(
     },
   });
 
-  return [result.user, result.system].filter(Boolean).join('\n\n---\n\n');
+  return {
+    prompt: [result.user, result.system].filter(Boolean).join('\n\n---\n\n'),
+    // Logging fidelity: expose what was ACTUALLY assembled so the debug prompt
+    // log reflects real injection (the domain overlay / basis section) instead
+    // of a hardcoded template list that hid the born-dead-overlay bug.
+    injectedTemplates: result.injections ?? [],
+    basisInjected: !!result.sections?.profiles,
+  };
 }
