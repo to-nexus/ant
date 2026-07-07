@@ -146,7 +146,10 @@ if (!rootElement) {
 // store module evaluates. The store is created the first time `./presentation/App`
 // is imported, so this conditional import must run (and complete) first.
 // An OSS build leaves `VITE_INCLUDE_CLOUD` unset → the dynamic import (and the
-// entire `@ant/cloud/ui` graph reachable from it) is dead-code-eliminated.
+// entire `@ant/cloud/ui` graph reachable from it) is dead-code-eliminated by
+// Rollup in `vite build`. The dev server does NOT DCE it (import-analysis
+// resolves every `import()` literal eagerly), so the `ant-cloud-seam-stub`
+// Vite plugin resolves the specifier to an empty module when cloud is off.
 async function bootstrap() {
   if (import.meta.env.VITE_INCLUDE_CLOUD === 'true') {
     await import('@ant/cloud/ui');

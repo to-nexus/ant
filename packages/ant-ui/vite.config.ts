@@ -1,4 +1,4 @@
-import { defineConfig, type PluginOption, type Connect } from 'vite';
+import { defineConfig, loadEnv, type PluginOption, type Connect } from 'vite';
 import react from '@vitejs/plugin-react';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -153,42 +153,72 @@ function auroraCasesDevStatic(): PluginOption {
   };
 }
 
-export default defineConfig({
-  base: '/app/',
-  plugins: [antSiteProxy(), auroraCasesDevStatic(), react()],
-  resolve: {
-    alias: {
-      '@': '/src',
-      '@/presentation': '/src/presentation',
-      '@/application': '/src/application',
-      '@/domain': '/src/domain',
-      '@/infrastructure': '/src/infrastructure',
-      '@/shared': '/src/shared',
-      // OSS / cloud seam: cloud-only FE source lives in the @ant/cloud overlay
-      // package, whose location differs by repo topology — sibling `packages/ant-cloud`
-      // in the in-place monorepo, or `<ant-cloud>/packages/cloud/src/ui` once `ant`
-      // is embedded as a submodule. `ANT_CLOUD_UI_DIR` (set by the cloud UI build)
-      // overrides the path; the default keeps the in-place monorepo working. Only
-      // referenced when VITE_INCLUDE_CLOUD pulls @ant/cloud/ui into the graph — the
-      // OSS build leaves it unset and Vite DCEs the whole subtree.
-      '@cloud': process.env.ANT_CLOUD_UI_DIR || path.resolve(__dirname, '../ant-cloud/src/ui'),
+/**
+ * OSS / cloud seam (dev-server half). `main.tsx` gates `import('@ant/cloud/ui')`
+ * on `VITE_INCLUDE_CLOUD`, relying on Vite to drop the subtree when the flag is
+ * unset. That DCE only happens in `vite build` (Rollup folds `if (false)` before
+ * resolution); the dev server's `import-analysis` lexes every `import()` string
+ * literal and eagerly resolves it regardless of reachability, so an OSS checkout
+ * (no `@ant/cloud` package) crashes with an unresolved-import error. Resolve the
+ * specifier to an empty side-effect-free module when cloud is off — the registrar
+ * is imported only for its side effects, so a no-op module is correct. When cloud
+ * IS included, we return `null` and real resolution proceeds unchanged.
+ */
+function cloudSeamStub(includeCloud: boolean): PluginOption {
+  const SPEC = '@ant/cloud/ui';
+  const STUB = '\0virtual:ant-cloud-ui-stub';
+  return {
+    name: 'ant-cloud-seam-stub',
+    enforce: 'pre',
+    resolveId(id) {
+      return id === SPEC && !includeCloud ? STUB : null;
     },
-  },
-  optimizeDeps: {
-    esbuildOptions: {
-      loader: {
-        '.js': 'jsx',  // Allow JSX in .js files
+    load(id) {
+      return id === STUB ? 'export {};' : null;
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, path.resolve(__dirname), 'VITE_');
+  const includeCloud = env.VITE_INCLUDE_CLOUD === 'true';
+  return {
+    base: '/app/',
+    plugins: [antSiteProxy(), auroraCasesDevStatic(), react(), cloudSeamStub(includeCloud)],
+    resolve: {
+      alias: {
+        '@': '/src',
+        '@/presentation': '/src/presentation',
+        '@/application': '/src/application',
+        '@/domain': '/src/domain',
+        '@/infrastructure': '/src/infrastructure',
+        '@/shared': '/src/shared',
+        // OSS / cloud seam: cloud-only FE source lives in the @ant/cloud overlay
+        // package, whose location differs by repo topology — sibling `packages/ant-cloud`
+        // in the in-place monorepo, or `<ant-cloud>/packages/cloud/src/ui` once `ant`
+        // is embedded as a submodule. `ANT_CLOUD_UI_DIR` (set by the cloud UI build)
+        // overrides the path; the default keeps the in-place monorepo working. Only
+        // referenced when VITE_INCLUDE_CLOUD pulls @ant/cloud/ui into the graph — the
+        // OSS build leaves it unset and Vite DCEs the whole subtree.
+        '@cloud': process.env.ANT_CLOUD_UI_DIR || path.resolve(__dirname, '../ant-cloud/src/ui'),
       },
     },
-  },
-  server: {
-    port: 4200,
-    open: false,
-    proxy: PROXY_TABLE,
-  },
-  preview: {
-    port: 4200,
-    open: false,
-    proxy: PROXY_TABLE,
-  },
+    optimizeDeps: {
+      esbuildOptions: {
+        loader: {
+          '.js': 'jsx',  // Allow JSX in .js files
+        },
+      },
+    },
+    server: {
+      port: 4200,
+      open: false,
+      proxy: PROXY_TABLE,
+    },
+    preview: {
+      port: 4200,
+      open: false,
+      proxy: PROXY_TABLE,
+    },
+  };
 })
