@@ -2,7 +2,7 @@
  * API base + server-mode SSOT for the marketing site.
  *
  * `NEXT_PUBLIC_API_BASE` is the split-host backend origin (e.g.
- * ant.crosstoken.io → ant-server.crosstoken.io). Empty string means a
+ * ant.cross.nexus → ant-server.cross.nexus). Empty string means a
  * single-origin / local-mode build with no backend round-trip available —
  * mirrors ant-ui's `VITE_CLOUD_BACKEND_BASE` empty ⇒ local-mode discipline.
  *
