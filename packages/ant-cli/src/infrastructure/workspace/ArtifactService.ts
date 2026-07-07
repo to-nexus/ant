@@ -3,7 +3,7 @@
  *
  * Feature 개발 과정의 입출력 artifact 파일 관리 (도메인 트리)
  * - meta/directives/: 작업 지시사항
- * - plan/: PRD / GDD 등 입력 자료 (depth -1, 파일 직속)
+ * - plan/: PRD 등 입력 자료 (depth -1, 파일 직속)
  * - architecture/{system,spec}/: 시스템 설계 문서 (system .md / spec .md)
  * - visual/{ui,game-art}/{ant,figma,handoff}/: UI / 게임 아트 디자인 산출물
  * - meta/evals/: 평가 리포트

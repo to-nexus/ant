@@ -64,7 +64,8 @@ export interface TriageResult {
   /**
    * Derived (SSOT `deriveTriageDomain`): actionMetadata.domain →
    * `design-game-art` intent group → game-shaped workspaceState hint
-   * (`gdd.md` / `visual/game-art/`) → default `'service'`.
+   * (`visual/game-art/`) → default `'service'`. Plan filenames are NOT a
+   * domain signal — the plan document is the domain-neutral `plan/prd.md`.
    */
   domain: Domain;
 }
@@ -139,9 +140,9 @@ export interface MonorepoLayout {
  * `hasVisual*`, `hasAssets`, `hasMeta*`) — see Phase B canonical layout.
  */
 export interface WorkspaceState {
-  // Plan track — `plan/` (text-bearing files such as prd.md / gdd.md / tech-spec.md)
-  hasPlan: boolean;              // any text file in plan/ (prd.md, gdd.md, etc.)
-  planPath?: string;             // path to canonical plan file (prd.md or gdd.md)
+  // Plan track — `plan/` (text-bearing files such as prd.md / tech-spec.md)
+  hasPlan: boolean;              // any text file in plan/ (prd.md, etc.)
+  planPath?: string;             // path to canonical plan file (prd.md)
   planFileCount?: number;        // number of text files in plan/
   planFileNames?: string[];      // e.g. ["prd.md", "tech-spec.md"]
 

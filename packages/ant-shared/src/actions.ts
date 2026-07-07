@@ -48,12 +48,11 @@ export interface ActionDefinition {
    */
   readonly domainGate?: ReadonlyArray<Domain>;
   /**
-   * Per-domain label / description overrides. When `actionMetadata.domain`
-   * matches a key, the override wins; otherwise the static `label` /
-   * `description` is used. Currently used by the `plan` action card so
-   * service projects render "PRD" / "Create or revise product
-   * requirements" while game projects render "GDD" / "Create or revise
-   * game design document".
+   * Per-domain description overrides. When `actionMetadata.domain` matches
+   * a key, the override wins; otherwise the static `description` is used.
+   * The `label` is domain-neutral — the plan document is a single artifact
+   * kind ("PRD" / "기획서") across every domain; a game project's PRD
+   * carries game sections via the overlay, not a different name.
    */
   readonly labelByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
   readonly descriptionByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
@@ -65,17 +64,11 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     label: { en: 'PRD', ko: '기획서' },
     description: { en: 'Create or revise product requirements', ko: '기획서를 작성하거나 보강합니다' },
     status: 'active',
-    // D28-revised — service workspaces still see "PRD"; game workspaces
-    // see "GDD" so the action card mirrors the canonical artifact name
-    // (`plan/prd.md` vs `plan/gdd.md`). Korean is domain-neutral
-    // ('기획서') because both surfaces translate to the same noun.
-    labelByDomain: {
-      service: { en: 'PRD', ko: '기획서' },
-      game: { en: 'GDD', ko: '기획서' },
-    },
+    // The label is the same "PRD" / "기획서" in every domain. Only the
+    // description is domain-flavored — a game PRD scopes concept / coreloop
+    // / content rather than product requirements.
     descriptionByDomain: {
-      service: { en: 'Create or revise product requirements', ko: '기획서를 작성하거나 보강합니다' },
-      game: { en: 'Create or revise the game design document', ko: '게임 기획서를 작성하거나 보강합니다' },
+      game: { en: "Create or revise the game's PRD (concept, coreloop, content scope)", ko: '게임 기획서(콘셉트·코어루프·콘텐츠 범위)를 작성하거나 보강합니다' },
     },
   },
   {
@@ -160,21 +153,17 @@ export interface IntentDefinitionShape {
 }
 
 const INTENT_DEFINITIONS_INTERNAL = [
-  // Plan — D28-revised: domain-aware labels (service → PRD, game → GDD).
-  // Korean labels stay domain-neutral ('기획서') because the same noun
-  // covers both surfaces.
+  // Plan — the label is domain-neutral ("PRD" / "기획서"): the plan
+  // document is a single artifact kind across every domain. Only the
+  // description is domain-flavored, and only to scope a game PRD's
+  // sections — it never reintroduces a separate "GDD" name.
   {
     id: 'gen-plan',
     intentGroup: 'plan',
     label: { en: 'Create PRD', ko: '기획서 작성' },
     description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' },
-    labelByDomain: {
-      service: { en: 'Create PRD', ko: '기획서 작성' },
-      game: { en: 'Create GDD', ko: '기획서 작성' },
-    },
     descriptionByDomain: {
-      service: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' },
-      game: { en: 'Generate a new game design document', ko: '새 게임 기획서를 작성합니다' },
+      game: { en: "Generate a new PRD for the game (concept, coreloop, content scope)", ko: '새 게임 기획서(콘셉트·코어루프·콘텐츠 범위)를 작성합니다' },
     },
   },
   {
@@ -182,13 +171,8 @@ const INTENT_DEFINITIONS_INTERNAL = [
     intentGroup: 'plan',
     label: { en: 'Update PRD', ko: '기획서 업데이트' },
     description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' },
-    labelByDomain: {
-      service: { en: 'Update PRD', ko: '기획서 업데이트' },
-      game: { en: 'Update GDD', ko: '기획서 업데이트' },
-    },
     descriptionByDomain: {
-      service: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' },
-      game: { en: 'Revise existing GDD document', ko: '기존 게임 기획서를 업데이트합니다' },
+      game: { en: "Revise the game's existing PRD", ko: '기존 게임 기획서를 업데이트합니다' },
     },
   },
   {
@@ -196,13 +180,8 @@ const INTENT_DEFINITIONS_INTERNAL = [
     intentGroup: 'plan',
     label: { en: 'Explain PRD', ko: '기획서 설명' },
     description: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' },
-    labelByDomain: {
-      service: { en: 'Explain PRD', ko: '기획서 설명' },
-      game: { en: 'Explain GDD', ko: '기획서 설명' },
-    },
     descriptionByDomain: {
-      service: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' },
-      game: { en: 'Explain GDD content and requirements', ko: '게임 기획서 내용과 요구사항을 설명합니다' },
+      game: { en: "Explain the game's PRD content and requirements", ko: '게임 기획서 내용과 요구사항을 설명합니다' },
     },
   },
 

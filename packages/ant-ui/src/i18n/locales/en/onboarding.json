@@ -97,7 +97,7 @@
       "gitErrorAbort": "Abort",
       "inputFiles": "Artifacts",
       "sources": "Spec/Requirements",
-      "sourcesTooltip": "Plan document (PRD or GDD), feature specs, requirements documents (.md, .txt, .json, etc.)",
+      "sourcesTooltip": "Plan document (PRD), feature specs, requirements documents (.md, .txt, .json, etc.)",
       "assets": "UI Assets",
       "assetsTooltip": "Actual image files for the app — icons, logos, backgrounds (.svg, .png, .jpg, .webp)",
       "designDocs": "Design Docs",

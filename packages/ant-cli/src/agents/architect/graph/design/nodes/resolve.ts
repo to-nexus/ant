@@ -170,26 +170,23 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       prd = undefined;
     }
 
-    // Template check for generate mode — the plan-job canonical filename
-    // is domain-aware (service → prd.md, game → gdd.md). Either file
-    // sitting in template state should be surfaced to the user as the
-    // same fix-the-template error.
+    // Template check for generate mode — the plan-job canonical output is
+    // the domain-neutral `plan/prd.md`. A file sitting in template state
+    // should be surfaced to the user as the fix-the-template error.
     if (jobMode === 'generate' && !prd) {
       const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
       const sourceDirAbs = path.join(featurePathAbs, ARTIFACT_PREFIX.SOURCES);
       const root = fileSystem.getRootPath?.() || '';
       const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
-      for (const planFilename of ['prd.md', 'gdd.md'] as const) {
-        const planPath = path.join(sourceDir, planFilename);
-        if (await fileSystem.fileExists(planPath)) {
-          const raw = await fileSystem.readFile(planPath);
-          if (raw && isTemplateContent(raw)) {
-            throw new Error(
-              `기획서(${planFilename})가 아직 템플릿 상태입니다.\n` +
-              `- ${planFilename} 상단의 \`<!-- ant:template -->\` 줄을 삭제하고 내용을 채워주세요.\n` +
-              "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다.",
-            );
-          }
+      const planPath = path.join(sourceDir, 'prd.md');
+      if (await fileSystem.fileExists(planPath)) {
+        const raw = await fileSystem.readFile(planPath);
+        if (raw && isTemplateContent(raw)) {
+          throw new Error(
+            `기획서(prd.md)가 아직 템플릿 상태입니다.\n` +
+            `- prd.md 상단의 \`<!-- ant:template -->\` 줄을 삭제하고 내용을 채워주세요.\n` +
+            "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다.",
+          );
         }
       }
     }

@@ -156,7 +156,7 @@ export interface RefineImpactAffected {
   taskId: string;
   taskName: string;
   targetFile?: string;
-  /** PRD/GDD identifiers / `§X` markers this task cited that were rewritten. */
+  /** PRD identifiers / `§X` markers this task cited that were rewritten. */
   matchedSections: string[];
 }
 
@@ -172,9 +172,9 @@ export interface RefineImpactAffected {
  * in `chat-status.ts` and the FE alert renderer both rely on it.
  */
 export interface RefineImpactMetadata {
-  /** Canonical plan output that was rewritten by `rev-plan`. */
-  updatedDoc: 'prd.md' | 'gdd.md';
-  /** PRD/GDD section markers / stable identifiers extracted from the diff. */
+  /** Canonical plan output that was rewritten by `rev-plan` (`prd.md`). */
+  updatedDoc: 'prd.md';
+  /** PRD section markers / stable identifiers extracted from the diff. */
   updatedSections: string[];
   /** Cascade layers that contributed (LLM tag, git diff, or user directive). */
   diffSources: Array<'llm-tag' | 'git-diff' | 'directive'>;

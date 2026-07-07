@@ -2,7 +2,7 @@
  * RefineImpactCard - Cross-document sync alert for the operator.
  *
  * Emitted by the rev-plan completion hook (F3). Surfaces:
- *   - which PRD/GDD sections were rewritten,
+ *   - which PRD sections were rewritten,
  *   - which design tasks cite those sections (and are now stale),
  *   - which design tasks the sync canNOT speak about because the
  *     authoring checkpoint did not have the plan doc as `role='ref'`
@@ -33,7 +33,7 @@ function isRefineImpactMetadata(
 ): raw is RefineImpactMetadata {
   if (!raw || typeof raw !== 'object') return false;
   const updatedDoc = (raw as { updatedDoc?: unknown }).updatedDoc;
-  return updatedDoc === 'prd.md' || updatedDoc === 'gdd.md';
+  return updatedDoc === 'prd.md';
 }
 
 export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: _pending }: RefineImpactCardProps) {

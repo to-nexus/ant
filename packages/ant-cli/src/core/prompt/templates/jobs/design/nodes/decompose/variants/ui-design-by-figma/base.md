@@ -57,7 +57,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 ---
 
-## ⚖️ PRD/GDD ↔ FIGMA CONFLICT POLICY
+## ⚖️ PRD ↔ FIGMA CONFLICT POLICY
 
 {{> jobs/design/shared/asset-conflict-policy}}
 

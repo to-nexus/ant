@@ -1,12 +1,12 @@
-## Plan-Overlay — Game Domain (Game Design Document Skeleton)
+## Plan-Overlay — Game Domain (PRD Skeleton)
 
 **Activation gate**: job `plan` × `domain === 'game'`. Layered on top of `templates/domain/game.md` (identity, D27).
 
-This overlay defines the **game design document (GDD) skeleton** for game projects. Use it when the planning intent (`gen-plan` / `rev-plan`) authors the design document. The plan job decides **what kind of game it is**, **why it is fun**, **what the player does and feels** (mechanic / aesthetic / progression / fail / reward), and **what bounds the prototype** (content scope, input & perspective, modes, meta-progression). System-level commitments (state ownership, simulation determinism, event flow, multiplayer synchronization) and game-art selection (palette / silhouette / lighting / asset categorization) belong to the design jobs that consume this GDD — those words MUST NOT appear here. The GDD is the SSOT consumed by `system-design` and `game-art-design-by-{desc,figma}` decompose; sections must be authored so design tasks can cite them by stable identifier.
+This overlay defines the **PRD skeleton** for game projects. Use it when the planning intent (`gen-plan` / `rev-plan`) authors the design document. The plan job decides **what kind of game it is**, **why it is fun**, **what the player does and feels** (mechanic / aesthetic / progression / fail / reward), and **what bounds the prototype** (content scope, input & perspective, modes, meta-progression). System-level commitments (state ownership, simulation determinism, event flow, multiplayer synchronization) and game-art selection (palette / silhouette / lighting / asset categorization) belong to the design jobs that consume this PRD — those words MUST NOT appear here. The PRD is the SSOT consumed by `system-design` and `game-art-design-by-{desc,figma}` decompose; sections must be authored so design tasks can cite them by stable identifier.
 
-### MECE GDD section map (12 + Optional)
+### MECE PRD section map (12 + Optional)
 
-The GDD is partitioned into a **Required core (8)**, **Conditional (4)**, and **Optional sections (game-specific extensions)**. Required-core sections appear in every GDD. Conditional sections appear only when the directive's scope warrants them; otherwise §12 records the reason for the omission. The partition is **mutually exclusive** (each section answers one designer commitment) and **collectively exhaustive** (the union covers everything a playable prototype demands before system / art design start).
+The PRD is partitioned into a **Required core (8)**, **Conditional (4)**, and **Optional sections (game-specific extensions)**. Required-core sections appear in every PRD. Conditional sections appear only when the directive's scope warrants them; otherwise §12 records the reason for the omission. The partition is **mutually exclusive** (each section answers one designer commitment) and **collectively exhaustive** (the union covers everything a playable prototype demands before system / art design start).
 
 #### Required core (always present)
 
@@ -41,9 +41,9 @@ These appear only when the directive or genre warrants them. They are NOT mandat
 
 #### Sections explicitly NOT included by default (forbidden without explicit directive)
 
-The following are NOT chapters of a GDD unless the directive explicitly requests them. They belong to design / code / dedicated jobs:
+The following are NOT chapters of a PRD unless the directive explicitly requests them. They belong to design / code / dedicated jobs:
 
-- Test scenarios / QA / playtest plans — playtest belongs to the team's process, not the GDD
+- Test scenarios / QA / playtest plans — playtest belongs to the team's process, not the PRD
 - Build / deployment / store-submission runbooks — design / code
 - Migration plans — design / code
 - Security / anti-cheat threat models — separate threat-modeling job, or a single line under §12 if real
@@ -69,7 +69,7 @@ If the directive overlaps multiple sections, **split** rather than merge — dup
 
 **Game hand-off table**:
 
-| GDD section | Game-System Design picks up | Game-Art Design picks up | Game-Content (balancing) picks up |
+| PRD section | Game-System Design picks up | Game-Art Design picks up | Game-Content (balancing) picks up |
 |---|---|---|---|
 | §2 Coreloop (`CL-XXX`) | State machine and transitions of coreloop steps | (indirect) | (rare) |
 | §4 MDA Mechanics (`MC-XXX`) | Input → event flow, simulation determinism | Mechanic-feedback motion-tone | Mechanic tuning values |
@@ -98,26 +98,26 @@ If the directive overlaps multiple sections, **split** rather than merge — dup
 | **Principles over Examples** | "Give the player a coin every 30 seconds" | "Reward must precede friction in the first five minutes; cadence and reward type are tunable" |
 | **What over How** | "Use object pooling for projectiles" | "Projectile spawn must support burst patterns; implementation belongs to code" |
 | **Observable over Assumed** | "Players will love the boss fight" | Describe what the player **sees / clicks / hears** during the boss fight; player-emotion claims need a referenced playtest or are deferred |
-| **Universal over Specific** (outside the gate) | "Use Phaser for the canvas" | "Engine choice belongs to design / code; the GDD only commits to viewpoint and input" |
+| **Universal over Specific** (outside the gate) | "Use Phaser for the canvas" | "Engine choice belongs to design / code; the PRD only commits to viewpoint and input" |
 | **Constraints over Instructions** | "Make the boss hard" | "Boss MUST be defeatable on the first encounter once the player has unlocked all core verbs; difficulty numbers belong to balancing" |
-| **Reminders for Blind Spots** | (none) | "⚠️ A GDD without an explicit fail condition produces a 'cannot lose' prototype that is mechanically boring" |
+| **Reminders for Blind Spots** | (none) | "⚠️ A PRD without an explicit fail condition produces a 'cannot lose' prototype that is mechanically boring" |
 | **Composition over Implementation** (§4 / §8) | "Spawn 3 enemies on a 5-second timer" | "The mechanic MUST commit to a wave shape (sparse / dense / boss) and an entity catalog (`EN-XXX`); spawn timing is balancing" |
 
 ### Section authoring discipline (SBS)
 
 This file is gated on `domain === 'game'`. It is REQUIRED to use game-design vocabulary (`coreloop`, `mechanic`, `progression`, `hook`, `feedback`, `fail`, `MDA`, `playable verb`, `playtest`). It is FORBIDDEN to:
 
-- Specify state ownership, simulation determinism, event flow, or synchronization policy — those are design's surface (`jobs/design/domain/game.md`). Backend / server architecture and persistence *implementation depth* likewise belong to the design → spec → code game branches; the GDD commits only policy-level intent (whether session-spanning persistence or a networked mode exists — §10 / §11), never how a server realizes it
+- Specify state ownership, simulation determinism, event flow, or synchronization policy — those are design's surface (`jobs/design/domain/game.md`). Backend / server architecture and persistence *implementation depth* likewise belong to the design → spec → code game branches; the PRD commits only policy-level intent (whether session-spanning persistence or a networked mode exists — §10 / §11), never how a server realizes it
 - Specify exact damage / drop / spawn / cooldown numbers — those are balancing surface, owned by design or code
 - Specify engine names, framework choices, or asset file formats unless the directive demands them
 - Use service-domain vocabulary (`persona role`, `RBAC`, `SLA`, `non-functional requirement`, `audit log`, `retention policy`) — the matrix gate already excluded those concepts
-- **Add forbidden-by-default chapters** (test / playtest plans, build / deployment runbooks, migration / store-submission, security / anti-cheat models) unless the directive explicitly requests them — the GDD must stay focused on planning content, not on its periphery
+- **Add forbidden-by-default chapters** (test / playtest plans, build / deployment runbooks, migration / store-submission, security / anti-cheat models) unless the directive explicitly requests them — the PRD must stay focused on planning content, not on its periphery
 
 ### Blind-spot reminders
 
-- ⚠️ A GDD without **Fail Condition** (§7) is the most common gap. Implicit "you cannot lose" makes the prototype mechanically boring within minutes.
-- ⚠️ A GDD without **5-Minute Hook** (§3) lets engineering build a system that nobody can pick up in a demo. State what the player accomplishes BEFORE minute five.
-- ⚠️ A GDD without **Out-of-Scope** (§12) becomes a wish list. Explicit cuts are how a prototype stays shippable.
+- ⚠️ A PRD without **Fail Condition** (§7) is the most common gap. Implicit "you cannot lose" makes the prototype mechanically boring within minutes.
+- ⚠️ A PRD without **5-Minute Hook** (§3) lets engineering build a system that nobody can pick up in a demo. State what the player accomplishes BEFORE minute five.
+- ⚠️ A PRD without **Out-of-Scope** (§12) becomes a wish list. Explicit cuts are how a prototype stays shippable.
 - ⚠️ Mechanics ≠ Story. If the directive is story-heavy, also list the **playable verbs** (`MC-XXX`) explicitly in §4 (move / collect / shoot / select / negotiate / ...). Verbs the player issues are the actual game; the story is wrapping.
 - ⚠️ Coreloop (§2) is the **shortest** repeatable cycle. If it takes more than four steps to describe, decompose further. A coreloop with seven steps is a roadmap, not a loop.
 - ⚠️ Progression Curve (§5) is NOT just "the player gets stronger" — when included, it must commit to **what changes between iterations** of the coreloop (faster, denser, novel verb, narrative beat). When omitted, record the reason in §12 / §Open Questions.
@@ -127,11 +127,11 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game-design voc
 
 ### Refine-mode discipline
 
-When refining an existing GDD (`rev-plan`), the directive defines the scope. Do NOT expand into adjacent sections, even when the refinement reveals a gap there — surface the gap as an open question or a follow-up directive, do not silently rewrite. When a refinement changes a section that owns a stable identifier (`CL-`, `MC-`, `EN-`, `LV-`, `RW-`, `GM-`, `MP-`), preserve the identifier even if the description is rewritten — downstream design tasks cite it by ID.
+When refining an existing PRD (`rev-plan`), the directive defines the scope. Do NOT expand into adjacent sections, even when the refinement reveals a gap there — surface the gap as an open question or a follow-up directive, do not silently rewrite. When a refinement changes a section that owns a stable identifier (`CL-`, `MC-`, `EN-`, `LV-`, `RW-`, `GM-`, `MP-`), preserve the identifier even if the description is rewritten — downstream design tasks cite it by ID.
 
 {{> jobs/plan/shared/pipeline-input-sufficiency}}
 
-**Game GDD sufficiency checklist** (run before handing off to design):
+**Game PRD sufficiency checklist** (run before handing off to design):
 
 - [ ] Does §8 Content Scope list `EN-XXX` entities and `LV-XXX` levels with integer counts so `game-art-design-by-{desc,figma}` can derive asset categories?
 - [ ] Does §4 MDA Mechanics list `MC-XXX` verbs so `system-design` can decompose input → event flow per mechanic?

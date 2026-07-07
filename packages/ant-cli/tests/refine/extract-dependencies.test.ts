@@ -72,29 +72,29 @@ describe('extractDependencies — service-axis identifiers', () => {
 });
 
 describe('extractDependencies — game-axis identifiers', () => {
-  it('pulls GDD §X / CL- / MC- / EN- / LV- / RW- / GM- / MP- from descriptions', () => {
+  it('pulls PRD §X / CL- / MC- / EN- / LV- / RW- / GM- / MP- from descriptions', () => {
     const checkpoint: DesignSessionCheckpointLike = {
       resolvedAction: GAME_RAC,
       taskQueue: [
-        task('art-1', 'Implements GDD §8 / EN-Hero and EN-Boss; lives under LV-Castle'),
-        task('art-2', 'Implements GDD §4 / MC-Combat; rewards via RW-Score'),
-        task('mode-1', 'Drives GM-CoOp and persists MP-Hero-Unlock per GDD §11'),
-        task('loop-1', 'Coreloop: CL-Spawn → CL-Combat → CL-Reward (GDD §2)'),
+        task('art-1', 'Implements PRD §8 / EN-Hero and EN-Boss; lives under LV-Castle'),
+        task('art-2', 'Implements PRD §4 / MC-Combat; rewards via RW-Score'),
+        task('mode-1', 'Drives GM-CoOp and persists MP-Hero-Unlock per PRD §11'),
+        task('loop-1', 'Coreloop: CL-Spawn → CL-Combat → CL-Reward (PRD §2)'),
       ],
     };
     const deps = extractDependencies(checkpoint);
     const byId = Object.fromEntries(deps.map(d => [d.taskId, d]));
     expect(byId['art-1'].citedSections).toEqual(
-      expect.arrayContaining(['GDD §8', 'EN-Hero', 'EN-Boss', 'LV-Castle']),
+      expect.arrayContaining(['PRD §8', 'EN-Hero', 'EN-Boss', 'LV-Castle']),
     );
     expect(byId['art-2'].citedSections).toEqual(
-      expect.arrayContaining(['GDD §4', 'MC-Combat', 'RW-Score']),
+      expect.arrayContaining(['PRD §4', 'MC-Combat', 'RW-Score']),
     );
     expect(byId['mode-1'].citedSections).toEqual(
-      expect.arrayContaining(['GM-CoOp', 'MP-Hero-Unlock', 'GDD §11']),
+      expect.arrayContaining(['GM-CoOp', 'MP-Hero-Unlock', 'PRD §11']),
     );
     expect(byId['loop-1'].citedSections).toEqual(
-      expect.arrayContaining(['CL-Spawn', 'CL-Combat', 'CL-Reward', 'GDD §2']),
+      expect.arrayContaining(['CL-Spawn', 'CL-Combat', 'CL-Reward', 'PRD §2']),
     );
   });
 });

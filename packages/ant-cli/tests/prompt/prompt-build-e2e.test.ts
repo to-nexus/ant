@@ -491,8 +491,8 @@ describe('E2E: Plan', () => {
 // (game-domain-plan-snug-dusk P0-B: the domain overlay is domain-driven, not
 // basis-driven. gen-plan never populates `basis` — before the fix the whole
 // basis section, incl. the domain overlay, was silently dropped, so a game
-// plan lost its GDD skeleton and a neutralized service base would lose PRD
-// framing too.)
+// plan lost its PRD skeleton (game overlay) and a neutralized service base
+// would lose PRD framing too.)
 // ============================================
 
 describe('E2E: Plan domain overlay with undefined basis', () => {
@@ -517,7 +517,7 @@ describe('E2E: Plan domain overlay with undefined basis', () => {
     return promptBuilder.build(config);
   }
 
-  it('game domain → GDD overlay injected despite undefined basis', async () => {
+  it('game domain → PRD overlay injected despite undefined basis', async () => {
     const result = await buildPlan('game');
     assertNoFailedTemplates(result);
     expect(result.sections.profiles).toContain('Domain Identity — Game');

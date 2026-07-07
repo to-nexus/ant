@@ -23,7 +23,7 @@ The three sources NEVER coexist — RAC resolution rejects mixed selections. The
 
 - **PRD / system-design** wins for component behaviour and responsibility (WHAT it does); the active UI source wins for HOW it looks.
 - **PRD / system-design also defines SCOPE** — which screens, states, and elements must EXIST (distinct from the behaviour/looks split above). The active UI source is the visual authority only for the surfaces it COVERS. A required surface the source does NOT cover MUST still be built (its visual details fall back per the hierarchy below); a missing asset never removes a required surface from scope.
-- **If a visual detail is not specified by the active source** — apply VisualTier policy if available, otherwise framework best practices and WCAG 2.1 AA accessibility defaults.
+- **If a visual detail is not specified by the active source** — apply VisualTier policy if available, otherwise framework best practices and accessibility best-practice defaults (sufficient contrast, visible focus states, adequate hit targets).
 
 ### Fallback hierarchy when no UI source is selected
 

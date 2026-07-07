@@ -19,10 +19,9 @@
  *   5. The plan rules (`jobs/plan/nodes/plan/variants/default/rules.md`)
  *      explicitly forbid the periphery chapters that were inflating PRDs
  *      (test scenarios / operational runbooks / threat models / etc.).
- *   6. The matrix-level domain split (`gen-plan` outputs both prd.md
- *      and gdd.md as candidates; `excludeFiles` hides both from
- *      sources/* listings; `getPlanOutputs` collapses to the single
- *      domain-canonical filename).
+ *   6. The unified single-canonical plan artifact (`gen-plan` outputs
+ *      the single prd.md for every domain; `excludeFiles` hides prd.md
+ *      from sources/* listings; `getPlanOutputs` returns one PRD spec).
  *
  * The shape of these checks is intentionally text-presence — the prompts
  * themselves are the contract, not their generated output. Renaming a
@@ -270,73 +269,53 @@ describe('Plan rules.md (Phase B) — periphery chapter discipline', () => {
 // 6) Matrix-level domain split — gen-plan outputs + helpers
 // ──────────────────────────────────────────────────────────────────────
 
-describe('gen-plan domain-aware filename split (Phase E)', () => {
-  it('PLAN_OUTPUT_FILENAMES contains both prd.md and gdd.md', () => {
+describe('gen-plan unified single-canonical PRD (unified-PRD SSOT)', () => {
+  it('PLAN_OUTPUT_FILENAMES is the single prd.md (no gdd.md)', () => {
     expect(PLAN_OUTPUT_FILENAMES).toContain('prd.md');
-    expect(PLAN_OUTPUT_FILENAMES).toContain('gdd.md');
-    expect(PLAN_OUTPUT_FILENAMES.length).toBe(2);
+    expect(PLAN_OUTPUT_FILENAMES).not.toContain('gdd.md');
+    expect(PLAN_OUTPUT_FILENAMES.length).toBe(1);
   });
 
-  it('getCanonicalPlanFilename routes service → prd.md, game → gdd.md, undefined → prd.md', () => {
-    expect(getCanonicalPlanFilename('service')).toBe('prd.md');
-    expect(getCanonicalPlanFilename('game')).toBe('gdd.md');
-    expect(getCanonicalPlanFilename(undefined)).toBe('prd.md');
+  it('getCanonicalPlanFilename always returns prd.md (no args)', () => {
+    expect(getCanonicalPlanFilename()).toBe('prd.md');
   });
 
-  it('getCanonicalPlanPath prefixes plan/ for either domain', () => {
-    expect(getCanonicalPlanPath('service')).toBe('plan/prd.md');
-    expect(getCanonicalPlanPath('game')).toBe('plan/gdd.md');
+  it('getCanonicalPlanPath always returns plan/prd.md (no args)', () => {
+    expect(getCanonicalPlanPath()).toBe('plan/prd.md');
   });
 
-  it('getPlanOutputs returns a single domain-canonical OutputSpec', () => {
-    const service = getPlanOutputs('service');
-    expect(service).toHaveLength(1);
-    expect(service[0].prefix).toBe('prd');
-    expect(service[0].ext).toBe('.md');
-
-    const game = getPlanOutputs('game');
-    expect(game).toHaveLength(1);
-    expect(game[0].prefix).toBe('gdd');
-    expect(game[0].ext).toBe('.md');
+  it('getPlanOutputs returns a single PRD OutputSpec (no args)', () => {
+    const outputs = getPlanOutputs();
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0].prefix).toBe('prd');
+    expect(outputs[0].ext).toBe('.md');
   });
 
-  it('pickExistingPlanFilename prefers domain-canonical, falls back to the other plan filename', () => {
-    expect(pickExistingPlanFilename(['gdd.md', 'tech.md'], 'game')).toBe('gdd.md');
-    expect(pickExistingPlanFilename(['prd.md', 'tech.md'], 'service')).toBe('prd.md');
-    // Cross-domain leftover (legacy game project with prd.md authored
-    // before the gdd.md split): the helper still resolves so detect /
-    // resolve do not lose track of an existing plan document.
-    expect(pickExistingPlanFilename(['prd.md', 'tech.md'], 'game')).toBe('prd.md');
-    expect(pickExistingPlanFilename(['gdd.md', 'tech.md'], 'service')).toBe('gdd.md');
-    // No plan file at all — undefined.
-    expect(pickExistingPlanFilename(['tech.md'], 'service')).toBeUndefined();
-    expect(pickExistingPlanFilename(undefined, 'game')).toBeUndefined();
+  it('pickExistingPlanFilename resolves prd.md when present, else undefined (one arg)', () => {
+    expect(pickExistingPlanFilename(['prd.md', 'tech.md'])).toBe('prd.md');
+    // gdd.md is no longer a recognized plan filename.
+    expect(pickExistingPlanFilename(['gdd.md', 'tech.md'])).toBeUndefined();
+    expect(pickExistingPlanFilename(['tech.md'])).toBeUndefined();
+    expect(pickExistingPlanFilename(undefined)).toBeUndefined();
   });
 
-  it('getDefaultTargetPaths(gen-plan, domain) collapses to the single canonical path', () => {
-    expect(getDefaultTargetPaths('gen-plan', 'service')).toEqual([
-      'plan/prd.md',
-    ]);
-    expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual([
-      'plan/gdd.md',
-    ]);
-    expect(getDefaultTargetPaths('gen-plan', undefined)).toEqual([
-      'plan/prd.md',
-    ]);
+  it('getDefaultTargetPaths(gen-plan) → plan/prd.md regardless of domain', () => {
+    expect(getDefaultTargetPaths('gen-plan', 'service')).toEqual(['plan/prd.md']);
+    expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual(['plan/prd.md']);
+    expect(getDefaultTargetPaths('gen-plan', undefined)).toEqual(['plan/prd.md']);
   });
 
-  it('gen-plan matrix slot lists both candidates AND excludes both from refs listing', () => {
+  it('gen-plan matrix slot has the single PRD output AND excludes it from refs listing', () => {
     const slots = getConfigSlots('gen-plan');
     expect(slots).toBeDefined();
     const target = slots!.target;
     expect(target.kind).toBe('generate');
     if (target.kind !== 'generate') return; // type narrowing
     const filenames = target.outputs.map(o => `${o.prefix}${o.ext}`);
-    expect(filenames).toContain('prd.md');
-    expect(filenames).toContain('gdd.md');
+    expect(filenames).toEqual(['prd.md']);
 
     const refSlot = slots!.refs[0];
     expect(refSlot.excludeFiles).toContain('prd.md');
-    expect(refSlot.excludeFiles).toContain('gdd.md');
+    expect(refSlot.excludeFiles).not.toContain('gdd.md');
   });
 });

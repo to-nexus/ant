@@ -292,7 +292,7 @@ class AgentRegistryClass {
     
     switch (prereq.type) {
       case 'file_with_content':
-        if (prereq.path === 'plan/prd.md' || prereq.path === 'plan/gdd.md') {
+        if (prereq.path === 'plan/prd.md') {
           satisfied = ws.hasPlan;
         }
         break;
@@ -319,14 +319,8 @@ class AgentRegistryClass {
         break;
 
       case 'file_exists':
-        // Plan-job canonical output is domain-aware: prd.md (service) or
-        // gdd.md (game). Both filenames are treated as "the plan
-        // document" so a yaml prereq pinned on prd.md still resolves
-        // when the workspace authored gdd.md instead.
-        if (
-          prereq.path === 'plan/prd.md' ||
-          prereq.path === 'plan/gdd.md'
-        ) {
+        // Plan-job canonical output is the domain-neutral `plan/prd.md`.
+        if (prereq.path === 'plan/prd.md') {
           satisfied = ws.hasPlan;
         }
         break;
@@ -412,13 +406,12 @@ class AgentRegistryClass {
     }
 
     if (type === 'file_with_content') {
-      if (path === 'plan/prd.md' || path === 'plan/gdd.md') return ws.hasPlan;
+      if (path === 'plan/prd.md') return ws.hasPlan;
     }
 
     if (type === 'file_exists') {
-      // Plan-job canonical filename is domain-aware (prd.md / gdd.md);
-      // both map to the same workspace "has plan document" signal.
-      if (path === 'plan/prd.md' || path === 'plan/gdd.md') return ws.hasPlan;
+      // Plan-job canonical output is the domain-neutral `plan/prd.md`.
+      if (path === 'plan/prd.md') return ws.hasPlan;
     }
 
     if (type === 'has_directive') {

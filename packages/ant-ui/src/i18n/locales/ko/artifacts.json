@@ -19,7 +19,7 @@
       "figma": "Figma"
     },
     "dirHintTooltip": {
-      "plan": "기획 문서(PRD/GDD)를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 허용: .md .txt .json .yaml .yml .html .xml .csv",
+      "plan": "기획 문서(PRD)를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 허용: .md .txt .json .yaml .yml .html .xml .csv",
       "architecture": "시스템 설계서, API 계약서, 아키텍처 스펙 문서 (MD, JSON). Design Job이 생성하며 Code Job의 입력으로도 사용됩니다. 파일을 직접 추가하거나 편집할 수 있습니다. 허용: .md .json",
       "visual": "UI / 게임아트 디자인 산출물 (ant/figma/handoff). Design Job이 생성하고 Code Job이 소비합니다. 허용: .md .json 및 이미지.",
       "assets": "런타임 에셋 (아이콘, 이미지, SVG, 오디오). codebase/에 자동으로 복사되어 생성된 코드에서 참조됩니다. 하위: service/, game/, gen/. 허용: .png .jpg .gif .svg .webp .ico .mp3 .wav .ogg",

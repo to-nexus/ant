@@ -7,7 +7,7 @@ Working hierarchy (most important first):
 1. DIRECTIVE (if exists) → defines WHAT to do (fixes, modifications, improvements)
 2. DESIGN DOCUMENT → defines HOW to implement (architecture, structure, requirements)
 3. ORIGINAL FILES → shows current baseline
-4. Requirements document (PRD / GDD) → original requirements (for context verification, cross-check design completeness)
+4. Requirements document (PRD) → original requirements (for context verification, cross-check design completeness)
 
 Key principle:
 - DIRECTIVE tells you what needs to change (highest priority)

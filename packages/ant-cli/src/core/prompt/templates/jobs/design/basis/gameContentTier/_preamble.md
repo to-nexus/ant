@@ -55,10 +55,10 @@ If an out-of-matrix pair surfaces in the LLM-emitted basis (a parser bug), surfa
 
 | Concern | Plan owns | Design owns | Code owns |
 |---|---|---|---|
-| Genre identity | GDD §2: "this is a `match3` with cascading combos" | board dimensions enum, tile-kind count, cascade cap policy, special-tile rules | actual grid data structure, swap-command shape, cascade tick scheduler |
-| CoreLoop shape | GDD §2 / §4: "the player solves a sliding board" | state-ownership boundary, event flow, determinism / tick policy | reducer code, event subscription, tick accumulator |
-| Failure / completion | GDD §7 fail condition stated | `Lost` / `Won` event names + transition rules + restart cost | scene transitions, restart wiring, life-counter HUD update |
-| HUD readouts | required-readouts list at GDD level | `UIScene` overlay specs (layout slots, glyph references in `game-art-spec.json`) | actual `UIScene.create` + Domain-event subscription |
+| Genre identity | PRD §2: "this is a `match3` with cascading combos" | board dimensions enum, tile-kind count, cascade cap policy, special-tile rules | actual grid data structure, swap-command shape, cascade tick scheduler |
+| CoreLoop shape | PRD §2 / §4: "the player solves a sliding board" | state-ownership boundary, event flow, determinism / tick policy | reducer code, event subscription, tick accumulator |
+| Failure / completion | PRD §7 fail condition stated | `Lost` / `Won` event names + transition rules + restart cost | scene transitions, restart wiring, life-counter HUD update |
+| HUD readouts | required-readouts list at PRD level | `UIScene` overlay specs (layout slots, glyph references in `game-art-spec.json`) | actual `UIScene.create` + Domain-event subscription |
 | Asset hand-off | none (gameArt is its own tier) | catalog category keys (`hud` / `entities` / `particles`) committed | catalog lookup + texture / oscillator wiring |
 
 ### 5. What NOT to commit at design level

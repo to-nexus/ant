@@ -40,7 +40,7 @@ export interface PathNormalizationResult {
  * Feature workspace structure (도메인 트리):
  *   features/{feature}/
  *   ├── codebase/      <- code files (handled by Rule 1)
- *   ├── plan/          <- PRD / GDD (depth -1, 파일 직속)
+ *   ├── plan/          <- PRD (depth -1, 파일 직속)
  *   ├── architecture/  <- system / spec markdown
  *   ├── visual/        <- ui / game-art (sub-sourced)
  *   ├── assets/        <- service / game / gen pools

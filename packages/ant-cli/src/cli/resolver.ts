@@ -87,7 +87,7 @@ export function findLatestDirective(dirPath: string): string | null {
 
 /**
  * Resolve input file based on task
- * - For design: finds plan document (prd.md for service / gdd.md for game) in plan/
+ * - For design: finds plan document (`plan/prd.md`) in plan/
  * - For code: finds latest design + optional code directive
  * - For learn: finds learn directive
  * 
@@ -157,16 +157,13 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
         const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
         
         if (fs.existsSync(sourcesDir)) {
-          // Plan-job canonical filename is domain-aware: service → prd.md,
-          // game → gdd.md. The CLI does not know the workspace domain
-          // here, so prefer prd.md (legacy migration safety) and fall back
-          // to gdd.md before the directory scan.
-          for (const planFilename of ['prd.md', 'gdd.md'] as const) {
-            const canonical = path.join(sourcesDir, planFilename);
-            if (fs.existsSync(canonical)) {
-              console.log(`📄 Using source: ${planFilename}`);
-              return canonical;
-            }
+          // Plan-job canonical output is the domain-neutral `plan/prd.md`
+          // (a game project's PRD carries game sections via the overlay,
+          // not a different filename). Prefer it before the directory scan.
+          const canonical = path.join(sourcesDir, 'prd.md');
+          if (fs.existsSync(canonical)) {
+            console.log(`📄 Using source: prd.md`);
+            return canonical;
           }
           const files = fs.readdirSync(sourcesDir);
           const textFile = files.find(f => textExtensions.some(ext => f.endsWith(ext)));

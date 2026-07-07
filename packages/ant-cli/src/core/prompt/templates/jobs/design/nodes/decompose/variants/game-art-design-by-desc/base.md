@@ -7,24 +7,24 @@ You are decomposing **game-art documentation work** into executable tasks.
 are NOT in scope here.
 
 **Source mode**: Directive only — no reference images, no Figma,
-no external sprite assets are required as input. The GDD / source
+no external sprite assets are required as input. The PRD / source
 documents (if present) plus the user directive drive the breakdown.
 
-**SSOT precedence**: When a GDD is available in source documents, it is
+**SSOT precedence**: When a PRD is available in source documents, it is
 the **single source of truth** for the breakdown:
 
-- **GDD §8 Content Scope** (`EN-XXX`, `LV-XXX`) — the entity / level
+- **PRD §8 Content Scope** (`EN-XXX`, `LV-XXX`) — the entity / level
   catalog that drives `game-art-assets` category structure
-- **GDD §4 MDA Aesthetic** + **§6 Reward & Feedback** (`RW-XXX`) — the
+- **PRD §4 MDA Aesthetic** + **§6 Reward & Feedback** (`RW-XXX`) — the
   vocabulary that drives `game-art-tokens` (palette / silhouette /
   lighting / motion-tone)
-- **GDD §4 MDA Mechanics** (`MC-XXX`) + **§6** (`RW-XXX`) — the verb /
+- **PRD §4 MDA Mechanics** (`MC-XXX`) + **§6** (`RW-XXX`) — the verb /
   feedback list that drives `game-art-spec` category structure
-- **GDD §9 Input & Perspective** — the orientation / viewport policy
+- **PRD §9 Input & Perspective** — the orientation / viewport policy
   that the visual treatment must respect
 
-The directive **supplements** the GDD; it does NOT override it. When
-the GDD is genuinely absent, fall back to directive-only extraction
+The directive **supplements** the PRD; it does NOT override it. When
+the PRD is genuinely absent, fall back to directive-only extraction
 and flag the gap in the task description.
 
 **Job Mode**: {{detectedMode}}
@@ -106,7 +106,7 @@ under the 8K cap).
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| `game-art-tokens` | 100 | Palette, silhouette, lighting, motion-tone tokens — derived from **GDD §4 MDA Aesthetic** and **GDD §6 Reward & Feedback** when GDD is present; fall back to `gameArtTier.concept` only when GDD is absent. Description MUST cite `GDD §4 / §6` and the aesthetic vocabulary words it picks up (e.g., `Implements GDD §4 Aesthetic (palette: warm-low-saturation, silhouette: chunky, motion-tone: heavy)`). |
+| `game-art-tokens` | 100 | Palette, silhouette, lighting, motion-tone tokens — derived from **PRD §4 MDA Aesthetic** and **PRD §6 Reward & Feedback** when PRD is present; fall back to `gameArtTier.concept` only when PRD is absent. Description MUST cite `PRD §4 / §6` and the aesthetic vocabulary words it picks up (e.g., `Implements PRD §4 Aesthetic (palette: warm-low-saturation, silhouette: chunky, motion-tone: heavy)`). |
 
 ---
 
@@ -114,16 +114,16 @@ under the 8K cap).
 
 **Category derivation**:
 
-- **When GDD §8 Content Scope is present**: one task per `EN-XXX` (or
-  `LV-XXX`) cluster. Category task ID prefers GDD entity ID alignment
+- **When PRD §8 Content Scope is present**: one task per `EN-XXX` (or
+  `LV-XXX`) cluster. Category task ID prefers PRD entity ID alignment
   (e.g., `game-art-assets-entities-hero` for `EN-Hero`,
   `game-art-assets-stages-forest` for `LV-Forest`). Group small entities
   into categories when natural (e.g., `EN-Coin` + `EN-Gem` + `EN-Star` →
   `game-art-assets-collectibles`). Each task description MUST cite the
-  `EN-` / `LV-` IDs it covers (e.g., `Implements GDD §8 (EN-Hero,
+  `EN-` / `LV-` IDs it covers (e.g., `Implements PRD §8 (EN-Hero,
   EN-Hero-Wounded)`).
-- **When GDD is absent**: fall back to extracting categories from the
-  directive only, and flag the gap (`GDD absent — categories extracted
+- **When PRD is absent**: fall back to extracting categories from the
+  directive only, and flag the gap (`PRD absent — categories extracted
   from directive`) in each task description.
 
 | Task ID format | Priority | Topic |
@@ -138,7 +138,7 @@ under the 8K cap).
 - A single `kind: 'external'` entry is allowed only if the directive
   references a specific user-placed file (e.g. "use the hero.svg I put
   in assets/game/entities/")
-- **GDD asset citation override**: When GDD §8 cites a concept art /
+- **PRD asset citation override**: When PRD §8 cites a concept art /
   reference path for a specific `EN-XXX` (e.g.,
   `EN-Hero — concept: assets/game/concept/hero.png`), the asset
   task for that entity uses the cited path as `kind: 'external'`
@@ -151,15 +151,15 @@ under the 8K cap).
 
 **Category derivation**:
 
-- **When GDD is present**: one task per `MC-XXX` from §4 MDA Mechanics
+- **When PRD is present**: one task per `MC-XXX` from §4 MDA Mechanics
   or `RW-XXX` from §6 Reward & Feedback. Spec task description MUST
-  cite the GDD ID (e.g., `Implements GDD §4 / MC-Combat →
-  game-art-spec-mechanics-combat`, `Implements GDD §6 / RW-Score →
+  cite the PRD ID (e.g., `Implements PRD §4 / MC-Combat →
+  game-art-spec-mechanics-combat`, `Implements PRD §6 / RW-Score →
   game-art-spec-feedback-score`). Group closely-related mechanics
   (e.g., `MC-MoveLeft` + `MC-MoveRight` → `game-art-spec-movement`)
   when natural.
-- **When GDD is absent**: derive spec categories from the directive's
-  described behavior, and flag the gap (`GDD absent — spec categories
+- **When PRD is absent**: derive spec categories from the directive's
+  described behavior, and flag the gap (`PRD absent — spec categories
   extracted from directive`) in each task description.
 
 | Task ID format | Priority | Topic |

@@ -51,10 +51,9 @@ interface SuggestedSlots {
   /** Slot directory paths matching the mention prefix. */
   dirs: string[];
   /**
-   * Domain-aware excluded full paths. Built from `slot.excludeFiles` so
-   * a service workspace's `@ref:plan/` mention listing hides `gdd.md`
-   * and a game workspace hides `prd.md` — mirrors the
-   * `ActionConfigView` listing's `excludeFiles` filter.
+   * Excluded full paths. Built from `slot.excludeFiles` so a `@ref:plan/`
+   * mention listing hides the plan job's own canonical output (`prd.md`)
+   * — mirrors the `ActionConfigView` listing's `excludeFiles` filter.
    */
   excludedPaths: Set<string>;
 }
@@ -219,12 +218,12 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         );
         return INTENT_DEFINITIONS
           .filter(d => !hiddenGroups.has(d.intentGroup))
-          // Match against BOTH the static and the domain-correct labels
-          // so a game-domain user can search for "GDD" and a service user
-          // for "PRD" — without losing matches against the canonical
-          // base label (e.g. legacy mentions, search snippets). The cast
-          // widens the literal-narrowed union element to the SSOT shape
-          // so optional `labelByDomain` access compiles for every entry.
+          // Match against the static label plus any per-domain label
+          // override. Plan labels are domain-neutral ("PRD"), so both the
+          // service and game branches resolve to the same base label; the
+          // generic override path is kept for any future domain-divergent
+          // label. The cast widens the literal-narrowed union element to
+          // the SSOT shape so optional `labelByDomain` access compiles.
           .filter(d => {
             const def = d as IntentDefinitionShape;
             const labelEnService = (def.labelByDomain?.service?.en ?? def.label.en).toLowerCase();

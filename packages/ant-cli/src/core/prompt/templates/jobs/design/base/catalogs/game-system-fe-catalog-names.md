@@ -5,5 +5,5 @@
 - § Game Loop & Timestep
 - § Domain Events & Layer Flow
 - § Render Boundary & Viewport
-- § Multiplayer Synchronization (conditional: if GDD §10 specifies multiplayer or networked modes)
+- § Multiplayer Synchronization (conditional: if PRD §10 specifies multiplayer or networked modes)
 - § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)

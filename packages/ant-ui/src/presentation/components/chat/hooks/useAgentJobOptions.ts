@@ -37,10 +37,11 @@ export function useAgentJobOptions() {
   const { t } = useTranslation('chat');
   const selectedJobType = useStore((state) => state.selectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);
-  // D28-revised — domain context drives the planner / plan-job copy so a
-  // game workspace's chat picker reads "GDD / 게임 기획서" instead of the
-  // service-default PRD wording. i18next's `context` param resolves
-  // `agent.planner_game` first, falling back to `agent.planner`.
+  // Domain context drives the planner / plan-job copy so a game workspace's
+  // chat picker reads a game-flavored PRD description instead of the
+  // service-default wording. The plan document is the same PRD in both
+  // domains — only the description differs. i18next's `context` param
+  // resolves `agent.planner_game` first, falling back to `agent.planner`.
   const domain = useStore((state) => state.actionMetadata.domain);
 
   const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS);

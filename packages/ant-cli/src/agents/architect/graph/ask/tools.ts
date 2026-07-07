@@ -148,7 +148,7 @@ export function setWorkspaceFeaturePath(featurePath: string | undefined): void {
  * Domain-grouped: plan/architecture/visual/assets/meta + sessions.
  */
 const ALLOWED_WORKSPACE_DIRS = [
-  'plan/',          // PRD, GDD, source documents
+  'plan/',          // PRD, source documents
   'architecture/',  // system / spec design docs
   'visual/',        // ui / game-art design docs
   'assets/',        // service / game / gen asset pools

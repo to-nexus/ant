@@ -20,7 +20,7 @@ export type ArtifactDirPolicy = {
 };
 
 export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
-  // plan — depth -1 (sources 폴더 제거, 파일 직속). prd.md / gdd.md 가 직접 위치.
+  // plan — depth -1 (sources 폴더 제거, 파일 직속). prd.md 가 직접 위치.
   'plan': {
     allowSubdirs: false,
     // Only text-formattable files are injected into prompts.

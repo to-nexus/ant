@@ -29,10 +29,9 @@ export async function saveSessionRun(state: DesignGraphState): Promise<void> {
     timestamp: new Date().toISOString(),
     input: (() => {
       const pool = new ArtifactPoolView(state.artifacts || []);
-      // Domain-aware fallback: a workspace with no concrete sources in
-      // the pool still has a notional plan-document path. Service
-      // resolves to prd.md, game to gdd.md.
-      const fallbackPath = getCanonicalPlanPath(state.resolvedAction?.domain);
+      // A workspace with no concrete sources in the pool still has a
+      // notional plan-document path — the domain-neutral `plan/prd.md`.
+      const fallbackPath = getCanonicalPlanPath();
       return {
         type: 'file' as const,
         source: pool.hasSources()

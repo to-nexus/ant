@@ -1,12 +1,12 @@
 ### Stable identifier convention (cross-document anchor)
 
-The PRD/GDD is consumed by **system / ui / game-art design** as the SSOT for content planning. Design documents reference this document **by chapter and by stable identifier** to keep MECE across the pipeline (PRD/GDD §X / `<PREFIX>-<NAME>` cited from a design task → that task is the only place the section is elaborated).
+The PRD is consumed by **system / ui / game-art design** as the SSOT for content planning. Design documents reference this document **by chapter and by stable identifier** to keep MECE across the pipeline (PRD §X / `<PREFIX>-<NAME>` cited from a design task → that task is the only place the section is elaborated).
 
 **Why**:
 
 - Section numbers (`§4`, `§4.2`) drift when sections are reordered. Design citations break silently.
 - Symbolic IDs (`SC-Search`, `MC-Combat`, `EN-Hero`) survive renumbering and stay readable in design task IDs (`ui-spec-SC-Search`, `game-art-assets-EN-Hero`).
-- A PRD/GDD without stable IDs forces every downstream design task to re-extract entities from prose, multiplying drift.
+- A PRD without stable IDs forces every downstream design task to re-extract entities from prose, multiplying drift.
 
 **Usage rules**:
 

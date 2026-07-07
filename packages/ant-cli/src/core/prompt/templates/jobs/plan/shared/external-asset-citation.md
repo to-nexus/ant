@@ -1,6 +1,6 @@
 ### External design asset citation (figma / concept art / reference / sprite / sound)
 
-When the directive supplies external design assets — Figma file URLs, concept art images, reference videos, sprite assets, sound clips — cite them **inside the section that owns the corresponding entity**, paired with the entity's stable identifier. The citation is a hand-off contract: downstream design (ui-design-by-figma, game-art-design-by-figma, etc.) reads the PRD/GDD and consumes those citations as preferred inputs over its inline-first defaults.
+When the directive supplies external design assets — Figma file URLs, concept art images, reference videos, sprite assets, sound clips — cite them **inside the section that owns the corresponding entity**, paired with the entity's stable identifier. The citation is a hand-off contract: downstream design (ui-design-by-figma, game-art-design-by-figma, etc.) reads the PRD and consumes those citations as preferred inputs over its inline-first defaults.
 
 **Why**:
 
@@ -15,4 +15,4 @@ When the directive supplies external design assets — Figma file URLs, concept 
 - Citations are **optional**. When no external asset exists for an entity, omit the line entirely; design will fall back to its default behavior (inline-first for game-art-by-desc, prose-derived for ui-design-by-desc).
 - A citation MUST resolve at design time — either a checked-in path under `assets/...` or a URL the design job can fetch. Fabricated paths are forbidden.
 - Conflict resolution: if a citation contradicts the prose of the same entity, the prose is the authoritative description; the citation is a visual reference. Conflicts MUST be flagged in §Open Questions, not silently overridden.
-- Conflict resolution between citation and prose / between PRD/GDD and Figma source: see `jobs/design/shared/asset-conflict-policy` for the matrix downstream design follows (visual axis → Figma; behavior axis → PRD/GDD; ambiguous / role-asymmetric → cite-first + Open Questions).
+- Conflict resolution between citation and prose / between PRD and Figma source: see `jobs/design/shared/asset-conflict-policy` for the matrix downstream design follows (visual axis → Figma; behavior axis → PRD; ambiguous / role-asymmetric → cite-first + Open Questions).

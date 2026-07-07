@@ -97,7 +97,7 @@
       "gitErrorAbort": "중단",
       "inputFiles": "아티팩트",
       "sources": "기획/요구사항",
-      "sourcesTooltip": "기획서(PRD/GDD), 기능 스펙, 요구사항 문서 (.md, .txt, .json 등)",
+      "sourcesTooltip": "기획서(PRD), 기능 스펙, 요구사항 문서 (.md, .txt, .json 등)",
       "assets": "UI 에셋",
       "assetsTooltip": "앱에 포함할 실제 이미지 파일 — 아이콘, 로고, 배경 등 (.svg, .png, .jpg, .webp)",
       "designDocs": "설계 문서",

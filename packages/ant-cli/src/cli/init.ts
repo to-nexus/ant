@@ -37,7 +37,7 @@ export function initWorkspace(workspaceName: string): void {
 \`\`\`
 ${workspaceName}/
 ├── {feature}/              # Add features with: npm run init:feature
-│   ├── plan/               # PRD/GDD 등 자유 형식 source 문서
+│   ├── plan/               # PRD 등 자유 형식 source 문서
 │   ├── architecture/       # system/, spec/
 │   ├── visual/             # ui/, game-art/
 │   ├── assets/             # service/, game/, gen/

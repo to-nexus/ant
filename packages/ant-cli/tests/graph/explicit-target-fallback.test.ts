@@ -49,9 +49,9 @@ describe('getDefaultTargetPaths — matrix-derived defaults', () => {
     ]);
   });
 
-  it('gen-plan + game domain → ["plan/gdd.md"] (domain-aware split)', () => {
+  it('gen-plan + game domain → ["plan/prd.md"] (unified single-canonical PRD)', () => {
     expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual([
-      'plan/gdd.md',
+      'plan/prd.md',
     ]);
   });
 
@@ -151,12 +151,12 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     expect(result.resolvedAction!.hasExplicitFields).toBe(true);
   });
 
-  it('gen-plan + explicit:true + game domain + target:undefined → RAC.target = ["plan/gdd.md"]', async () => {
-    // Domain-aware filename split: the plan job's canonical output is
-    // `gdd.md` for game projects so the system prompt's "Target Path"
-    // section, the disk writer, and the FE preview all converge on the
-    // same domain-correct path. Service projects continue to use prd.md
-    // (asserted in the sibling test above).
+  it('gen-plan + explicit:true + game domain + target:undefined → RAC.target = ["plan/prd.md"]', async () => {
+    // Unified single-canonical PRD: the plan job's canonical output is
+    // `prd.md` for EVERY domain (a game project's PRD carries game
+    // sections via the domain overlay, not a different filename) so the
+    // system prompt's "Target Path" section, the disk writer, and the FE
+    // preview all converge on the same domain-neutral path.
     const node = createDetectNode(makeNoopStrategy());
     const state = makeState(
       { intent: 'gen-plan', explicit: true, domain: 'game' },
@@ -165,7 +165,7 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
 
     const result = await node(state);
 
-    expect(result.resolvedAction!.target).toEqual(['plan/gdd.md']);
+    expect(result.resolvedAction!.target).toEqual(['plan/prd.md']);
   });
 
   it('gen-plan + explicit:true + no domain → service-default RAC.target', async () => {

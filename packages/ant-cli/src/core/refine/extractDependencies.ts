@@ -1,18 +1,18 @@
 /**
- * extractDependencies — design task → cited PRD/GDD section graph.
+ * extractDependencies — design task → cited PRD section graph.
  *
  * The plan-density restoration work introduced stable identifier
- * conventions for PRD/GDD (`SC-`, `FL-`, `FR-`, `CP-`, `EN-`, `RB-` for
- * service; `CL-`, `MC-`, `EN-`, `LV-`, `RW-`, `GM-`, `MP-` for game)
- * and made design decompose templates cite those identifiers in each
- * task's description / `assignedSections`. This helper grep-extracts
- * the citations so a follow-up `rev-plan` job can ask "which design
- * tasks elaborated this PRD §X?"
+ * conventions for the PRD (`SC-`, `FL-`, `FR-`, `CP-`, `EN-`, `RB-` for
+ * service-domain PRDs; `CL-`, `MC-`, `EN-`, `LV-`, `RW-`, `GM-`, `MP-`
+ * for game-domain PRDs) and made design decompose templates cite those
+ * identifiers in each task's description / `assignedSections`. This
+ * helper grep-extracts the citations so a follow-up `rev-plan` job can
+ * ask "which design tasks elaborated this PRD §X?"
  *
  * Pipeline-mode awareness:
  *
  * - **infer**: `intent` matrix path-default activates `plan/*`
- *   (PRD/GDD) as `role='ref'`, so the LLM almost always sees PRD/GDD
+ *   (the PRD) as `role='ref'`, so the LLM almost always sees PRD
  *   content and cites stable ids. `hasPrdRef` is true.
  * - **explicit + PRD ref**: same shape — pool carries the plan doc as
  *   ref, citations land in task descriptions.
@@ -28,7 +28,7 @@ import type { ResolvedActionContext } from '@ant/shared';
 import type { DesignTask } from '../../agents/architect/types/task';
 
 /**
- * One row of the dependency graph: a single design task's PRD/GDD
+ * One row of the dependency graph: a single design task's PRD
  * citation surface, plus a flag that lets `detectAffectedTasks` filter
  * out tasks built without the plan document in scope (so a stale-alert
  * doesn't get fired against a task that never saw the doc to cite).
@@ -42,13 +42,13 @@ export interface TaskDependency {
   citedSections: string[];
   /**
    * Whether the design checkpoint's `resolvedAction.refs` contained the
-   * canonical plan filename (`plan/prd.md` or `plan/gdd.md`) at the
-   * time this task was built.
+   * canonical plan filename (`plan/prd.md`) at the time this task was
+   * built.
    *
    * When false, `detectAffectedTasks` MUST exclude this task from the
    * affected list — the LLM never saw the plan doc so the citation
    * grep can return false negatives. The FE meta alert ("N tasks
-   * built without PRD/GDD ref") surfaces these so users don't assume
+   * built without PRD ref") surfaces these so users don't assume
    * the sync is silent.
    */
   hasPrdRef: boolean;
@@ -75,8 +75,10 @@ export interface DesignSessionCheckpointLike {
 export const EXTRACTOR_VERSION = '1';
 
 const PATTERNS: RegExp[] = [
-  // Section markers — `PRD §6`, `GDD §4.2`, etc.
-  /\b(?:PRD|GDD)\s*§\s*\d+(?:\.\d+)?/g,
+  // Section markers — `PRD §6`, `PRD §4.2`, etc. The plan document is the
+  // domain-neutral PRD in every domain; a game PRD's game sections still
+  // cite as `PRD §X`.
+  /\bPRD\s*§\s*\d+(?:\.\d+)?/g,
   // Service-axis identifier prefixes
   /\bSC-[A-Za-z][\w-]*/g,
   /\bFL-[A-Za-z][\w-]*/g,
@@ -96,7 +98,7 @@ const PATTERNS: RegExp[] = [
 ];
 
 /**
- * Normalise a `PRD §6` / `GDD §4.2` capture by collapsing whitespace
+ * Normalise a `PRD §6` / `PRD §4.2` capture by collapsing whitespace
  * around the `§` so identical citations written with different
  * spacing (`PRD §6`, `PRD § 6`) collapse to a single entry.
  */
@@ -118,7 +120,7 @@ function extractIdentifiers(haystack: string | undefined | null): string[] {
   return [...found].sort();
 }
 
-const PLAN_PATHS = ['plan/prd.md', 'plan/gdd.md'];
+const PLAN_PATHS = ['plan/prd.md'];
 
 /**
  * Decide whether the checkpoint's RAC.refs contained a canonical plan
