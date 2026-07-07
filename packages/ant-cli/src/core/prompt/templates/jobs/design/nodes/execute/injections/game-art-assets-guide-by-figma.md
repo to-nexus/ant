@@ -47,6 +47,15 @@ component group maps to one category.
 
 The `figmaNodeId` field provides traceability back to the source frame.
 
+**Code-fulfillable floor:** when a component has stable variants but no export
+is placed under `assets/game/...`, keep the inline SVG approximation as the
+entry — that inline primitive IS the code-renderable floor. When you record a
+`kind: 'external'` visual entry whose export is not yet present, attach an
+optional `fallback` (a single inline `svg` / `css` primitive at the css-only
+ceiling) so the code job renders a minimum-playable stand-in for that `id`
+until the file is placed. Audio external entries need no `fallback` (procedural
+OscillatorNode floor covers them).
+
 #### `kind: 'inline'` shape (D21 design-time inline-payload ceiling)
 
 Same shape as in the by-desc variant:

@@ -28,6 +28,13 @@ Spec entries REFERENCE asset ids; they never duplicate asset bytes.
 | Interaction prototype connections | `effects.<id>.trigger` |
 | Variant of projectile / NPC frame | `<category>.<id>.behavior` |
 
+### Code-fulfillable floor
+
+The code job must be able to render this behavior with a **primitive stand-in** when no external asset is present — so each entry is authored so the floor still plays:
+
+- Express motion as **numeric fields** (`durationMs` / `tweenMs` / `speedPxPerSec` / `lifetimeMs` — see the conservative-default ranges in the by-desc guide), never as adjectives read off a Figma frame ("fast" / "snappy"). Code drives motion from numbers, so a primitive stand-in animates identically to a production sprite.
+- Every entry references an asset `id` that resolves to something renderable as a **primitive at the baseline scope** (a shape via the engine draw API, or an inline payload). Encode the observed motion numerically even when the Figma frame implies richer art, so the floor render remains playable.
+
 ### ⚠️ CRITICAL: Scope & Surface Boundary
 
 **🚨 READ YOUR TASK DESCRIPTION — generate ONLY the category it specifies!**

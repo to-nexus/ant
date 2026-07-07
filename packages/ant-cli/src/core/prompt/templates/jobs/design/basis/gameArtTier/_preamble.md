@@ -173,6 +173,15 @@ inline-authorable envelope across all axes:
 | `_meta.visualScope` | `baseline` |
 | `_meta.audioScope` | `procedural-only` |
 
+**Code-fulfillable floor (why the floor exists).** The inline floor is not a
+mere size limit — it exists so the code job can *always* render a
+minimum-playable build with primitives when no external file is present.
+Author every floor entry as a shape the code job can draw directly (a css /
+svg primitive, a procedural OscillatorNode). When an axis is escalated under
+the unlock gate below and a visual entry is recorded `kind: 'external'`, still
+attach a `fallback` primitive if the external file's presence at code time is
+uncertain, so the floor render survives a missing file.
+
 **Unlock gate (external assets present — constraint #4).** Escalate an axis to
 its production tier (`entityCatalog: rich` / `particleProfile: heavy` /
 `projectilePolicy: complex` / `audioProfile: fileBased|hybrid` /

@@ -223,4 +223,53 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].code).toBe('external-missing-src');
   });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // WS3 §2b — code-fulfillable floor (opt-in fallback-hint warning)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  it('warnMissingFallback is default-off: a bare external visual entry produces zero issues', () => {
+    const entry: GameArtAssetEntry = { id: 'hero', kind: 'external', src: 'assets/game/entities/hero.svg', format: 'svg' };
+    expect(validateGameArtAssetEntry(entry)).toEqual([]);
+  });
+
+  it('warnMissingFallback ON: external visual entry with no fallback/rendering warns (not throws)', () => {
+    const entry: GameArtAssetEntry = { id: 'hero', kind: 'external', src: 'assets/game/entities/hero.png', format: 'png' };
+    const issues = validateGameArtAssetEntry(entry, { warnMissingFallback: true });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('external-missing-fallback-hint');
+    expect(issues[0].id).toBe('hero');
+  });
+
+  it('warnMissingFallback ON: a fallback primitive satisfies the floor', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'hero',
+      kind: 'external',
+      src: 'assets/game/entities/hero.png',
+      format: 'png',
+      fallback: { format: 'svg', svg: "<svg viewBox='0 0 32 32'><circle/></svg>" },
+    };
+    expect(validateGameArtAssetEntry(entry, { warnMissingFallback: true })).toEqual([]);
+  });
+
+  it('warnMissingFallback ON: a rendering hint alone satisfies the floor', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'hero',
+      kind: 'external',
+      src: 'assets/game/entities/hero.png',
+      format: 'png',
+      rendering: 'graphics-blit',
+    };
+    expect(validateGameArtAssetEntry(entry, { warnMissingFallback: true })).toEqual([]);
+  });
+
+  it('warnMissingFallback ON: audio external entries are exempt (procedural floor covers them)', () => {
+    const entry: GameArtAssetEntry = { id: 'click', kind: 'external', src: 'assets/game/sfx/click.mp3', format: 'mp3' };
+    expect(validateGameArtAssetEntry(entry, { warnMissingFallback: true })).toEqual([]);
+  });
+
+  it('warnMissingFallback ON: inline entries are never flagged for the fallback hint', () => {
+    const entry: GameArtAssetEntry = { id: 'spark', kind: 'inline', format: 'svg' };
+    expect(validateGameArtAssetEntry(entry, { warnMissingFallback: true })).toEqual([]);
+  });
 });
