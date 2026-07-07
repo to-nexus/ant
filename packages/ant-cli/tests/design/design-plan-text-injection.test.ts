@@ -1,12 +1,12 @@
 /**
- * Sealed-plan injection contract (design docGen).
+ * Sealed-plan injection contract (design execute).
  *
- * The plan node hands a sealed `<plan>` JSON to docGen via
- * `state.planText`. After the plan→docGen role split was restored
+ * The plan node hands a sealed `<plan>` JSON to execute via
+ * `state.planText`. After the plan→execute role split was restored
  * (see `.claude/plans/plan-docgen-parallel-spring.md`), the sealed
  * plan no longer rides inside `runtimeContext`; it is exposed as a
  * separate `planText` field on the runtime-context return shape so
- * the docGen base.md template can render it near the prompt top via
+ * the execute base.md template can render it near the prompt top via
  * `{{#if planText}}` (mirrors code job's `state.planText` naming).
  *
  * These tests lock the new shape in place — `planText` carries the
@@ -16,14 +16,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildRuntimeContext } from '../../src/agents/architect/graph/design/nodes/docGen/intent/system';
+import { buildRuntimeContext } from '../../src/agents/architect/graph/design/nodes/execute/intent/system';
 import type { DesignGraphState } from '../../src/agents/architect/graph/design/state';
 
 function freezeState(partial: Partial<DesignGraphState>): DesignGraphState {
   return Object.freeze(partial) as unknown as DesignGraphState;
 }
 
-describe('docGen runtimeContext — sealed plan injection (system intent)', () => {
+describe('execute runtimeContext — sealed plan injection (system intent)', () => {
   it('exposes planText separately and keeps it out of runtimeContext when populated', () => {
     const planText = JSON.stringify({
       task: { id: 't', goal: 'something' },

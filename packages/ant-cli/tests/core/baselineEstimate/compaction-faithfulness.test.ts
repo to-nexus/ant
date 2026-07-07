@@ -73,7 +73,7 @@ describe('compaction faithfulness — decompose path', () => {
   });
 });
 
-describe('compaction faithfulness — plan/execute/docGen path', () => {
+describe('compaction faithfulness — plan/execute/execute path', () => {
   it('matches compactArtifacts(30_000) for the plan node', () => {
     const fixture: ResolvedArtifact[] = [
       ref('src/a.ts', 40_000),
@@ -88,9 +88,9 @@ describe('compaction faithfulness — plan/execute/docGen path', () => {
     );
   });
 
-  it('matches compactArtifacts(30_000) for execute and docGen', () => {
+  it('matches compactArtifacts(30_000) for execute and execute', () => {
     const fixture: ResolvedArtifact[] = [ref('src/a.ts', 80_000)];
-    for (const node of ['execute', 'docGen']) {
+    for (const node of ['execute', 'execute']) {
       const fromEstimator = applyNodeCompaction(fixture, node);
       const direct = compactArtifacts(fixture, { threshold: 30_000 });
       expect(fromEstimator[0].content.length, `node=${node}`).toBe(

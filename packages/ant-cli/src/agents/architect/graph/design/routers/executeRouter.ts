@@ -1,18 +1,18 @@
 /**
- * DocGen Router - docGen 응답 분석해서 다음 노드 결정
+ * Execute Router - execute 응답 분석해서 다음 노드 결정
  *
  * 책임:
  * - llmResponse 분석
- * - 다음 노드 결정 (tool / checkTaskStatus / docGen)
+ * - 다음 노드 결정 (tool / checkTaskStatus / execute)
  *
  * 라우팅 로직:
  * 1. Figma MCP 연결 끊김 / recursionLimit 임박 → checkTaskStatus
  * 2. Tool calls 있으면 → tool 노드
  * 3. Done이면 → checkTaskStatus
- * 4. 그 외 → docGen 노드 (재추론)
+ * 4. 그 외 → execute 노드 (재추론)
  *
  * IMPORTANT: This router is READ-ONLY. `_noOutputCallCount` is calculated by
- * the docGen node and returned through the LangGraph channel system. Routers
+ * the execute node and returned through the LangGraph channel system. Routers
  * are conditional edge functions — their state mutations do NOT persist
  * through LangGraph channels. The historical `_callLimitReached` gate was
  * retired alongside the code job's Safety Net D/E; runaway is bounded by
@@ -21,19 +21,19 @@
 
 import { DesignGraphState } from '../state';
 
-export function routeAfterDocGen(state: DesignGraphState): string {
+export function routeAfterExecute(state: DesignGraphState): string {
   const response = state.llmResponse;
 
   if (!response) {
-    console.log('⚠️  [DocGenRouter] No LLM response → checkTaskStatus');
+    console.log('⚠️  [ExecuteRouter] No LLM response → checkTaskStatus');
     return 'checkTaskStatus';
   }
 
-  const callIndex = state._docGenCallIndex || 0;
+  const callIndex = state._executeCallIndex || 0;
   const noOutputCount = state._noOutputCallCount || 0;
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`📍 [DocGenRouter] Routing Info:`);
+  console.log(`📍 [ExecuteRouter] Routing Info:`);
   console.log(`   Task: ${state.currentTask?.name || 'none'}`);
   console.log(`   callIndex: ${callIndex}`);
   console.log(`   response.done: ${response.done}`);
@@ -42,7 +42,7 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
   if (state._figmaConnectionLost) {
-    console.warn(`⚠️  [DocGenRouter] Figma connection lost → checkTaskStatus`);
+    console.warn(`⚠️  [ExecuteRouter] Figma connection lost → checkTaskStatus`);
     return 'checkTaskStatus';
   }
 
@@ -50,24 +50,24 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   if (state.recursionLimit && state.recursionCount) {
     const remaining = state.recursionLimit - state.recursionCount;
     if (remaining < 30) {
-      console.warn(`⚠️  [DocGenRouter] Recursion limit approaching (${state.recursionCount}/${state.recursionLimit}) → checkTaskStatus`);
+      console.warn(`⚠️  [ExecuteRouter] Recursion limit approaching (${state.recursionCount}/${state.recursionLimit}) → checkTaskStatus`);
       return 'checkTaskStatus';
     }
   }
 
   // 1. Tool calls → tool node
   if (response.toolCalls && response.toolCalls.length > 0) {
-    console.log(`🔧 [DocGenRouter] ${response.toolCalls.length} tool call(s) → tool node`);
+    console.log(`🔧 [ExecuteRouter] ${response.toolCalls.length} tool call(s) → tool node`);
     return 'tool';
   }
 
   // 2. Done → checkTaskStatus
   if (response.done) {
-    console.log(`🎯 [DocGenRouter] ✅ TASK DONE → checkTaskStatus`);
+    console.log(`🎯 [ExecuteRouter] ✅ TASK DONE → checkTaskStatus`);
     return 'checkTaskStatus';
   }
 
-  // 3. Otherwise → retry docGen
-  console.log(`🔄 [DocGenRouter] Continue reasoning → docGen node`);
-  return 'docGen';
+  // 3. Otherwise → retry execute
+  console.log(`🔄 [ExecuteRouter] Continue reasoning → execute node`);
+  return 'execute';
 }

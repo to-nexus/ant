@@ -1,12 +1,12 @@
 /**
- * DocGen / Explain Mode Helper
+ * Execute / Explain Mode Helper
  *
  * Chat-only response path for design-job explain intents
  * (`explain-sys` / `explain-spec` / `explain-ui` / `explain-game-art` /
  * `explain-visual`). Never emits XML `<file>` blocks and never writes to
  * disk — the entire response is streamed to the chat surface.
  *
- * Entry: `docGen()` early-returns to this helper when
+ * Entry: `execute()` early-returns to this helper when
  * `isExplainMode === true` (state.resolvedAction.mode === 'explain' OR
  * state.currentTask.type === 'explain'), so the system-design /
  * design-spec / design-ui branches further down can keep assuming a
@@ -37,11 +37,11 @@ export async function renderExplainResponse(
   state: DesignGraphState,
 ): Promise<Partial<DesignGraphState>> {
   // Per-node model selection — explain is the chat-only branch of the
-  // docGen node, so it honors the same `llmModels.design.docGen` slot.
+  // execute node, so it honors the same `llmModels.design.execute` slot.
   const llm = await resolveLLMClient(state);
   const pb = state.deps?.promptBuilder;
   if (!llm || !pb) {
-    throw new Error('[DocGen/Explain] llm or promptBuilder missing');
+    throw new Error('[Execute/Explain] llm or promptBuilder missing');
   }
 
   const currentTask = state.currentTask as DesignTask | undefined;
@@ -71,7 +71,7 @@ export async function renderExplainResponse(
   ]);
   const systemPrompt = [systemBody, rulesBody].filter(Boolean).join('\n\n');
 
-  const priorTurns = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
+  const priorTurns = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | MessageContentBlock[] }> = [
     { role: 'system', content: systemPrompt },
   ];
@@ -111,7 +111,7 @@ export async function renderExplainResponse(
     }
     await chatAPI.finalizeMessage();
   } catch (err) {
-    console.error('❌ [DocGen/Explain] Stream failed:', err);
+    console.error('❌ [Execute/Explain] Stream failed:', err);
     try { await chatAPI.finalizeMessage(); } catch { /* cleanup */ }
     throw err;
   }
@@ -127,8 +127,8 @@ export async function renderExplainResponse(
       {
         taskId: state.currentTask?.id || 'explain-1',
         taskName: state.currentTask?.name || 'Explain',
-        node: 'docGen-explain',
-        callIndex: state._docGenCallIndex || 0,
+        node: 'execute-explain',
+        callIndex: state._executeCallIndex || 0,
         modelId: llm.modelName,
         nodeHistoryLength: priorTurns.length,
         estimatedPromptChars: systemPrompt.length + (state.directive?.length || 0),
@@ -143,16 +143,16 @@ export async function renderExplainResponse(
     : [{ role: 'user', content: state.directive || '(no directive provided)' }];
   nodeHistory.push(buildAssistantMessage({ text: textResponse || undefined }));
 
-  console.log(`💬 [DocGen/Explain] chat-only response complete (${textResponse.length} chars)`);
+  console.log(`💬 [Execute/Explain] chat-only response complete (${textResponse.length} chars)`);
 
   return {
     files: [],
-    conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
-    _docGenCallIndex: (state._docGenCallIndex || 0) + 1,
+    conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
+    _executeCallIndex: (state._executeCallIndex || 0) + 1,
     _noOutputCallCount: 0,
     _pendingDoneCheck: false,
     _doneCheckEscalation: 0,
-    _activePhase: 'docGen' as const,
+    _activePhase: 'execute' as const,
     _currentTaskTokenUsage: state._currentTaskTokenUsage,
     tokenUsage: state.tokenUsage,
     llmResponse: {

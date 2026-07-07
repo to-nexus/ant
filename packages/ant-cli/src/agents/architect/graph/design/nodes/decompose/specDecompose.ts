@@ -143,7 +143,7 @@ async function decomposeSpecSections(
     `- Emit MORE than one task ONLY when the directive genuinely needs SEPARATE output documents (different file slugs / titles). That is rare for spec jobs.`,
     ``,
     `Principle — do NOT pre-decide the solution at decompose:`,
-    `- Task \`name\` and \`scope\` describe WHAT to think about, NOT the chosen structure or section list. Do NOT bake an outline, table of contents, or specific decisions into them — the docGen phase owns that thinking.`,
+    `- Task \`name\` and \`scope\` describe WHAT to think about, NOT the chosen structure or section list. Do NOT bake an outline, table of contents, or specific decisions into them — the execute phase owns that thinking.`,
     `- Authoring tasks are self-contained writing units; never emit "analysis-only" or "writing-only" tasks.`,
     ``,
     `ExecutionTier (BEFORE the meta tags, emit exactly one \`<executionTier>N</executionTier>\` tag where N is 0..4):`,

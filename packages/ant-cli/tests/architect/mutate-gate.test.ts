@@ -29,7 +29,7 @@
  * |----------------------------|--------|-------|--------------------------|
  * | code-execute               | true   | true  | source code phase        |
  * | code-plan (NEW)            | false  | true  | plan tool-loop runs gates |
- * | design (plan + docGen) /   | false  | false | document-producing phase |
+ * | design (plan + execute) /   | false  | false | document-producing phase |
  * |   planner                  |        |       |                          |
  * | undefined / undefined      | n/a    | n/a   | safe default (closed)    |
  */

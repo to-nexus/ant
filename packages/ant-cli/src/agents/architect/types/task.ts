@@ -200,7 +200,7 @@ export type CodeTask =
  */
 export type DesignTask = (DocTask | ExplainTask) & {
   targetFile?: string;             // Which design document (e.g., "be-system-main.md", "wallet-login.md")
-  targetDir?: string;              // Optional output directory override. When set, callers (docGen) use it
+  targetDir?: string;              // Optional output directory override. When set, callers (execute) use it
                                    // instead of designDirOf(targetFile). Used by spec tasks whose filenames
                                    // no longer carry a "spec-" prefix and thus cannot be routed by filename alone.
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
@@ -241,9 +241,9 @@ export type DesignTask = (DocTask | ExplainTask) & {
   sourceFiles?: string[];
 
   /**
-   * Artifact pool include patterns (set by decompose, consumed by docGen).
+   * Artifact pool include patterns (set by decompose, consumed by execute).
    * Path-prefix patterns matching ARTIFACT_PREFIX values.
-   * When set, docGen uses `selectArtifacts(pool, { include: task.include })`
+   * When set, execute uses `selectArtifacts(pool, { include: task.include })`
    * instead of hardcoded per-intent defaults.
    * e.g. ["plan", "architecture/system/api-contract-"]
    */

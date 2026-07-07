@@ -45,7 +45,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // ✅ Clarify continuation: if the previous run paused on a `<clarify>`
   // card, append the user's answer (state.overrideDirective) to
   // NODE_GENERATE before building messages so the LLM sees it. No-op when
-  // awaitingClarify is falsy. Mirrors design docGen's same call.
+  // awaitingClarify is falsy. Mirrors design execute's same call.
   if (state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [Planner:Generate] Clarify continuation — appending user response to conversation`);
     consumeAwaitingClarify(state, CONV_KEYS.NODE_GENERATE);

@@ -51,7 +51,7 @@ interface LLMConfig {
  */
 export interface LLMContext {
   jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'reviewer' | 'doc';
-  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detect' | 'direct' | 'sketch' | 'render' | 'engrave' | 'explain';
+  nodeType?: 'decompose' | 'plan' | 'execute' | 'tool' | 'validate' | 'learn' | 'detect' | 'direct' | 'sketch' | 'render' | 'engrave' | 'explain';
 }
 
 /**

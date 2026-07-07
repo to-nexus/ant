@@ -7,7 +7,7 @@
  *
  * The intent-group guard in `index.ts` calls into this when no LLM
  * exploration is appropriate; downstream the design graph still routes
- * `plan → docGen` for those intents through the dispatcher's return
+ * `plan → execute` for those intents through the dispatcher's return
  * shape.
  */
 
@@ -90,7 +90,7 @@ export async function dispatchOnly(state: DesignGraphState): Promise<Partial<Des
       // Phase event so the operator can distinguish "plan-LLM ran and
       // sealed a <plan>" (design-plan-sealed) from "plan-LLM was
       // skipped because the intent group is not yet plan-LLM enabled"
-      // (design-plan-dispatch-only). Both paths reach docGen but only
+      // (design-plan-dispatch-only). Both paths reach execute but only
       // the former injects a sealed plan into the runtime context.
       void execLogger
         .logPhaseComplete({
@@ -112,7 +112,7 @@ export async function dispatchOnly(state: DesignGraphState): Promise<Partial<Des
   console.log(`\n✅ [Plan/dispatch] Task prepared for execution`);
   console.log(`   Task: ${currentTask?.name}`);
   console.log(`   IntentGroup: ${state.resolvedAction?.intentGroup ?? 'unknown'} (plan-LLM skipped)`);
-  console.log(`   Next node: docGen will generate document\n`);
+  console.log(`   Next node: execute will generate document\n`);
 
   return { ...state, currentTask };
 }

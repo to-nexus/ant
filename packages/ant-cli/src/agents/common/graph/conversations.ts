@@ -43,7 +43,6 @@ export const CONV_KEYS = {
   SESSION_MAIN:  'session:main'  as ConversationKey,
   NODE_EXECUTE:  'node:execute'  as ConversationKey,
   NODE_PLAN:     'node:plan'     as ConversationKey,
-  NODE_DOCGEN:   'node:docGen'   as ConversationKey,
   NODE_GENERATE: 'node:generate' as ConversationKey,
   NODE_AGENT:    'node:agent'    as ConversationKey,
   /**

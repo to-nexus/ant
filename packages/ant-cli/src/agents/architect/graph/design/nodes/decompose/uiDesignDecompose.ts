@@ -38,7 +38,7 @@ export async function decomposeUiDesign(
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     handleReadSourceFile,
-  } = await import('../docGen/sourceSelector');
+  } = await import('../execute/sourceSelector');
   const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
   const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
@@ -247,8 +247,8 @@ export async function decomposeUiDesign(
 
       // anchorAfterSection used to be pre-computed here, but it always returned
       // null in new-build scenarios (target file is still empty at decompose
-      // time). The insertion anchor is now computed live in docGen each turn —
-      // see `design/_shared/anchor.ts` and `nodes/docGen/intent/ui.ts`.
+      // time). The insertion anchor is now computed live in execute each turn —
+      // see `design/_shared/anchor.ts` and `nodes/execute/intent/ui.ts`.
       for (let i = 0; i < tasks.length; i++) {
         if (i > 0) tasks[i].forceAppend = true;
         if (i === tasks.length - 1) tasks[i].isLastTaskForDocument = true;

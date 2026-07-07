@@ -5,7 +5,7 @@ documents, and (when available) the Figma file before sealing the plan.
 Tool calls have a limited budget — spend them on what you CANNOT know
 from training data and what your sealed plan needs to commit to.
 
-**File-write tools are NOT available in this phase.** Plan decides; docGen writes.
+**File-write tools are NOT available in this phase.** Plan decides; execute writes.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## Tool Priority Protocol
@@ -36,8 +36,8 @@ use them to ground UI-related candidates in the actual design surface:
 
 Plan-level Figma observation should focus on **shape** ("which screens
 exist, what their high-level structure is") rather than pixel-level
-detail (which docGen captures). Do NOT call `download_asset` here —
-asset download is docGen's responsibility.
+detail (which execute captures). Do NOT call `download_asset` here —
+asset download is execute's responsibility.
 
 ### Priority 3 — External Information
 

@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   EXECUTE_SOURCE_THRESHOLD,
   DECOMPOSE_SOURCE_THRESHOLD,
-} from '../../src/agents/architect/graph/design/nodes/docGen/sourceSelector';
+} from '../../src/agents/architect/graph/design/nodes/execute/sourceSelector';
 import { prepareRacInjection } from '../../src/agents/architect/graph/code/nodes/decompose/designSelector';
 import { compactContent } from '../../src/core/utils/contentCompactor';
 import {

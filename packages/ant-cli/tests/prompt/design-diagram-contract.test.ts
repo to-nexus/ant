@@ -3,7 +3,7 @@
  *
  * Locks the diagram-injection sweep that fixed the "diagram never appears
  * in design artifacts" drift. The sweep had five axes (system role
- * SSOT / docGen syntax-fence vs diagram-block split / DO-NOT prose-vs-
+ * SSOT / execute syntax-fence vs diagram-block split / DO-NOT prose-vs-
  * diagram axis / plan-outline diagram responsibility / api-contract
  * over-generalization narrowing). This test asserts every axis is still
  * present in the rendered template tree, and that the legacy magic-
@@ -233,7 +233,7 @@ describe('design diagram-contract — plan/variants/system-design/rules.md', () 
   it('plan owns the diagram-need decision in documentOutline', () => {
     expect(file).toMatch(/\*\*Diagram observation in outline\*\*/);
     expect(file).toMatch(/should note whether the section benefits from a diagram/i);
-    expect(file).toMatch(/decision lives in plan, not docGen/);
+    expect(file).toMatch(/decision lives in plan, not execute/);
   });
 });
 

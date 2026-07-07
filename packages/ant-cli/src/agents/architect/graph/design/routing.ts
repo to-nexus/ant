@@ -20,7 +20,7 @@ export function routeAfterResolve(s: DesignGraphState): string {
   if (isResume && s.awaitingClarify && s.clarifyPhase === 'decompose' && hasNewDirective) {
     // System-design decompose clarify: re-enter decompose (NOT plan) so the
     // decomposition itself is redone with the user's answer. `clarifyPhase`
-    // discriminates this from the docGen clarify path below.
+    // discriminates this from the execute clarify path below.
     console.log(`🔀 [Resolve→Router] isResume + awaitingClarify(decompose) + newDirective → decompose (clarify resume)`);
     return 'decompose';
   }
@@ -28,8 +28,8 @@ export function routeAfterResolve(s: DesignGraphState): string {
   if (isResume && s.awaitingClarify && hasNewDirective) {
     // Clarify response is fresh information; route through plan so the
     // LLM gets to re-decide candidates / outline against the new
-    // directive instead of jumping straight back to docGen with stale
-    // sealed plan. NODE_DOCGEN history is preserved for docGen's later
+    // directive instead of jumping straight back to execute with stale
+    // sealed plan. NODE_EXECUTE history is preserved for execute's later
     // re-entry so any partial doc draft remains as reference.
     console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → plan (clarify response → re-plan)`);
     return 'plan';
@@ -124,7 +124,7 @@ export function routeAfterRevise(s: DesignGraphState): string {
 
 export function routeAfterCheckTaskStatus(s: DesignGraphState): string {
   if (s._assetValidationFailed) {
-    return 'docGen';
+    return 'execute';
   }
   if (s.interruption) {
     return 'learn';
@@ -141,22 +141,22 @@ export function routeAfterCheckTaskStatus(s: DesignGraphState): string {
  *
  * - `_activePhase === 'plan'` AND tool calls present → tool node (next
  *   plan↔tool round).
- * - Otherwise → docGen (sealed `<plan>` ready, or unsupported intent
+ * - Otherwise → execute (sealed `<plan>` ready, or unsupported intent
  *   group fell through `dispatchOnly`).
  */
 export function routeAfterPlan(s: DesignGraphState): string {
   const hasToolCalls = (s.llmResponse?.toolCalls?.length ?? 0) > 0;
   if (s._activePhase === 'plan' && hasToolCalls) return 'tool';
-  return 'docGen';
+  return 'execute';
 }
 
 /**
  * Tool node response router (design job).
  *
- * Plan↔tool and docGen↔tool loops share the same physical tool node,
+ * Plan↔tool and execute↔tool loops share the same physical tool node,
  * dispatched via `_activePhase`. Routing back honours the same flag so
  * the loop the tool node served is the loop control returns to.
  */
 export function routeAfterTool(s: DesignGraphState): string {
-  return s._activePhase === 'plan' ? 'plan' : 'docGen';
+  return s._activePhase === 'plan' ? 'plan' : 'execute';
 }

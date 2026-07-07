@@ -6,7 +6,7 @@
  * since `0f9ee7e4`. The strict equality (`f === 'be-system-main.md'`) in
  * `validateAndFixTargetFiles` Step 1 never matched the wildcard form, so
  * every LLM-emitted task was dropped → `generateMinimumTasks` re-injected
- * wildcard-shaped placeholders → docGen prompt landed with `*.md` filenames
+ * wildcard-shaped placeholders → execute prompt landed with `*.md` filenames
  * → LLMs interpreted the `*` as "produce all three documents" and each
  * parallel worker wrote every system-design file (3 tasks × 3 documents).
  *

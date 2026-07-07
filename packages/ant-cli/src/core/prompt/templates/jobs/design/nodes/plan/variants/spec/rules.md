@@ -9,7 +9,7 @@ in caller B") and pick the one your exploration supports.
 **Verification plan per candidate**: For each candidate, document the
 observation that would prove it correct (`search_code` query,
 `read_file` target, `search_web` query) — even if you choose to skip
-the verification this round. docGen will not redo this analysis; the
+the verification this round. execute will not redo this analysis; the
 plan is the place to surface uncertainty.
 
 **Implementation Tasks granularity**: Tasks in `documentOutline` for
@@ -22,12 +22,12 @@ the "Implementation Tasks" section must each be:
 
 **External APIs**: When the spec involves third-party integration,
 your `documentOutline` MUST include a section that records the verified
-API surface (endpoints, auth, rate limits). docGen records the values;
+API surface (endpoints, auth, rate limits). execute records the values;
 plan decides that the section exists and what shape it takes.
 
 **Self-contained spec principle**: The Code Job has access only to the
 written spec — it does NOT see your plan, the Figma file, or the
 PRD. Your `documentOutline` MUST plan for every observed fact that the
 Code Job will need (asset paths, design tokens, component states) to be
-recorded directly in the spec. Plan the section; docGen writes the
+recorded directly in the spec. Plan the section; execute writes the
 values.

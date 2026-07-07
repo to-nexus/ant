@@ -575,7 +575,7 @@ export async function decomposeSystemDesign(
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     handleReadSourceFile,
-  } = await import('../docGen/sourceSelector');
+  } = await import('../execute/sourceSelector');
   const { callLLMWithToolLoop } = await import('../../../../../common/llm/callLLMWithToolLoop');
   const { buildDecomposeContext } = await import('./buildDecomposeContext');
 

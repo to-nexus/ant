@@ -53,7 +53,7 @@ When Mermaid is used, follow the Mermaid Syntax Safety constraints defined in di
 PHASE ROLE
 ════════════════════════════════════════════════════════════════════════════════
 
-You are running in the **docGen phase** of a design job. The artifact this
+You are running in the **execute phase** of a design job. The artifact this
 phase produces is the spec markdown at `architecture/spec/{{targetFile}}`.
 {{#unless planText}}No sealed plan was injected (legacy intent or upstream fallthrough); derive structure from the PRD.{{/unless}}
 

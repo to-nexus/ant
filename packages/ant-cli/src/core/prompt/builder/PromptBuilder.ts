@@ -719,7 +719,7 @@ export class PromptBuilder implements PromptPort {
 
   /**
    * Build the visualTier basis section independently.
-   * Used by UI design docGen which assembles prompts manually (not via build()).
+   * Used by UI design execute which assembles prompts manually (not via build()).
    */
   async buildVisualTierBasis(basis: Basis | undefined, job: string): Promise<string> {
     const hasLayers = VISUAL_TIER_LAYER_KEYS.some(k => basis?.visualTier?.[k]);

@@ -3,7 +3,7 @@
  *
  * Locks the path-decision output of the design job's framework-augmentation
  * logic so that the Phase 2-6d relocation (from scattered branches in
- * `docGen/intent/system.ts` to `AutoInjectionResolver.resolveTechTierInjections`)
+ * `execute/intent/system.ts` to `AutoInjectionResolver.resolveTechTierInjections`)
  * does not change the emitted template list for any of the three priority
  * branches:
  *
@@ -13,7 +13,7 @@
  *
  * The inputs cover the matrix of (frontend doc, backend doc) × (nextjs tier,
  * go tier, no tier). If the goldens break, verify the resolver signature and
- * the pseudo-techTier shape the docGen logging path feeds in.
+ * the pseudo-techTier shape the execute logging path feeds in.
  */
 
 import { describe, it, expect } from 'vitest';

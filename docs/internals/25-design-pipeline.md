@@ -2,7 +2,7 @@
 
 ## 개요
 
-Design Job 의 두 surface — **UI Design** (서비스 도메인 전용) 과 **Game-Art Design** (게임 도메인 전용) — 는 동일한 graph (`detect → decompose → docGen ⇄ tool`) 를 공유하지만 산출물·자산 풀·decision tag 가 다른 sibling 파이프라인이다. 두 surface 는 **수직 도메인 분리** (D28) — 한 워크스페이스에 한 surface 만 활성된다.
+Design Job 의 두 surface — **UI Design** (서비스 도메인 전용) 과 **Game-Art Design** (게임 도메인 전용) — 는 동일한 graph (`detect → decompose → execute ⇄ tool`) 를 공유하지만 산출물·자산 풀·decision tag 가 다른 sibling 파이프라인이다. 두 surface 는 **수직 도메인 분리** (D28) — 한 워크스페이스에 한 surface 만 활성된다.
 
 ### Surface 분리 (D17 / D18 / D28)
 
@@ -68,8 +68,8 @@ Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`�
 
 ```
 detect
-  → [figma 모드] figmaExplore → decompose → plan → docGen ⇄ tool → checkTaskStatus → ...
-  → [ref 모드]                   decompose → plan → docGen ⇄ tool → checkTaskStatus → ...
+  → [figma 모드] figmaExplore → decompose → plan → execute ⇄ tool → checkTaskStatus → ...
+  → [ref 모드]                   decompose → plan → execute ⇄ tool → checkTaskStatus → ...
 ```
 
 ### 태스크 분해 (decompose)
@@ -80,9 +80,9 @@ decompose가 문서별 chaptering을 수행한다:
 - ch1~chN: ui-assets (의존 없음, tokens와 병렬, 챕터 간 순차)
 - ch1~chN: ui-spec (ui-tokens + ui-assets 참조, 복잡도에 따라 다중 챕터)
 
-각 챕터가 하나의 DesignTask로 taskQueue에 들어가며, plan → docGen → tool 루프를 개별 실행한다.
+각 챕터가 하나의 DesignTask로 taskQueue에 들어가며, plan → execute → tool 루프를 개별 실행한다.
 
-### 문서 생성 (docGen)
+### 문서 생성 (execute)
 
 XML 스트리밍 방식으로 JSON 문서를 생성한다. `<file>` 태그로 신규 파일, `<append>` 태그로 기존 파일 확장. `<done>true</done>` 시그널로 태스크 완료를 선언한다. conversationHistory 기반 멀티턴 대화로 tool calling을 포함한다.
 
@@ -119,7 +119,7 @@ LLM이 디렉티브 + PRD / source documents 만으로 디자인 토큰, 에셋 
 plan/ + directive (+ visualTier)
   → detect: 디렉티브 + PRD / 자산 카운트만 워크스페이스 스캔
   → decompose: PRD 분량 + visualTier 기반 복잡도 평가 → taskQueue
-  → docGen: buildResourcesSummary(directive/PRD/assets) → LLM 프롬프트 주입
+  → execute: buildResourcesSummary(directive/PRD/assets) → LLM 프롬프트 주입
   → LLM: 직접 JSON 문서 생성 (필요 시 list_assets / read_file 만 호출)
 ```
 
@@ -158,7 +158,7 @@ Figma Desktop MCP 도구로 디자인 데이터를 구조적으로 추출한다.
 detect (isFigmaPipeline → true)
   → figmaExplore (Phase 0: 프로그래밍적 구조 탐색 + 매트릭스 생성)
   → decompose (매트릭스 기반 태스크 분해)
-  → plan → docGen ⇄ tool (Phase 1-3: 문서 생성)
+  → plan → execute ⇄ tool (Phase 1-3: 문서 생성)
 ```
 
 ### Phase 0: figmaExplore 노드
@@ -230,7 +230,7 @@ visual/ui/figma/figma.json
   → detect: isFigmaPipeline(intent, figmaPopulated) → true
   → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
   → decompose: 매트릭스 기반 복잡도 평가 → taskQueue
-  → docGen: buildResourcesSummary(figmaExplorationResult) → LLM 프롬프트 주입
+  → execute: buildResourcesSummary(figmaExplorationResult) → LLM 프롬프트 주입
   → LLM: figma_get_design_context 등으로 상세 데이터 추출 → JSON 문서 생성
 ```
 
@@ -271,7 +271,7 @@ templates/design/phases/decompose/
 
 by-desc과 by-figma가 각각 독립적인 규칙 세트를 가진다. 공통 규칙은 각 규칙 파일 내에서 중복 없이 관리한다.
 
-### 코드 레이어 분기 (docGen/intent/ui.ts)
+### 코드 레이어 분기 (execute/intent/ui.ts)
 
 ```
 buildUiDesignSystemPrompt():
@@ -286,7 +286,7 @@ buildResourcesSummary():
   desc 파이프라인  → directive / PRD / asset 카운트 안내
 ```
 
-docGen/index.ts에서 도구 세트 선택:
+execute/index.ts에서 도구 세트 선택:
 
 ```
 isFigmaPipeline(intent, figmaPopulated) → TOOL_SETS.uiDesignFigma
@@ -295,7 +295,7 @@ otherwise                               → TOOL_SETS.uiDesign
 
 ### nodeSummary LLM 표시 (buildNodeSummaryDisplay)
 
-docGen 프롬프트에 nodeSummary를 표시할 때, 토큰 크기에 따라 전략이 다르다:
+execute 프롬프트에 nodeSummary를 표시할 때, 토큰 크기에 따라 전략이 다르다:
 
 - `NODESUMMARY_TOKEN_THRESHOLD = 2500` 이하: 전체 nodeSummary를 그대로 표시 (각 노드에 dimensions, isComponent 표시)
 - 초과 시: 구조적 아웃라인으로 전환 — depth 0-1 노드 + COMPONENT_SET/SECTION 노드만 + 하위 노드 수 카운트

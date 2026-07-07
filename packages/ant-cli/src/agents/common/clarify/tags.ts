@@ -2,7 +2,7 @@
  * Canonical `<clarify>` tag parser for LLM response text.
  *
  * Absorbs the former `planner/.../generate/clarify.ts` (local duplicate)
- * and the inline regex in `design/.../docGen/index.ts`. Every node that
+ * and the inline regex in `design/.../execute/index.ts`. Every node that
  * parses `<clarify>` out of free-form LLM output routes through here.
  *
  * Supports two surface syntaxes actually emitted by different prompts:
@@ -17,11 +17,11 @@
  *      `  - ...`
  *      `  - ...`
  *      `</clarify>`
- *      — design spec docGen clarify (free-form bullet list inside the tag)
+ *      — design spec execute clarify (free-form bullet list inside the tag)
  *
  * Both surfaces yield a `ClarifyBlock` with `question` (possibly the whole
  * body when no attribute is present) and `options` (possibly empty).
- * Callers decide how to present a block without options (e.g. docGen
+ * Callers decide how to present a block without options (e.g. execute
  * forwards it as a chat message; planner requires ≥1 option to render
  * a choice card).
  */
@@ -53,7 +53,7 @@ export function parseClarifyTags(text: string): ClarifyBlock[] {
 
     const bodyWithoutOptions = body.replace(OPTION_TAG_RE, '').trim();
     // Prefer the attribute question; fall back to the tag body when no
-    // attribute was emitted (docGen syntax).
+    // attribute was emitted (execute syntax).
     const question = attributeQuestion || bodyWithoutOptions;
 
     if (question) {

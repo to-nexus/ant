@@ -28,7 +28,7 @@
 | 단계 | 경로 | 제약 반영 |
 |---|---|---|
 | Design detect/decompose | `agents/architect/graph/design/nodes/detect/*`, `.../decompose/systemDesignDecompose.ts` | workType/documentType 결정, target 파일군 결정 |
-| Design docGen(system) | `.../docGen/intent/system.ts` | system-design 전용 rules/guide 주입, sealed plan 반영 |
+| Design execute(system) | `.../execute/intent/system.ts` | system-design 전용 rules/guide 주입, sealed plan 반영 |
 | Code 소비 | `agents/architect/graph/code/nodes/plan/llm/prompt.ts`, `.../execute/buildMessages.ts` | `hasSystemDesign` 게이트와 policy로 코드 작업 입력화 |
 
 ### 2) 스펙 문서
@@ -36,7 +36,7 @@
 | 단계 | 경로 | 제약 반영 |
 |---|---|---|
 | Design plan(spec) | `agents/architect/graph/design/nodes/plan/*` | spec intentGroup에서 sealed `<plan>` 생성 |
-| Design docGen(spec) | `.../docGen/intent/spec.ts` | spec 변형 템플릿 + sealed plan prepend |
+| Design execute(spec) | `.../execute/intent/spec.ts` | spec 변형 템플릿 + sealed plan prepend |
 | Code 소비 | `agents/architect/graph/code/nodes/decompose/*`, `.../plan/*` | include/policy 기반으로 spec 범위 제한 |
 
 ### 3) PRD 문서
@@ -44,7 +44,7 @@
 | 단계 | 경로 | 제약 반영 |
 |---|---|---|
 | Planner 생성/수정 | `agents/planner/graph/plan/nodes/generate/*` | target 기반 PRD 생성, clarify 루프 |
-| Design 입력 | `agents/architect/graph/design/nodes/plan/*`, `.../docGen/*` | planText/PRD를 runtimeContext에 주입 |
+| Design 입력 | `agents/architect/graph/design/nodes/plan/*`, `.../execute/*` | planText/PRD를 runtimeContext에 주입 |
 | Code 입력 | `agents/architect/graph/code/nodes/resolve/*`, `.../decompose/*` | RAC refs/context로 PRD를 범위화해 주입 |
 
 ## FPOP / MECE / SBS 적용 기준
@@ -146,7 +146,7 @@ flowchart TD
 
 ## Codebase mutation gate cross-link
 
-문서 생성 잡(design plan/docGen, planner plan, code plan)의 prompt 는 산출물이 markdown / JSON 임을 명시하고 `decision` 같은 입력의 의미 축을 "기술 대상" 으로 닫아 codebase 변경 시도를 사전 억제한다 (FPOP/SBS/MECE 준수). 실제 차단은 도구 핸들러 + FileRenderer XML 가드가 담당 — prompt 가 가드를 대신하지 않는다. 코드잡 plan 의 `run_command` 는 직교 책임 (`allowShellExecution`) 이라 차단 대상이 아니다 — verification 게이트, 테스트 러너 설치, 에러 진단, dep discovery 같은 정상 사용처를 가진다. 정책 SSOT: [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate).
+문서 생성 잡(design plan/execute, planner plan, code plan)의 prompt 는 산출물이 markdown / JSON 임을 명시하고 `decision` 같은 입력의 의미 축을 "기술 대상" 으로 닫아 codebase 변경 시도를 사전 억제한다 (FPOP/SBS/MECE 준수). 실제 차단은 도구 핸들러 + FileRenderer XML 가드가 담당 — prompt 가 가드를 대신하지 않는다. 코드잡 plan 의 `run_command` 는 직교 책임 (`allowShellExecution`) 이라 차단 대상이 아니다 — verification 게이트, 테스트 러너 설치, 에러 진단, dep discovery 같은 정상 사용처를 가진다. 정책 SSOT: [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate).
 
 ## 경계
 

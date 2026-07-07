@@ -9,7 +9,7 @@
  *  - done    (visited && !isActive)            → opacity 0.9
  *
  * Worker chip stack is gated on the parallel worker-subgraph phase nodes
- * (plan / execute / docGen / tool / checkTaskStatus / learn).
+ * (plan / execute / tool / checkTaskStatus / learn).
  */
 
 import { memo } from 'react';
@@ -40,14 +40,14 @@ interface WorkflowNodeProps {
 }
 
 // Worker chips follow a parallel worker through its subgraph phases, so the chip
-// stays visible as the worker moves plan → tool ↔ execute/docGen → checkTaskStatus → learn.
+// stays visible as the worker moves plan → tool ↔ execute → checkTaskStatus → learn.
 // Matched on the RAW node id (see useGraphLayout `data.id`), NOT the formatted label,
-// so camelCase ids like 'docGen' / 'checkTaskStatus' normalize cleanly (no inserted spaces).
+// so camelCase ids like 'checkTaskStatus' normalize cleanly (no inserted spaces).
+// The design job's work node shares the 'execute' id with the code job.
 // Orchestration nodes (detect/resolve/triage/decompose/revise/…) are intentionally excluded.
 const WORKER_CHIP_PHASES = new Set([
   'plan',
-  'execute',         // code job work phase
-  'docgen',          // design job work phase (rendered label is "Doc Gen")
+  'execute',         // code + design job work phase
   'tool',
   'checktaskstatus',
   'learn',

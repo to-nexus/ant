@@ -159,7 +159,7 @@ export class FileRenderer {
   /**
    * Pin the design-job target filename guard for the current task. See
    * `FileRendererConfig.expectedTargetFile` for the full rationale.
-   * Called per-task from docGen so a single renderer instance can be
+   * Called per-task from execute so a single renderer instance can be
    * reused across worker turns without leaking the previous task's
    * expected target.
    */

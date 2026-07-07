@@ -10,9 +10,9 @@ export type VerificationTerminalKind =
   | 'orchestrator_fail_limit';
 
 // Both code and design jobs retired the analogous Safety Net D/E.
-// Runaway docGen loops are bounded by LangGraph `recursionLimit`;
+// Runaway execute loops are bounded by LangGraph `recursionLimit`;
 // non-productive streaks are signaled to the LLM via the soft/hard
-// warning messages in `design/nodes/docGen/index.ts` (advisory only).
+// warning messages in `design/nodes/execute/index.ts` (advisory only).
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;

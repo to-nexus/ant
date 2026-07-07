@@ -376,7 +376,7 @@ export class AutoInjectionResolver {
   /**
    * Hints-layer SSOT. Returns the list of injection paths for the given
    * (job, tiers, taskType). Exposed as the public surface so that callers
-   * outside PromptBuilder (e.g. design docGen logging) reuse the same
+   * outside PromptBuilder (e.g. design execute logging) reuse the same
    * decision logic instead of duplicating the framework/language mapping.
    *
    * Code job scope: `taskType ∈ {verification, error, ui, feature, setup,

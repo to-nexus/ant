@@ -83,7 +83,7 @@ export class SpecialTagTransformer {
    * Rendering / suppression policy for `<done>` is NOT touched here — it
    * still lives in the registry entry's `transform` hook. This method
    * only promotes the side-effect flag that downstream code
-   * (`docGenRouter` / execute routers) reads to decide task termination.
+   * (`executeRouter` / execute routers) reads to decide task termination.
    */
   scanExplicitDone(buffer: string): void {
     if (!buffer || this._explicitDone) return;

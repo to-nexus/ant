@@ -48,7 +48,7 @@ const JOB_DEFS: JobDef[] = [
     nodes: {
       default: 'llmModels.defaultDesignDesc',
       decompose: 'llmModels.decomposeDesc',
-      docGen: 'llmModels.docGenDesc',
+      execute: 'llmModels.designExecuteDesc',
       plan: 'llmModels.planDesc',
     },
   },
@@ -91,7 +91,6 @@ const JOB_DEFS: JobDef[] = [
 
 const NODE_COLUMNS: NodeKey[] = [
   'decompose',
-  'docGen',
   'plan',
   'execute',
   'direct',
@@ -103,7 +102,6 @@ const NODE_COLUMNS: NodeKey[] = [
 const NODE_LABEL: Record<NodeKey, string> = {
   default: 'Default',
   decompose: 'Decompose',
-  docGen: 'Doc Gen',
   plan: 'Plan',
   execute: 'Execute',
   direct: 'Direct',

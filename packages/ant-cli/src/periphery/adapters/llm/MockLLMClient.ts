@@ -88,6 +88,7 @@ export class MockLLMClient implements LLMClient {
     _options?: { tools?: ToolDefinition[]; maxTokens?: number; [key: string]: any },
   ): AsyncIterable<LLMStreamEvent> {
     const nodeType = this.context?.nodeType;
+    const jobType = this.context?.jobType;
     console.log(`🧪 [MockLLM] stream ${this.label()}`);
 
     // Fixture-dir override takes precedence: it always emits as a plain text
@@ -104,7 +105,10 @@ export class MockLLMClient implements LLMClient {
       return;
     }
 
-    if (nodeType === 'execute') {
+    // Design's work node also has nodeType 'execute'; it produces a design
+    // document, so let it fall through to route() (single-text markdown mock)
+    // instead of the code-job executeStreamEvents() shape.
+    if (nodeType === 'execute' && jobType !== 'design') {
       for (const event of executeStreamEvents()) {
         yield event;
       }
@@ -150,10 +154,9 @@ export class MockLLMClient implements LLMClient {
       return planResponse();
     }
     if (nodeType === 'execute') {
-      return executeInvokeResponse();
-    }
-    if (nodeType === 'docGen') {
-      return '# Mock Design Document\n\nThis is a mock-generated design document.\n';
+      return jobType === 'design'
+        ? '# Mock Design Document\n\nThis is a mock-generated design document.\n'
+        : executeInvokeResponse();
     }
 
     const text = this.extractText(messages);

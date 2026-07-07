@@ -6,7 +6,7 @@
  *     tool-call presence.
  *   - `routeAfterTool`: tool-node return dispatch by `_activePhase`.
  *   - `routeAfterResolve` (clarify branch): clarify-resume now goes to
- *     plan rather than docGen so the new directive triggers a re-plan
+ *     plan rather than execute so the new directive triggers a re-plan
  *     instead of bypassing the deep-think phase.
  *   - `routeAfterCheckTaskStatus`: continues to land on `plan` when the
  *     queue still has work (regression guard for the new plan-LLM node).
@@ -38,26 +38,26 @@ describe('routeAfterPlan — design plan response dispatch', () => {
     expect(routeAfterPlan(state)).toBe('tool');
   });
 
-  it('routes to docGen when _activePhase=plan but no tool calls (sealed plan)', () => {
+  it('routes to execute when _activePhase=plan but no tool calls (sealed plan)', () => {
     const state = freezeState({
       _activePhase: 'plan',
       llmResponse: { done: true, toolCalls: [] },
     });
-    // Plan emitted <plan> in this round → loop sealed → routes to docGen.
-    expect(routeAfterPlan(state)).toBe('docGen');
+    // Plan emitted <plan> in this round → loop sealed → routes to execute.
+    expect(routeAfterPlan(state)).toBe('execute');
   });
 
-  it('routes to docGen when _activePhase is undefined (dispatchOnly fallthrough or sealed exit)', () => {
+  it('routes to execute when _activePhase is undefined (dispatchOnly fallthrough or sealed exit)', () => {
     const state = freezeState({
       _activePhase: undefined,
       llmResponse: { done: true, toolCalls: [] },
     });
-    expect(routeAfterPlan(state)).toBe('docGen');
+    expect(routeAfterPlan(state)).toBe('execute');
   });
 
-  it('routes to docGen when llmResponse is missing (legacy dispatchOnly path)', () => {
+  it('routes to execute when llmResponse is missing (legacy dispatchOnly path)', () => {
     const state = freezeState({});
-    expect(routeAfterPlan(state)).toBe('docGen');
+    expect(routeAfterPlan(state)).toBe('execute');
   });
 });
 
@@ -66,13 +66,13 @@ describe('routeAfterTool — design tool-node dispatch', () => {
     expect(routeAfterTool(freezeState({ _activePhase: 'plan' }))).toBe('plan');
   });
 
-  it('returns to docGen when _activePhase is undefined', () => {
-    expect(routeAfterTool(freezeState({}))).toBe('docGen');
+  it('returns to execute when _activePhase is undefined', () => {
+    expect(routeAfterTool(freezeState({}))).toBe('execute');
   });
 });
 
 describe('routeAfterResolve — clarify branch goes to plan', () => {
-  it('routes clarify-resume with new directive to plan (not docGen)', () => {
+  it('routes clarify-resume with new directive to plan (not execute)', () => {
     const state = freezeState({
       isResume: true,
       awaitingClarify: true,

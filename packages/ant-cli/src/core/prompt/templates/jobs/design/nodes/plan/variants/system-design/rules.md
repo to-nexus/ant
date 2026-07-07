@@ -16,14 +16,14 @@ plan.
 
 **Module-edge contracts vs implementation details**: At plan time,
 decide *which contracts cross boundaries* — not the field-level shapes.
-docGen records DTOs and signatures; plan decides that "presentation
+execute records DTOs and signatures; plan decides that "presentation
 boundary observes domain state via X read-only port" is a real
 contract worth a section.
 
 **Reference projects**: If `referenceRequests` is present, your
 `candidateSolutions` SHOULD reference what those projects do (e.g.
 "Candidate A mirrors `ant-pong-be`'s gateway pattern; Candidate B
-introduces a separate command bus"). docGen consults the reference
+introduces a separate command bus"). execute consults the reference
 projects to record contract details; plan decides whether they are a
 relevant constraint.
 
@@ -31,11 +31,11 @@ relevant constraint.
 services or unbuilt backends, your plan MUST include a candidate or
 constraint that addresses adapter isolation. Picking a candidate that
 silently couples domain logic to a real external service is a
-plan-phase failure even if docGen later writes a plausible document.
+plan-phase failure even if execute later writes a plausible document.
 
 **Forbidden in plan output**: Do NOT enumerate concrete component
 names, framework hooks, or DOM-level details in `documentOutline`.
-Section descriptions stay at the architectural level — docGen and the
+Section descriptions stay at the architectural level — execute and the
 ABSTRACTION rules in `execute/variants/system-design/rules.md`
 constrain implementation-detail leakage at write time.
 
@@ -44,11 +44,11 @@ content covers boundary topology, data-flow direction, or
 time-ordered cross-boundary interactions, the entry's `content`
 field SHOULD note whether the section benefits from a diagram
 (e.g. "...; mermaid flowchart of boundary edges expected" or
-"...; diagram not needed — single linear path"). docGen will honor
+"...; diagram not needed — single linear path"). execute will honor
 this decision under the sealed-plan contract instead of re-deciding
 under its own checklist.
 
 ⚠️ **Blind spot**: Plan models default to prose-only outlines because
 "prose looks safer". Multi-axis relationships lose information when
 forced into 1-D bullet form; that information cannot be recovered
-downstream. The decision lives in plan, not docGen.
+downstream. The decision lives in plan, not execute.

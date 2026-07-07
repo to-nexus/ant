@@ -38,7 +38,7 @@ export const LLM_MAX_TOKENS = {
   // Short outputs (no thinking, concise keyword responses)
   KEYWORD: 3200,
 
-  // Default for plan / execute / verify / docgen.
+  // Default for plan / execute / verify.
   //
   // Anthropic model output ceilings (per Anthropic docs, 2026-06):
   //   - Sonnet 5 (codebase default for code.*) / Opus 4.6/4.7/4.8: 128K ceiling

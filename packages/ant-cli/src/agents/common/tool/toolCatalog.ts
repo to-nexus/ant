@@ -230,7 +230,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.EDIT_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
-    // NOTE: RUN_COMMAND intentionally absent. Design plan + docGen phases
+    // NOTE: RUN_COMMAND intentionally absent. Design plan + execute phases
     // are document-producing — `codebaseGate.rejectRunCommand` already
     // short-circuits shell execution, so advertising the tool wasted
     // tokens and produced "unavailable in this phase" failure turns
@@ -312,7 +312,7 @@ export const TOOL_SETS = {
 
   // Design plan-LLM read-only exploration. NO file-write tools and NO
   // download_asset — plan is for "deciding the solution" only; writing
-  // (and asset download) is the docGen node's responsibility.
+  // (and asset download) is the execute node's responsibility.
   designPlanExplore: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
@@ -332,7 +332,7 @@ export const TOOL_SETS = {
   designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
   codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
 
-  // Design docGen default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
+  // Design execute default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent.
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,

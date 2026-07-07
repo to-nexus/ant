@@ -4,13 +4,13 @@
  * Mirrors `code/nodes/plan/outcome/finalize.ts` but without batch-split
  * fan-out (design has 1 doc per task — no `batches[]` mechanism) and
  * without verification short-circuit (design tasks always go to
- * docGen). Concerns owned here:
+ * execute). Concerns owned here:
  *
- *   - Persist `state.planText` for docGen consumption.
- *   - Clear `_activePhase` (loop is done — graph routes to docGen on
+ *   - Persist `state.planText` for execute consumption.
+ *   - Clear `_activePhase` (loop is done — graph routes to execute on
  *     return).
  *   - Clear NODE_PLAN history (next task starts a fresh plan loop).
- *   - Clear stale `fileErrors` from any prior docGen attempt.
+ *   - Clear stale `fileErrors` from any prior execute attempt.
  *   - Save the planText to the per-job debug log so it is inspectable.
  */
 
@@ -69,7 +69,7 @@ interface PlanSummary {
  * Best-effort parse of the sealed `<plan>` JSON to extract the
  * top-level structural counts that operators care about when
  * eyeballing a job trace (did the LLM enumerate ≥2 candidates? what
- * decision did it pick? how many sections will docGen write?). Never
+ * decision did it pick? how many sections will execute write?). Never
  * throws — invalid JSON or missing fields collapse to `parsed=false`
  * with zeroed counts so the caller can log conditionally.
  */
@@ -92,8 +92,8 @@ function summarizePlan(planText: string): PlanSummary {
 
 /**
  * Emit a `phase_complete` event so `log-{jobId}.json` carries a
- * structured trace of plan→docGen handoff. The shape mirrors what
- * docGen later consumes (sealed planText length + parsed counts) so a
+ * structured trace of plan→execute handoff. The shape mirrors what
+ * execute later consumes (sealed planText length + parsed counts) so a
  * post-hoc operator can confirm the contract without replaying the
  * whole conversation.
  *

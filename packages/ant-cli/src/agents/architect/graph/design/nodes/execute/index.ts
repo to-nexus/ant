@@ -1,5 +1,5 @@
 /**
- * DocGen Node - 문서 생성 추론 (Design Job용 LLM)
+ * Execute Node - 문서 생성 추론 (Design Job용 LLM)
  * 
  * 책임:
  * - LLM 호출 및 스트리밍
@@ -77,19 +77,19 @@ function turnHadArtifactMutationIntent(
   return xmlMut || toolMut;
 }
 
-export async function docGen(
+export async function execute(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
   // ✅ Increment recursion count (track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
-  // ✅ Increment docGen call index (telemetry / displayed in warnings).
+  // ✅ Increment execute call index (telemetry / displayed in warnings).
   // No longer a safety-net gate — runaway is bounded by LangGraph recursionLimit.
-  const newCallIndex = (state._docGenCallIndex || 0) + 1;
+  const newCallIndex = (state._executeCallIndex || 0) + 1;
   
-  // Per-node model selection — honors `llmModels.design.docGen` (falls
+  // Per-node model selection — honors `llmModels.design.execute` (falls
   // back to the design default when unset / no workspaceConfig). Mirrors
-  // plan/decompose so docGen is no longer the odd node stuck on default.
+  // plan/decompose so execute is no longer the odd node stuck on default.
   const llmClient = await resolveLLMClient(state);
   const gitPort = state.deps?.git;
   if (!llmClient || !gitPort) {
@@ -103,30 +103,30 @@ export async function docGen(
 
   // ✅ Log iteration start info (per-call debugging, like code job's execute)
   const taskTokensSoFar = state._currentTaskTokenUsage;
-  console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
+  console.log(`\n💭 [Execute] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
   console.log(`   Intent group: ${intentGroup || 'unknown'}`);
 
   // Explain mode: chat-only response — no XML parsing, no disk artifact.
   // Branch BEFORE the intentGroup splits so the persisted-artifact templates
   // (system-design / design-spec / design-ui) never run for an explain task.
   if (isExplainMode) {
-    state._docGenCallIndex = newCallIndex;
-    console.log(`📝 [DocGen] explain mode — chat-only response, file write skipped`);
+    state._executeCallIndex = newCallIndex;
+    console.log(`📝 [Execute] explain mode — chat-only response, file write skipped`);
     return await renderExplainResponse(state);
   }
-  const nodeDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
-  console.log(`   Conversation history: ${nodeDocGen.length} messages`);
+  const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+  console.log(`   Conversation history: ${nodeExecute.length} messages`);
   if (taskTokensSoFar?.totalTokens) {
     console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
   }
   
-  // ✅ Spec clarify continuation: append user's clarify response to NODE_DOCGEN
+  // ✅ Spec clarify continuation: append user's clarify response to NODE_EXECUTE
   // via the shared helper. Gated on `intentGroup === 'design-spec'` because
-  // only spec clarify writes the docGen-kind checkpoint; other intent groups
+  // only spec clarify writes the execute-kind checkpoint; other intent groups
   // never set `awaitingClarify` on this state.
   if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
-    console.log(`📋 [DocGen/Spec] Clarify continuation — appending user response to conversation`);
-    consumeAwaitingClarify(state, CONV_KEYS.NODE_DOCGEN);
+    console.log(`📋 [Execute/Spec] Clarify continuation — appending user response to conversation`);
+    consumeAwaitingClarify(state, CONV_KEYS.NODE_EXECUTE);
   }
   
   let messages;
@@ -151,7 +151,7 @@ export async function docGen(
   // runaway is bounded by LangGraph `recursionLimit` upstream).
   // Figma tasks get higher thresholds to accommodate drill-down queries.
   // When `state.planText` is sealed, plan owns architectural exploration;
-  // docGen's role is "render the decision + verify a few exact paths" — so
+  // execute's role is "render the decision + verify a few exact paths" — so
   // tighten the nudges. When no plan is sealed (legacy / dispatcher fallback),
   // keep the original budget so Codebase Exploration heuristics have room.
   const hasFigmaTools = isFigmaUiDesign || (intentGroup === 'design-spec' && state.figmaAvailable === true);
@@ -183,11 +183,11 @@ export async function docGen(
       }
     }
     const level = noOutputCount >= hardWarnAt ? 'URGENT' : noOutputCount >= softWarnAt ? 'WARNING' : 'INFO';
-    console.log(`⚠️  [DocGen] No-output streak ${level}: ${noOutputCount} turns`);
+    console.log(`⚠️  [Execute] No-output streak ${level}: ${noOutputCount} turns`);
   }
 
   // Tool activation: delegate to the per-node tools.ts selector so the
-  // docGen node body stays focused on streaming / parsing.
+  // execute node body stays focused on streaming / parsing.
   const tools = await getTools(state, { useSourceFileTool });
   
   // ✅ Workflow update
@@ -200,7 +200,7 @@ export async function docGen(
       priority: state.currentTask.priority
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 'docGen', state.workerId ?? 0, taskInfo,
+      state._httpJobId, 'execute', state.workerId ?? 0, taskInfo,
       llmClient ? extractLLMInfo(llmClient) : undefined,
       state.recursionCount, state.recursionLimit
     );
@@ -262,10 +262,10 @@ export async function docGen(
   let pendingToolCalls: Array<{ id: string; name: string; args: any }> = [];
   
   // ✅ Check if this is a continuation after tool calling (Code job pattern)
-  const isAfterToolCall = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length > 0;
+  const isAfterToolCall = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length > 0;
   
   try {
-    // T1 pre-call estimate — covers every docGen round (continuation after
+    // T1 pre-call estimate — covers every execute round (continuation after
     // tool-result merges new messages into history).
     applyEstimatedInputTokensFromMessages(state, messages);
     // ✅ Stream with XML parsing + tool calling support
@@ -334,7 +334,7 @@ export async function docGen(
       await orchestrator.waitForAllFileOperations();
     } catch (fileError) {
       const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-      console.error(`⚠️  [DocGen] File operation failed: ${errorMsg}`);
+      console.error(`⚠️  [Execute] File operation failed: ${errorMsg}`);
     }
     
     // ✅ Finalize orchestrator (flush buffer and save files)
@@ -344,7 +344,7 @@ export async function docGen(
     // ✅ CRITICAL: Extract file errors from finalize result for output validation
     const fileErrors = finalizeResult.fileErrors || [];
     if (fileErrors.length > 0) {
-      console.error(`⚠️  [DocGen] ${fileErrors.length} file error(s) detected:`);
+      console.error(`⚠️  [Execute] ${fileErrors.length} file error(s) detected:`);
       for (const error of fileErrors) {
         console.error(`   - ${error.substring(0, 200)}`);
       }
@@ -362,10 +362,10 @@ export async function docGen(
     // Accumulate token usage to state
     if (capturedUsage) {
       const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-      // Attribute to docGen's actual (per-node-resolved) model, not the
+      // Attribute to execute's actual (per-node-resolved) model, not the
       // graph-default — `resolveModelIdSafe(state)` reads state.deps.llm.
-      const docGenModelId = llmClient.modelName;
-      accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false, modelId: docGenModelId });
+      const executeModelId = llmClient.modelName;
+      accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false, modelId: executeModelId });
       updateKanbanTokenUsage(state);
       
       const taskUsage = state._currentTaskTokenUsage;
@@ -376,10 +376,10 @@ export async function docGen(
         {
           taskId: state.currentTask?.id || 'unknown',
           taskName: state.currentTask?.name || 'unknown',
-          node: 'docGen',
+          node: 'execute',
           callIndex: newCallIndex - 1,
-          modelId: docGenModelId,
-          nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
+          modelId: executeModelId,
+          nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
           estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
             if (typeof m.content === 'string') return sum + m.content.length;
             if (Array.isArray(m.content)) {
@@ -394,7 +394,7 @@ export async function docGen(
       );
     }
     
-    console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+    console.log(`✅ [Execute] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
     console.log(`   Telemetry: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
     
     // No-output streak tracker (feeds the advisory soft/hard warnings near
@@ -416,7 +416,7 @@ export async function docGen(
     // landing on an artifact path, or a pending edit_file/delete_file/
     // create_file/mkdir tool call on an artifact path) but the LLM did
     // NOT emit `<done>true</done>`, set the pending-done-check flag so
-    // the next docGen turn's trailing user message can ask the LLM
+    // the next execute turn's trailing user message can ask the LLM
     // whether the assigned scope is satisfied. Cleared on any turn that
     // either emits done or has no artifact mutation. See
     // `docs/architecture/15-design-job.md` "Codebase mutation gate".
@@ -426,10 +426,10 @@ export async function docGen(
     const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
 
     // Spec clarify detection via the shared gate (policy + budget + turn-
-    // terminating). The matrix enables the `docgen` phase only for `gen-spec`,
+    // terminating). The matrix enables the `execute` phase only for `gen-spec`,
     // so this is spec-only by construction. Content-level clarify — asks about
     // spec document gaps within the committed intent, so NOT gated by
-    // `isIntentCommitted`. Presentation is docGen-specific (free-form bullet
+    // `isIntentCommitted`. Presentation is execute-specific (free-form bullet
     // list forwarded as a chat message, not choice cards), injected via `send`.
     {
       const clarifyIntent = state.resolvedAction?.intent as IntentId | undefined;
@@ -437,10 +437,10 @@ export async function docGen(
         ? await applyClarifyGate({
             responseText: textResponse,
             intent: clarifyIntent,
-            phase: 'docgen',
+            phase: 'execute',
             clarifyRoundsUsed: state.clarifyRoundsUsed,
             send: async (blocks) => {
-              // docGen's prompt uses the bare `<clarify>` body syntax (no
+              // execute's prompt uses the bare `<clarify>` body syntax (no
               // attribute); the parser stores the full body as `question`.
               const clarifyContent = blocks.map((b) => b.question).join('\n\n');
               await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
@@ -449,9 +449,9 @@ export async function docGen(
           })
         : { paused: false as const, cleanedText: textResponse, blocks: [], stateUpdates: {} };
       if (clarifyGate.paused) {
-        console.log(`💬 [DocGen/Spec] clarify — pausing for user input`);
+        console.log(`💬 [Execute/Spec] clarify — pausing for user input`);
 
-        await saveClarifyCheckpoint(state, { kind: 'docgen', nodeHistory });
+        await saveClarifyCheckpoint(state, { kind: 'execute', nodeHistory });
 
         // Clear estimating activity
         if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
@@ -460,17 +460,17 @@ export async function docGen(
 
         return {
           files,
-          conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
+          conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
           awaitingClarify: true,
           ...clarifyGate.stateUpdates,
           llmResponse: { textResponse, done: true },
-          _docGenCallIndex: newCallIndex,
+          _executeCallIndex: newCallIndex,
           _noOutputCallCount: 0,
           // Clarify pause is treated as a stable boundary — not an
           // artifact-mutation-without-done turn — so reset the gate.
           _pendingDoneCheck: false,
           _doneCheckEscalation: 0,
-          _activePhase: 'docGen' as const,
+          _activePhase: 'execute' as const,
           _currentTaskTokenUsage: state._currentTaskTokenUsage,
           tokenUsage: state.tokenUsage,
         };
@@ -479,9 +479,9 @@ export async function docGen(
 
     return {
       files,
-      conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
-      _docGenCallIndex: newCallIndex,
+      _executeCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
       _pendingDoneCheck: nextPendingDoneCheck,
       _doneCheckEscalation: nextDoneCheckEscalation,
@@ -490,7 +490,7 @@ export async function docGen(
       // (codebase writes) and `ToolExecutionContext.allowShellExecution`
       // (run_command) in the handlers, not this flag — the field is
       // informational.
-      _activePhase: 'docGen' as const,
+      _activePhase: 'execute' as const,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,
       llmResponse: hasToolCalls ? {
@@ -505,7 +505,7 @@ export async function docGen(
       },
     };
   } catch (error) {
-    console.error('❌ [DocGen] Error during reasoning:', error);
+    console.error('❌ [Execute] Error during reasoning:', error);
     throw error;
   }
 }
@@ -586,10 +586,10 @@ function buildNodeHistory(
   pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>,
 ): Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> {
   let history: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
-  const existingDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
+  const existingExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   
-  if (existingDocGen.length > 0) {
-    history = [...existingDocGen] as any;
+  if (existingExecute.length > 0) {
+    history = [...existingExecute] as any;
   } else {
     history = [];
     for (const msg of messages) {

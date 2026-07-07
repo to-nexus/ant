@@ -103,7 +103,7 @@ plan/prd.md (PRD)
 Design Job
     ├─ detect: determines domain/environment from PRD alone
     ├─ decompose: breaks down into system design tasks based on PRD
-    └─ docGen: generates system design treating PRD as "ABSOLUTE TRUTH"
+    └─ execute: generates system design treating PRD as "ABSOLUTE TRUTH"
         └─► architecture/system/, architecture/spec/, visual/ui/ (system design, UI design documents)
             ↓
 Code Job (consumes PRD + system design simultaneously)

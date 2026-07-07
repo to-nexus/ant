@@ -147,16 +147,23 @@ export function beginNodePhase(
  *
  * This is the SSOT for phase initialization — node implementations MUST NOT
  * call `beginNodePhase` themselves. The label is resolved via
- * `resolveNodePhaseLabel(phaseId, locale)` so there is exactly one place that
+ * `resolveNodePhaseLabel(labelId, locale)` so there is exactly one place that
  * maps phase ids to human-readable wording.
+ *
+ * `labelId` defaults to `phaseId`. Pass it explicitly when the phase id is
+ * shared across jobs but the human-readable label must differ — e.g. the
+ * design work node uses phaseId `'execute'` (so SSE chip-gating matches the
+ * code job) but labelId `'designExecute'` so its gauge reads "Generating
+ * document", not the code job's "Executing".
  */
 export function withPhaseTracking<S extends TokenTrackingState, R>(
   phaseId: string,
   node: (state: S) => Promise<R> | R,
+  labelId: string = phaseId,
 ): (state: S) => Promise<R> {
   return async (state: S): Promise<R> => {
     const locale = ((state as any)._uiLocale as UILocale | undefined) ?? 'en';
-    beginNodePhase(state, phaseId, resolveNodePhaseLabel(phaseId, locale));
+    beginNodePhase(state, phaseId, resolveNodePhaseLabel(labelId, locale));
     return await node(state);
   };
 }

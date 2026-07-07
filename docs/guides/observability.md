@@ -21,7 +21,7 @@ Every process writes structured-ish JSON / prefixed strings to stdout.
 Conventions:
 
 - **Emoji prefixes** for grep-ability:
-  `🚀 [JobWorker]`, `📄 [DocGen]`, `🔧 [Tool]`, `⚙️ [Orchestrator]`,
+  `🚀 [JobWorker]`, `📄 [Execute]`, `🔧 [Tool]`, `⚙️ [Orchestrator]`,
   `🚪 [PreviewServer]`.
 - **Job lifecycle** events log with the job id. Filter with
   `rg "<jobId>"` to follow one job across processes.

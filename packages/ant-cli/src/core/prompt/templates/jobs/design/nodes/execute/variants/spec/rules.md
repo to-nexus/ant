@@ -55,7 +55,7 @@
 
 **Constraint**: When the scope feels too large for one document, deepen the structuring inside the current document (sections, sub-sections, tables) rather than externalizing the work.
 
-⚠️ **Blind spot**: When directives feel multi-topic, the instinct is to defer parts to "another task". For spec docGen there is no such task — the deferred reasoning never happens. Integrate everything into this document.
+⚠️ **Blind spot**: When directives feel multi-topic, the instinct is to defer parts to "another task". For spec execute there is no such task — the deferred reasoning never happens. Integrate everything into this document.
 
 ════════════════════════════════════════════════════════════════════════════════
 

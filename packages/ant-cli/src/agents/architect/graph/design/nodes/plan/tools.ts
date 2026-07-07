@@ -13,7 +13,7 @@
  *
  * File-write tools (create_file / edit_file / append) and download_asset
  * are intentionally NOT exposed here — the plan node decides the
- * solution; docGen writes the document and downloads assets.
+ * solution; execute writes the document and downloads assets.
  */
 
 import type { ToolDefinition } from '../../../../../../core/ports/llm';

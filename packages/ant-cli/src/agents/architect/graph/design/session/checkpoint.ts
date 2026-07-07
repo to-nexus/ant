@@ -122,7 +122,7 @@ async function writeCheckpoint(
 
 /**
  * Task-start boundary: plan node popped the next task and is about to dispatch
- * to docGen. Saves `currentTask` so a manual cancel during docGen can locate
+ * to execute. Saves `currentTask` so a manual cancel during execute can locate
  * the in-progress task on resume.
  */
 export async function saveTaskStartCheckpoint(
@@ -206,7 +206,7 @@ export async function saveDecomposeCheckpoint(
 
 /**
  * Clarify pause: one of three phases fired —
- * - `docgen`:   docGen spec-clarify tag; carries the current docGen node history.
+ * - `execute`:   execute spec-clarify tag; carries the current execute node history.
  * - `decompose`: system-design decompose clarify; `clarifyPhase='decompose'`
  *   discriminates the resume target (routeAfterResolve → decompose).
  * - `detect`:   detect node paused for the user to pick spec/system.
@@ -218,13 +218,13 @@ export async function saveDecomposeCheckpoint(
  */
 export async function saveClarifyCheckpoint(
   state: DesignGraphState,
-  opts: { kind: "docgen" | "decompose" | "detect"; nodeHistory?: ConversationMessage[] },
+  opts: { kind: "execute" | "decompose" | "detect"; nodeHistory?: ConversationMessage[] },
 ): Promise<void> {
   const patch: Partial<SessionState> = { ...buildBasePatch(state) };
-  if (opts.kind === "docgen") {
+  if (opts.kind === "execute") {
     patch.awaitingClarify = true;
     if (opts.nodeHistory) {
-      patch.conversations = { [CONV_KEYS.NODE_DOCGEN]: opts.nodeHistory };
+      patch.conversations = { [CONV_KEYS.NODE_EXECUTE]: opts.nodeHistory };
     }
   } else if (opts.kind === "decompose") {
     patch.awaitingClarify = true;

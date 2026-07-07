@@ -49,7 +49,7 @@ export interface PlanLLMResponse {
  *
  * - `planText` — the LLM emitted a `<plan>...</plan>` block with
  *   sufficient length. Caller treats this as the sealed plan and routes
- *   to the next phase (e.g. execute / docGen).
+ *   to the next phase (e.g. execute / execute).
  * - `toolCalls` — the LLM chose tool calls. Caller persists `llmResponse`
  *   and `nodePlanHistory` (assistant message appended), sets `_activePhase`
  *   to its plan marker, and yields control back to the graph so the tool

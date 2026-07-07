@@ -3,7 +3,7 @@
  *
  * Renders `jobs/design/nodes/plan/base.md` with intent-group dispatch
  * to the `variants/{spec,system-design}/{base,rules}` partials. Mirrors
- * the artifact-pipeline + cache-block pattern used by `docGen/intent/spec`.
+ * the artifact-pipeline + cache-block pattern used by `execute/intent/spec`.
  *
  * Returns `TextContentBlock[]` so Anthropic prompt caching can split
  * the stable system / artifact content from the runtime user turn —
@@ -38,7 +38,7 @@ export async function buildPlanPromptBlocks(
   const intentGroup = state.resolvedAction?.intentGroup ?? 'design-spec';
   const directive = state.overrideDirective || state.directive || '';
 
-  // Artifact selection — mirrors `design/nodes/docGen/intent/spec.ts`.
+  // Artifact selection — mirrors `design/nodes/execute/intent/spec.ts`.
   const taskAny = task as any;
   const taskSourceFiles: string[] | undefined = taskAny?.sourceFiles;
   // Single injection SSOT — `task.include` (LLM-authored), SOURCES fallback.

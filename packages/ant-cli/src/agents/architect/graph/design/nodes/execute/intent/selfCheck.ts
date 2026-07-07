@@ -1,16 +1,16 @@
 /**
  * R5 self-check trailing user message.
  *
- * When the prior docGen turn produced an artifact mutation but the LLM
- * did NOT emit `<done>true</done>`, the docGen node sets
+ * When the prior execute turn produced an artifact mutation but the LLM
+ * did NOT emit `<done>true</done>`, the execute node sets
  * `state._pendingDoneCheck = true` and increments
- * `state._doneCheckEscalation`. The next docGen turn reads those
+ * `state._doneCheckEscalation`. The next execute turn reads those
  * fields here to swap the default `'Continue.'` trailing message for a
  * self-check that asks the model whether the assigned scope is
  * satisfied.
  *
  * Shared between spec / system-design / (future) UI variants so the
- * tone and meaning-axis stay aligned across all design docGen
+ * tone and meaning-axis stay aligned across all design execute
  * intents. Keeps the FPOP discipline: What-only, no MUST repetitions,
  * no tool-name lists, no system behaviour exposition. The codebase
  * mutation rejection is described by the gate's own error message

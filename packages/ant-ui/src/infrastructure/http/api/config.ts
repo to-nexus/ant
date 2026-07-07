@@ -5,7 +5,6 @@ export interface JobLLMConfig {
   default?: string;
   decompose?: string;
   plan?: string;
-  docGen?: string;
   execute?: string;
   tool?: string;
   validate?: string;

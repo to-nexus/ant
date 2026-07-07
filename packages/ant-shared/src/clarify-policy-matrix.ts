@@ -26,7 +26,7 @@ import { ExecutionTierId } from './session-log';
  * No post-fan-out (worker) phase is ever listed — workers must not clarify;
  * a worker that needs an answer fails its task and escalates to decompose.
  */
-export type ClarifyPhase = 'detect' | 'decompose' | 'generate' | 'docgen' | 'direct';
+export type ClarifyPhase = 'detect' | 'decompose' | 'generate' | 'execute' | 'direct';
 
 export type ClarifyBlockingMode = 'user-choice-required' | 'proceed-if-sufficient';
 
@@ -110,10 +110,10 @@ const CLARIFY_POLICY_MATRIX: Record<IntentId, ClarifyPolicy> = {
   'rev-game-art': DISABLED,
   'explain-game-art': DISABLED,
 
-  // ── Spec (docGen single-node; no tier gate) ─
+  // ── Spec (execute single-node; no tier gate) ─
   'gen-spec': {
     clarifyEnabled: true,
-    clarifyPhases: ['docgen'],
+    clarifyPhases: ['execute'],
     clarifyBudget: 3,
     blockingMode: 'proceed-if-sufficient',
   },

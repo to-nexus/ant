@@ -1,7 +1,7 @@
 /**
  * R5 self-check trailing message — turn detection helpers.
  *
- * The full docGen node test surface is too heavy for a unit test (it
+ * The full execute node test surface is too heavy for a unit test (it
  * runs an LLM stream + orchestrator + file renderer). Instead, this
  * test pins:
  *   - the artifact-mutation-intent detector logic (XML files / pending
@@ -11,12 +11,12 @@
  *   - the self-check trailing message helper used by spec / system
  *     intents (escalation 1 vs ≥2 wording, sectionScope inclusion).
  *
- * These two pieces own the entire R5 contract — the docGen node only
+ * These two pieces own the entire R5 contract — the execute node only
  * combines them with state plumbing.
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildSelfCheckTrailingMessage } from '../../src/agents/architect/graph/design/nodes/docGen/intent/selfCheck';
+import { buildSelfCheckTrailingMessage } from '../../src/agents/architect/graph/design/nodes/execute/intent/selfCheck';
 import type { DesignGraphState } from '../../src/agents/architect/graph/design/state';
 
 function stateStub(overrides: Partial<DesignGraphState> = {}): DesignGraphState {

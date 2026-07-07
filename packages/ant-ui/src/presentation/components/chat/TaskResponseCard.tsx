@@ -2,7 +2,7 @@
  * TaskResponseCard - Contained card for worker graph text output
  *
  * Renders LLM inter-tag text responses inside a bounded card
- * with ReactMarkdown. Used in worker graph nodes (plan, codeGen, docGen)
+ * with ReactMarkdown. Used in worker graph nodes (plan, codeGen, execute)
  * to prevent unbounded text streaming in parallel execution.
  *
  * Height: dynamic up to ~12 lines (max-h-[288px]), then scrollable.
