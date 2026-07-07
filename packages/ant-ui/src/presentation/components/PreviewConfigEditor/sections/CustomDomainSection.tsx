@@ -6,7 +6,7 @@ import { StepIndicator } from '@/presentation/components/common/async/primitives
 import { buildStepStatusArray } from '@/presentation/components/common/async/buildStepStatusArray';
 import { useCustomDomainManager } from '../../FeatureSection/hooks/useCustomDomainManager';
 import type { DeployStatus } from '@/infrastructure/http/api';
-import type { CustomDomainWithDns, CustomDomainStatus, CustomDomainTarget } from '@/infrastructure/http/api';
+import type { CustomDomainWithDns, CustomDomainStatus, CustomDomainTarget, CustomDomainDnsInstructions } from '@/infrastructure/http/api';
 
 const STATUS_ORDER: CustomDomainStatus[] = ['pending_dns', 'verifying', 'active'];
 
@@ -31,7 +31,32 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-function DnsRow({ label, name, value }: { label: string; name: string; value: string }) {
+interface DnsRecord { label: string; name: string; value: string }
+
+/**
+ * Flatten DNS instructions into a single ordered record list — the SSOT shared
+ * by the per-row render and the "copy all" plain-text export so the two never
+ * drift. Handles the wildcard shape (TXT + `*.` CNAME + optional apex A rows).
+ */
+function dnsRecords(dns: CustomDomainDnsInstructions): DnsRecord[] {
+  const rows: DnsRecord[] = [{ label: 'TXT', name: dns.txt.name, value: dns.txt.value }];
+  if (dns.connection.kind === 'cname') {
+    rows.push({ label: 'CNAME', name: dns.connection.name, value: dns.connection.value });
+  } else {
+    for (const ip of dns.connection.values) rows.push({ label: 'A', name: dns.connection.name, value: ip });
+  }
+  if (dns.apexConnection) {
+    for (const ip of dns.apexConnection.values) rows.push({ label: 'A', name: dns.apexConnection.name, value: ip });
+  }
+  return rows;
+}
+
+/** Newline-separated `TYPE⇥name⇥value` — pasteable into an agent / notepad / sheet. */
+function recordsToText(rows: DnsRecord[]): string {
+  return rows.map((r) => `${r.label}\t${r.name}\t${r.value}`).join('\n');
+}
+
+function DnsRow({ label, name, value }: DnsRecord) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
       <span style={{ minWidth: 54, color: 'var(--text-3)', fontWeight: 700 }}>{label}</span>
@@ -40,6 +65,27 @@ function DnsRow({ label, name, value }: { label: string; name: string; value: st
       <code style={{ color: 'var(--text-1)', wordBreak: 'break-all', flex: 1 }}>{value}</code>
       <CopyButton value={value} />
     </div>
+  );
+}
+
+function CopyAllButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+      }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700,
+        height: 22, padding: '0 7px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-2)',
+        background: 'var(--surface-1)', color: 'var(--text-2)', cursor: 'pointer',
+      }}
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />} {label}
+    </button>
   );
 }
 
@@ -105,24 +151,24 @@ function DomainRow({
         <StepIndicator steps={steps} orientation="horizontal" />
       </div>
 
-      {domain.status !== 'active' && (
-        <div style={{ marginTop: 8, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 4 }}>
-            {t('preview.domain.dnsHint', 'Add these records at your DNS provider, then verify:')}
+      {(() => {
+        const rows = dnsRecords(domain.dns);
+        return (
+          <div style={{ marginTop: 8, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', flex: 1 }}>
+                {domain.status !== 'active'
+                  ? t('preview.domain.dnsHint', 'Add these records at your DNS provider, then verify:')
+                  : t('preview.domain.dnsHintActive', 'DNS records for this domain (add any missing ones at your DNS provider):')}
+              </div>
+              <CopyAllButton text={recordsToText(rows)} label={t('preview.domain.copyAll', 'Copy all')} />
+            </div>
+            {rows.map((r, i) => (
+              <DnsRow key={`${r.label}-${r.name}-${r.value}-${i}`} label={r.label} name={r.name} value={r.value} />
+            ))}
           </div>
-          <DnsRow label="TXT" name={domain.dns.txt.name} value={domain.dns.txt.value} />
-          {domain.dns.connection.kind === 'cname' ? (
-            <DnsRow label="CNAME" name={domain.dns.connection.name} value={domain.dns.connection.value} />
-          ) : (
-            domain.dns.connection.values.map((ip) => (
-              <DnsRow key={ip} label="A" name={domain.dns.connection.name} value={ip} />
-            ))
-          )}
-          {domain.dns.apexConnection?.values.map((ip) => (
-            <DnsRow key={`apex-${ip}`} label="A" name={domain.dns.apexConnection!.name} value={ip} />
-          ))}
-        </div>
-      )}
+        );
+      })()}
 
       {domain.error && domain.error !== 'removed' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--status-error-fg)' }}>
