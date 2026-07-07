@@ -30,6 +30,7 @@ export function SiteNavBar() {
     { label: t('nav.cloud'), href: '/cloud' },
     { label: t('nav.pricing'), href: '/cloud#pricing' },
     { label: t('nav.community'), href: '/community' },
+    { label: t('nav.download'), href: '/download' },
   ];
 
   useEffect(() => {
