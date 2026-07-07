@@ -284,6 +284,48 @@ PR that introduces the SSOT slice.
 
 ---
 
+## 7.6 Panel lifecycle on identity change
+
+When the `(project, feature)` identity changes, panels must not keep showing
+or keeping alive the *previous* identity's state. This is the panel-lifecycle
+counterpart of §7.5.4 — the "reset/reload/close on switch" logic is a single
+SSOT, not scattered per-panel effects.
+
+An identity transition has two halves:
+
+- **Synchronous store reset** — SSOT is
+  [`applyIdentityTransition`](../../packages/ant-ui/src/domain/store/slices/resetSlice.ts)
+  + the pure policy in
+  [`identityTransition.ts`](../../packages/ant-ui/src/domain/project-world/identityTransition.ts).
+  `setSelectedProject` / `setSelectedFeature` and `reset()` (logout — a
+  superset) all delegate to it. It clears feature-scoped runtime, closes
+  feature/project-scoped secondary tabs, evicts the previous feature's
+  preview/deploy/custom-domain buckets, and drops `transfer.sendPreselectedSource`.
+- **Async refetch** — SSOT is
+  [`useProjectLifecycle`](../../packages/ant-ui/src/domain/project-world/lifecycle.ts):
+  reset + refetch git-world and project-config, reconnect SSE.
+
+Per-surface policy:
+
+| Surface | On feature change | On project change |
+|---|---|---|
+| Conversation / board / session runtime (`session`, `kanban`, `chatEvents`, `streamingBuffers`, `isRunning`, `currentJobId`) | preserve (SSE reconnect + session load refill) | clear |
+| Transient editor/figma/parallel-job (`editorTabs`, `activeEditorTabId`, `figmaPopulated`, `activeJobs`) | clear | clear |
+| `fileEdit` / `transfer` tabs + `sendPreselectedSource` | close + clear source | close + clear source |
+| `previewConfig` tab | **keep open** (bucket read keyed on identity; `usePreviewSync` re-fetches) | **close** (feature → undefined) |
+| preview / deploy / custom-domain bucket for the *previous* `${project}:${feature}` | evict (`removePreviewEntry` / `removeDeployEntry`) | evict |
+| backend preview server | left running (UI only — no `stopPreview()`) | left running |
+| `projectConfig` tab | preserve (feature-agnostic) | preserve + reload (lifecycle clears + refetches) |
+| `actions` / `accountConfig` / `billing` tabs | preserve | preserve (`actionMetadata.domain` re-mirrored from new config) |
+| git-world snapshot/pat, SSE | clear + refetch (lifecycle) | clear + refetch (lifecycle) |
+
+Do NOT add a new panel-close/reload effect keyed on `selectedProject` /
+`selectedFeature`. Extend the policy table + `applyIdentityTransition` instead,
+so there stays exactly one description of an identity transition. Regression
+guard: `packages/ant-ui/tests/identity-transition.test.ts`.
+
+---
+
 ## 8. Rollback
 
 Each migration step is one commit behind its predecessor. The order
