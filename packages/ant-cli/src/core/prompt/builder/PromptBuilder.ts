@@ -234,7 +234,7 @@ export class PromptBuilder implements PromptPort {
     // 3b. Basis section: tier-iterating (matrix-driven, Phase 1)
     let basisSection = '';
     const basisPaths = new Set<string>();
-    if (config.pipeline?.includeBasis && config.basis) {
+    if (config.pipeline?.includeBasis) {
       const job = this.inferJob(config);
       const rac = config.techContext?.resolvedAction;
       const domain = rac?.domain;
@@ -247,9 +247,16 @@ export class PromptBuilder implements PromptPort {
       // (job-level), matching how `hasUi`/`uiSource` are computed in buildMessages.
       const racDocs = rac ? getRACDocuments(rac) : [];
       const hasUiDoc = racDocs.length > 0 && new ArtifactPoolView(racDocs).uiSource() !== null;
+      // D27: the domain overlay is domain-driven, NOT basis-driven — it must
+      // render for every includeBasis job, even when `basis` is undefined.
+      // Intents whose tier slot lacks a seedable techTier (gen-plan, greenfield
+      // gen-spec) never populate `basis`; gating the whole section on
+      // `config.basis` silently dropped their domain identity/overlay
+      // (born-dead for game; and — once base/rules are domain-neutral — would
+      // strip service plans of their PRD framing too). buildBasisSection now
+      // always renders the domain overlay (effectiveDomain defaults
+      // undefined→service) and only iterates tiers when `basis` is present.
       basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot, hasUiDoc);
-    } else if (config.pipeline?.includeBasis && !config.basis) {
-      console.warn(`⚠️  [PromptBuilder] includeBasis=true but config.basis is ${config.basis === undefined ? 'undefined' : 'falsy'} — skipping basis section`);
     }
 
     // Dedup: remove paths already rendered in the basis section so injections
@@ -426,19 +433,30 @@ export class PromptBuilder implements PromptPort {
     hasUiDoc: boolean = false,
     opts?: { skipJobDomainOverlay?: boolean },
   ): Promise<string> {
+    const sections: string[] = [];
+    const effectiveDomain = getEffectiveDomain(domain as Domain | undefined);
+
+    // D27: the domain overlay is domain-driven, not basis/slot-driven. Render it
+    // FIRST and UNCONDITIONALLY — `effectiveDomain` defaults undefined→service,
+    // so every includeBasis job receives its domain identity/overlay regardless
+    // of whether `basis` was populated. This decouples the overlay from `basis`
+    // so gen-plan / greenfield gen-spec (which never populate `basis`) still get
+    // it, and so a domain-neutral base/rules never leaves a service plan
+    // frameless. The tier LOOP below still requires `basis` + `slot`.
+    await this.renderDomainTier(sections, basis ?? ({} as Basis), job, effectiveDomain, outPaths, opts?.skipJobDomainOverlay);
+
     if (!basis) {
-      console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
-      return '';
+      // domain overlay already rendered above; no tier data to iterate.
+      return sections.join('\n\n');
     }
     if (!slot) {
       console.warn(
-        `⚠️  [PromptBuilder.buildBasisSection] slot is undefined (job=${job}) — basis injection skipped. ` +
+        `⚠️  [PromptBuilder.buildBasisSection] slot is undefined (job=${job}) — tier injection skipped. ` +
         `Callers MUST pass getConfigSlots(intent)?.basis so the matrix gate runs.`,
       );
-      return '';
+      // domain overlay already rendered above; only the tier loop is skipped.
+      return sections.join('\n\n');
     }
-    const sections: string[] = [];
-    const effectiveDomain = getEffectiveDomain(domain as Domain | undefined);
     const runtime = { techTier: basis.techTier, hasUiDoc: false };
 
     console.log(
@@ -452,15 +470,12 @@ export class PromptBuilder implements PromptPort {
       `taskTechTiers=${taskTechTiers?.length || 0}`
     );
 
-    // Phase 2 (D23) + D27 (v6): `domain` is rendered ONCE up-front,
-    // independent of the tier loop, because it is the workspace selector
-    // *above* the tier set (= basis). The partial-injection contract still
-    // layers `templates/domain/{d}.md` (identity) and
-    // `templates/jobs/{job}/domain/{d}.md` (job × domain meta-pattern overlay)
-    // on top of each other. The matrix decides which tiers to inject for
-    // the current intent / domain — domain itself is not a tier.
-    await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths, opts?.skipJobDomainOverlay);
-
+    // Phase 2 (D23) + D27 (v6): the domain overlay is rendered ONCE up-front
+    // (see the `hasDomainSignal` block above, before the basis/slot guards),
+    // because it is the workspace selector *above* the tier set (= basis) and
+    // must not depend on `basis` being populated. The matrix decides which
+    // tiers to inject for the current intent / domain — domain itself is not a
+    // tier.
     for (const tier of TIER_KEYS) {
       if (!isTierActive(tier as TierKey, slot, effectiveDomain, runtime)) continue;
 

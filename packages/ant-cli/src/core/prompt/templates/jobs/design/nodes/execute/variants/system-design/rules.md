@@ -330,7 +330,7 @@ Before generating output, verify:
 - NO → Too detailed (you're writing implementation)
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🧹 IMPLEMENTATION DETAIL FILTER (Especially for Service / Dashboard / CRUD)
+## 🧹 IMPLEMENTATION DETAIL FILTER (applies to every domain)
 ════════════════════════════════════════════════════════════════════════════════
 
 **CRITICAL DISTINCTION: Who specified this detail?**

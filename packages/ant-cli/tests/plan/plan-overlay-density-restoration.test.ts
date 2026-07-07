@@ -246,8 +246,11 @@ describe('Plan rules.md (Phase B) — periphery chapter discipline', () => {
   it('redefines the slogan: PRD/GDD owns content; design owns implementation', () => {
     // The old "WHAT, not HOW" line is gone or rewritten with the
     // explicit boundary clarification. Either way the file must talk
-    // about the content / implementation distinction.
-    expect(src).toMatch(/Content/);
+    // about the content / implementation distinction. (Case-insensitive:
+    // game-domain-plan-snug-dusk P1 neutralized the service-specific
+    // "Content & Domain Policy" row; the content-vs-implementation slogan
+    // itself is preserved in lowercase.)
+    expect(src).toMatch(/content/i);
     expect(src).toMatch(/implementation/i);
   });
 

@@ -106,8 +106,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     : undefined;
   
   // Step 2: buildSystemPrompt via PromptBuilder
-  const systemPrompt = await buildSystemPrompt(state, compactionResult);
-  
+  const built = await buildSystemPrompt(state, compactionResult);
+  const systemPrompt = built.prompt;
+
   // Log prompt structure to debug directory
   if (state._httpJobId && state.featurePath) {
     try {
@@ -119,11 +120,22 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         systemPrompt.length,
         {
           templatePath: TEMPLATE_PATHS.plannerPlan.base,
-          usedTemplates: [TEMPLATE_PATHS.plannerPlan.base, TEMPLATE_PATHS.plannerPlan.rules!],
+          // Fidelity: report what build() actually assembled (base + rules +
+          // resolved injections) plus whether the basis/domain-overlay section
+          // was injected — the old hardcoded [base, rules] list hid the
+          // born-dead-overlay bug (see game-domain-plan-snug-dusk plan).
+          usedTemplates: [
+            TEMPLATE_PATHS.plannerPlan.base,
+            TEMPLATE_PATHS.plannerPlan.rules!,
+            ...built.injectedTemplates,
+          ],
           injectedVariables: {
             directive: state.directive || '',
             mode: planMode,
             targets: state.resolvedAction?.target || [],
+            domain: state.resolvedAction?.domain ?? '(unset)',
+            basisInjected: built.basisInjected,
+            hasBasis: !!state.resolvedAction?.basis,
             hasEvalReport: !!state.evalReport,
             hasConversation: compactionResult.entries.length > 0,
             conversationEntries: compactionResult.entries.length,
@@ -508,6 +520,29 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     if (!generatedDocument) {
       const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
+      // Writer integrity guard — in `generate` mode a document MUST be emitted
+      // as a `<file path="...">` tag. When the LLM instead returns a fenced
+      // code block or plain prose, `getAllFiles()` is empty, `generatedDocument`
+      // is undefined, and the whole document silently vanished (only the
+      // conversation is kept — the original `clever-looping-mouse` gdd.md-never-
+      // -written signature). Surface it LOUDLY instead of a phantom success.
+      // (refactor no-op replies and explain legitimately reach here.)
+      if (planMode === 'generate') {
+        const missTarget = resolvedTargetRelPath ?? targetRelPath ?? '(unresolved)';
+        console.error(
+          `❌ [Planner:Generate] generate mode produced NO <file> artifact for target "${missTarget}" — `
+          + `response was not wrapped in a <file> tag (likely a fenced code block or prose). `
+          + `Nothing written to disk; response retained in session conversation only.`,
+        );
+        try {
+          const notice = state.language === 'ko'
+            ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — 응답이 \`<file>\` 형식의 문서로 출력되지 않았습니다(코드 블록/산문으로 응답). 다시 시도해 주세요.`
+            : `\n\n> ⚠️ No document was saved — the response was not emitted as a \`<file>\` document (it came back as a code block or prose). Please try again.`;
+          await chatAPI.sendLLMEvent({ type: 'text', text: notice });
+        } catch (err) {
+          console.warn(`⚠️ [Planner:Generate] Failed to surface no-artifact notice:`, err);
+        }
+      }
     } else if (!resolvedTargetRelPath) {
       // dusk-mounding-pilot regression closure — `generatedDocument` was
       // produced but no safe target path could be derived. Previously this
