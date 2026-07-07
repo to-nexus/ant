@@ -1,12 +1,12 @@
 /**
- * Per-node state-aware tool-set selector for the design-job `docGen` phase.
+ * Per-node state-aware tool-set selector for the design-job `execute` phase.
  *
  * Conforms to the `nodes/{name}/tools.ts` contract in
  * `docs/architecture/NODE_GRAPH_LAYOUT.md §2.2`:
  *   export async function getTools(state): Promise<ToolDefinition[]>
  *
  * The selector owns the per-intent dispatch matrix for the design job so
- * that `nodes/docGen/index.ts` stays focused on the streaming / parsing
+ * that `nodes/execute/index.ts` stays focused on the streaming / parsing
  * loop. `useSourceFileTool` is plumbed in because it comes from
  * `buildMessages` (default intent) rather than state.
  */
@@ -19,19 +19,19 @@ import { hasReferenceSurface } from '../../../../../common/tool/reference/gate';
 import { isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 
-export interface DocGenToolsOptions {
+export interface ExecuteToolsOptions {
   useSourceFileTool?: boolean;
 }
 
 /**
  * When a sealed `<plan>` is present in `state.planText`, plan node has
- * already done external/architectural exploration. docGen's role is
+ * already done external/architectural exploration. execute's role is
  * path/symbol/asset verification, not re-derivation, so SEARCH_WEB is
  * dropped from the returned set. Mirrors code job's split where
  * `TOOL_SETS.codeBasic` (execute) omits SEARCH_WEB while
  * `TOOL_SETS.planExplore` (plan) carries it. See plan
  * `docs/architecture/15-design-job.md` and the
- * `plan-docgen-parallel-spring` plan file.
+ * `plan-execute-parallel-spring` plan file.
  */
 function applyPlanGate(state: DesignGraphState, tools: ToolDefinition[]): ToolDefinition[] {
   const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
@@ -41,7 +41,7 @@ function applyPlanGate(state: DesignGraphState, tools: ToolDefinition[]): ToolDe
 
 export async function getTools(
   state: DesignGraphState,
-  options: DocGenToolsOptions = {},
+  options: ExecuteToolsOptions = {},
 ): Promise<ToolDefinition[]> {
   const { useSourceFileTool = false } = options;
   const intentGroup = state.resolvedAction?.intentGroup;
@@ -63,7 +63,7 @@ export async function getTools(
   else tools = getToolsByNames(TOOL_SETS.design);
 
   // Discovery-driven: sibling-project reference tools (read-only; register-first
-  // enforced by handlers). Added across all design docGen intents.
+  // enforced by handlers). Added across all design execute intents.
   if (await hasReferenceSurface(state)) {
     tools = [...tools, ...getToolsByNames(TOOL_SETS.reference)];
   }

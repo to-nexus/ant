@@ -163,7 +163,7 @@ export interface ToolExecutionContext {
    * the artifact.
    *
    * All document- or plan-producing phases (architect/design plan +
-   * docGen, architect/code plan, planner/plan) leave this `false` so
+   * execute, architect/code plan, planner/plan) leave this `false` so
    * `<file>`/`<append>`/`<edit>`/`<delete>` writes still flow through
    * the FileRenderer guard but the tool handlers cannot touch
    * source code under `codebase/`. See
@@ -183,7 +183,7 @@ export interface ToolExecutionContext {
    * typecheck / test gates and dependency probes; execute applies
    * fixes).
    *
-   * Document- or plan-producing jobs (architect/design plan + docGen,
+   * Document- or plan-producing jobs (architect/design plan + execute,
    * planner/plan) leave this `false`. The design/planner tool
    * registries also omit `RUN_COMMAND` so the LLM never sees the tool;
    * this flag is the defence-in-depth handler-side enforcement for

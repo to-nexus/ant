@@ -1,6 +1,6 @@
 /**
  * `agents/common/clarify` — SSOT module for clarify UX across every
- * agent graph (code decompose, design detect/docGen, planner, visual).
+ * agent graph (code decompose, design detect/execute, planner, visual).
  *
  * Surfaces:
  *   - `applyClarifyGate` — the ONE turn-terminating content-clarify gate

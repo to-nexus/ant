@@ -51,9 +51,9 @@ describe('applyNodeCompaction', () => {
     expect(out[0].wasCompacted).toBe(true);
   });
 
-  it('docGen: same uniform 30K threshold', () => {
+  it('execute: same uniform 30K threshold', () => {
     const big = makeContext('big.gen.md', 40_000);
-    const out = applyNodeCompaction([big], 'docGen');
+    const out = applyNodeCompaction([big], 'execute');
     expect(out[0].wasCompacted).toBe(true);
   });
 

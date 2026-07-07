@@ -12,7 +12,7 @@ import type { MCPToolResult } from '@ant/shared';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface FigmaPort {
-  // MCP Tools (Full MCP required -- used by figmaExplore + docGen)
+  // MCP Tools (Full MCP required -- used by figmaExplore + execute)
   getDesignContext(fileKey: string, nodeId: string): Promise<MCPToolResult>;
   getMetadata(fileKey: string, nodeId: string): Promise<MCPToolResult>;
   getScreenshot(fileKey: string, nodeId: string): Promise<MCPToolResult>;

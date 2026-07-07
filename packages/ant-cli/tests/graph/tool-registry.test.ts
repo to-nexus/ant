@@ -95,7 +95,7 @@ describe('JOB_TOOL_MATRIX', () => {
   });
 
   // Regression: `codebaseGate.rejectRunCommand` unconditionally rejects
-  // `run_command` in design plan + docGen phases. Advertising the tool
+  // `run_command` in design plan + execute phases. Advertising the tool
   // produced "unavailable in this phase" turns and token waste (see
   // `spare-keeping-metal` RCA). Code exploration is covered by
   // SEARCH_CODE + READ_FILE + LIST_FILES in those phases.
@@ -390,7 +390,7 @@ describe('Registry presets (catalog-driven)', () => {
     // Cross-project code exploration (read-only) is available to design jobs.
     expect(registry.has(ToolName.REGISTER_REFERENCE)).toBe(true);
     expect(registry.has(ToolName.SEARCH_REFERENCE)).toBe(true);
-    // RUN_COMMAND is reserved for code/execute — design plan + docGen are
+    // RUN_COMMAND is reserved for code/execute — design plan + execute are
     // document-producing phases where `codebaseGate.rejectRunCommand`
     // unconditionally rejects shell execution.
     expect(registry.has(ToolName.RUN_COMMAND)).toBe(false);

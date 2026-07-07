@@ -106,7 +106,7 @@ export class AnthropicLLMClient implements LLMClient {
   // Idle timeout matches the request regime. 90s assumes a non-thinking
   // call (TCP-appears-open / Mac sleep). Anthropic adaptive thinking can
   // be silent >180s between message_start and first thinking_delta on
-  // large prompts (plum-meeting-ember docGen incident). Gated on the
+  // large prompts (plum-meeting-ember execute incident). Gated on the
   // adaptive-thinking regime (per-model via MODEL_REGISTRY), not a name
   // heuristic — Sonnet 5 is adaptive and needs the same 300s window.
   private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {

@@ -219,7 +219,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       // (see `render` case 'response' rationale above), so
       // `_explicitDone` would stay false even when the LLM emitted a
       // terminal `<done>` marker. Downstream routers (design/code
-      // docGen / execute) branch on `llmResponse.done` which is
+      // execute / execute) branch on `llmResponse.done` which is
       // sourced from `getExplicitDone()`; missing this scan keeps the
       // node looping until the call-budget safety net fires. See the
       // `spare-keeping-metal` RCA.

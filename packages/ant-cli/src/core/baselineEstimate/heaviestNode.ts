@@ -41,27 +41,27 @@ export const HEAVIEST_NODE_BY_INTENT: Partial<Record<IntentId, HeaviestNodeMappi
   'explain-code':             { job: 'code',   node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Design UI (4)
-  'gen-ui-figma':             { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
-  'gen-ui-desc':              { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByDesc },
-  'rev-ui':                   { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
+  'gen-ui-figma':             { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
+  'gen-ui-desc':              { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByDesc },
+  'rev-ui':                   { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
   'explain-ui':               { job: 'design', node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Design Game Art (4) — reuse UI variants until game-art templates land.
-  'gen-game-art-figma':       { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
-  'gen-game-art-desc':        { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByDesc },
-  'rev-game-art':             { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
+  'gen-game-art-figma':       { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
+  'gen-game-art-desc':        { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByDesc },
+  'rev-game-art':             { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designUiByFigma },
   'explain-game-art':         { job: 'design', node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Design System (5)
-  'gen-sys-fe':               { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
-  'gen-sys-be':               { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
-  'gen-sys-full':             { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
-  'rev-sys':                  { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
+  'gen-sys-fe':               { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
+  'gen-sys-be':               { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
+  'gen-sys-full':             { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
+  'rev-sys':                  { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSystem },
   'explain-sys':              { job: 'design', node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Design Spec (3)
-  'gen-spec':                 { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSpec },
-  'rev-spec':                 { job: 'design', node: 'docGen',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSpec },
+  'gen-spec':                 { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSpec },
+  'rev-spec':                 { job: 'design', node: 'execute',    reason: 'static-max',  templates: TEMPLATE_PATHS.designSpec },
   'explain-spec':             { job: 'design', node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Plan (3)

@@ -1,9 +1,9 @@
 /**
- * Regression: design-spec docGen → codebase mutate (design-spec-mutate-leak, 2026-05-03).
+ * Regression: design-spec execute → codebase mutate (design-spec-mutate-leak, 2026-05-03).
  *
  * Reproduces the post-mortem scenario captured in
  * `log-design-spec-mutate-leak.json` where a sealed plan (`Candidate A:
- * application 레이어 통합 우선`) led the docGen LLM to attempt:
+ * application 레이어 통합 우선`) led the execute LLM to attempt:
  *   1. delete_file codebase/apps/hub/.../identity-session-utils.ts
  *   2. edit_file  codebase/apps/hub/.../webshop-client-wrapper.tsx
  *
@@ -44,7 +44,7 @@ function silentChatStatus(): ToolExecutionContext['chatStatus'] {
   return new Proxy({}, { get: () => noop }) as ToolExecutionContext['chatStatus'];
 }
 
-function makeDesignDocGenCtx(workspacePath: string): ToolExecutionContext {
+function makeDesignExecuteCtx(workspacePath: string): ToolExecutionContext {
   // Mirrors `architect/graph/design/nodes/tool/index.ts` buildContext —
   // design job's tool node closes the gate so any `codebase/` mutate
   // gets rejected.
@@ -69,9 +69,9 @@ afterEach(() => {
   if (workspacePath) fs.rmSync(workspacePath, { recursive: true, force: true });
 });
 
-describe('regression — design-spec-mutate-leak docGen → codebase mutate', () => {
+describe('regression — design-spec-mutate-leak execute → codebase mutate', () => {
   it('delete_file codebase/.../identity-session-utils.ts is rejected; file remains', async () => {
-    const ctx = makeDesignDocGenCtx(workspacePath);
+    const ctx = makeDesignExecuteCtx(workspacePath);
     const result = await handleDeleteFile(ctx, { path: IDENTITY_UTILS });
 
     expect(result.error).toBeDefined();
@@ -84,7 +84,7 @@ describe('regression — design-spec-mutate-leak docGen → codebase mutate', ()
   });
 
   it('edit_file codebase/.../webshop-client-wrapper.tsx is rejected; file remains', async () => {
-    const ctx = makeDesignDocGenCtx(workspacePath);
+    const ctx = makeDesignExecuteCtx(workspacePath);
     const result = await handleEditFile(ctx, {
       path: WEBSHOP_WRAPPER,
       old_str:
@@ -99,7 +99,7 @@ describe('regression — design-spec-mutate-leak docGen → codebase mutate', ()
   });
 
   it('rejection message guides the LLM toward an artifact-path mutation (recovery hint)', async () => {
-    const ctx = makeDesignDocGenCtx(workspacePath);
+    const ctx = makeDesignExecuteCtx(workspacePath);
     const result = await handleEditFile(ctx, {
       path: WEBSHOP_WRAPPER,
       old_str: "from './identity-session-utils';",
@@ -115,7 +115,7 @@ describe('regression — design-spec-mutate-leak docGen → codebase mutate', ()
   });
 
   it('artifact-path edits succeed even with the gate closed (refactor parity)', async () => {
-    const ctx = makeDesignDocGenCtx(workspacePath);
+    const ctx = makeDesignExecuteCtx(workspacePath);
     fs.mkdirSync(path.join(workspacePath, 'architecture/spec'), { recursive: true });
     fs.writeFileSync(
       path.join(workspacePath, 'architecture/spec/spec.md'),

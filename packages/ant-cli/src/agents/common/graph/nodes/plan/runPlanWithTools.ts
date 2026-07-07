@@ -174,7 +174,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   // Extract <plan> BEFORE checking tool calls. Models may emit both a
   // structured plan and tool calls in the same response; once a sealed
   // plan exists, additional tool calls are redundant — the next phase
-  // (execute / docGen) will re-verify with its own tools.
+  // (execute / execute) will re-verify with its own tools.
   const planText = extractPlanText(textResponse, minPlanLength);
   if (planText !== null) {
     await orchestrator.finalize();

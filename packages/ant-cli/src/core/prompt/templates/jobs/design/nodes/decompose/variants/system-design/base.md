@@ -138,7 +138,7 @@ If a referenced section is missing from the PRD/GDD, treat the corresponding sco
 | **Scale** | Horizontal scaling mentioned? Stateful connections? |
 | **Architecture** | Multiple independent domains? Service separation? |
 
-**Note**: Detailed design guidance for these patterns is provided in document-specific guides (api-contract-guide, backend-guide) during DocGen phase.
+**Note**: Detailed design guidance for these patterns is provided in document-specific guides (api-contract-guide, backend-guide) during Execute phase.
 
 ### Step 2: Score the Project
 
@@ -281,7 +281,7 @@ Each row is a positive boundary observation. **If ANY row is observed for a tier
 When boundaries are observed for a tier, populate the array AND ground each entry in the source:
 
 - **Names** — exact identifiers (package / service / shell names) from the source. Do NOT translate, rename, or invent.
-- **Responsibilities** — what each unit owns (audience, data, surface). Captured during DocGen; the decompose-time names must be unambiguous about which unit owns what.
+- **Responsibilities** — what each unit owns (audience, data, surface). Captured during Execute; the decompose-time names must be unambiguous about which unit owns what.
 - **Inter-unit relation** — for BE, communication patterns (sync vs async); for FE, audience & IA boundary (which shell serves which role / surface).
 
 Output mapping:

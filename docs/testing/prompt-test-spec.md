@@ -180,7 +180,7 @@ G. Non-prompt (비프롬프트)
 
 | 그룹 | 대상 파일 | 검증 |
 |------|-----------|------|
-| 2-A. build() 호출부 | code/execute/buildMessages, design/docGen/intent/system, design/docGen/intent/spec | `artifacts` 키워드 존재 |
+| 2-A. build() 호출부 | code/execute/buildMessages, design/execute/intent/system, design/execute/intent/spec | `artifacts` 키워드 존재 |
 | 2-B. decompose 노드 | code/decompose/responseParser, design/decompose/uiDesign·systemDesign·spec | `include` 키워드 존재 + `artifactPolicy` 부재 |
 
 ### prompt-integration.test.ts
@@ -271,7 +271,7 @@ G. Non-prompt (비프롬프트)
 ## 프롬프트 빌드 경로 맵
 
 ```
-RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execute/docGen) ─→ LLM
+RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execute/execute) ─→ LLM
                                   └→ promptBuilder.render() (plan/decompose/detect) ─→ LLM
 ```
 

@@ -10,7 +10,7 @@
  *      / user_stopped / fatal) keep the cancelled flow.
  *
  *   2. consumeAwaitingClarify — continuation helper
- *      Shared between design docGen and planner generate. Must append
+ *      Shared between design execute and planner generate. Must append
  *      `overrideDirective` to the target NODE conversation key as a
  *      user message, no-op on falsy / empty inputs, idempotent on
  *      repeat invocations, preserve other conversation keys.
@@ -92,7 +92,7 @@ describe('Invariant I2 — clarify ↔ cancelled card exclusivity', () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 // consumeAwaitingClarify — shared continuation helper
-// (design docGen NODE_DOCGEN + planner generate NODE_GENERATE)
+// (design execute NODE_EXECUTE + planner generate NODE_GENERATE)
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('consumeAwaitingClarify', () => {
@@ -126,12 +126,12 @@ describe('consumeAwaitingClarify', () => {
     expect(state.awaitingClarify).toBe(false);
   });
 
-  it('uses NODE_DOCGEN by default for design docGen call sites', () => {
+  it('uses NODE_EXECUTE by default for design execute call sites', () => {
     const state = makeState({
       awaitingClarify: true,
       overrideDirective: 'spec answer',
       conversations: {
-        [CONV_KEYS.NODE_DOCGEN]: [
+        [CONV_KEYS.NODE_EXECUTE]: [
           { role: 'user', content: 'spec request' },
           { role: 'assistant', content: 'clarify text' },
         ],
@@ -140,8 +140,8 @@ describe('consumeAwaitingClarify', () => {
 
     consumeAwaitingClarify(state);
 
-    expect(state.conversations[CONV_KEYS.NODE_DOCGEN]).toHaveLength(3);
-    expect(state.conversations[CONV_KEYS.NODE_DOCGEN]?.[2]).toEqual({
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toHaveLength(3);
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]?.[2]).toEqual({
       role: 'user',
       content: 'spec answer',
     });

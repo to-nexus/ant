@@ -45,8 +45,8 @@ Job 검증 프로토콜에서 사용하는 정상/이상 판정 기준값. 실�
 
 | jobType | 필수 노드 | 선택 노드 |
 |---------|----------|----------|
-| code | triage, decompose, execute | planGeneration, docGen |
-| design | triage, execute | docGen |
+| code | triage, decompose, execute | planGeneration, execute |
+| design | triage, execute | execute |
 | plan | triage, generate | - |
 | learn | triage | - |
 

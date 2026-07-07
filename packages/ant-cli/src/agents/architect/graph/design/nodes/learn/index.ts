@@ -34,7 +34,7 @@ interface DesignBreadcrumbOptions {
  * statusType in {file_create, file_edit, file_delete} (+ failed
  * variants) — see core/context/breadcrumb.ts
  * `collectTouchedFilesFromChatLog`. `state.files` is consulted as a
- * fallback when the chat log is empty (e.g. docGen wrote via non-tool
+ * fallback when the chat log is empty (e.g. execute wrote via non-tool
  * paths).
  */
 async function applyDesignBreadcrumbBoundary(
@@ -56,7 +56,7 @@ async function applyDesignBreadcrumbBoundary(
   let deleted = touched.deleted;
   let rangeRef = touched.range;
   if (pathsFromTrace.length === 0) {
-    // Fallback — docGen nodes may write via non-tool paths so chat.jsonl
+    // Fallback — execute nodes may write via non-tool paths so chat.jsonl
     // can be empty even when state.files captured newly produced docs.
     // Reconstruct the created / modified / deleted stats from each file's
     // `actionType` so the breadcrumb accurately reflects what happened
@@ -322,7 +322,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(
-      `No design files found under architecture/{system,spec}/ or visual/ui/ant/ — docGen nodes must have run`
+      `No design files found under architecture/{system,spec}/ or visual/ui/ant/ — execute nodes must have run`
     );
   }
   

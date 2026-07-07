@@ -10,7 +10,7 @@
  *    `delete_file` / `mkdir` / `create_file` reject paths under
  *    `codebase/` unless the flag is `true`. Set ONLY by the
  *    architect/code job's `execute` phase. Every other phase
- *    (architect/design plan + docGen, architect/code plan,
+ *    (architect/design plan + execute, architect/code plan,
  *    planner/plan) leaves it falsy so mutate handlers refuse
  *    `codebase/` writes via {@link rejectCodebaseMutate}. Artifact
  *    paths (architecture/, plan/, assets/, visual/, meta/, sessions/)

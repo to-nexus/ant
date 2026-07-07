@@ -46,28 +46,28 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
   let blocks: CacheableContent[] = [];
   let selfCheckTrailing: string | undefined;
   
-  // NOTE: UI Design mode is handled separately in docGen() entry point
+  // NOTE: UI Design mode is handled separately in execute() entry point
   // This function handles system-design messages only
   
   // ✅ System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
   {
-    console.log(`📄 [DocGen] Building system prompt`);
+    console.log(`📄 [Execute] Building system prompt`);
 
     if (!state.currentTask) {
-      throw new Error('[DocGen] currentTask is required but not available in state');
+      throw new Error('[Execute] currentTask is required but not available in state');
     }
     // ✅ Load existing design document's last section number and pattern
     let lastSectionNumber = 0;
     let sectionPattern = '';  // 'top-level' or 'nested'
     
     const targetFile = state.currentTask.targetFile || 'be-system-main.md';
-    console.log(`📄 [DocGen] Target file: ${targetFile}`);
+    console.log(`📄 [Execute] Target file: ${targetFile}`);
     
     // ✅ Use pre-computed isLastTaskForDocument from decompose phase
     // (Avoids dependency on taskQueue which may be empty in parallel worker contexts)
     const isLastTaskForDocument = (state.currentTask as any)?.isLastTaskForDocument ?? false;
     if (isLastTaskForDocument) {
-      console.log(`📄 [DocGen] This is the LAST task for ${targetFile} - will NOT output metadata`);
+      console.log(`📄 [Execute] This is the LAST task for ${targetFile} - will NOT output metadata`);
     }
     
     // ✅ Build section scope from assignedSections (exclusive scope enforcement)
@@ -112,14 +112,14 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
               const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
               if (lastSectionMatch) {
                 lastSectionNumber = parseInt(lastSectionMatch[1]);
-                console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from metadata)`);
+                console.log(`📄 [Execute] Found last section: ${lastSectionNumber} (from metadata)`);
               }
               
               // Parse SECTION_PATTERN
               const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
               if (patternMatch) {
                 sectionPattern = patternMatch[1];
-                console.log(`📄 [DocGen] Found section pattern: ${sectionPattern}`);
+                console.log(`📄 [Execute] Found section pattern: ${sectionPattern}`);
               }
             }
             
@@ -129,16 +129,16 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
               if (sectionMatches) {
                 const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
                 lastSectionNumber = Math.max(...numbers);
-                console.log(`📄 [DocGen] Found last section: ${lastSectionNumber} (from scanning)`);
+                console.log(`📄 [Execute] Found last section: ${lastSectionNumber} (from scanning)`);
               }
             }
           }
         } else {
-          console.log(`📄 [DocGen] ${targetFile} does not exist yet (first task)`);
+          console.log(`📄 [Execute] ${targetFile} does not exist yet (first task)`);
         }
       }
     } catch (error) {
-      console.error(`[DocGen] Error reading design document:`, error);
+      console.error(`[Execute] Error reading design document:`, error);
     }
     
     // Select source artifacts from pool (include policy set by decompose)
@@ -167,7 +167,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         + ` Prioritize breadth: read large sections in few calls, then START WRITING by call 5-7.`
         + ` Do NOT read every section — gather enough context and begin output immediately.`;
       useSourceFileTool = true;
-      console.log(`📄 [DocGen] Source docs (${combinedSourceContent.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
+      console.log(`📄 [Execute] Source docs (${combinedSourceContent.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
     }
     prdSpecForLog = prdSpec;
 
@@ -204,17 +204,17 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     const effectiveTier = effectiveTechTier(taskTechTiers);
 
     const promptBuilder = state.deps?.promptBuilder;
-    if (!promptBuilder) throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
+    if (!promptBuilder) throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
 
     // Build runtime context. `planText` flows separately so base.md
     // can render the sealed plan at the top via `{{#if planText}}`
     // (mirrors code job's `state.planText` naming). The remaining
     // runtimeContext carries Target / Task / Directive at the prompt
-    // tail. See `.claude/plans/plan-docgen-parallel-spring.md`.
+    // tail. See `.claude/plans/plan-execute-parallel-spring.md`.
     const { planText, runtimeContext } = buildRuntimeContext(state);
 
     // Reference-codebase usage vars — sibling-project catalog for the usage
-    // partial (register + read mid-docGen).
+    // partial (register + read mid-execute).
     const refCat = await referenceCatalogVars(state);
 
     const designConfig: PromptBuildConfig = {
@@ -258,7 +258,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         resolvedAction: resolvedActionWithDocs || null,
         userLanguage: state.context?.userLanguage || 'en',
         designDomain: state.resolvedAction?.domain,
-        // Plan→docGen handoff vars (see plan-docgen-parallel-spring plan):
+        // Plan→execute handoff vars (see plan-execute-parallel-spring plan):
         //   - `planText` is the sealed `<plan>` JSON body (or empty
         //     string). Naming mirrors code job's `state.planText`. The
         //     base.md and rules.md templates gate on `{{#if planText}}`.
@@ -301,7 +301,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           state.context.featurePath,
           jobId,
           'design',
-          'docGen-systemDesign',
+          'execute-systemDesign',
           allContent.length,
           {
             taskId: state.currentTask?.id,
@@ -325,7 +325,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           }
         );
       } catch (logError) {
-        console.warn(`⚠️  [DocGen] Failed to log prompt:`, logError);
+        console.warn(`⚠️  [Execute] Failed to log prompt:`, logError);
       }
     }
   }
@@ -335,7 +335,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
   // `sectionScope` is in scope.
   const { messages } = composeMessages({
     initialBlocks: blocks,
-    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
+    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     trailingUserMessage: selfCheckTrailing,
   });
   
@@ -361,7 +361,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         state.context.featurePath,
         jobIdFinal,
         'design',
-        'docGen-systemDesign-fullMessage',
+        'execute-systemDesign-fullMessage',
         totalLength,
         {
           taskId: state.currentTask?.id,
@@ -371,8 +371,8 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           injectedVariables: {
             targetFile: targetFileForLog,  // ✅ NEW: Critical for MSA debugging
             messageCount: messages.length,
-            hasConversationHistory: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length > 0,
-            nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
+            hasConversationHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length > 0,
+            nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
             prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
             design: (() => { const d = new ArtifactPoolView(state.artifacts || []).firstDesignContent(); return d ? `[${d.length} chars]` : undefined; })(),
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
@@ -383,7 +383,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         }
       );
     } catch (logError) {
-      console.warn(`⚠️  [DocGen] Failed to log full message:`, logError);
+      console.warn(`⚠️  [Execute] Failed to log full message:`, logError);
     }
   }
   
@@ -586,7 +586,7 @@ async function buildSectionScope(
   }
   
   if (!catalogTemplatePath) {
-    console.warn(`⚠️  [DocGen] No catalog mapping for targetFile: ${targetFile}`);
+    console.warn(`⚠️  [Execute] No catalog mapping for targetFile: ${targetFile}`);
     return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
   }
   
@@ -600,7 +600,7 @@ async function buildSectionScope(
     const content = await fsModule.readFile(catalogPath, 'utf-8');
     allSections = parseCatalogSections(content);
   } catch (error) {
-    console.warn(`⚠️  [DocGen] Failed to load catalog-names: ${catalogTemplatePath}`, error);
+    console.warn(`⚠️  [Execute] Failed to load catalog-names: ${catalogTemplatePath}`, error);
     return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
   }
   
@@ -608,7 +608,7 @@ async function buildSectionScope(
   const allSectionSet = new Set(allSections);
   const unknownSections = assignedSections.filter(s => !allSectionSet.has(s));
   if (unknownSections.length > 0) {
-    console.warn(`⚠️ [DocGen] assignedSections contain names not in catalog: [${unknownSections.join(', ')}]`);
+    console.warn(`⚠️ [Execute] assignedSections contain names not in catalog: [${unknownSections.join(', ')}]`);
   }
 
   // Compute FORBIDDEN = all catalog sections not in ASSIGNED
@@ -622,7 +622,7 @@ async function buildSectionScope(
     lines.push(`**FORBIDDEN sections (do NOT write):** ${forbiddenSections.join(', ')}`);
   }
   
-  console.log(`📄 [DocGen] Section scope: ${assignedSections.length} assigned, ${forbiddenSections.length} forbidden`);
+  console.log(`📄 [Execute] Section scope: ${assignedSections.length} assigned, ${forbiddenSections.length} forbidden`);
   return lines.join('\n');
 }
 
@@ -675,7 +675,7 @@ async function buildFilteredCatalog(
     if (targetFile.startsWith(prefix)) { catalogRelPath = entry.full; break; }
   }
   if (!catalogRelPath) {
-    console.warn(`⚠️  [DocGen] No catalog mapping for targetFile: ${targetFile}`);
+    console.warn(`⚠️  [Execute] No catalog mapping for targetFile: ${targetFile}`);
     return undefined;
   }
 
@@ -692,14 +692,14 @@ async function buildFilteredCatalog(
     );
 
     if (filtered.length === 0) {
-      console.warn(`⚠️  [DocGen] No catalog sections matched assignedSections: ${assignedSections.join(', ')}`);
+      console.warn(`⚠️  [Execute] No catalog sections matched assignedSections: ${assignedSections.join(', ')}`);
       return undefined;
     }
 
-    console.log(`📄 [DocGen] Filtered catalog: ${filtered.length}/${allSections.length} sections for [${assignedSections.join(', ')}]`);
+    console.log(`📄 [Execute] Filtered catalog: ${filtered.length}/${allSections.length} sections for [${assignedSections.join(', ')}]`);
     return filtered.map(s => s.block).join('\n\n');
   } catch (error) {
-    console.warn(`⚠️  [DocGen] Failed to load full catalog: ${catalogRelPath}`, error);
+    console.warn(`⚠️  [Execute] Failed to load full catalog: ${catalogRelPath}`, error);
     return undefined;
   }
 }

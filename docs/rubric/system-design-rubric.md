@@ -58,7 +58,7 @@ PRD (plan/prd.md)
 Design Job
     ├─ detect: determines domain/environment from PRD
     ├─ decompose: breaks into document generation tasks
-    └─ docGen: generates design documents treating PRD as "ABSOLUTE TRUTH"
+    └─ execute: generates design documents treating PRD as "ABSOLUTE TRUTH"
         └─► architecture/system/
             ├─ api-contract-*.md   (Layer 0: WHAT — immutable spec)
             ├─ fe-system-*.md      (Layer 1: HOW — frontend guide)

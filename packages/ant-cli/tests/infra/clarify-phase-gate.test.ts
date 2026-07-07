@@ -29,7 +29,7 @@ describe('clarify policy matrix', () => {
       expect(getClarifyPolicy(id).clarifyPhases).toEqual(['decompose']);
       // Tierless-style: no minTier, so a clarify-only response (no tier tag) is not floored.
       expect(isClarifyActive(id, 'decompose')).toBe(true);
-      expect(isClarifyActive(id, 'docgen')).toBe(false);
+      expect(isClarifyActive(id, 'execute')).toBe(false);
     }
   });
 
@@ -57,8 +57,8 @@ describe('clarify policy matrix', () => {
 
   it('tierless jobs (plan) pass the tier check when tier omitted', () => {
     expect(isClarifyActive('gen-plan', 'generate')).toBe(true);
-    // gen-spec (design docgen) is also tierless.
-    expect(isClarifyActive('gen-spec', 'docgen')).toBe(true);
+    // gen-spec (design execute) is also tierless.
+    expect(isClarifyActive('gen-spec', 'execute')).toBe(true);
   });
 
   it('disabled intent is never active', () => {

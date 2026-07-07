@@ -40,11 +40,11 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   const task = state.currentTask;
   
   // ✅ Check if this is a continuation after tool calling
-  const nodeDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
-  const isAfterToolCall = nodeDocGen.length > 0;
+  const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+  const isAfterToolCall = nodeExecute.length > 0;
   
   if (isAfterToolCall) {
-    console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${nodeDocGen.length} messages)`);
+    console.log(`🎨 [Execute] UI Design continuing with existing conversation (${nodeExecute.length} messages)`);
     
     // Build fresh user prompt as initial blocks
     const freshPrompt = await buildUiDesignFreshPrompt(state);
@@ -52,13 +52,13 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     // Compose messages via MessageComposer (handles history skip, compaction, budget)
     const { messages } = composeMessages({
       initialBlocks: freshPrompt,
-      priorTurns: nodeDocGen as any,
+      priorTurns: nodeExecute as any,
     });
     
     return messages;
   }
   
-  console.log(`🎨 [DocGen] Building UI Design prompt for task: ${task?.id} (tool-based multimodal)`);
+  console.log(`🎨 [Execute] Building UI Design prompt for task: ${task?.id} (tool-based multimodal)`);
   
   const content: CacheableContent[] = [];
   
@@ -153,7 +153,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         state.context.featurePath,
         jobId,
         'design',
-        'docGen-uiDesign-fullMessage',
+        'execute-uiDesign-fullMessage',
         totalLength,
         {
           taskId: task?.id,
@@ -178,7 +178,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         }
       );
     } catch (logError) {
-      console.warn(`⚠️  [DocGen] Failed to log full message:`, logError);
+      console.warn(`⚠️  [Execute] Failed to log full message:`, logError);
     }
   }
   
@@ -299,7 +299,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         state.context.featurePath,
         jobIdFresh,
         'design',
-        'docGen-uiDesign-freshPrompt',
+        'execute-uiDesign-freshPrompt',
         totalLength,
         {
           taskId: task?.id,
@@ -323,7 +323,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         }
       );
     } catch (logError) {
-      console.warn(`⚠️  [DocGen] Failed to log fresh prompt:`, logError);
+      console.warn(`⚠️  [Execute] Failed to log fresh prompt:`, logError);
     }
   }
   
@@ -472,7 +472,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const promptBuilder = state.deps?.promptBuilder;
   
   if (!promptBuilder) {
-    throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
+    throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
   }
   
   let previousChaptersSummary = '';
@@ -493,10 +493,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const isLastTaskForDocument = !!(state.currentTask as DesignTask)?.isLastTaskForDocument;
   const forceAppend = !!(state.currentTask as DesignTask)?.forceAppend;
   if (isLastTaskForDocument) {
-    console.log(`📄 [DocGen UI] This is the LAST task for ${actualTargetFile} - will NOT output metadata`);
+    console.log(`📄 [Execute UI] This is the LAST task for ${actualTargetFile} - will NOT output metadata`);
   }
   if (forceAppend) {
-    console.log(`📄 [DocGen UI] forceAppend=true for ${taskId} — parallel chapter, will use <append>`);
+    console.log(`📄 [Execute UI] forceAppend=true for ${taskId} — parallel chapter, will use <append>`);
   }
   
   // ✅ Check if file exists and extract last section number + existing sections
@@ -530,7 +530,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
                 }
               }
             } catch (parseError) {
-              console.warn(`📄 [DocGen UI] Failed to parse ${actualTargetFile} as JSON:`, parseError);
+              console.warn(`📄 [Execute UI] Failed to parse ${actualTargetFile} as JSON:`, parseError);
             }
           }
 
@@ -540,14 +540,14 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           liveAnchor = extractLastSectionKey(existingFileContent);
 
           if (previousChaptersSummary) {
-            console.log(`📄 [DocGen UI] Extracted summary from existing ${actualTargetFile}${liveAnchor ? ` (anchor=${liveAnchor})` : ''}`);
+            console.log(`📄 [Execute UI] Extracted summary from existing ${actualTargetFile}${liveAnchor ? ` (anchor=${liveAnchor})` : ''}`);
           }
         }
       } else {
-        console.log(`📄 [DocGen UI] ${actualTargetFile} does not exist yet (first chapter)`);
+        console.log(`📄 [Execute UI] ${actualTargetFile} does not exist yet (first chapter)`);
       }
     } catch (error) {
-      console.error(`[DocGen UI] Error reading ${actualTargetFile}:`, error);
+      console.error(`[Execute UI] Error reading ${actualTargetFile}:`, error);
     }
   }
   
@@ -585,7 +585,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const template = await promptBuilder.render(templatePath, injectedVariables);
 
   if (!template) {
-    throw new Error(`[DocGen] Failed to load ${templatePath}.md template`);
+    throw new Error(`[Execute] Failed to load ${templatePath}.md template`);
   }
 
   const visualTierBasis = await promptBuilder.buildVisualTierBasis(
@@ -601,7 +601,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         state.context.featurePath,
         jobId,
         'design',
-        'docGen-uiDesign-systemPrompt',
+        'execute-uiDesign-systemPrompt',
         finalTemplate.length,
         {
           taskId: state.currentTask?.id,
@@ -626,7 +626,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         }
       );
     } catch (logError) {
-      console.warn(`⚠️  [DocGen] Failed to log prompt:`, logError);
+      console.warn(`⚠️  [Execute] Failed to log prompt:`, logError);
     }
   }
   

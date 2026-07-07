@@ -36,9 +36,20 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('config');
     });
 
-    it('gen-spec (PLAN_TIERS = gameContentTier) → config', () => {
+    // gen-spec grounds in the existing codebase's stack, so its basis is
+    // SYS_TIERS = ['techTier', 'gameContentTier'] (see action-config-matrix
+    // "Code-grounded design doc → activate techTier grounding"). On service the
+    // game-only gameContentTier drops, but techTier is domain-universal and
+    // stays active on greenfield → basis-edit (same shape as gen-sys-*).
+    it('gen-spec (SYS_TIERS: techTier-grounded) → basis-edit on service greenfield', () => {
       const slot = getConfigSlots('gen-spec')?.basis;
-      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('config');
+      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('basis-edit');
+    });
+
+    // …and once a codebase exists, techTier is suppressed too → config.
+    it('gen-spec + service + hasCodebase=true → config (techTier suppressed, gameContentTier closed)', () => {
+      const slot = getConfigSlots('gen-spec')?.basis;
+      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true)).toBe('config');
     });
   });
 

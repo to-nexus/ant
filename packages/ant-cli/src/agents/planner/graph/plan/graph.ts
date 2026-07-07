@@ -15,7 +15,7 @@
  * answer text.
  *
  * generate handles: LLM streaming → file card (via StreamOrchestrator) → disk write → choice card → session
- * No separate write node — same pattern as design job's docGen.
+ * No separate write node — same pattern as design job's execute.
  */
 
 import { StateGraph, END } from '@langchain/langgraph';
@@ -60,7 +60,7 @@ function routeAfterPlannerDetect(state: PlanGraphState): string {
 export function buildPlanGraph() {
   const graph = new StateGraph(PlanAnnotation);
   
-  // Add nodes (no separate write node — generate handles everything like design job's docGen)
+  // Add nodes (no separate write node — generate handles everything like design job's execute)
   graph.addNode('resolve', createResolveNode(planResolveStrategy) as any);
   graph.addNode('triage', triage as any);
   graph.addNode('detect', createInferDetectNode(augmentPlanExecutionTier) as any);

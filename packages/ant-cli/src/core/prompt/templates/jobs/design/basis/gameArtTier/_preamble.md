@@ -56,7 +56,7 @@ Allowed inline asset shapes:
 - Mp3 / ogg / wav file payloads (binary content).
 - 3D models / tilemaps / atlas frames.
 
-The decompose / docGen pipeline rejects inline payloads above this
+The decompose / execute pipeline rejects inline payloads above this
 ceiling (svg path complexity, css length) — escalate to `kind: 'external'`
 and let the user place the production asset themselves.
 

@@ -18,8 +18,7 @@ export interface JobLLMConfig {
   default?: string;           // Job-level default model (used when node-specific model not set)
   decompose?: string;         // Decompose node (task planning)
   plan?: string;              // Plan node (context gathering, planning)
-  docGen?: string;            // Documentation generation (design job only)
-  execute?: string;           // Code execution node (code job only)
+  execute?: string;           // Work node: code execution (code job) / document generation (design job)
   tool?: string;              // Tool execution node
   validate?: string;          // Validation node (code job only)
   learn?: string;             // Learning node
@@ -197,7 +196,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: modelSonnet,
         decompose: modelSonnet,
         plan: modelOpus,
-        docGen: modelSonnet,
+        execute: modelSonnet,
       },
       code: {
         default: modelSonnet,

@@ -4,8 +4,8 @@
  * Replaces the legacy `plan.ts` task-dispatcher. For supported intent
  * groups (`design-spec`, `design-system-design`) this node runs an
  * LLM+tools loop that decides the solution and produces a sealed
- * `<plan>` JSON consumed by docGen. For other intent groups it
- * delegates to `dispatchOnly` so the existing plan→docGen flow keeps
+ * `<plan>` JSON consumed by execute. For other intent groups it
+ * delegates to `dispatchOnly` so the existing plan→execute flow keeps
  * working without LLM exploration.
  *
  * Loop mechanics use the shared helpers in
@@ -210,15 +210,15 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
 
   // Fallthrough — finalize-from-exploration failed or no LLM output.
   // Design has no single-shot fallback; we surface as an empty plan
-  // so docGen can run without a sealed plan (legacy behaviour) but log
+  // so execute can run without a sealed plan (legacy behaviour) but log
   // a warning.
   console.warn(
-    `⚠️ [DesignPlan] Plan loop yielded no <plan> (${outcome.reason}). Falling through to docGen with empty planText.`,
+    `⚠️ [DesignPlan] Plan loop yielded no <plan> (${outcome.reason}). Falling through to execute with empty planText.`,
   );
 
   // Structured event so a post-hoc operator scanning log-{jobId}.json
-  // can spot tasks that reached docGen without a sealed plan (i.e. the
-  // worst-case path where docGen has no architectural decision to
+  // can spot tasks that reached execute without a sealed plan (i.e. the
+  // worst-case path where execute has no architectural decision to
   // anchor on). Mirrors `design-plan-sealed` from the success path so
   // the two outcomes are queryable with the same `phase` prefix.
   if (state.context?.featurePath && state._httpJobId && currentTask) {

@@ -38,15 +38,15 @@ export interface ClarifyContinuableState {
  * `{role:'user'}` entry, then clear `awaitingClarify`.
  *
  * Mutates `state.conversations` and `state.awaitingClarify` in place — same
- * mutation pattern that design's docGen used inline before this helper was
- * extracted, so node-internal code paths read the updated values immediately.
+ * mutation pattern that design's execute node used inline before this helper
+ * was extracted, so node-internal code paths read the updated values immediately.
  *
  * No-op when `awaitingClarify` is falsy or `overrideDirective` is empty.
  * Idempotent: a second call after the flag is cleared does nothing.
  */
 export function consumeAwaitingClarify(
   state: ClarifyContinuableState,
-  conversationKey: ConversationKey = CONV_KEYS.NODE_DOCGEN,
+  conversationKey: ConversationKey = CONV_KEYS.NODE_EXECUTE,
 ): void {
   if (!state.awaitingClarify || !state.overrideDirective) return;
 

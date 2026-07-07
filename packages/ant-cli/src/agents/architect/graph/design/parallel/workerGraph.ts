@@ -5,7 +5,7 @@
  * within a TaskWorker. This is a lighter version of the main design
  * graph that handles only the task execution lifecycle.
  *
- * Flow: plan → docGen ↔ tool → workerCheckTaskStatus → workerLearn → END
+ * Flow: plan → execute ↔ tool → workerCheckTaskStatus → workerLearn → END
  *
  * Design tasks don't have enforce nodes.
  * The includeInstallValidate parameter is accepted for API compatibility
@@ -16,12 +16,12 @@ import { Annotation, StateGraph } from '@langchain/langgraph';
 import type { DesignGraphState } from '../state';
 import { DesignGraphChannels } from '../graph';
 import { plan } from '../nodes/plan';
-import { docGen } from '../nodes/docGen/index';
+import { execute } from '../nodes/execute/index';
 import { tool } from '../nodes/tool';
 import path from 'node:path';
 import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../../../common/graph/parallelTypes';
-import { routeAfterDocGen } from '../routers/docGenRouter';
+import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan, routeAfterTool } from '../routing';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
@@ -40,9 +40,9 @@ const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/
  * 3.   Normal completion → mark task as completed
  *
  * Note: the historical "Gate 1: Call budget exhausted" was retired along with
- * the code job's Safety Net D/E. Runaway docGen loops are bounded by LangGraph
+ * the code job's Safety Net D/E. Runaway execute loops are bounded by LangGraph
  * `recursionLimit`; non-productive streaks are signaled to the LLM via the
- * advisory warnings in `nodes/docGen/index.ts`.
+ * advisory warnings in `nodes/execute/index.ts`.
  */
 async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
@@ -129,7 +129,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
 
-    // Log task_complete to debug/logs/ (inside workerGraph where state._docGenCallIndex is accessible)
+    // Log task_complete to debug/logs/ (inside workerGraph where state._executeCallIndex is accessible)
     if (state.context?.featurePath && state._httpJobId) {
       const execLogger = getExecutionLogger({
         featurePath: state.context.featurePath,
@@ -143,7 +143,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
         outputTokens: completedTask.tokenUsage?.outputTokens || 0,
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: completedTask.tokenUsage?.callCount ?? state._docGenCallIndex ?? 0,
+        llmCallCount: completedTask.tokenUsage?.callCount ?? state._executeCallIndex ?? 0,
       }).catch(() => {});
     }
 
@@ -175,7 +175,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       files: [],
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,
-      _docGenCallIndex: 0,
+      _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,
     } as any;
@@ -217,7 +217,7 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
 
   // Register nodes
   graph.addNode('plan', withPhaseTracking('plan', plan) as any);
-  graph.addNode('docGen', withPhaseTracking('docGen', docGen) as any);
+  graph.addNode('execute', withPhaseTracking('execute', execute, 'designExecute') as any);
   graph.addNode('tool', tool as any);
   graph.addNode('checkTaskStatus', workerCheckTaskStatus as any);
   graph.addNode('learn', workerLearn as any);
@@ -225,28 +225,28 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
 
-  // plan routing (tool-loop / sealed-plan handoff to docGen)
+  // plan routing (tool-loop / sealed-plan handoff to execute)
   graph.addConditionalEdges(
     'plan' as any,
     routeAfterPlan as any,
-    { tool: 'tool', docGen: 'docGen' } as any,
+    { tool: 'tool', execute: 'execute' } as any,
   );
 
-  // docGen routing (tool call / done / retry — with call budget safety net)
+  // execute routing (tool call / done / retry — with call budget safety net)
   graph.addConditionalEdges(
-    'docGen' as any,
-    routeAfterDocGen as any,
-    { tool: 'tool', checkTaskStatus: 'checkTaskStatus', docGen: 'docGen' } as any,
+    'execute' as any,
+    routeAfterExecute as any,
+    { tool: 'tool', checkTaskStatus: 'checkTaskStatus', execute: 'execute' } as any,
   );
 
-  // tool routing (plan↔tool / docGen↔tool dispatched via _activePhase)
+  // tool routing (plan↔tool / execute↔tool dispatched via _activePhase)
   graph.addConditionalEdges(
     'tool' as any,
     routeAfterTool as any,
-    { plan: 'plan', docGen: 'docGen' } as any,
+    { plan: 'plan', execute: 'execute' } as any,
   );
 
-  // checkTaskStatus → learn (design tasks always succeed or error out at docGen level)
+  // checkTaskStatus → learn (design tasks always succeed or error out at execute level)
   graph.addEdge('checkTaskStatus' as any, 'learn' as any);
 
   // Learn → END

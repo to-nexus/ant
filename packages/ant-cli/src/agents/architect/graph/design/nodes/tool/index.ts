@@ -78,15 +78,15 @@ const designToolResultManager = new ToolResultManager(tokenManager, {
  * Resolve which conversation key the tool node should mutate based on
  * the active phase signal set by the upstream node:
  *  - `_activePhase === 'plan'`  → plan↔tool loop (NODE_PLAN)
- *  - otherwise                  → docGen↔tool loop (NODE_DOCGEN)
+ *  - otherwise                  → execute↔tool loop (NODE_EXECUTE)
  *
  * Both loops share the same physical tool node and the read-only
  * `_toolResultCache`. That means a `read_file` performed during plan
- * can be served from cache when docGen reads the same path — token
+ * can be served from cache when execute reads the same path — token
  * savings without any cross-phase coupling beyond the cache.
  */
 function activeConvKey(state: DesignGraphState): ConversationKey {
-  return state._activePhase === 'plan' ? CONV_KEYS.NODE_PLAN : CONV_KEYS.NODE_DOCGEN;
+  return state._activePhase === 'plan' ? CONV_KEYS.NODE_PLAN : CONV_KEYS.NODE_EXECUTE;
 }
 
 /**
@@ -145,7 +145,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       // Codebase mutation gate — design job's artifact lives under
       // architecture/, plan/, assets/, etc. Any `codebase/` write
       // belongs to the downstream code job, so close the gate
-      // throughout design (plan + docGen).
+      // throughout design (plan + execute).
       allowMutateInCodebase: false,
       // Shell execution gate — design job is document-producing; no
       // legitimate `run_command` use exists. The design tool registry
@@ -192,10 +192,10 @@ const toolNodeFn = createToolNode<DesignGraphState>({
             resultPreview: isImageContent ? resultStr : (resultStr.length <= 500 ? resultStr : undefined),
             wasTruncated: false,
             error: event.result.error,
-            // `phase` distinguishes plan↔tool from docGen↔tool calls so
+            // `phase` distinguishes plan↔tool from execute↔tool calls so
             // log analysis can attribute exploration vs document-writing
             // tool budget separately.
-            phase: state._activePhase ?? 'docGen',
+            phase: state._activePhase ?? 'execute',
             sideEffects: event.result.sideEffects as Array<Record<string, any>> | undefined,
           } as any).catch(() => { /* non-blocking */ });
         } catch { /* non-blocking */ }

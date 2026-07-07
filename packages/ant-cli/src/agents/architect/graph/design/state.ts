@@ -76,7 +76,7 @@ export interface DesignGraphState extends TriageableState {
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;
-  /** Set by design graph (parallel mode) for MECE sibling-task context in docGen */
+  /** Set by design graph (parallel mode) for MECE sibling-task context in execute */
   _allTasksSummary?: Array<{
     id: string;
     name: string;
@@ -102,11 +102,11 @@ export interface DesignGraphState extends TriageableState {
   planText: string;
 
   /**
-   * Active phase signal for plan↔tool / docGen↔tool re-entry.
+   * Active phase signal for plan↔tool / execute↔tool re-entry.
    *
    * - `'plan'` while the plan↔tool loop is in flight.
-   * - `'docGen'` while the docGen↔tool loop is in flight (set by
-   *   docGen node on each turn; preserved through the tool node).
+   * - `'execute'` while the execute↔tool loop is in flight (set by
+   *   execute node on each turn; preserved through the tool node).
    *   Drives debug/log/breadcrumb visibility into which phase
    *   produced a tool call. Gate enforcement itself is handled by
    *   `ToolExecutionContext.allowMutateInCodebase` (codebase writes)
@@ -118,21 +118,21 @@ export interface DesignGraphState extends TriageableState {
    *   path).
    *
    * NOTE: code job's `_activePhase` has a wider domain (plan / execute /
-   * apply / verify). Design's is narrower — `'plan' | 'docGen' | undefined`.
+   * apply / verify). Design's is narrower — `'plan' | 'execute' | undefined`.
    * The same channel name is reused intentionally to ease cross-job grep
    * but the two are NOT unified via a shared base interface — see
    * `agents/common/graph/nodes/plan/README.md` for the rationale.
    */
-  _activePhase?: 'plan' | 'docGen';
+  _activePhase?: 'plan' | 'execute';
 
   /**
-   * Set by docGen at end-of-turn when:
+   * Set by execute at end-of-turn when:
    *   - the turn produced an artifact mutation (file/append/edit/delete
    *     XML tag landing on an artifact path, or edit_file/delete_file
    *     tool call on an artifact path), AND
    *   - the LLM did NOT output `<done>true</done>` in the same turn.
    *
-   * The next docGen turn reads this to swap the trailing user message
+   * The next execute turn reads this to swap the trailing user message
    * for a self-check prompt that asks the model to commit done or
    * continue the same artifact. Cleared on the turn that satisfies the
    * self-check (done emitted, or another mutation cycle started).
@@ -187,27 +187,27 @@ export interface DesignGraphState extends TriageableState {
   /** File operation errors from StreamOrchestrator (incomplete tags, write failures) */
   fileErrors?: string[];
 
-  /** Per-task docGen call counter (reset on task transition). Telemetry only. */
-  _docGenCallIndex?: number;
+  /** Per-task execute call counter (reset on task transition). Telemetry only. */
+  _executeCallIndex?: number;
 
-  /** Counter for consecutive docGen calls with no file output. Feeds the
-   * advisory soft/hard warnings injected into the LLM prompt by docGen —
+  /** Counter for consecutive execute calls with no file output. Feeds the
+   * advisory soft/hard warnings injected into the LLM prompt by execute —
    * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
   _toolResultCache?: Record<string, string>;
 
-  /** Set by checkTaskStatus when ui-assets src validation fails — signals router to retry via docGen */
+  /** Set by checkTaskStatus when ui-assets src validation fails — signals router to retry via execute */
   _assetValidationFailed?: boolean;
 
   /** Retry counter for asset validation (max 2 retries before forced completion) */
   _assetValidationRetried?: number;
 
-  /** Consecutive Figma MCP failure counter (reset on success, persists across tool→docGen loop) */
+  /** Consecutive Figma MCP failure counter (reset on success, persists across tool→execute loop) */
   _figmaConsecutiveErrors?: number;
 
-  /** Set by tool node when Figma MCP fails N consecutive times — signals docGenRouter to stop */
+  /** Set by tool node when Figma MCP fails N consecutive times — signals executeRouter to stop */
   _figmaConnectionLost?: boolean;
 
   // Results (populated by learn node)

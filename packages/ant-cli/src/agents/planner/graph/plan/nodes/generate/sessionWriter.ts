@@ -39,7 +39,7 @@ export async function pruneConversationHistory(
  * `opts.awaitingClarify`: when true, persist the clarify-pause flag so the
  * next planner runner invocation restores RAC + conversations and routes
  * straight to generate (see runner.ts awaitingClarify branch). Mirrors
- * design's `saveClarifyCheckpoint(kind:'docgen')` semantically; planner
+ * design's `saveClarifyCheckpoint(kind:'execute')` semantically; planner
  * doesn't have a separate checkpoint module so we fold it into the existing
  * conversation save to keep all session writes on one path.
  */
@@ -122,7 +122,7 @@ export async function saveConversationToSession(
     sessionData.state.recursionLimit = state.recursionLimit;
     // ✅ Persist clarify-pause flag so the next runner invocation restores
     // RAC + conversations and routes resolve → generate (mirrors design's
-    // saveClarifyCheckpoint(kind:'docgen')). Always write so a non-clarify
+    // saveClarifyCheckpoint(kind:'execute')). Always write so a non-clarify
     // save resets the flag (cannot leave it stale from a prior run).
     sessionData.state.awaitingClarify = opts?.awaitingClarify === true ? true : undefined;
     // Clarify budget round-trip: persist so the next runner restores it and the

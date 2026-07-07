@@ -4,7 +4,7 @@ import { parseClarifyTags, stripClarifyTags } from '../../src/agents/common/clar
 /**
  * Regression coverage for the canonical `<clarify>` tag parser. Absorbs
  * the former planner-local `clarify.ts` test surface and covers the
- * design docGen bare-body syntax that previously used an inline regex.
+ * design execute bare-body syntax that previously used an inline regex.
  */
 describe('parseClarifyTags — attribute syntax (planner)', () => {
   it('parses one block with options', () => {
@@ -38,7 +38,7 @@ describe('parseClarifyTags — attribute syntax (planner)', () => {
   });
 });
 
-describe('parseClarifyTags — bare-body syntax (design docGen)', () => {
+describe('parseClarifyTags — bare-body syntax (design execute)', () => {
   it('uses the tag body as the question when no attribute is present', () => {
     const text = `<clarify>
 - What is the auth provider?

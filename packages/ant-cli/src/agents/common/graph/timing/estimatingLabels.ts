@@ -26,8 +26,10 @@ const LABELS: Record<string, Record<UILocale, string>> = {
   plan:         { ko: '작업 계획 중',          en: 'Planning' },
   execute:      { ko: '코드 작성 중',          en: 'Executing' },
 
-  // Architect (design) task-execution nodes
-  docGen:       { ko: '문서 작성 중',          en: 'Generating document' },
+  // Architect (design) task-execution node. The graph node id / phase is
+  // `execute` (mirrors the code job); this distinct label key keeps the
+  // design-specific wording. Wired via `withPhaseTracking('execute', …, 'designExecute')`.
+  designExecute: { ko: '문서 작성 중',          en: 'Generating document' },
 
   // Ask agent (question answering)
   agent:        { ko: '질문 처리 중',          en: 'Thinking' },

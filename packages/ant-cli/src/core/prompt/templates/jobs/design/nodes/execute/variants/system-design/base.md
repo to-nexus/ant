@@ -96,7 +96,7 @@ Your designs are pragmatic, well-reasoned, and architecture-shaped — implement
 PHASE ROLE
 ════════════════════════════════════════════════════════════════════════════════
 
-You are running in the **docGen phase** of a design job. The artifact this
+You are running in the **execute phase** of a design job. The artifact this
 phase produces is the system-design document at
 `architecture/system/{{targetFile}}`.
 {{#unless planText}}No sealed plan was injected (legacy intent or upstream fallthrough); derive structure from the PRD per the Section Catalog.{{/unless}}

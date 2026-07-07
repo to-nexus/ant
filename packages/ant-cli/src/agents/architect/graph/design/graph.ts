@@ -8,7 +8,7 @@ import { createResolveNode } from "../../../common/graph/nodes/resolve";
 import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";  // ✅ Triage System
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
-import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
+import { execute } from "./nodes/execute/index";  // ✅ XML streaming + immediate file writes
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
 import { createInferDetectNode } from '../../../common/graph/nodes/detect/index.js';
@@ -17,7 +17,7 @@ import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
 import { buildResumableFailedTaskBase } from '../../../common/graph/resumableFailedTask';
-import { routeAfterDocGen } from "./routers/docGenRouter";
+import { routeAfterExecute } from "./routers/executeRouter";
 import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import * as designRouting from "./routing";
 import {
@@ -161,7 +161,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   }
   
   // Note: the historical "Call limit interruption" gate was retired alongside
-  // the code job's Safety Net D/E. Runaway docGen loops are bounded by
+  // the code job's Safety Net D/E. Runaway execute loops are bounded by
   // LangGraph `recursionLimit`; the `call_limit` interruption reason is gone.
 
   // ✅ FIGMA CONNECTION LOST INTERRUPTION: Figma MCP failed N consecutive times
@@ -219,7 +219,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       taskQueue: newQueue,
       _figmaConnectionLost: false,
       _figmaConsecutiveErrors: 0,
-      _docGenCallIndex: 0,
+      _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,
       fileErrors: undefined,
@@ -266,10 +266,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       };
 
       return {
-        conversations: { [CONV_KEYS.NODE_DOCGEN]: [...getConv(state.conversations, CONV_KEYS.NODE_DOCGEN), retryMessage] },
+        conversations: { [CONV_KEYS.NODE_EXECUTE]: [...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE), retryMessage] },
         _assetValidationFailed: true,
         _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
-        _docGenCallIndex: 0,
+        _executeCallIndex: 0,
         _noOutputCallCount: 0,
       };
     }
@@ -318,7 +318,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
           outputTokens: taskTokenUsage?.outputTokens || 0,
           cacheReadTokens: taskTokenUsage?.cacheReadTokens || 0,
           cacheCreationTokens: taskTokenUsage?.cacheCreationTokens || 0,
-          llmCallCount: taskTokenUsage?.callCount ?? state._docGenCallIndex ?? 0,
+          llmCallCount: taskTokenUsage?.callCount ?? state._executeCallIndex ?? 0,
         });
       } catch (_) { /* non-critical */ }
     }
@@ -388,7 +388,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       intentGroup: (state.resolvedAction?.intentGroup as any) || 'design-system',
       currentTask: { targetFile: state.currentTask.targetFile, id: state.currentTask.id },
       nextTask: nextTask ? { targetFile: (nextTask as any).targetFile, id: nextTask.id } : undefined,
-      nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
+      nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     });
     
     return {
@@ -396,12 +396,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       completedTasksDetails,
       currentTask: undefined,
       planText: '',
-      conversations: { [CONV_KEYS.NODE_DOCGEN]: retainedHistory },
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: retainedHistory },
       files: [],
       artifacts: updatedPool,
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,
-      _docGenCallIndex: 0,
+      _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,
       _assetValidationFailed: false,
@@ -763,7 +763,7 @@ export const DesignGraphChannels = {
   figmaFileKey: Annotation<any>,
   figmaStartNodeId: Annotation<any>,
   interruption: Annotation<any>,
-  _docGenCallIndex: Annotation<any>,
+  _executeCallIndex: Annotation<any>,
   _noOutputCallCount: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
@@ -797,19 +797,19 @@ export function buildDesignGraph() {
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("revise" as const, withPhaseTracking('revise', revise) as any);  // ✅ Task queue revision (on resume with new directive)
   graph.addNode("plan" as const, withPhaseTracking('plan', plan) as any);
-  graph.addNode("docGen" as const, withPhaseTracking('docGen', docGen) as any);  // ✅ XML streaming + immediate file writes (like code job)
+  graph.addNode("execute" as const, withPhaseTracking('execute', execute, 'designExecute') as any);  // ✅ XML streaming + immediate file writes (like code job)
   graph.addNode("tool" as const, tool as any);  // ✅ Tool execution (for UI Design multimodal image loading)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
   graph.addNode("parallelOrchestrator" as const, parallelOrchestrator as any);
 
-  // ✅ Unified flow: resolve → [4-way routing] → ... → [plan → docGen → check] → learn
+  // ✅ Unified flow: resolve → [4-way routing] → ... → [plan → execute → check] → learn
   // Design job now writes files immediately like code job (no separate writeFiles node)
-  // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
+  // execute: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
   
   // ✅ 6-way conditional routing after resolve
-  // 1. isResume + awaitingClarify + overrideDirective → docGen (clarify direct route — skip triage/detect/decompose)
+  // 1. isResume + awaitingClarify + overrideDirective → execute (clarify direct route — skip triage/detect/decompose)
   // 2. isResume + spec intentGroup + overrideDirective + !hasTaskQueue → decompose (spec iterative modification)
   // 3. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
   // 4. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
@@ -818,7 +818,7 @@ export function buildDesignGraph() {
   graph.addConditionalEdges(
     "resolve" as any,
     designRouting.routeAfterResolve as any,
-    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen", detect: "detect" } as any
+    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", execute: "execute", detect: "detect" } as any
   );
   
   // ✅ Triage → Conditional (proceed to detect or end)
@@ -865,32 +865,32 @@ export function buildDesignGraph() {
     designRouting.routeAfterRevise as any,
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
-  // ✅ Conditional routing: plan → tool (tool-loop round) / docGen (<plan> emitted or fallthrough)
+  // ✅ Conditional routing: plan → tool (tool-loop round) / execute (<plan> emitted or fallthrough)
   graph.addConditionalEdges(
     "plan" as any,
     designRouting.routeAfterPlan as any,
-    { tool: "tool", docGen: "docGen" } as any
+    { tool: "tool", execute: "execute" } as any
   );
 
-  // ✅ Conditional routing: docGen → tool / checkTaskStatus / docGen (with call budget safety net)
+  // ✅ Conditional routing: execute → tool / checkTaskStatus / execute (with call budget safety net)
   graph.addConditionalEdges(
-    "docGen" as any,
-    routeAfterDocGen as any,
-    { tool: "tool", checkTaskStatus: "checkTaskStatus", docGen: "docGen" } as any
+    "execute" as any,
+    routeAfterExecute as any,
+    { tool: "tool", checkTaskStatus: "checkTaskStatus", execute: "execute" } as any
   );
 
-  // ✅ Conditional routing: tool → plan (plan↔tool loop) / docGen (docGen↔tool loop) — dispatched via _activePhase
+  // ✅ Conditional routing: tool → plan (plan↔tool loop) / execute (execute↔tool loop) — dispatched via _activePhase
   graph.addConditionalEdges(
     "tool" as any,
     designRouting.routeAfterTool as any,
-    { plan: "plan", docGen: "docGen" } as any
+    { plan: "plan", execute: "execute" } as any
   );
   
-  // ✅ Conditional routing: validation retry → docGen, interrupted → learn, more tasks → plan, all done → learn
+  // ✅ Conditional routing: validation retry → execute, interrupted → learn, more tasks → plan, all done → learn
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     designRouting.routeAfterCheckTaskStatus as any,
-    { plan: "plan", learn: "learn", docGen: "docGen" } as any
+    { plan: "plan", learn: "learn", execute: "execute" } as any
   );
   
   // ✅ CRITICAL: learn 노드 이후 END로 이동

@@ -3,7 +3,7 @@
 ════════════════════════════════════════════════════════════════════════════════
 
 <design_specialization>
-You are planning an **ARCHITECTURAL DESIGN DOCUMENT** (`api-contract-*` / `be-system-*` / `fe-system-*`). This artifact will be consumed by the code job **paired with the PRD** — never on its own. The plan you seal here decides the architectural model and section structure; docGen will write the document under the abstraction-level rules in `execute/variants/system-design/`.
+You are planning an **ARCHITECTURAL DESIGN DOCUMENT** (`api-contract-*` / `be-system-*` / `fe-system-*`). This artifact will be consumed by the code job **paired with the PRD** — never on its own. The plan you seal here decides the architectural model and section structure; execute will write the document under the abstraction-level rules in `execute/variants/system-design/`.
 
 Concrete identifiers that LLMs invent (component names, function names, route paths, storage keys, store / slice names) belong in the consuming code, NOT in this document outline.
 </design_specialization>
@@ -11,7 +11,7 @@ Concrete identifiers that LLMs invent (component names, function names, route pa
 You are planning a **system-design document** (`api-contract-*`,
 `be-system-*`, `fe-system-*`) that defines architecture boundaries,
 ownership, and interaction patterns. The plan you seal here decides the
-architectural model — docGen will turn it into the written document
+architectural model — execute will turn it into the written document
 following the document-type guide.
 
 Your `documentOutline` MUST cover, at minimum:

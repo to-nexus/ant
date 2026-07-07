@@ -1,17 +1,17 @@
 ## Plan Phase Operating Rules
 
-### Plan vs DocGen Boundary
+### Plan vs Execute Boundary
 
 | Concern | Owned by |
 |---------|----------|
 | Solution direction / approach | **plan** (this phase) |
 | Candidate enumeration & comparison | **plan** (this phase) |
 | Document outline (which sections, in what order, what each contains) | **plan** (this phase) |
-| Detail precision (exact paths, function signatures, conventions) | docGen (next phase) |
-| Final wording / formatting / file-write XML tags | docGen (next phase) |
+| Detail precision (exact paths, function signatures, conventions) | execute (next phase) |
+| Final wording / formatting / file-write XML tags | execute (next phase) |
 
-The plan handed to docGen is **sealed**: docGen MUST follow the
-`documentOutline` and `decision`. If docGen finds new evidence that
+The plan handed to execute is **sealed**: execute MUST follow the
+`documentOutline` and `decision`. If execute finds new evidence that
 contradicts the sealed plan, it raises `<clarify>` rather than silently
 overriding — so plan-phase decisions need to be made well.
 
@@ -19,9 +19,9 @@ overriding — so plan-phase decisions need to be made well.
 
 ## Codebase Exploration Protocol
 
-**Principle**: A plan grounded in actual code yields actionable docGen
+**Principle**: A plan grounded in actual code yields actionable execute
 output. A plan written without codebase knowledge produces generic
-placeholders that docGen cannot turn into concrete sections.
+placeholders that execute cannot turn into concrete sections.
 
 **Observation targets** (use tools to investigate):
 
@@ -92,7 +92,7 @@ articulate B's strongest case before judging.
 **Constraint**: Tools available in this phase are **read-only** by
 design. File-write tools are NOT exposed here. If you find yourself
 wanting to write a file, that is the signal that you should be sealing
-the plan and handing it to docGen.
+the plan and handing it to execute.
 
 **Constraint**: Cache hits matter — `read_file` / `list_files` /
 `search_code` results are cached across plan↔tool rounds. Do NOT re-read
@@ -112,7 +112,7 @@ as the decision is well-supported.
 **Constraint**: As soon as you can name **two distinct candidate
 solutions** with observable pros / cons, emit `<plan>`. You do NOT
 need exhaustive API verification before sealing — `documentOutline`
-can instruct docGen to verify exact signatures from the installed
+can instruct execute to verify exact signatures from the installed
 package's `.d.ts`, source, or local imports.
 
 **Constraint**: If a public API is unverifiable from web search after
@@ -132,7 +132,7 @@ uncertainty, not another tool round.
 ⚠️ **Blind spot**: Models repeat near-identical web queries hoping the
 next phrasing will surface a definitive answer. If the first 2 - 3
 queries on a topic returned overlapping or empty results, additional
-queries will not help. Seal with the partial picture and let docGen
+queries will not help. Seal with the partial picture and let execute
 resolve precision via codebase reads of the installed package.
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -149,15 +149,15 @@ govern **how** the sealed `<plan>` is shaped and when output stops.
 entries. Single-candidate plans are rejected because the tradeoff is
 not auditable.
 
-**Constraint**: `documentOutline` is the contract handed to docGen.
+**Constraint**: `documentOutline` is the contract handed to execute.
 Restrict sections to the assigned task scope; do NOT include sections
 that belong to other tasks.
 
 **Constraint**: Once `<plan>` is emitted, additional tool calls in the
-same response are ignored. The next phase (docGen) runs its own tool
+same response are ignored. The next phase (execute) runs its own tool
 round when it needs to verify low-level details.
 
 **Constraint**: The Output Tag Contract bans free text outside any
 registered tag, so do NOT write prose before `<plan>` opens. Emit
 nothing after `</plan>` closes — the plan node terminates at that
-boundary and docGen consumes the sealed JSON directly.
+boundary and execute consumes the sealed JSON directly.

@@ -127,7 +127,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.planText = session.state.planText;
         }
         
-        // ✅ Restore conversations for mid-task resume (docGen continues from interruption)
+        // ✅ Restore conversations for mid-task resume (execute continues from interruption)
         if (session.state.conversations) {
           initial.conversations = session.state.conversations;
         }

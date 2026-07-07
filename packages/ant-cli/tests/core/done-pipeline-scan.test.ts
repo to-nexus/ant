@@ -1,7 +1,7 @@
 /**
  * Parallel `<done>` scan regression — pins the buffer-scan promotion
  * of the `_explicitDone` flag used by parallel rendering surfaces
- * (design docGen, code execute) whose per-chunk render path bypasses
+ * (design execute, code execute) whose per-chunk render path bypasses
  * `SpecialTagTransformer.transform` (see `CommonRenderStrategy` case
  * 'response' when `parallelTaskName` is set).
  *
@@ -10,7 +10,7 @@
  *     parallel surfaces accumulate into `taskResponseBuffer`.
  *   - `finalize()` applied `transformAndStrip` for rendering but did
  *     NOT update the transformer's `_explicitDone` flag — so the
- *     docGen router kept looping until the call-budget safety net
+ *     execute router kept looping until the call-budget safety net
  *     tripped, producing a `task_fail` → re-queue → `plan`-phase
  *     tool-call loop.
  *   - `scanExplicitDone(buffer)` is the SSOT fix: side-effect-only

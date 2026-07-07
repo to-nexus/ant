@@ -268,7 +268,7 @@ async function runJob(params: JobParams): Promise<void> {
     // LLM auth failure (bad/missing API key) is deterministic and NOT resumable
     // — resuming re-sends the same key. Surface a clear, actionable card instead
     // of the generic process_crash/Resume affordance. Checked first because it
-    // can unwind from any single-shot node (ask/plan/detect/decompose/docGen).
+    // can unwind from any single-shot node (ask/plan/detect/decompose/execute).
     const authFailure = isLlmAuthError(error);
     const promptTooLong = isPromptTooLongError(error);
     const interruption: InterruptionDetails = authFailure.isAuth

@@ -150,7 +150,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     // Code-grounded design docs (spec + system) activate techTier so the doc
     // can reference the real stack's conventions — gen-spec/rev-spec/rev-sys now
     // mirror gen-sys-* (SYS_TIERS). For an existing codebase the FE wizard still
-    // suppresses the techTier step (hasCodebase runtime suppressor); BE docGen
+    // suppresses the techTier step (hasCodebase runtime suppressor); BE execute
     // injection omits hasCodebase from its runtime, so the grounding still flows.
     { intent: 'gen-spec', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'rev-spec', tiers: ['techTier', 'gameContentTier'] },

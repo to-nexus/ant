@@ -136,7 +136,7 @@ LLM에 전송되는 프롬프트의 구조적 메타데이터. 프롬프트 본�
 | 필드 | 필수 | 설명 |
 |------|------|------|
 | `correlationKey` | Y | `{jobId}:{taskId}:{callIndex}` |
-| `node` | Y | 그래프 노드 이름 (triage, decompose, execute, docGen 등) |
+| `node` | Y | 그래프 노드 이름 (triage, decompose, execute, execute 등) |
 | `taskId` | N | 태스크 ID (triage는 태스크 없음) |
 | `callIndex` | N | 같은 태스크 내 n번째 LLM 호출 |
 | `timestamp` | Y | ISO 8601 |

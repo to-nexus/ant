@@ -1,6 +1,6 @@
 /**
  * Phase-level clarify gate — the ONE shared core that unifies the former
- * ad-hoc clarify emit sites (planner generate, design docGen, code decompose,
+ * ad-hoc clarify emit sites (planner generate, design execute, code decompose,
  * detect, visual direct) onto a single mechanism.
  *
  * Distinct from `gate.ts` (intent-commit facade for `<specClarify>`): this
@@ -57,7 +57,7 @@ export interface ClarifyGateInput {
   onBeforeSend?: () => Promise<void> | void;
   /**
    * Presentation override. Defaults to `sendClarify` (choice cards). A caller
-   * with a different surface (e.g. design docGen forwards free-form spec
+   * with a different surface (e.g. design execute forwards free-form spec
    * questions as a chat message) passes its own sender. The gate owns the
    * DECISION (active? budget? pause?); the caller owns the PRESENTATION.
    */

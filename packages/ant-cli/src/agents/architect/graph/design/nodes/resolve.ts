@@ -91,7 +91,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // Wholesale disk scans are still forbidden — the helper only reads
     // RAC.refs ∪ RAC.context. The `existingDesignDocs` body cache above
     // stays — it is a design-job internal channel consumed by
-    // `docGen/intent/system.ts` for refactor mode and is orthogonal to
+    // `execute/intent/system.ts` for refactor mode and is orthogonal to
     // the post-RAC pool SSOT. See `AGENTS.md` "state.artifacts
     // Post-RAC SSOT".
     let resumeArtifacts: import('@ant/shared').ResolvedArtifact[] | undefined = state.resolvedArtifacts;

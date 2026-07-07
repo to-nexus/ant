@@ -16,6 +16,6 @@
  *              Requires CacheBlockMapper (cache/uncache block split)
  *              + MessageComposer (prior turn compression + budget).
  *              Uses promptBuilder.build() + CacheBlockMapper + MessageComposer.
- *              (execute, docGen, plan, ask, visual)
+ *              (execute, execute, plan, ask, visual)
  */
 export type NodeCallPattern = 'none' | 'single' | 'compound';

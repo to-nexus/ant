@@ -13,7 +13,7 @@ import type { JobType } from './job';
 /**
  * Identifier for the graph node predicted to dominate the next LLM call.
  * Free-form string because the `node` namespace differs per job (`detect`,
- * `decompose`, `plan`, `execute`, `docGen`, `agent`, `generate`, …).
+ * `decompose`, `plan`, `execute`, `execute`, `agent`, `generate`, …).
  */
 export type HeaviestNodeId = string;
 
@@ -45,7 +45,7 @@ export interface BaselineEstimate {
      * with structural outlines + `read_file(path, startLine, endLine)`
      * hints (matching production's `ArtifactPipeline.compactArtifacts` /
      * `designSelector.prepareRacInjection` thresholds — refs 8 KB,
-     * context 2 KB at decompose; uniform 30 KB at plan/execute/docGen).
+     * context 2 KB at decompose; uniform 30 KB at plan/execute/execute).
      *
      * Excluded by design:
      * - Decompaction tokens (LLM-driven follow-up `read_file` calls land

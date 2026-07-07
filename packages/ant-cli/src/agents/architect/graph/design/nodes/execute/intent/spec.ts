@@ -33,14 +33,14 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const task = state.currentTask;
   const targetFile = task?.targetFile;
   if (!targetFile) {
-    throw new Error('[DocGen/Spec] currentTask.targetFile is required');
+    throw new Error('[Execute/Spec] currentTask.targetFile is required');
   }
   const directive = state.overrideDirective || state.directive || '';
   const jobMode = state.resolvedAction?.mode || 'generate';
 
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
-    throw new Error('[DocGen/Spec] PromptBuilder is required but not available in state.deps');
+    throw new Error('[Execute/Spec] PromptBuilder is required but not available in state.deps');
   }
 
   // ─── Chapter decomposition fields ───────────────────────────────────────
@@ -62,16 +62,16 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       }
       if (await state.deps.fileSystem.fileExists(specDocPath)) {
         previousSections = (await state.deps.fileSystem.readFile(specDocPath)) || '';
-        console.log(`📋 [DocGen/Spec] Loaded existing spec for context: ${targetFile} (${previousSections.length} chars)`);
+        console.log(`📋 [Execute/Spec] Loaded existing spec for context: ${targetFile} (${previousSections.length} chars)`);
       }
     } catch (error) {
-      console.warn(`⚠️  [DocGen/Spec] Could not load previous sections:`, error);
+      console.warn(`⚠️  [Execute/Spec] Could not load previous sections:`, error);
     }
   }
 
   const sealedPlanLen = state.planText?.trim().length ?? 0;
   console.log(
-    `📋 [DocGen/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections}) ` +
+    `📋 [Execute/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections}) ` +
     `· sealedPlan=${sealedPlanLen > 0 ? `${sealedPlanLen} chars (top-injected, plan-gated rules)` : 'none (fallback rules)'}`,
   );
 
@@ -81,7 +81,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // task / directive details render at the prompt tail. The sealed
   // plan body is exposed through the existing `planText` Handlebars
   // var (mirrors code job's `state.planText` naming — see
-  // `.claude/plans/plan-docgen-parallel-spring.md` and
+  // `.claude/plans/plan-execute-parallel-spring.md` and
   // `code/nodes/execute/buildMessages.ts` for the parallel pattern).
   // The template's `{{#if planText}}` gate fires on Handlebars
   // string-truthiness, so no separate "hasSealedPlan" flag is needed.
@@ -149,7 +149,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
       resolvedAction: state.resolvedAction,
-      // Plan→docGen handoff vars (see plan-docgen-parallel-spring plan):
+      // Plan→execute handoff vars (see plan-execute-parallel-spring plan):
       //   - `planText` is the sealed `<plan>` JSON body (or empty
       //     string when no plan was sealed). The base.md and rules.md
       //     templates gate on `{{#if planText}}` to distinguish
@@ -218,12 +218,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
           const existingContent = await state.deps.fileSystem.readFile(specDocPath);
           if (existingContent) {
             contextParts.push(`# Existing Spec Document (to be modified)\n\n${existingContent}`);
-            console.log(`📋 [DocGen/Spec] Loaded existing spec: ${targetFile} (${existingContent.length} chars)`);
+            console.log(`📋 [Execute/Spec] Loaded existing spec: ${targetFile} (${existingContent.length} chars)`);
           }
         }
       }
     } catch (error) {
-      console.warn(`⚠️  [DocGen/Spec] Failed to load existing spec:`, error);
+      console.warn(`⚠️  [Execute/Spec] Failed to load existing spec:`, error);
     }
   }
 
@@ -237,13 +237,13 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Deadline message for trailing user
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const callIndex = state._docGenCallIndex || 0;
-  // When `planText` is sealed, docGen's role is "render the decision +
+  const callIndex = state._executeCallIndex || 0;
+  // When `planText` is sealed, execute's role is "render the decision +
   // verify a few exact paths" — exploration was already done by plan.
   // Tighten the deadlines so the LLM commits to writing within ~8
   // turns. When no plan is sealed (legacy / dispatcher fallback), keep
   // the lax 30/40 budget so the original Codebase Exploration heuristic
-  // has room to run. See `.claude/plans/plan-docgen-parallel-spring.md`.
+  // has room to run. See `.claude/plans/plan-execute-parallel-spring.md`.
   const SOFT_DEADLINE = planText ? 8 : 30;
   const HARD_DEADLINE = planText ? 12 : 40;
 
@@ -275,7 +275,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { messages } = composeMessages({
     initialBlocks: blocks,
-    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
+    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     trailingUserMessage,
   });
 
@@ -288,7 +288,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
         state.context.featurePath,
         jobId,
         'design',
-        'docGen-spec',
+        'execute-spec',
         blocks.reduce((sum, b) => sum + (b.type === 'text' ? b.text.length : 0), 0),
         {
           taskId: task?.id,
@@ -308,7 +308,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             hasPrd: new ArtifactPoolView(state.artifacts || []).hasSources(),
             hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,
             // Sealed plan injection visibility — mirrors system.ts so an
-            // operator can confirm the plan→docGen handoff at a glance.
+            // operator can confirm the plan→execute handoff at a glance.
             // `undefined` = no sealed plan (legacy/dispatchOnly path).
             planText: state.planText && state.planText.trim().length > 0 ? `[${state.planText.length} chars]` : undefined,
           },

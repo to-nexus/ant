@@ -2,13 +2,13 @@
 
 ## 개요
 
-Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 architect 에이전트의 LangGraph 그래프이다. Code Job과 동일한 resume 아키텍처를 공유하되, 코드 생성 대신 문서 생성(docGen)을 수행한다.
+Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 architect 에이전트의 LangGraph 그래프이다. Code Job과 동일한 resume 아키텍처를 공유하되, 코드 생성 대신 문서 생성(execute)을 수행한다.
 
 ## Code Job과의 차이
 
 | 항목 | Code Job | Design Job |
 |------|----------|------------|
-| 실행 노드 | plan -> execute -> tool | plan -> docGen -> tool |
+| 실행 노드 | plan -> execute -> tool | plan -> execute -> tool |
 | plan 역할 | LLM+tools 로 planText 생성 (5단계 entry/shortcut/RAG/llm/outcome) | LLM+tools 로 sealed `<plan>` 생성 (lean per-doc; intentGroup ∈ {design-spec, design-system-design} 만 적용. ui-design / game-art-design 은 dispatcher-only fallback) |
 | 검증 루프 | enforce -> plan (violations) | 없음 |
 | 태스크 타입 | setup, feature, testgen, error, verification | doc |
@@ -73,16 +73,16 @@ __start__ -> resolve -> [4-way router]
 
 plan -> [router]
     +-> tool (plan↔tool 도구 루프, _activePhase='plan' + tool_use 있음)
-    +-> docGen (sealed <plan> 또는 dispatchOnly fallthrough)
+    +-> execute (sealed <plan> 또는 dispatchOnly fallthrough)
 
-docGen -> [router]
+execute -> [router]
     +-> tool -> [router]  (도구 호출 루프, _activePhase 미설정)
     +-> checkTaskStatus (done=true)
-    +-> docGen (retry, done=false)
+    +-> execute (retry, done=false)
 
 tool -> [router]  (_activePhase 로 분기)
     +-> plan (_activePhase='plan' → plan↔tool 루프)
-    +-> docGen (그 외 → docGen↔tool 루프)
+    +-> execute (그 외 → execute↔tool 루프)
 
 checkTaskStatus -> [router]
     +-> plan (다음 태스크)
@@ -91,7 +91,7 @@ checkTaskStatus -> [router]
 
 ### figmaExplore 노드
 
-Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
+Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 execute에서 참조한다. 상세 알고리즘은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 
@@ -109,20 +109,20 @@ Worker Subgraph는 `DesignGraphChannels`를 spread하여 메인 그래프와 채
 
 intentGroup 분기로 두 동작을 가진다:
 
-- **`design-spec` / `design-system-design`**: LLM+tools 의 lean plan↔tool 루프를 실행해 `<plan>{...}</plan>` JSON 을 생성한다. plan 결과는 `state.planText` 로 sealed 되어 docGen 의 `runtimeContext` 상단 (`# Sealed Plan (from plan node)`) 에 주입된다. 도구 셋은 read-only 의 `TOOL_SETS.designPlanExplore` (Figma 활성화 시 `designPlanFigma`) — file-write / download_asset 은 노출하지 않는다 (작성·다운로드는 docGen 의 책임).
-- **`design-ui` / `design-game-art`**: 기존 dispatcher-only 동작 유지. taskQueue 에서 pop, currentTask 설정, kanban / workflow / task_start 로그만 처리하고 즉시 docGen 으로 라우팅한다. 향후 `variants/{ui-design,game-art-design}/` 프롬프트가 추가되면 진입 가드만 풀고 LLM+tools 흐름에 합류 가능.
+- **`design-spec` / `design-system-design`**: LLM+tools 의 lean plan↔tool 루프를 실행해 `<plan>{...}</plan>` JSON 을 생성한다. plan 결과는 `state.planText` 로 sealed 되어 execute 의 `runtimeContext` 상단 (`# Sealed Plan (from plan node)`) 에 주입된다. 도구 셋은 read-only 의 `TOOL_SETS.designPlanExplore` (Figma 활성화 시 `designPlanFigma`) — file-write / download_asset 은 노출하지 않는다 (작성·다운로드는 execute 의 책임).
+- **`design-ui` / `design-game-art`**: 기존 dispatcher-only 동작 유지. taskQueue 에서 pop, currentTask 설정, kanban / workflow / task_start 로그만 처리하고 즉시 execute 으로 라우팅한다. 향후 `variants/{ui-design,game-art-design}/` 프롬프트가 추가되면 진입 가드만 풀고 LLM+tools 흐름에 합류 가능.
 
 re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 plan↔tool 루프 한 라운드를 실행한다. plan↔tool 루프 자체에는 라운드 상한이 없다 — 폭주는 LangGraph `recursionLimit` 가 잡는다.
 
 공유 헬퍼 (`agents/common/graph/nodes/plan/`) 를 사용한다. code 와 동일한 stream / `<plan>` 추출 로직을 함수형 utilities 로만 공유 — adapter/strategy 인터페이스는 의도적으로 두지 않음 (구조 차이가 큼; 자세한 정책은 해당 디렉토리 README 와 [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
 
-### docGen
+### execute
 
 XML 스트리밍 방식으로 설계 문서를 생성한다. `conversationHistory` 기반 멀티턴 대화로 tool calling을 포함한다. 완료 판단은 LLM이 `<done>true</done>`을 출력하는 시점이다. `done=false`면 자기 자신으로 재진입하여 LLM 응답을 이어간다. 파일은 즉시 디스크에 기록한다.
 
-**Tool-loop safety net 회수**: docGen 의 call budget 안전망 (`_callLimitReached` / `MAX_NO_OUTPUT_CALLS=15` / `DOCGEN_MAX_CALLS=25`) 과 `call_budget_exhausted` terminal kind, `call_limit` interruption reason 은 모두 retire 되었다 (코드잡의 Safety Net D/E 회수와 동일한 사유 — 거짓양성 생성기). 무한 루프는 LangGraph `recursionLimit` 가 ultimate backstop 으로 잡고, 비생산적 스트릭은 LLM 에 advisory soft/hard warning 으로만 전달한다 (deterministic gate 없음). 디자인잡 plan 노드의 tool-loop round cap (`PLAN_TOOL_LOOP_MAX`) 도 같은 패턴으로 retire 된 상태.
+**Tool-loop safety net 회수**: execute 의 call budget 안전망 (`_callLimitReached` / `MAX_NO_OUTPUT_CALLS=15` / `DOCGEN_MAX_CALLS=25`) 과 `call_budget_exhausted` terminal kind, `call_limit` interruption reason 은 모두 retire 되었다 (코드잡의 Safety Net D/E 회수와 동일한 사유 — 거짓양성 생성기). 무한 루프는 LangGraph `recursionLimit` 가 ultimate backstop 으로 잡고, 비생산적 스트릭은 LLM 에 advisory soft/hard warning 으로만 전달한다 (deterministic gate 없음). 디자인잡 plan 노드의 tool-loop round cap (`PLAN_TOOL_LOOP_MAX`) 도 같은 패턴으로 retire 된 상태.
 
-**ui-spec append anchor**: `forceAppend=true` chapter 가 큰 `ui-spec.json` 에 신규 섹션을 추가할 때, 삽입 위치(`appendAnchor`)는 docGen turn 시점에 디스크 상태에서 라이브 계산한다. SSOT 는 [`packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts`](../../packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts) 의 `extractLastSectionKey(content)`. 과거에는 decompose 시점에 pre-compute 했으나, 신축(new-build) 시나리오에서 target file 이 비어 있어 anchor 가 영구 null 로 묶이는 문제가 있었다 — 라이브 계산으로 전환하여 해소.
+**ui-spec append anchor**: `forceAppend=true` chapter 가 큰 `ui-spec.json` 에 신규 섹션을 추가할 때, 삽입 위치(`appendAnchor`)는 execute turn 시점에 디스크 상태에서 라이브 계산한다. SSOT 는 [`packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts`](../../packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts) 의 `extractLastSectionKey(content)`. 과거에는 decompose 시점에 pre-compute 했으나, 신축(new-build) 시나리오에서 target file 이 비어 있어 anchor 가 영구 null 로 묶이는 문제가 있었다 — 라이브 계산으로 전환하여 해소.
 
 ### decompose
 
@@ -172,9 +172,9 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 |---|---|---|
 | 진입 | `plan/index.ts` (fresh entry) | 빈 문자열 또는 이전 task 잔존값 (다음 단계에서 reset) |
 | `<plan>` emit | `plan/finalizeOutcome.ts:finalizePlanOutcome` | `outcome.planText` 로 set |
-| docGen 주입 | `docGen/intent/spec.ts:75-79` / `docGen/intent/system.ts:375-379` | runtimeContext 상단에 `# Sealed Plan (from plan node)` 으로 prepend |
+| execute 주입 | `execute/intent/spec.ts:75-79` / `execute/intent/system.ts:375-379` | runtimeContext 상단에 `# Sealed Plan (from plan node)` 으로 prepend |
 | task 완료 | `graph.ts:checkTaskStatus` (sequential) / `parallel/workerGraph.ts:189-193` (parallel) | `''` 로 reset (다음 task 의 fresh planning 보장) |
-| session resume | `runner.ts:113-115` | 세션 파일에서 복원 (task 진행 중 재개 시 docGen으로 직행) |
+| session resume | `runner.ts:113-115` | 세션 파일에서 복원 (task 진행 중 재개 시 execute으로 직행) |
 
 session 파일(`sessions/architect/design.json`)의 final state 에서 `planText: ""` 이 보이는 것은 **마지막 task 가 완료되어 reset 된 후 직렬화된 정상 상태**다. 진행 중 snapshot(checkpoint)에는 sealed plan 이 들어있다.
 
@@ -185,7 +185,7 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 | 파일 | 작성자 | 내용 |
 |---|---|---|
 | `plans/plan-{jobId}.json` | `plan/finalizeOutcome.ts:savePlanForDebug` | task 별 sealed `<plan>` JSON 본문 (배열로 누적) |
-| `prompts/prompt-{jobId}.json` | `core/utils/promptLogger.ts:logPrompt` | docGen 프롬프트 빌드 시점 메타데이터 — `injectedVariables.planText` 가 sealed plan 주입 여부를 길이로 표시 |
+| `prompts/prompt-{jobId}.json` | `core/utils/promptLogger.ts:logPrompt` | execute 프롬프트 빌드 시점 메타데이터 — `injectedVariables.planText` 가 sealed plan 주입 여부를 길이로 표시 |
 | `logs/log-{jobId}.json` | `core/utils/executionLogger.ts:logPhaseComplete` | 구조화 phase 이벤트 (아래 표) |
 | `chat.jsonl` (workspace 루트) | `core/streaming/strategies/CommonRenderStrategy.ts` | 사용자 가시 SSE 이벤트 — `statusType: "plan"` 카드가 `<plan>` JSON 본문을 그대로 운반 |
 
@@ -196,7 +196,7 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 | `phase` | 발생 조건 | `details` 주요 필드 |
 |---|---|---|
 | `design-plan-sealed` | `intentGroup ∈ {design-spec, design-system-design}` 에서 `<plan>` 추출 성공 | `taskId`, `intentGroup`, `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
-| `design-plan-fallthrough` | plan 루프 round 가 `<plan>` 도 tool call 도 emit 하지 않은 경우 → docGen 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
+| `design-plan-fallthrough` | plan 루프 round 가 `<plan>` 도 tool call 도 emit 하지 않은 경우 → execute 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
 | `design-plan-dispatch-only` | `intentGroup ∈ {design-ui, design-game-art}` 에서 plan-LLM 건너뜀 (`dispatchOnly` 경로) | `taskId`, `intentGroup`, `reason: 'intent-group-not-plan-llm-enabled'` |
 
 ### 진단 워크플로우
@@ -205,10 +205,10 @@ session 파일(`sessions/architect/design.json`)의 final state 에서 `planText
 
 1. **`logs/log-{jobId}.json` grep `design-plan-`** — plan 단계의 결과(sealed / fallthrough / dispatch-only)와 candidate 수를 한 줄로 확인.
 2. **`plans/plan-{jobId}.json`** — sealed 된 경우 실제 JSON 내용으로 candidate 비교 / decision rationale 확인.
-3. **`prompts/prompt-{jobId}.json` 의 `docGen-spec` 또는 `docGen-systemDesign` 항목** — `injectedVariables.planText` 가 1번에서 본 길이와 일치하는지 검증 (plan→docGen 핸드오프 무결성).
+3. **`prompts/prompt-{jobId}.json` 의 `execute-spec` 또는 `execute-systemDesign` 항목** — `injectedVariables.planText` 가 1번에서 본 길이와 일치하는지 검증 (plan→execute 핸드오프 무결성).
 4. **`chat.jsonl`** — 사용자 관점에서 thinking → `statusType: "plan"` → file_create 의 시간 분배 확인.
 
-`plan→docGen` 핸드오프가 깨졌다는 가설이 있으면 1·3을 우선 비교한다 (1의 `planTextLen` 과 3의 `planText` 길이 표시가 동일해야 함).
+`plan→execute` 핸드오프가 깨졌다는 가설이 있으면 1·3을 우선 비교한다 (1의 `planTextLen` 과 3의 `planText` 길이 표시가 동일해야 함).
 
 ## Codebase mutation gate
 
@@ -216,7 +216,7 @@ Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta
 
 | 잡 / phase | `codebase/` mutate | `run_command` | 아티팩트 mutate | 강제 위치 |
 |---|---|---|---|---|
-| architect/design — plan / docGen | 차단 | 차단 | 허용 | `allowMutateInCodebase = false` + `allowShellExecution = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + design tool registry 에서 `RUN_COMMAND` 미등록 + FileRenderer XML 가드 (`jobType: 'design'`) |
+| architect/design — plan / execute | 차단 | 차단 | 허용 | `allowMutateInCodebase = false` + `allowShellExecution = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + design tool registry 에서 `RUN_COMMAND` 미등록 + FileRenderer XML 가드 (`jobType: 'design'`) |
 | architect/code — plan | 차단 | **허용** | 허용 | `allowMutateInCodebase = false` (`_activePhase === 'plan'` 분기) + `allowShellExecution = true` (always) + FileRenderer (`codePhase: 'plan'`) |
 | architect/code — execute | 허용 | 허용 | 허용 | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + `allowShellExecution = true` + FileRenderer 기존 가드 |
 | planner — plan (PRD/계획) | 차단 | n/a (도구 미등록) | 허용 | planner 도구 ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` 가드) + FileRenderer (`jobType: 'planner'`) |
@@ -231,17 +231,17 @@ Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta
 
 거부 메시지는 LLM 에게 회복 경로를 안내한다 — 아티팩트 경로 사용 또는 spec/plan 문서에 변경 내용을 기술하라는 형태로, "You MUST" 훈계 없는 FPOP 친화적 톤. 차단된 시도는 다음 turn 에서 R5 self-check 와 결합되어 자연스럽게 task 완료(`<done>true</done>`)로 수렴한다.
 
-회귀 가드: [tests/architect/mutate-gate.test.ts](../../packages/ant-cli/tests/architect/mutate-gate.test.ts) (두 플래그 매트릭스), [tests/architect/regression-design-spec-mutate-leak.test.ts](../../packages/ant-cli/tests/architect/regression-design-spec-mutate-leak.test.ts) (design docGen → codebase mutate 차단 — 옛 이름 `total-drying-apron`), [tests/architect/regression-agile-nodding-pouch.test.ts](../../packages/ant-cli/tests/architect/regression-agile-nodding-pouch.test.ts) (코드잡 verification plan 의 `run_command` 통과).
+회귀 가드: [tests/architect/mutate-gate.test.ts](../../packages/ant-cli/tests/architect/mutate-gate.test.ts) (두 플래그 매트릭스), [tests/architect/regression-design-spec-mutate-leak.test.ts](../../packages/ant-cli/tests/architect/regression-design-spec-mutate-leak.test.ts) (design execute → codebase mutate 차단 — 옛 이름 `total-drying-apron`), [tests/architect/regression-agile-nodding-pouch.test.ts](../../packages/ant-cli/tests/architect/regression-agile-nodding-pouch.test.ts) (코드잡 verification plan 의 `run_command` 통과).
 
 ## R5 — artifact-mutation-then-no-done self-check
 
-docGen 종료 트리거 (`<done>true</done>`) 는 LLM 출력에 의존한다. sealed plan 의 `decision` 이 처방형(예: "rename X to Y")이면 모델이 task 완료 조건을 "decision 실행" 으로 오해할 수 있고, 그 결과 done 을 미출력한 채 codebase 변경을 시도하다 R1/R6 가드에 차단되는 무한 루프 위험이 있다.
+execute 종료 트리거 (`<done>true</done>`) 는 LLM 출력에 의존한다. sealed plan 의 `decision` 이 처방형(예: "rename X to Y")이면 모델이 task 완료 조건을 "decision 실행" 으로 오해할 수 있고, 그 결과 done 을 미출력한 채 codebase 변경을 시도하다 R1/R6 가드에 차단되는 무한 루프 위험이 있다.
 
-이를 자율적으로 끊기 위해 docGen 노드는 turn 종료부에서:
+이를 자율적으로 끊기 위해 execute 노드는 turn 종료부에서:
 
-1. **artifact-mutation-intent 검출**: 이번 turn 에 (a) `<file>`/`<append>`/`<edit>`/`<delete>` 가 아티팩트 경로에서 성공했거나, (b) `edit_file`/`delete_file`/`create_file`/`mkdir` pending tool call 이 아티팩트 경로를 가리키면 mutation 의도로 판정. 자세한 truth table 은 [docgen-mutation-intent-detector.test.ts](../../packages/ant-cli/tests/design/docgen-mutation-intent-detector.test.ts) 가 SSOT.
+1. **artifact-mutation-intent 검출**: 이번 turn 에 (a) `<file>`/`<append>`/`<edit>`/`<delete>` 가 아티팩트 경로에서 성공했거나, (b) `edit_file`/`delete_file`/`create_file`/`mkdir` pending tool call 이 아티팩트 경로를 가리키면 mutation 의도로 판정. 자세한 truth table 은 [execute-mutation-intent-detector.test.ts](../../packages/ant-cli/tests/design/execute-mutation-intent-detector.test.ts) 가 SSOT.
 2. **`<done>` 미출력 시 플래그 세팅**: `state._pendingDoneCheck = true`, `_doneCheckEscalation` 카운트 증가. 둘은 [graph.ts](../../packages/ant-cli/src/agents/architect/graph/design/graph.ts) `DesignGraphChannels` 의 정식 채널.
-3. **다음 turn trailing message 변경**: [selfCheck.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/docGen/intent/selfCheck.ts) 의 `buildSelfCheckTrailingMessage` 가 escalation 단계별로 자가 점검 문구 (1차: 부드러운 결정 요청 / 2차: 동일 의미의 firmer 톤) 를 반환. spec / system-design 두 변형이 공유.
+3. **다음 turn trailing message 변경**: [selfCheck.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/execute/intent/selfCheck.ts) 의 `buildSelfCheckTrailingMessage` 가 escalation 단계별로 자가 점검 문구 (1차: 부드러운 결정 요청 / 2차: 동일 의미의 firmer 톤) 를 반환. spec / system-design 두 변형이 공유.
 
 자가 점검 메시지는 **task scope 결정만** 묻고, codebase 차단 안내는 R1/R6 거부 메시지가 별도로 제공한다 (MECE). FPOP 준수 — 도구명 나열 / "You MUST" / 시스템 동작 설명 없음.
 

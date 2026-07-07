@@ -206,7 +206,7 @@ tool 노드는 user 메시지(tool_result 블록)만 추가한다. assistant 메
 |-----|---------------------------|----------------------|
 | Code (execute) | `execute/index.ts` | `tool/index.ts` |
 | Code (plan) | `planGeneration.ts` | `tool/index.ts` |
-| Design | `docGen/index.ts` | `tool/index.ts` |
+| Design | `execute/index.ts` | `tool/index.ts` |
 | Ask | `ask/nodes/agent.ts` | `ask/nodes/tool.ts` |
 | Plan | `generate/index.ts` | `plan/nodes/tool.ts` |
 

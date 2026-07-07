@@ -1,7 +1,7 @@
 /**
  * LLM client resolution + chat placeholder display for design decompose.
  *
- * Decompose-phase-local — `detect/strategy.ts` and `docGen/index.ts` have
+ * Decompose-phase-local — `detect/strategy.ts` and `execute/index.ts` have
  * inline `chatAPI.showChatStatus('placeholder')` duplicates but don't
  * route through a helper today; consolidating those is OUT OF SCOPE for
  * this partition.

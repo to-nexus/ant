@@ -1,14 +1,14 @@
 /**
  * R5 — turn-level artifact-mutation-intent detection.
  *
- * The docGen node sets `_pendingDoneCheck = true` when a turn produced
+ * The execute node sets `_pendingDoneCheck = true` when a turn produced
  * an artifact mutation (XML <file>/<append>/<edit>/<delete> on an
  * artifact path, or a pending mutate-tool call on an artifact path)
  * but the LLM did NOT emit `<done>true</done>`. This test imports the
  * detector helper and pins its truth table so refactor-mode and
  * spec/system-design intents stay covered.
  *
- * The helper is `turnHadArtifactMutationIntent` in `docGen/index.ts`.
+ * The helper is `turnHadArtifactMutationIntent` in `execute/index.ts`.
  * It is module-private — to keep the surface narrow we re-derive the
  * predicate behaviour here using the same path conventions
  * (`codebase/...` paths are excluded because the FileRenderer / tool
@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Re-export of the detector for testing without exposing it publicly.
-// We re-implement the same logic here against fixtures; if the docGen
+// We re-implement the same logic here against fixtures; if the execute
 // helper diverges, tests covering both should be kept consistent. The
 // detector spec is in `docs/architecture/15-design-job.md` "Codebase
 // mutation gate" and `plan_3398344f.plan.md` §5.3.

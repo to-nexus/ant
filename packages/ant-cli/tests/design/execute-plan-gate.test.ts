@@ -1,11 +1,11 @@
 /**
- * docGen tool-set plan gate.
+ * execute tool-set plan gate.
  *
- * After the plan→docGen role split was restored
+ * After the plan→execute role split was restored
  * (`.claude/plans/plan-docgen-parallel-spring.md`), `getTools()` for the
- * design docGen node must drop `search_web` whenever `state.planText` is
+ * design execute node must drop `search_web` whenever `state.planText` is
  * a sealed `<plan>` body. Plan owns external/architectural exploration;
- * docGen is for path / signature / contract verification only — same
+ * execute is for path / signature / contract verification only — same
  * boundary code job draws between `TOOL_SETS.planExplore` and
  * `TOOL_SETS.codeBasic`.
  *
@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getTools } from '../../src/agents/architect/graph/design/nodes/docGen/tools';
+import { getTools } from '../../src/agents/architect/graph/design/nodes/execute/tools';
 import { ToolName } from '../../src/agents/common/tool/toolCatalog';
 import type { DesignGraphState } from '../../src/agents/architect/graph/design/state';
 
@@ -40,7 +40,7 @@ const SEALED_PLAN = JSON.stringify({
   documentOutline: [{ section: 'Overview', content: 'x' }],
 });
 
-describe('docGen getTools — planText gate', () => {
+describe('execute getTools — planText gate', () => {
   it('drops search_web when planText is a sealed plan body (design-spec)', async () => {
     const tools = await getTools(makeState({ planText: SEALED_PLAN }));
     const names = tools.map(t => t.name);
