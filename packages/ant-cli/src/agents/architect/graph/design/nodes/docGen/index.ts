@@ -30,6 +30,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
+import { resolveLLMClient } from './llmClient';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
 import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -86,7 +87,10 @@ export async function docGen(
   // No longer a safety-net gate — runaway is bounded by LangGraph recursionLimit.
   const newCallIndex = (state._docGenCallIndex || 0) + 1;
   
-  const llmClient = state.deps?.llm;
+  // Per-node model selection — honors `llmModels.design.docGen` (falls
+  // back to the design default when unset / no workspaceConfig). Mirrors
+  // plan/decompose so docGen is no longer the odd node stuck on default.
+  const llmClient = await resolveLLMClient(state);
   const gitPort = state.deps?.git;
   if (!llmClient || !gitPort) {
     throw new Error('LLM client or GitPort not available');
@@ -197,7 +201,7 @@ export async function docGen(
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 'docGen', state.workerId ?? 0, taskInfo,
-      state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
+      llmClient ? extractLLMInfo(llmClient) : undefined,
       state.recursionCount, state.recursionLimit
     );
   }
@@ -357,8 +361,11 @@ export async function docGen(
     
     // Accumulate token usage to state
     if (capturedUsage) {
-      const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage, resolveModelIdSafe } = await import('../../../../../common/graph/llmHelpers');
-      accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false });
+      const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+      // Attribute to docGen's actual (per-node-resolved) model, not the
+      // graph-default — `resolveModelIdSafe(state)` reads state.deps.llm.
+      const docGenModelId = llmClient.modelName;
+      accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false, modelId: docGenModelId });
       updateKanbanTokenUsage(state);
       
       const taskUsage = state._currentTaskTokenUsage;
@@ -371,7 +378,7 @@ export async function docGen(
           taskName: state.currentTask?.name || 'unknown',
           node: 'docGen',
           callIndex: newCallIndex - 1,
-          modelId: resolveModelIdSafe(state),
+          modelId: docGenModelId,
           nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
           estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
             if (typeof m.content === 'string') return sum + m.content.length;

@@ -26,6 +26,7 @@ import { selectArtifacts } from '../../../../../../core/prompt/builder/ArtifactP
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import type { DesignTask } from '../../../../types/task';
+import { resolveLLMClient } from './llmClient';
 
 const EXPLAIN_BASE_TEMPLATE = TEMPLATE_PATHS.designExplain.base;
 const EXPLAIN_RULES_TEMPLATE = TEMPLATE_PATHS.designExplain.rules!;
@@ -35,7 +36,9 @@ const MAX_SOURCE_CHARS = 60_000;
 export async function renderExplainResponse(
   state: DesignGraphState,
 ): Promise<Partial<DesignGraphState>> {
-  const llm = state.deps?.llm;
+  // Per-node model selection — explain is the chat-only branch of the
+  // docGen node, so it honors the same `llmModels.design.docGen` slot.
+  const llm = await resolveLLMClient(state);
   const pb = state.deps?.promptBuilder;
   if (!llm || !pb) {
     throw new Error('[DocGen/Explain] llm or promptBuilder missing');
@@ -114,8 +117,8 @@ export async function renderExplainResponse(
   }
 
   if (capturedUsage) {
-    const { logTokenUsageToFile, updateKanbanTokenUsage, resolveModelIdSafe } = await import('../../../../../common/graph/llmHelpers');
-    accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false });
+    const { logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+    accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false, modelId: llm.modelName });
     updateKanbanTokenUsage(state);
     logTokenUsageToFile(
       state.context?.featurePath,
@@ -126,7 +129,7 @@ export async function renderExplainResponse(
         taskName: state.currentTask?.name || 'Explain',
         node: 'docGen-explain',
         callIndex: state._docGenCallIndex || 0,
-        modelId: resolveModelIdSafe(state),
+        modelId: llm.modelName,
         nodeHistoryLength: priorTurns.length,
         estimatedPromptChars: systemPrompt.length + (state.directive?.length || 0),
         taskCumulativeInput: state._currentTaskTokenUsage?.inputTokens || 0,
