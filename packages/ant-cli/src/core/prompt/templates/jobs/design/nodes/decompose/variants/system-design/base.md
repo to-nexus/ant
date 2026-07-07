@@ -185,7 +185,11 @@ Use these catalogs to distribute sections across tasks. Each task description re
 
 {{#if (or (eq environment "frontend") (eq environment "fullstack"))}}
 #### Frontend (`fe-system-{name}.md`) Section Catalog:
-{{> jobs/design/base/catalogs/frontend-catalog-names}}
+{{! Domain-aware FE catalog partial (game → game FE catalog). The partial }}
+{{! name is TS-computed so this template carries no domain literal }}
+{{! (Domain-Branching Locality); lockstep with execute via resolveCatalogEntry. }}
+{{! The var is absent when rendered in isolation → service catalog fallback. }}
+{{#if feCatalogNamesPartial}}{{> (lookup . 'feCatalogNamesPartial') }}{{else}}{{> jobs/design/base/catalogs/frontend-catalog-names}}{{/if}}
 {{/if}}
 
 {{#if (or (eq environment "backend") (eq environment "fullstack"))}}

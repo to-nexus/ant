@@ -1241,6 +1241,16 @@
       "partial-ref"
     ]
   },
+  "jobs/design/base/catalogs/game-system-fe-catalog-names": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/base/catalogs/game-system-fe-catalog": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/design/base/injections/api-contract-guide": {
     "sources": [
       "policy-map",
@@ -1457,6 +1467,19 @@
   },
   "jobs/design/nodes/execute/injections/sealed-plan-rules": {
     "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/spec-impl-guide-game": {
+    "sources": [
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/spec-impl-guide-service": {
+    "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]

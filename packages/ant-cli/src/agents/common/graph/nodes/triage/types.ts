@@ -61,7 +61,11 @@ export interface TriageResult {
   group: 'ask' | 'work';
   /** Derived from matrix — universal Mode (generate / refactor / explain). */
   mode: Mode;
-  /** Derived: actionMetadata.domain ?? workspaceState hint ?? 'service'. */
+  /**
+   * Derived (SSOT `deriveTriageDomain`): actionMetadata.domain →
+   * `design-game-art` intent group → game-shaped workspaceState hint
+   * (`gdd.md` / `visual/game-art/`) → default `'service'`.
+   */
   domain: Domain;
 }
 

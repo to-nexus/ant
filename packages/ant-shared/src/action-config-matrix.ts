@@ -604,8 +604,17 @@ const UI_TIERS = ['visualTier', 'gameContentTier'] as const;
 const GAME_ART_TIERS = ['gameArtTier', 'gameContentTier'] as const;
 const CODE_TIERS = ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] as const;
 
-// Per-domain seed presets (Phase 1).
+// Per-domain seed presets (Phase 1; game backend added Game-Activation T3-a).
+// `GAME_FE_PHASER` is the FE-only envelope (self-contained Phaser client).
+// `GAME_FULL_PHASER` / `GAME_BE` open the backend as a first-class parity
+// path (opt-in ceiling, not the default): a game server is expressed via
+// `backend.framework` — `gameEngine` is a frontend-only field
+// (`applyDomainDefaultsToBasis` skips it when stack==='backend'), so the seed
+// carries stack only for the backend and lets detect/decompose resolve the
+// server framework.
 const GAME_FE_PHASER = { stack: 'frontend' as const, gameEngine: 'phaser' as const };
+const GAME_FULL_PHASER = { stack: 'fullstack' as const, gameEngine: 'phaser' as const };
+const GAME_BE = { stack: 'backend' as const };
 const SERVICE_FE = { stack: 'frontend' as const };
 const SERVICE_BE = { stack: 'backend' as const };
 const SERVICE_FULL = { stack: 'fullstack' as const };
@@ -654,15 +663,22 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: BE_OUTPUTS },
-    basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE }, lockedStack: 'backend' },
+    // game default present so a game backend design is a first-class parity
+    // path — `lockedStack` pins backend, so it never falls to the service
+    // seed (Game-Activation T3-a).
+    basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE, game: GAME_BE }, lockedStack: 'backend' },
   },
   'gen-sys-full': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: FULLSTACK_OUTPUTS },
+    // game seed is FE+BE (not FE-only): `GAME_FULL_PHASER` seeds a fullstack
+    // stack with phaser on the frontend half so a fullstack game design
+    // seeds both halves instead of leaving the backend unmodeled
+    // (Game-Activation T3-a).
     basis: {
       tiers: SYS_TIERS,
-      defaults: { service: SERVICE_FULL, game: GAME_FE_PHASER },
+      defaults: { service: SERVICE_FULL, game: GAME_FULL_PHASER },
       lockedStack: 'fullstack',
     },
   },
@@ -745,10 +761,17 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── Spec ──────────────────────────────────
   'gen-spec': {
+    // Plan-slot label/humanLabel is rewritten to the domain-correct PRD/GDD
+    // wording by `rewritePlanSlot` inside `getConfigSlotsForDomain`.
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    // D28 — both design sources are listed; `applicableDomains` filters
+    // `ui-source` (service) vs `game-art-source` (game) per workspace domain
+    // (Game-Activation T1-b). Without the game-art slot a game spec would be
+    // authored against ui-* documents it can never load.
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceCtx(),
       ctxDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }),
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
@@ -760,10 +783,13 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   },
   'rev-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
+    // D28 — game-art-source listed next to ui-source; `applicableDomains`
+    // resolves the dispatch per domain (Game-Activation T1-b).
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceCtx(),
       ctxDir(SPEC_DIR, L.specDocs, { excludeSelectedRefs: true, createIntent: 'gen-spec', humanLabel: HL.specDocs }),
     ],
     target: { kind: 'revise' },

@@ -107,7 +107,7 @@ If the directive overlaps multiple sections, **split** rather than merge — dup
 
 This file is gated on `domain === 'game'`. It is REQUIRED to use game-design vocabulary (`coreloop`, `mechanic`, `progression`, `hook`, `feedback`, `fail`, `MDA`, `playable verb`, `playtest`). It is FORBIDDEN to:
 
-- Specify state ownership, simulation determinism, event flow, or synchronization policy — those are design's surface (`jobs/design/domain/game.md`)
+- Specify state ownership, simulation determinism, event flow, or synchronization policy — those are design's surface (`jobs/design/domain/game.md`). Backend / server architecture and persistence *implementation depth* likewise belong to the design → spec → code game branches; the GDD commits only policy-level intent (whether session-spanning persistence or a networked mode exists — §10 / §11), never how a server realizes it
 - Specify exact damage / drop / spawn / cooldown numbers — those are balancing surface, owned by design or code
 - Specify engine names, framework choices, or asset file formats unless the directive demands them
 - Use service-domain vocabulary (`persona role`, `RBAC`, `SLA`, `non-functional requirement`, `audit log`, `retention policy`) — the matrix gate already excluded those concepts

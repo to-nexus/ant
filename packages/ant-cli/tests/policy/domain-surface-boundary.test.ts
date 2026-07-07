@@ -208,6 +208,42 @@ describe('Domain-Surface Boundary (D28) — code intent ref/ctx routing', () => 
   });
 });
 
+describe('Domain-Surface Boundary — design-spec domain routing (Game-Activation T1-b)', () => {
+  const SPEC_INTENTS = ['gen-spec', 'rev-spec'] as const;
+
+  it('every spec intent lists both ui-source AND game-art-source in its full context', () => {
+    for (const intent of SPEC_INTENTS) {
+      const ctx = getConfigSlots(intent)!.context;
+      expect(ctx.some(s => s.path === 'visual/ui'), `${intent} must list ui-source`).toBe(true);
+      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent} must list game-art-source`).toBe(true);
+    }
+  });
+
+  it('game domain keeps game-art-source and drops ui-source', () => {
+    for (const intent of SPEC_INTENTS) {
+      const ctx = filterSlotsByDomain(getConfigSlots(intent)!, 'game').context;
+      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent}@game keeps game-art`).toBe(true);
+      expect(ctx.some(s => s.path === 'visual/ui'), `${intent}@game drops ui-source`).toBe(false);
+    }
+  });
+
+  it('service domain keeps ui-source and drops game-art-source', () => {
+    for (const intent of SPEC_INTENTS) {
+      const ctx = filterSlotsByDomain(getConfigSlots(intent)!, 'service').context;
+      expect(ctx.some(s => s.path === 'visual/ui'), `${intent}@service keeps ui-source`).toBe(true);
+      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent}@service drops game-art`).toBe(false);
+    }
+  });
+
+  it('plan-slot label follows domain (GDD grounding for game spec)', () => {
+    // gen-spec pulls the plan doc as ref; its label must read GDD in a game
+    // workspace so the spec grounds against the GDD rather than a PRD.
+    const gameRefs = getConfigSlotsForDomain('gen-spec', 'game')!.refs.filter(s => s.path === 'plan');
+    expect(gameRefs.length).toBeGreaterThan(0);
+    for (const slot of gameRefs) expect(slot.label.en).toBe('GDD');
+  });
+});
+
 describe('Domain-Surface Boundary (D28) — service domain regression (zero impact)', () => {
   // D28 must not change the service-domain wiring at all. These tests pin
   // down the service surface so a future game-domain refactor cannot
@@ -519,8 +555,10 @@ describe('matrix-level invariant — static slots remain dual-candidate', () => 
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('BasisSlotConfig.defaults (data shape)', () => {
+  // FE-envelope game intents: game seeds frontend + phaser. gen-sys-full
+  // moved to the fullstack assertion below (Game-Activation T3-a).
   const GAME_FE_PHASER_INTENTS: IntentId[] = [
-    'gen-sys-fe', 'gen-sys-full',
+    'gen-sys-fe',
     'gen-code-sys', 'gen-code-spec', 'gen-code-directive',
   ];
 
@@ -532,15 +570,25 @@ describe('BasisSlotConfig.defaults (data shape)', () => {
     expect(seed?.gameEngine).toBe('phaser');
   });
 
+  it('gen-sys-full seeds game ⇒ fullstack + phaser (FE+BE parity, T3-a)', () => {
+    const seed = getConfigSlots('gen-sys-full')?.basis?.defaults?.['game' as Domain];
+    expect(seed).toBeDefined();
+    expect(seed?.stack).toBe('fullstack');
+    expect(seed?.gameEngine).toBe('phaser');
+  });
+
   it('gen-sys-fe / gen-sys-full also carry a service-domain stack seed', () => {
     expect(getConfigSlots('gen-sys-fe')?.basis?.defaults?.service?.stack).toBe('frontend');
     expect(getConfigSlots('gen-sys-full')?.basis?.defaults?.service?.stack).toBe('fullstack');
   });
 
-  it('gen-sys-be carries service stack seed only (no game)', () => {
+  it('gen-sys-be carries both service and game backend stack seeds (T3-a)', () => {
     const slot = getConfigSlots('gen-sys-be')?.basis;
     expect(slot?.defaults?.service?.stack).toBe('backend');
-    expect(slot?.defaults?.game).toBeUndefined();
+    // game backend is a first-class parity path — stack backend, no gameEngine
+    // (a game server is expressed via backend.framework, not gameEngine).
+    expect(slot?.defaults?.game?.stack).toBe('backend');
+    expect(slot?.defaults?.game?.gameEngine).toBeUndefined();
   });
 
   it('non-techTier intents (plan / spec / ui-design) carry no defaults', () => {
@@ -616,12 +664,15 @@ describe('applyDomainDefaultsToBasis — invariants', () => {
     expect(out?.techTier?.frontend).toBeUndefined();
   });
 
-  it('returns basis with same shape when slot has no game defaults (gen-sys-be)', () => {
+  it('gen-sys-be game seed + lockedStack both resolve to backend, no gameEngine (T3-a)', () => {
     const beSlot = getConfigSlots('gen-sys-be')?.basis;
     const before = { techTier: { stack: 'backend' as const } };
     const out = applyDomainDefaultsToBasis(beSlot, 'game', before);
-    expect(out).toEqual(before);
+    // game default {stack:'backend'} + lockedStack backend → backend; the
+    // backend stack inhibits the (absent) gameEngine seed, so the shape is
+    // unchanged from a clean backend basis.
     expect(out?.techTier?.stack).toBe('backend');
+    expect(out?.techTier?.frontend).toBeUndefined();
   });
 
   it('returns basis unchanged when domain has no entry in defaults', () => {

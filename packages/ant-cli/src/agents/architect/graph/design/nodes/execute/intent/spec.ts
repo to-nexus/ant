@@ -145,6 +145,13 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       sectionScope,
       previousSections,
       userLanguage: state.context.userLanguage || 'en',
+      // Implementation-altitude domain identifier guide (Game-Activation T2-b).
+      // TS-computed partial name (no domain literal in the template →
+      // Domain-Branching Locality). game → game identifiers grounded on
+      // GDD / game system-design / game-art-spec; else → service identifiers.
+      specImplGuidePartial: state.resolvedAction?.domain === 'game'
+        ? 'jobs/design/nodes/execute/injections/spec-impl-guide-game'
+        : 'jobs/design/nodes/execute/injections/spec-impl-guide-service',
       figmaAvailable: state.figmaAvailable === true,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
@@ -200,6 +207,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     taskTechTiers,
     state.resolvedAction?.domain,
     basisSlot,
+    // Spec is implementation-altitude — skip the policy-altitude design-job
+    // domain overlay (jobs/design/domain/{d}.md). The implementation-altitude
+    // identifier guide is injected in base.md instead (Game-Activation T2-b).
+    { skipJobDomainOverlay: true },
   );
   if (basisSection) contextParts.push(basisSection);
 

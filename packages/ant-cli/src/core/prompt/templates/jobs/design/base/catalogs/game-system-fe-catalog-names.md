@@ -1,0 +1,9 @@
+- § Overview
+- § Scene Graph & Boundaries
+- § Entity Model & State Ownership
+- § Game State & Phase Machine
+- § Game Loop & Timestep
+- § Domain Events & Layer Flow
+- § Render Boundary & Viewport
+- § Multiplayer Synchronization (conditional: if GDD §10 specifies multiplayer or networked modes)
+- § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)

@@ -42,19 +42,74 @@ export const CATALOG_MAP: Record<string, { names: string; full: string }> = {
 };
 
 /**
- * Resolve the catalog entry for a given `targetFile`. Returns `undefined`
- * when the filename does not match any known prefix (caller decides whether
- * to treat that as a soft-skip or hard error).
+ * Domain × prefix catalog overrides (Game-Activation T2-a / T3-a2).
+ *
+ * The base `CATALOG_MAP` is the service default; a domain key here swaps
+ * the catalog for that domain's stack surface. Only the entries that
+ * genuinely differ are listed — an absent (prefix, domain) pair falls
+ * back to `CATALOG_MAP` (graceful fallback).
+ *
+ * game × `fe-system-` → the game FE catalog (scene graph / entity / game
+ * state / loop / render boundary). game × `be-system-` / `api-contract-`
+ * are DEFERRED (T3-a2 seam): they reuse the service backend / api-contract
+ * catalogs plus the `jobs/design/domain/game.md` overlay until a dedicated
+ * game-server catalog lands — this reservation keeps the dispatch shape
+ * ready so the follow-up only fills the map.
+ */
+const CATALOG_DOMAIN_OVERRIDES: Partial<
+  Record<import('@ant/shared').Domain, Record<string, { names: string; full: string }>>
+> = {
+  game: {
+    'fe-system-': {
+      names: 'jobs/design/base/catalogs/game-system-fe-catalog-names.md',
+      full: 'jobs/design/base/catalogs/game-system-fe-catalog.md',
+    },
+  },
+};
+
+/**
+ * Resolve the catalog entry for a given `targetFile`, honouring the
+ * workspace `domain` (Game-Activation T2-a). Returns `undefined` when the
+ * filename does not match any known prefix (caller decides whether to
+ * treat that as a soft-skip or hard error).
+ *
+ * `domain` is optional so legacy call sites keep the service catalog; the
+ * game override only fires when `domain === 'game'` AND a matching entry
+ * exists in `CATALOG_DOMAIN_OVERRIDES` (else falls back to `CATALOG_MAP`).
  */
 export function resolveCatalogEntry(
   targetFile: string,
+  domain?: import('@ant/shared').Domain,
 ): { prefix: string; names: string; full: string } | undefined {
-  for (const [prefix, entry] of Object.entries(CATALOG_MAP)) {
+  for (const prefix of Object.keys(CATALOG_MAP)) {
     if (targetFile.startsWith(prefix)) {
+      const override = domain ? CATALOG_DOMAIN_OVERRIDES[domain]?.[prefix] : undefined;
+      const entry = override ?? CATALOG_MAP[prefix];
       return { prefix, names: entry.names, full: entry.full };
     }
   }
   return undefined;
+}
+
+/**
+ * Resolve the catalog partial NAMES (Handlebars partial ids, i.e. the
+ * template paths without the `.md` suffix) for a `targetFile` × `domain`.
+ *
+ * Single SSOT for the LLM-facing catalog partials rendered inline by the
+ * decompose base template (`names`) and the frontend-guide whole-doc
+ * fallback (`full`). Both derive from the same `CATALOG_DOMAIN_OVERRIDES`
+ * / `CATALOG_MAP` as validation / sectionScope / filteredCatalog, so the
+ * game FE catalog path lives in exactly one place (Game-Activation T2-a
+ * lockstep). Returns `undefined` for an unknown prefix.
+ */
+export function resolveCatalogPartials(
+  targetFile: string,
+  domain?: import('@ant/shared').Domain,
+): { names: string; full: string } | undefined {
+  const entry = resolveCatalogEntry(targetFile, domain);
+  if (!entry) return undefined;
+  const strip = (p: string) => p.replace(/\.md$/, '');
+  return { names: strip(entry.names), full: strip(entry.full) };
 }
 
 /**
@@ -110,8 +165,9 @@ export async function resolveTemplateDir(): Promise<string> {
  */
 export async function loadCatalogSections(
   targetFile: string,
+  domain?: import('@ant/shared').Domain,
 ): Promise<string[] | undefined> {
-  const entry = resolveCatalogEntry(targetFile);
+  const entry = resolveCatalogEntry(targetFile, domain);
   if (!entry) return undefined;
 
   try {
@@ -142,10 +198,11 @@ export async function loadCatalogSections(
 export async function assignedNotInCatalog(
   targetFile: string,
   assignedSections: string[],
+  domain?: import('@ant/shared').Domain,
 ): Promise<string[]> {
   if (!assignedSections || assignedSections.length === 0) return [];
 
-  const catalogSections = await loadCatalogSections(targetFile);
+  const catalogSections = await loadCatalogSections(targetFile, domain);
   if (!catalogSections) return [];
 
   const catalogSet = new Set(catalogSections);

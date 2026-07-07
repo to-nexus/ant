@@ -200,3 +200,56 @@ describe('validateAssignedSectionsAgainstCatalogs', () => {
     expect(message).toContain('§ API Endpoints');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Game-Activation T2-a — domain × stack catalog dispatch. A game fe-system doc
+// validates against the game FE catalog (scene / entity / loop), NOT the
+// service frontend catalog; be-system / api-contract fall back to the service
+// catalogs (T3-a2 graceful fallback) for game until a game-server catalog lands.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('validateAssignedSectionsAgainstCatalogs — game FE catalog dispatch (T2-a)', () => {
+  it('game fe-system task with a game FE catalog section is NOT a violation', async () => {
+    const response = makeResponse([
+      makeTask('fe-system-main.md', ['§ Scene Graph & Boundaries', '§ Game Loop & Timestep']),
+    ]);
+    const violations = await validateAssignedSectionsAgainstCatalogs(response, 'game');
+    expect(violations).toEqual([]);
+  });
+
+  it('game fe-system task with a service-only FE section IS a violation', async () => {
+    // `§ API Integration & Error Strategy` exists only in the service frontend
+    // catalog — under the game catalog it is out-of-scope.
+    const response = makeResponse([
+      makeTask('fe-system-main.md', ['§ API Integration & Error Strategy']),
+    ]);
+    const violations = await validateAssignedSectionsAgainstCatalogs(response, 'game');
+    expect(violations).toHaveLength(1);
+    expect(violations[0].mismatched).toContain('§ API Integration & Error Strategy');
+  });
+
+  it('service fe-system task keeps the service FE catalog (no game leakage)', async () => {
+    const response = makeResponse([
+      makeTask('fe-system-main.md', ['§ API Integration & Error Strategy']),
+    ]);
+    // Default (service) domain — the section is canonical, no violation.
+    const violations = await validateAssignedSectionsAgainstCatalogs(response, 'service');
+    expect(violations).toEqual([]);
+    // A game FE section is NOT in the service catalog → violation.
+    const gameSection = await validateAssignedSectionsAgainstCatalogs(
+      makeResponse([makeTask('fe-system-main.md', ['§ Scene Graph & Boundaries'])]),
+      'service',
+    );
+    expect(gameSection).toHaveLength(1);
+  });
+
+  it('game be-system task falls back to the service backend catalog (T3-a2)', async () => {
+    // No dedicated game-server catalog yet → the service backend catalog is
+    // the graceful fallback, so its canonical sections do not violate.
+    const response = makeResponse([
+      makeTask('be-system-main.md', ['§ Business Logic Placement']),
+    ]);
+    const violations = await validateAssignedSectionsAgainstCatalogs(response, 'game');
+    expect(violations).toEqual([]);
+  });
+});
