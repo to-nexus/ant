@@ -177,14 +177,15 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 /**
  * Default workspace config
  * If AI_MODEL_NAME env var is set, all jobs use that model (override).
- * Otherwise, plan/design/code/learn default to the Sonnet tier; reviewer/doc
- * default to the Opus tier. Tier ids come from the DEFAULT_MODELS SSOT
- * (@ant/shared/models.ts) — never hardcode a model id here.
+ * Otherwise, plan/design/code default to the Sonnet tier; learn defaults to
+ * the Haiku tier; reviewer/doc default to the Opus tier. Tier ids come from
+ * the DEFAULT_MODELS SSOT (@ant/shared/models.ts) — never hardcode a model id here.
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
   const envModel = process.env.AI_MODEL_NAME;
   const modelOpus = envModel || DEFAULT_MODELS.opusTier;
   const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
+  const modelHaiku = envModel || DEFAULT_MODELS.haikuTier;
   
   return {
     projectName,
@@ -199,7 +200,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: modelSonnet,
       },
       learn: {
-        default: modelSonnet,
+        default: modelHaiku,
       },
       plan: {
         default: modelSonnet,

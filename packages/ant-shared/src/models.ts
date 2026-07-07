@@ -104,6 +104,19 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
     thinkingMode: 'adaptive',
   },
+  // Latest Haiku — fastest Anthropic tier, offered as a selectable choice and
+  // the default for the learn job. Haiku 4.5 uses legacy `budget_tokens`
+  // thinking (`extended`), not adaptive — do not switch this to `adaptive`.
+  'claude-haiku-4-5-20251001': {
+    id: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku 4.5',
+    provider: 'anthropic',
+    description: 'Fastest model with near-frontier intelligence',
+    capabilities: ['fast', 'classification'],
+    contextWindow: 200_000,
+    rate: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
+    thinkingMode: 'extended',
+  },
   // Legacy — kept so projects that saved this id still price/size correctly and
   // pass the capacity check. Not offered as a new choice. Adaptive thinking is
   // supported on 4.6 and is the forward-recommended mode.
@@ -116,17 +129,6 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     contextWindow: 1_000_000,
     rate: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
     thinkingMode: 'adaptive',
-    selectable: false,
-  },
-  'claude-haiku-4-5-20251001': {
-    id: 'claude-haiku-4-5-20251001',
-    displayName: 'Haiku 4.5',
-    provider: 'anthropic',
-    description: 'Fastest model with near-frontier intelligence',
-    capabilities: ['fast', 'classification'],
-    contextWindow: 200_000,
-    rate: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
-    thinkingMode: 'extended',
     selectable: false,
   },
   // DeepSeek — OpenAI-compatible API, reuses OpenAILLMClient with an injected
@@ -145,6 +147,21 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 0.435, output: 0.87, cacheWrite5m: 0.435, cacheWrite1h: 0.435, cacheRead: 0.003625 },
     // Non-Anthropic: never send Anthropic thinking params. DeepSeek's own
     // thinking control is injected separately in OpenAILLMClient (provider gate).
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  'deepseek-v4-flash': {
+    id: 'deepseek-v4-flash',
+    displayName: 'DeepSeek V4 Flash',
+    provider: 'deepseek',
+    description: 'DeepSeek V4 Flash — fast, low-cost reasoning + coding, 1M context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['fast', 'coding', 'reasoning', 'large-context'],
+    contextWindow: 1_000_000,
+    // Standard (cache-miss) list price from api-docs.deepseek.com/quick_start/pricing.
+    // As with Pro: no separate cache-write fee and the OpenAI stream path does not
+    // report cacheCreationTokens, so cacheWrite* mirror input (unused).
+    rate: { input: 0.14, output: 0.28, cacheWrite5m: 0.14, cacheWrite1h: 0.14, cacheRead: 0.0028 },
     thinkingMode: 'none',
     selectable: true,
   },
@@ -195,8 +212,10 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
  * `AI_MODEL_NAME` env still overrides both at workspace-default time.
  */
 export const DEFAULT_MODELS = {
-  /** plan / design / code / learn job defaults. */
+  /** plan / design / code job defaults. */
   sonnetTier: 'claude-sonnet-5',
+  /** learn job default — fastest/cheapest tier for codebase indexing. */
+  haikuTier: 'claude-haiku-4-5-20251001',
   /** reviewer / doc defaults + global fallback when nothing else resolves. */
   opusTier: 'claude-opus-4-8',
 } as const;
