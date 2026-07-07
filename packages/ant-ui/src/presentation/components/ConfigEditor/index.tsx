@@ -21,7 +21,9 @@ import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
 import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { LLMModelsSection } from './components/LLMModelsSection';
+import { DeepSeekConsentModal } from './components/DeepSeekConsentModal';
 import { DangerZoneSection } from '../common/DangerZoneSection';
+import { MODEL_REGISTRY } from '@ant/shared';
 import {
   TwoColLayout,
   TocNav,
@@ -44,7 +46,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
   void onClose;
   const { t } = useTranslation('config');
-  const { availableModels, isLoadingModels, defaultModelId } = useAvailableModels();
+  const { availableModels, isLoadingModels, defaultModelId, configuredProviders } = useAvailableModels();
   const {
     editedConfig,
     setEditedConfig,
@@ -191,7 +193,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     }
   };
 
-  const handleModelChange = (job: string, nodeType: string, modelId: string) => {
+  const commitModelChange = (job: string, nodeType: string, modelId: string) => {
     setEditedConfig((prev) => ({
       ...prev,
       llmModels: {
@@ -202,6 +204,33 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         },
       },
     }));
+  };
+
+  // DeepSeek selections pass through an informed-consent gate first. The pending
+  // selection is held until the user confirms; Cancel drops it (previous model
+  // kept). Provider is read from the shared MODEL_REGISTRY so any future
+  // DeepSeek model is covered without a hardcoded id.
+  const [pendingDeepSeekSelection, setPendingDeepSeekSelection] = useState<
+    { job: string; nodeType: string; modelId: string } | null
+  >(null);
+
+  const handleModelChange = (job: string, nodeType: string, modelId: string) => {
+    const isDeepSeek = !!modelId && MODEL_REGISTRY[modelId]?.provider === 'deepseek';
+    const alreadyAcked = loadFromStorage(STORAGE_KEYS.DEEPSEEK_CONSENT_ACK) === true;
+    if (isDeepSeek && !alreadyAcked) {
+      setPendingDeepSeekSelection({ job, nodeType, modelId });
+      return;
+    }
+    commitModelChange(job, nodeType, modelId);
+  };
+
+  const handleDeepSeekConsentConfirm = (dontShowAgain: boolean) => {
+    if (dontShowAgain) saveToStorage(STORAGE_KEYS.DEEPSEEK_CONSENT_ACK, true);
+    if (pendingDeepSeekSelection) {
+      const { job, nodeType, modelId } = pendingDeepSeekSelection;
+      commitModelChange(job, nodeType, modelId);
+    }
+    setPendingDeepSeekSelection(null);
   };
 
   const handleDiscardChanges = () => {
@@ -595,6 +624,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             availableModels={availableModels}
             isLoadingModels={isLoadingModels}
             onModelChange={handleModelChange}
+            configuredProviders={configuredProviders}
           />
 
           {/* Danger Zone */}
@@ -614,6 +644,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       </div>
 
       <ProjectDeletionPanel onForceDelete={handleForceDelete} />
+
+      <DeepSeekConsentModal
+        isOpen={pendingDeepSeekSelection !== null}
+        onConfirm={handleDeepSeekConsentConfirm}
+        onCancel={() => setPendingDeepSeekSelection(null)}
+      />
     </div>
   );
 }

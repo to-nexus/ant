@@ -61,6 +61,9 @@ interface ModelSelectChipProps {
   fill?: boolean;
   /** When true, the trigger uses compact (26px) height. */
   compact?: boolean;
+  /** Providers whose API key is configured on the server. `undefined` = server
+   * did not report → treat every provider as configured (no warnings). */
+  configuredProviders?: string[];
 }
 
 interface DropdownPosition {
@@ -79,8 +82,13 @@ export function ModelSelectChip({
   showAsCustom,
   fill = false,
   compact = false,
+  configuredProviders,
 }: ModelSelectChipProps) {
   const { t } = useTranslation('config');
+  const isProviderUnconfigured = useCallback(
+    (provider: string) => Array.isArray(configuredProviders) && !configuredProviders.includes(provider),
+    [configuredProviders],
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [hoverRow, setHoverRow] = useState<string | null>(null);
   const [position, setPosition] = useState<DropdownPosition>({
@@ -270,6 +278,28 @@ export function ModelSelectChip({
                     {PROVIDER_ICON[provider] || ''}
                   </span>
                   <span>{provider}</span>
+                  {isProviderUnconfigured(provider) && (
+                    <span
+                      title={t('projectEditor.noApiKeyWarning')}
+                      style={{
+                        marginLeft: 'auto',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: 0,
+                        textTransform: 'none',
+                        padding: '1px 5px',
+                        borderRadius: 'var(--r-sm)',
+                        color: 'oklch(50% 0.17 55)',
+                        background: 'oklch(94% 0.07 65 / 0.85)',
+                        border: '1px solid oklch(75% 0.15 65)',
+                      }}
+                    >
+                      ⚠ {t('projectEditor.noApiKey')}
+                    </span>
+                  )}
                 </div>
                 {grouped[provider].map((model) => {
                   const isSelected = model.id === value;
@@ -394,6 +424,15 @@ export function ModelSelectChip({
             }}
           >
             ↳
+          </span>
+        )}
+        {displayModel && isProviderUnconfigured(displayModel.provider) && (
+          <span
+            aria-label={t('projectEditor.noApiKeyWarning')}
+            title={t('projectEditor.noApiKeyWarning')}
+            style={{ flexShrink: 0, fontSize: 11, lineHeight: 1, color: 'oklch(55% 0.18 55)' }}
+          >
+            ⚠
           </span>
         )}
         <ChevronGlyph open={isOpen} />

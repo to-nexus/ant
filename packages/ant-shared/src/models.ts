@@ -36,11 +36,27 @@ export interface ModelRate {
  */
 export type ThinkingMode = 'adaptive' | 'extended' | 'none';
 
+/** LLM provider tag — the discriminator every model carries. */
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek';
+
+/**
+ * Provider → the environment variable that holds its API key. SINGLE owner of
+ * this mapping: the LLM factory reads keys through it, and the `/models`
+ * endpoint reports which providers are configured through it. Do not re-declare
+ * the env names anywhere else.
+ */
+export const PROVIDER_API_KEY_ENV: Record<ModelProvider, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GEMINI_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+};
+
 export interface ModelSpec {
   id: string;
   /** Human-readable label shown in the model picker, e.g. "Sonnet 5". */
   displayName: string;
-  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
+  provider: ModelProvider;
   description?: string;
   /** Highlighted with a ★ in the picker. */
   recommended?: boolean;

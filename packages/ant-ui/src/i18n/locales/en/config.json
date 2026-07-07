@@ -118,6 +118,8 @@
     "useJobDefault": "-- Use Job Default --",
     "jobDefault": "default",
     "custom": "Custom",
+    "noApiKey": "no API key",
+    "noApiKeyWarning": "This provider has no API key configured on the server — jobs using it will fail until a key is set.",
     "jobTitle": "{{name}} Job",
     "llmDescription": "Configure models for different jobs and nodes. Each job requires a default model. Nodes can optionally use a different model, otherwise they use the job default.",
     "repoNotConnected": "Not connected",
@@ -128,6 +130,21 @@
     "repoSyncWarning": "The configured URL differs from the actual Git remote. Re-clone or update the remote to sync.",
     "repoErrorUrlMismatch": "The configured URL differs from the actual Git remote. Revert the URL to match the remote, or delete .git and re-clone.",
     "repoErrorNoRemote": "Git is initialized but no remote repository is configured."
+  },
+  "deepseekConsent": {
+    "eyebrow": "Third-party AI provider",
+    "title": "Using DeepSeek — please review before continuing",
+    "intro": "DeepSeek is a third-party model provider based in China. Its data-handling terms differ materially from Anthropic and Google. Before selecting it, understand what this means for your data:",
+    "risks": [
+      "Data location & jurisdiction: DeepSeek stores data on servers in the People's Republic of China and is subject to Chinese law, which can compel disclosure to authorities with limited legal recourse — unlike EU/US providers.",
+      "Your prompts leave your environment: everything a job sends — your project's source files, prompts, and generated code — is transmitted to api.deepseek.com.",
+      "Training & retention: DeepSeek's terms permit using inputs/outputs for service improvement and model training. Inputs are retained (roughly 30 days for inputs, longer for logs) and may be kept even after deletion for legal/compliance reasons.",
+      "Track record: public reporting (e.g. the January 2025 exposure of a DeepSeek database) underscores operational data-handling risk."
+    ],
+    "acknowledgement": "I understand DeepSeek is a third-party service outside ANT's control, and I use it at my own responsibility for any code or data sent to it.",
+    "dontShowAgain": "Don't show this again",
+    "confirm": "I understand — use DeepSeek",
+    "cancel": "Cancel"
   },
   "schema": {
     "repositoryName": "Repository Name",
@@ -145,6 +162,7 @@
     "title": "LLM Settings by Job Node",
     "nodeOverrides": "Node-level overrides",
     "loading": "Loading available models...",
+    "unconfiguredProvidersWarning": "No API key configured on this server for: {{providers}}. Models from these providers can be selected but jobs using them will fail until a key is set.",
     "default": "Default",
     "decompose": "Decompose",
     "docGeneration": "Doc Generation",

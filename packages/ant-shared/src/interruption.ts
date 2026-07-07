@@ -13,6 +13,7 @@ export type InterruptionReason =
   | 'verification_failed'   // Last code task failed verification after max retries
   | 'user_stopped'          // User clicked Stop button
   | 'api_error'             // LLM API error (rate limit, malformed request, etc.)
+  | 'llm_auth_failed'       // LLM API key invalid or missing — never resumable (resume re-hits the same key)
   | 'api_overloaded'        // Anthropic API overloaded (HTTP 529, external/transient — not a code defect)
   | 'process_crash'         // Child process crashed unexpectedly
   | 'server_crash'          // Server/worker killed unexpectedly (SIGKILL, OOM, etc.)

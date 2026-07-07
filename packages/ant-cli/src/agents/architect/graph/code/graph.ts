@@ -28,6 +28,7 @@ import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import type { InterruptionReason } from '../../../../core/types/session';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { isOverloadedError, summarizeFailureCause } from '../../../../core/utils/apiErrorClassify';
+import { isLlmAuthError } from '../../../../core/llm/isLlmAuthError';
 
 /**
  * Classify the reason + build the user-facing message for an orchestrator run
@@ -43,12 +44,27 @@ import { isOverloadedError, summarizeFailureCause } from '../../../../core/utils
 function classifyOrchestratorFailure(
   failedTasks: ReadonlyArray<{ task: { name: string }; error: Error }>,
 ): { reason: InterruptionReason; message: string } {
-  const allOverloaded =
-    failedTasks.length > 0 && failedTasks.every(f => isOverloadedError(f.error));
-
   const lines = failedTasks.map(
     f => `- "${f.task.name}": ${summarizeFailureCause(f.error.message)}`,
   );
+
+  // Auth failure (bad/missing API key) beats the generic tasks_failed bucket:
+  // it is deterministic and not resumable, and TaskOrchestrator already treats
+  // it as a non-retried deterministic error. Surface the actionable auth card.
+  if (failedTasks.some(f => isLlmAuthError(f.error).isAuth)) {
+    return {
+      reason: 'llm_auth_failed',
+      message: [
+        'The LLM API key is invalid or missing. ' +
+          'Check the API key for this provider in your server configuration, then start a new job.',
+        `${failedTasks.length} task(s) affected:`,
+        ...lines,
+      ].join('\n'),
+    };
+  }
+
+  const allOverloaded =
+    failedTasks.length > 0 && failedTasks.every(f => isOverloadedError(f.error));
 
   if (allOverloaded) {
     return {

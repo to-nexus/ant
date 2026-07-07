@@ -118,6 +118,8 @@
     "useJobDefault": "-- 작업 기본값 사용 --",
     "jobDefault": "기본값",
     "custom": "커스텀",
+    "noApiKey": "API 키 없음",
+    "noApiKeyWarning": "이 제공자는 서버에 API 키가 설정되어 있지 않습니다 — 키를 설정하기 전까지 이 제공자를 사용하는 작업은 실패합니다.",
     "jobTitle": "{{name}} 작업",
     "llmDescription": "다양한 작업과 Node에 대한 모델을 설정합니다. 각 작업에는 기본 모델이 필요합니다. Node는 선택적으로 다른 모델을 사용할 수 있으며, 설정하지 않으면 작업 기본값을 사용합니다.",
     "repoNotConnected": "미연동",
@@ -128,6 +130,21 @@
     "repoSyncWarning": "설정된 URL과 실제 Git 원격 주소가 다릅니다. 다시 클론하거나 원격 주소를 업데이트하여 동기화하세요.",
     "repoErrorUrlMismatch": "설정 URL과 실제 Git 원격 주소가 다릅니다. URL을 실제 주소로 되돌리거나, .git을 삭제 후 다시 Clone하세요.",
     "repoErrorNoRemote": "Git이 초기화되었지만 원격 저장소가 연결되지 않았습니다."
+  },
+  "deepseekConsent": {
+    "eyebrow": "서드파티 AI 제공자",
+    "title": "DeepSeek 사용 — 계속하기 전에 확인하세요",
+    "intro": "DeepSeek은 중국에 기반을 둔 서드파티 모델 제공자입니다. 데이터 처리 약관이 Anthropic·Google과 크게 다릅니다. 선택하기 전에 데이터에 어떤 영향이 있는지 확인하세요:",
+    "risks": [
+      "데이터 위치 및 관할권: DeepSeek은 중화인민공화국 내 서버에 데이터를 저장하며 중국 법률의 적용을 받습니다. 중국 법률은 당국의 데이터 제출 요구를 강제할 수 있고, EU·미국 제공자와 달리 이에 불복할 법적 수단이 제한적입니다.",
+      "프롬프트가 환경 밖으로 전송됩니다: 작업이 보내는 모든 것 — 프로젝트 소스 파일, 프롬프트, 생성된 코드 — 이 api.deepseek.com 으로 전송됩니다.",
+      "학습 및 보존: DeepSeek 약관은 입력·출력을 서비스 개선과 모델 학습에 사용하는 것을 허용합니다. 입력은 보존되며(입력 약 30일, 로그는 더 김), 법적·컴플라이언스 사유로 삭제 후에도 보존될 수 있습니다.",
+      "이력: 공개 보도(예: 2025년 1월 DeepSeek 데이터베이스 노출 사건)는 운영상의 데이터 처리 위험을 보여줍니다."
+    ],
+    "acknowledgement": "DeepSeek은 ANT가 통제할 수 없는 서드파티 서비스이며, 여기로 전송되는 코드·데이터에 대해 본인 책임하에 사용함을 이해합니다.",
+    "dontShowAgain": "다시 보지 않기",
+    "confirm": "이해했습니다 — DeepSeek 사용",
+    "cancel": "취소"
   },
   "schema": {
     "repositoryName": "리포지토리 이름",
@@ -145,6 +162,7 @@
     "title": "작업 노드별 LLM 설정",
     "nodeOverrides": "노드별 모델 설정",
     "loading": "사용 가능한 모델 로딩 중...",
+    "unconfiguredProvidersWarning": "이 서버에 다음 제공자의 API 키가 설정되어 있지 않습니다: {{providers}}. 해당 제공자의 모델을 선택할 수는 있으나, 키를 설정하기 전까지 이를 사용하는 작업은 실패합니다.",
     "default": "기본",
     "decompose": "Decompose",
     "docGeneration": "문서 생성",

@@ -181,6 +181,7 @@
       "recursion_limit": "반복 횟수 한도 도달",
       "user_stopped": "사용자가 중지함",
       "api_error": "API 오류 발생",
+      "llm_auth_failed": "LLM API 키가 잘못되었거나 없습니다",
       "api_overloaded": "AI 서비스 과부하",
       "process_crash": "프로세스 비정상 종료",
       "server_crash": "서버 비정상 종료",
@@ -199,6 +200,7 @@
     "subtitles": {
       "recursion_limit": "재개하면 중단된 지점부터 다시 시작합니다.",
       "api_error": "잠시 후 재개하면 중단된 지점부터 다시 시작합니다.",
+      "llm_auth_failed": "서버 설정에서 해당 제공자의 API 키를 확인한 뒤 새 작업을 시작하세요.",
       "api_overloaded": "Anthropic API가 일시적으로 과부하 상태였습니다 — 코드 문제가 아닙니다. 잠시 후 재개하세요.",
       "process_crash": "재개하면 중단된 지점부터 다시 시작합니다.",
       "server_crash": "재개하면 중단된 지점부터 다시 시작합니다.",

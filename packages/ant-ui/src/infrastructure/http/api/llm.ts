@@ -1,10 +1,10 @@
-import { DEFAULT_MODELS } from '@ant/shared';
+import { DEFAULT_MODELS, type ModelProvider } from '@ant/shared';
 import { API_BASE, apiGet } from './client';
 
 export interface LLMModelInfo {
   id: string;
   displayName: string;
-  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
+  provider: ModelProvider;
   description?: string;
   recommended?: boolean;
   capabilities?: string[];
@@ -13,6 +13,10 @@ export interface LLMModelInfo {
 export interface AvailableModelsResponse {
   models: LLMModelInfo[];
   default: string;
+  /** Providers whose API key is configured on the server. A model whose
+   * provider is absent here gets a "no API key" warning in the picker. Absent
+   * (older server) → treat as "all configured" (no warnings). */
+  configuredProviders?: ModelProvider[];
 }
 
 /**
@@ -38,5 +42,6 @@ export function fetchAvailableModels(): Promise<AvailableModelsResponse> {
     models: [],
     // Mirror the BE /models default (DEFAULT_MODELS SSOT) on fetch failure.
     default: DEFAULT_MODELS.opusTier,
+    configuredProviders: undefined,
   }));
 }

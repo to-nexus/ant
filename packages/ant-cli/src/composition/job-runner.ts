@@ -45,6 +45,7 @@ import { createTLSOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { buildInfrastructureInterruption } from '@ant/shared';
 import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
+import { isLlmAuthError } from '../core/llm/isLlmAuthError';
 
 interface JobParams {
   jobId: string;
@@ -264,8 +265,23 @@ async function runJob(params: JobParams): Promise<void> {
     // window) is NOT an infra crash and NOT resumable — resuming re-sends the
     // same oversized request. Fail explicitly with a clear, actionable reason
     // and no resume affordance (canResume:false → dismiss-only card).
+    // LLM auth failure (bad/missing API key) is deterministic and NOT resumable
+    // — resuming re-sends the same key. Surface a clear, actionable card instead
+    // of the generic process_crash/Resume affordance. Checked first because it
+    // can unwind from any single-shot node (ask/plan/detect/decompose/docGen).
+    const authFailure = isLlmAuthError(error);
     const promptTooLong = isPromptTooLongError(error);
-    const interruption = promptTooLong
+    const interruption: InterruptionDetails = authFailure.isAuth
+      ? {
+          reason: 'llm_auth_failed' as InterruptionReason,
+          message:
+            (error.message && String(error.message)) ||
+            'The LLM API key is invalid or missing. ' +
+              'Check the API key for this provider in your server configuration, then start a new job.',
+          timestamp: new Date().toISOString(),
+          canResume: false,
+        }
+      : promptTooLong
       ? {
           reason: 'api_error' as InterruptionReason,
           message:

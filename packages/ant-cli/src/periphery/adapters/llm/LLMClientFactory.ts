@@ -16,9 +16,29 @@ import { OpenAILLMClient } from './OpenAILLMClient';
 import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
-import { DEFAULT_MODELS } from '@ant/shared';
+import { DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
+import { LlmAuthError } from '../../../core/llm/isLlmAuthError';
 
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek';
+export type { ModelProvider };
+
+/**
+ * Resolve a provider's API key from its SSOT env var, throwing a typed
+ * {@link LlmAuthError} when the key is absent/blank. Failing fast here turns a
+ * missing key into the same `llm_auth_failed` choice card as a bad key, with no
+ * wasted request to the provider.
+ */
+function resolveProviderApiKey(provider: ModelProvider): string {
+  const envVar = PROVIDER_API_KEY_ENV[provider];
+  const key = process.env[envVar];
+  if (!key || !key.trim()) {
+    throw new LlmAuthError(
+      `No API key configured for ${provider}: set ${envVar} in your server environment.`,
+      provider,
+      envVar,
+    );
+  }
+  return key;
+}
 
 interface LLMConfig {
   temperature?: number;
@@ -175,24 +195,24 @@ export function createLLMClient(
   switch (provider) {
     case 'anthropic':
       return new AnthropicLLMClient(agentJob, {
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        apiKey: resolveProviderApiKey('anthropic'),
         modelName,
         temperature,
         maxTokens,
       });
-    
+
     case 'openai':
       return new OpenAILLMClient(agentJob, {
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: resolveProviderApiKey('openai'),
         modelName,
         temperature,
         maxTokens,
         timeout,
       });
-    
+
     case 'google':
       return new GeminiLLMClient(agentJob, {
-        apiKey: process.env.GEMINI_API_KEY,
+        apiKey: resolveProviderApiKey('google'),
         modelName,
         temperature,
         maxTokens,
@@ -203,7 +223,7 @@ export function createLLMClient(
       // and provider tag so the shared stream path knows to attach DeepSeek's
       // thinking param and label events honestly.
       return new OpenAILLMClient(agentJob, {
-        apiKey: process.env.DEEPSEEK_API_KEY,
+        apiKey: resolveProviderApiKey('deepseek'),
         baseURL: 'https://api.deepseek.com',
         provider: 'deepseek',
         modelName,
