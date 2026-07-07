@@ -27,6 +27,8 @@ import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma
 import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
+import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from '../nodes/checkTaskStatus/assetValidation';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -114,6 +116,36 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.5: Asset validation (WS2 §1d — parallel-path parity)
+  // Mirror of the serial `checkTaskStatus` asset gate. game-art decompose is
+  // always `parallelGroup`, so WITHOUT this gate the D20/D21/I6 checks never
+  // ran under the default concurrency > 1 — dangling srcs + over-complex inline
+  // payloads shipped silently. Same shared helper; same 2-retry re-prompt, then
+  // proceed. Routes back to execute via `routeAfterWorkerCheckTaskStatus`.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.currentTask && isAssetTask(state.currentTask.id) && (state._assetValidationRetried || 0) < 2) {
+    const validation = await validateAssetReferences(state.context.featurePath, state.currentTask.id);
+    if (!validation.valid) {
+      console.warn(`⚠️  [Worker checkTaskStatus] Asset validation failed: ${validation.missingFiles.length} missing/illegal src, ${validation.inlineViolations.length} inline-ceiling violation(s)`);
+      const retryMessage = {
+        role: 'user' as const,
+        content: buildAssetRetryMessage(validation, state.currentTask.id),
+      };
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+      }
+      return {
+        conversations: { [CONV_KEYS.NODE_EXECUTE]: [...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE), retryMessage] },
+        _assetValidationFailed: true,
+        _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
+        _executeCallIndex: 0,
+        _noOutputCallCount: 0,
+        _taskCompleted: false,
+      } as any;
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Normal completion
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
@@ -178,6 +210,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,
+      _assetValidationFailed: false,
+      _assetValidationRetried: 0,
     } as any;
   }
 
@@ -186,6 +220,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   return { currentTask: undefined, _taskCompleted: false } as any;
+}
+
+/**
+ * Route out of the worker `checkTaskStatus`. Mirrors the serial
+ * `routeAfterCheckTaskStatus` asset-retry branch: a failed asset gate loops
+ * back to execute for a re-prompt; otherwise the worker task is done → learn.
+ */
+function routeAfterWorkerCheckTaskStatus(state: DesignGraphState): string {
+  return state._assetValidationFailed ? 'execute' : 'learn';
 }
 
 /**
@@ -246,8 +289,14 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
     { plan: 'plan', execute: 'execute' } as any,
   );
 
-  // checkTaskStatus → learn (design tasks always succeed or error out at execute level)
-  graph.addEdge('checkTaskStatus' as any, 'learn' as any);
+  // checkTaskStatus → execute (asset-gate retry) / learn (done). Mirrors the
+  // serial graph's `routeAfterCheckTaskStatus` asset-validation branch so the
+  // parallel path can re-prompt on a failed asset gate instead of shipping it.
+  graph.addConditionalEdges(
+    'checkTaskStatus' as any,
+    routeAfterWorkerCheckTaskStatus as any,
+    { execute: 'execute', learn: 'learn' } as any,
+  );
 
   // Learn → END
   graph.addEdge('learn' as any, '__end__' as any);

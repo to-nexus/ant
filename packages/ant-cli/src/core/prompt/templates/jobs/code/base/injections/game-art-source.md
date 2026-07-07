@@ -6,7 +6,7 @@
 - `game-art-assets.json` — category-keyed asset catalog (`entities` / `particles` / `projectiles` / `sfx` / `bgm` / `tilemaps` / ...). Each entry carries `kind: 'inline' | 'external'` (D20).
 - `game-art-spec.json` — category-keyed behaviour / motion / interaction specs (`effects` / `characters` / `projectiles` / `npcs` / `objectives` / `hud` / `menu` / `dialog` / ...). Categories are LLM-chosen but stable within the document (D25).
 
-Path: `visual/game-art/ant/` (sub-sourced canonical, mirrors `visual/ui/ant/`). The `figma/` and `handoff/` sub-sources are Phase 5+ hooks (parser-only today). Sections of `game-art-spec.json` are addressable by category key; the pool exposes each as `visual/game-art/ant/spec/{category}`.
+Path: `visual/game-art/ant/` (sub-sourced canonical, mirrors `visual/ui/ant/`). The `handoff/` sub-source is also active (free-form bundle — see `game-art-source-handoff`); `figma/` remains a Phase 5+ hook. Sections of `game-art-spec.json` are addressable by category key; the pool exposes each as `visual/game-art/ant/spec/{category}`.
 
 ### Principle (Authority)
 
@@ -26,6 +26,13 @@ Both paths share **one art direction** — palette / silhouette / lighting / mot
 ### Principle (Separation of structure vs. style)
 
 Component / scene STRUCTURE comes from the code skeleton (or refs). STYLE / behaviour / asset choice comes from `game-art-*.json`. These are orthogonal inputs; reading the skeleton first prevents accidental DOM / scene edits during a styling pass.
+
+### Constraint (External asset key + servable path — single contract)
+
+`game-art-spec.json` references assets by their catalog `id`. Two consequences bind the loader:
+
+- **Loader key = `entry.id` verbatim.** Register each `kind: 'external'` (and materialized `kind: 'inline'`) asset in the engine's texture / audio cache under `entry.id` exactly — NOT the filename, NOT the `src`. The spec's `id` references resolve only if the registered key matches. This is the single cross-artifact contract between design (`id` in spec) and code (loader key).
+- **`src` is the source location, not the fetch URL.** `entry.src` (`assets/game/...`) names WHICH source file the design contract points at. It is NOT assumed to be directly fetchable by the browser — the file is made web-servable per the framework's static-asset convention (the code job's asset-placement guidance commits the concrete destination for the active framework). The loader fetches the derived servable URL, keyed by `entry.id`.
 
 ### Constraint (Scope markers)
 

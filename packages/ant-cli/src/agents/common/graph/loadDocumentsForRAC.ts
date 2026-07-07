@@ -28,7 +28,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/shared';
-import { ARTIFACT_PREFIX, uiSourceOfPath } from '@ant/shared';
+import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
 import { isBinaryPath } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
@@ -38,6 +38,7 @@ export function loadResolvedArtifacts(
   featurePath: string,
 ): ResolvedArtifact[] {
   validateUiSourceExclusivity(resolvedAction);
+  validateGameArtSourceExclusivity(resolvedAction);
 
   const artifacts: ResolvedArtifact[] = [];
 
@@ -67,16 +68,36 @@ export function loadResolvedArtifacts(
  * domain rule — fix the bypassing caller, do not relax this guard.
  */
 export function validateUiSourceExclusivity(resolvedAction: ResolvedActionContext): void {
+  validateSourceExclusivity(resolvedAction, uiSourceOfPath, 'UiSource');
+}
+
+/**
+ * Game-art sibling of `validateUiSourceExclusivity` (WS2 §3). Same domain rule
+ * on the `visual/game-art/{ant,figma,handoff}` sub-sources: a RAC must not mix
+ * more than one. The two surfaces are domain-exclusive (D28), so in practice
+ * only one of the two guards ever sees classified paths — running both is
+ * cheap defense-in-depth.
+ */
+export function validateGameArtSourceExclusivity(resolvedAction: ResolvedActionContext): void {
+  validateSourceExclusivity(resolvedAction, gameArtSourceOfPath, 'GameArtSource');
+}
+
+/** Generic exclusivity guard — single owner for both source surfaces. */
+function validateSourceExclusivity(
+  resolvedAction: ResolvedActionContext,
+  sourceOf: (p: string) => UiSource | null,
+  label: string,
+): void {
   const present = new Set<UiSource>();
   const all = [...(resolvedAction.refs ?? []), ...(resolvedAction.context ?? [])];
   for (const p of all) {
-    const src = uiSourceOfPath(p);
+    const src = sourceOf(p);
     if (src !== null) present.add(src);
   }
   if (present.size > 1) {
     const sources = Array.from(present).join(', ');
     throw new Error(
-      `RAC contains mixed UiSource paths (${sources}); only one ui-source slot may be selected per intent.`,
+      `RAC contains mixed ${label} paths (${sources}); only one source slot may be selected per intent.`,
     );
   }
 }
@@ -112,16 +133,18 @@ function appendPath(
     // (which classifies as null) — but walking it sweeps ant/figma/handoff into
     // one pool. Narrowing is owned upstream (inferRacWithTools /
     // pickUiSourceSubgroupDir); this throw fires only if a caller bypassed it.
-    const seenUiSources = new Set<UiSource>();
+    const seenSources = new Set<UiSource>();
     for (const child of walkDir(absolute)) {
       const rel = path.relative(featurePath, child).split(path.sep).join('/');
-      const childSrc = uiSourceOfPath(rel);
+      // Classify against BOTH surfaces (WS2 §3) — a game-art dir child
+      // classifies via gameArtSourceOfPath (uiSourceOfPath returns null for it).
+      const childSrc = uiSourceOfPath(rel) ?? gameArtSourceOfPath(rel);
       if (childSrc) {
-        seenUiSources.add(childSrc);
-        if (seenUiSources.size > 1) {
+        seenSources.add(childSrc);
+        if (seenSources.size > 1) {
           throw new Error(
-            `loadResolvedArtifacts: directory ref "${relativePath}" spans multiple UI sources ` +
-              `(${Array.from(seenUiSources).join(', ')}); a ui-source ref must be narrowed to one ` +
+            `loadResolvedArtifacts: directory ref "${relativePath}" spans multiple sources ` +
+              `(${Array.from(seenSources).join(', ')}); a source ref must be narrowed to one ` +
               `subgroup before RAC resolution (see inferRacWithTools / pickUiSourceSubgroupDir).`,
           );
         }
@@ -154,8 +177,13 @@ function appendPath(
  * tagged path-only (utf-8 reads would be garbage).
  */
 function isHandoffPath(rel: string): boolean {
-  const handoffRoot = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
-  return rel === handoffRoot || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
+  // Both surfaces' handoff sub-sources are stub-loaded, never eager-read (WS2 §3C).
+  const uiRoot = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
+  const gameArtRoot = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, '');
+  return (
+    rel === uiRoot || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF) ||
+    rel === gameArtRoot || rel.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)
+  );
 }
 
 /**

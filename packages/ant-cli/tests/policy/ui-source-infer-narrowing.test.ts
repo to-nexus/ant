@@ -120,7 +120,7 @@ describe('loadResolvedArtifacts — parent vs narrowed UI ref (disk reproduction
 
   it('PARENT ref (visual/ui) → guard throws (negative control: proves the bug is caught)', () => {
     expect(() => loadResolvedArtifacts(rac(['visual/ui']), dir)).toThrow(
-      /spans multiple UI sources/,
+      /spans multiple sources/,
     );
   });
 });

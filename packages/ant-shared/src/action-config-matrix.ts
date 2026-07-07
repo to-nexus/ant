@@ -260,6 +260,32 @@ const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
   },
 ];
 
+// ── game-art-source subgroups (WS2 §3 — mirror of UI_SOURCE_SUBGROUPS) ────────
+// Same three hard-exclusive sub-sources under `visual/game-art/`. `ant` is the
+// LLM-authored canonical (active today); `figma` / `handoff` mirror the UI
+// naming — `handoff` is now wired end-to-end (§3), `figma` remains a Phase 5+
+// parser hook. Registration order MUST match GAME_ART_SOURCE_PRIORITY.
+const GAME_ART_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
+  {
+    id: 'ant',
+    dir: 'visual/game-art/ant',
+    label: { en: 'Ant Canonical', ko: 'Ant 설계 문서' },
+    humanLabel: { en: 'Ant Canonical Game-Art Documents (game-art-tokens / assets / spec)', ko: 'Ant 게임아트 문서 (game-art-tokens / assets / spec)' },
+  },
+  {
+    id: 'figma',
+    dir: 'visual/game-art/figma',
+    label: { en: 'Figma', ko: 'Figma' },
+    humanLabel: { en: 'Figma Workfile Reference (Phase 5+ hook)', ko: 'Figma 작업 파일 참조 (Phase 5+ 훅)' },
+  },
+  {
+    id: 'handoff',
+    dir: 'visual/game-art/handoff',
+    label: { en: 'Handoff', ko: '핸드오프' },
+    humanLabel: { en: 'Game-Art Handoff bundle (free-form assets)', ko: '게임아트 핸드오프 번들 (자유 형식 에셋)' },
+  },
+];
+
 /**
  * UI source slot as refs (primary authoritative input).
  * D28 — gated to `service` domain. Game workspaces consume `game-art-source`
@@ -297,15 +323,18 @@ function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; 
 
 /**
  * Game-art source slot as refs (primary authoritative input).
- * D24 — flat structure, no sub-source dispatcher (single dir entry).
+ * WS2 §3 — subgroup dispatcher (`ant` / `figma` / `handoff`), mirroring
+ * `uiSourceRef`. The parent dir `visual/game-art` never seeds the pool; the
+ * infer path narrows to the single valid subgroup dir.
  * D28 — gated to `game` domain.
  */
 function gameArtSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
-    path: GAME_ART_DIR,
+    path: 'visual/game-art',
     label: L.gameArtDesign,
-    type: 'dir',
+    type: 'ui-source',
     required: true,
+    uiSources: GAME_ART_SOURCE_SUBGROUPS,
     createIntent: opts?.createIntent ?? 'gen-game-art-desc',
     humanLabel: opts?.humanLabel ?? HL.gameArtDesign,
     applicableDomains: ['game'],
@@ -314,15 +343,16 @@ function gameArtSourceRef(opts?: { createIntent?: string; humanLabel?: { en: str
 
 /**
  * Game-art source slot as context (supplementary background input).
- * D24 — flat structure, single dir entry.
+ * WS2 §3 — subgroup dispatcher, mirroring `uiSourceCtx`.
  * D28 — gated to `game` domain.
  */
 function gameArtSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
-    path: GAME_ART_DIR,
+    path: 'visual/game-art',
     label: L.gameArtDesign,
-    type: 'dir',
+    type: 'ui-source',
     required: false,
+    uiSources: GAME_ART_SOURCE_SUBGROUPS,
     createIntent: opts?.createIntent ?? 'gen-game-art-desc',
     humanLabel: opts?.humanLabel ?? HL.gameArtDesign,
     applicableDomains: ['game'],

@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateGameArtAssetCatalog,
   validateGameArtAssetEntry,
+  INLINE_LIMITS,
   type GameArtAssetEntry,
 } from '../../src/infrastructure/workspace/gameArtAssetValidator';
 
@@ -134,6 +135,83 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
       srcExists: p => present.has(p),
     });
     expect(issues).toEqual([]);
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // D21 — inline css-only ceiling (WS2 §1a)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  it('inline svg with >5 primitives flags inline-svg-too-complex (warning, not throw)', () => {
+    const tooMany: GameArtAssetEntry = {
+      id: 'busy',
+      kind: 'inline',
+      format: 'svg',
+      svg: "<svg viewBox='0 0 64 64'><path/><circle/><rect/><polygon/><ellipse/><path/></svg>",
+    };
+    const issues = validateGameArtAssetEntry(tooMany);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('inline-svg-too-complex');
+    expect(issues[0].id).toBe('busy');
+  });
+
+  it('inline svg with viewBox side >64 flags inline-svg-too-complex', () => {
+    const bigBox: GameArtAssetEntry = {
+      id: 'huge',
+      kind: 'inline',
+      format: 'svg',
+      svg: "<svg viewBox='0 0 128 64'><rect/></svg>",
+    };
+    const issues = validateGameArtAssetEntry(bigBox);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('inline-svg-too-complex');
+  });
+
+  it('inline svg within the ceiling (≤5 primitives, viewBox ≤64) passes', () => {
+    const ok: GameArtAssetEntry = {
+      id: 'simple',
+      kind: 'inline',
+      format: 'svg',
+      svg: "<svg viewBox='0 0 32 32'><circle/><rect/></svg>",
+    };
+    expect(validateGameArtAssetEntry(ok)).toEqual([]);
+  });
+
+  it('inline css over the byte ceiling flags inline-css-too-long', () => {
+    const longCss = '.a{' + 'color:#abcabc;'.repeat(200) + '}'; // well over 1024 bytes
+    expect(longCss.length).toBeGreaterThan(INLINE_LIMITS.cssMaxBytes);
+    const entry: GameArtAssetEntry = { id: 'wall', kind: 'inline', format: 'css', css: longCss };
+    const issues = validateGameArtAssetEntry(entry);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('inline-css-too-long');
+  });
+
+  it('inline oscillator with durationMs >200 flags inline-oscillator-too-long', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'drone',
+      kind: 'inline',
+      format: 'oscillator',
+      oscillator: { type: 'sine', frequency: 440, durationMs: 5000, gain: 0.2 },
+    };
+    const issues = validateGameArtAssetEntry(entry);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('inline-oscillator-too-long');
+  });
+
+  it('inline oscillator within durationMs ceiling passes', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'blip',
+      kind: 'inline',
+      format: 'oscillator',
+      oscillator: { type: 'square', frequency: 880, durationMs: 120, gain: 0.3 },
+    };
+    expect(validateGameArtAssetEntry(entry)).toEqual([]);
+  });
+
+  it('a format-only inline entry (no payload fields) is still exempt', () => {
+    // Regression: the original D20 behavior — inline entries with no payload
+    // bytes to inspect produce no issues.
+    const entry: GameArtAssetEntry = { id: 'spark', kind: 'inline', format: 'svg' };
+    expect(validateGameArtAssetEntry(entry, { srcExists: () => false })).toEqual([]);
   });
 
   it('skipping the srcExists predicate disables only the existence leg (D20 hard cases still fire)', () => {

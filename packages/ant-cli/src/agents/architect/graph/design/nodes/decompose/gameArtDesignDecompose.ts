@@ -210,6 +210,16 @@ export async function decomposeGameArtDesign(
       throw new Error('Invalid game-art task breakdown format from LLM');
     }
 
+    // WS2 §3E — when the user brought a game-art handoff bundle into the RAC,
+    // design must OBSERVE it (survey the placed files) so it can author
+    // `kind:'external'` catalog entries that point at those files. Detected from
+    // the post-RAC pool; game-art sources are hard-exclusive, so a handoff
+    // bundle means the ant sub-source is absent from the RAC (self-outputs still
+    // land under ant/ and are picked up by GAME_ART_ANT below).
+    const hasGameArtHandoff = (state.artifacts ?? []).some(
+      (a: any) => typeof a?.path === 'string' && a.path.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF),
+    );
+
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
     response.tasks.forEach((task) => {
@@ -226,9 +236,11 @@ export async function decomposeGameArtDesign(
       // `ant/` sub-source (canonical), parallel to UI's ant. Figma mode
       // also includes the UI figma workfile reference because game-art
       // figma is Phase 5+ (parser-only hook today).
-      const includePrefixes = isFigmaMode
+      const includePrefixes: string[] = isFigmaMode
         ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
         : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
+      // Surface the handoff bundle to the design task when present (WS2 §3E).
+      if (hasGameArtHandoff) includePrefixes.push(ARTIFACT_PREFIX.GAME_ART_HANDOFF);
 
       taskQueue.push({
         id: task.id,

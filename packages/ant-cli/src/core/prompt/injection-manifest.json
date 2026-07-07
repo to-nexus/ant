@@ -33,6 +33,8 @@
     "feature-ui-observation": ["featureObservesUiSource"],
     "layout-validity-floor": ["layoutValidityFloorActive"],
     "game-art-source": [],
+    "game-art-source-handoff": [],
+    "game-art-source-dispatch": ["gameArtSource"],
     "antrules": ["antrulesContent"],
     "setup-directory-sealing": [],
     "dep-self-contained": [],

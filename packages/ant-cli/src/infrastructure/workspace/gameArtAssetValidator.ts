@@ -42,7 +42,94 @@ export type ValidationCode =
   /** `kind: 'external'` entry's src points outside the game pool entirely. */
   | 'external-outside-game-pool'
   /** `kind: 'external'` entry's src does not exist on disk. */
-  | 'external-src-missing';
+  | 'external-src-missing'
+  /** `kind: 'inline'` `svg` payload exceeds the css-only complexity ceiling (D21). */
+  | 'inline-svg-too-complex'
+  /** `kind: 'inline'` `css` payload exceeds the byte ceiling (D21). */
+  | 'inline-css-too-long'
+  /** `kind: 'inline'` `oscillator.durationMs` exceeds the ceiling (D21). */
+  | 'inline-oscillator-too-long';
+
+/**
+ * Inline-payload ceilings (D21). These are the SSOT for the numeric limits
+ * the design template (`jobs/design/basis/gameArtTier/_preamble.md` §2 +
+ * `game-art-assets-guide-by-*.md`) states verbally. An inline entry above a
+ * ceiling is a warning (returned as a `ValidationIssue`) that the retry
+ * channel converts into a "promote to kind:external" re-prompt — it is NOT a
+ * throw, because an over-complex inline payload is recoverable, whereas an I6
+ * cross-surface leak is not.
+ */
+export const INLINE_LIMITS = {
+  /** Max `path|circle|rect|polygon|ellipse` primitives in an inline svg. */
+  svgMaxPrimitives: 5,
+  /** Max side length of the inline svg `viewBox` (both width and height). */
+  svgMaxViewBoxSide: 64,
+  /** Max byte length of an inline `css` payload. */
+  cssMaxBytes: 1024,
+  /** Max `durationMs` of an inline oscillator config. */
+  oscillatorMaxDurationMs: 200,
+} as const;
+
+const SVG_PRIMITIVE_RE = /<\s*(?:path|circle|rect|polygon|ellipse)\b/gi;
+const SVG_VIEWBOX_RE = /viewBox\s*=\s*['"]\s*[-\d.]+\s+[-\d.]+\s+([-\d.]+)\s+([-\d.]+)\s*['"]/i;
+
+/**
+ * Check an inline entry against the D21 css-only ceilings. Pure — inspects
+ * only the payload fields present on the entry (`svg` / `css` / `oscillator`).
+ * Missing / malformed payloads are skipped (shape is not this helper's
+ * concern — it only flags oversize payloads).
+ */
+function checkInlineLimits(entry: GameArtAssetEntry): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  const svg = entry.svg;
+  if (typeof svg === 'string') {
+    const primitiveCount = (svg.match(SVG_PRIMITIVE_RE) || []).length;
+    const viewBox = SVG_VIEWBOX_RE.exec(svg);
+    const widthOver = viewBox ? Number(viewBox[1]) > INLINE_LIMITS.svgMaxViewBoxSide : false;
+    const heightOver = viewBox ? Number(viewBox[2]) > INLINE_LIMITS.svgMaxViewBoxSide : false;
+    if (primitiveCount > INLINE_LIMITS.svgMaxPrimitives || widthOver || heightOver) {
+      issues.push({
+        id: entry.id,
+        code: 'inline-svg-too-complex',
+        reason:
+          `inline svg exceeds the css-only ceiling (D21): ${primitiveCount} primitive(s) `
+          + `(max ${INLINE_LIMITS.svgMaxPrimitives}), viewBox side max ${INLINE_LIMITS.svgMaxViewBoxSide}. `
+          + `Promote to kind:external under assets/game/... instead.`,
+      });
+    }
+  }
+
+  const css = entry.css;
+  if (typeof css === 'string') {
+    const bytes = Buffer.byteLength(css, 'utf-8');
+    if (bytes > INLINE_LIMITS.cssMaxBytes) {
+      issues.push({
+        id: entry.id,
+        code: 'inline-css-too-long',
+        reason:
+          `inline css payload is ${bytes} bytes (max ${INLINE_LIMITS.cssMaxBytes}). `
+          + `A single-tone / gradient shape stays well under the ceiling; promote richer visuals to kind:external.`,
+      });
+    }
+  }
+
+  const oscillator = entry.oscillator;
+  if (oscillator && typeof oscillator === 'object') {
+    const durationMs = (oscillator as { durationMs?: unknown }).durationMs;
+    if (typeof durationMs === 'number' && durationMs > INLINE_LIMITS.oscillatorMaxDurationMs) {
+      issues.push({
+        id: entry.id,
+        code: 'inline-oscillator-too-long',
+        reason:
+          `inline oscillator durationMs=${durationMs} exceeds ${INLINE_LIMITS.oscillatorMaxDurationMs}ms. `
+          + `Longer audio must be kind:external under assets/game/sfx|bgm with audioScope:'external-enabled'.`,
+      });
+    }
+  }
+
+  return issues;
+}
 
 export interface ValidationIssue {
   id: string;
@@ -74,7 +161,7 @@ export function validateGameArtAssetEntry(
   entry: GameArtAssetEntry,
   options: ValidationOptions = {},
 ): ValidationIssue[] {
-  if (entry.kind === 'inline') return [];
+  if (entry.kind === 'inline') return checkInlineLimits(entry);
 
   if (entry.kind !== 'external') {
     return [{

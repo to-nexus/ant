@@ -324,6 +324,29 @@ export class ArtifactPoolView {
     return found;
   }
 
+  /**
+   * Game-art sibling of `uiSource()` (WS2 §3). Discriminates which game-art
+   * sub-source (`ant` / `figma` / `handoff`) the pool carries — exactly one or
+   * none; mixed sources throw. Consumed by `game-art-source-dispatch.md` to
+   * select the correct interpretation partial (ant canonical vs handoff survey).
+   */
+  gameArtSource(): UiSource | null {
+    let found: UiSource | null = null;
+    for (const a of this.pool) {
+      const src = gameArtSourceOfPath(a.path);
+      if (src === null) continue;
+      if (found === null) {
+        found = src;
+      } else if (found !== src) {
+        throw new Error(
+          `ArtifactPoolView.gameArtSource: pool contains mixed game-art sources (${found}, ${src}); ` +
+          'hard-exclusive invariant violated at RAC resolution time.',
+        );
+      }
+    }
+    return found;
+  }
+
   hasSourcesRef(): boolean {
     return this.pool.some(a => a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SOURCES));
   }

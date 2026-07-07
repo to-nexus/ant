@@ -534,8 +534,20 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/game-art-source-dispatch": {
+    "sources": [
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/game-art-source-handoff": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/game-art-source": {
     "sources": [
+      "partial-ref",
       "manifest"
     ]
   },
