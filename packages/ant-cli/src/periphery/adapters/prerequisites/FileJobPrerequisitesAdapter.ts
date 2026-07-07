@@ -47,7 +47,7 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
           {
             name: 'Source Documents',
             path: PLAN_DIR,
-            description: 'Source documents (PRD, GDD, specs, requirements, etc.)',
+            description: 'Source documents (PRD, specs, requirements, etc.)',
             mustHaveContent: true,
           },
         ];

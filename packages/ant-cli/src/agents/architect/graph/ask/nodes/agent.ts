@@ -308,7 +308,7 @@ export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
  * a rubric-based evaluation report (see jobs/ask/nodes/agent/variants/default/rules.md).
  */
 export function parseEvalTag(text: string): { type: NonNullable<AskGraphState['evalType']> } | null {
-  const match = text.match(/<eval\s+type="(prd|system-design|ui-design|code|all)"\s*\/?>/i);
+  const match = text.match(/<eval\s+type="(prd|system-design|ui-design|game-art|code|all)"\s*\/?>/i);
   if (match) {
     return { type: match[1].toLowerCase() as NonNullable<AskGraphState['evalType']> };
   }

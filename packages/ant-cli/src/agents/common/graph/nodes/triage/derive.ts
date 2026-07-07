@@ -38,12 +38,15 @@ export function deriveTriageMode(intentId: IntentId): Mode {
  *   2. Intent group — a `design-game-art` intent is game-only by
  *      construction (D28), so its presence pins the domain to `'game'`
  *      even on the infer path (chat-driven, no DomainToggle).
- *   3. Workspace-shape hint — a persisted game workspace is recognised
- *      by its canonical game artifacts: a `gdd.md` plan file or any
- *      `visual/game-art/ant/` design doc. Universal intents
- *      (`gen-spec` / `gen-sys-*` / `gen-code-*`) invoked in such a
- *      workspace resolve to `'game'` so downstream overlays / slots /
- *      catalogs pick the game branch instead of falling to service.
+ *   3. Workspace-shape hint — a persisted game workspace is recognised by
+ *      the presence of a `visual/game-art/ant/` design doc, a structurally
+ *      game-only surface (D28). Universal intents (`gen-spec` / `gen-sys-*`
+ *      / `gen-code-*`) invoked in such a workspace resolve to `'game'` so
+ *      downstream overlays / slots / catalogs pick the game branch instead
+ *      of falling to service. Plan filenames are NOT a domain signal — the
+ *      plan document is the domain-neutral `plan/prd.md` in every domain;
+ *      domain identity is `WorkspaceConfig.domain` (D22), surfaced via
+ *      `actionMetadata.domain` (precedence 1).
  *   4. Default `'service'`.
  *
  * This replaces the earlier metadata-only stub whose docstring promised a
@@ -71,16 +74,15 @@ export function deriveTriageDomain(
 
 /**
  * Documented workspaceState → game hint. A workspace is treated as
- * game-shaped when it carries a canonical game artifact: the plan track
- * holds `gdd.md`, or any game-art design doc is present. UI (`ui-*.json`)
- * and PRD signals deliberately do NOT flip the domain — they are the
+ * game-shaped when a game-art design doc is present (`visual/game-art/ant/`)
+ * — a structurally game-only surface (D28). Plan filenames, UI
+ * (`ui-*.json`), and PRD signals deliberately do NOT flip the domain: the
+ * plan document is the domain-neutral `plan/prd.md`, and UI/PRD are the
  * service default.
  */
 function workspaceIsGameShaped(ws: WorkspaceState | undefined): boolean {
   if (!ws) return false;
-  if (ws.hasVisualGameArt === true) return true;
-  if (ws.planFileNames?.includes('gdd.md')) return true;
-  return false;
+  return ws.hasVisualGameArt === true;
 }
 
 /** Type guard wrapper — keeps the surface ergonomic for triage callers. */

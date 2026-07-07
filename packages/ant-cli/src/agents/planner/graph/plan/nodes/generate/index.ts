@@ -493,13 +493,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
 
       // F3 cross-document sync — when this turn was a `rev-plan` (refactor
       // mode) and the document on disk is the canonical plan output
-      // (`prd.md` / `gdd.md`), surface a `refine_impact` chat-status card
-      // listing design tasks that cite the rewritten sections. The hook
-      // is best-effort: failures swallow so a flaky session read never
+      // (`prd.md`), surface a `refine_impact` chat-status card listing
+      // design tasks that cite the rewritten sections. The hook is
+      // best-effort: failures swallow so a flaky session read never
       // blocks the plan write itself.
       if (planMode === 'refactor') {
         const planFilename = path.basename(resolvedTargetRelPath);
-        if (planFilename === 'prd.md' || planFilename === 'gdd.md') {
+        if (planFilename === 'prd.md') {
           try {
             const { emitRefineImpactAlert } = await import('../../../../../../core/refine/refineImpactAlert');
             await emitRefineImpactAlert({
@@ -619,7 +619,7 @@ export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
  *      (`../`, `..\\`, leading `..`).
  *
  * Whitelist prefixes — these mirror the feature-directory canonical layout
- * (`plan/`, `meta/evals/`) since the planner only ever writes PRD/GDD
+ * (`plan/`, `meta/evals/`) since the planner only ever writes PRD
  * documents and their evaluation reports.
  */
 export function isSafeStagingPath(rel: string): boolean {

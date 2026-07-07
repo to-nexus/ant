@@ -24,7 +24,7 @@
  */
 
 import type { ResolvedArtifact, Domain } from '@ant/shared';
-import { ARTIFACT_PREFIX, getEffectiveDomain } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import {
   buildAllSourceDocs,
   buildSourceFileIndex,
@@ -74,8 +74,8 @@ export interface BuildDecomposeContextOptions {
 }
 
 export interface DecomposeContext {
-  /** "PRD" for service domain, "GDD" for game domain. Drives partial copy. */
-  documentName: 'PRD' | 'GDD';
+  /** Always "PRD" — the domain-neutral plan document name. Drives partial copy. */
+  documentName: 'PRD';
   refs: RoleBucket;
   context: RoleBucket;
   /** state.directive — a free-form user directive. Not an artifact. */
@@ -196,8 +196,10 @@ export function buildDecomposeContext(
       !(options.includePreviousDesign && isSystemDesignPath(a.path)),
   );
 
-  const documentName: 'PRD' | 'GDD' =
-    getEffectiveDomain(state.resolvedAction?.domain) === 'game' ? 'GDD' : 'PRD';
+  // The plan document is the domain-neutral PRD in every domain (a game
+  // project's PRD carries game sections via the overlay); the decompose
+  // prompt always cites it as "PRD".
+  const documentName = 'PRD' as const;
 
   const refBucket: RoleBucket = {
     sources: buildSourcesBlock(refSources, useToolMode),

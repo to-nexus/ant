@@ -57,9 +57,9 @@ export function useExplicitAutoSync(): void {
   // wins) or when the matrix has no synthesisable target (revise /
   // codebase / chat-only).
   //
-  // gen-plan is domain-aware: the matrix lists both prd.md and gdd.md
-  // as candidates, but `getDefaultTargetPaths(intent, domain)` collapses
-  // to the domain-canonical filename so the badge shows a single path.
+  // gen-plan output is the domain-neutral `plan/prd.md`:
+  // `getDefaultTargetPaths` returns the single canonical path so the
+  // badge shows one target in every domain.
   useEffect(() => {
     const store = useStore.getState();
     const meta = store.actionMetadata;

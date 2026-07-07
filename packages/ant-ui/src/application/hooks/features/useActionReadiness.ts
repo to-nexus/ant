@@ -140,13 +140,11 @@ function computeAsk(ctx: TreeContext): ActionReadiness {
 }
 
 function computePlan(ctx: TreeContext): ActionReadiness {
-  // The plan job's canonical output is domain-aware: prd.md for service,
-  // gdd.md for game. Either file existing means "the plan document is
-  // already authored" — both should mark hasOutput true so the panel
-  // hides the empty-slot warning correctly across domains.
-  const hasOutput =
-    fileExists(ctx.fileTree, 'plan/prd.md') ||
-    fileExists(ctx.fileTree, 'plan/gdd.md');
+  // The plan job's canonical output is the domain-neutral `plan/prd.md`
+  // (a game project's PRD carries game sections via the overlay, not a
+  // different filename). Its existence means "the plan document is
+  // already authored" so the panel hides the empty-slot warning.
+  const hasOutput = fileExists(ctx.fileTree, 'plan/prd.md');
   return {
     buildReady: true,
     hasOutput,

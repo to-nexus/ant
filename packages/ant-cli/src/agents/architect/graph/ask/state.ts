@@ -46,7 +46,7 @@ export interface AskGraphState extends ResolvableState {
   streamingCompleted?: boolean;
   resolvedAction?: ResolvedActionContext;
   isEvaluation?: boolean;
-  evalType?: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all';
+  evalType?: 'prd' | 'system-design' | 'ui-design' | 'game-art' | 'code' | 'all';
   chatMessageStarted?: boolean;
   /**
    * 5-tier execution strategy. Ask / inline-ask are read-only Q&A flows —
@@ -69,7 +69,7 @@ export const AskAnnotation = Annotation.Root({
   chatMessageStarted: Annotation<boolean | undefined>,
   resolvedAction: Annotation<ResolvedActionContext | undefined>,
   isEvaluation: Annotation<boolean | undefined>,
-  evalType: Annotation<'prd' | 'design-system' | 'design-ui' | 'code' | 'all' | undefined>,
+  evalType: Annotation<'prd' | 'system-design' | 'ui-design' | 'game-art' | 'code' | 'all' | undefined>,
   executionTier: Annotation<ExecutionTierId | undefined>,
 } as const);
 

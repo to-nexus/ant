@@ -404,10 +404,10 @@ export function generateChatStatusContent(
 
     case 'refine_impact': {
       // Emitted by the rev-plan completion hook (F3). Surfaces which
-      // PRD/GDD sections were rewritten and which design tasks cite
-      // them, so the operator knows which downstream design tasks
-      // turned stale. Metadata shape:
-      //   { updatedDoc: 'prd.md' | 'gdd.md',
+      // PRD sections were rewritten and which design tasks cite them,
+      // so the operator knows which downstream design tasks turned
+      // stale. Metadata shape:
+      //   { updatedDoc: 'prd.md',
       //     updatedSections: string[],
       //     affected: { taskId; taskName; matchedSections[] }[],
       //     unscannableTaskIds: string[],

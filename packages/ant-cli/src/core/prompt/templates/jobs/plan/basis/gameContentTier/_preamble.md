@@ -1,10 +1,10 @@
 ## Plan-Overlay — Game Content Tier Hook
 
-**Activation gate**: job `plan` × `domain === 'game'` × `gameContentTier` is decided (`genre` and / or `coreLoop` slot is populated). Layered on top of `templates/jobs/plan/domain/game.md` (GDD skeleton, D27). The matrix gate excludes `service` automatically — this file is dead for service projects.
+**Activation gate**: job `plan` × `domain === 'game'` × `gameContentTier` is decided (`genre` and / or `coreLoop` slot is populated). Layered on top of `templates/jobs/plan/domain/game.md` (PRD skeleton, D27). The matrix gate excludes `service` automatically — this file is dead for service projects.
 
-This overlay sharpens **two GDD sections** when their tier values are pre-decided or selected during planning:
+This overlay sharpens **two PRD sections** when their tier values are pre-decided or selected during planning:
 
-| Tier value | Applies to GDD section | What the overlay sharpens |
+| Tier value | Applies to PRD section | What the overlay sharpens |
 |---|---|---|
 | `genre` (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner`) | §2 Genre & Coreloop | Genre-defining systems the PRD MUST commit |
 | `coreLoop` (`solve` / `collect` / `survive` — matrix-gated per genre) | §2 Genre & Coreloop, §4 MDA | Loop-defining steps the PRD MUST commit |
@@ -49,7 +49,7 @@ The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) nam
 | `arcadeSnake` | `survive`, `collect` |
 | `crowdRunner` | `survive`, `collect` |
 
-The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outside it (`arcadePaddle + solve`, `cardSolitaire + survive`, `crowdRunner + solve`, ...) are filtered before the design / code job sees them — surfacing one in the GDD costs a retry round and never reaches downstream.
+The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outside it (`arcadePaddle + solve`, `cardSolitaire + survive`, `crowdRunner + solve`, ...) are filtered before the design / code job sees them — surfacing one in the PRD costs a retry round and never reaches downstream.
 
 ### Reminders (FPOP-style blind spots)
 
@@ -58,7 +58,7 @@ The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outs
 - ⚠️ When `genre` and `coreLoop` are both decided, they MUST come from `GENRE_CORELOOP_MATRIX`. The decompose pipeline filters out-of-matrix pairs at parse time — surfacing one in the PRD costs a retry round.
 - ⚠️ The `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner` registry is css-only-tuned. Production-asset-dependent super-categories (action / platformer / shooter / rpg / strategy) are deferred to Phase 5+ when the visual job activates (legacy super-categories archived).
 - ⚠️ Genre partials are GUIDES not contracts — they fix the systems-shape *categories* the PRD must cover, but the axes inside each category (steering axis, op universe, formation rule, threat shape, terminal kind, …) remain the PRD's twist surface. A PRD that names only the categories without committing the axes is empty (SBS violation).
-- ⚠️ Multi-loop games (a meta-loop wrapping a moment-loop, e.g. roguelite) state both loops separately — coreLoop in this overlay is the **inner / shortest** loop. Outer loop, if any, is captured in §11 Meta-Progression of the GDD.
+- ⚠️ Multi-loop games (a meta-loop wrapping a moment-loop, e.g. roguelite) state both loops separately — coreLoop in this overlay is the **inner / shortest** loop. Outer loop, if any, is captured in §11 Meta-Progression of the PRD.
 
 ### Out of scope for this overlay
 

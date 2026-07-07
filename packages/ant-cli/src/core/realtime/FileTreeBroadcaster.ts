@@ -296,7 +296,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
 
   /**
    * Close Redis connection. Flush any in-flight broadcasts first so a
-   * single end-of-job emission (e.g. plan PRD/GDD write) is delivered
+   * single end-of-job emission (e.g. plan PRD write) is delivered
    * before `pubRedis.quit()` tears down the connection.
    */
   async close(): Promise<void> {

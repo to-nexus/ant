@@ -42,11 +42,11 @@ describe('extractPlanDiff — single-source layers', () => {
 
   it('directive layer parses identifiers from operator text', () => {
     const diff = extractPlanDiff({
-      doc: 'gdd.md',
-      directive: 'add EN-Hero and tweak GDD §4 mechanics',
+      doc: 'prd.md',
+      directive: 'add EN-Hero and tweak PRD §4 mechanics',
     });
     expect(diff.updatedSections).toEqual(
-      expect.arrayContaining(['EN-Hero', 'GDD §4']),
+      expect.arrayContaining(['EN-Hero', 'PRD §4']),
     );
     expect(diff.sources).toEqual(['directive']);
   });

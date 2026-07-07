@@ -41,10 +41,10 @@ describe('deriveTriageDomain (T1-a)', () => {
     expect(deriveTriageDomain('rev-game-art', emptyWs, undefined)).toBe('game');
   });
 
-  it('4) universal intent + gdd.md workspace hint → game', () => {
+  it('4) universal intent + gdd.md workspace hint → service (gdd.md is no longer a domain signal)', () => {
     const ws: WorkspaceState = { ...emptyWs, hasPlan: true, planFileNames: ['gdd.md'] };
-    expect(deriveTriageDomain('gen-spec', ws, undefined)).toBe('game');
-    expect(deriveTriageDomain('gen-sys-fe', ws, undefined)).toBe('game');
+    expect(deriveTriageDomain('gen-spec', ws, undefined)).toBe('service');
+    expect(deriveTriageDomain('gen-sys-fe', ws, undefined)).toBe('service');
   });
 
   it('5) universal intent + game-art design docs present → game', () => {

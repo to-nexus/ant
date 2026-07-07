@@ -1,7 +1,7 @@
 /**
  * extractPlanDiff — derive `{ updatedSections }` from a `rev-plan` outcome.
  *
- * The hook in `F3.4` (rev-plan completion) needs to know *which* PRD/GDD
+ * The hook in `F3.4` (rev-plan completion) needs to know *which* PRD
  * sections / stable identifiers a refine pass touched so
  * `detectAffectedTasks` can pivot to the design tasks that cite them.
  *
@@ -13,7 +13,7 @@
  *      the §X / SC- / etc. it just rewrote. Highest signal — when
  *      present, no fallback is needed.
  *   2. Git diff fallback: the `rev-plan` job touches the on-disk
- *      `prd.md` / `gdd.md`. We grep `git diff` for added/removed lines
+ *      `prd.md`. We grep `git diff` for added/removed lines
  *      and locate the closest preceding `## §X` heading or any
  *      identifier that newly appears. Used when (1) is missing OR to
  *      catch identifiers the LLM forgot to enumerate.
@@ -29,10 +29,10 @@
 // the diff layer's output matches the dependency layer's citations
 // without false-positive disambiguation. Bare `§X` markers are NOT
 // included — they appear in headings without a doc prefix and would
-// land alongside `PRD §X` / `GDD §X` extractions, splitting matches
+// land alongside `PRD §X` extractions, splitting matches
 // (`§6` vs `PRD §6`) and silently dropping affected tasks.
 const PATTERNS: RegExp[] = [
-  /\b(?:PRD|GDD)\s*§\s*\d+(?:\.\d+)?/g,
+  /\bPRD\s*§\s*\d+(?:\.\d+)?/g,
   /\bSC-[A-Za-z][\w-]*/g,
   /\bFL-[A-Za-z][\w-]*/g,
   /\bFR-\d+/g,
@@ -52,7 +52,7 @@ const TAG_RE = /<updated-sections>([\s\S]*?)<\/updated-sections>/i;
 export type DiffSource = 'llm-tag' | 'git-diff' | 'directive';
 
 export interface PlanDiff {
-  doc: 'prd.md' | 'gdd.md';
+  doc: 'prd.md';
   /** Stable identifiers / `§X` markers that changed. Sorted, deduplicated. */
   updatedSections: string[];
   /** Which extraction layer(s) contributed. Always non-empty when `updatedSections` is non-empty. */
@@ -60,8 +60,8 @@ export interface PlanDiff {
 }
 
 export interface ExtractPlanDiffInput {
-  /** `prd.md` or `gdd.md` — the canonical plan output the rev-plan job rewrote. */
-  doc: 'prd.md' | 'gdd.md';
+  /** `prd.md` — the canonical plan output the rev-plan job rewrote. */
+  doc: 'prd.md';
   /** LLM raw response from the rev-plan turn (may contain the `<updated-sections>` tag). */
   llmResponse?: string;
   /** Git unified-diff string for the plan file (e.g. `git diff <ref> -- plan/prd.md`). */

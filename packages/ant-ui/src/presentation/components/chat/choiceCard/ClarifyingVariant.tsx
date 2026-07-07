@@ -645,9 +645,9 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
   // of the store's selected* values, which may have drifted since the
   // card was issued.
   const pausedNonTask = useStore(selectPausedNonTaskJob);
-  // D28-revised — workspace domain drives the clarify-card title copy
-  // ("…for PRD" vs "…for GDD"). i18next resolves the `_game` variant
-  // via `context: domain`.
+  // Workspace domain drives the clarify-card title copy ("…for PRD" vs
+  // "…for the game's PRD"). i18next resolves the `_game` variant via
+  // `context: domain`. The plan document is the same PRD in both domains.
   const clarifyDomain = useStore((state) => state.actionMetadata.domain);
   const pendingAnswers = useStore((state) => state.pendingClarifyAnswers);
   const setPendingClarifyAnswer = useStore((state) => state.setPendingClarifyAnswer);

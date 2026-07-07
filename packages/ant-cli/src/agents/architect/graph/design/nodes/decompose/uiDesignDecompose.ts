@@ -47,9 +47,9 @@ export async function decomposeUiDesign(
 
   // Role-aware partition (refs / context preserved). The legacy
   // `uiContext` string with the hard-coded "PRD:" header is replaced by
-  // `<sources role="…" doc="{PRD|GDD}">` blocks rendered by the shared
-  // input-context partial — game-domain pools now correctly render as
-  // GDD instead of being mislabelled.
+  // `<sources role="…" doc="PRD">` blocks rendered by the shared
+  // input-context partial. The plan document is the domain-neutral PRD in
+  // every domain.
   const decomposeCtx = buildDecomposeContext(pool, state, {
     includePreviousDesign: false,
     toolModeThreshold: DECOMPOSE_SOURCE_THRESHOLD,

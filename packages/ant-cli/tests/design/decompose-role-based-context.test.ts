@@ -210,12 +210,12 @@ describe('buildDecomposeContext — domain-aware documentName', () => {
     expect(c.documentName).toBe('PRD');
   });
 
-  it('game domain → documentName = "GDD" (replaces legacy "PRD:" hard-code)', () => {
+  it('game domain → documentName = "PRD" (unified — no separate GDD)', () => {
     const c = buildDecomposeContext(pool(), GAME_STATE, {
       includePreviousDesign: false,
       toolModeThreshold: THRESHOLD,
     });
-    expect(c.documentName).toBe('GDD');
+    expect(c.documentName).toBe('PRD');
   });
 
   it('undefined domain → defaults to service / "PRD" via getEffectiveDomain', () => {

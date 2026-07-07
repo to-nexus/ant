@@ -107,7 +107,7 @@
   "agent": {
     "architect": "Optimized for coding tasks",
     "planner": "Creates & refines PRDs (product requirements)",
-    "planner_game": "Creates & refines GDDs (game design documents)",
+    "planner_game": "Creates & refines the game's PRD (concept, coreloop, content)",
     "reviewer": "Reviews code & provides feedback",
     "doc": "Generates documentation",
     "creator": "Generates visual & creative assets"
@@ -157,7 +157,7 @@
   "clarify": {
     "freeInput": "Type your answer...",
     "title": "{{count}} questions for PRD",
-    "title_game": "{{count}} questions for GDD",
+    "title_game": "{{count}} questions for the game's PRD",
     "submitting": "Submitting...",
     "submitAll": "Submit all answers ({{answered}}/{{total}})",
     "submitPartial": "Submit answers ({{answered}}/{{total}})",

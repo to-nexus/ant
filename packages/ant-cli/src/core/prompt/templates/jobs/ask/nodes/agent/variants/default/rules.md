@@ -187,14 +187,17 @@ No elaboration. Move on.
 | PRD | `rubric/PRD-RUBRIC.md` | `plan/prd.md` |
 | System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `architecture/system/api-contract-*.md`, `architecture/system/fe-system-*.md`, `architecture/system/be-system-*.md` |
 | UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `visual/ui/ant/ui-spec.json`, `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json` |
+| Game Art | `rubric/GAME-ART-RUBRIC.md` | `visual/game-art/ant/game-art-spec.json`, `visual/game-art/ant/game-art-tokens.json`, `visual/game-art/ant/game-art-assets.json` |
 | Code | `rubric/CODE-RUBRIC.md` | generated codebase |
+
+The PRD rubric covers the plan document in every domain — a game project's PRD (`plan/prd.md`) carries game sections and is evaluated with the same rubric. The Game Art rubric is orthogonal: it grades the game-art design bundle, which exists only in game workspaces.
 
 ### Scope Resolution
 
 | User Intent | What to Evaluate |
 |-------------|-----------------|
-| Specifies a particular artifact (PRD, system design, UI design, code) | That artifact only |
-| General evaluation without specifying a particular artifact | All available design documents (PRD + system design + UI design) |
+| Specifies a particular artifact (PRD, system design, UI design, game art, code) | That artifact only |
+| General evaluation without specifying a particular artifact | All available design documents (PRD + system design + UI design + game art) |
 
 **Constraint**: Only evaluate documents that actually exist in the workspace. Do NOT report on missing documents as failures — simply note they were not available for evaluation.
 
@@ -206,6 +209,7 @@ When you produce an evaluation report following this protocol, append an `<eval>
 <eval type="prd" />
 <eval type="system-design" />
 <eval type="ui-design" />
+<eval type="game-art" />
 <eval type="code" />
 <eval type="all" />
 ```

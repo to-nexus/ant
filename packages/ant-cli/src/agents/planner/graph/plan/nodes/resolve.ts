@@ -7,14 +7,12 @@
  *
  * Target resolution (3 cases):
  *   1. Explicit: actionMetadata.target from UI
- *   2. Infer + canonical plan file exists (prd.md for service / gdd.md
- *      for game): pick the domain-canonical one if present, fall back
- *      to the other plan filename if the workspace happens to carry it
+ *   2. Infer + canonical plan file (`plan/prd.md`) exists: pick it
  *   3. Infer + no plan file + other sources: all source files (LLM clarifies)
  *
- * Domain comes from `actionMetadata.domain` when explicit; otherwise it
- * is unknown at resolve time (detect runs after this node) and we
- * default to `'service'` semantics (`prd.md`).
+ * The plan document is a single domain-neutral artifact (`plan/prd.md`) —
+ * a game project's PRD carries game sections via the `domain==='game'`
+ * overlay, not a different filename. Filename is never a domain signal.
  */
 
 import * as fs from 'fs';
@@ -56,10 +54,6 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   // 1. Resolve target
   const isExplicit = !!actionMetadata?.intent;
   const isExplainIntent = actionMetadata?.intent === 'explain-plan';
-  // Domain is known here only when caller supplied it explicitly.
-  // Detect runs after resolve, so an inferred domain is not available
-  // yet — fall back to service semantics (`prd.md`).
-  const explicitDomain = actionMetadata?.domain;
   let targets: string[];
 
   if (actionMetadata?.target?.length) {
@@ -70,7 +64,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     targets = [];
   } else {
     const planFileNames = state.workspaceState?.planFileNames;
-    const existingPlanFile = pickExistingPlanFilename(planFileNames, explicitDomain);
+    const existingPlanFile = pickExistingPlanFilename(planFileNames);
     if (existingPlanFile) {
       targets = [`plan/${existingPlanFile}`];
       console.log(`   Target (infer): ${existingPlanFile} found`);
@@ -93,7 +87,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
 
   // 3. Infer default target
   if (targets.length === 0 && !isExplicit) {
-    const fallbackTarget = getCanonicalPlanPath(explicitDomain);
+    const fallbackTarget = getCanonicalPlanPath();
     targets = [fallbackTarget];
     console.log(`   Target (infer default): ${fallbackTarget}`);
   }

@@ -148,7 +148,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       // Implementation-altitude domain identifier guide (Game-Activation T2-b).
       // TS-computed partial name (no domain literal in the template →
       // Domain-Branching Locality). game → game identifiers grounded on
-      // GDD / game system-design / game-art-spec; else → service identifiers.
+      // the game PRD / game system-design / game-art-spec; else → service.
       specImplGuidePartial: state.resolvedAction?.domain === 'game'
         ? 'jobs/design/nodes/execute/injections/spec-impl-guide-game'
         : 'jobs/design/nodes/execute/injections/spec-impl-guide-service',

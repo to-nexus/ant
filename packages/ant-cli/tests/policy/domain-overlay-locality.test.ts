@@ -25,7 +25,7 @@
  *        - jobs/code/domain/game.md             §7 SSOT
  *        - jobs/code/basis/techTier/gameEngine/phaser.md  engine SBS
  *        - jobs/design/domain/game.md           §9 design-level policy
- *        - jobs/plan/domain/game.md             §9 GDD orientation
+ *        - jobs/plan/domain/game.md             §9 PRD orientation
  *        - jobs/code/basis/gameContentTier/_preamble.md  HUD anchor
  *        - jobs/code/basis/gameArtTier/_preamble.md      table rows split
  *        - jobs/code/base/injections/game-art-source.md  table rows split
@@ -80,7 +80,10 @@ const PLAN_GAME_VOCAB = [
   'playable verbs',
   'playtest',
   'progression curve',
-  'GDD',
+  // NOTE: 'GDD' is intentionally NOT listed — the plan artifact is now a
+  // single domain-neutral PRD (a game PRD carries game sections via the
+  // overlay). The game overlay's game vocabulary lives in coreloop / MDA /
+  // mechanics / aesthetic, not in a distinct document name.
   'game design document',
   'mechanic',
   'mechanics',
@@ -96,7 +99,10 @@ const PLAN_SERVICE_VOCAB = [
   'non-functional',
   'audit',
   'retention',
-  'PRD',
+  // NOTE: 'PRD' is intentionally NOT listed — under the unified-PRD model
+  // the document name is domain-neutral and appears in BOTH overlays, so it
+  // is no longer a service-domain discriminator. Service specificity lives
+  // in RBAC / ACL / SLA / persona / SaaS, not the document name.
   'SaaS',
   'permissions',
 ];
@@ -357,7 +363,7 @@ describe('Render Boundary Locality — design/domain/game.md (§9 policy)', () =
   });
 });
 
-describe('Render Boundary Locality — plan/domain/game.md (§9 GDD)', () => {
+describe('Render Boundary Locality — plan/domain/game.md (§9 PRD)', () => {
   const src = read(PLAN_DOMAIN_GAME);
 
   it('§9 Input & Perspective row commits orientation policy + viewport target', () => {

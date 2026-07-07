@@ -158,9 +158,9 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       // dusk-mounding-pilot regression (FE-only target population, BE
       // saw `target=undefined`).
       //
-      // gen-plan is domain-aware: pass `actionMetadata.domain` so the
-      // panel previews `gdd.md` for game projects and `prd.md` for
-      // service / unknown.
+      // gen-plan output is the domain-neutral `plan/prd.md` in every
+      // domain (a game PRD carries game sections via the overlay, not a
+      // different filename).
       updateActionMetadata({
         target: getDefaultTargetPaths(intentId, actionMetadata.domain),
       });

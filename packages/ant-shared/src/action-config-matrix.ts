@@ -402,16 +402,12 @@ function output(prefix: string, ext: string, label: { en: string; ko: string }, 
 
 const L = {
   /**
-   * @deprecated Domain-biased plan slot label. Use `planLabel(domain)` —
-   * the matrix MATRIX entries still reference `L.sources` for backwards
-   * compatibility, but `getConfigSlotsForDomain` rewrites it to the
-   * domain-correct value at resolution time.
+   * Plan slot label — domain-neutral. The plan document (PRD) is a single
+   * document kind across every domain; a game project's PRD carries game
+   * sections, but that structure comes from the `domain==='game'` overlay,
+   * never from a different label or filename.
    */
   sources: { en: 'PRD', ko: '기획서' },
-  /** Domain-correct plan slot label — service projects. */
-  planSourcesService: { en: 'PRD', ko: '기획서' },
-  /** Domain-correct plan slot label — game projects. */
-  planSourcesGame: { en: 'GDD', ko: '기획서' },
   designAll: { en: 'Design Documents', ko: '설계 문서' },
   systemDesign: { en: 'System Design', ko: '시스템 설계' },
   uiDesign: { en: 'UI Design', ko: 'UI 설계' },
@@ -431,13 +427,11 @@ const L = {
   spec: { en: 'spec document', ko: 'spec 문서' },
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd.md', ko: 'prd.md' },
-  gdd: { en: 'gdd.md', ko: 'gdd.md' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
 
 const HL = {
   prd: { en: 'PRD / Requirements', ko: '기획서' },
-  gdd: { en: 'GDD / Game Design Document', ko: 'GDD / 게임 기획서' },
   systemDesign: { en: 'System Design Documents', ko: '시스템 설계 문서' },
   uiDesign: { en: 'UI Design Documents', ko: 'UI 설계 문서' },
   gameArtDesign: { en: 'Game Art Design Documents (game-art-tokens / game-art-assets / game-art-spec)', ko: '게임 아트 설계 문서 (game-art-tokens / game-art-assets / game-art-spec)' },
@@ -447,23 +441,6 @@ const HL = {
   assets: { en: 'Asset Files', ko: '에셋 파일' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
-
-/**
- * Domain-correct plan slot label SSOT. service → PRD wording, game →
- * GDD wording. Both Korean strings reuse the domain-neutral '기획서'
- * because the user-facing label is consistent across domains in Korean.
- */
-function planLabel(domain: import('./detection').Domain): { en: string; ko: string } {
-  return domain === 'game' ? L.planSourcesGame : L.planSourcesService;
-}
-
-/**
- * Domain-correct plan slot human-label SSOT (used for empty-slot copy
- * and tooltip surfaces). service → `HL.prd`, game → `HL.gdd`.
- */
-function planHumanLabel(domain: import('./detection').Domain): { en: string; ko: string } {
-  return domain === 'game' ? HL.gdd : HL.prd;
-}
 
 // ============================================
 // Matrix Data
@@ -522,17 +499,15 @@ const GAME_ART_OUTPUTS: OutputSpec[] = [
 const SPEC_OUTPUTS: OutputSpec[] = [output('', '.md', L.spec, false)];
 
 /**
- * Plan job output candidates. Service domain emits `prd.md`; game domain
- * emits `gdd.md`. The matrix lists both so FE / detect tooling that does
- * not yet know the domain can hide both files from the SOURCES_DIR
- * listing (`excludeFiles`). Resolve-time domain selection happens via
- * `getPlanOutputs(domain)` — callers MUST funnel through that helper
- * once the domain is known so that the actual `target.outputs` is the
- * single domain-correct entry.
+ * Plan job output. The plan document is a single domain-neutral artifact —
+ * `plan/prd.md` — across every domain. A game project's PRD carries game
+ * sections, but that is decided by the `domain==='game'` overlay, NOT by a
+ * different filename. Path/filename is never a domain signal; the RAC treats
+ * anything under `plan/` as the `sources` (requirements) role regardless of
+ * name (see canonical `SOURCES='plan'`).
  */
 const PRD_OUTPUT: OutputSpec = output('prd', '.md', L.prd, false);
-const GDD_OUTPUT: OutputSpec = output('gdd', '.md', L.gdd, false);
-const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT, GDD_OUTPUT];
+const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT];
 
 import type { IntentId } from './actions';
 import { deriveFromIntent } from './actions';
@@ -550,72 +525,37 @@ export function supportsReferenceCodebase(intent: IntentId): boolean {
   return group === 'code' || group === 'design-spec' || group === 'design-system';
 }
 
-/**
- * Resolve the single plan-job output for a given workspace domain.
- *
- * - `domain === 'game'` → `gdd.md`
- * - `domain === 'service'` or `undefined` → `prd.md`
- *
- * Callers (planner resolve, common detect) MUST funnel `target.outputs`
- * through this helper once the domain is known so the system prompt's
- * "Target Path" section receives a single domain-correct filename.
- */
-export function getPlanOutputs(domain: Domain | undefined): OutputSpec[] {
-  if (domain === 'game') return [GDD_OUTPUT];
+/** The single plan-job output — `plan/prd.md` — across every domain. */
+export function getPlanOutputs(): OutputSpec[] {
   return [PRD_OUTPUT];
 }
 
 /**
- * Filenames the plan job may emit across all domains. Used by ref
- * slots and listings that need to hide canonical plan outputs from the
- * source listing without knowing the active domain.
+ * Filename the plan job emits. Domain-neutral single canonical — a game
+ * project's PRD is still `prd.md` (game sections come from the overlay).
  */
-export const PLAN_OUTPUT_FILENAMES = ['prd.md', 'gdd.md'] as const;
+export const PLAN_OUTPUT_FILENAMES = ['prd.md'] as const;
 
-/**
- * Domain-aware canonical filename for the plan-job output.
- *
- * Service / unknown domain → `'prd.md'`. Game domain → `'gdd.md'`.
- * Use this whenever a single canonical filename is needed (target
- * inference, fallback paths, log strings).
- */
-export function getCanonicalPlanFilename(domain: Domain | undefined): string {
-  return domain === 'game' ? 'gdd.md' : 'prd.md';
+/** Canonical plan-job filename — domain-neutral single `prd.md`. */
+export function getCanonicalPlanFilename(): string {
+  return 'prd.md';
+}
+
+/** Workspace-relative canonical plan-job path — `plan/prd.md`. */
+export function getCanonicalPlanPath(): string {
+  return `plan/${getCanonicalPlanFilename()}`;
 }
 
 /**
- * Workspace-relative path for the canonical plan-job output, by domain.
- *
- * Always returns `plan/<filename>` where `<filename>` is the
- * domain-canonical name from `getCanonicalPlanFilename`.
- */
-export function getCanonicalPlanPath(domain: Domain | undefined): string {
-  return `plan/${getCanonicalPlanFilename(domain)}`;
-}
-
-/**
- * Selects the best existing plan-job output filename from a list of
- * source filenames, preferring the domain-canonical filename if
- * present. Returns `undefined` when neither `prd.md` nor `gdd.md` is in
- * the list.
- *
- * Resolution order:
- *   1. domain-canonical filename (gdd.md for game, prd.md otherwise)
- *   2. the other plan filename (cross-domain leftover from a previous
- *      session that the user has not migrated)
+ * Returns the canonical plan filename if it exists in the given source
+ * filenames, else `undefined`. Domain-neutral — the plan document is a
+ * single canonical artifact regardless of domain.
  */
 export function pickExistingPlanFilename(
   sourceFileNames: readonly string[] | undefined,
-  domain: Domain | undefined,
 ): string | undefined {
   if (!sourceFileNames || sourceFileNames.length === 0) return undefined;
-  const canonical = getCanonicalPlanFilename(domain);
-  if (sourceFileNames.includes(canonical)) return canonical;
-  // Fall back to the other plan filename if it happens to exist (e.g.
-  // legacy game project with prd.md authored before the gdd.md split).
-  const other = canonical === 'prd.md' ? 'gdd.md' : 'prd.md';
-  if (sourceFileNames.includes(other)) return other;
-  return undefined;
+  return sourceFileNames.includes('prd.md') ? 'prd.md' : undefined;
 }
 
 // Tier presets per intent group — Phase 2 (D23: 'domain' removed from tiers).
@@ -654,10 +594,9 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   'gen-plan': {
     refs: [refDir(SOURCES_DIR, L.sources, { required: false, humanLabel: HL.prd, excludeFiles: [...PLAN_OUTPUT_FILENAMES] })],
     context: [],
-    // Both candidates listed so resolve-time helpers (`getPlanOutputs`)
-    // and FE listings know the canonical filenames per domain. The
-    // resolve nodes (planner / common detect) collapse this to a single
-    // entry once the domain is known.
+    // Single domain-neutral output (`plan/prd.md`). `excludeFiles` hides
+    // the plan job's own output from the source listing so it does not
+    // surface as an input candidate.
     target: { kind: 'generate', dir: SOURCES_DIR, outputs: PLAN_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: PLAN_TIERS },
@@ -791,8 +730,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── Spec ──────────────────────────────────
   'gen-spec': {
-    // Plan-slot label/humanLabel is rewritten to the domain-correct PRD/GDD
-    // wording by `rewritePlanSlot` inside `getConfigSlotsForDomain`.
+    // Plan slot label is the domain-neutral "PRD" / "기획서" in every domain.
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     // D28 — both design sources are listed; `applicableDomains` filters
     // `ui-source` (service) vs `game-art-source` (game) per workspace domain
@@ -1093,48 +1031,14 @@ export function filterSlotsByDomain(
 }
 
 /**
- * Return the canonical plan filename for the OPPOSITE domain — used to
- * augment plan-slot `excludeFiles` so a service workspace listing hides
- * `gdd.md` and a game workspace listing hides `prd.md`.
- */
-function otherDomainPlanFilename(domain: Domain): string {
-  return domain === 'game' ? 'prd.md' : 'gdd.md';
-}
-
-/**
- * Augment a plan-dir slot (path === SOURCES_DIR) so its listing label,
- * empty-slot copy, and `excludeFiles` are all domain-correct. For non
- * plan-dir slots the input is returned untouched.
+ * Domain-aware ConfigSlots SSOT — composes `filterSlotsByDomain` so every
+ * FE / BE consumer that needs a workspace-correct view of an intent's
+ * slots obtains it from a single helper.
  *
- * The SSOT here is the matrix label `L.sources` / `HL.prd`. Static
- * matrix entries still reference those for diffability, but the helper
- * rewrites them to `planLabel(domain)` / `planHumanLabel(domain)` so a
- * single workspace surface only ever sees its own domain's wording.
- */
-function rewritePlanSlot(slot: SlotDef, domain: Domain): SlotDef {
-  if (slot.path !== SOURCES_DIR) return slot;
-  const otherFile = otherDomainPlanFilename(domain);
-  const baseExcludes = slot.excludeFiles ?? [];
-  // Preserve any pre-declared excludes (e.g. gen-plan refs already hide
-  // every PLAN_OUTPUT_FILENAME so the planner's own outputs don't surface
-  // as input candidates) and ensure the wrong-domain plan filename is
-  // also hidden, deduped.
-  const excludeFiles = baseExcludes.includes(otherFile)
-    ? baseExcludes
-    : [...baseExcludes, otherFile];
-  return {
-    ...slot,
-    label: planLabel(domain),
-    humanLabel: planHumanLabel(domain),
-    excludeFiles,
-  };
-}
-
-/**
- * Domain-aware ConfigSlots SSOT — composes `filterSlotsByDomain`,
- * `rewritePlanSlot`, and `getPlanOutputs` so every FE / BE consumer
- * that needs a workspace-correct view of an intent's slots / target /
- * labels obtains it from a single helper.
+ * The plan slot is domain-neutral (single `plan/prd.md`), so no per-domain
+ * label / filename rewrite is needed — the static matrix labels are already
+ * correct. `filterSlotsByDomain` still performs the real domain work
+ * (dropping wrong-domain slots like `visual/ui` vs `visual/game-art`).
  *
  * `domain` is intentionally non-optional. Workspaces always carry a
  * default (`'service'`) so callers must surface their fallback at the
@@ -1150,18 +1054,7 @@ export function getConfigSlotsForDomain(
 ): ConfigSlots | null {
   const raw = getConfigSlots(intent, workspaceContext);
   if (!raw) return null;
-  const filtered = filterSlotsByDomain(raw, domain);
-  const refs = filtered.refs.map(s => rewritePlanSlot(s, domain));
-  const context = filtered.context.map(s => rewritePlanSlot(s, domain));
-  // gen-plan uniquely emits a plan output — collapse the dual-candidate
-  // matrix list to the single domain-correct filename so FE TargetDisplay
-  // and any other `target.outputs` consumer never previews the wrong-
-  // domain artifact. Other 'generate' intents are domain-agnostic.
-  let target = filtered.target;
-  if (intent === 'gen-plan' && target.kind === 'generate') {
-    target = { ...target, outputs: getPlanOutputs(domain) };
-  }
-  return { ...filtered, refs, context, target };
+  return filterSlotsByDomain(raw, domain);
 }
 
 /**
@@ -1205,7 +1098,9 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  */
 export function getDefaultTargetPaths(
   intent: IntentId,
-  domain?: Domain,
+  // Retained for call-site compatibility; plan output is domain-neutral
+  // (`plan/prd.md`) so the target no longer varies by domain.
+  _domain?: Domain,
   opts?: { refs?: string[] },
 ): string[] | undefined {
   const slots = getConfigSlots(intent);
@@ -1218,31 +1113,18 @@ export function getDefaultTargetPaths(
     // (e.g. code → plan) carries intent only, with no selected ref. Unlike
     // other revise intents (rev-code / rev-sys / rev-ui — which revise one of
     // several arbitrary files and genuinely need a ref), the plan has a single
-    // canonical document — the same file `gen-plan` writes (plan/prd.md |
-    // plan/gdd.md). Fall back to it so the revise target resolves instead of
-    // leaving `target` empty (which crashes the planner generate guard).
-    if (intent === 'rev-plan') return getDefaultTargetPaths('gen-plan', domain);
+    // canonical document — the same file `gen-plan` writes (`plan/prd.md`).
+    // Fall back to it so the revise target resolves instead of leaving
+    // `target` empty (which crashes the planner generate guard).
+    if (intent === 'rev-plan') return getDefaultTargetPaths('gen-plan');
     return undefined;
   }
 
   if (target.kind !== 'generate') return undefined;
   if (target.outputs.length === 0) return [target.dir];
 
-  // Plan job is domain-aware: `MATRIX['gen-plan'].target.outputs` lists
-  // both prd.md and gdd.md as candidates so listings (FE excludeFiles)
-  // can hide both. The actual default path for a given workspace is the
-  // single domain-canonical one — service → prd.md, game → gdd.md,
-  // unknown → service semantics.
-  if (intent === 'gen-plan') {
-    // Workspaces always carry a domain default ('service'), but legacy
-    // entry points (chat-driven explicit submits before DomainToggle
-    // exists, mention-path with no `@domain:` mention) may still pass
-    // `undefined`; collapse to service semantics here so the helper
-    // never returns the dual-candidate list.
-    const planOutputs = getPlanOutputs(domain ?? 'service');
-    return planOutputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
-  }
-
+  // Plan output is domain-neutral (`plan/prd.md`) — the generic mapping
+  // below already yields the single canonical path; no per-domain branch.
   return target.outputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
 }
 

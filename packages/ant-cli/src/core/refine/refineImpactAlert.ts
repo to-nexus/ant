@@ -4,7 +4,7 @@
  *
  * Wiring: invoked from
  * `agents/planner/graph/plan/nodes/generate/index.ts` after the refined
- * `prd.md` / `gdd.md` is written to disk. Loads the latest design
+ * `prd.md` is written to disk. Loads the latest design
  * session checkpoint, runs the extract → diff → detect cascade, and
  * appends a `chat_status` line with `statusType='refine_impact'`.
  *
@@ -33,8 +33,8 @@ import { detectAffectedTasks } from './detectAffectedTasks';
 
 export interface RefineImpactAlertInput {
   featurePath: string;
-  /** `prd.md` (service domain) or `gdd.md` (game domain). */
-  updatedDoc: 'prd.md' | 'gdd.md';
+  /** `prd.md` — the domain-neutral canonical plan document. */
+  updatedDoc: 'prd.md';
   /** Optional cascade signals — at least one is recommended for non-empty diffs. */
   llmResponse?: string;
   gitDiff?: string;
@@ -90,7 +90,7 @@ async function readDesignCheckpoint(
 
 /**
  * Emit a `refine_impact` chat status line summarising which design
- * tasks reference the PRD/GDD sections that the rev-plan turn just
+ * tasks reference the PRD sections that the rev-plan turn just
  * touched.
  *
  * Returns the computed metadata so callers / tests can assert.

@@ -14,43 +14,29 @@ import { generateFileOutline } from './fileOutline';
 import type { ResolvedArtifact } from '@ant/shared';
 
 /**
- * Filenames that own the `gen-plan` SSOT role across the two domains.
- * Both prd.md (service) and gdd.md (game) are sorted to the front of any
- * source-document listing so design and code prompts see the canonical
- * plan document first regardless of which domain authored it.
+ * The `gen-plan` SSOT filename. The plan document is domain-neutral —
+ * `prd.md` in every domain (a game project's PRD carries game sections via
+ * the overlay, not a different filename). Sorted to the front of any
+ * source-document listing so design and code prompts see it first.
  */
-const PLAN_FILE_NAMES = new Set(['prd.md', 'gdd.md']);
+const PLAN_FILE_NAME = 'prd.md';
 
 /**
- * Sort comparator that pulls plan-job canonical filenames (prd.md /
- * gdd.md) to the front of source-document listings, then falls back to
- * locale-aware alphabetic order. The two plan filenames are treated as
- * equal-priority so a workspace with one or the other (or both, in
- * legacy migrated cases) gets a stable ordering.
+ * Sort comparator that pulls the plan-job canonical filename (`prd.md`) to
+ * the front of source-document listings, then falls back to locale-aware
+ * alphabetic order.
  */
 function comparePlanFirst(a: string, b: string): number {
-  const aIsPlan = PLAN_FILE_NAMES.has(a);
-  const bIsPlan = PLAN_FILE_NAMES.has(b);
+  const aIsPlan = a === PLAN_FILE_NAME;
+  const bIsPlan = b === PLAN_FILE_NAME;
   if (aIsPlan && !bIsPlan) return -1;
   if (!aIsPlan && bIsPlan) return 1;
-  if (aIsPlan && bIsPlan) {
-    // Stable inside the plan group: prd.md before gdd.md alphabetically
-    // anyway, but make the intent explicit.
-    return a === 'prd.md' ? -1 : b === 'prd.md' ? 1 : 0;
-  }
   return a.localeCompare(b);
 }
 
-/**
- * Find the canonical plan-job filename (prd.md or gdd.md) in a list of
- * candidate filenames. Prefer `prd.md` when both are present (legacy
- * migration safety: a workspace that authored prd.md before the gdd.md
- * split keeps prd.md as authoritative).
- */
+/** Find the canonical plan-job filename (`prd.md`) in a candidate list. */
 function findPlanFile(filenames: string[]): string | undefined {
-  if (filenames.includes('prd.md')) return 'prd.md';
-  if (filenames.includes('gdd.md')) return 'gdd.md';
-  return undefined;
+  return filenames.includes(PLAN_FILE_NAME) ? PLAN_FILE_NAME : undefined;
 }
 
 /**
@@ -125,10 +111,9 @@ export function buildCondensedSourceDocs(
       .join('\n\n');
   }
 
-  // The plan document (prd.md for service, gdd.md for game) is the
-  // highest-priority context for downstream classification and design.
-  // Always include it in full; truncation distributes across other
-  // files only.
+  // The plan document (`prd.md`) is the highest-priority context for
+  // downstream classification and design. Always include it in full;
+  // truncation distributes across other files only.
   const prdKey = findPlanFile(allFiles);
   const otherFiles = prdKey ? allFiles.filter(f => f !== prdKey) : allFiles;
 

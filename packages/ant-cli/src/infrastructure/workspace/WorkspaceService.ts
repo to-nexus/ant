@@ -10,7 +10,7 @@
  *     ├── codebase/        (Git repository)
  *     └── features/
  *         └── <feature>/
- *             ├── plan/             (PRD / GDD source documents, depth -1)
+ *             ├── plan/             (PRD source documents, depth -1)
  *             ├── architecture/     (system / spec design artifacts)
  *             ├── visual/           (ui / game-art design artifacts, sub-sourced)
  *             ├── assets/           (service / game / gen asset pools)

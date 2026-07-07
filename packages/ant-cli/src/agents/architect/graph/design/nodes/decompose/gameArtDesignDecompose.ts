@@ -69,9 +69,10 @@ export async function decomposeGameArtDesign(
   const sourceRecord = pool.sourcesAsRecord();
 
   // Role-aware partition. The shared input-context partial replaces the
-  // legacy `directiveContext` string with `<sources role="…" doc="GDD">`
-  // (game domain) so the prompt mirrors the RAC-assigned roles instead
-  // of flattening everything under a hard-coded "PRD:" header.
+  // legacy `directiveContext` string with `<sources role="…" doc="PRD">`
+  // blocks so the prompt mirrors the RAC-assigned roles instead of
+  // flattening everything under a hard-coded "PRD:" header. The plan
+  // document is the domain-neutral PRD in every domain.
   const decomposeCtx = buildDecomposeContext(pool, state, {
     includePreviousDesign: false,
     toolModeThreshold: DECOMPOSE_SOURCE_THRESHOLD,

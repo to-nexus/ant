@@ -43,7 +43,7 @@ export function showHelp(): void {
   console.error("  workspace/");
   console.error("  └── {project}/");
   console.error("      ├── {feature}/");
-  console.error("      │   ├── plan/             # PRD / GDD (text plan documents)");
+  console.error("      │   ├── plan/             # PRD (text plan documents)");
   console.error("      │   ├── architecture/     # system/, spec/ design docs");
   console.error("      │   ├── visual/           # ui/, game-art/ design artifacts");
   console.error("      │   ├── assets/           # service/, game/, gen/ runtime assets");

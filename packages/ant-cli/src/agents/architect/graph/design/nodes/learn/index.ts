@@ -459,7 +459,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       // Carry the data the FE needs to start the code job through the
       // explicit pipeline (no LLM detect re-interpretation of the
       // "Implement <specFile>" directive). `specPath` pins the spec as
-      // a ref, `sourceFiles` becomes the explicit context (PRD / GDD /
+      // a ref, `sourceFiles` becomes the explicit context (PRD /
       // user-uploaded originals), and `domain` keeps the resolved
       // domain stable across the design→code hand-off.
       const sourceFiles = state.workspaceState?.planFileNames ?? [];

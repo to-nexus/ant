@@ -12,7 +12,7 @@ import type { FileNode } from './file-resource';
  * `meta` / `sessions` / `codebase`).
  *
  * Visibility tags:
- *   'ui:plan'         — `plan/` (PRD / GDD)
+ *   'ui:plan'         — `plan/` (PRD)
  *   'ui:architecture' — `architecture/` (system / spec)
  *   'ui:visual'       — `visual/` (ui / game-art sub-sources)
  *   'ui:assets'       — `assets/` (service / game / gen pools)

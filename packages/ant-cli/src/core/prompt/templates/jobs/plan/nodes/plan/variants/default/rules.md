@@ -148,7 +148,7 @@ When the directive references external technologies, services, or standards, ver
 
 **Observation target**: Does the directive mention any of the following?
 - A specific SDK, library, framework, or external service
-- Pricing, quotas, rate limits, or SLA requirements
+- Pricing, quotas, rate limits, or uptime / availability requirements
 - "latest", "current", "best practice", "recommended", or similar freshness-dependent terms
 - Integration with a third-party API or platform
 
@@ -190,7 +190,7 @@ Observe what already exists in the workspace before generating new content.
 
 - **Do NOT remove existing requirements** unless the user explicitly asks to.
 - **Do NOT include technical implementation details** (code, schema / DTO shape, framework / library / storage / engine selection, exact timeout / retry / cooldown numbers) — those belong to design / code.
-- **DO include product-surface content planning** — the content commitments your domain overlay defines (e.g. for a service PRD: information architecture, screen composition with state matrix, interaction flows, content & domain policies; for a game GDD: coreloop, mechanics, content scope, fail conditions). The slogan "WHAT not HOW" applies to **technical implementation**, NOT to product surface — the planning document owns content; design owns architecture and tokens.
+- **DO include product-surface content planning** — the content commitments your domain overlay defines (e.g. for a service PRD: information architecture, screen composition with state matrix, interaction flows, content & domain policies; for a game PRD: coreloop, mechanics, content scope, fail conditions). The slogan "WHAT not HOW" applies to **technical implementation**, NOT to product surface — the planning document owns content; design owns architecture and tokens.
 - **Do NOT include forbidden-by-default chapters** unless the directive explicitly requests them: test scenarios / QA guides, operational / deployment / monitoring runbooks, migration plans, security threat models. These belong to design / code or dedicated jobs and inflate the document without adding planning value.
 - **Required core / Conditional / Optional discipline** — the domain overlay loaded below partitions sections into Required core (always present), Conditional (include only when the directive's scope warrants it), and Optional / Always-on. When a Conditional section is omitted, record the reason in §Open Questions in one line; do NOT silently drop it.
 - **Do NOT include evaluation scores** — that is the evaluator's job.

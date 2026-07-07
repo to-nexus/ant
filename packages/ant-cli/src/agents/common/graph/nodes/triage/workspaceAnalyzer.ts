@@ -5,7 +5,7 @@
  * Triage 노드에서 Prerequisites 체크에 사용.
  *
  * Canonical layout (Phase B):
- *   - plan/                              (sources — prd.md, gdd.md, tech-spec.md, …)
+ *   - plan/                              (sources — prd.md, tech-spec.md, …)
  *   - meta/directives/{design,code,…}/   (chat-bound or hand-authored directives)
  *   - meta/evals/{prd,ui-design,…}/      (evaluation reports)
  *   - architecture/system/               (system design docs)
@@ -119,7 +119,7 @@ export async function analyzeWorkspace(
   };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // plan/ — text-bearing source files (prd.md, gdd.md, tech-spec.md, …)
+  // plan/ — text-bearing source files (prd.md, tech-spec.md, …)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const planAbs = path.join(featurePath, PLAN_DIR);
   const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
@@ -144,17 +144,12 @@ export async function analyzeWorkspace(
   state.hasPlan = validPlanFiles.length > 0;
 
   if (state.hasPlan) {
-    // Plan-job canonical outputs are domain-aware: service → prd.md,
-    // game → gdd.md. The analyzer does not know the workspace domain
-    // here, so prefer prd.md, then gdd.md, then fall back to the first
-    // source file. Either canonical filename is treated as "the plan
-    // document"; downstream resolvers use `pickExistingPlanFilename`
-    // when domain context is available.
-    const canonical = validPlanFiles.includes('prd.md')
-      ? 'prd.md'
-      : validPlanFiles.includes('gdd.md')
-        ? 'gdd.md'
-        : validPlanFiles[0];
+    // Plan-job canonical output is the domain-neutral `plan/prd.md` in
+    // every domain (a game project's PRD carries game sections via the
+    // overlay, not a different filename). Prefer the canonical `prd.md`,
+    // else the first source file. `plan/` = "requirements level"; the
+    // filename is never a domain signal.
+    const canonical = validPlanFiles.includes('prd.md') ? 'prd.md' : validPlanFiles[0];
     state.planPath = path.join(planAbs, canonical);
   }
   console.log(`📄 [WorkspaceAnalyzer] Plan files: ${validPlanFiles.length} found (${validPlanFiles.join(', ') || 'none'}) → hasPlan=${state.hasPlan}`);

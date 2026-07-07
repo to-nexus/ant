@@ -235,12 +235,13 @@ describe('Domain-Surface Boundary — design-spec domain routing (Game-Activatio
     }
   });
 
-  it('plan-slot label follows domain (GDD grounding for game spec)', () => {
-    // gen-spec pulls the plan doc as ref; its label must read GDD in a game
-    // workspace so the spec grounds against the GDD rather than a PRD.
+  it('plan-slot label is the domain-neutral PRD (unified — game spec grounds against the PRD)', () => {
+    // gen-spec pulls the plan doc as ref; the plan artifact is the single
+    // domain-neutral PRD (a game PRD carries game sections via the overlay),
+    // so its label reads PRD in every domain including game.
     const gameRefs = getConfigSlotsForDomain('gen-spec', 'game')!.refs.filter(s => s.path === 'plan');
     expect(gameRefs.length).toBeGreaterThan(0);
-    for (const slot of gameRefs) expect(slot.label.en).toBe('GDD');
+    for (const slot of gameRefs) expect(slot.label.en).toBe('PRD');
   });
 });
 
@@ -412,42 +413,41 @@ const PLAN_INPUT_INTENTS = (() => {
   return out;
 })();
 
-describe('domain-aware plan exclusivity — getConfigSlotsForDomain', () => {
+describe('domain-neutral plan slot — getConfigSlotsForDomain (unified PRD)', () => {
   it('discovers a non-empty plan-input intent set', () => {
     expect(PLAN_INPUT_INTENTS.length).toBeGreaterThan(0);
   });
 
   for (const intent of PLAN_INPUT_INTENTS) {
     for (const domain of DOMAINS_BOTH) {
-      it(`[${domain}] ${intent}: plan-dir slots exclude wrong-domain filename`, () => {
+      it(`[${domain}] ${intent}: plan-dir slots never hide the single canonical prd.md`, () => {
+        // Unified single-canonical PRD: plan/prd.md is the plan artifact
+        // for EVERY domain, so no domain rewrites the slot to hide a
+        // "wrong-domain" filename. gen-plan's refs slot pre-excludes its
+        // own output (prd.md); non-gen-plan intents keep prd.md visible.
         const slots = getConfigSlotsForDomain(intent, domain);
         expect(slots).not.toBeNull();
         const planSlots = [
           ...slots!.refs.filter(s => s.path === SOURCES_DIR),
           ...slots!.context.filter(s => s.path === SOURCES_DIR),
         ];
-        const expectedHidden = domain === 'game' ? 'prd.md' : 'gdd.md';
-        const expectedKept = domain === 'game' ? 'gdd.md' : 'prd.md';
         for (const slot of planSlots) {
-          expect(slot.excludeFiles ?? [], `${intent}@${domain}: plan-dir slot must hide ${expectedHidden}`).toContain(expectedHidden);
+          // gdd.md is no longer a recognized plan filename anywhere.
+          expect(slot.excludeFiles ?? [], `${intent}@${domain}: gdd.md must not appear`).not.toContain('gdd.md');
           if (intent !== 'gen-plan') {
-            expect(slot.excludeFiles ?? [], `${intent}@${domain}: plan-dir slot must NOT hide ${expectedKept}`).not.toContain(expectedKept);
+            expect(slot.excludeFiles ?? [], `${intent}@${domain}: prd.md stays visible`).not.toContain('prd.md');
           }
         }
       });
 
-      it(`[${domain}] ${intent}: plan-dir slots carry domain-correct label`, () => {
+      it(`[${domain}] ${intent}: plan-dir slots carry the domain-neutral PRD label`, () => {
         const slots = getConfigSlotsForDomain(intent, domain);
         const planSlots = [
           ...slots!.refs.filter(s => s.path === SOURCES_DIR),
           ...slots!.context.filter(s => s.path === SOURCES_DIR),
         ];
         for (const slot of planSlots) {
-          if (domain === 'game') {
-            expect(slot.label.en).toBe('GDD');
-          } else {
-            expect(slot.label.en).toBe('PRD');
-          }
+          expect(slot.label.en).toBe('PRD');
           expect(slot.label.ko).toBe('기획서');
         }
       });
@@ -455,7 +455,7 @@ describe('domain-aware plan exclusivity — getConfigSlotsForDomain', () => {
   }
 });
 
-describe('gen-plan target.outputs collapses domain-correct', () => {
+describe('gen-plan target.outputs — single PRD for every domain', () => {
   it('service → single PRD output', () => {
     const slots = getConfigSlotsForDomain('gen-plan', 'service');
     expect(slots?.target.kind).toBe('generate');
@@ -465,36 +465,36 @@ describe('gen-plan target.outputs collapses domain-correct', () => {
     expect(slots.target.outputs[0].ext).toBe('.md');
   });
 
-  it('game → single GDD output', () => {
+  it('game → single PRD output (unified — no separate GDD)', () => {
     const slots = getConfigSlotsForDomain('gen-plan', 'game');
     expect(slots?.target.kind).toBe('generate');
     if (slots?.target.kind !== 'generate') return;
     expect(slots.target.outputs).toHaveLength(1);
-    expect(slots.target.outputs[0].prefix).toBe('gdd');
+    expect(slots.target.outputs[0].prefix).toBe('prd');
     expect(slots.target.outputs[0].ext).toBe('.md');
   });
 
-  it('service helper output matches matrix-helper collapse', () => {
-    const helper = getPlanOutputs('service');
+  it('service output matches the domain-neutral helper', () => {
+    const helper = getPlanOutputs();
     const slots = getConfigSlotsForDomain('gen-plan', 'service');
     if (slots?.target.kind !== 'generate') return;
     expect(slots.target.outputs).toEqual(helper);
   });
 
-  it('game helper output matches matrix-helper collapse', () => {
-    const helper = getPlanOutputs('game');
+  it('game output matches the domain-neutral helper', () => {
+    const helper = getPlanOutputs();
     const slots = getConfigSlotsForDomain('gen-plan', 'game');
     if (slots?.target.kind !== 'generate') return;
     expect(slots.target.outputs).toEqual(helper);
   });
 });
 
-describe('domain-aware label accessors', () => {
-  it('plan action card resolves PRD/GDD per domain (en)', () => {
+describe('domain-neutral label accessors (unified PRD)', () => {
+  it('plan action card resolves PRD for both domains (en)', () => {
     const planAction = ACTION_DEFINITIONS.find(d => d.id === 'plan');
     expect(planAction).toBeDefined();
     expect(getActionLabel(planAction!, 'service', 'en')).toBe('PRD');
-    expect(getActionLabel(planAction!, 'game', 'en')).toBe('GDD');
+    expect(getActionLabel(planAction!, 'game', 'en')).toBe('PRD');
   });
 
   it('plan action card stays domain-neutral in Korean', () => {
@@ -503,17 +503,17 @@ describe('domain-aware label accessors', () => {
     expect(getActionLabel(planAction!, 'game', 'ko')).toBe('기획서');
   });
 
-  it('gen-plan / rev-plan / explain-plan intents resolve PRD/GDD per domain (en)', () => {
-    const cases: Array<[IntentId, string, string]> = [
-      ['gen-plan', 'Create PRD', 'Create GDD'],
-      ['rev-plan', 'Update PRD', 'Update GDD'],
-      ['explain-plan', 'Explain PRD', 'Explain GDD'],
+  it('gen-plan / rev-plan / explain-plan intents resolve PRD for both domains (en)', () => {
+    const cases: Array<[IntentId, string]> = [
+      ['gen-plan', 'Create PRD'],
+      ['rev-plan', 'Update PRD'],
+      ['explain-plan', 'Explain PRD'],
     ];
-    for (const [id, expectedService, expectedGame] of cases) {
+    for (const [id, expected] of cases) {
       const def = INTENT_DEFINITIONS.find(d => d.id === id);
       expect(def, id).toBeDefined();
-      expect(getIntentLabel(def!, 'service', 'en')).toBe(expectedService);
-      expect(getIntentLabel(def!, 'game', 'en')).toBe(expectedGame);
+      expect(getIntentLabel(def!, 'service', 'en')).toBe(expected);
+      expect(getIntentLabel(def!, 'game', 'en')).toBe(expected);
     }
   });
 
@@ -524,29 +524,27 @@ describe('domain-aware label accessors', () => {
     expect(getIntentLabel(def!, 'game', 'en')).toBe(def!.label.en);
   });
 
-  it('undefined domain falls back to service semantics (workspace default seed)', () => {
+  it('undefined domain falls back to the same PRD label', () => {
     const planAction = ACTION_DEFINITIONS.find(d => d.id === 'plan');
     expect(getActionLabel(planAction!, undefined, 'en')).toBe('PRD');
   });
 });
 
-describe('matrix-level invariant — static slots remain dual-candidate', () => {
-  it('gen-plan matrix entry lists both candidates in target.outputs', () => {
+describe('matrix-level invariant — single-canonical plan output', () => {
+  it('gen-plan matrix entry lists the single PRD candidate in target.outputs', () => {
     const slots = getConfigSlots('gen-plan');
     expect(slots?.target.kind).toBe('generate');
     if (slots?.target.kind !== 'generate') return;
     const filenames = slots.target.outputs.map(o => `${o.prefix}${o.ext}`);
-    expect(filenames).toContain('prd.md');
-    expect(filenames).toContain('gdd.md');
-    expect(filenames).toHaveLength(2);
+    expect(filenames).toEqual(['prd.md']);
   });
 
-  it('gen-plan refs slot pre-excludes both plan filenames at the matrix layer', () => {
+  it('gen-plan refs slot pre-excludes only prd.md at the matrix layer', () => {
     const slots = getConfigSlots('gen-plan');
     const refSlot = slots?.refs[0];
     expect(refSlot).toBeDefined();
     expect(refSlot!.excludeFiles).toContain('prd.md');
-    expect(refSlot!.excludeFiles).toContain('gdd.md');
+    expect(refSlot!.excludeFiles).not.toContain('gdd.md');
   });
 });
 

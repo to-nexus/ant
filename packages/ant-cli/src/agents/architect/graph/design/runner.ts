@@ -43,7 +43,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
       }
       if (summary.unscannableTaskIds.length > 0) {
         console.log(
-          `⚠️  [DesignRunner] ${summary.unscannableTaskIds.length} task(s) built without PRD/GDD as ref — ` +
+          `⚠️  [DesignRunner] ${summary.unscannableTaskIds.length} task(s) built without PRD as ref — ` +
           'cross-document sync cannot speak for them.',
         );
       }

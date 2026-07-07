@@ -541,7 +541,7 @@ export class PromptBuilder implements PromptPort {
     //   1. templates/domain/{d}.md            — global identity (job-agnostic)
     //   2. templates/jobs/{job}/domain/{d}.md — job × domain meta-pattern
     // When both exist, both are injected: identity first, then the job
-    // overlay layers job-specific guidance (e.g. plan job → GDD/PRD skeleton).
+    // overlay layers job-specific guidance (e.g. plan job → PRD skeleton).
     await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.basisDomain(domain), outPaths);
     // `skipJobDomainOverlay` — the design-job domain overlay
     // (`jobs/design/domain/{d}.md`) is authored at *system-design* altitude

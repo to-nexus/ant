@@ -8,7 +8,7 @@
       "label": "기획서 작성",
       "label_game": "기획서 작성",
       "description": "PRD를 생성하거나 보강합니다",
-      "description_game": "GDD(게임 기획서)를 생성하거나 보강합니다",
+      "description_game": "게임 기획서(콘셉트·코어루프·콘텐츠 범위)를 생성하거나 보강합니다",
       "modeGenerate": "새 기획서 작성",
       "modeRefine": "기존 기획서 보강"
     },
