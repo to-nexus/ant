@@ -8,11 +8,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import {
   normalizeHostname,
+  parseHostnameInput,
+  parentHostCandidates,
   isValidHostname,
   isApexDomain,
   buildDnsInstructions,
   generateVerificationToken,
 } from '../../src/infrastructure/deploy/customDomain/verification';
+import { DeployService } from '../../src/infrastructure/deploy/DeployService';
 import {
   isCustomDomainEnabled,
   getCustomDomainCnameTarget,
@@ -59,6 +62,33 @@ describe('custom-domain verification helpers', () => {
     const b = generateVerificationToken();
     expect(a).not.toEqual(b);
     expect(a.startsWith('ant-verify-')).toBe(true);
+  });
+
+  it('parses a leading `*.` into base + wildcard intent', () => {
+    expect(parseHostnameInput('*.example.com')).toEqual({ hostname: 'example.com', wildcard: true });
+    expect(parseHostnameInput('HTTPS://*.Example.com/')).toEqual({ hostname: 'example.com', wildcard: true });
+    expect(parseHostnameInput('app.example.com')).toEqual({ hostname: 'app.example.com', wildcard: false });
+  });
+
+  it('walks up parent candidates most-specific-first, excluding self + public suffix', () => {
+    expect(parentHostCandidates('deep.a.example.com')).toEqual(['a.example.com', 'example.com']);
+    expect(parentHostCandidates('www.example.com')).toEqual(['example.com']);
+    expect(parentHostCandidates('example.com')).toEqual([]); // apex has no >=2-label parent
+  });
+
+  it('builds wildcard instructions: `*.base` CNAME + apex A when apex IPs set', () => {
+    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1', '2.2.2.2'] }, true);
+    expect(w.wildcard).toBe(true);
+    expect(w.apex).toBe(false);
+    expect(w.connection).toEqual({ kind: 'cname', name: '*.example.com', value: 'ant-domains.cross.nexus' });
+    expect(w.txt).toEqual({ name: '_ant-challenge.example.com', value: 'tok' });
+    expect(w.apexConnection).toEqual({ kind: 'a', name: 'example.com', values: ['1.1.1.1', '2.2.2.2'] });
+  });
+
+  it('omits apex A from wildcard instructions when apex IPs are not provisioned', () => {
+    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: [] }, true);
+    expect(w.wildcard).toBe(true);
+    expect(w.apexConnection).toBeUndefined();
   });
 });
 
@@ -145,6 +175,64 @@ describe('CustomDomainService', () => {
     expect(await svc.delete({ ...COORDS, userId: 'intruder' }, 'app.example.com')).toBe(false);
     expect(await svc.delete(COORDS, 'app.example.com')).toBe(true);
     expect(store._map.has('app.example.com')).toBe(false);
+  });
+
+  it('register stores the base keyed by wildcard flag (from `*.` input)', async () => {
+    const store = fakeStore();
+    const svc = new CustomDomainService(store);
+    const r = await svc.register(COORDS, '*.example.com', 'frontend', undefined, 'now');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.domain.hostname).toBe('example.com');
+    expect(r.domain.wildcard).toBe(true);
+    expect(r.dns.connection).toEqual(expect.objectContaining({ kind: 'cname', name: '*.example.com' }));
+    expect(store._map.get('example.com')?.wildcard).toBe(true);
+  });
+
+  it('register honors an explicit wildcard flag on a base domain', async () => {
+    const store = fakeStore();
+    const svc = new CustomDomainService(store);
+    const r = await svc.register(COORDS, 'example.com', 'frontend', undefined, 'now', true);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.domain.wildcard).toBe(true);
+  });
+});
+
+describe('DeployService.resolveCustomDomain wildcard walk-up', () => {
+  function svcWith(records: Partial<CustomDomain>[]): DeployService {
+    const map = new Map<string, CustomDomain>();
+    for (const r of records) map.set(r.hostname!.toLowerCase(), { status: 'active', ...COORDS, ...r } as CustomDomain);
+    const stateStore: any = { getCustomDomainByHost: async (h: string) => map.get(h.toLowerCase()) ?? null };
+    return new DeployService({ portManager: {} as any, stateStore, workspacesPath: '/tmp' });
+  }
+
+  it('resolves any subdomain to an active wildcard registration on the base', async () => {
+    const svc = svcWith([{ hostname: 'example.com', wildcard: true, projectId: 'wild' }]);
+    expect((await svc.resolveCustomDomain('www.example.com'))?.projectId).toBe('wild');
+    expect((await svc.resolveCustomDomain('deep.a.example.com'))?.projectId).toBe('wild');
+    // apex matches the same record via exact lookup
+    expect((await svc.resolveCustomDomain('example.com'))?.projectId).toBe('wild');
+  });
+
+  it('prefers an exactly-registered sibling over the wildcard parent', async () => {
+    const svc = svcWith([
+      { hostname: 'example.com', wildcard: true, projectId: 'wild' },
+      { hostname: 'api.example.com', projectId: 'exact' },
+    ]);
+    expect((await svc.resolveCustomDomain('api.example.com'))?.projectId).toBe('exact');
+    expect((await svc.resolveCustomDomain('www.example.com'))?.projectId).toBe('wild');
+  });
+
+  it('does NOT wildcard-serve subdomains from a non-wildcard parent', async () => {
+    const svc = svcWith([{ hostname: 'example.com', wildcard: false, projectId: 'apexonly' }]);
+    expect(await svc.resolveCustomDomain('www.example.com')).toBeNull();
+    expect((await svc.resolveCustomDomain('example.com'))?.projectId).toBe('apexonly');
+  });
+
+  it('ignores an inactive wildcard registration', async () => {
+    const svc = svcWith([{ hostname: 'example.com', wildcard: true, status: 'pending_dns', projectId: 'wild' }]);
+    expect(await svc.resolveCustomDomain('www.example.com')).toBeNull();
   });
 });
 

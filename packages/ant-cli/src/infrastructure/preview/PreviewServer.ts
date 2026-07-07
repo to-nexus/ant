@@ -1182,13 +1182,14 @@ export class PreviewServer {
         const hostname = req.body?.hostname;
         const target = req.body?.target === 'backend' ? 'backend' : 'frontend';
         const slug = typeof req.body?.slug === 'string' && req.body.slug ? req.body.slug : undefined;
+        const wildcard = req.body?.wildcard === true;
         if (!hostname || typeof hostname !== 'string') {
           res.status(400).json({ success: false, reason: 'invalid-hostname', message: 'hostname is required' });
           return;
         }
         const result = await this.customDomainService.register(
           { tenantId: c.organizationId, userId: c.userId, projectId: c.projectId, feature: c.feature },
-          hostname, target, slug, new Date().toISOString(),
+          hostname, target, slug, new Date().toISOString(), wildcard,
         );
         if (!result.ok) {
           const code = result.reason === 'not-enabled' ? 503 : result.reason === 'already-taken' ? 409 : 400;

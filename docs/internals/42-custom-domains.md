@@ -108,14 +108,44 @@ A     mycompany.com                  →  13.125.33.44
 If apex support is not provisioned, use a subdomain (`app.` / `www.`) instead —
 a common pattern is to serve the app on `www` and redirect the root to it.
 
+### Wildcard — one entry covers the apex + every subdomain
+
+Registering a domain as a **wildcard** (`*.example.com`, or the base domain with
+the "include all subdomains" toggle) makes a single record serve the apex
+(`example.com`) plus every subdomain (`www.`, `app.`, `anything.…`) on the same
+deploy. Ownership is proven **once** on the base (`_ant-challenge.example.com`);
+routing resolves any host by exact match first, then walks up parent domains for
+an active wildcard registration (`DeployService.resolveCustomDomain`).
+
+Certificates stay **per-hostname on-demand** — each subdomain that is actually
+visited triggers its own HTTP-01 issuance via the `tls-ask` gate. There is **no
+single wildcard TLS certificate** (that would require DNS-01 / DNS delegation);
+the user-visible result is identical (every subdomain served over HTTPS).
+
+```
+TXT     _ant-challenge.example.com   =  ant-verify-3f9a…            (ownership, base only)
+CNAME   *.example.com                →  ant-domains.cross.nexus     (all subdomains)
+A       example.com                  →  3.34.11.22                  (apex, if APEX_IPS set)
+A       example.com                  →  13.125.33.44
+```
+
+A wildcard CNAME does not cover the bare apex, so the apex A-records are shown
+only when `ANT_CUSTOM_DOMAIN_APEX_IPS` is provisioned; otherwise subdomains only.
+An exactly-registered sibling (`api.example.com` → a different deploy) always
+wins over the wildcard parent.
+
 ## Limits
 
 - **Let's Encrypt**: 50 certs/registered-domain/7d, 300 orders/acct/3h. The
   `tls-ask` gate prevents unverified domains from consuming quota. Validate
   against LE staging before production ACME.
-- **User wildcard domains** (`*.mycompany.com`) need DNS-01 (the user's DNS API)
-  → not supported; use a concrete hostname per app (on-demand issues unlimited
-  concrete hostnames — functionally equivalent).
+- **Wildcard routing IS supported** (`*.mycompany.com` → apex + all subdomains
+  on one deploy, see above). What is NOT supported is a **single wildcard TLS
+  cert** — that needs DNS-01 (the user's DNS API / delegation). Wildcard routing
+  instead issues a concrete on-demand cert per visited hostname, so the same LE
+  quota applies (50 certs / registered-domain / 7d): fine for a handful of
+  subdomains, but a domain fronting hundreds of distinct visited subdomains in a
+  week can hit the limit. Validate against LE staging before production ACME.
 - **One hostname → one package.** A fullstack app uses two hostnames (e.g.
   `app.` for the frontend, `api.` for the backend).
 

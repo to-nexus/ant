@@ -134,8 +134,12 @@ spec:
 - **Let's Encrypt rate limits**: 50 certs/registered-domain/7d, 300 orders/acct/3h.
   The `tls-ask` gate (active-only) prevents random domains from burning quota.
   Validate against LE **staging** before switching to production ACME.
-- **User wildcard domains** (`*.mycompany.com`) need DNS-01 → not supported; use
-  a concrete hostname per app (on-demand issues unlimited concrete hostnames).
+- **Wildcard routing** (`*.mycompany.com` → apex + all subdomains on one deploy)
+  is supported **without any infra change** — the catch-all on-demand-TLS site
+  already accepts arbitrary SNI, and the app resolves subdomains to a wildcard
+  registration via parent walk-up. A single wildcard **TLS cert** is still not
+  supported (needs DNS-01); each visited subdomain gets its own on-demand cert,
+  so the per-registered-domain LE quota above applies.
 - **Apex** needs the NLB static EIPs (A record); CNAME is subdomain-only.
 - **Managed alternative**: Cloudflare for SaaS (Custom Hostnames API) replaces
   the NLB+Caddy layer entirely — trade infra ops for vendor cost/lock-in.

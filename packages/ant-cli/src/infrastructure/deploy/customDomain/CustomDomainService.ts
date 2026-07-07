@@ -18,6 +18,7 @@ import { getRealtimeBroadcastChannel } from '../../state/redisConstants';
 import { logger } from '../../../utils/logger';
 import {
   normalizeHostname,
+  parseHostnameInput,
   isValidHostname,
   generateVerificationToken,
   verifyDomainOwnership,
@@ -43,11 +44,16 @@ export class CustomDomainService {
     return isCustomDomainEnabled();
   }
 
-  private dnsFor(hostname: string, token: string): CustomDomainDnsInstructions {
-    return buildDnsInstructions(hostname, token, {
-      cnameTarget: getCustomDomainCnameTarget() || '',
-      apexIps: getCustomDomainApexIps(),
-    });
+  private dnsFor(hostname: string, token: string, wildcard = false): CustomDomainDnsInstructions {
+    return buildDnsInstructions(
+      hostname,
+      token,
+      {
+        cnameTarget: getCustomDomainCnameTarget() || '',
+        apexIps: getCustomDomainApexIps(),
+      },
+      wildcard,
+    );
   }
 
   /**
@@ -61,11 +67,16 @@ export class CustomDomainService {
     target: CustomDomainTarget,
     slug: string | undefined,
     nowIso: string,
+    wildcardIntent = false,
   ): Promise<RegisterResult> {
     if (!this.isEnabled()) {
       return { ok: false, reason: 'not-enabled', message: 'Custom domains are not enabled in this environment.' };
     }
-    const hostname = normalizeHostname(rawHostname);
+    // A leading `*.` in the input also selects wildcard; the record is keyed by
+    // the base domain either way.
+    const parsed = parseHostnameInput(rawHostname);
+    const hostname = parsed.hostname;
+    const wildcard = wildcardIntent || parsed.wildcard;
     if (!isValidHostname(hostname)) {
       return { ok: false, reason: 'invalid-hostname', message: 'Enter a valid fully-qualified hostname (e.g. app.example.com).' };
     }
@@ -90,12 +101,13 @@ export class CustomDomainService {
       status: existing?.status === 'active' ? 'active' : 'pending_dns',
       certStatus: existing?.certStatus ?? 'none',
       error: undefined,
+      wildcard,
       createdAt: existing?.createdAt ?? nowIso,
       verifiedAt: existing?.verifiedAt,
     };
     await this.stateStore.registerCustomDomain(domain);
     await this.broadcast(domain);
-    return { ok: true, domain, dns: this.dnsFor(hostname, verificationToken) };
+    return { ok: true, domain, dns: this.dnsFor(hostname, verificationToken, wildcard) };
   }
 
   /** Attempt ownership verification. On success flips the record to `active`. */
@@ -122,7 +134,7 @@ export class CustomDomainService {
     const domains = await this.stateStore.listCustomDomainsForDeploy(
       coords.tenantId, coords.userId, coords.projectId, coords.feature,
     );
-    return domains.map((d) => ({ ...d, dns: this.dnsFor(d.hostname, d.verificationToken) }));
+    return domains.map((d) => ({ ...d, dns: this.dnsFor(d.hostname, d.verificationToken, d.wildcard) }));
   }
 
   /** Delete a domain the caller owns. Returns false if not found / not owned. */
