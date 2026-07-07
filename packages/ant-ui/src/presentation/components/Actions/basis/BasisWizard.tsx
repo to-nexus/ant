@@ -1,6 +1,7 @@
 import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/domain/store';
 import { ScrollableTabNav, type TabItem } from '../ScrollableTabNav';
+import { DomainBadge } from '../DomainBadge';
 import { PageTransition } from '../PageTransition';
 import { ActionFooter } from '../ActionFooter';
 import { useBasisWizard } from './useBasisWizard';
@@ -139,6 +140,7 @@ export function BasisWizard({ basisSlot, onBack, lang, initialTier }: BasisWizar
           selectedId={wizard.state.activeTier}
           onSelect={handleTierSelect}
           onBack={exitWithSave}
+          rightAccessory={<DomainBadge />}
         />
       </div>
 
