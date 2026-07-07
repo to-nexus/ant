@@ -33,20 +33,35 @@ function CopyButton({ value }: { value: string }) {
 
 interface DnsRecord { label: string; name: string; value: string }
 
+/** Base domain of a wildcard `*.example.com` connection, or null if not wildcard. */
+function wildcardBase(dns: CustomDomainDnsInstructions): string | null {
+  return dns.connection.kind === 'cname' && dns.connection.name.startsWith('*.')
+    ? dns.connection.name.slice(2)
+    : null;
+}
+
 /**
  * Flatten DNS instructions into a single ordered record list — the SSOT shared
  * by the per-row render and the "copy all" plain-text export so the two never
- * drift. Handles the wildcard shape (TXT + `*.` CNAME + optional apex A rows).
+ * drift.
+ *
+ * Ordered root-first: TXT → apex A → connection. For a WILDCARD registration we
+ * default to the works-everywhere concrete form — a `www.<base>` CNAME instead
+ * of `*.<base>` — because many DNS providers (esp. `.co.kr` registrars) don't
+ * support wildcard records. The `*.` shortcut is surfaced as a note, not a row.
  */
 function dnsRecords(dns: CustomDomainDnsInstructions): DnsRecord[] {
   const rows: DnsRecord[] = [{ label: 'TXT', name: dns.txt.name, value: dns.txt.value }];
-  if (dns.connection.kind === 'cname') {
+  if (dns.apexConnection) {
+    for (const ip of dns.apexConnection.values) rows.push({ label: 'A', name: dns.apexConnection.name, value: ip });
+  }
+  const base = wildcardBase(dns);
+  if (base) {
+    rows.push({ label: 'CNAME', name: `www.${base}`, value: (dns.connection as { value: string }).value });
+  } else if (dns.connection.kind === 'cname') {
     rows.push({ label: 'CNAME', name: dns.connection.name, value: dns.connection.value });
   } else {
     for (const ip of dns.connection.values) rows.push({ label: 'A', name: dns.connection.name, value: ip });
-  }
-  if (dns.apexConnection) {
-    for (const ip of dns.apexConnection.values) rows.push({ label: 'A', name: dns.apexConnection.name, value: ip });
   }
   return rows;
 }
@@ -153,6 +168,8 @@ function DomainRow({
 
       {(() => {
         const rows = dnsRecords(domain.dns);
+        const base = wildcardBase(domain.dns);
+        const target = base ? (domain.dns.connection as { value: string }).value : null;
         return (
           <div style={{ marginTop: 8, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -166,6 +183,15 @@ function DomainRow({
             {rows.map((r, i) => (
               <DnsRow key={`${r.label}-${r.name}-${r.value}-${i}`} label={r.label} name={r.name} value={r.value} />
             ))}
+            {base && (
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.5 }}>
+                {t(
+                  'preview.domain.wildcardFallback',
+                  'Add one CNAME like www for each subdomain you need (e.g. app → target). If your DNS provider supports wildcard records, a single {{wild}} → {{target}} covers them all.',
+                  { wild: `*.${base}`, target },
+                )}
+              </div>
+            )}
           </div>
         );
       })()}
