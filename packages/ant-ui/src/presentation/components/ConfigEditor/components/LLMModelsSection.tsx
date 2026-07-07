@@ -12,6 +12,9 @@ interface LLMModelsSectionProps {
   availableModels: AvailableModel[];
   isLoadingModels: boolean;
   onModelChange: (job: string, nodeType: string, modelId: string) => void;
+  /** Providers whose API key is configured on the server. `undefined` = server
+   * did not report → no warnings shown. */
+  configuredProviders?: string[];
 }
 
 type JobKey = 'plan' | 'design' | 'code' | 'learn' | 'visual';
@@ -151,8 +154,17 @@ export function LLMModelsSection({
   availableModels,
   isLoadingModels,
   onModelChange,
+  configuredProviders,
 }: LLMModelsSectionProps) {
   const { t } = useTranslation('config');
+
+  // Providers that back a selectable model but have no API key on the server.
+  // Only computed when the server reported `configuredProviders` (else empty).
+  const unconfiguredProviders = Array.isArray(configuredProviders)
+    ? Array.from(new Set(availableModels.map((m) => m.provider))).filter(
+        (p) => !configuredProviders.includes(p),
+      )
+    : [];
 
   // Column widths sized so model chips fit their (suffix-free) display names
   // without truncation; the outer overflowX:auto still scrolls when all node
@@ -221,6 +233,7 @@ export function LLMModelsSection({
                     inheritedDefault={inheritedDefault}
                     availableModels={availableModels}
                     onModelChange={onModelChange}
+                    configuredProviders={configuredProviders}
                     t={t}
                   />
                 );
@@ -271,6 +284,32 @@ export function LLMModelsSection({
               <span>not applicable</span>
             </span>
           </div>
+
+          {unconfiguredProviders.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '9px 18px',
+                borderTop: '1px solid oklch(75% 0.15 65 / 0.4)',
+                background: 'oklch(94% 0.07 65 / 0.4)',
+                fontSize: 11.5,
+                lineHeight: 1.5,
+                color: 'oklch(45% 0.12 55)',
+                fontFamily: 'var(--font-display)',
+              }}
+            >
+              <span aria-hidden style={{ fontSize: 13, flexShrink: 0 }}>
+                ⚠
+              </span>
+              <span>
+                {t('llmModels.unconfiguredProvidersWarning', {
+                  providers: unconfiguredProviders.join(', '),
+                })}
+              </span>
+            </div>
+          )}
         </>
       )}
     </SectionCard>
@@ -284,6 +323,7 @@ interface JobRowProps {
   inheritedDefault: { id: string; displayName: string; provider: string } | undefined;
   availableModels: AvailableModel[];
   onModelChange: (job: string, nodeType: string, modelId: string) => void;
+  configuredProviders?: string[];
   t: (key: string, opts?: Record<string, unknown>) => string;
 }
 
@@ -294,6 +334,7 @@ function JobRow({
   inheritedDefault,
   availableModels,
   onModelChange,
+  configuredProviders,
   t,
 }: JobRowProps) {
   return (
@@ -376,6 +417,7 @@ function JobRow({
           models={availableModels}
           onChange={(id) => onModelChange(job.jobKey, 'default', id)}
           placeholder={t('projectEditor.selectModel')}
+          configuredProviders={configuredProviders}
           fill
           compact
         />
@@ -407,6 +449,7 @@ function JobRow({
               onChange={(id) => onModelChange(job.jobKey, col, id)}
               inheritedModel={inheritedDefault}
               placeholder={t('projectEditor.useJobDefault')}
+              configuredProviders={configuredProviders}
               fill
               compact
             />

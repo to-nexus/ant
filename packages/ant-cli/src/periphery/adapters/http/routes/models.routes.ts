@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { MODEL_REGISTRY, DEFAULT_MODELS } from '@ant/shared';
+import { MODEL_REGISTRY, DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
 
 /**
  * Available LLM Models API
@@ -10,10 +10,24 @@ import { MODEL_REGISTRY, DEFAULT_MODELS } from '@ant/shared';
 export interface LLMModelInfo {
   id: string;                    // Model identifier (e.g., "claude-sonnet-5")
   displayName: string;           // Human-readable name (e.g., "Sonnet 5")
-  provider: 'anthropic' | 'openai' | 'google' | 'deepseek';
+  provider: ModelProvider;
   description?: string;          // Brief description
   recommended?: boolean;         // Whether this is a recommended model
   capabilities?: string[];       // e.g., ["coding", "reasoning", "fast"]
+}
+
+/**
+ * Providers whose API key env var (see PROVIDER_API_KEY_ENV SSOT) is set to a
+ * non-empty value on THIS server. Computed per-request so a key added without a
+ * restart is reflected. The picker warns on models whose provider is absent
+ * here. In cloud mode all keys are platform-managed → the list is full → no
+ * warning ever shows.
+ */
+export function getConfiguredProviders(): ModelProvider[] {
+  return (Object.keys(PROVIDER_API_KEY_ENV) as ModelProvider[]).filter((provider) => {
+    const key = process.env[PROVIDER_API_KEY_ENV[provider]];
+    return !!key && key.trim().length > 0;
+  });
 }
 
 // Available models — DERIVED from the MODEL_REGISTRY SSOT (@ant/shared/models.ts):
@@ -44,7 +58,8 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: DEFAULT_MODELS.opusTier
+        default: DEFAULT_MODELS.opusTier,
+        configuredProviders: getConfiguredProviders(),
       });
     } catch (error) {
       console.error('[Models API] Error:', error);

@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   LOCAL_BACKEND_PORT: 'ant-ui:local-backend-port',  // 로컬 백엔드 포트 (default: 4100)
   DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
   LANGUAGE: 'ant-ui:language',
+  DEEPSEEK_CONSENT_ACK: 'ant-ui:deepseek-consent-ack',  // "don't show again" for the DeepSeek consent gate
 } as const;
 
 // Default values
