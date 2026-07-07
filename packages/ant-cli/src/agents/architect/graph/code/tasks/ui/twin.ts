@@ -40,7 +40,10 @@ export interface PairedFeatureVar {
 /**
  * Find the completed feature task that shares this ui task's `parallelGroup`.
  * `null` when the ui task has no paired feature (rare) or the twin has not
- * completed yet.
+ * completed yet. The pair model assumes a single DOM surface (a headless
+ * skeleton the ui pass styles); a game world-space Render ui task (engine
+ * scene, not a React skeleton) legitimately has no twin and falls to `null`,
+ * which the `{{#if pairedFeature}}` gate handles gracefully.
  */
 export function findPairedFeature(
   state: ArchitectGraphState,
