@@ -73,40 +73,31 @@ export const createProjectSlice: StateCreator<
 
   setSelectedProject: (projectId) => {
     const state = get() as any;
-    
+
     // ✅ Same project re-selection: skip destructive reset
     if (projectId && projectId === state.selectedProject) {
       return;
     }
-    
+
+    const prevProject = state.selectedProject as string | undefined;
+    const prevFeature = state.selectedFeature as string | undefined;
+
     if (!projectId) {
       sseManager.disconnectAll();
-      
-      set({ 
+
+      // SSOT: clear feature/project runtime, close feature+preview tabs, evict
+      // the previous feature's preview/deploy buckets, drop transfer source.
+      state.applyIdentityTransition({ scope: 'project', prevProject, prevFeature });
+
+      set({
         selectedProject: undefined,
         selectedFeature: undefined,
         features: [],
-        session: undefined,
-        chatEvents: [],
-        streamingBuffers: {},
-        lastChatSnapshotTs: undefined,
-        kanban: { jobId: undefined, todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' as const },
-        isRunning: false,
-        currentJobId: undefined,
         currentMode: undefined,
         jobStartPending: false,
         sseReconnectGrace: false,
         connectionStatus: 'connected',
-        figmaPopulated: null,
-        editorTabs: [],
-        activeEditorTabId: null,
-        activeJobs: {},
-        pendingAutoSelect: false,
       } as any);
-      if (state.selectFile) state.selectFile(undefined);
-      if (state.setFileTree) state.setFileTree([]);
-      if (state.resetCurrentFile) state.resetCurrentFile();
-      if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Scrub project config. git-world reset is driven by `useProjectLifecycle`
       // which observes `(selectedProject, selectedFeature)` transitions.
       if (state.clearProjectConfig) state.clearProjectConfig();
@@ -124,31 +115,19 @@ export const createProjectSlice: StateCreator<
     } else {
       sseManager.disconnectAll();
 
+      // SSOT: clear feature/project runtime, close feature+preview tabs, evict
+      // the previous feature's preview/deploy buckets, drop transfer source.
+      state.applyIdentityTransition({ scope: 'project', prevProject, prevFeature });
+
       set({
         selectedProject: projectId,
         selectedFeature: undefined,
         features: [],
-        session: undefined,
-        chatEvents: [],
-        streamingBuffers: {},
-        lastChatSnapshotTs: undefined,
-        kanban: { jobId: undefined, todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' as const },
-        isRunning: false,
-        currentJobId: undefined,
         currentMode: undefined,
         jobStartPending: false,
         sseReconnectGrace: false,
         connectionStatus: 'connected',
-        figmaPopulated: null,
-        editorTabs: [],
-        activeEditorTabId: null,
-        activeJobs: {},
-        pendingAutoSelect: false,
       } as any);
-      if (state.selectFile) state.selectFile(undefined);
-      if (state.setFileTree) state.setFileTree([]);
-      if (state.resetCurrentFile) state.resetCurrentFile();
-      if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Drop the cached project config; `useProjectLifecycle` (mounted at
       // the app root) resets git-world state, reconnects SSE, and primes
       // the new project's config/snapshot.
@@ -181,36 +160,32 @@ export const createProjectSlice: StateCreator<
     // sidebar re-clicks). Removed entirely.
 
     // Calculate isRunning for NEW feature
+    const prevFeature = state.selectedFeature as string | undefined;
     const newFeatureKey = state.selectedProject && featureName ? `${state.selectedProject}/${featureName}` : null;
     const newFeatureIsRunning = newFeatureKey ? !!state.runningJobsByFeature[newFeatureKey] : false;
-    
+
     console.log(`[Store] 🔀 Feature changed to: ${featureName || 'none'}`);
     if (newFeatureKey) {
       console.log(`   Feature key: ${newFeatureKey}`);
       console.log(`   Has running job: ${newFeatureIsRunning}`);
     }
-    
-    set({ 
+
+    // SSOT: clear feature runtime, close feature-scoped tabs (fileEdit /
+    // transfer — previewConfig stays open and reloads for the new feature),
+    // evict the previous feature's preview/deploy buckets, drop transfer source.
+    // git-world reset + SSE reconnect are driven by `useProjectLifecycle`.
+    state.applyIdentityTransition({
+      scope: 'feature',
+      prevProject: state.selectedProject,
+      prevFeature,
+    });
+
+    set({
       selectedFeature: featureName,
-      figmaPopulated: null,
-      editorTabs: [],
-      activeEditorTabId: null,
-      activeJobs: {},
+      isRunning: newFeatureIsRunning,
       pendingAutoSelect: !!featureName,
     } as any);
-    
-    // Clear related state from other slices
-    if (state.selectFile) state.selectFile(undefined);
-    if (state.setFileTree) state.setFileTree([]);
-    if (state.resetCurrentFile) state.resetCurrentFile();
-    if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-    // git-world reset is driven by `useProjectLifecycle` which observes
-    // `selectedFeature` transitions (this setter is just the identity flip).
-    if (state.setRunning) {
-      // Only update isRunning flag, don't call full setRunning
-      set({ isRunning: newFeatureIsRunning } as any);
-    }
-    
+
     if (featureName) {
       // Save project → feature mapping
       if (state.selectedProject) {

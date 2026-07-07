@@ -203,10 +203,23 @@ export const createDeploySlice: StateCreator<any, [], [], DeploySlice> = (set, g
 
   removeDeployEntry: (key) => {
     set((state: any) => {
-      if (!state.deployByFeature[key]) return state;
-      const next = { ...state.deployByFeature };
-      delete next[key];
-      return { deployByFeature: next };
+      const hasDeploy = !!state.deployByFeature[key];
+      const hasDomains =
+        key in state.customDomainsByFeature || key in state.customDomainEnabledByFeature;
+      if (!hasDeploy && !hasDomains) return state;
+      // Evict deploy status AND the sibling custom-domain buckets keyed on the
+      // same feature — a single call clears all deploy-related per-feature state.
+      const nextDeploy = { ...state.deployByFeature };
+      delete nextDeploy[key];
+      const nextDomains = { ...state.customDomainsByFeature };
+      delete nextDomains[key];
+      const nextEnabled = { ...state.customDomainEnabledByFeature };
+      delete nextEnabled[key];
+      return {
+        deployByFeature: nextDeploy,
+        customDomainsByFeature: nextDomains,
+        customDomainEnabledByFeature: nextEnabled,
+      };
     });
   },
 
