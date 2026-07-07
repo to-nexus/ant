@@ -52,10 +52,11 @@ export function registerCustomDomain(
   hostname: string,
   target: CustomDomainTarget,
   slug?: string,
+  wildcard?: boolean,
 ): Promise<{ success: boolean; domain?: CustomDomain; dns?: CustomDomainDnsInstructions; reason?: string; message?: string }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/custom-domain`,
-    { feature, hostname, target, slug },
+    { feature, hostname, target, slug, wildcard },
   );
 }
 

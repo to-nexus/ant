@@ -86,9 +86,17 @@ function DomainRow({
           rel="noreferrer"
           style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)', textDecoration: 'none' }}
         >
-          {domain.hostname}
+          {domain.wildcard ? `*.${domain.hostname}` : domain.hostname}
         </a>
         <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>({domain.target})</span>
+        {domain.wildcard && (
+          <span
+            title={t('preview.domain.wildcardHint', 'Covers the apex and every subdomain')}
+            style={{ fontSize: 10, fontWeight: 700, color: 'var(--violet-700)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-sm)', padding: '1px 5px' }}
+          >
+            {t('preview.domain.wildcardBadge', 'Wildcard')}
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         {statusBadge(domain.status, t)}
       </div>
@@ -110,6 +118,9 @@ function DomainRow({
               <DnsRow key={ip} label="A" name={domain.dns.connection.name} value={ip} />
             ))
           )}
+          {domain.dns.apexConnection?.values.map((ip) => (
+            <DnsRow key={`apex-${ip}`} label="A" name={domain.dns.apexConnection!.name} value={ip} />
+          ))}
         </div>
       )}
 
@@ -163,6 +174,7 @@ export function CustomDomainSection({
   const [hostname, setHostname] = useState('');
   const [target, setTarget] = useState<CustomDomainTarget>('frontend');
   const [slug, setSlug] = useState<string>('');
+  const [wildcard, setWildcard] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | undefined>();
 
@@ -178,10 +190,11 @@ export function CustomDomainSection({
     if (!hostname.trim()) return;
     setBusy(true);
     setFormError(undefined);
-    const res = await register(hostname.trim(), target, isMulti ? (slug || undefined) : undefined);
+    const res = await register(hostname.trim(), target, isMulti ? (slug || undefined) : undefined, wildcard);
     setBusy(false);
     if (res.ok) {
       setHostname('');
+      setWildcard(false);
     } else {
       setFormError(res.message);
     }
@@ -237,6 +250,10 @@ export function CustomDomainSection({
               <Plus size={13} /> {t('preview.domain.add', 'Add')}
             </button>
           </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11.5, color: 'var(--text-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={wildcard} onChange={(e) => setWildcard(e.target.checked)} />
+            {t('preview.domain.wildcard', 'Include all subdomains (wildcard)')}
+          </label>
           {formError && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--status-error-fg)' }}>
               <AlertCircle size={12} /> {formError}

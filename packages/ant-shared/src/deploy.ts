@@ -168,6 +168,14 @@ export interface CustomDomain {
   status: CustomDomainStatus;
   certStatus?: CustomDomainCertStatus;
   error?: string;
+  /**
+   * Wildcard registration: `hostname` holds the base domain (e.g. `example.com`)
+   * and this record serves the apex (exact match) PLUS every subdomain
+   * (`www.`, `app.`, …) via parent walk-up matching. Ownership is proven once on
+   * the base (`_ant-challenge.<base>`); each visited subdomain gets its own
+   * on-demand certificate. Omitted/false → exact-hostname match only.
+   */
+  wildcard?: boolean;
   /** ISO timestamp of registration. */
   createdAt: string;
   /** ISO timestamp when ownership was confirmed (status → active). */
@@ -186,4 +194,12 @@ export interface CustomDomainDnsInstructions {
     | { kind: 'cname'; name: string; value: string }
     | { kind: 'a'; name: string; values: string[] };
   apex: boolean;
+  /** Wildcard registration — `connection` is a `*.<base>` CNAME covering all subdomains. */
+  wildcard?: boolean;
+  /**
+   * Optional apex A-record for a wildcard registration (a `*.<base>` CNAME does
+   * NOT cover the bare apex). Present only when wildcard AND apex IPs are
+   * provisioned; lets the root `<base>` reach the same deploy.
+   */
+  apexConnection?: { kind: 'a'; name: string; values: string[] };
 }

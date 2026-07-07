@@ -21,6 +21,7 @@ export interface UseCustomDomainManagerResult {
     hostname: string,
     target: CustomDomainTarget,
     slug?: string,
+    wildcard?: boolean,
   ) => Promise<{ ok: boolean; message?: string }>;
   verify: (hostname: string) => Promise<void>;
   remove: (hostname: string) => Promise<void>;
@@ -82,10 +83,10 @@ export function useCustomDomainManager(
   }, [isPrimary, featureKey, selectedProject, selectedFeature, applyCustomDomainEvent, refreshCustomDomains]);
 
   const register = useCallback(
-    async (hostname: string, target: CustomDomainTarget, slug?: string) => {
+    async (hostname: string, target: CustomDomainTarget, slug?: string, wildcard?: boolean) => {
       if (!selectedProject || !selectedFeature) return { ok: false, message: 'No feature selected' };
       try {
-        const res = await registerCustomDomain(selectedProject, selectedFeature, hostname, target, slug);
+        const res = await registerCustomDomain(selectedProject, selectedFeature, hostname, target, slug, wildcard);
         if (!res.success) return { ok: false, message: res.message };
         await refreshCustomDomains(selectedProject, selectedFeature);
         return { ok: true };

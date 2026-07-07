@@ -33,6 +33,7 @@ import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { startProcessServer } from './ProcessServer';
 import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
+import { parentHostCandidates } from './customDomain/verification';
 import { resolveDeployWorkspacePath, syncDeployWorkspace, installDeployDependencies } from './DeployWorkspace';
 import { DependencyInstaller } from '../../periphery/adapters/http/services/PreviewService/managers/DependencyInstaller';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
@@ -876,21 +877,35 @@ export class DeployService {
   } | null> {
     const hostname = (host || '').split(':')[0].toLowerCase().replace(/\.$/, '');
     if (!hostname) return null;
-    let domain: Awaited<ReturnType<typeof this.stateStore.getCustomDomainByHost>>;
-    try {
-      domain = await this.stateStore.getCustomDomainByHost(hostname);
-    } catch (err: any) {
-      logger.warn(`[CustomDomain] lookup failed for ${hostname}: ${err.message}`, { component: 'DeployService' });
-      return null;
-    }
-    if (!domain || domain.status !== 'active') return null;
-    return {
-      tenantId: domain.tenantId,
-      userId: domain.userId,
-      projectId: domain.projectId,
-      feature: domain.feature,
-      serviceName: domain.slug,
+
+    const lookup = async (h: string) => {
+      try {
+        return await this.stateStore.getCustomDomainByHost(h);
+      } catch (err: any) {
+        logger.warn(`[CustomDomain] lookup failed for ${h}: ${err.message}`, { component: 'DeployService' });
+        return null;
+      }
     };
+    const coordsOf = (d: NonNullable<Awaited<ReturnType<typeof this.stateStore.getCustomDomainByHost>>>) => ({
+      tenantId: d.tenantId,
+      userId: d.userId,
+      projectId: d.projectId,
+      feature: d.feature,
+      serviceName: d.slug,
+    });
+
+    // 1) Exact match wins — a specifically-registered subdomain (or the apex,
+    //    which a wildcard record keys at its base) takes precedence.
+    const exact = await lookup(hostname);
+    if (exact && exact.status === 'active') return coordsOf(exact);
+
+    // 2) Wildcard walk-up — any subdomain resolves to an active `wildcard`
+    //    registration on a parent domain. Most-specific parent wins.
+    for (const candidate of parentHostCandidates(hostname)) {
+      const parent = await lookup(candidate);
+      if (parent && parent.wildcard && parent.status === 'active') return coordsOf(parent);
+    }
+    return null;
   }
 
   /**

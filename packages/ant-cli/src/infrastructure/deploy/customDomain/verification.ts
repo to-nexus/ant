@@ -35,6 +35,36 @@ export function normalizeHostname(input: string): string {
     .replace(/\.$/, '');
 }
 
+/**
+ * Parse a user-supplied hostname into the canonical base + wildcard intent. A
+ * leading `*.` marks a wildcard registration and is stripped to the base domain
+ * (which is what ownership is verified against and what the record is keyed by).
+ */
+export function parseHostnameInput(input: string): { hostname: string; wildcard: boolean } {
+  const trimmed = normalizeHostname(input);
+  if (trimmed.startsWith('*.')) {
+    return { hostname: trimmed.slice(2), wildcard: true };
+  }
+  return { hostname: trimmed, wildcard: false };
+}
+
+/**
+ * Parent-domain candidates for wildcard walk-up matching, most-specific first.
+ * Strips one leftmost label at a time, keeping only suffixes with >= 2 labels
+ * (never the host itself, never a bare public suffix). `a.b.example.com` →
+ * `['b.example.com', 'example.com']`. Routing checks each candidate for an
+ * active `wildcard` registration; the first hit wins.
+ */
+export function parentHostCandidates(hostname: string): string[] {
+  const labels = hostname.split('.').filter(Boolean);
+  const candidates: string[] = [];
+  // Start one label in (exclude the host itself); stop while >= 2 labels remain.
+  for (let i = 1; labels.length - i >= 2; i++) {
+    candidates.push(labels.slice(i).join('.'));
+  }
+  return candidates;
+}
+
 /** Basic hostname shape guard — rejects empty, spaces, single-label, or bare IPs. */
 export function isValidHostname(hostname: string): boolean {
   if (!hostname || /\s/.test(hostname)) return false;
@@ -75,15 +105,34 @@ export async function verifyDomainOwnership(hostname: string, token: string): Pr
  * Build the DNS records the user must create. `cnameTarget` is the stable
  * platform CNAME target (e.g. `ant-domains.cross.nexus`); `apexIps` are the NLB
  * elastic IPs used for apex A records.
+ *
+ * When `wildcard` is set, `hostname` is the base domain and the connection is a
+ * `*.<base>` CNAME covering every subdomain; the bare apex (which a wildcard
+ * CNAME cannot cover) gets an additional A-record when apex IPs are provisioned.
  */
 export function buildDnsInstructions(
   hostname: string,
   token: string,
   opts: { cnameTarget: string; apexIps: string[] },
+  wildcard = false,
 ): CustomDomainDnsInstructions {
+  const txt = { name: `${CHALLENGE_PREFIX}.${hostname}`, value: token };
+
+  if (wildcard) {
+    return {
+      txt,
+      connection: { kind: 'cname', name: `*.${hostname}`, value: opts.cnameTarget },
+      apex: false,
+      wildcard: true,
+      ...(opts.apexIps.length > 0
+        ? { apexConnection: { kind: 'a' as const, name: hostname, values: opts.apexIps } }
+        : {}),
+    };
+  }
+
   const apex = isApexDomain(hostname);
   return {
-    txt: { name: `${CHALLENGE_PREFIX}.${hostname}`, value: token },
+    txt,
     connection: apex
       ? { kind: 'a', name: hostname, values: opts.apexIps }
       : { kind: 'cname', name: hostname, value: opts.cnameTarget },
