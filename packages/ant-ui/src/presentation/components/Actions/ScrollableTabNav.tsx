@@ -19,13 +19,15 @@ interface ScrollableTabNavProps {
   selectedId: string;
   onSelect: (id: string) => void;
   onBack: () => void;
+  /** Optional right-aligned accessory rendered at the end of the header row. */
+  rightAccessory?: React.ReactNode;
 }
 
 // ============================================
 // Main Component
 // ============================================
 
-export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: ScrollableTabNavProps) {
+export function ScrollableTabNav({ items, selectedId, onSelect, onBack, rightAccessory }: ScrollableTabNavProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
 
@@ -133,6 +135,10 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
           </div>
           <FadeEdges scrollRef={scrollRef} />
         </div>
+      )}
+
+      {rightAccessory && (
+        <div className="ml-auto shrink-0 pt-0.5">{rightAccessory}</div>
       )}
     </div>
   );

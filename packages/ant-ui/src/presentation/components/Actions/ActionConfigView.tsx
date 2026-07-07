@@ -16,6 +16,7 @@ import {
   type ReferenceTarget,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
+import { DomainBadge } from './DomainBadge';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
@@ -286,6 +287,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
           onBack={onBack}
           lang={lang}
           domain={actionMetadata.domain}
+          rightAccessory={<DomainBadge />}
         />
       </div>
 

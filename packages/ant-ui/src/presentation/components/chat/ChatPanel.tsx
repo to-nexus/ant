@@ -19,6 +19,7 @@ import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { ActionChipGrid } from '../Actions';
+import { DomainBadge } from '../Actions/DomainBadge';
 import { useStore } from '@/domain/store';
 import { selectFileStats } from '@/domain/store/selectors/chat';
 import type { IntentGroup } from '@ant/shared';
@@ -368,6 +369,12 @@ function ChatActionCards() {
         >
           {t('title')}
         </h2>
+        {/* Read-only domain badge — mirrors the absolute-left back button so
+            the centered title stays put. Domain is toggled at the top level
+            (ActionsPanel pick-action); the badge links there. */}
+        <div style={{ position: 'absolute', right: 0 }}>
+          <DomainBadge onGoToTopLevel={() => openActionsPanel()} />
+        </div>
       </div>
 
       <div style={{ width: '100%', flexShrink: 0 }}>

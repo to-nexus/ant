@@ -105,6 +105,11 @@
         "game": "Game",
         "service": "Service"
       }
+    },
+    "badge": {
+      "hint": "Domain is set on the top screen.",
+      "goToTopLevel": "Go to top level",
+      "aria": "Current project domain"
     }
   },
   "section": {

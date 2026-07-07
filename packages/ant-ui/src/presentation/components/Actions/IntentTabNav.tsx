@@ -11,9 +11,10 @@ interface IntentTabNavProps {
   onBack: () => void;
   lang: 'en' | 'ko';
   domain: Domain | undefined;
+  rightAccessory?: React.ReactNode;
 }
 
-export function IntentTabNav({ actionId, intents, selectedIntentId, onSelect, onBack, lang, domain }: IntentTabNavProps) {
+export function IntentTabNav({ actionId, intents, selectedIntentId, onSelect, onBack, lang, domain, rightAccessory }: IntentTabNavProps) {
   const items: TabItem[] = useMemo(() =>
     intents.map(intent => {
       const v = getIntentVisual(intent.id, actionId);
@@ -35,6 +36,7 @@ export function IntentTabNav({ actionId, intents, selectedIntentId, onSelect, on
       selectedId={selectedIntentId}
       onSelect={onSelect}
       onBack={onBack}
+      rightAccessory={rightAccessory}
     />
   );
 }

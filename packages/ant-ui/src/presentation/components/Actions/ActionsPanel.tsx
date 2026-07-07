@@ -24,6 +24,7 @@ import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 import { BasisWizard } from './basis';
 import { DomainToggle } from './DomainToggle';
+import { DomainBadge } from './DomainBadge';
 
 const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
 
@@ -183,9 +184,10 @@ export function ActionsPanel() {
     }
 
     if (step === 'pick-intent' && selectedActionId) {
-      // D22: workspace domain is set ONLY on the top `pick-action` screen.
-      // Lower depths (pick-intent / config / basis-edit) do NOT surface the
-      // chip — the user has already locked the domain in.
+      // D22: workspace domain is toggled ONLY on the top `pick-action` screen.
+      // Lower depths (pick-intent / config / basis-edit) surface a read-only
+      // DomainBadge so the user can always see the active domain; clicking it
+      // offers a link back to the top level to change it.
       return (
         <div className="h-full flex flex-col">
           <div className="shrink-0 px-5 pt-5">
@@ -194,6 +196,7 @@ export function ActionsPanel() {
               selectedId={selectedActionId}
               onSelect={handleActionTabSwitch}
               onBack={() => setActionsStep('pick-action')}
+              rightAccessory={<DomainBadge />}
             />
           </div>
           <PageTransition
