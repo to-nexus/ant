@@ -110,12 +110,27 @@ custom properties).
   "kind": "external",
   "src": "assets/game/<subdir>/<file>",
   "format": "svg" | "png" | "jpg" | "webp" | "json",
-  "rendering": "sprite" | "graphics-blit" | "div"
+  "rendering": "sprite" | "graphics-blit" | "div",
+  "fallback": {
+    "format": "svg" | "css",
+    "svg": "<svg viewBox='0 0 64 64'>...simple primitive...</svg>"
+  }
 }
 ```
 
 `src` MUST start with `assets/game/`. The system validates the
 file exists; non-existent paths cause task failure.
+
+**Code-fulfillable floor — carry a fallback primitive (inline-first).**
+A visual `kind: 'external'` entry (`entities` / `particles` / `projectiles`)
+names a file that may be absent when the code job runs. Attach an optional
+`fallback` — a single inline primitive at the css-only ceiling (same shape
+as a `kind: 'inline'` entry) — so the code job can render a minimum-playable
+stand-in for that `id` when the external file is not yet placed. The
+`rendering` field is the complementary draw-path hint. Audio external
+entries need no `fallback`: the procedural OscillatorNode floor covers them
+globally. This keeps the catalog inline-first — external is the enrichment,
+the primitive is the guaranteed floor.
 
 ### JSON Structure
 

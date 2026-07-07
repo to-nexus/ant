@@ -59,6 +59,7 @@ Asset import is driven by `game-art-assets.json` (D20). The code job consumes th
 - `_meta.audioScope === 'procedural-only'` (default) forces all `sfx` / `bgm` to procedural OscillatorNode configs; `'external-enabled'` activates file-based audio. Always honor the marker.
 - `_meta.visualScope === 'baseline'` (default) keeps the canvas on catalog entries + the engine's procedural API + build-time static assets; `'atlas-enabled'` lifts atlas / multi-emitter / multi-projectile setups. The five canvas-side method categories are committed by `jobs/code/basis/gameArtTier/_preamble.md` §7; concrete API names live in the engine partial.
 - Cross-pool reach is forbidden (I6): `game-art-assets.json` MUST NOT reference `assets/service/`, and `ui-assets.json` MUST NOT reference `assets/game/`. The two surfaces share workspace.domain but their pools are 1:1 separated.
+- **Floor, not ceiling.** A catalog entry that is present (inline or external) is consumed at full fidelity — never downgraded. When the catalog is silent on a shape or sound the build needs, render a minimum-playable primitive stand-in on the spot per `jobs/code/basis/gameArtTier/_preamble.md` §7.1 (a shape via the engine draw API, a procedural tone). The primitive path is the floor that guarantees the build plays without user-placed assets; it is not a cap on what present assets may deliver.
 
 ### 5. Determinism boundary
 
@@ -154,6 +155,7 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game implementa
 - ⚠️ **HUD writing back to Domain** corrupts replay determinism. HUD emits commands; commands are the only path back into Domain.
 - ⚠️ **External asset references while `audioScope === 'procedural-only'`** for sfx/bgm bypass the marker and break the baseline scope's "no user-placed audio files required" guarantee.
 - ⚠️ **`Math.random()` inside Domain** silently breaks replays / multiplayer / save-load. Funnel randomness through a seeded source.
+- ⚠️ **An unrenderable build because "the catalog had no entry"** is a floor violation, not an acceptable outcome. The engine draw API always yields a minimum-playable stand-in (§7.1); the follow-up directive is for fidelity beyond the floor, never for basic playability.
 
 ### Refine-mode discipline
 

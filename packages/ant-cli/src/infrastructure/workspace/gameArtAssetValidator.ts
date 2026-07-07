@@ -48,7 +48,14 @@ export type ValidationCode =
   /** `kind: 'inline'` `css` payload exceeds the byte ceiling (D21). */
   | 'inline-css-too-long'
   /** `kind: 'inline'` `oscillator.durationMs` exceeds the ceiling (D21). */
-  | 'inline-oscillator-too-long';
+  | 'inline-oscillator-too-long'
+  /**
+   * `kind: 'external'` visual entry carries no code-renderable fallback hint
+   * (neither a `fallback` primitive nor a `rendering` draw-path hint) — the
+   * code job cannot render a minimum-playable stand-in if the external file is
+   * absent (WS3 §2b code-fulfillable floor). Opt-in only (`warnMissingFallback`).
+   */
+  | 'external-missing-fallback-hint';
 
 /**
  * Inline-payload ceilings (D21). These are the SSOT for the numeric limits
@@ -146,7 +153,20 @@ export interface ValidationOptions {
    * variant) to enable D20's "src must exist" leg.
    */
   srcExists?: SrcExistsPredicate;
+  /**
+   * Opt-in (default `false`). When `true`, a `kind: 'external'` VISUAL entry
+   * (non-audio `format`) that carries neither a `fallback` primitive nor a
+   * `rendering` draw-path hint yields a WARNING issue
+   * (`external-missing-fallback-hint`) — the WS3 §2b code-fulfillable floor.
+   * It never throws. Audio external entries are exempt (the procedural
+   * OscillatorNode floor covers audio globally). Default-off so existing
+   * catalogs keep validating unchanged.
+   */
+  warnMissingFallback?: boolean;
 }
+
+/** Audio `format` values whose entries are exempt from the fallback-hint warning. */
+const AUDIO_FORMATS = new Set(['mp3', 'ogg', 'wav']);
 
 /**
  * Validate a single entry. `kind: 'inline'` is always accepted (no `src`
@@ -209,6 +229,26 @@ export function validateGameArtAssetEntry(
       src: entry.src,
       reason: `external src "${entry.src}" does not exist on disk`,
     });
+  }
+
+  // WS3 §2b — code-fulfillable floor (opt-in warning). A visual external entry
+  // with no fallback primitive and no rendering hint leaves the code job unable
+  // to render a minimum-playable stand-in if the file is absent. Audio is exempt
+  // (procedural OscillatorNode floor). Never throws.
+  if (options.warnMissingFallback) {
+    const isAudio = typeof entry.format === 'string' && AUDIO_FORMATS.has(entry.format);
+    const hasFallbackHint = entry.fallback != null || entry.rendering != null;
+    if (!isAudio && !hasFallbackHint) {
+      issues.push({
+        id: entry.id,
+        code: 'external-missing-fallback-hint',
+        src: entry.src,
+        reason:
+          `external visual entry "${entry.id}" carries no code-renderable fallback `
+          + `(a \`fallback\` inline primitive or a \`rendering\` hint) — the code job cannot `
+          + `render a minimum-playable stand-in if the file is absent (WS3 §2b floor).`,
+      });
+    }
   }
 
   return issues;

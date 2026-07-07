@@ -39,6 +39,13 @@ defaults** — directive-only spec should be playable without polish:
 | `speedPxPerSec` | 200–600                   |
 | `lifetimeMs`    | 1000–2000                 |
 
+### Code-fulfillable floor
+
+The code job must be able to render this behavior with a **primitive stand-in** when no external asset is present — so each entry is authored so the floor still plays:
+
+- Express motion as **numeric fields** (the table above), never as adjectives ("fast" / "snappy" / "juicy"). Code drives motion from numbers, so a primitive stand-in animates identically to a production sprite — the number is the contract, the art is not.
+- Every entry references an asset `id` that resolves to something renderable as a **primitive at the baseline scope** (a shape via the engine draw API, or an inline payload). Behavior whose *reading* would need production-grade art must still state its motion numerically, so the floor render remains playable.
+
 ### ⚠️ CRITICAL: Scope & Surface Boundary
 
 **🚨 READ YOUR TASK DESCRIPTION — generate ONLY the category it specifies!**
