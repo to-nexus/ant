@@ -24,8 +24,9 @@ import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/C
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import {
-  CATALOG_MAP,
   parseCatalogSections,
+  resolveCatalogEntry,
+  resolveCatalogPartials,
   resolveTemplateDir,
 } from '../../decompose/catalogLookup';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
@@ -253,6 +254,16 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         isLastTaskForDocument,
         sectionScope: sectionScope || undefined,
         filteredCatalog: filteredCatalog || undefined,
+        // Domain-aware full FE catalog partial for the frontend-guide's
+        // whole-doc fallback (no assignedSections → no filteredCatalog).
+        // Derived from the single catalog SSOT (`resolveCatalogPartials`) so
+        // the base injection template needs no domain literal
+        // (Domain-Branching Locality) and stays lockstep with the section
+        // catalog used everywhere else (Game-Activation T2-a).
+        feFullCatalogPartial: resolveCatalogPartials(
+          targetFile,
+          state.resolvedAction?.domain,
+        )?.full,
         isSpecDriven: false,
         referenceRequests: state.referenceRequests || [],
         resolvedAction: resolvedActionWithDocs || null,
@@ -269,6 +280,14 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         planText,
         runtimeContext,
         verificationAxis: 'exact DTO field types, endpoint paths, contract values',
+        // Service Virtualization gate (Game-Activation T2-c). The SV /
+        // USE_MOCK guardrail is a service-frontend mock-adapter discipline
+        // (SV SSOT = `domain==='service'`); it is meaningless for a
+        // self-contained game client. Computed in TS (not a template
+        // `{{#if (eq domain ...)}}`) to keep domain identity out of the
+        // non-domain-aware rules template (Domain-Branching Locality).
+        // Default-ON: undefined domain → service semantics → active.
+        serviceVirtualizationActive: state.resolvedAction?.domain !== 'game',
         // Codebase Channel SSOT — flow workspace state to the
         // codebase-channel partial / AutoInjectionResolver gate.
         workspaceState: state.workspaceState,
@@ -576,15 +595,10 @@ async function buildSectionScope(
     return undefined;
   }
   
-  // Resolve the catalog-names file for this document type
-  let catalogTemplatePath: string | undefined;
-  for (const [prefix, entry] of Object.entries(CATALOG_MAP)) {
-    if (targetFile.startsWith(prefix)) {
-      catalogTemplatePath = entry.names;
-      break;
-    }
-  }
-  
+  // Resolve the catalog-names file for this document type, honouring the
+  // workspace domain (game × fe-system- → game FE catalog; Game-Activation T2-a).
+  const catalogTemplatePath = resolveCatalogEntry(targetFile, state.resolvedAction?.domain)?.names;
+
   if (!catalogTemplatePath) {
     console.warn(`⚠️  [Execute] No catalog mapping for targetFile: ${targetFile}`);
     return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
@@ -670,10 +684,8 @@ async function buildFilteredCatalog(
     return undefined;
   }
 
-  let catalogRelPath: string | undefined;
-  for (const [prefix, entry] of Object.entries(CATALOG_MAP)) {
-    if (targetFile.startsWith(prefix)) { catalogRelPath = entry.full; break; }
-  }
+  // Domain-aware full catalog (game × fe-system- → game FE catalog; T2-a).
+  const catalogRelPath = resolveCatalogEntry(targetFile, state.resolvedAction?.domain)?.full;
   if (!catalogRelPath) {
     console.warn(`⚠️  [Execute] No catalog mapping for targetFile: ${targetFile}`);
     return undefined;

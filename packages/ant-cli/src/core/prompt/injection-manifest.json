@@ -110,7 +110,9 @@
     "game-art-spec-guide-by-desc": ["forceAppend"],
     "sealed-plan-block": ["planText"],
     "sealed-plan-rules": ["planText", "verificationAxis"],
-    "append-anchor": ["appendAnchor"]
+    "append-anchor": ["appendAnchor"],
+    "spec-impl-guide-service": [],
+    "spec-impl-guide-game": []
   },
   "jobs/design/nodes/plan/injections": {
     "plan-tools-batch": []

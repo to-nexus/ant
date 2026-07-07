@@ -428,6 +428,7 @@ Before generating output, verify:
   - One or more **domain engines/models** expose pure operations for "advance one tick" or "apply inputs" without depending on timers or UI
   - UI/presentation observes the current state and maps it to visuals and controls only
 
+{{#if serviceVirtualizationActive}}
 ### Infrastructure Independence Guardrail (Service Virtualization)
 
 **Principle**: The application MUST be demonstrable without depending on the availability of external systems beyond the project boundary. Every infrastructure adapter that crosses a system boundary (external API, third-party service, peer service, cross-project dependency) must be designed for independent operation through Service Virtualization.
@@ -457,6 +458,7 @@ Before generating output, verify:
 - ⚠️ **Blind spot**: Cross-project dependencies (e.g., `ant-project:` references) may point to services still under construction. These require the same adapter isolation as any unavailable external service.
 
 - ⚠️ **Blind spot**: When development always uses live external services, missing adapter contracts go unnoticed. This surfaces as: inability to run the application offline, inability to test domain logic independently, and tight coupling between business rules and external service availability.
+{{/if}}
 
 ### Routing & Navigation Guardrail
 - Application/Runtime and Domain boundaries MUST NOT directly depend on concrete routing/navigation APIs (e.g., router instances, URL manipulation)

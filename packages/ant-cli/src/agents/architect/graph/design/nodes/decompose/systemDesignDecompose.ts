@@ -21,11 +21,11 @@ import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, isClarifyActive, getClarifyPolicy, type IntentId } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTier, type TechTierConfig, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, isClarifyActive, getClarifyPolicy, getEffectiveDomain, type Domain, type IntentId } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { applyClarifyGate, parseClarifyTags } from "../../../../../common/clarify";
 import { saveClarifyCheckpoint } from "../../session/checkpoint";
-import { assignedNotInCatalog, resolveCatalogEntry } from "./catalogLookup";
+import { assignedNotInCatalog, resolveCatalogEntry, resolveCatalogPartials } from "./catalogLookup";
 import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 
 interface DecomposeContext {
@@ -391,15 +391,18 @@ export interface AssignedSectionsViolation {
  */
 export async function validateAssignedSectionsAgainstCatalogs(
   response: SystemDesignResponse,
+  domain?: Domain,
 ): Promise<AssignedSectionsViolation[]> {
   const violations: AssignedSectionsViolation[] = [];
 
   for (const task of response.tasks) {
     const sections = task.assignedSections;
     if (!sections || sections.length === 0) continue;
-    if (!resolveCatalogEntry(task.targetFile)) continue;
+    // Domain-aware catalog resolution so a game FE task validates against the
+    // game FE catalog rather than the service one (Game-Activation T2-a).
+    if (!resolveCatalogEntry(task.targetFile, domain)) continue;
 
-    const mismatched = await assignedNotInCatalog(task.targetFile, sections);
+    const mismatched = await assignedNotInCatalog(task.targetFile, sections, domain);
     if (mismatched.length > 0) {
       violations.push({
         taskId: task.id,
@@ -657,6 +660,15 @@ export async function decomposeSystemDesign(
     existingDesignFiles: promptExistingFiles,
     primaryDesignFile: promptPrimaryFile,
     environment: detectedEnv,
+    // Domain-aware FE catalog-names partial (game → game FE catalog). Derived
+    // from the single catalog SSOT (`resolveCatalogPartials`) so base.md carries
+    // no domain literal and stays lockstep with execute / validation
+    // (Game-Activation T2-a). be / api-contract stay on the service catalogs
+    // (T3-a2 graceful fallback until a game-server catalog lands).
+    feCatalogNamesPartial: resolveCatalogPartials(
+      'fe-system-main.md',
+      getEffectiveDomain(state.resolvedAction?.domain),
+    )?.names,
     resolvedTargetFiles,
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
     clarifyActive,
@@ -793,7 +805,10 @@ export async function decomposeSystemDesign(
     // remap/expand `targetFile`s (MSA, consumedApis) — only the final
     // post-normalization filename has a canonical catalog to validate
     // against.
-    const sectionViolations = await validateAssignedSectionsAgainstCatalogs(response);
+    const sectionViolations = await validateAssignedSectionsAgainstCatalogs(
+      response,
+      getEffectiveDomain(state.resolvedAction?.domain),
+    );
     if (sectionViolations.length > 0) {
       throw new Error(formatAssignedSectionsViolations(sectionViolations));
     }

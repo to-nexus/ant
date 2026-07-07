@@ -145,8 +145,9 @@ export class PromptBuilder implements PromptPort {
     taskTechTiers: import('@ant/shared').TechTier[] | undefined,
     domain: Domain | string | undefined,
     slot: BasisSlotConfig | undefined,
+    opts?: { skipJobDomainOverlay?: boolean },
   ): Promise<string> {
-    return this.buildBasisSection(basis, job, taskTechTiers, domain, undefined, slot);
+    return this.buildBasisSection(basis, job, taskTechTiers, domain, undefined, slot, false, opts);
   }
 
   /**
@@ -423,6 +424,7 @@ export class PromptBuilder implements PromptPort {
     outPaths: Set<string> | undefined,
     slot: BasisSlotConfig | undefined,
     hasUiDoc: boolean = false,
+    opts?: { skipJobDomainOverlay?: boolean },
   ): Promise<string> {
     if (!basis) {
       console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
@@ -457,7 +459,7 @@ export class PromptBuilder implements PromptPort {
     // `templates/jobs/{job}/domain/{d}.md` (job × domain meta-pattern overlay)
     // on top of each other. The matrix decides which tiers to inject for
     // the current intent / domain — domain itself is not a tier.
-    await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths);
+    await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths, opts?.skipJobDomainOverlay);
 
     for (const tier of TIER_KEYS) {
       if (!isTierActive(tier as TierKey, slot, effectiveDomain, runtime)) continue;
@@ -517,6 +519,7 @@ export class PromptBuilder implements PromptPort {
     job: string,
     domain: Domain,
     outPaths?: Set<string>,
+    skipJobDomainOverlay: boolean = false,
   ): Promise<void> {
     // D27 (v6): both files live ABOVE basis/ to reflect that domain is a
     // workspace selector, not a tier. Order:
@@ -525,7 +528,15 @@ export class PromptBuilder implements PromptPort {
     // When both exist, both are injected: identity first, then the job
     // overlay layers job-specific guidance (e.g. plan job → GDD/PRD skeleton).
     await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.basisDomain(domain), outPaths);
-    await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain), outPaths);
+    // `skipJobDomainOverlay` — the design-job domain overlay
+    // (`jobs/design/domain/{d}.md`) is authored at *system-design* altitude
+    // (state ownership / determinism / sync policy). The spec execute node
+    // opts out (Game-Activation T2-b) because a spec is an *implementation*
+    // artifact and injects its own implementation-altitude identifier guide
+    // instead; the altitude-neutral global identity above still applies.
+    if (!skipJobDomainOverlay) {
+      await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain), outPaths);
+    }
   }
 
   private async renderTechTier(

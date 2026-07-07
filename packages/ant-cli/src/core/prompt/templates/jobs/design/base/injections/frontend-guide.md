@@ -108,7 +108,7 @@ Adapt sections based on the architecture decisions in §1. Skip sections marked 
 {{#if filteredCatalog}}
 {{{filteredCatalog}}}
 {{else}}
-{{> jobs/design/base/catalogs/frontend-catalog}}
+{{#if feFullCatalogPartial}}{{> (lookup . 'feFullCatalogPartial') }}{{else}}{{> jobs/design/base/catalogs/frontend-catalog}}{{/if}}
 {{/if}}
 
 ---
