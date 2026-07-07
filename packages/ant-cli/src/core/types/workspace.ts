@@ -195,15 +195,21 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
     llmModels: {
       design: {
         default: modelSonnet,
+        decompose: modelSonnet,
+        plan: modelOpus,
+        docGen: modelSonnet,
       },
       code: {
         default: modelSonnet,
+        decompose: modelOpus,
+        plan: modelSonnet,
+        execute: modelSonnet,
       },
       learn: {
         default: modelHaiku,
       },
       plan: {
-        default: modelSonnet,
+        default: modelOpus,
       },
       visual: {
         default: 'gemini-3-flash-preview',
