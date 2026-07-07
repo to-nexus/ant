@@ -462,6 +462,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // presence. See `AGENTS.md` "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
+      // Game-art source discriminator (WS2 §3D) — consumed by
+      // `game-art-source-dispatch.md` to pick the ant-canonical vs handoff
+      // interpretation partial. Contract-flavoured, mirrors `uiSource`.
+      gameArtSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).gameArtSource(),
       // Layer-role-fidelity floor (Fix B) — Gate flag self-gating only the
       // partial's defer-clause. Any authoritative doc kind (system-design /
       // spec / PRD) flips it, so spec-/PRD-carried authority is honored.

@@ -44,6 +44,7 @@ import {
   getConfigSlotsForDomain,
   pickUiSourceSubgroupDir,
   isUiTreeParentPath,
+  isGameArtTreeParentPath,
   ARTIFACT_PREFIX,
 } from '@ant/shared';
 import { ARCHITECT_TOOLS } from '../../../tool/toolSchemas';
@@ -225,8 +226,8 @@ export async function inferRacWithTools(
     intentId,
     {
       target: parsedResp.target,
-      refs: narrowUiTreeParents(parsedResp.refs, uiSourceDir),
-      context: narrowUiTreeParents(parsedResp.context, uiSourceDir),
+      refs: narrowSourceTreeParents(parsedResp.refs, uiSourceDir),
+      context: narrowSourceTreeParents(parsedResp.context, uiSourceDir),
       domain: input.domain,
     },
     'infer',
@@ -397,11 +398,11 @@ function renderSlotSummaries(
 /**
  * Resolve a `type: 'ui-source'` slot to its single valid subgroup directory
  * (ant > figma > handoff, gated by on-disk validity), or `null` when no
- * subgroup holds valid files. Validity mirrors the FE / workspaceAnalyzer:
- *   - ant     → `workspaceState.hasVisualUi`   (ui-tokens/assets/spec.json present)
- *   - figma   → `workspaceState.hasFigmaConfig` (figma.json populated with a fileKey —
- *               the scaffolded empty stub is invalid, so it never beats handoff)
- *   - handoff → `visual/ui/handoff/` holds at least one file
+ * subgroup holds valid files. Handles BOTH surfaces (WS2 §3) — the subgroup's
+ * own `dir` prefix discriminates UI vs game-art, so this stays single-owner:
+ *   - ant     → `hasVisualUi` (UI dirs) / `hasVisualGameArt` (game-art dirs)
+ *   - figma   → `hasFigmaConfig` (UI only — game-art figma is a Phase 5+ hook)
+ *   - handoff → the subgroup dir holds at least one file (dir-driven, both surfaces)
  */
 function resolveUiSourceDir(
   slot: SlotLike,
@@ -410,18 +411,17 @@ function resolveUiSourceDir(
 ): string | null {
   const subs = slot.uiSources;
   if (!subs?.length) return null;
-  const handoffValid =
-    !!featurePath && dirHasAnyFile(path.join(featurePath, ARTIFACT_PREFIX.UI_HANDOFF));
+  const isGameArt = (dir: string) => dir.startsWith('visual/game-art');
   const triples = subs.map((s: { id: UiSource; dir: string }) => ({
     id: s.id,
     dir: s.dir,
     hasValidFiles:
       s.id === 'ant'
-        ? !!workspaceState?.hasVisualUi
+        ? (isGameArt(s.dir) ? !!workspaceState?.hasVisualGameArt : !!workspaceState?.hasVisualUi)
         : s.id === 'figma'
-          ? !!workspaceState?.hasFigmaConfig
+          ? (isGameArt(s.dir) ? false : !!workspaceState?.hasFigmaConfig)
           : s.id === 'handoff'
-            ? handoffValid
+            ? (!!featurePath && dirHasAnyFile(path.join(featurePath, s.dir)))
             : false,
   }));
   return pickUiSourceSubgroupDir(triples);
@@ -443,19 +443,23 @@ function dirHasAnyFile(dirAbs: string): boolean {
 }
 
 /**
- * Rewrite any un-narrowed UI-tree parent path (`visual/ui`) in a ref/context
- * list to the single valid subgroup dir; drop it when there is no valid
- * subgroup. Classified paths (`visual/ui/handoff/...`) and non-UI paths pass
- * through unchanged. Output is deduped to keep the RAC list clean.
+ * Rewrite any un-narrowed source-tree parent path (`visual/ui` or
+ * `visual/game-art`, WS2 §3) in a ref/context list to the single valid subgroup
+ * dir; drop it when there is no valid subgroup. Classified paths
+ * (`visual/ui/handoff/...`, `visual/game-art/ant/...`) and unrelated paths pass
+ * through unchanged. Output is deduped to keep the RAC list clean. A workspace
+ * is single-domain, so at most one parent kind appears and `sourceDir` is that
+ * domain's resolved subgroup dir.
  */
-function narrowUiTreeParents(
+function narrowSourceTreeParents(
   paths: string[] | undefined,
-  uiSourceDir: string | null,
+  sourceDir: string | null,
 ): string[] | undefined {
   if (!paths?.length) return paths;
   const out: string[] = [];
   for (const p of paths) {
-    const next = isUiTreeParentPath(p) ? uiSourceDir : p;
+    const isParent = isUiTreeParentPath(p) || isGameArtTreeParentPath(p);
+    const next = isParent ? sourceDir : p;
     if (next && !out.includes(next)) out.push(next);
   }
   return out;

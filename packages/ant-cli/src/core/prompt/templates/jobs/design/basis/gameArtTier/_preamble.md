@@ -56,9 +56,11 @@ Allowed inline asset shapes:
 - Mp3 / ogg / wav file payloads (binary content).
 - 3D models / tilemaps / atlas frames.
 
-The decompose / execute pipeline rejects inline payloads above this
-ceiling (svg path complexity, css length) — escalate to `kind: 'external'`
-and let the user place the production asset themselves.
+The task-completion gate validates inline payloads against this ceiling
+(svg primitive count / viewBox side, css byte length, oscillator
+`durationMs`) and re-prompts on a violation — escalate the flagged entry to
+`kind: 'external'` and let the user place the production asset themselves,
+or simplify it back under the ceiling.
 
 ### 3. External asset hand-off (production assets)
 
@@ -147,15 +149,51 @@ Decisions:
   Category keys must remain stable inside one design pass —
   `game-art-spec.json` references entries by `id`, so renaming after the
   fact corrupts the spec doc.
-- Set `_meta.audioScope` and `_meta.visualScope` explicitly. Defaults:
-  `audioScope: 'procedural-only'` (external sfx/bgm deferred) and
-  `visualScope: 'baseline'` (atlas / multi-emitter / multi-projectile
-  deferred). Upgrade values: `'external-enabled'` and `'atlas-enabled'`.
+- Set `_meta.audioScope` and `_meta.visualScope` explicitly per the
+  envelope rule in §A.0 below.
+
+### A.0. Fidelity envelope — default floor + external-unlock gate (SSOT)
+
+The fidelity axes and the two scope markers are decided **here**, at design
+time — the FE surface owns only `concept` / `perspective`. This is the single
+place that governs how high the fidelity goes; §B / §C below are the per-axis
+menus this rule ranges over.
+
+**Default floor (no external assets in the pool).** When the pool carries no
+external asset files (no `assets/game/...` drop-in and no game-art handoff
+bundle), every entry must be **materializable inline** — so default to the
+inline-authorable envelope across all axes:
+
+| Axis | Envelope-floor value |
+|---|---|
+| `entityCatalog` | `minimal` (single-shape) or `standard` (2–4 entities) |
+| `particleProfile` | `none` or `light` |
+| `projectilePolicy` | `none` or `simple` |
+| `audioProfile` | `procedural` |
+| `_meta.visualScope` | `baseline` |
+| `_meta.audioScope` | `procedural-only` |
+
+**Unlock gate (external assets present — constraint #4).** Escalate an axis to
+its production tier (`entityCatalog: rich` / `particleProfile: heavy` /
+`projectilePolicy: complex` / `audioProfile: fileBased|hybrid` /
+`visualScope: atlas-enabled` / `audioScope: external-enabled`) **only when the
+matching external assets are actually present in the pool** — a directive that
+cites a placed file, an `assets/game/...` drop-in, or a game-art handoff
+bundle. Presence removes the restriction entirely: a game WITH external assets
+is never held to the inline floor. Absence keeps the floor so the catalog stays
+dangling-free.
+
+**Backstop (not a substitute for the floor).** The task-completion gate
+validates every emitted entry against this envelope — an over-ceiling `inline`
+payload or a `kind:external` src with no file re-prompts for promotion /
+placement / simplification. The floor above exists so that gate rarely fires;
+it is the design-time discipline, the gate is the runtime enforcement.
 
 ### B. Entity Catalog Decision (`gameArtTier.entityCatalog`)
 
 Phase 4 axis. When the game's PRD or directive describes character /
-collectible / npc requirements, decide the catalog tier:
+collectible / npc requirements, pick the catalog tier from the envelope
+range in §A.0 (floor `minimal`; `rich` only unlocks with external assets):
 
 | Variant      | Use when                                                               |
 |--------------|------------------------------------------------------------------------|
@@ -163,17 +201,14 @@ collectible / npc requirements, decide the catalog tier:
 | `standard`   | Hero + enemy + collectible. 2–4 distinct entities.                     |
 | `rich`       | Multi-character roster + variants + npcs. 5+ entities.                 |
 
-In Phase 2 the default is `minimal`; the prompt MAY emit a different
-value when the directive demands it.
-
 ### C. Audio Policy Decision (`gameArtTier.audioProfile`)
 
 Phase 4 axis. Decides whether `sfx` / `bgm` catalog entries can be
-`kind: 'external'`:
+`kind: 'external'` — floor `procedural` per §A.0:
 
 | Variant       | Effect                                                                                |
 |---------------|---------------------------------------------------------------------------------------|
-| `procedural`  | Inline OscillatorNode configs only. Phase 2 default — works without user-placed files. |
+| `procedural`  | Inline OscillatorNode configs only. Envelope floor — works without user-placed files. |
 | `fileBased`   | `kind: 'external'` mp3 / ogg / wav under `assets/game/sfx/` and `bgm/`.        |
 | `hybrid`      | Procedural SFX + external BGM. Bridge mode for prototypes that already have a BGM.    |
 

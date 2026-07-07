@@ -368,7 +368,9 @@ export const ARTIFACT_PREFIX = {
    *   - GAME_ART       — parent prefix (union of ant/figma/handoff).
    *   - GAME_ART_ANT   — LLM-generated canonical sub-source (active today).
    *   - GAME_ART_FIGMA — figma workfile reference (Phase 5+ hook, parser-only).
-   *   - GAME_ART_HANDOFF — free-form handoff bundle (Phase 5+ hook, parser-only).
+   *   - GAME_ART_HANDOFF — free-form handoff bundle (active — WS2 §3: RAC
+   *                        subgroup slot + pool stub-load + code dispatch,
+   *                        symmetric with UI handoff).
    *
    * `pathsContainGameArtDoc` matches any of the three sub-source prefixes
    * (mirrors the UI sub-source pattern). The flat `GAME_ART` prefix stays
@@ -437,111 +439,125 @@ export function pathsContainUiDoc(paths: readonly string[] | undefined): boolean
  */
 export const UI_SOURCE_PRIORITY: readonly UiSource[] = ['ant', 'figma', 'handoff'];
 
-/**
- * Pick the single UiSource a path list should be normalized to. Returns the
- * highest-priority source present, or `null` if no UI paths are involved.
- *
- * Used internally by `normalizeUiSourceRefs`; exposed for callers that need
- * to reason about the chosen source without filtering paths.
- */
-export function pickUiSource(paths: readonly string[] | undefined): UiSource | null {
+// ── Generic source funnel (single-owner) ──────────────────────────────
+// The UI and game-art surfaces share identical funnel logic; the only
+// per-surface difference is the path classifier (`uiSourceOfPath` vs
+// `gameArtSourceOfPath`) and the tree-parent prefix. These generics own the
+// logic once — the UI and game-art exports below are thin instances (WS2 §3A).
+// `UiSource` is the shared source enum for BOTH surfaces (ant/figma/handoff).
+
+type SourceClassifier = (path: string) => UiSource | null;
+
+function pickSourceWith(
+  paths: readonly string[] | undefined,
+  sourceOf: SourceClassifier,
+  priority: readonly UiSource[],
+): UiSource | null {
   if (!paths?.length) return null;
   const present = new Set<UiSource>();
   for (const p of paths) {
-    const src = uiSourceOfPath(p);
+    const src = sourceOf(p);
     if (src !== null) present.add(src);
   }
   if (present.size === 0) return null;
-  for (const id of UI_SOURCE_PRIORITY) {
+  for (const id of priority) {
     if (present.has(id)) return id;
   }
   return null;
 }
 
-/**
- * Enforce the hard-exclusive UiSource invariant on a path list. Non-UI paths
- * pass through unchanged; UI paths are filtered down to the single
- * highest-priority source present (ant > figma > handoff).
- *
- * **This is the SSOT for "exactly one UiSource"** — every funnel that
- * produces or merges path lists destined for a RAC (FE store setter, FE
- * auto-fill, BE `resolveToRAC` / `mergeWithMetadata`) MUST route through
- * here. `validateUiSourceExclusivity` (loadDocumentsForRAC.ts) and
- * `ArtifactPoolView.uiSource()` are downstream safety nets that throw if
- * any caller bypasses this funnel — they must never throw on the happy
- * path.
- *
- * Order is preserved: a path's index in the input is preserved in the
- * output (the function is a positional filter).
- */
-export function normalizeUiSourceRefs(paths: readonly string[] | undefined): string[] {
+function normalizeSourceRefsWith(
+  paths: readonly string[] | undefined,
+  sourceOf: SourceClassifier,
+  priority: readonly UiSource[],
+): string[] {
   if (!paths?.length) return [];
-  const winner = pickUiSource(paths);
+  const winner = pickSourceWith(paths, sourceOf, priority);
   if (winner === null) return [...paths];
   return paths.filter(p => {
-    const src = uiSourceOfPath(p);
+    const src = sourceOf(p);
     return src === null || src === winner;
   });
 }
 
-/**
- * Auto-fill picker for `type: 'ui-source'` slots. Selects exactly one
- * subgroup's files — the highest-priority subgroup with `hasValidFiles`
- * (per `UI_SOURCE_PRIORITY`). Returns an empty array when no subgroup is
- * valid. Generic over the FE-side `SlotFileEntry` shape so this stays in
- * `@ant/shared` without coupling to UI types.
- *
- * Mirrors `normalizeUiSourceRefs`: both prefer `ant`, then `figma`, then
- * `handoff`. Co-located so a future priority change touches one symbol.
- */
-export function pickDefaultUiSourceRefs<F>(
+function pickDefaultSourceRefsWith<F>(
   subgroups: readonly { id: UiSource; hasValidFiles: boolean; files: readonly F[] }[] | undefined,
+  priority: readonly UiSource[],
 ): F[] {
   if (!subgroups?.length) return [];
-  for (const id of UI_SOURCE_PRIORITY) {
+  for (const id of priority) {
     const sg = subgroups.find(s => s.id === id && s.hasValidFiles);
     if (sg) return [...sg.files];
   }
   return [];
 }
 
-/**
- * Pick the single valid UiSource subgroup *directory* for a `type: 'ui-source'`
- * slot — the BE infer-path counterpart of `pickDefaultUiSourceRefs` (which
- * returns file entries for the FE). Walks `UI_SOURCE_PRIORITY` (ant > figma >
- * handoff) and returns the first subgroup whose `hasValidFiles` is true, else
- * `null`.
- *
- * `null` means "no valid UI subgroup" — callers MUST drop the slot and NEVER
- * fall back to the parent `visual/ui` directory: a parent ref is unclassifiable
- * by `uiSourceOfPath`, so it escapes `normalizeUiSourceRefs` and gets
- * directory-walked across all three subgroups → mixed-pool throw at
- * `ArtifactPoolView.uiSource()`. Validity is decided by the caller (disk truth);
- * this function owns only the priority decision, co-located with
- * `pickDefaultUiSourceRefs` so a future priority change touches one symbol.
- */
-export function pickUiSourceSubgroupDir(
+function pickSourceSubgroupDirWith(
   subgroups: readonly { id: UiSource; dir: string; hasValidFiles: boolean }[] | undefined,
+  priority: readonly UiSource[],
 ): string | null {
   if (!subgroups?.length) return null;
-  for (const id of UI_SOURCE_PRIORITY) {
+  for (const id of priority) {
     const sg = subgroups.find(s => s.id === id && s.hasValidFiles);
     if (sg) return sg.dir;
   }
   return null;
 }
 
+function isTreeParentPathWith(p: string, treePrefix: string, sourceOf: SourceClassifier): boolean {
+  const inTree = p === treePrefix.replace(/\/$/, '') || p.startsWith(treePrefix);
+  return inTree && sourceOf(p) === null;
+}
+
+// ── UI instances (thin wrappers over the generic funnel) ──────────────
+
+/**
+ * Pick the single UiSource a path list should be normalized to. Returns the
+ * highest-priority source present, or `null` if no UI paths are involved.
+ */
+export function pickUiSource(paths: readonly string[] | undefined): UiSource | null {
+  return pickSourceWith(paths, uiSourceOfPath, UI_SOURCE_PRIORITY);
+}
+
+/**
+ * Enforce the hard-exclusive UiSource invariant on a path list. **SSOT for
+ * "exactly one UiSource"** — every funnel that produces or merges path lists
+ * destined for a RAC MUST route through here. `validateUiSourceExclusivity`
+ * and `ArtifactPoolView.uiSource()` are downstream safety nets. Order-preserving.
+ */
+export function normalizeUiSourceRefs(paths: readonly string[] | undefined): string[] {
+  return normalizeSourceRefsWith(paths, uiSourceOfPath, UI_SOURCE_PRIORITY);
+}
+
+/**
+ * Auto-fill picker for `type: 'ui-source'` slots — the highest-priority
+ * subgroup with `hasValidFiles` (per `UI_SOURCE_PRIORITY`). Empty when none.
+ */
+export function pickDefaultUiSourceRefs<F>(
+  subgroups: readonly { id: UiSource; hasValidFiles: boolean; files: readonly F[] }[] | undefined,
+): F[] {
+  return pickDefaultSourceRefsWith(subgroups, UI_SOURCE_PRIORITY);
+}
+
+/**
+ * BE infer-path counterpart of `pickDefaultUiSourceRefs` — the single valid
+ * UiSource subgroup *directory*. `null` means "no valid subgroup" and callers
+ * MUST drop the slot (never fall back to the parent `visual/ui`, which is
+ * unclassifiable and directory-walks across all three subgroups → mixed-pool throw).
+ */
+export function pickUiSourceSubgroupDir(
+  subgroups: readonly { id: UiSource; dir: string; hasValidFiles: boolean }[] | undefined,
+): string | null {
+  return pickSourceSubgroupDirWith(subgroups, UI_SOURCE_PRIORITY);
+}
+
 /**
  * Whether a path is inside the UI tree but NOT under a specific UiSource
- * subgroup — i.e. the un-narrowed parent `visual/ui` (or `visual/ui/`). Such a
- * path is unclassifiable (`uiSourceOfPath` returns null) yet directory-walks
- * across ant/figma/handoff. The infer path rewrites these to a single subgroup
- * directory before they reach the RAC; everything classified (e.g.
- * `visual/ui/handoff/...`) returns false and passes through untouched.
+ * subgroup — the un-narrowed parent `visual/ui`. The infer path rewrites these
+ * to a single subgroup directory before they reach the RAC.
  */
 export function isUiTreeParentPath(p: string): boolean {
-  const inUiTree = p === ARTIFACT_PREFIX.UI.replace(/\/$/, '') || p.startsWith(ARTIFACT_PREFIX.UI);
-  return inUiTree && uiSourceOfPath(p) === null;
+  return isTreeParentPathWith(p, ARTIFACT_PREFIX.UI, uiSourceOfPath);
 }
 
 /**
@@ -560,8 +576,8 @@ export function gameArtSourceOfPath(path: string): UiSource | null {
 
 /**
  * Whether any path in the list is a game-art design document (D24-revised v8).
- * Matches any of the three sub-source prefixes (`ant/` is active today;
- * `figma/` / `handoff/` are Phase 5+ hooks).
+ * Matches any of the three sub-source prefixes (`ant/` + `handoff/` are active;
+ * `figma/` is a Phase 5+ hook).
  *
  * 단방향 원칙: 비-canonical path 에 대한 BC 분기는 두지 않는다. 디스크
  * 정합성은 워크스페이스 부트 가드가 책임진다.
@@ -573,6 +589,47 @@ export function pathsContainGameArtDoc(paths: readonly string[] | undefined): bo
     p.startsWith(ARTIFACT_PREFIX.GAME_ART_FIGMA) ||
     p.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)
   );
+}
+
+// ── game-art instances (thin wrappers over the generic funnel) ────────
+// Symmetric with the UI instances above (WS2 §3A). game-art reuses the
+// `UiSource` enum + `['ant','figma','handoff']` priority; the classifier is
+// `gameArtSourceOfPath` and the tree prefix is `ARTIFACT_PREFIX.GAME_ART`.
+
+/**
+ * Hard-exclusive game-art source priority — mirrors `UI_SOURCE_PRIORITY`.
+ * `GAME_ART_SOURCE_SUBGROUPS` (action-config-matrix.ts) MUST register subgroups
+ * in this order; the symmetry test locks the relationship.
+ */
+export const GAME_ART_SOURCE_PRIORITY: readonly UiSource[] = ['ant', 'figma', 'handoff'];
+
+/** Pick the single game-art source a path list should normalize to (ant > figma > handoff). */
+export function pickGameArtSource(paths: readonly string[] | undefined): UiSource | null {
+  return pickSourceWith(paths, gameArtSourceOfPath, GAME_ART_SOURCE_PRIORITY);
+}
+
+/** SSOT for "exactly one game-art source" on a path list. Mirrors `normalizeUiSourceRefs`. */
+export function normalizeGameArtSourceRefs(paths: readonly string[] | undefined): string[] {
+  return normalizeSourceRefsWith(paths, gameArtSourceOfPath, GAME_ART_SOURCE_PRIORITY);
+}
+
+/** FE auto-fill picker for a game-art `type: 'ui-source'` slot. Mirrors `pickDefaultUiSourceRefs`. */
+export function pickDefaultGameArtSourceRefs<F>(
+  subgroups: readonly { id: UiSource; hasValidFiles: boolean; files: readonly F[] }[] | undefined,
+): F[] {
+  return pickDefaultSourceRefsWith(subgroups, GAME_ART_SOURCE_PRIORITY);
+}
+
+/** BE infer-path picker for the single valid game-art subgroup directory. Mirrors `pickUiSourceSubgroupDir`. */
+export function pickGameArtSourceSubgroupDir(
+  subgroups: readonly { id: UiSource; dir: string; hasValidFiles: boolean }[] | undefined,
+): string | null {
+  return pickSourceSubgroupDirWith(subgroups, GAME_ART_SOURCE_PRIORITY);
+}
+
+/** Whether a path is the un-narrowed game-art parent `visual/game-art`. Mirrors `isUiTreeParentPath`. */
+export function isGameArtTreeParentPath(p: string): boolean {
+  return isTreeParentPathWith(p, ARTIFACT_PREFIX.GAME_ART, gameArtSourceOfPath);
 }
 
 /**

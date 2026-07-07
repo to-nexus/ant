@@ -163,7 +163,7 @@ describe('Domain-Surface Boundary (D28) — code intent ref/ctx routing', () => 
       const slots = getConfigSlots(intent)!;
       const allSlots = [...slots.refs, ...slots.context];
       const hasUiSource = allSlots.some(s => s.path === 'visual/ui');
-      const hasGameArtSource = allSlots.some(s => s.path === 'visual/game-art/ant');
+      const hasGameArtSource = allSlots.some(s => s.path === 'visual/game-art');
       // gen-code-spec uses spec docs as refs only, but UI/game-art is in context.
       expect(hasUiSource || hasGameArtSource, `${intent} must list at least one design source`).toBe(true);
     }
@@ -173,7 +173,7 @@ describe('Domain-Surface Boundary (D28) — code intent ref/ctx routing', () => 
     for (const intent of CODE_INTENTS) {
       const filtered = filterSlotsByDomain(getConfigSlots(intent)!, 'service');
       const allSlots = [...filtered.refs, ...filtered.context];
-      const gameArtSlots = allSlots.filter(s => s.path === 'visual/game-art/ant');
+      const gameArtSlots = allSlots.filter(s => s.path === 'visual/game-art');
       expect(gameArtSlots, `${intent} must drop game-art-source slots in service domain`).toEqual([]);
     }
   });
@@ -215,14 +215,14 @@ describe('Domain-Surface Boundary — design-spec domain routing (Game-Activatio
     for (const intent of SPEC_INTENTS) {
       const ctx = getConfigSlots(intent)!.context;
       expect(ctx.some(s => s.path === 'visual/ui'), `${intent} must list ui-source`).toBe(true);
-      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent} must list game-art-source`).toBe(true);
+      expect(ctx.some(s => s.path === 'visual/game-art'), `${intent} must list game-art-source`).toBe(true);
     }
   });
 
   it('game domain keeps game-art-source and drops ui-source', () => {
     for (const intent of SPEC_INTENTS) {
       const ctx = filterSlotsByDomain(getConfigSlots(intent)!, 'game').context;
-      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent}@game keeps game-art`).toBe(true);
+      expect(ctx.some(s => s.path === 'visual/game-art'), `${intent}@game keeps game-art`).toBe(true);
       expect(ctx.some(s => s.path === 'visual/ui'), `${intent}@game drops ui-source`).toBe(false);
     }
   });
@@ -231,7 +231,7 @@ describe('Domain-Surface Boundary — design-spec domain routing (Game-Activatio
     for (const intent of SPEC_INTENTS) {
       const ctx = filterSlotsByDomain(getConfigSlots(intent)!, 'service').context;
       expect(ctx.some(s => s.path === 'visual/ui'), `${intent}@service keeps ui-source`).toBe(true);
-      expect(ctx.some(s => s.path === 'visual/game-art/ant'), `${intent}@service drops game-art`).toBe(false);
+      expect(ctx.some(s => s.path === 'visual/game-art'), `${intent}@service drops game-art`).toBe(false);
     }
   });
 
@@ -288,7 +288,7 @@ describe('Domain-Surface Boundary (D28) — undefined domain falls back to servi
     // ui-source has applicableDomains=['service'], game-art-source ['game'] —
     // neither matches `undefined` so both drop. Domain-agnostic slots remain.
     const uiSlots = allSlots.filter(s => s.path === 'visual/ui');
-    const gameArtSlots = allSlots.filter(s => s.path === 'visual/game-art/ant');
+    const gameArtSlots = allSlots.filter(s => s.path === 'visual/game-art');
     expect(uiSlots).toEqual([]);
     expect(gameArtSlots).toEqual([]);
     // System-design slot is domain-agnostic and must survive.

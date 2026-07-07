@@ -67,6 +67,28 @@ import catalog from '@/assets/game/game-art-assets.json' with { type: 'json' };
 // (TS: declare module via vite/webpack JSON loader)
 ```
 
+**External asset preload — key is `entry.id`, URL is the servable path**:
+
+The catalog JSON is bundled at build time (import above). The binary asset files it references are made web-servable per the framework's static-asset convention (the code job's asset-placement guidance commits the concrete destination); `entry.src` under `assets/game/...` is the source-of-truth location, NOT a directly-fetchable URL. Register each external asset under `entry.id` verbatim so `game-art-spec.json`'s `id` references resolve:
+
+```ts
+class BootScene extends Phaser.Scene {
+  preload() {
+    for (const entry of catalog.entities ?? []) {
+      if (entry.kind === 'external') {
+        // servableUrl(entry.src): the framework-served URL for the source file
+        this.load.image(entry.id, servableUrl(entry.src));
+      }
+    }
+    if (catalog._meta.audioScope === 'external-enabled') {
+      for (const entry of catalog.sfx ?? []) {
+        if (entry.kind === 'external') this.load.audio(entry.id, servableUrl(entry.src));
+      }
+    }
+  }
+}
+```
+
 ### Required viewport wiring (Scale Manager)
 
 Phaser's `Scale Manager` decides how the canvas pixel buffer adapts to its container. The choice is committed in `Game.config.scale`:

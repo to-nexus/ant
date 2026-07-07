@@ -65,20 +65,24 @@ Constraints:
 
 #### 3.3 Conditional emit pattern
 
-Code emitted from baseline scope onward MUST stage the audio loader behind the marker so the upgrade transition is a flag flip rather than a rewrite:
+Code emitted from baseline scope onward MUST stage the audio loader behind the marker so the upgrade transition is a flag flip rather than a rewrite. The loader key is `entry.id` **verbatim** (the spec references assets by `id`), and the fetch target is the framework-servable URL for `entry.src` — NOT the raw `assets/game/...` path (see §3.4):
 
 ```ts
 // BootScene.preload (illustrative — engine partial commits the API names)
 if (catalog._meta.audioScope === 'external-enabled') {
   for (const entry of catalog.sfx ?? []) {
-    if (entry.kind === 'external') /* engine audio loader */ ;
+    if (entry.kind === 'external') /* engine audio loader */ (entry.id, servableUrl(entry.src));
   }
   for (const entry of catalog.bgm ?? []) {
-    if (entry.kind === 'external') /* engine audio loader */ ;
+    if (entry.kind === 'external') /* engine audio loader */ (entry.id, servableUrl(entry.src));
   }
 }
 // Inline OscillatorNode SFX always remain available regardless of audioScope.
 ```
+
+#### 3.4 External `src` → servable URL (path convention SSOT)
+
+`entry.src` (`assets/game/<category>/...`) is the **source-of-truth location** the design surface recorded — it is NOT assumed to be directly fetchable by the browser. At code-emission time the referenced file is made web-servable per the **framework's static-asset convention** (the code job's runtime asset-placement guidance commits the concrete destination for the active framework — e.g. a public static root vs a bundler source-tree import). The engine loader receives that derived servable URL, registered under `entry.id`. Do NOT hardcode `assets/game/...` as a fetch URL and do NOT assume a specific framework's folder here — the framework layer owns the physical destination.
 
 The audio module wraps both subsystems behind a uniform `playSfx(id)` / `playBgm(id)` API so the gameplay code does not need a marker branch — only the loader does.
 
