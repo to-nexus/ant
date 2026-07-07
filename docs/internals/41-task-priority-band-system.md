@@ -64,8 +64,34 @@ band 표는 손으로 베끼지 않는다. `renderPriorityBandGuide()` 가 `TASK
 
 design job 은 모든 task 를 `type:'doc'` 로 emit 하고 우선순위 band(tokens 100–199 / assets 200–299 / spec 300+)로 스케줄링을 구분한다. 이 축은 code-job `TASK_PRIORITY` 와 **직교**하며 [`tasks/doc/hooks/scheduling.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/doc/hooks/scheduling.ts) 의 `DESIGN_DOC_BANDS` 가 SSOT 다. 둘을 통합하지 말 것.
 
+## Deferred — game world-space Render sub-band (Phase 5+)
+
+**등록 이유**: 나중에 "버그"로 재발견되지 않게 지금 설계 방향을 못박는다. 아직 구현 대상 아님.
+
+현재 등록된 5개 게임 장르(match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake)는
+전부 single-screen 이라 캔버스(world-space) 렌더 레이어가 얇고, 모든 UI 가 screen-space React HUD 로
+collapse 한다 ([`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7).
+따라서 game 코드잡의 시각 작업이 서비스와 같은 `ui` 타입(단일 DOM 표면 = feature 스켈레톤 + 스타일
+패스 모델, [`tasks/ui/twin.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/ui/twin.ts))으로
+처리돼도 현재는 맞아떨어진다.
+
+**트리거**: 애니메이션-헤비 / 카메라-패닝 장르가 매트릭스에 추가되면 world-space Render 저작(스프라이트
+tween / 파티클 / 씬 연출)이 고volume 이 되고, `ui` 윈도(650–749)가 world-space Render(Domain 의존)와
+screen-space HUD 를 한 윈도에 섞어 순서화하지 못한다. `ui` 타입의 twin/attestation/restyle 프레이밍도
+world-space 저작을 담지 못한다.
+
+**그때의 설계 결정 (미리 확정)**:
+- **새 도메인-결합 task type(`render`/`scene`) 신설 금지.** `task.type` 은 도메인-agnostic 이라는
+  직교성(도메인 축·스택 축 전수 sweep 으로 입증)을 깬다. 차별화는 **domain 축**(이미 존재·작동)에 둔다.
+- **band 경로**: `ui` 윈도 안에 sub-band 도입(예 `UiBand = 'world' | 'hud'`) — Three-Axis 의
+  "새 scheduling 위치 = band, not type" 규칙. world-space Render 를 screen-space HUD 앞에 순서화.
+  `TaskBand` union 확장 1줄 + decompose mapping + `tasks/ui/hooks/scheduling.ts` classify 분기.
+- **hook/variant**: `tasks/ui/` 번들이 domain 을 읽어 world-space Render task 에 twin/attestation 적용을
+  스왑하고, execute variant 에 domain-gated render-authoring 섹션을 얹는다 (`ui` 는 타입 유지, domain 분기).
+
 ## 관련 문서
 
 - `CLAUDE.md` §"Three-Axis Task Modeling SSOT" — 권위 사양 + enforcement
 - [`NODE_GRAPH_LAYOUT.md`](NODE_GRAPH_LAYOUT.md) §R1 — phase 코드의 priority 의미 비교 격리
+- [`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7 — world-space/screen-space 렌더 경계 (위 seam 의 도메인-오버레이 쪽)
 - [`11-agent-architecture.md`](11-agent-architecture.md) — TaskOrchestrator / 배리어 메커니즘

@@ -1,11 +1,14 @@
 /**
  * ui/hooks/scheduling.ts — TaskSchedulingHook
  *
- * UI tasks render the view layer from `uiSections` + design tokens and
- * must wait for foundation (`setup`) and feature scaffolding before
- * they have anything to render. They publish the `preUiBarrier`
- * consumer flag so the orchestrator gates them behind the cross-type
- * `hasPreUiWork` barrier:
+ * UI tasks render the view layer from their `task.include` UI-pool paths
+ * (LLM-authored at decompose) + design tokens, and must wait for
+ * foundation (`setup`) and feature scaffolding before they have anything
+ * to render. In a game workspace the view layer spans screen-space HUD
+ * (React) + world-space Render (engine canvas) — see `jobs/code/domain/game.md`
+ * §3/§7; the scheduling shape below is domain-agnostic. They publish the
+ * `preUiBarrier` consumer flag so the orchestrator gates them behind the
+ * cross-type `hasPreUiWork` barrier:
  *
  *     const sched = hooksForTaskType(task.type)?.scheduling;
  *     if (hasPreUiWork && sched?.preUiBarrier) break;
