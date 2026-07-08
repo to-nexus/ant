@@ -11,6 +11,7 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { generateTurnId } from '../../../../composition/recordUserTurn';
 import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
@@ -1138,7 +1139,15 @@ export function createJobRoutes(deps: {
           });
         }
 
-        // 2) Enqueue a fresh design job with the original directive
+        // 2) Enqueue a fresh design job with the original directive.
+        //    Allocate a seedTurnId so the Redis JobStatusData.turnId anchor is
+        //    populated (RouteConfigurator seeds it from params.seedTurnId). This
+        //    is the ONLY cross-pod-safe anchor tier for the cancelled/resume
+        //    choice card — without it, a paused redirect-spawned design job
+        //    emits no Resume/Dismiss card when the disk user_turn read lags on
+        //    another pod (`no turn anchor` RCA). The same id flows to the
+        //    worker's recordUserTurn so disk + Redis carry one turnId.
+        const designSeedTurnId = generateTurnId();
         const designParams: ExecuteJobParams = {
           agent: 'architect',
           jobType: 'design',
@@ -1147,6 +1156,7 @@ export function createJobRoutes(deps: {
           overrideDirective: originalDirective,
           chatSource: true,
           userContext,
+          seedTurnId: designSeedTurnId,
         };
         const result = await deps.executeJob(designParams);
         logger.info(`Decompose redirect_to_design: codeJob=${jobId} → designJob=${result.jobId}`, { component: 'JobRoute' });

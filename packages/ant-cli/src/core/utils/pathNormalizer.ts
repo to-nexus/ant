@@ -112,8 +112,12 @@ export function normalizeToCodebasePath(
   // Rule 3: Feature sibling directory (plan/, architecture/, visual/,
   // assets/, meta/, sessions/) -> no change. These are legitimate
   // non-codebase paths (e.g., assets/service/icons/logo.png for copy ops).
+  // Match both the prefixed form (`visual/...`) AND the bare directory name
+  // (`visual`) — an LLM `list_files('visual')` / `mkdir('visual')` without a
+  // trailing slash must NOT be mis-prefixed into codebase/ (game-art design
+  // explores visual/game-art/ant/ via bare-dir listing).
   for (const siblingPrefix of FEATURE_SIBLING_PREFIXES) {
-    if (normalized.startsWith(siblingPrefix)) {
+    if (normalized.startsWith(siblingPrefix) || normalized === siblingPrefix.slice(0, -1)) {
       return { normalized, wasFixed: false };
     }
   }

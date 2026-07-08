@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { DesignGraphState } from "../../state";
 import { saveFigmaMCPDebugLog } from '../../../../../../periphery/adapters/figma/figmaMCPHandler';
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, getDirDescription } from '@ant/shared';
 
 import { saveSessionRun } from './sessionWriter';
 import { extractDesignLessons, storeLessonsToMemory, stripMetaFromContent } from './lessonExtractor';
@@ -244,7 +244,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // Load files from disk (state.files is reset between tasks)
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
-  
+  // Resolved to the intent-group's canonical output dir below; used in the
+  // no-output error so a future domain gap points at the right location.
+  let expectedOutputDir = 'the design output directory';
+
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
     const fileSystem = state.deps.fileSystem;
@@ -258,17 +261,29 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       || state.resolvedAction?.intent === 'gen-ui-figma'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
+    const isGameArtDesign = state.resolvedAction?.intentGroup === 'design-game-art';
     const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';
 
-    // Canonical destination: UI → visual/ui/ant, Spec → architecture/spec,
-    // System → architecture/system. Single directory per intent (no fallback).
+    // Canonical destination: UI → visual/ui/ant, Game-Art → visual/game-art/ant,
+    // Spec → architecture/spec, System → architecture/system. Single directory
+    // per intent (no fallback). Game-art is the game-domain peer of UI (D28);
+    // both write category-keyed JSON, so game-art mirrors the UI JSON branch.
     const targetDirRelToFeature = isUiDesign
       ? ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '')
-      : isSpecDesign
-        ? ARTIFACT_PREFIX.SPEC.replace(/\/$/, '')
-        : ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+      : isGameArtDesign
+        ? ARTIFACT_PREFIX.GAME_ART_ANT.replace(/\/$/, '')
+        : isSpecDesign
+          ? ARTIFACT_PREFIX.SPEC.replace(/\/$/, '')
+          : ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
     const subDirRel = path.join(featureDirRel, targetDirRelToFeature);
-    const label = isUiDesign ? 'UI Design' : isSpecDesign ? 'Spec Design' : 'System Design';
+    expectedOutputDir = targetDirRelToFeature;
+    const label = isUiDesign
+      ? 'UI Design'
+      : isGameArtDesign
+        ? 'Game-Art Design'
+        : isSpecDesign
+          ? 'Spec Design'
+          : 'System Design';
     console.log(`📂 [Learn] Checking ${label} files in ${targetDirRelToFeature}/...`);
 
     try {
@@ -277,8 +292,13 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       if (await fileSystem.fileExists(subDirRel)) {
         const entries = await fileSystem.readDirectory(subDirRel);
 
-        if (isUiDesign) {
-          const expectedFiles = ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json'];
+        if (isUiDesign || isGameArtDesign) {
+          // Canonical JSON set for the surface. Game-art mirrors UI: the
+          // expected filenames are the SSOT in @ant/shared file-descriptions.
+          const expectedFiles = isGameArtDesign
+            ? (getDirDescription(targetDirRelToFeature)?.expectedFiles
+                ?? ['game-art-tokens.json', 'game-art-assets.json', 'game-art-spec.json'])
+            : ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json'];
           for (const e of entries) {
             if (!e.isDirectory && expectedFiles.includes(e.name)) {
               filesToProcess.push({ filename: e.name, dir: subDirRel });
@@ -299,7 +319,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
         const filePath = path.join(dir, filename);
         let content = await fileSystem.readFile(filePath);
 
-        if (content && isUiDesign) {
+        if (content && (isUiDesign || isGameArtDesign)) {
           content = stripMetaFromContent(filename, content);
           await fileSystem.writeFile(filePath, content);
           console.log(`   🧹 Cleaned _meta from: ${filename}`);
@@ -322,7 +342,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(
-      `No design files found under architecture/{system,spec}/ or visual/ui/ant/ — execute nodes must have run`
+      `No design files found under ${expectedOutputDir} — execute nodes must have run`
     );
   }
   

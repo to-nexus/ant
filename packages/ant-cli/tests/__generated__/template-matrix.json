@@ -1437,36 +1437,42 @@
   },
   "jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/game-art-assets-guide-by-figma": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/game-art-spec-guide-by-desc": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/game-art-spec-guide-by-figma": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/game-art-tokens-guide-by-desc": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/game-art-tokens-guide-by-figma": {
     "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]
@@ -1554,6 +1560,32 @@
     "sources": [
       "build-callsite",
       "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/game-art-by-desc/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/game-art-by-desc/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/game-art-by-figma/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/game-art-by-figma/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call",
+      "partial-ref"
     ]
   },
   "jobs/design/nodes/execute/variants/spec/base": {

@@ -127,6 +127,16 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/design/nodes/execute/variants/ui-design-by-desc/rules',
     system: 'jobs/design/base/system',
   },
+  designGameArtByFigma: {
+    base: 'jobs/design/nodes/execute/variants/game-art-by-figma/base',
+    rules: 'jobs/design/nodes/execute/variants/game-art-by-figma/rules',
+    system: 'jobs/design/base/system',
+  },
+  designGameArtByDesc: {
+    base: 'jobs/design/nodes/execute/variants/game-art-by-desc/base',
+    rules: 'jobs/design/nodes/execute/variants/game-art-by-desc/rules',
+    system: 'jobs/design/base/system',
+  },
   designExplain: {
     base: 'jobs/design/nodes/execute/variants/explain-only/base',
     rules: 'jobs/design/nodes/execute/variants/explain-only/rules',

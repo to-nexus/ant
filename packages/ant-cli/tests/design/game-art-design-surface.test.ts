@@ -72,6 +72,8 @@ describe('I7-revised — Domain-Surface Boundary', () => {
     const dirs = [
       'jobs/design/nodes/decompose/variants/game-art-design-by-figma',
       'jobs/design/nodes/decompose/variants/game-art-design-by-desc',
+      'jobs/design/nodes/execute/variants/game-art-by-desc',
+      'jobs/design/nodes/execute/variants/game-art-by-figma',
     ];
     const offenders: Array<{ file: string; match: string }> = [];
     for (const dir of dirs) {
@@ -90,5 +92,44 @@ describe('I7-revised — Domain-Surface Boundary', () => {
     expect(body).toMatch(/css-only|css\s+only/i);
     expect(body).toMatch(/inline/i);
     expect(body).toMatch(/external/i);
+  });
+});
+
+// game-art-design is the game-domain positional peer of design-ui (D28): it has
+// its own execute builder + variant templates instead of falling through to the
+// system-design path. These lock the wiring so a game-art design job never
+// re-derives service-domain output dirs (the `bronze-fishing-chess` RCA).
+describe('game-art execute path parity with design-ui (D28)', () => {
+  for (const suffix of ['by-desc', 'by-figma'] as const) {
+    it(`game-art-${suffix} variant dispatches the game-art guides + targets visual/game-art/ant`, () => {
+      const base = readMd(`jobs/design/nodes/execute/variants/game-art-${suffix}/base.md`);
+      for (const kind of ['tokens', 'assets', 'spec']) {
+        expect(base).toContain(`jobs/design/nodes/execute/injections/game-art-${kind}-guide-${suffix}`);
+      }
+      const rules = readMd(`jobs/design/nodes/execute/variants/game-art-${suffix}/rules.md`);
+      expect(rules).toContain('visual/game-art/ant/');
+      // Must NOT write into the service-domain UI tree or the codebase tree.
+      expect(rules).not.toContain('visual/ui/ant/');
+    });
+  }
+
+  it('execute node routes design-game-art to the dedicated game-art builder', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/agents/architect/graph/design/nodes/execute/index.ts'),
+      'utf-8',
+    );
+    expect(src).toContain("intentGroup === 'design-game-art'");
+    expect(src).toContain('buildGameArtMessages(state)');
+  });
+
+  it('learn node scans visual/game-art/ant for a game-art design job', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/agents/architect/graph/design/nodes/learn/index.ts'),
+      'utf-8',
+    );
+    expect(src).toContain("intentGroup === 'design-game-art'");
+    expect(src).toContain('ARTIFACT_PREFIX.GAME_ART_ANT');
+    // The old service-only error string must be gone (it pointed game jobs at visual/ui/ant).
+    expect(src).not.toContain('No design files found under architecture/{system,spec}/ or visual/ui/ant/');
   });
 });

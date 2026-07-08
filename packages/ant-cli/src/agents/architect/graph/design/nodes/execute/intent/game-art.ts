@@ -1,0 +1,369 @@
+/**
+ * Game-Art Design Prompt Builder
+ *
+ * Game-domain peer of `intent/ui.ts` (D28 vertical split). Handles message
+ * building for game-art design work:
+ * - buildGameArtMessages: main message builder
+ * - buildGameArtFreshPrompt: fresh prompt for tool loop continuation
+ * - buildGameArtSystemPrompt: system prompt loader (from template)
+ *
+ * Task instructions and per-file guides live in templates:
+ * - variants/game-art-by-desc/{base,rules}.md (directive-driven — gen-game-art-desc / rev-game-art)
+ * - variants/game-art-by-figma/{base,rules}.md (figma/workfile mode — gen-game-art-figma, Phase 5+)
+ *
+ * The three canonical catalogs are game-art-tokens.json / game-art-assets.json
+ * / game-art-spec.json under visual/game-art/ant/ (mirrors visual/ui/ant/).
+ */
+
+import { DesignGraphState } from '../../../state';
+import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
+import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
+import { DesignTask } from '../../../../../types/task';
+import { designDirOf, ARTIFACT_PREFIX } from '@ant/shared';
+import type { ResolvedArtifact } from '@ant/shared';
+import { composeMessages } from '../../../../../../../core/utils/messageComposer';
+import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
+import { extractLastSectionKey } from '../../../_shared/anchor';
+
+/** Figma/workfile mode is opted into only by the figma intent (Phase 5+). */
+function isGameArtFigmaMode(state: DesignGraphState): boolean {
+  return state.resolvedAction?.intent === 'gen-game-art-figma';
+}
+
+/** Resolve the target catalog filename from the task (id fallback). */
+function resolveGameArtTargetFile(state: DesignGraphState): string {
+  const taskId = state.currentTask?.id || '';
+  return state.currentTask?.targetFile
+    || (taskId.startsWith('game-art-tokens') ? 'game-art-tokens.json'
+      : taskId.startsWith('game-art-assets') ? 'game-art-assets.json'
+      : taskId.startsWith('game-art-spec') ? 'game-art-spec.json'
+      : 'game-art-spec.json');
+}
+
+/**
+ * Shared "Provided Documents" block. Mirrors the role-guide wording used by
+ * the UI builder so authority semantics stay consistent across surfaces.
+ */
+function buildProvidedDocsSection(docs: ResolvedArtifact[]): string | null {
+  if (docs.length === 0) return null;
+  const refs = docs.filter(a => a.role === 'ref');
+  const ctx = docs.filter(a => a.role !== 'ref');
+  const sections: string[] = [
+    '## Provided Documents',
+    '',
+    '**Principle**: `ref` and `context` documents are both authoritative inputs. Use all of them.',
+    '',
+    '**Constraint**: `ref` is the original source material. When `ref` and `context` directly conflict on the same property, `ref` wins. Otherwise both are equally binding.',
+    '',
+    '**Constraint**: Task scope is determined by `ref` (or by the directive when no `ref` is provided). `context` supplies implementation detail but does NOT expand scope.',
+    '',
+    '**Constraint**: Provided documents are INPUTS. Do NOT edit them; writes this turn go to the Output Target.',
+    '',
+  ];
+  for (const a of refs) sections.push(`### [ref] ${a.path}`, '', a.content, '');
+  for (const a of ctx)  sections.push(`### [context] ${a.path}`, '', a.content, '');
+  return sections.join('\n');
+}
+
+/**
+ * Build previous game-art catalogs from the pool as REFERENCE.
+ * game-art-spec depends on tokens + assets (mirrors ui-spec's dependency).
+ */
+function buildPreviousGameArtDocsFromPool(pool: ResolvedArtifact[], taskId: string): string {
+  if (!taskId.startsWith('game-art-spec')) return '';
+
+  const docs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.GAME_ART_ANT] });
+  let injected = '';
+  const banner = (name: string, note: string) =>
+    `\n\n════════════════════════════════════════════════════════════════════════════════\n`
+    + `# REFERENCE: ${name} (ALL chapters completed)\n> ${note}\n`
+    + `════════════════════════════════════════════════════════════════════════════════\n\n`;
+
+  for (const a of docs) {
+    const filename = a.path.split('/').pop() || '';
+    if (filename === 'game-art-tokens.json' && a.content && !a.content.includes('ant:template')) {
+      injected += banner('game-art-tokens.json', 'Use these token keys. Do NOT use raw values that are defined here.');
+      injected += '```json\n' + a.content + '\n```';
+    } else if (filename === 'game-art-assets.json' && a.content && !a.content.includes('ant:template')) {
+      injected += banner('game-art-assets.json', 'Reference these asset identifiers when documenting spec entries.');
+      injected += '```json\n' + a.content + '\n```';
+    }
+  }
+  return injected;
+}
+
+/**
+ * Build multimodal messages for game-art catalog generation.
+ * Tool-based: source docs arrive via the pool (task.include), assets via list_assets.
+ */
+export async function buildGameArtMessages(state: DesignGraphState): Promise<Array<{
+  role: 'user' | 'assistant';
+  content: MessageContentBlock[];
+}>> {
+  const task = state.currentTask;
+
+  const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+  const isAfterToolCall = nodeExecute.length > 0;
+
+  if (isAfterToolCall) {
+    console.log(`🎮 [Execute] Game-Art continuing with existing conversation (${nodeExecute.length} messages)`);
+    const freshPrompt = await buildGameArtFreshPrompt(state);
+    const { messages } = composeMessages({
+      initialBlocks: freshPrompt,
+      priorTurns: nodeExecute as any,
+    });
+    return messages;
+  }
+
+  console.log(`🎮 [Execute] Building Game-Art prompt for task: ${task?.id} (tool-based)`);
+
+  const content: CacheableContent[] = [];
+
+  const systemPrompt = await buildGameArtSystemPrompt(state);
+  content.push({ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } });
+
+  content.push({ type: 'text', text: buildResourcesSummary(state) });
+
+  // Source docs (PRD / directive) from the pool — task.include SSOT, SOURCES fallback.
+  const designTask = task as DesignTask | undefined;
+  const taskSourceFiles = designTask?.sourceFiles ? [...designTask.sourceFiles] : undefined;
+  let selectedDocs = selectArtifacts(state.artifacts || [], {
+    include: designTask?.include?.length ? designTask.include : [ARTIFACT_PREFIX.SOURCES],
+  });
+  if (taskSourceFiles?.length) {
+    selectedDocs = selectedDocs.filter(a => taskSourceFiles.some(f => a.path.endsWith('/' + f)));
+  }
+  const providedDocs = buildProvidedDocsSection(selectedDocs);
+  if (providedDocs) content.push({ type: 'text', text: providedDocs });
+
+  // Previously generated catalogs (game-art-spec depends on tokens + assets).
+  const taskInclude = designTask?.include;
+  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.GAME_ART_ANT))
+    ? buildPreviousGameArtDocsFromPool(state.artifacts || [], task?.id || '')
+    : '';
+  if (previousDocs) content.push({ type: 'text', text: previousDocs });
+
+  await logGameArtPrompt(state, 'execute-gameArt-fullMessage', content, {
+    taskId: task?.id,
+    taskName: task?.name,
+    sourceDocs: selectedDocs.length,
+    previousDocsLen: previousDocs.length,
+  });
+
+  return [{ role: 'user', content }];
+}
+
+/** Fresh user prompt for tool-loop continuation. */
+export async function buildGameArtFreshPrompt(state: DesignGraphState): Promise<CacheableContent[]> {
+  const content: CacheableContent[] = [];
+  const task = state.currentTask;
+
+  const systemPrompt = await buildGameArtSystemPrompt(state);
+  content.push({ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } });
+
+  content.push({ type: 'text', text: buildResourcesSummary(state) });
+
+  const designTask = task as DesignTask | undefined;
+  const taskSourceFiles = designTask?.sourceFiles;
+  let sourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  if (taskSourceFiles?.length) {
+    sourceArtifacts = sourceArtifacts.filter(a => taskSourceFiles.some(f => a.path.endsWith('/' + f)));
+  }
+  const providedDocs = buildProvidedDocsSection(sourceArtifacts);
+  if (providedDocs) content.push({ type: 'text', text: providedDocs });
+
+  const taskInclude = designTask?.include;
+  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.GAME_ART_ANT))
+    ? buildPreviousGameArtDocsFromPool(state.artifacts || [], task?.id || '')
+    : '';
+  if (previousDocs) content.push({ type: 'text', text: previousDocs });
+
+  await logGameArtPrompt(state, 'execute-gameArt-freshPrompt', content, {
+    taskId: task?.id,
+    taskName: task?.name,
+    sourceDocs: sourceArtifacts.length,
+    previousDocsLen: previousDocs.length,
+    isFreshPrompt: true,
+  });
+
+  return content;
+}
+
+/**
+ * Build the system prompt for game-art catalog generation.
+ * Loads game-art-by-{desc|figma}/base.md and prepends the gameArtTier basis.
+ */
+export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise<string> {
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) {
+    throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
+  }
+
+  let previousChaptersSummary = '';
+  let liveAnchor: string | null = null;
+
+  const taskId = state.currentTask?.id || '';
+  const taskDescription = state.currentTask?.description || '';
+  const actualTargetFile = resolveGameArtTargetFile(state);
+
+  const isLastTaskForDocument = !!(state.currentTask as DesignTask)?.isLastTaskForDocument;
+  const forceAppend = !!(state.currentTask as DesignTask)?.forceAppend;
+
+  // Read the current on-disk catalog to compute forbidden-category summary + anchor.
+  if (state.deps?.fileSystem && state.context.featurePath) {
+    try {
+      const path = await import('path');
+      const rootPath = state.deps.fileSystem.getRootPath?.() || '';
+      const featureDirRel = rootPath
+        ? path.relative(rootPath, state.context.featurePath)
+        : state.context.featurePath.replace(/^\//, '');
+      const filePath = path.join(featureDirRel, designDirOf(actualTargetFile), actualTargetFile);
+      if (await state.deps.fileSystem.fileExists(filePath)) {
+        const existing = await state.deps.fileSystem.readFile(filePath) || '';
+        if (existing) {
+          try {
+            const parsed = JSON.parse(existing);
+            const dataKeys = Object.keys(parsed).filter(k => k !== '_meta');
+            if (dataKeys.length > 0) {
+              previousChaptersSummary = dataKeys.map((k, i) => `- Category ${i + 1}: ${k}`).join('\n');
+            }
+          } catch (parseError) {
+            console.warn(`🎮 [Execute Game-Art] Failed to parse ${actualTargetFile} as JSON:`, parseError);
+          }
+          liveAnchor = extractLastSectionKey(existing);
+        }
+      } else {
+        console.log(`🎮 [Execute Game-Art] ${actualTargetFile} does not exist yet (first chapter)`);
+      }
+    } catch (error) {
+      console.error(`[Execute Game-Art] Error reading ${actualTargetFile}:`, error);
+    }
+  }
+
+  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = state._allTasksSummary || [];
+  const siblingTasks = allTasks
+    .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
+    .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
+    .join('\n');
+
+  const injectedVariables = {
+    taskId: state.currentTask?.id,
+    taskName: state.currentTask?.name,
+    taskDescription,
+    targetFile: actualTargetFile,
+    previousChaptersSummary,
+    isLastTaskForDocument,
+    forceAppend,
+    siblingTasks: siblingTasks || '',
+    appendAnchor: liveAnchor,
+    detectedMode: state.resolvedAction?.mode,
+    userLanguage: state.context.userLanguage || 'en',
+    resolvedAction: state.resolvedAction,
+  };
+
+  const figmaMode = isGameArtFigmaMode(state);
+  const tpl = figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
+  const template = await promptBuilder.render(tpl.base, injectedVariables);
+  if (!template) {
+    throw new Error(`[Execute] Failed to load ${tpl.base}.md template`);
+  }
+
+  // Game-domain peer of buildVisualTierBasis — visualTier is inactive for game.
+  const gameArtTierBasis = await promptBuilder.buildGameArtTierBasis(state.resolvedAction?.basis, 'design');
+  const finalTemplate = gameArtTierBasis ? `${gameArtTierBasis}\n\n${template}` : template;
+
+  const jobId = state.jobId || state._httpJobId || 'unknown';
+  if (state.context.featurePath) {
+    const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'design',
+        'execute-gameArt-systemPrompt',
+        finalTemplate.length,
+        {
+          taskId: state.currentTask?.id,
+          taskName: state.currentTask?.name,
+          templatePath: tpl.base,
+          usedTemplates: [
+            tpl.rules!,
+            `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
+          ],
+          injectedVariables: {
+            taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
+            targetFile: injectedVariables.targetFile,
+            detectedMode: injectedVariables.detectedMode,
+            isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
+            forceAppend: injectedVariables.forceAppend,
+            previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
+            siblingTasks: injectedVariables.siblingTasks ? `[${injectedVariables.siblingTasks.length} chars]` : undefined,
+            gameArtTierBasis: gameArtTierBasis ? `[${gameArtTierBasis.length} chars]` : undefined,
+          },
+        }
+      );
+    } catch (logError) {
+      console.warn(`⚠️  [Execute] Failed to log game-art prompt:`, logError);
+    }
+  }
+
+  return finalTemplate;
+}
+
+/** Runtime resources summary (dynamic — asset counts, mode note). */
+function buildResourcesSummary(state: DesignGraphState): string {
+  let summary = '\n\n# Available Resources\n\n';
+  if (isGameArtFigmaMode(state)) {
+    summary += '## Figma / Workfile Mode\n';
+    summary += 'Use the Figma MCP tools to observe the source directly, then catalog what you observe.\n\n';
+  } else {
+    summary += '## Description-driven Mode\n';
+    summary += 'No external visual source is provided. Treat the directive plus PRD / source documents below as the design authority and produce the catalogs directly from them.\n\n';
+  }
+  summary += '## Asset Files\n';
+  summary += 'Use `list_assets` to discover available game asset files (entities / particles / sfx / ...) for `kind:external` mapping.\n\n';
+  if (state.uiAssetsList) {
+    const counts = Object.entries(state.uiAssetsList)
+      .filter(([, files]) => files.length > 0)
+      .map(([group, files]) => `${group}: ${files.length}`);
+    if (counts.length > 0) summary += `Available: ${counts.join(', ')}\n`;
+  }
+  return summary;
+}
+
+/** Log prompt structure (not content). Best-effort. */
+async function logGameArtPrompt(
+  state: DesignGraphState,
+  phase: string,
+  content: CacheableContent[],
+  extra: Record<string, unknown>,
+): Promise<void> {
+  if (!state.context.featurePath) return;
+  const jobId = state.jobId || state._httpJobId || 'unknown';
+  const figmaMode = isGameArtFigmaMode(state);
+  const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
+  const tpl = figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
+  try {
+    const totalLength = content
+      .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+      .reduce((sum, c) => sum + c.text.length, 0);
+    await logPrompt(state.context.featurePath, jobId, 'design', phase, totalLength, {
+      taskId: extra.taskId as string | undefined,
+      taskName: extra.taskName as string | undefined,
+      templatePath: tpl.base,
+      usedTemplates: [
+        tpl.rules!,
+        `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
+        `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
+        `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
+      ],
+      injectedVariables: extra,
+    });
+  } catch (logError) {
+    console.warn(`⚠️  [Execute] Failed to log ${phase}:`, logError);
+  }
+}

@@ -40,6 +40,7 @@ import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
 import { buildUiDesignMessages } from './intent/ui';
+import { buildGameArtMessages } from './intent/game-art';
 import { buildSpecMessages } from './intent/spec';
 import { renderExplainResponse } from './explain';
 
@@ -134,6 +135,11 @@ export async function execute(
 
   if (intentGroup === 'design-ui') {
     messages = await buildUiDesignMessages(state);
+  } else if (intentGroup === 'design-game-art') {
+    // Game-domain peer of design-ui (D28). Game-art catalogs are JSON like UI,
+    // NOT markdown system docs — route to the dedicated game-art builder rather
+    // than falling through to the system-design path.
+    messages = await buildGameArtMessages(state);
   } else if (intentGroup === 'design-spec') {
     messages = await buildSpecMessages(state);
   } else {
