@@ -723,6 +723,23 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   );
 }
 
+/**
+ * Cache the per-model breakdown into the broadcaster so it rides the next
+ * aggregate broadcast — the persisted Redis snapshot (which billing settle
+ * reads) and the SSE stream (which the token-usage popup reads) carry per-model
+ * cost. This is the per-model step of `updateKanbanTokenUsage` (line 711-713)
+ * extracted for graphs that have NO task queue and therefore never call it —
+ * plan (planner) and visual (creator). Call it right BEFORE the aggregate
+ * `updateTaskQueue` / `updateTokenUsage` broadcast at each site, mirroring
+ * `applyEstimatingUsage`. No-op when per-model data is absent (the broadcaster
+ * also guards against an empty-`{}` clobber).
+ */
+export function broadcastTokenUsageByModel(state: KanbanUpdatableState): void {
+  if (state.tokenUsageByModel) {
+    state.deps?.kanbanUpdate?.updateTokenUsageByModel?.(state.tokenUsageByModel);
+  }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Estimating-phase unified LLM runner (triage / detect / decompose)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -8,7 +8,7 @@
 
 import { VisualGraphState } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
@@ -115,6 +115,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     }
 
     if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+      broadcastTokenUsageByModel(state as any);
       state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
     }
 

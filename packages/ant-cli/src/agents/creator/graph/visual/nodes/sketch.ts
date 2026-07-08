@@ -12,7 +12,7 @@ import { VisualGraphState, SketchImage } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
 export async function sketchNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
 
@@ -64,7 +64,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
         if (generated.length > 0) {
           const genUsage = generated[0].tokenUsage;
           if (genUsage) {
-            accumulateTokenUsage(state, genUsage, { taskLevel: false, jobLevel: true });
+            accumulateTokenUsage(state, genUsage, {
+              taskLevel: false,
+              jobLevel: true,
+              modelId: (imageClient as any).modelName,
+            });
             phaseInputTokens += genUsage.inputTokens;
             phaseOutputTokens += genUsage.outputTokens;
           }
@@ -94,7 +98,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       for (let i = 0; i < generated.length; i++) {
         const genUsage = generated[i].tokenUsage;
         if (genUsage) {
-          accumulateTokenUsage(state, genUsage, { taskLevel: false, jobLevel: true });
+          accumulateTokenUsage(state, genUsage, {
+            taskLevel: false,
+            jobLevel: true,
+            modelId: (imageClient as any).modelName,
+          });
           phaseInputTokens += genUsage.inputTokens;
           phaseOutputTokens += genUsage.outputTokens;
         }
@@ -115,6 +123,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     console.log(`✏️ [Visual:Sketch] Generated ${sketchImages.length} sketches`);
 
     if ((phaseInputTokens > 0 || phaseOutputTokens > 0) && state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+      broadcastTokenUsageByModel(state as any);
       state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
     }
     if (phaseInputTokens > 0 || phaseOutputTokens > 0) {

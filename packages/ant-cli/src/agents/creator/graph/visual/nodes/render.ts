@@ -12,7 +12,7 @@ import { VisualGraphState } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
 import type { ImageGenerationOptions } from '../../../../../core/ports/imageGeneration.js';
 export async function renderNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -67,8 +67,15 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
     console.log(`🎨 [Visual:Render] Rendered final image (${finalImage.data.length} bytes)`);
 
     if (finalImage.tokenUsage) {
-      accumulateTokenUsage(state, finalImage.tokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, finalImage.tokenUsage, {
+        taskLevel: false,
+        jobLevel: true,
+        // Bucket under the actual image model (not the job-default text model)
+        // so the per-model breakdown prices render tokens at the image rate.
+        modelId: (imageClient as any).modelName,
+      });
       if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        broadcastTokenUsageByModel(state as any);
         state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
       upsertPhaseTokenUsage(state, 'render', finalImage.tokenUsage,
