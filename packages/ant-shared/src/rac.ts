@@ -15,7 +15,7 @@
  */
 
 import type { ActionMetadata, IntentId } from './actions';
-import { deriveFromIntent, INTENT_DEFINITIONS } from './actions';
+import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized } from './actions';
 import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
 import { normalizeUiSourceRefs } from './canonical';
 
@@ -593,11 +593,20 @@ export function resolveToRAC(
   const refs = slots?.refs?.length ? normalizeUiSourceRefs(slots.refs) : slots?.refs;
   const context = slots?.context?.length ? normalizeUiSourceRefs(slots.context) : slots?.context;
 
+  // Domain-aware intent description (parity with FE labels). The base
+  // `description` is domain-neutral; `descriptionByDomain` branches per
+  // domain (currently `game`). Service / no-override domains fall through
+  // to the neutral base, so this is a no-op for non-branched domains and
+  // reaches the prompt via `action-context.md`.
+  const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
+
   return {
     intent: intentId,
     intentGroup: derived.intentGroup,
     mode: derived.mode,
-    intentDescription: getIntentDescription(intentId),
+    intentDescription: intentDef
+      ? getIntentDescriptionLocalized(intentDef, slots?.domain, 'en')
+      : getIntentDescription(intentId),
     target: slots?.target,
     refs,
     context,

@@ -238,6 +238,31 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute node)', () =
     expect(injections).not.toContain('jobs/shared/injections/visual-source-authority');
   });
 
+  // visual-source-authority is a CODE-job partial ("A code job consumes one
+  // UiSource…"). It must never leak into document-authoring jobs (plan /
+  // design / ask) — hasFrontend defaults true when no techTier exists, so the
+  // gate MUST also require job==='code'. Guards the game-plan-writes-code fix.
+  it.each(['plan', 'design', 'ask'] as const)(
+    'job=%s: NO visual-source-authority (frontend techTier)',
+    (job) => {
+      const injections = resolveAutoInjections({ job, techTier: feTS });
+      expect(injections).not.toContain('jobs/shared/injections/visual-source-authority');
+    },
+  );
+
+  it.each(['plan', 'design', 'ask'] as const)(
+    'job=%s: NO visual-source-authority (no techTier — hasFrontend defaults true)',
+    (job) => {
+      const injections = resolveAutoInjections({ job });
+      expect(injections).not.toContain('jobs/shared/injections/visual-source-authority');
+    },
+  );
+
+  it('job=code with no techTier still gets visual-source-authority (hasFrontend defaults true)', () => {
+    const injections = resolveAutoInjections({ job: 'code', taskType: 'feature' });
+    expect(injections).toContain('jobs/shared/injections/visual-source-authority');
+  });
+
   // layer-role-fidelity floor (Fix B) — always-on for the 6 code-authoring
   // task types; absent for the non-authoring types + the (taskType-less)
   // direct node.

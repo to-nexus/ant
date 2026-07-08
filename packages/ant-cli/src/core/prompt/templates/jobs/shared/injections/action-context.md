@@ -1,9 +1,7 @@
-{{#if resolvedAction.hasExplicitFields}}
+{{#if resolvedAction.intentDescription}}
 ## User Action Specification
 
-{{#if resolvedAction.intentDescription}}
-The user has explicitly requested: **{{resolvedAction.intentDescription}}**
-{{/if}}
+The user has requested: **{{resolvedAction.intentDescription}}**
 
 {{/if}}
 {{#if resolvedAction.documents}}
