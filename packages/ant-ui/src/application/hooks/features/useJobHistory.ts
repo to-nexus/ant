@@ -1,8 +1,8 @@
 /**
  * Application Layer: Job History Hook
  *
- * Fetches the feature's board-bearing jobs (code/design/learn) in one
- * feature-wide list, ordered most-recent first and tagged per-entry with
+ * Fetches the feature's sessionable jobs (code/design/learn/plan/visual) in
+ * one feature-wide list, ordered most-recent first and tagged per-entry with
  * its own type. NOT scoped to the selected job type — selecting an entry
  * re-converges the identity to that entry's type (see `selectJobId`).
  * Refetches whenever the selected project / feature changes, when the

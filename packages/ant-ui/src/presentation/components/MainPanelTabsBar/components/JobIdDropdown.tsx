@@ -169,7 +169,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
     void selectJobId(entry.jobId, { live: entry.live, jobType: entry.type });
   };
 
-  const handleDelete = (id: string, live: boolean, isCurrent: boolean) => {
+  const handleDelete = (id: string, live: boolean, isCurrent: boolean, type: string) => {
     if (live) {
       showInfo(t('tabs.deleteJobIdBlocked'), {
         type: 'warning',
@@ -191,7 +191,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
         cancelText: t('common:button.cancel'),
         onConfirm: async () => {
           try {
-            await deleteJobId(id);
+            await deleteJobId(id, type);
             toast.success(t('tabs.deletedJobId'));
             if (isCurrent && nextCandidate) {
               // `deleteJobId` already unset currentJobId + cleared the board,
@@ -436,7 +436,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(entry.jobId, entry.live, isCurrent);
+                          handleDelete(entry.jobId, entry.live, isCurrent, entry.type);
                         }}
                         onMouseEnter={() => !entry.live && setHoveredDeleteId(entry.jobId)}
                         onMouseLeave={() => setHoveredDeleteId((prev) => (prev === entry.jobId ? null : prev))}

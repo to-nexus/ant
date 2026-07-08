@@ -94,10 +94,10 @@ export async function executeJob(
 }
 
 /**
- * List the feature's board-bearing jobs (code/design/learn), most-recent
- * first, each entry tagged with its own `type`. Source-merged from Redis
- * (live) and the session files' `runs[]` arrays across types. Feature-wide:
- * not scoped to the currently-selected job type.
+ * List the feature's sessionable jobs (code/design/learn/plan/visual),
+ * most-recent first, each entry tagged with its own `type`. Source-merged
+ * from Redis (live) and the session files' `runs[]` arrays across types.
+ * Feature-wide: not scoped to the currently-selected job type.
  */
 export function fetchJobHistory(
   projectId: string,
