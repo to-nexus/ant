@@ -26,17 +26,17 @@ export interface ExecuteToolsOptions {
 /**
  * When a sealed `<plan>` is present in `state.planText`, plan node has
  * already done external/architectural exploration. execute's role is
- * path/symbol/asset verification, not re-derivation, so SEARCH_WEB is
- * dropped from the returned set. Mirrors code job's split where
- * `TOOL_SETS.codeBasic` (execute) omits SEARCH_WEB while
- * `TOOL_SETS.planExplore` (plan) carries it. See plan
+ * path/symbol/asset verification, not re-derivation, so external-info
+ * discovery tools (SEARCH_WEB, FETCH_URL) are dropped from the returned
+ * set. Mirrors code job's split where `TOOL_SETS.codeBasic` (execute)
+ * omits them while `TOOL_SETS.planExplore` (plan) carries them. See plan
  * `docs/architecture/15-design-job.md` and the
  * `plan-execute-parallel-spring` plan file.
  */
 function applyPlanGate(state: DesignGraphState, tools: ToolDefinition[]): ToolDefinition[] {
   const hasSealedPlan = !!state.planText && state.planText.trim().length > 0;
   if (!hasSealedPlan) return tools;
-  return tools.filter(t => t.name !== ToolName.SEARCH_WEB);
+  return tools.filter(t => t.name !== ToolName.SEARCH_WEB && t.name !== ToolName.FETCH_URL);
 }
 
 export async function getTools(

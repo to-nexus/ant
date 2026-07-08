@@ -109,7 +109,7 @@ const listWorkspaceFiles: ToolDefinition = {
 
 const searchWeb: ToolDefinition = {
   name: 'search_web',
-  description: 'Search the web for technical information, SDK documentation, API references, or technology comparisons. Use when you need current information about technologies, frameworks, or best practices.',
+  description: 'Search the web by KEYWORD for technical information, SDK documentation, API references, or technology comparisons. Use when you need current information about technologies, frameworks, or best practices. This is a keyword search — to read a SPECIFIC URL\'s page content, use fetch_url instead.',
   parameters: {
     type: 'object',
     properties: {
@@ -120,6 +120,22 @@ const searchWeb: ToolDefinition = {
   execute: async (args) => {
     const { executeSearchWeb } = await import('../../../../common/tool/handlers/searchWeb');
     return executeSearchWeb(args as { query: string });
+  },
+};
+
+const fetchUrl: ToolDefinition = {
+  name: 'fetch_url',
+  description: 'Fetch and read the page content of a SPECIFIC URL. Use when the directive names a concrete URL, live site, or deployed page to analyze — this retrieves that page\'s actual content so you can plan from observed reality. NOT a keyword search: discover pages by keyword with search_web, read a known URL with fetch_url.',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: 'The absolute URL to fetch (e.g., "https://example.com/pricing")' },
+    },
+    required: ['url'],
+  },
+  execute: async (args) => {
+    const { executeFetchUrl } = await import('../../../../common/tool/handlers/fetchUrl');
+    return executeFetchUrl(args as { url: string });
   },
 };
 
@@ -266,6 +282,7 @@ export const PLANNER_TOOLS: ToolDefinition[] = [
   readWorkspaceFile,
   listWorkspaceFiles,
   searchWeb,
+  fetchUrl,
   editFile,
 ];
 
@@ -274,6 +291,7 @@ export const PLANNER_EXPLAIN_TOOLS: ToolDefinition[] = [
   readWorkspaceFile,
   listWorkspaceFiles,
   searchWeb,
+  fetchUrl,
 ];
 
 /** All tools including shadow tools for hallucination recovery */
@@ -287,3 +305,18 @@ export const ALL_PLANNER_TOOLS: ToolDefinition[] = [
 export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
   ALL_PLANNER_TOOLS.map(t => [t.name, t]),
 );
+
+/**
+ * Tools advertised to the LLM by plan mode. Only `refactor` (rev-plan) edits an
+ * EXISTING document via `edit_file`. `generate` authors a NEW document solely
+ * through the `<file>` output tag (create-capable), so it must NOT be handed
+ * `edit_file` — that tool cannot create a missing file and any tool call
+ * short-circuits the generate node before the `<file>` writer runs, silently
+ * producing no output. `explain` is read-only. SSOT for the generate/refactor
+ * split — the generate node consumes this, never re-derives it.
+ */
+export function plannerToolsForMode(
+  planMode: 'generate' | 'refactor' | 'explain',
+): ToolDefinition[] {
+  return planMode === 'refactor' ? PLANNER_TOOLS : PLANNER_EXPLAIN_TOOLS;
+}

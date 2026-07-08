@@ -251,6 +251,13 @@ export interface ToolExecutionContext {
   /** Configured limit (default 3, env `ANT_PLAN_SEARCH_WEB_MAX`). */
   planSearchWebLimit?: number;
 
+  /** Number of `fetch_url` calls already executed in the current plan-toolLoop
+   *  session — sibling of `planSearchWebCount`. Handlers reject further calls
+   *  once this reaches the configured limit. */
+  planFetchUrlCount?: number;
+  /** Configured limit (default 5, env `ANT_PLAN_FETCH_URL_MAX`). */
+  planFetchUrlLimit?: number;
+
   // === Reference search handlers ===
   referenceRequests?: any[];
   resolvedActionMode?: string;

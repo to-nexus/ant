@@ -45,6 +45,7 @@ export enum ToolName {
   // ── Search (scope: codebase, web, reference project, ant-source) ──
   SEARCH_CODE          = 'search_code',
   SEARCH_WEB           = 'search_web',
+  FETCH_URL            = 'fetch_url',
   SEARCH_REFERENCE     = 'search_reference_code',
   SEARCH_ANT_CODE      = 'search_ant_code',
 
@@ -104,6 +105,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   // Search
   [ToolName.SEARCH_CODE]:          '🔍 Searching code',
   [ToolName.SEARCH_WEB]:           '🌐 Searching web',
+  [ToolName.FETCH_URL]:            '🌐 Fetching URL',
   [ToolName.SEARCH_REFERENCE]:     '🔎 Searching reference',
   [ToolName.SEARCH_ANT_CODE]:      '🔍 Searching Ant code',
   // Write
@@ -189,8 +191,9 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_ANT_SOURCE,
     ToolName.LIST_ANT_FILES,
     ToolName.SEARCH_ANT_CODE,
-    // Search (web)
+    // Search (web) + fetch a specific URL's page content
     ToolName.SEARCH_WEB,
+    ToolName.FETCH_URL,
     // Write
     ToolName.EDIT_FILE,
     ToolName.CREATE_FILE,
@@ -224,8 +227,9 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_ANT_SOURCE,
     ToolName.LIST_ANT_FILES,
     ToolName.SEARCH_ANT_CODE,
-    // Search (web)
+    // Search (web) + fetch a specific URL's page content
     ToolName.SEARCH_WEB,
+    ToolName.FETCH_URL,
     // Write
     ToolName.EDIT_FILE,
     ToolName.DELETE_FILE,
@@ -246,8 +250,9 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.READ_FILE,
     ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
-    // Search (web)
+    // Search (web) + fetch a specific URL's page content
     ToolName.SEARCH_WEB,
+    ToolName.FETCH_URL,
     // Write
     ToolName.EDIT_FILE,
     ToolName.CREATE_FILE,
@@ -306,7 +311,7 @@ export const TOOL_SETS = {
 
   planExplore: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
-    ToolName.SEARCH_WEB, ToolName.RUN_COMMAND,
+    ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.RUN_COMMAND,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -315,7 +320,7 @@ export const TOOL_SETS = {
   // (and asset download) is the execute node's responsibility.
   designPlanExplore: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
-    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
+    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -324,19 +329,19 @@ export const TOOL_SETS = {
   // the plan. Still strictly read-only.
   designPlanFigma: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
-    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB,
+    ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
-  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
-  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ...ANT_SOURCE_TOOLS] as ToolName[],
+  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ...ANT_SOURCE_TOOLS] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ...ANT_SOURCE_TOOLS] as ToolName[],
 
   // Design execute default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent.
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
-    ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB,
+    ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -369,7 +374,7 @@ export const TOOL_SETS = {
   // rationale for why `RUN_COMMAND` is absent.
   specFigma: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
-    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.LIST_ASSETS,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
     ...ANT_SOURCE_TOOLS,
@@ -400,6 +405,7 @@ import {
   handleCreateFile,
   handleMkdir,
   handleSearchWeb,
+  handleFetchUrl,
   handleSearchReferenceCode,
   handleRegisterReference,
   handleReadReferenceFile,
@@ -425,6 +431,7 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.RUN_COMMAND,      handleRunCommand],
     [ToolName.HTTP_REQUEST,     handleHttpRequest],
     [ToolName.SEARCH_WEB,       handleSearchWeb],
+    [ToolName.FETCH_URL,        handleFetchUrl],
     [ToolName.SEARCH_REFERENCE, handleSearchReferenceCode],
     [ToolName.REGISTER_REFERENCE,   handleRegisterReference],
     [ToolName.READ_REFERENCE_FILE,  handleReadReferenceFile],

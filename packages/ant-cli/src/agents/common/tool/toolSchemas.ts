@@ -344,7 +344,7 @@ export const ARCHITECT_TOOLS = {
 
   search_web: {
     name: 'search_web',
-    description: 'Search the web for technical information, SDK documentation, API references, framework constraints, or technology best practices. Use when you need current information that may not be in your training data.',
+    description: 'Search the web by KEYWORD for technical information, SDK documentation, API references, framework constraints, or technology best practices. Use when you need current information that may not be in your training data. This is a keyword search — to read the content of a SPECIFIC URL, use fetch_url instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -354,6 +354,21 @@ export const ARCHITECT_TOOLS = {
         },
       },
       required: ['query'],
+    },
+  },
+
+  fetch_url: {
+    name: 'fetch_url',
+    description: 'Fetch and read the page content of a SPECIFIC URL. Use when the directive names a concrete URL, live site, or deployed page to analyze — this retrieves that page\'s actual content. This is NOT a keyword search: to discover pages by keyword use search_web, to read a page whose URL you already have use fetch_url. Do not overlap the two.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: {
+          type: 'string',
+          description: 'The absolute URL to fetch (e.g., "https://example.com/pricing").',
+        },
+      },
+      required: ['url'],
     },
   },
 

@@ -126,6 +126,9 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // Phase 3-15 — surface plan-phase search_web usage to the handler.
       planSearchWebCount: state._planSearchWebCount ?? 0,
       planSearchWebLimit: parseInt(process.env.ANT_PLAN_SEARCH_WEB_MAX || '3', 10),
+      // fetch_url plan-phase cap — sibling of search_web above.
+      planFetchUrlCount: state._planFetchUrlCount ?? 0,
+      planFetchUrlLimit: parseInt(process.env.ANT_PLAN_FETCH_URL_MAX || '5', 10),
       // Per-task touched-files SSOT. chat.jsonl file_* events are ephemeral
       // UI feed — the durable record lives on `currentTask.touchedFiles`
       // and persists into `code.json.state.completedTasksDetails[i]` when
@@ -262,11 +265,16 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // propagate (same latent-bug pattern as `_lastToolBatchMutatedFiles`).
       if (state._activePhase !== 'plan') return {};
       let bumps = 0;
+      let fetchBumps = 0;
       for (const e of events) {
         if (e.toolName === 'search_web' && !e.result.error) bumps += 1;
+        if (e.toolName === 'fetch_url' && !e.result.error) fetchBumps += 1;
       }
-      if (bumps === 0) return {};
-      return { _planSearchWebCount: (state._planSearchWebCount ?? 0) + bumps };
+      if (bumps === 0 && fetchBumps === 0) return {};
+      const delta: Partial<ArchitectGraphState> = {};
+      if (bumps > 0) delta._planSearchWebCount = (state._planSearchWebCount ?? 0) + bumps;
+      if (fetchBumps > 0) delta._planFetchUrlCount = (state._planFetchUrlCount ?? 0) + fetchBumps;
+      return delta;
     },
 
     buildExtraUserContent(state) {

@@ -272,6 +272,7 @@ async function handleFreshTaskEntry(
 
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
+  state._planFetchUrlCount = 0;
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_PLAN]: [],
@@ -280,6 +281,7 @@ async function handleFreshTaskEntry(
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
     _planSearchWebCount: 0,
+    _planFetchUrlCount: 0,
     conversations: {
       [CONV_KEYS.NODE_PLAN]: [],
       [CONV_KEYS.NODE_EXECUTE]: [],

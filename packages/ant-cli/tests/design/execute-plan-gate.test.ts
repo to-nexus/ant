@@ -41,20 +41,23 @@ const SEALED_PLAN = JSON.stringify({
 });
 
 describe('execute getTools — planText gate', () => {
-  it('drops search_web when planText is a sealed plan body (design-spec)', async () => {
+  it('drops search_web + fetch_url when planText is a sealed plan body (design-spec)', async () => {
     const tools = await getTools(makeState({ planText: SEALED_PLAN }));
     const names = tools.map(t => t.name);
     expect(names).not.toContain(ToolName.SEARCH_WEB);
+    // fetch_url is a sibling external-info tool — same gate.
+    expect(names).not.toContain(ToolName.FETCH_URL);
     // Path / symbol verification tools remain for precision-checking.
     expect(names).toContain(ToolName.READ_FILE);
     expect(names).toContain(ToolName.LIST_FILES);
     expect(names).toContain(ToolName.SEARCH_CODE);
   });
 
-  it('keeps search_web when planText is empty (legacy / dispatcher fallback)', async () => {
+  it('keeps search_web + fetch_url when planText is empty (legacy / dispatcher fallback)', async () => {
     const tools = await getTools(makeState({ planText: '' }));
     const names = tools.map(t => t.name);
     expect(names).toContain(ToolName.SEARCH_WEB);
+    expect(names).toContain(ToolName.FETCH_URL);
   });
 
   it('treats whitespace-only planText as empty (gate fires on trimmed length)', async () => {

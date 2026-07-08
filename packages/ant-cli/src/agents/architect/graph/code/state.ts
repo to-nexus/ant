@@ -588,6 +588,12 @@ export interface ArchitectGraphState extends TriageableState {
    *  via `ctx.planSearchWebLimit` (default 3, env `ANT_PLAN_SEARCH_WEB_MAX`). */
   _planSearchWebCount?: number;
 
+  /** Sibling of `_planSearchWebCount` for the `fetch_url` tool. Reset on fresh
+   *  task entry; incremented after each plan-phase `fetch_url` execution. Cap
+   *  enforced in `handleFetchUrl` via `ctx.planFetchUrlLimit` (default 5, env
+   *  `ANT_PLAN_FETCH_URL_MAX`). */
+  _planFetchUrlCount?: number;
+
   // ✅ Command history tracking (for loop detection)
   commandHistory?: Array<{
     command: string;
