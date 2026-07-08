@@ -109,6 +109,9 @@ export function buildPlanGraph() {
     routeAfterGenerate as any,
     {
       tool: 'tool',
+      // plan-job-valiant-pebble: self-loop for the tool-free authoring turn
+      // when a generate-mode research loop ended without a `<file>`.
+      generate: 'generate',
       __end__: END,
     } as any
   );

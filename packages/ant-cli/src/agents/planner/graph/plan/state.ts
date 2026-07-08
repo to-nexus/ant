@@ -29,6 +29,7 @@ export const PlanAnnotation = Annotation.Root({
   clarifyPhase: Annotation<any>,
   featureContext: Annotation<any>,
   turnId: Annotation<any>,
+  _planAuthoringPhase: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -116,6 +117,22 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * `routeAfterPlannerDetect` reads `status` to decide generate vs __end__.
    */
   detect?: import('../../../common/graph/nodes/detect/types').DetectResult<PlanGraphState>;
+
+  /**
+   * generate → generate self-loop signal for the dedicated authoring turn.
+   *
+   * Set by `generate` when a `generate`-mode ReAct research loop concludes
+   * (model stopped calling tools) WITHOUT emitting a `<file>` — the
+   * arctic-edging-grass failure: after a long codebase-inspection loop a weak
+   * model spills the PRD as prose. On re-entry the node authors in a
+   * **tool-free turn over a compacted findings context** (not the raw tool
+   * transcript), reproducing the confirmed-working greenfield condition where
+   * `<file>` is emitted cleanly. The write channel stays `<file>` (no new
+   * tool / channel — see plan-job-valiant-pebble). `routeAfterGenerate` reads
+   * this to route back to `generate`; the authoring turn clears it so the loop
+   * runs at most once.
+   */
+  _planAuthoringPhase?: boolean;
 }
 
 /** Helper to read planMode from resolvedAction */
