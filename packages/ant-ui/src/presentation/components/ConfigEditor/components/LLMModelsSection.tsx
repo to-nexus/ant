@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
 import { AvailableModel } from '../hooks/useAvailableModels';
 import { ModelSelectChip } from './ModelSelectChip';
+import { resolveModelDisplay } from '../utils/resolveModelDisplay';
 import { SectionCard, type SectionAccent } from '../aurora';
 import * as LucideIcons from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -167,7 +168,7 @@ export function LLMModelsSection({
   // Column widths sized so model chips fit their (suffix-free) display names
   // without truncation; the outer overflowX:auto still scrolls when all node
   // columns exceed the viewport.
-  const gridTemplate = `200px 160px ${NODE_COLUMNS.map(() => 'minmax(160px, 1fr)').join(' ')}`;
+  const gridTemplate = `minmax(120px, 140px) minmax(150px, 1fr) ${NODE_COLUMNS.map(() => 'minmax(150px, 1fr)').join(' ')}`;
 
   return (
     <SectionCard
@@ -187,7 +188,7 @@ export function LLMModelsSection({
           <div style={{ overflowX: 'auto' }}>
             <div
               style={{
-                minWidth: 840,
+                minWidth: 760,
                 display: 'grid',
                 gridTemplateColumns: gridTemplate,
                 fontFamily: 'var(--font-display)',
@@ -199,12 +200,13 @@ export function LLMModelsSection({
                 style={{
                   ...HEAD_CELL,
                   color: 'var(--violet-700)',
+                  textAlign: 'center',
                 }}
               >
                 Default · Job 전체
               </div>
               {NODE_COLUMNS.map((col) => (
-                <div key={col} style={HEAD_CELL}>
+                <div key={col} style={{ ...HEAD_CELL, textAlign: 'center' }}>
                   {NODE_LABEL[col] || col}
                 </div>
               ))}
@@ -213,11 +215,9 @@ export function LLMModelsSection({
               {JOB_DEFS.map((job) => {
                 const jobConfig = editedConfig.llmModels?.[job.jobKey];
                 const inheritedDefault = (() => {
-                  const id = jobConfig?.default;
-                  if (!id) return undefined;
-                  const m = availableModels.find((x) => x.id === id);
-                  return m
-                    ? { id: m.id, displayName: m.displayName, provider: m.provider }
+                  const r = resolveModelDisplay(jobConfig?.default ?? '', availableModels);
+                  return r
+                    ? { id: r.id, displayName: r.displayName, provider: r.provider }
                     : undefined;
                 })();
                 const Icon = resolveIcon(job.icon);
@@ -266,6 +266,18 @@ export function LLMModelsSection({
               dotBg="transparent"
               dotBorder="var(--border-2)"
               dashed
+            />
+            <LegendDot
+              label={t('projectEditor.legacyModel')}
+              color="var(--text-3)"
+              dotBg="oklch(94% 0.06 40 / 0.8)"
+              dotBorder="oklch(72% 0.16 40)"
+            />
+            <LegendDot
+              label={t('projectEditor.unavailableModel')}
+              color="oklch(50% 0.14 55)"
+              dotBg="oklch(94% 0.07 65 / 0.85)"
+              dotBorder="oklch(75% 0.15 65)"
             />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <span

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { AvailableModel } from '../hooks/useAvailableModels';
+import { resolveModelDisplay } from '../utils/resolveModelDisplay';
 
 const PROVIDER_ICON: Record<string, string> = {
   anthropic: '⬡',
@@ -90,6 +91,7 @@ export function ModelSelectChip({
     [configuredProviders],
   );
   const [isOpen, setIsOpen] = useState(false);
+  const [isHover, setIsHover] = useState(false);
   const [hoverRow, setHoverRow] = useState<string | null>(null);
   const [position, setPosition] = useState<DropdownPosition>({
     top: 0,
@@ -139,13 +141,19 @@ export function ModelSelectChip({
     if (isOpen) updatePosition();
   }, [isOpen, updatePosition]);
 
-  const selected = models.find((m) => m.id === value);
+  const resolved = resolveModelDisplay(value, models);
   const isInherited = !value && !!inheritedModel;
-  const displayModel = selected || (isInherited ? inheritedModel : null);
-  const providerIcon = displayModel ? PROVIDER_ICON[displayModel.provider] || '' : '';
-  const triggerAccent = displayModel
-    ? PROVIDER_ACCENT[displayModel.provider] || FALLBACK_ACCENT
-    : null;
+  const displayModel = resolved
+    ? resolved
+    : isInherited
+      ? { ...inheritedModel!, status: 'selectable' as const }
+      : null;
+  const isLegacy = resolved?.status === 'legacy';
+  const isUnavailable = resolved?.status === 'unavailable';
+  const triggerAccent =
+    displayModel && !isUnavailable
+      ? PROVIDER_ACCENT[displayModel.provider] || FALLBACK_ACCENT
+      : null;
 
   const grouped = models.reduce<Record<string, AvailableModel[]>>((acc, m) => {
     if (!acc[m.provider]) acc[m.provider] = [];
@@ -159,20 +167,56 @@ export function ModelSelectChip({
     setIsOpen(false);
   };
 
-  const triggerHeight = compact ? 26 : 30;
-  const triggerPad = compact ? '0 8px' : '0 10px';
+  const triggerMinHeight = compact ? 34 : 40;
+  const triggerPad = compact ? '5px 8px' : '6px 10px';
 
-  const triggerStyle: React.CSSProperties = displayModel
+  const triggerStyle: React.CSSProperties = isUnavailable
     ? {
-        background: triggerAccent!.bg,
-        color: triggerAccent!.fg,
-        border: `1px solid ${triggerAccent!.ring}`,
+        background: 'oklch(94% 0.07 65 / 0.55)',
+        color: 'oklch(45% 0.14 55)',
+        border: '1px dashed oklch(75% 0.15 65)',
       }
-    : {
-        background: 'var(--bg-surface-2)',
-        color: 'var(--text-4)',
-        border: '1px dashed var(--border-2)',
-      };
+    : displayModel
+      ? {
+          background: triggerAccent!.bg,
+          color: triggerAccent!.fg,
+          border: `1px solid ${triggerAccent!.ring}`,
+        }
+      : {
+          background: 'var(--bg-surface-2)',
+          color: 'var(--text-4)',
+          border: '1px dashed var(--border-2)',
+        };
+
+  // Label text + length-based auto-shrink (no fragile container queries). Long
+  // names wrap to 2 lines (see the label span) and step the font down.
+  const labelText = showAsCustom
+    ? t('projectEditor.custom')
+    : displayModel
+      ? displayModel.displayName
+      : placeholder || t('projectEditor.selectModel');
+  const labelFontSize = labelText.length > 20 ? 10.5 : labelText.length > 13 ? 11.5 : 12.5;
+
+  // Single caption line carries the state marker so it never eats label width.
+  const isUnconfigured = !!displayModel && !isUnavailable && isProviderUnconfigured(displayModel.provider);
+  const caption = isUnavailable
+    ? `⚠ ${t('projectEditor.unavailableModel')}`
+    : isLegacy
+      ? t('projectEditor.legacyModel')
+      : isInherited
+        ? `↳ ${t('projectEditor.jobDefault')}`
+        : isUnconfigured
+          ? `⚠ ${t('projectEditor.noApiKey')}`
+          : null;
+  const captionTitle = isUnavailable
+    ? t('projectEditor.unavailableModelTooltip')
+    : isLegacy
+      ? t('projectEditor.legacyModelTooltip')
+      : isInherited
+        ? t('projectEditor.jobDefault')
+        : isUnconfigured
+          ? t('projectEditor.noApiKeyWarning')
+          : undefined;
 
   const dropdown =
     isOpen &&
@@ -243,6 +287,52 @@ export function ModelSelectChip({
             {!value && (
               <CheckGlyph color="var(--violet-700)" />
             )}
+          </button>
+        )}
+
+        {resolved && resolved.status !== 'selectable' && (
+          <button
+            type="button"
+            onClick={() => handleSelect(resolved.id)}
+            onMouseEnter={() => setHoverRow('__current__')}
+            onMouseLeave={() => setHoverRow(null)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 12px',
+              border: 'none',
+              borderBottom: '1px solid var(--border-1)',
+              background:
+                hoverRow === '__current__'
+                  ? 'var(--bg-hover)'
+                  : 'oklch(94% 0.06 290 / 0.6)',
+              color: 'var(--violet-700)',
+              fontSize: 12.5,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {resolved.displayName}
+            </span>
+            <span style={{ fontSize: 10, opacity: 0.7, flexShrink: 0 }}>
+              (
+              {resolved.status === 'legacy'
+                ? t('projectEditor.legacyModel')
+                : t('projectEditor.unavailableModel')}
+              )
+            </span>
+            <CheckGlyph color="var(--violet-700)" />
           </button>
         )}
 
@@ -369,102 +459,65 @@ export function ModelSelectChip({
         ref={buttonRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        onMouseEnter={() => setIsHover(true)}
+        onMouseLeave={() => setIsHover(false)}
         style={{
-          display: 'inline-flex',
+          display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          gap: 6,
-          height: triggerHeight,
+          justifyContent: 'center',
+          gap: 2,
+          minHeight: triggerMinHeight,
           padding: triggerPad,
           width: fill ? '100%' : undefined,
           maxWidth: fill ? '100%' : 220,
           minWidth: 0,
           borderRadius: 'var(--r-md)',
-          fontSize: 12,
           fontWeight: 700,
           fontFamily: 'var(--font-display)',
           cursor: 'pointer',
+          textAlign: 'center',
+          transition: 'filter var(--dur-fast, 150ms) var(--ease-smooth, ease)',
+          filter: isHover ? 'brightness(1.04)' : 'none',
           ...triggerStyle,
         }}
       >
-        {!showAsCustom && providerIcon && (
-          <span style={{ flexShrink: 0, fontSize: 12, opacity: 0.75 }}>{providerIcon}</span>
-        )}
+        {/* Model name — wraps to 2 lines and steps font down for long ids so it
+            is never truncated. No provider icon / chevron (the whole button is
+            the toggle). */}
         <span
           style={{
-            flex: 1,
-            minWidth: 0,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: 12.5,
-            textAlign: 'left',
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
+            lineHeight: 1.15,
+            fontSize: labelFontSize,
+            width: '100%',
           }}
         >
-          {showAsCustom
-            ? t('projectEditor.custom')
-            : displayModel
-              ? displayModel.displayName
-              : placeholder || t('projectEditor.selectModel')}
+          {labelText}
         </span>
-        {/* Inherited-default marker lives OUTSIDE the truncating label (flexShrink:0)
-            so it never eats the model name's width. Full text on hover. */}
-        {isInherited && (
+        {/* State marker as a caption line so it never competes with the name. */}
+        {caption && (
           <span
-            aria-label={t('projectEditor.jobDefault')}
-            title={t('projectEditor.jobDefault')}
+            aria-label={captionTitle}
+            title={captionTitle}
             style={{
-              flexShrink: 0,
               fontSize: 9,
               fontWeight: 700,
               lineHeight: 1,
-              padding: '2px 4px',
-              borderRadius: 'var(--r-sm)',
-              opacity: 0.65,
-              border: '1px solid currentColor',
+              opacity: 0.7,
             }}
           >
-            ↳
+            {caption}
           </span>
         )}
-        {displayModel && isProviderUnconfigured(displayModel.provider) && (
-          <span
-            aria-label={t('projectEditor.noApiKeyWarning')}
-            title={t('projectEditor.noApiKeyWarning')}
-            style={{ flexShrink: 0, fontSize: 11, lineHeight: 1, color: 'oklch(55% 0.18 55)' }}
-          >
-            ⚠
-          </span>
-        )}
-        <ChevronGlyph open={isOpen} />
       </button>
       {dropdown}
     </>
-  );
-}
-
-function ChevronGlyph({ open }: { open: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      width="10"
-      height="10"
-      viewBox="0 0 12 12"
-      style={{
-        flexShrink: 0,
-        opacity: 0.6,
-        transform: open ? 'rotate(180deg)' : 'none',
-        transition: 'transform 0.15s ease',
-      }}
-    >
-      <path
-        d="M2.5 4.5 L6 8 L9.5 4.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

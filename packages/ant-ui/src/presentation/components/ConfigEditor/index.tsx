@@ -419,7 +419,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       }}
     >
       <div ref={scrollerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <TwoColLayout toc={tocElement}>
+        <TwoColLayout toc={tocElement} contentMaxWidth="none">
           <ChangedBar
             hasChanges={hasChanges}
             isSaving={isSaving}
@@ -436,6 +436,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               title="아이덴티티"
               accent="cool"
               description={t('projectEditor.projectNameDesc')}
+              bodyMaxWidth={640}
             >
               <FieldLabel>{t('projectEditor.projectName')}</FieldLabel>
               {isEditingName ? (
@@ -565,6 +566,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             icon="GitBranch"
             title={t('schema.repositoryName')}
             accent="violet-pink"
+            bodyMaxWidth={640}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {CONFIG_SCHEMA.map((field) => (
