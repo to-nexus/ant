@@ -33,6 +33,7 @@ import {
 import type { ClarifyBlock } from './types';
 import { parseClarifyTags, stripClarifyTags } from './tags';
 import { sendClarify } from './transport';
+import { logger } from '../../../utils/logger';
 
 export interface ClarifyGateInput {
   /** Final LLM response text (the single trigger surface — `<clarify>` tag). */
@@ -104,6 +105,18 @@ export async function applyClarifyGate(
   const blocks = requireOptions
     ? parsed.filter((b) => b.options.length > 0)
     : parsed;
+
+  // Observability: a `<clarify>` was emitted but dropped for lacking lettered
+  // options (requireOptions). Silent-dropping it would look like "no clarify
+  // asked" to the caller — surface it so a prompt/model drift is visible.
+  if (requireOptions && parsed.length > 0 && blocks.length === 0) {
+    logger.warn(
+      `[ClarifyGate] Dropped ${parsed.length} option-less <clarify> block(s) ` +
+        `(intent=${intent}, phase=${phase}); proceeding as no-clarify. ` +
+        `Every clarify must carry lettered a)/b)/c) options.`,
+      { component: 'ClarifyGate' },
+    );
+  }
 
   // Not a clarify turn — pass through untouched.
   if (blocks.length === 0) {

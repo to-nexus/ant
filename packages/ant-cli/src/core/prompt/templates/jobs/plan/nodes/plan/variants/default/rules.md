@@ -72,7 +72,7 @@ Clarifying questions may span multiple turns. After each round of answers, re-ob
 **Constraints:**
 - Minimum 1, maximum 5 `<clarify>` blocks per turn.
 - Maximum 3 total questioning rounds before generation MUST proceed. Unresolved gaps are recorded in the planning document's Open-Questions section (as defined by the domain overlay).
-- Generate only when **every Required core section** defined by the domain overlay can be authored with substantive content at the overlay's stated commit depth. The overlay is the SSOT for both the section list and the per-section commit depth — do not impose an alternative threshold here. When the directive lacks information for a Required core section, choose between (a) clarify, or (b) commit a domain-conventional default with an explicit `> Assumed: ...` note inline. **Open Questions is reserved for Conditional sections only — Required core has no Open-Questions escape.**
+- Generate only when **every Required core section** defined by the domain overlay can be authored with substantive content at the overlay's stated commit depth. The overlay is the SSOT for both the section list and the per-section commit depth — do not impose an alternative threshold here. When the directive lacks information for a Required core section, **clarify** — commit a domain-conventional default with an explicit `> Assumed: ...` note inline ONLY as a last resort, after the clarify budget above is exhausted. Do NOT use the `> Assumed` default as a first-turn substitute for clarifying an uncovered Required core section. **Open Questions is reserved for Conditional sections only — Required core has no Open-Questions escape.**
 
 **Observation:**
 - How many questions to ask per turn depends on the severity and interdependency of observed gaps.
@@ -83,13 +83,16 @@ Clarifying questions may span multiple turns. After each round of answers, re-ob
 
 ### Generate Mode (no existing document)
 
-#### First-Turn Clarify Rule
+#### First-Turn Clarify Rule (gap-driven)
 
-**When this is the first turn (no prior conversation), you MUST ask at least 1 clarifying question before generating the planning document. Do NOT generate directly from a raw directive.**
+**On the first turn (no prior conversation), decide between clarifying and authoring by observing coverage — do NOT default to either.** For each **Required-core** section the domain overlay defines, observe whether the directive (plus anything already read from a named source) commits the outcome that section must carry:
 
-Natural-language directives are always incomplete — even detailed ones omit scope boundaries, target users, non-functional requirements, or constraints. Ask about the most impactful gap first.
+- **If ANY Required-core section is uncovered or underspecified** → you MUST emit at least one `<clarify>` block (with lettered options) **before** authoring. Do NOT silently fill a Required-core gap with an assumed default on the first turn.
+- **If every Required-core section is already covered** → author the document this turn. Do NOT ask a question the directive already answers.
 
-**Constraint**: After the user has answered (second turn onward), generate the planning document. Do NOT keep asking indefinitely.
+Natural-language directives are usually incomplete — even detailed ones often omit scope boundaries, target users, or key constraints — so a short or vague directive will almost always leave a Required-core gap and therefore clarify first. A fully-specified directive proceeds directly.
+
+**Constraint**: After the user has answered (second turn onward), author the planning document. Do NOT keep asking indefinitely.
 
 #### Gap Observation Protocol
 
@@ -100,12 +103,15 @@ Observe gaps **per section defined by the domain overlay loaded below** — the 
 
 The observation unit is "does the input commit the outcome the overlay says this section must commit?" — not a fixed list of section names. Section identity, stable-identifier conventions, and state/matrix requirements all come from the overlay, which differs by domain.
 
-**Constraint**: If a Conditional section's information is not observed, record the gap in the overlay-defined open-questions section with a one-line reason. **For Required core sections, ask via `<clarify>` or commit a domain-conventional default with an explicit `> Assumed: ...` note inline — Open Questions is NOT a valid escape for Required core.** Fabrication (inventing requirements the directive did not imply) is forbidden in either case.
+**Constraint**: If a Conditional section's information is not observed, record the gap in the overlay-defined open-questions section with a one-line reason. **For Required core sections, ask via `<clarify>` — commit a domain-conventional default with an explicit `> Assumed: ...` note inline ONLY as a last resort after the clarify budget is exhausted, never as a first-turn substitute for clarifying. Open Questions is NOT a valid escape for Required core.** Fabrication (inventing requirements the directive did not imply) is forbidden in either case.
 **Constraint**: If multiple valid approaches exist for an unspecified decision, present them as alternatives for the user to choose.
 
 #### Document Output
 
-When sufficient information is gathered (from the initial directive and/or clarifying answers), output the complete document in a single `<file>` tag.
+When sufficient information is gathered (from the initial directive and/or clarifying answers), your deliverable this turn is the planning document itself — authored inside a single `<file path="{target_path}">...</file>` tag. In generate mode the `<file>` tag is the ONLY write path; there is no other way to persist the document.
+
+⚠️ **Blind Spot**: after reading a named source or gathering facts, the instinct is to answer with an analysis / recommendation write-up in prose (or a bare `<reply>`) as if the deliverable were advice. It is not — the analysis is INPUT to the document. Do NOT end the turn with an untagged report or a `<reply>`-only answer in place of the `<file>` document. Fold the findings into the document sections and emit the `<file>`.
+
 All confirmed decisions from the conversation are incorporated into the final document.
 
 #### Document Quality Principles (Generate Mode Only)
@@ -165,6 +171,8 @@ When the directive names a concrete source to analyze — a specific URL, a live
 **Constraint**: If observed, use `fetch_url` on that URL to read its real content BEFORE writing requirements about it. Do NOT assume structure, pages, or features that were not observed.
 
 **Constraint (tool boundary)**: `fetch_url` reads a URL you already have; `search_web` discovers pages by keyword. Do NOT substitute a keyword search for reading a named URL — turning a specific address into search terms discards the very content you were asked to analyze.
+
+**Constraint (analysis is input, not the deliverable)**: After observing the source, PROCEED to the turn's actual deliverable governed by the mode above — clarify (if a Required-core gap remains) or author the planning document (`<file>`). The observed content is INPUT that grounds the document; do NOT let it become the output. An analysis / improvement write-up delivered as prose is not a planning document.
 
 ### Workspace Context Principle
 

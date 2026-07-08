@@ -475,10 +475,18 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         if (session) {
           const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
           const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+          const now = new Date().toISOString();
+          // Carry the jobId so this run is a first-class, Job-tab-visible entry
+          // (the /jobs endpoint skips runs without a jobId). The lifecycle
+          // finalize seal (`appendJobSnapshotToSession`) upserts onto the SAME
+          // jobId rather than appending a second row — so no jobId-less phantom.
           await session.addRun(projectId, featureName, 'plan', {
             runId: 0,
             job: 'plan',
-            timestamp: new Date().toISOString(),
+            timestamp: now,
+            jobId: state._httpJobId,
+            status: 'completed',
+            completedAt: now,
             input: {
               type: 'directive',
               source: planMode === 'refactor' ? sourcePath : undefined,
