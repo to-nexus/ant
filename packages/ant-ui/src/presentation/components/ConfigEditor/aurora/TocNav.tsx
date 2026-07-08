@@ -1,7 +1,8 @@
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { selectedIconTileStyle } from '../../aurora/selection';
 
 export interface TocNavItem {
   id: string;
@@ -27,6 +28,7 @@ function resolveIcon(name: string): LucideIcon | null {
 }
 
 export function TocNav({ items, active, onSelect }: TocNavProps) {
+  const [hovered, setHovered] = useState<string | null>(null);
   const resolvedItems = useMemo(
     () =>
       items.map((it) => ({
@@ -51,12 +53,15 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
     >
       {resolvedItems.map((item) => {
         const isActive = item.id === active;
+        const isHovered = !isActive && hovered === item.id;
         const IconComp = item.IconComp;
         return (
           <button
             key={item.id}
             type="button"
             onClick={() => onSelect(item.id)}
+            onMouseEnter={() => setHovered(item.id)}
+            onMouseLeave={() => setHovered((h) => (h === item.id ? null : h))}
             title={item.label}
             aria-label={item.label}
             style={{
@@ -64,30 +69,19 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 10,
+              width: 40,
+              height: 40,
+              padding: 0,
               border: 'none',
-              background: isActive
-                ? 'oklch(94% 0.06 290 / 0.5)'
-                : 'transparent',
-              color: isActive ? 'var(--violet-700)' : 'var(--text-3)',
               borderRadius: 'var(--r-md)',
               cursor: 'pointer',
+              transition: 'background 120ms ease, color 120ms ease',
+              ...selectedIconTileStyle(isActive),
+              ...(isHovered
+                ? { background: 'var(--bg-surface-2)', color: 'var(--text-2)' }
+                : null),
             }}
           >
-            {isActive && (
-              <span
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 6,
-                  bottom: 6,
-                  width: 2,
-                  background: 'var(--gradient-violet-pink)',
-                  borderRadius: 2,
-                }}
-              />
-            )}
             {IconComp ? (
               <IconComp size={20} strokeWidth={2} />
             ) : (
