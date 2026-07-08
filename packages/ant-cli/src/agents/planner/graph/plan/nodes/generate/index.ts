@@ -35,6 +35,7 @@ import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from '.
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
 import type { IntentId } from '@ant/shared';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
+import { buildAuthoringUserMessage } from './authoringContext';
 
 /**
  * Generate node - LLM generates/refines PRD with real-time file streaming
@@ -52,7 +53,12 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
 
   const planMode = getPlanMode(state);
-  const modeLabel = planMode === 'generate' ? 'Creating' : planMode === 'explain' ? 'Analyzing' : 'Refining';
+  // Dedicated authoring turn (plan-job-valiant-pebble): re-entry after a
+  // generate-mode research loop concluded WITHOUT a `<file>`. This turn runs
+  // tool-free over a clean draft-only context to reproduce the greenfield
+  // condition where `<file>` is emitted cleanly.
+  const authoringPhase = planMode === 'generate' && !!state._planAuthoringPhase;
+  const modeLabel = authoringPhase ? 'Authoring' : planMode === 'generate' ? 'Creating' : planMode === 'explain' ? 'Analyzing' : 'Refining';
   console.log(`\n🤖 [Planner:Generate] ${modeLabel} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
   
   // Kanban activity banner
@@ -132,6 +138,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
           injectedVariables: {
             directive: state.directive || '',
             mode: planMode,
+            // plan-job-valiant-pebble: true on the dedicated tool-free authoring
+            // turn (clean draft context) — the fix's observable signal.
+            authoringPhase,
             targets: state.resolvedAction?.target || [],
             domain: state.resolvedAction?.domain ?? '(unset)',
             basisInjected: built.basisInjected,
@@ -152,8 +161,18 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   // Build messages (with nodeGenerate pruning)
   const messages: Array<{ role: string; content: any }> = [];
-  
-  if (nodeGenerate.length === 0) {
+
+  if (authoringPhase) {
+    // Clean, tool-free authoring context: the model's own draft + an explicit
+    // `<file>` instruction — NOT the raw multi-round tool transcript that
+    // habituated free-text output. The full authoring rules + Target Path live
+    // in the (rebuilt) system prompt.
+    const authoringTarget = getTargetPath(state) || '';
+    messages.push({
+      role: 'user',
+      content: buildAuthoringUserMessage(nodeGenerate, authoringTarget, state.language === 'ko'),
+    });
+  } else if (nodeGenerate.length === 0) {
     const userMessage = state.isConversationContinuation && sessionMain.length
       ? sessionMain[sessionMain.length - 1].content
       : state.directive;
@@ -176,7 +195,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   // Mode-scoped toolset (SSOT in tools.ts): generate/explain are read-only so
   // the create-capable `<file>` tag is the only write path; refactor gets edit_file.
-  const activeTools = plannerToolsForMode(planMode);
+  // Authoring turn: NO tools — the model cannot resume research, so its only
+  // channel is the `<file>` tag (reproduces the greenfield condition).
+  const activeTools = authoringPhase ? [] : plannerToolsForMode(planMode);
   const toolDefinitions = activeTools.map(t => ({
     name: t.name,
     description: t.description,
@@ -303,6 +324,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       pendingToolCalls: toolCalls,
       tokenUsage: state.tokenUsage,
       recursionCount,
+      _planAuthoringPhase: false,
     };
   }
   
@@ -380,6 +402,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       tokenUsage: state.tokenUsage,
       recursionCount,
       awaitingClarify: true,
+      _planAuthoringPhase: false,
       ...clarifyGate.stateUpdates,
     };
   }
@@ -388,7 +411,10 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   const targetRelPath = getTargetPath(state);
   let resolvedTargetRelPath = targetRelPath;
   let generatedDocument: string | undefined;
-  
+  // Set below when a generate-mode research turn ends with no `<file>` and we
+  // have NOT yet run the dedicated authoring turn — routes generate → generate.
+  let enterAuthoring = false;
+
   if (planMode === 'explain') {
     const explainHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
     await saveConversationToSession(state, responseText, undefined, explainHistory, compactionMeta);
@@ -538,22 +564,32 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       // code block or plain prose, `getAllFiles()` is empty, `generatedDocument`
       // is undefined, and the whole document silently vanished (only the
       // conversation is kept — the original `clever-looping-mouse` gdd.md-never-
-      // -written signature). Surface it LOUDLY instead of a phantom success.
-      // (refactor no-op replies and explain legitimately reach here.)
+      // -written signature).
       if (planMode === 'generate') {
-        const missTarget = resolvedTargetRelPath ?? targetRelPath ?? '(unresolved)';
-        console.error(
-          `❌ [Planner:Generate] generate mode produced NO <file> artifact for target "${missTarget}" — `
-          + `response was not wrapped in a <file> tag (likely a fenced code block or prose). `
-          + `Nothing written to disk; response retained in session conversation only.`,
-        );
-        try {
-          const notice = state.language === 'ko'
-            ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — 응답이 \`<file>\` 형식의 문서로 출력되지 않았습니다(코드 블록/산문으로 응답). 다시 시도해 주세요.`
-            : `\n\n> ⚠️ No document was saved — the response was not emitted as a \`<file>\` document (it came back as a code block or prose). Please try again.`;
-          await chatAPI.sendLLMEvent({ type: 'text', text: notice });
-        } catch (err) {
-          console.warn(`⚠️ [Planner:Generate] Failed to surface no-artifact notice:`, err);
+        // plan-job-valiant-pebble: first miss after the research loop is NOT a
+        // terminal failure — re-enter for a tool-free authoring turn over a
+        // clean draft context (reproduces the greenfield condition). Only after
+        // the authoring turn ALSO fails is this a genuine no-artifact result.
+        enterAuthoring = !authoringPhase;
+        if (enterAuthoring) {
+          console.warn(
+            `🔁 [Planner:Generate] research concluded with no <file> — entering dedicated authoring turn (tool-free, clean draft context).`,
+          );
+        } else {
+          const missTarget = resolvedTargetRelPath ?? targetRelPath ?? '(unresolved)';
+          console.error(
+            `❌ [Planner:Generate] authoring turn produced NO <file> artifact for target "${missTarget}" — `
+            + `response was not wrapped in a <file> tag (likely a fenced code block or prose). `
+            + `Nothing written to disk; response retained in session conversation only.`,
+          );
+          try {
+            const notice = state.language === 'ko'
+              ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — 응답이 \`<file>\` 형식의 문서로 출력되지 않았습니다(코드 블록/산문으로 응답). 다시 시도해 주세요.`
+              : `\n\n> ⚠️ No document was saved — the response was not emitted as a \`<file>\` document (it came back as a code block or prose). Please try again.`;
+            await chatAPI.sendLLMEvent({ type: 'text', text: notice });
+          } catch (err) {
+            console.warn(`⚠️ [Planner:Generate] Failed to surface no-artifact notice:`, err);
+          }
         }
       }
     } else if (!resolvedTargetRelPath) {
@@ -581,7 +617,22 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   updatedHistory.push({ role: 'assistant', content: responseText });
-  
+
+  // plan-job-valiant-pebble: research concluded with no `<file>` — loop back to
+  // `generate` for ONE tool-free authoring turn. `updatedHistory` now carries
+  // the draft as its last assistant message (read by buildAuthoringUserMessage).
+  // Skip the sessionMain finalization here — the authoring turn owns the real
+  // artifact entry — and set the self-loop flag.
+  if (enterAuthoring) {
+    return {
+      conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory },
+      pendingToolCalls: [],
+      tokenUsage: state.tokenUsage,
+      recursionCount,
+      _planAuthoringPhase: true,
+    };
+  }
+
   const updatedSessionMain: ConversationMessage[] = [...sessionMain];
   if (updatedSessionMain.length === 0 && state.directive) {
     updatedSessionMain.push({
@@ -606,15 +657,21 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
     recursionCount,
+    _planAuthoringPhase: false,
   };
 }
 
 /**
  * Router: decide next node after generate
  */
-export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
+export function routeAfterGenerate(state: PlanGraphState): 'tool' | 'generate' | '__end__' {
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) {
     return 'tool';
+  }
+  // plan-job-valiant-pebble: research concluded with no `<file>` — loop back to
+  // `generate` once for a tool-free authoring turn (the node clears the flag).
+  if (state._planAuthoringPhase === true) {
+    return 'generate';
   }
   return '__end__';
 }
