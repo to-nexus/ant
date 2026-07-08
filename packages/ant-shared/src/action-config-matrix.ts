@@ -496,7 +496,12 @@ const GAME_ART_OUTPUTS: OutputSpec[] = [
   output('game-art-assets', '.json', L.gameArtAssets, false),
   output('game-art-spec', '.json', L.gameArtSpec, false),
 ];
-const SPEC_OUTPUTS: OutputSpec[] = [output('', '.md', L.spec, false)];
+// Spec files are LLM-named per feature slug (`architecture/spec/{slug}.md`) —
+// there is no fixed filename, so the canonical target is a pattern. `isPattern`
+// only drives `formatOutputSpec`; matching (`matchesOutputSpec`) ignores it and
+// keys on prefix+ext, so any `.md` still matches. With `false` the formatter
+// produced a broken `architecture/spec/.md`; `true` yields `*.md`.
+const SPEC_OUTPUTS: OutputSpec[] = [output('', '.md', L.spec, true)];
 
 /**
  * Plan job output. The plan document is a single domain-neutral artifact —

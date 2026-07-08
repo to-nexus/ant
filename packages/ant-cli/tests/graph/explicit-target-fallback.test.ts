@@ -28,11 +28,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { getDefaultTargetPaths } from '@ant/shared';
-import type { ActionMetadata } from '@ant/shared';
+import { getDefaultTargetPaths, getConfigSlotsForDomain } from '@ant/shared';
+import type { ActionMetadata, IntentId } from '@ant/shared';
 import { createDetectNode } from '../../src/agents/common/graph/nodes/detect/index.js';
 import type { DetectStrategy, DetectableState } from '../../src/agents/common/graph/nodes/detect/types.js';
 import { isSafeStagingPath } from '../../src/agents/planner/graph/plan/nodes/generate/index.js';
+import { renderSlotSummaries } from '../../src/agents/common/graph/nodes/detect/inferRacWithTools.js';
 
 // ============================================
 // 1) Pure unit — matrix-derived defaults
@@ -94,6 +95,14 @@ describe('getDefaultTargetPaths — matrix-derived defaults', () => {
 
   it('explain-plan → undefined (kind: chat-only)', () => {
     expect(getDefaultTargetPaths('explain-plan')).toBeUndefined();
+  });
+
+  it('gen-spec → pattern under SPEC_DIR (SPEC_OUTPUTS isPattern fix)', () => {
+    // Spec files are LLM-named per feature slug — the canonical target is a
+    // pattern, not a fixed filename. Before the isPattern fix the formatter
+    // produced a broken `architecture/spec/.md` (empty prefix + non-pattern);
+    // it must now be `*.md`.
+    expect(getDefaultTargetPaths('gen-spec')).toEqual(['architecture/spec/*.md']);
   });
 });
 
@@ -280,5 +289,41 @@ describe('isSafeStagingPath — writer fallback whitelist', () => {
     expect(isSafeStagingPath(undefined)).toBe(false);
     // @ts-expect-error
     expect(isSafeStagingPath(null)).toBe(false);
+  });
+});
+
+// ============================================
+// 3) Infer-path target presentation (grey-leaving-nurse)
+// ============================================
+//
+// Root cause: the infer/chat detect path (`inferRacWithTools`) showed the LLM
+// the bare generate `dir` ("plan") as the target, so the LLM echoed a
+// directory → `<file path="plan">` → prose, nothing saved. The fix presents
+// the resolved canonical FILE path from the matrix SSOT when it is concrete.
+
+describe('renderSlotSummaries — generate target presentation', () => {
+  const targetPathFor = (intent: IntentId): string | undefined => {
+    const slots = getConfigSlotsForDomain(intent, 'service', { hasCodebase: false });
+    if (!slots) return undefined;
+    const summaries = renderSlotSummaries(slots, () => null, intent);
+    return summaries.find(s => s.role === 'target')?.path;
+  };
+
+  it('gen-plan → presents the concrete file "plan/prd.md" (not the bare dir)', () => {
+    expect(targetPathFor('gen-plan')).toBe('plan/prd.md');
+  });
+
+  it('gen-ui-desc → presents concrete files (all UI_OUTPUTS are non-pattern)', () => {
+    expect(targetPathFor('gen-ui-desc')).toBe(
+      'visual/ui/ant/ui-tokens.json, visual/ui/ant/ui-assets.json, visual/ui/ant/ui-spec.json',
+    );
+  });
+
+  it('gen-sys-fe → falls back to the dir (matrix target is a glob pattern)', () => {
+    expect(targetPathFor('gen-sys-fe')).toBe('architecture/system');
+  });
+
+  it('gen-spec → falls back to the dir (pattern *.md, no fixed filename)', () => {
+    expect(targetPathFor('gen-spec')).toBe('architecture/spec');
   });
 });
