@@ -385,25 +385,16 @@
     "privacyBody": "This Privacy Policy applies to users of the managed ANT Cloud service only. Self-host instances do not transmit data to ANT — your data stays on your infrastructure.\n\nThe full Privacy Policy is being prepared and will be published here."
   },
   "download": {
-    "heroTitle1": "Get Ant",
-    "heroTitle2": "on your machine",
-    "heroDesc": "Two ways to install Ant today: build from source for the full local-mode experience, or wait for the desktop bridge app.",
-    "sourceLabel": "Available Now",
-    "sourceTitle": "Build from Source",
-    "sourceDesc": "Clone, install, run. Three steps and Ant is live on your laptop in local mode.",
-    "sourcePrereqTitle": "Prerequisites",
-    "sourcePrereqMac": "macOS — Node 20+ (brew install node@20), pnpm 10+, Docker Desktop",
-    "sourcePrereqWin": "Windows — WSL2 recommended; Node 20+, pnpm 10+, Docker Desktop",
-    "sourcePrereqLinux": "Linux — Node 20+ (distro or NodeSource), pnpm 10+, Docker",
-    "sourceSnippetLabel": "One-shot install",
-    "sourceCta": "Full local-mode guide → /self-host",
-    "desktopLabel": "Coming Soon",
-    "desktopTitle": "Desktop App",
-    "desktopDesc": "A small tray-app bridge between your local Figma Desktop and Ant. Signed binaries are in progress — for now, build from source above.",
-    "comingSoonToast": "We're working on signed binaries — build from source above for now.",
-    "downloadBtn": "Notify me",
+    "heroTitle1": "Ant Desktop",
+    "heroTitle2": "the Figma bridge",
+    "heroDesc": "A small tray app that bridges your local Figma Desktop to Ant. Download the macOS dev build below. (Looking to run the full Ant server yourself? See Self-host.)",
+    "desktopLabel": "Dev build",
+    "desktopTitle": "Download Ant Desktop",
+    "desktopDesc": "Unsigned macOS dev builds are available now — pick the one for your chip. Windows and Linux are on the way.",
+    "downloadLabel": "Download",
+    "comingSoonToast": "Windows and Linux builds are on the way — macOS is available now.",
     "comingSoon": "Coming Soon",
-    "whatTitle": "What the desktop app will do",
+    "whatTitle": "What Ant Desktop does",
     "whatDesc": "A bridge between your local environment and your Ant instance.",
     "bridgeTitle": "Figma bridge",
     "bridgeDesc": "Securely relays design data from Figma Desktop to Ant. Outbound connections only — no inbound ports opened.",
@@ -411,6 +402,15 @@
     "trayDesc": "Runs quietly in the system tray. Only relays Figma data on demand, using minimal resources.",
     "monitorTitle": "Connection monitoring",
     "monitorDesc": "Live status of your Ant and Figma Desktop connection.",
-    "codeSignNotice": "Ant Desktop binaries will be signed before the public release. Until then, build from source above is the recommended path."
+    "unsignedTitle": "Unsigned dev build",
+    "unsignedBody": "This is a beta build without code signing, so macOS will warn you on first launch. Code signing will be applied before the official release.",
+    "installStepsTitle": "Installing on macOS",
+    "installSteps": [
+      "Download the .dmg for your chip — Apple Silicon (M-series) or Intel.",
+      "Open the disk image and drag Ant Desktop into Applications.",
+      "On first launch you'll see an \"unidentified developer\" warning — right-click the app and choose Open, or allow it under System Settings → Privacy & Security."
+    ],
+    "releasesLinkLabel": "Release notes & all builds",
+    "codeSignNotice": "Ant Desktop binaries will be signed before the public release. Expect OS security warnings on this unsigned dev build until then."
   }
 }
