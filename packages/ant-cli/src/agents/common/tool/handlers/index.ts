@@ -11,6 +11,7 @@ export { handleEditFile } from './editFile';
 export { handleCreateFile } from './createFile';
 export { handleMkdir } from './mkdir';
 export { handleSearchWeb, executeSearchWeb } from './searchWeb';
+export { handleFetchUrl, executeFetchUrl } from './fetchUrl';
 export { handleSearchReferenceCode } from './searchReferenceCode';
 export { handleRegisterReference } from './registerReference';
 export { handleReadReferenceFile } from './readReferenceFile';
