@@ -6,6 +6,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort, JobStatusData } from '../../../../core/ports/stateStore';
 import type { SessionableJobType, KanbanData } from '@ant/shared';
+import { SESSIONABLE_JOB_TYPES, isSessionableJobType } from '@ant/shared';
 import type { SessionRun } from '../../../../core/types/session';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 import { getAgentForJob, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
@@ -21,18 +22,18 @@ import { GitOperationError } from '../services/GitService/errors';
 import { FeatureDeletionError } from '../services/ProjectService/errors';
 
 /**
- * Allowed job types for the per-jobId history / restore / delete endpoints.
- * Matches `SessionableJobType` minus the values that don't render a kanban
- * board ("plan" produces a PRD; "visual" runs in the creator agent flow that
- * still uses the kanban path here).
+ * Allowed job types for the per-jobId history / restore / delete endpoints —
+ * the full sessionable set (code/design/learn/plan/visual). Every job that
+ * persists a session file under `sessions/{agent}/` is listed in the Job-tab
+ * dropdown. plan/visual render no kanban board (plan produces a PRD), but they
+ * still hold a persisted `runs[]` history and must survive as selectable rows
+ * across `currentJobId` transitions — the dropdown is a jobId selector, not a
+ * board-only surface.
  */
-const KANBAN_JOB_TYPES = ['code', 'design', 'learn'] as const;
-type KanbanJobType = typeof KANBAN_JOB_TYPES[number];
+const JOB_TAB_JOB_TYPES = SESSIONABLE_JOB_TYPES;
 
-function asKanbanJobType(value: unknown): KanbanJobType | null {
-  return typeof value === 'string' && (KANBAN_JOB_TYPES as readonly string[]).includes(value)
-    ? (value as KanbanJobType)
-    : null;
+function asJobTabType(value: unknown): SessionableJobType | null {
+  return typeof value === 'string' && isSessionableJobType(value) ? value : null;
 }
 
 /**
@@ -216,17 +217,17 @@ export function createFeaturesRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      // Feature-wide by default: list every board-bearing job of the feature
-      // (code/design/learn) in one list, each entry tagged with its own type.
-      // An explicit `?type=` narrows to a single type (back-compat); omitting
-      // it returns all KANBAN_JOB_TYPES. `plan`/`visual`/`ask`/`inline-ask`
-      // render no task list and stay excluded.
-      const requestedType = req.query.type !== undefined ? asKanbanJobType(req.query.type) : undefined;
+      // Feature-wide by default: list every sessionable job of the feature
+      // (code/design/learn/plan/visual) in one list, each entry tagged with its
+      // own type. An explicit `?type=` narrows to a single type (back-compat);
+      // omitting it returns all JOB_TAB_JOB_TYPES. Only `ask`/`inline-ask`
+      // (no persisted session) are absent.
+      const requestedType = req.query.type !== undefined ? asJobTabType(req.query.type) : undefined;
       if (req.query.type !== undefined && !requestedType) {
-        res.status(400).json({ error: `Invalid job type. Allowed: ${KANBAN_JOB_TYPES.join(', ')}` });
+        res.status(400).json({ error: `Invalid job type. Allowed: ${JOB_TAB_JOB_TYPES.join(', ')}` });
         return;
       }
-      const types: readonly KanbanJobType[] = requestedType ? [requestedType] : KANBAN_JOB_TYPES;
+      const types: readonly SessionableJobType[] = requestedType ? [requestedType] : JOB_TAB_JOB_TYPES;
       const userContext = extractUserContext(req);
 
       type HistoryEntry = {
@@ -267,8 +268,8 @@ export function createFeaturesRoutes(deps: {
           for (const j of redisJobs) {
             if (!(types as readonly string[]).includes(j.type)) continue;
             // `includes` over a widened string[] doesn't narrow `j.type`, but
-            // the guard guarantees membership in KANBAN_JOB_TYPES ⊆ SessionableJobType.
-            const entryType = j.type as KanbanJobType;
+            // the guard guarantees membership in JOB_TAB_JOB_TYPES ⊆ SessionableJobType.
+            const entryType = j.type as SessionableJobType;
             const isLive = j.status === 'running' || j.status === 'paused';
             if (!isLive) continue;
             merged.set(j.jobId, {
@@ -374,13 +375,13 @@ export function createFeaturesRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const jobId = (req.query.jobId as string | undefined)?.trim();
-      const requestedType = asKanbanJobType(req.query.type ?? 'code');
+      const requestedType = asJobTabType(req.query.type ?? 'code');
       if (!jobId) {
         res.status(400).json({ error: 'jobId query parameter is required' });
         return;
       }
       if (!requestedType) {
-        res.status(400).json({ error: `Invalid job type. Allowed: ${KANBAN_JOB_TYPES.join(', ')}` });
+        res.status(400).json({ error: `Invalid job type. Allowed: ${JOB_TAB_JOB_TYPES.join(', ')}` });
         return;
       }
       const userContext = extractUserContext(req);
@@ -477,7 +478,7 @@ export function createFeaturesRoutes(deps: {
       const jobId = req.params.jobId;
       const userContext = extractUserContext(req);
 
-      let jobType: KanbanJobType | null = null;
+      let jobType: SessionableJobType | null = null;
       let jobStatus: JobStatusData | null = null;
 
       if (deps.stateStore) {
@@ -502,12 +503,12 @@ export function createFeaturesRoutes(deps: {
           });
           return;
         }
-        jobType = asKanbanJobType(jobStatus.type);
+        jobType = asJobTabType(jobStatus.type);
       }
 
       // Fallback type from query when Redis status is gone.
       if (!jobType) {
-        jobType = asKanbanJobType(req.query.type ?? 'code') ?? 'code';
+        jobType = asJobTabType(req.query.type ?? 'code') ?? 'code';
       }
 
       // Removes BullMQ queue residue (no-op for jobs that have already settled).

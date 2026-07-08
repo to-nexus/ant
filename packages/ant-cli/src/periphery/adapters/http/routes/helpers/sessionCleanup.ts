@@ -313,7 +313,7 @@ export async function broadcastKanbanReset(
   kanbanService: KanbanService | undefined,
   projectId: string,
   featureName: string,
-  jobType: 'code' | 'design' | 'learn' | 'plan',
+  jobType: SessionableJobType,
   userContext: { organizationId?: string; userId?: string } | undefined,
 ): Promise<void> {
   if (!kanbanService || !stateStore || !userContext?.organizationId || !userContext?.userId) {

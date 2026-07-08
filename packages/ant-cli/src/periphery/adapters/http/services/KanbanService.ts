@@ -8,6 +8,7 @@ import type { SessionState } from '../../../../core/types/session';
 import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { projectSessionStateToKanban } from '../../../../core/realtime/projectSessionStateToKanban';
 import { buildInfrastructureInterruption } from '@ant/shared';
+import type { SessionableJobType } from '@ant/shared';
 
 /**
  * KanbanService
@@ -59,7 +60,7 @@ export class KanbanService {
     userContext: UserContext | undefined,
     projectId: string,
     featureName: string,
-    jobType: 'design' | 'code' | 'learn' | 'plan'
+    jobType: SessionableJobType
   ): void {
     if (!this.workspaceResolver || !userContext) {
       console.warn('[KanbanService] Cannot invalidate cache: missing workspaceResolver or userContext');

@@ -36,8 +36,11 @@ export interface JobActions {
   /**
    * Delete every artifact tied to a jobId. If it is the currently selected
    * jobId, the kanban is cleared and `currentJobId` is unset afterwards.
+   * `jobType` routes the delete to the right session file — the job list is
+   * cross-type, so the caller passes the row's own type rather than relying
+   * on the ambient `selectedJobType`.
    */
-  deleteJobId: (jobId: string) => Promise<void>;
+  deleteJobId: (jobId: string, jobType?: string) => Promise<void>;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -294,12 +297,14 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     }
   },
 
-  deleteJobId: async (jobId) => {
+  deleteJobId: async (jobId, jobTypeArg) => {
     const state = get();
     const { selectedProject, selectedFeature, selectedJobType, currentJobId } = state;
     if (!selectedProject || !selectedFeature) return;
 
-    const jobType = selectedJobType || 'code';
+    // Prefer the row's own type (cross-type list); fall back to the ambient
+    // selected type only when the caller omits it.
+    const jobType = jobTypeArg || selectedJobType || 'code';
     const wasCurrent = currentJobId === jobId;
 
     try {

@@ -2,12 +2,14 @@
  * Feature-wide job list — `GET /projects/:id/features/:feature/jobs`.
  *
  * The endpoint used to filter by `?type=`; the dropdown is now cross-type, so
- * the route returns every board-bearing job of the feature (code/design/learn)
- * in one list, each entry tagged with its own `type`. Locks:
+ * the route returns every sessionable job of the feature
+ * (code/design/learn/plan/visual) in one list, each entry tagged with its own
+ * `type`. Locks:
  *   - no `?type=` → mixed-type entries (code + design) merged from Redis (live)
  *     and the per-type session files.
  *   - `?type=code` → still narrows to that type (back-compat).
- *   - plan/visual session files are NOT surfaced (no kanban board).
+ *   - plan/visual session files ARE surfaced — they persist a `runs[]` history
+ *     and must survive as selectable rows even though they render no board.
  *
  * No supertest: a real Express app + node:http server on port 0, called via fetch.
  */
@@ -112,12 +114,30 @@ describe('GET /projects/:id/features/:feature/jobs — feature-wide', () => {
     expect(ids).not.toContain('design-1');
   });
 
-  it('does not surface plan/visual session files (no kanban board)', async () => {
+  it('surfaces plan/visual session runs (persisted history, no kanban board)', async () => {
     await writeSession(tmpDir, 'plan', [
       { jobId: 'plan-1', timestamp: '2026-06-10T00:00:00.000Z', status: 'completed' },
     ]);
+    await writeSession(tmpDir, 'visual', [
+      { jobId: 'visual-1', timestamp: '2026-06-11T00:00:00.000Z', status: 'completed' },
+    ]);
     const res = await fetch(`${baseUrl}/projects/p1/features/f1/jobs`);
     const body = await res.json();
-    expect(body.jobs.find((j: any) => j.jobId === 'plan-1')).toBeUndefined();
+    const byId = Object.fromEntries(body.jobs.map((j: any) => [j.jobId, j.type]));
+    expect(byId['plan-1']).toBe('plan');
+    expect(byId['visual-1']).toBe('visual');
+  });
+
+  it('surfaces a LIVE plan Redis job and validates ?type=plan (200, not 400)', async () => {
+    stateStore.jobs = [
+      { jobId: 'plan-live', type: 'plan', status: 'running', timestamp: '2026-06-12T00:00:00.000Z' },
+    ];
+    const res = await fetch(`${baseUrl}/projects/p1/features/f1/jobs?type=plan`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const live = body.jobs.find((j: any) => j.jobId === 'plan-live');
+    expect(live).toBeTruthy();
+    expect(live.type).toBe('plan');
+    expect(live.live).toBe(true);
   });
 });
