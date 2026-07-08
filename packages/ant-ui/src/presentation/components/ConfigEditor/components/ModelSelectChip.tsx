@@ -203,20 +203,16 @@ export function ModelSelectChip({
     ? `⚠ ${t('projectEditor.unavailableModel')}`
     : isLegacy
       ? t('projectEditor.legacyModel')
-      : isInherited
-        ? `↳ ${t('projectEditor.jobDefault')}`
-        : isUnconfigured
-          ? `⚠ ${t('projectEditor.noApiKey')}`
-          : null;
+      : isUnconfigured
+        ? `⚠ ${t('projectEditor.noApiKey')}`
+        : null;
   const captionTitle = isUnavailable
     ? t('projectEditor.unavailableModelTooltip')
     : isLegacy
       ? t('projectEditor.legacyModelTooltip')
-      : isInherited
-        ? t('projectEditor.jobDefault')
-        : isUnconfigured
-          ? t('projectEditor.noApiKeyWarning')
-          : undefined;
+      : isUnconfigured
+        ? t('projectEditor.noApiKeyWarning')
+        : undefined;
 
   const dropdown =
     isOpen &&

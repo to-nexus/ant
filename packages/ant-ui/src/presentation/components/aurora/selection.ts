@@ -49,6 +49,18 @@ export function selectedRowLabel(
 }
 
 /**
+ * Active surface for an icon-only rail button (settings section nav). No label
+ * to read, so the brand cue is the tinted tile itself + high-contrast icon —
+ * a centered fill (never a left rail, which would offset a centered glyph).
+ */
+export function selectedIconTileStyle(isActive: boolean): CSSProperties {
+  return {
+    background: isActive ? 'var(--select-fill-violet)' : 'transparent',
+    color: isActive ? 'var(--select-fg)' : 'var(--text-3)',
+  };
+}
+
+/**
  * Styling for a selected segment in a tab / segmented control (GNB view-mode
  * selector, main-panel tabs, board view toggle). Brand cue is the caller's
  * gradient underline; this owns the elevated fill + high-contrast label.
