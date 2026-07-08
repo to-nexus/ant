@@ -394,7 +394,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const tocElement = (
     <TocNav
       items={[
-        { id: 'c3p-identity', label: '아이덴티티', icon: 'Cube', dirty: identityDirty },
+        { id: 'c3p-identity', label: '아이덴티티', icon: 'Box', dirty: identityDirty },
         { id: 'c3p-repository', label: '저장소', icon: 'GitBranch', dirty: repositoryDirty },
         { id: 'c3p-llm', label: 'LLM 모델', icon: 'Brain', dirty: llmDirty },
         { id: 'c3p-danger', label: '위험 영역', icon: 'AlertTriangle' },
@@ -432,7 +432,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
           {selectedProject && (
             <SectionCard
               id="c3p-identity"
-              icon="Cube"
+              icon="Box"
               title="아이덴티티"
               accent="cool"
               description={t('projectEditor.projectNameDesc')}
