@@ -156,6 +156,16 @@ When the directive references external technologies, services, or standards, ver
 
 ⚠️ **Blind Spot**: LLMs tend to generate plausible but outdated technical details (version numbers, API endpoints, pricing) with high confidence. When in doubt, search. A wrong fact in the planning document propagates to design and code.
 
+### External Source Analysis Principle
+
+When the directive names a concrete source to analyze — a specific URL, a live site, or a deployed page — observe its actual content rather than inferring from its name or address.
+
+**Observation target**: Does the directive point at a concrete URL / live site / deployed page as the subject to analyze or improve?
+
+**Constraint**: If observed, use `fetch_url` on that URL to read its real content BEFORE writing requirements about it. Do NOT assume structure, pages, or features that were not observed.
+
+**Constraint (tool boundary)**: `fetch_url` reads a URL you already have; `search_web` discovers pages by keyword. Do NOT substitute a keyword search for reading a named URL — turning a specific address into search terms discards the very content you were asked to analyze.
+
 ### Workspace Context Principle
 
 Observe what already exists in the workspace before generating new content.

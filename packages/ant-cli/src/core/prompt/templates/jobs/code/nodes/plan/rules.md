@@ -387,6 +387,12 @@ Before emitting `<plan>`, internally consider the observations below. These are 
 
 **Constraint**: Do NOT use `search_web` for internal architecture decisions or standard language features.
 
+### External Source Analysis
+
+**Observation target**: Does the task point at a concrete URL / live site / deployed page as a source to analyze or match?
+
+**Constraint**: If yes, use `fetch_url` on that URL to read its real content BEFORE planning against it. Do NOT assume structure or behavior that was not observed. `fetch_url` reads a URL you already have; `search_web` discovers pages by keyword — do not substitute a keyword search for reading a named URL.
+
 {{#if (eq taskType "design-system")}}
 {{#if hasUi}}
 {{> jobs/code/nodes/plan/injections/ui-source-inventory}}

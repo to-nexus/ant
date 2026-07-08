@@ -58,6 +58,17 @@ surface (endpoints, auth method, rate limits) before fixing the
 candidate. Do NOT assume training-data accuracy for third-party
 interfaces.
 
+### External Source Analysis
+
+**Observation target**: Does the directive name a concrete URL / live
+site / deployed page to analyze or match?
+
+**Constraint**: If yes, use `fetch_url` on that URL to read its real
+content before sealing the candidate. Do NOT assume structure or
+behavior that was not observed. `fetch_url` reads a URL you already
+have; `search_web` discovers pages by keyword — do not substitute a
+keyword search for reading a named URL.
+
 ════════════════════════════════════════════════════════════════════════════════
 
 ## Candidate Comparison Discipline
