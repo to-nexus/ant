@@ -42,6 +42,7 @@ import type { Domain, IntentId, UiSource } from '@ant/shared';
 import {
   resolveToRAC,
   getConfigSlotsForDomain,
+  getDefaultTargetPaths,
   pickUiSourceSubgroupDir,
   isUiTreeParentPath,
   isGameArtTreeParentPath,
@@ -120,7 +121,7 @@ export async function inferRacWithTools(
   // PromptBuilder.render auto-enriches Codebase Channel vars; the
   // Feature Context Universal Channel only fires through PromptBuilder.build,
   // so we pass featureContext explicitly here to keep the SSOT.
-  const slotSummaries = renderSlotSummaries(slots, resolveSlotDir);
+  const slotSummaries = renderSlotSummaries(slots, resolveSlotDir, intentId);
   const vars = {
     intentId,
     domain: input.domain ?? 'service',
@@ -329,18 +330,30 @@ interface SlotSummary {
 type ConfigSlots = NonNullable<ReturnType<typeof getConfigSlotsForDomain>>;
 type SlotLike = ConfigSlots['refs'][number];
 
-function renderSlotSummaries(
+export function renderSlotSummaries(
   slots: ConfigSlots,
   resolveDir: (s: SlotLike) => string | null,
+  intentId: IntentId,
 ): SlotSummary[] {
   if (!slots) return [];
   const out: SlotSummary[] = [];
-  // target — `kind: 'generate'` exposes `dir`; revise / chat-only do not.
+  // target — `kind: 'generate'` exposes `dir`. Present the RESOLVED canonical
+  // path(s) from the matrix SSOT (`getDefaultTargetPaths`) rather than the raw
+  // `dir`, but only when they are concrete files (extension present, no `*`
+  // glob). Otherwise the LLM echoes a directory as the target and the planner
+  // renders `<file path="plan">` → prose, nothing saved (grey-leaving-nurse).
+  // Patterns (gen-sys `*-*.md`, gen-spec `*.md`) and outputs-less dirs (visual
+  // gen) legitimately have no single file, so fall back to the dir.
   if (slots.target.kind === 'generate') {
+    const resolved = getDefaultTargetPaths(intentId) ?? [];
+    const concreteFiles = resolved.filter(
+      p => !p.includes('*') && /\.[a-z0-9]+$/i.test(p.split('/').pop() || ''),
+    );
+    const useFiles = concreteFiles.length > 0 && concreteFiles.length === resolved.length;
     out.push({
       role: 'target',
-      path: slots.target.dir,
-      label: 'Generate target directory',
+      path: useFiles ? concreteFiles.join(', ') : slots.target.dir,
+      label: useFiles ? 'Generate target file(s)' : 'Generate target directory',
       required: true,
       kind: 'generate',
     });
