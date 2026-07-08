@@ -45,6 +45,8 @@ Mode: **{{mode}}**
 ## 3. Target Path
 
 Target document path: `{{targetPath}}`
+
+In **generate** mode, author the document by emitting it inside a `<file path="{{targetPath}}">...</file>` tag (the only write path in generate mode). In **refactor** mode, edit the existing document in place with `edit_file` at this path.
 {{/if}}
 
 {{#if hasEvalReport}}

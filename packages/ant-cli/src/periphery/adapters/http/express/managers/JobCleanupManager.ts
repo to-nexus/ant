@@ -647,7 +647,7 @@ export class JobCleanupManager {
       // DIFFERENT jobId (the shared slot is last-writer-wins) — in that case
       // we skip BOTH persist and broadcast so we never project another job's
       // board onto this finalizing jobId (plain-dimming-flock RCA).
-      const kanbanData = await this.deps.kanbanService.getFinalSnapshotKanbanData(
+      let kanbanData = await this.deps.kanbanService.getFinalSnapshotKanbanData(
         mapping.projectId,
         mapping.featureName,
         jobType,
@@ -655,12 +655,30 @@ export class JobCleanupManager {
         userContext
       );
       if (!kanbanData || (kanbanData.jobId && kanbanData.jobId !== jobId)) {
-        logger.warn(
-          `Skipping final kanban persist/broadcast — no board owned by this jobId`,
-          { component: 'JobCleanupManager', jobId },
-        );
-        this.stateTracker.cleanup(jobId);
-        return;
+        if (isNonTaskJob(jobType)) {
+          // plan/visual render no kanban board, so a board projection is not
+          // required to seal their run. Do NOT depend on the fragile shared
+          // `session.state.jobId` (last-writer-wins) here — synthesize a
+          // minimal board stamped with the AUTHORITATIVE finalizing jobId so
+          // the Job-tab dropdown always gets a selectable, jobId-keyed row.
+          // This makes the lifecycle finalize the single owner of the sealed
+          // run for every sessionable job (parity with code/design/learn).
+          kanbanData = {
+            jobId,
+            todo: [],
+            inProgress: [],
+            completed: [],
+            isEstimating: false,
+            dataSource: 'session',
+          };
+        } else {
+          logger.warn(
+            `Skipping final kanban persist/broadcast — no board owned by this jobId`,
+            { component: 'JobCleanupManager', jobId },
+          );
+          this.stateTracker.cleanup(jobId);
+          return;
+        }
       }
 
       // Derive SessionRun.status with `finalStatus` as the SSOT when the
