@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, broadcastTokenUsageByModel } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { v4 as uuidv4 } from 'uuid';
@@ -246,6 +246,10 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         }
         
         if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
+          // Cache per-model usage before updateTaskQueue persists the Redis
+          // snapshot the billing settle reads — plan has no task queue so this
+          // is the only per-model funnel (mirrors llmHelpers updateKanbanTokenUsage).
+          broadcastTokenUsageByModel(state as any);
           state.deps.kanbanUpdate.updateTaskQueue(
             state._httpJobId,
             null,

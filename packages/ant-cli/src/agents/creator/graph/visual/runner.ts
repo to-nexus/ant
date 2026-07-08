@@ -184,6 +184,13 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
   }
 
   if (_httpJobId && kanbanUpdate) {
+    // Per-model breakdown must ride the final broadcast BEFORE updateTaskQueue
+    // persists the Redis snapshot the billing settle reads — visual has no task
+    // queue, so this final funnel guarantees the sealed snapshot carries
+    // complete per-model cost (mirrors llmHelpers updateKanbanTokenUsage).
+    if ((finalState as any).tokenUsageByModel && kanbanUpdate.updateTokenUsageByModel) {
+      kanbanUpdate.updateTokenUsageByModel((finalState as any).tokenUsageByModel);
+    }
     if (finalState.tokenUsage && kanbanUpdate.updateTokenUsage) {
       kanbanUpdate.updateTokenUsage(finalState.tokenUsage as any);
     }

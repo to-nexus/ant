@@ -8,7 +8,7 @@
  */
 
 import { VisualGraphState, SvgSketch } from '../types.js';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
@@ -110,6 +110,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   }
 
   if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+    broadcastTokenUsageByModel(state as any);
     state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
   }
 

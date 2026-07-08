@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, TokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, broadcastTokenUsageByModel, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
@@ -301,6 +301,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   }
 
   if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+    broadcastTokenUsageByModel(state as any);
     state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
   }
 
