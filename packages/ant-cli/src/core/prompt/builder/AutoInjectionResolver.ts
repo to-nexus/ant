@@ -124,7 +124,14 @@ export class AutoInjectionResolver {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Tier A: visual-source-authority (frontend static policy)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (!skipStaticPolicy && hasFrontend) {
+    // `visual-source-authority` is a code-job partial ("A code job consumes
+    // exactly one UiSource…"). It must NOT leak into document-authoring jobs
+    // (plan / design docGen / ask) — those have no UiSource and the "surfaces
+    // MUST be built / framework best practices" language mis-primes them to
+    // write code. Guarded on `job === 'code'` to match every sibling gate
+    // (hasFrontend defaults true when no techTier exists, so without this
+    // guard it fired for every plan job).
+    if (!skipStaticPolicy && hasFrontend && job === 'code') {
       injections.push(`${commonPrefix}/visual-source-authority`);
     }
 

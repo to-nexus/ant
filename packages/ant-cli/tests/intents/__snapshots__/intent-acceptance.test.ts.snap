@@ -51,7 +51,6 @@ exports[`Intent Acceptance > gen-spec > prompt build: injection list snapshot 1`
   "jobs/shared/injections/output-tag-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -63,7 +62,6 @@ exports[`Intent Acceptance > gen-sys-be > prompt build: injection list snapshot 
   "jobs/design/base/injections/backend-guide",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -75,7 +73,6 @@ exports[`Intent Acceptance > gen-sys-fe > prompt build: injection list snapshot 
   "jobs/design/base/injections/frontend-guide",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -89,7 +86,6 @@ exports[`Intent Acceptance > gen-sys-full > prompt build: injection list snapsho
   "jobs/design/base/injections/api-contract-guide",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -101,7 +97,6 @@ exports[`Intent Acceptance > gen-ui-desc > prompt build: injection list snapshot
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -113,7 +108,6 @@ exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapsho
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
 ]
@@ -142,7 +136,6 @@ exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`
   "jobs/shared/injections/output-tag-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/refactor-guidance",
@@ -154,7 +147,6 @@ exports[`Intent Acceptance > rev-sys > prompt build: injection list snapshot 1`]
   "jobs/shared/injections/output-tag-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/refactor-guidance",
@@ -167,7 +159,6 @@ exports[`Intent Acceptance > rev-ui > prompt build: injection list snapshot 1`] 
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
   "jobs/design/base/injections/document-language",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/refactor-guidance",

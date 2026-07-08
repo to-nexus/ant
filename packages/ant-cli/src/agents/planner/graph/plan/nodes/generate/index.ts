@@ -19,7 +19,7 @@ import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseToke
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { v4 as uuidv4 } from 'uuid';
-import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../tools';
+import { plannerToolsForMode } from '../tools';
 import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
@@ -174,8 +174,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     messages.push({ role: 'user', content: 'Continue.' });
   }
   
-  // Setup tools
-  const activeTools = planMode === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
+  // Mode-scoped toolset (SSOT in tools.ts): generate/explain are read-only so
+  // the create-capable `<file>` tag is the only write path; refactor gets edit_file.
+  const activeTools = plannerToolsForMode(planMode);
   const toolDefinitions = activeTools.map(t => ({
     name: t.name,
     description: t.description,

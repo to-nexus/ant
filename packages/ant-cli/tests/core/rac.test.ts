@@ -200,6 +200,20 @@ describe('resolveToRAC — explicit path', () => {
     expect(rac.mode).toBe('generate');
   });
 
+  // intentDescription must honor the domain branch (parity with FE labels) so
+  // the prompt tells a game plan it is authoring a game PRD, not building code.
+  it('gen-plan intentDescription branches by domain (game vs service/neutral)', () => {
+    const game = resolveToRAC('gen-plan', { domain: 'game' }, 'infer');
+    const service = resolveToRAC('gen-plan', { domain: 'service' }, 'infer');
+    const neutral = resolveToRAC('gen-plan', undefined, 'infer');
+
+    expect(game.intentDescription).toMatch(/game/i);
+    // service / no-override domains fall through to the neutral base
+    expect(service.intentDescription).toBe('Generate a new product requirements document');
+    expect(neutral.intentDescription).toBe('Generate a new product requirements document');
+    expect(game.intentDescription).not.toBe(service.intentDescription);
+  });
+
   it('creates RAC for gen-spec intent', () => {
     const rac = resolveToRAC('gen-spec', undefined, 'explicit');
 

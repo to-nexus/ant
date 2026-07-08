@@ -44,7 +44,7 @@ Mode: **{{mode}}**
 {{#if targetPath}}
 ## 3. Target Path
 
-Edit target (use this path with edit_file or <file> tag): `{{targetPath}}`
+Target document path: `{{targetPath}}`
 {{/if}}
 
 {{#if hasEvalReport}}
