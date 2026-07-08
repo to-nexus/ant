@@ -385,25 +385,16 @@
     "privacyBody": "본 개인정보 처리방침은 매니지드 ANT Cloud 서비스 사용자에게만 적용됩니다. 셀프호스트 인스턴스는 ANT로 데이터를 전송하지 않습니다 — 데이터는 사용자 인프라에 머뭅니다.\n\n전체 개인정보 처리방침은 준비 중이며, 여기에 게시됩니다."
   },
   "download": {
-    "heroTitle1": "Ant 을 내 머신에",
-    "heroTitle2": "설치하기",
-    "heroDesc": "두 가지 방법 — 소스 빌드로 Local mode 전체 경험을 즐기거나, 데스크톱 브리지 앱을 기다리세요.",
-    "sourceLabel": "사용 가능",
-    "sourceTitle": "소스에서 빌드",
-    "sourceDesc": "Clone, install, run. 3 단계면 노트북에서 Local mode 가 동작합니다.",
-    "sourcePrereqTitle": "사전 요구사항",
-    "sourcePrereqMac": "macOS — Node 20+ (brew install node@20), pnpm 10+, Docker Desktop",
-    "sourcePrereqWin": "Windows — WSL2 권장; Node 20+, pnpm 10+, Docker Desktop",
-    "sourcePrereqLinux": "Linux — Node 20+ (distro 또는 NodeSource), pnpm 10+, Docker",
-    "sourceSnippetLabel": "원샷 설치",
-    "sourceCta": "Local mode 전체 가이드 → /self-host",
-    "desktopLabel": "지원 예정",
-    "desktopTitle": "데스크톱 앱",
-    "desktopDesc": "로컬 Figma Desktop 과 Ant 를 잇는 작은 트레이 브리지 앱. 서명된 바이너리는 준비 중 — 지금은 위의 소스 빌드로 설치하세요.",
-    "comingSoonToast": "서명된 바이너리는 준비 중입니다. 지금은 위의 소스 빌드로 설치해주세요.",
-    "downloadBtn": "출시 알림 받기",
+    "heroTitle1": "Ant Desktop",
+    "heroTitle2": "Figma 브리지",
+    "heroDesc": "로컬 Figma Desktop 과 Ant 를 잇는 작은 트레이 앱. 아래에서 macOS 개발 빌드를 받으세요. (Ant 서버를 직접 구동하려면 Self-host 를 참고하세요.)",
+    "desktopLabel": "개발 빌드",
+    "desktopTitle": "Ant Desktop 다운로드",
+    "desktopDesc": "서명되지 않은 macOS 개발 빌드를 지금 받을 수 있습니다 — 칩에 맞는 빌드를 선택하세요. Windows 와 Linux 는 준비 중입니다.",
+    "downloadLabel": "다운로드",
+    "comingSoonToast": "Windows 와 Linux 빌드는 준비 중입니다 — macOS 는 지금 받을 수 있어요.",
     "comingSoon": "지원 예정",
-    "whatTitle": "데스크톱 앱이 할 일",
+    "whatTitle": "Ant Desktop 이 하는 일",
     "whatDesc": "로컬 환경과 Ant 인스턴스를 잇는 브리지.",
     "bridgeTitle": "Figma 브리지",
     "bridgeDesc": "Figma Desktop 의 디자인 데이터를 Ant 로 안전하게 전달. 아웃바운드 연결만 — 인바운드 포트 없음.",
@@ -411,6 +402,15 @@
     "trayDesc": "시스템 트레이에서 조용히 실행. 필요할 때만 Figma 데이터를 전달, 리소스 최소.",
     "monitorTitle": "연결 모니터링",
     "monitorDesc": "Ant 와 Figma Desktop 연결 상태를 실시간으로.",
-    "codeSignNotice": "Ant Desktop 바이너리는 정식 출시 전 서명 처리됩니다. 그 전까지는 위의 소스 빌드를 권장합니다."
+    "unsignedTitle": "서명되지 않은 개발 빌드",
+    "unsignedBody": "코드 서명이 없는 베타 빌드라 macOS 가 첫 실행 시 경고를 표시합니다. 정식 출시 전에 서명 처리됩니다.",
+    "installStepsTitle": "macOS 설치 방법",
+    "installSteps": [
+      "칩에 맞는 .dmg 를 받으세요 — Apple Silicon(M 시리즈) 또는 Intel.",
+      "디스크 이미지를 열고 Ant Desktop 을 Applications 로 드래그하세요.",
+      "첫 실행 시 \"확인되지 않은 개발자\" 경고가 뜹니다 — 앱을 우클릭해 열기를 선택하거나, 시스템 설정 → 개인정보 보호 및 보안 에서 허용하세요."
+    ],
+    "releasesLinkLabel": "릴리스 노트 & 전체 빌드",
+    "codeSignNotice": "Ant Desktop 바이너리는 정식 출시 전 서명 처리됩니다. 그 전까지 이 개발 빌드는 OS 보안 경고가 나타날 수 있습니다."
   }
 }
