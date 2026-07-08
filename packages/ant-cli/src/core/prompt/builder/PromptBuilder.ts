@@ -765,6 +765,33 @@ export class PromptBuilder implements PromptPort {
     return sections.join('\n\n');
   }
 
+  /**
+   * Build the gameArtTier basis section independently.
+   * Game-domain peer of `buildVisualTierBasis` — used by game-art design
+   * execute which assembles prompts manually (not via build()). Returns ''
+   * when no gameArtTier axis is active.
+   */
+  async buildGameArtTierBasis(basis: Basis | undefined, job: string): Promise<string> {
+    const gat = basis?.gameArtTier;
+    if (!gat) return '';
+    const hasAnyAxis = GAME_ART_TIER_AXIS_KEYS.some(k => gat[k as keyof typeof gat]);
+    if (!hasAnyAxis) return '';
+    const sections: string[] = [];
+
+    await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.preamble());
+    for (const axis of GAME_ART_TIER_AXIS_KEYS) {
+      const value = gat[axis as keyof typeof gat];
+      if (!value) continue;
+      const pathFn = GAME_ART_TIER_TEMPLATE_PATHS[axis as keyof typeof GAME_ART_TIER_TEMPLATE_PATHS];
+      if (typeof pathFn === 'function') {
+        await this.tryPushBasisTemplate(sections, (pathFn as (v: string) => string)(value as string));
+      }
+    }
+    await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.jobPreamble(job));
+
+    return sections.join('\n\n');
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Helpers
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

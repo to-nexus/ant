@@ -46,6 +46,12 @@ export function decideRetention(ctx: RetentionContext): RetentionDecision {
     return { action: 'discard', reason: 'ui-design loads previous docs from artifact pool' };
   }
 
+  // Game-domain peer of design-ui (D28): game-art also loads previous
+  // catalogs from the artifact pool, so no conversation carry-over is needed.
+  if (ctx.intentGroup === 'design-game-art') {
+    return { action: 'discard', reason: 'game-art loads previous catalogs from artifact pool' };
+  }
+
   if (ctx.intentGroup === 'design-system') {
     const sameFile =
       ctx.currentTask.targetFile &&

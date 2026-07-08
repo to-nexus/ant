@@ -24,15 +24,22 @@ export function createDefaultTask(): DesignTask {
 }
 
 export function createExplainTask(state: DesignGraphState): DesignTask {
-  const isUi = state.resolvedAction?.intentGroup === 'design-ui';
+  const intentGroup = state.resolvedAction?.intentGroup;
+  // Surface the surface-specific canonical docs so explain-ui / explain-game-art
+  // can inspect the produced catalog. Game-art is the game-domain peer of UI (D28).
+  const surfacePrefix = intentGroup === 'design-ui'
+    ? ARTIFACT_PREFIX.UI_ANT
+    : intentGroup === 'design-game-art'
+      ? ARTIFACT_PREFIX.GAME_ART_ANT
+      : undefined;
   return {
     id: 'explain-1',
     name: 'Explain: Design documents',
     type: 'explain',
     priority: 200,
     // No targetFile — explain mode is chat-only, no disk artifact.
-    include: isUi
-      ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT]
+    include: surfacePrefix
+      ? [ARTIFACT_PREFIX.SOURCES, surfacePrefix]
       : [ARTIFACT_PREFIX.SOURCES],
     description: state.directive || 'Analyze and explain the design documents',
   };
