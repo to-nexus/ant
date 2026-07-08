@@ -23,6 +23,12 @@ export interface SectionCardProps {
   padded?: boolean;
   /** Optional anchor id for in-page navigation (TOC scroll target). */
   id?: string;
+  /**
+   * Cap the body content width (px). The card itself stays fluid — only its
+   * inner content is bounded, so narrow forms stay readable while the card
+   * grows with the container. Omit for full-width bodies (e.g. wide tables).
+   */
+  bodyMaxWidth?: number;
 }
 
 const ACCENT_STRIP: Record<SectionAccent, string> = {
@@ -52,6 +58,7 @@ export function SectionCard({
   children,
   padded = true,
   id,
+  bodyMaxWidth,
 }: SectionCardProps) {
   const iconNode = resolveIconNode(icon);
 
@@ -146,7 +153,11 @@ export function SectionCard({
         </div>
       </header>
       <div style={{ padding: padded ? '14px 18px 16px 22px' : 0 }}>
-        {children}
+        {bodyMaxWidth != null ? (
+          <div style={{ maxWidth: bodyMaxWidth }}>{children}</div>
+        ) : (
+          children
+        )}
       </div>
     </section>
   );

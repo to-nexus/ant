@@ -9,7 +9,7 @@ import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { GitBootstrapSSOT } from '../GitService/remote/operations/BaseGitSetupOperation';
 import { DeletionVerificationError } from './errors';
-import { DEFAULT_MODELS } from '@ant/shared';
+import { DEFAULT_MODELS, MODEL_REGISTRY } from '@ant/shared';
 
 /**
  * ProjectCrudService
@@ -414,62 +414,86 @@ export class ProjectCrudService {
       const configData = await fs.promises.readFile(configPath, 'utf-8');
       const config = JSON.parse(configData);
       
-      // ✅ Apply environment variable defaults if not set in config
+      // ✅ Normalize + heal llmModels: fill missing defaults AND migrate ids
+      // that are no longer in MODEL_REGISTRY (removed models) to the current
+      // tier default. Legacy `selectable:false` ids stay untouched — they are
+      // still in the registry (`isKnown` true), so they keep working and are
+      // rendered as-is by the FE picker. Only truly-removed ids are healed.
+      // `llmModelsChanged` gates a persist so the healed config is written back.
+      const isKnownModel = (id?: string): boolean => !!id && !!MODEL_REGISTRY[id];
+      let llmModelsChanged = false;
+
       if (!config.llmModels) {
         config.llmModels = {};
+        llmModelsChanged = true;
       }
-      
-      // ✅ Ensure job-level structure exists with defaults
-      if (!config.llmModels.design) {
-        config.llmModels.design = { default: fallbackSonnet };
-      } else if (!config.llmModels.design.default) {
-        config.llmModels.design.default = fallbackSonnet;
+
+      // Text jobs → single tier default per job.
+      const textJobDefaults: Record<string, string> = {
+        design: fallbackSonnet,
+        code: fallbackSonnet,
+        learn: fallbackSonnet,
+        plan: fallbackSonnet,
+        reviewer: fallbackOpus,
+        doc: fallbackOpus,
+      };
+      for (const [job, def] of Object.entries(textJobDefaults)) {
+        const jobCfg = config.llmModels[job];
+        if (!jobCfg) {
+          config.llmModels[job] = { default: def };
+          llmModelsChanged = true;
+          continue;
+        }
+        if (!isKnownModel(jobCfg.default)) {
+          jobCfg.default = def;
+          llmModelsChanged = true;
+        }
+        // Drop any node override pointing at a removed model — it then inherits
+        // the (now-known) job default. Known legacy overrides are preserved.
+        for (const nodeKey of Object.keys(jobCfg)) {
+          if (nodeKey === 'default') continue;
+          if (jobCfg[nodeKey] && !isKnownModel(jobCfg[nodeKey])) {
+            delete jobCfg[nodeKey];
+            llmModelsChanged = true;
+          }
+        }
       }
-      
-      if (!config.llmModels.code) {
-        config.llmModels.code = { default: fallbackSonnet };
-      } else if (!config.llmModels.code.default) {
-        config.llmModels.code.default = fallbackSonnet;
-      }
-      
-      if (!config.llmModels.learn) {
-        config.llmModels.learn = { default: fallbackSonnet };
-      } else if (!config.llmModels.learn.default) {
-        config.llmModels.learn.default = fallbackSonnet;
-      }
-      
-      if (!config.llmModels.plan) {
-        config.llmModels.plan = { default: fallbackSonnet };
-      } else if (!config.llmModels.plan.default) {
-        config.llmModels.plan.default = fallbackSonnet;
-      }
-      
+
+      // Visual job → per-node gemini defaults.
+      const visualDefaults: Record<string, string> = {
+        default: 'gemini-3.1-pro-preview',
+        direct: 'gemini-3.1-pro-preview',
+        sketch: 'gemini-3.1-flash-image-preview',
+        render: 'gemini-3-pro-image-preview',
+        engrave: 'gemini-3.1-pro-preview',
+      };
       if (!config.llmModels.visual) {
-        config.llmModels.visual = {
-          default: 'gemini-3.1-pro-preview',
-          direct: 'gemini-3.1-pro-preview',
-          sketch: 'gemini-3.1-flash-image-preview',
-          render: 'gemini-3-pro-image-preview',
-          engrave: 'gemini-3.1-pro-preview',
-        };
+        config.llmModels.visual = { ...visualDefaults };
+        llmModelsChanged = true;
       } else {
-        if (!config.llmModels.visual.default) config.llmModels.visual.default = 'gemini-3.1-pro-preview';
-        if (!config.llmModels.visual.direct) config.llmModels.visual.direct = 'gemini-3.1-pro-preview';
-        if (!config.llmModels.visual.sketch) config.llmModels.visual.sketch = 'gemini-3.1-flash-image-preview';
-        if (!config.llmModels.visual.render) config.llmModels.visual.render = 'gemini-3-pro-image-preview';
-        if (!config.llmModels.visual.engrave) config.llmModels.visual.engrave = 'gemini-3.1-pro-preview';
+        const visual = config.llmModels.visual;
+        for (const [node, def] of Object.entries(visualDefaults)) {
+          if (!isKnownModel(visual[node])) {
+            visual[node] = def;
+            llmModelsChanged = true;
+          }
+        }
+        // Drop unknown extra visual overrides outside the default node set.
+        for (const nodeKey of Object.keys(visual)) {
+          if (visualDefaults[nodeKey] === undefined && visual[nodeKey] && !isKnownModel(visual[nodeKey])) {
+            delete visual[nodeKey];
+            llmModelsChanged = true;
+          }
+        }
       }
 
-      if (!config.llmModels.reviewer) {
-        config.llmModels.reviewer = { default: fallbackOpus };
-      } else if (!config.llmModels.reviewer.default) {
-        config.llmModels.reviewer.default = fallbackOpus;
-      }
-
-      if (!config.llmModels.doc) {
-        config.llmModels.doc = { default: fallbackOpus };
-      } else if (!config.llmModels.doc.default) {
-        config.llmModels.doc.default = fallbackOpus;
+      // Persist the healed config so runtime reads (which take workspaceConfig
+      // as-is) and subsequent loads see the current ids — same best-effort
+      // write discipline as the branchBase sync below.
+      if (llmModelsChanged) {
+        try {
+          await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        } catch { /* best-effort */ }
       }
 
       // Sync branchBase from actual git repo (catches external default branch changes)
