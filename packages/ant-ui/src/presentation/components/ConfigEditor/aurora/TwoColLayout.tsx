@@ -31,8 +31,8 @@ export function TwoColLayout({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(180px, 200px) 1fr',
-        gap: 24,
+        gridTemplateColumns: '56px 1fr',
+        gap: 12,
         width: '100%',
         padding: '0 24px',
       }}

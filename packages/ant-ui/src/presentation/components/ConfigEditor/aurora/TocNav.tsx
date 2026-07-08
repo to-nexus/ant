@@ -43,23 +43,12 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
         top: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
-        padding: '20px 10px 20px 0',
-        minWidth: 180,
+        alignItems: 'center',
+        gap: 4,
+        padding: '20px 6px',
+        minWidth: 52,
       }}
     >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: 1.6,
-          color: 'var(--text-4)',
-          padding: '4px 10px 10px',
-        }}
-      >
-        섹션
-      </div>
       {resolvedItems.map((item) => {
         const isActive = item.id === active;
         const IconComp = item.IconComp;
@@ -68,20 +57,19 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
             key={item.id}
             type="button"
             onClick={() => onSelect(item.id)}
+            title={item.label}
+            aria-label={item.label}
             style={{
               position: 'relative',
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
-              padding: '8px 10px 8px 14px',
+              justifyContent: 'center',
+              padding: 10,
               border: 'none',
               background: isActive
                 ? 'oklch(94% 0.06 290 / 0.5)'
                 : 'transparent',
               color: isActive ? 'var(--violet-700)' : 'var(--text-3)',
-              fontWeight: isActive ? 700 : 600,
-              fontSize: 12.5,
-              textAlign: 'left',
               borderRadius: 'var(--r-md)',
               cursor: 'pointer',
             }}
@@ -101,29 +89,21 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
               />
             )}
             {IconComp ? (
-              <IconComp size={14} strokeWidth={2} />
+              <IconComp size={20} strokeWidth={2} />
             ) : (
-              <span style={{ width: 14, display: 'inline-block' }} />
+              <span style={{ width: 20, display: 'inline-block' }} />
             )}
-            <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
-            {item.dirty && (
-              <span
-                aria-label="unsaved"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: 'var(--gradient-pink-orange)',
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            {item.count != null && (
+            {item.count != null ? (
               <span
                 style={{
-                  fontSize: 10,
+                  position: 'absolute',
+                  top: 2,
+                  right: 2,
+                  fontSize: 9,
                   fontWeight: 700,
-                  padding: '1px 6px',
+                  minWidth: 14,
+                  textAlign: 'center',
+                  padding: '0 3px',
                   borderRadius: 'var(--r-pill)',
                   background: 'var(--bg-surface-2)',
                   color: 'var(--text-3)',
@@ -132,6 +112,21 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
               >
                 {item.count}
               </span>
+            ) : (
+              item.dirty && (
+                <span
+                  aria-label="unsaved"
+                  style={{
+                    position: 'absolute',
+                    top: 5,
+                    right: 5,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: 'var(--gradient-pink-orange)',
+                  }}
+                />
+              )
             )}
           </button>
         );
