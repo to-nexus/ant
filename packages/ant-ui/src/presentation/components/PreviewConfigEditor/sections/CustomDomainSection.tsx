@@ -1,35 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, Plus, RefreshCw, Trash2, Copy, Check, AlertCircle } from 'lucide-react';
+import { Globe, Plus, RefreshCw, Trash2, Copy, Check, AlertCircle, ChevronRight, ChevronDown } from 'lucide-react';
 import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import { StepIndicator } from '@/presentation/components/common/async/primitives/StepIndicator';
+import { Spinner } from '@/presentation/components/common/async/primitives/Spinner';
 import { buildStepStatusArray } from '@/presentation/components/common/async/buildStepStatusArray';
 import { useCustomDomainManager } from '../../FeatureSection/hooks/useCustomDomainManager';
 import type { DeployStatus } from '@/infrastructure/http/api';
 import type { CustomDomainWithDns, CustomDomainStatus, CustomDomainTarget, CustomDomainDnsInstructions } from '@/infrastructure/http/api';
 
 const STATUS_ORDER: CustomDomainStatus[] = ['pending_dns', 'verifying', 'active'];
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value);
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1200);
-      }}
-      style={{
-        border: 'none', background: 'transparent', cursor: 'pointer',
-        color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', padding: 2,
-      }}
-      aria-label="Copy"
-    >
-      {copied ? <Check size={13} /> : <Copy size={13} />}
-    </button>
-  );
-}
 
 interface DnsRecord { label: string; name: string; value: string }
 
@@ -73,12 +53,11 @@ function recordsToText(rows: DnsRecord[]): string {
 
 function DnsRow({ label, name, value }: DnsRecord) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
-      <span style={{ minWidth: 54, color: 'var(--text-3)', fontWeight: 700 }}>{label}</span>
-      <code style={{ color: 'var(--text-2)', wordBreak: 'break-all' }}>{name}</code>
-      <span style={{ color: 'var(--text-4)' }}>→</span>
-      <code style={{ color: 'var(--text-1)', wordBreak: 'break-all', flex: 1 }}>{value}</code>
-      <CopyButton value={value} />
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
+      <span style={{ minWidth: 54, flexShrink: 0, color: 'var(--text-3)', fontWeight: 700 }}>{label}</span>
+      <code style={{ flex: 1, minWidth: 0, color: 'var(--text-2)', wordBreak: 'break-all' }}>{name}</code>
+      <span style={{ flexShrink: 0, color: 'var(--text-4)' }}>→</span>
+      <code style={{ flex: 1, minWidth: 0, color: 'var(--text-1)', wordBreak: 'break-all' }}>{value}</code>
     </div>
   );
 }
@@ -121,14 +100,21 @@ function DomainRow({
   onRemove,
 }: {
   domain: CustomDomainWithDns;
-  onVerify: (h: string) => void;
+  onVerify: (h: string) => Promise<void>;
   onRemove: (h: string) => void;
 }) {
   const { t } = useTranslation('explorer');
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const showRecords = domain.status !== 'active' || recordsOpen;
   const steps = buildStepStatusArray<CustomDomainStatus>({
     order: STATUS_ORDER,
     currentPhase: domain.status === 'error' ? null : domain.status,
     failedPhase: domain.status === 'error' ? 'verifying' : null,
+    // The terminal domain status is literally named `active`, which is also the
+    // LAST step — without this override the finished step renders as an
+    // in-progress spinner forever instead of a ✓.
+    forceActiveStatus: domain.status === 'active' ? 'complete' : undefined,
     labels: {
       pending_dns: t('preview.domain.step.dns', 'DNS'),
       verifying: t('preview.domain.step.verify', 'Verify'),
@@ -166,7 +152,18 @@ function DomainRow({
         <StepIndicator steps={steps} orientation="horizontal" />
       </div>
 
-      {(() => {
+      {domain.status === 'active' && (
+        <button
+          type="button"
+          onClick={() => setRecordsOpen((o) => !o)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 11, fontWeight: 700, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 0 }}
+        >
+          {recordsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {recordsOpen ? t('preview.domain.hideRecords', 'Hide records') : t('preview.domain.showRecords', 'Show DNS records')}
+        </button>
+      )}
+
+      {showRecords && (() => {
         const rows = dnsRecords(domain.dns);
         const base = wildcardBase(domain.dns);
         const target = base ? (domain.dns.connection as { value: string }).value : null;
@@ -206,10 +203,19 @@ function DomainRow({
         {domain.status !== 'active' && (
           <button
             type="button"
-            onClick={() => onVerify(domain.hostname)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, height: 28, padding: '0 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-2)', background: 'var(--surface-1)', color: 'var(--text-1)', cursor: 'pointer' }}
+            disabled={verifying}
+            onClick={async () => {
+              setVerifying(true);
+              try {
+                await onVerify(domain.hostname);
+              } finally {
+                setVerifying(false);
+              }
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, height: 28, padding: '0 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-2)', background: 'var(--surface-1)', color: 'var(--text-1)', cursor: verifying ? 'not-allowed' : 'pointer', opacity: verifying ? 0.7 : 1 }}
           >
-            <RefreshCw size={12} /> {t('preview.domain.verify', 'Verify')}
+            {verifying ? <Spinner size="sm" /> : <RefreshCw size={12} />}{' '}
+            {verifying ? t('preview.domain.verifying', 'Verifying…') : t('preview.domain.verify', 'Verify')}
           </button>
         )}
         <button
