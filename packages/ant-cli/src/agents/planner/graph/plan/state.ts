@@ -48,6 +48,11 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   resolvedArtifacts?: ResolvedArtifact[];
   deps?: {
     llm?: any;
+    /** Per-node models for the plan→execute split (orchestrator-created). Plan
+     *  node uses `planLlm` (Opus), execute uses `executeLlm` (Sonnet); both fall
+     *  back to `llm` (job default) when unset. See llmModels.plan config. */
+    planLlm?: any;
+    executeLlm?: any;
     session?: any;
     /**
      * Required by detect's infer branch (createInferDetectNode → inferRacWithTools).

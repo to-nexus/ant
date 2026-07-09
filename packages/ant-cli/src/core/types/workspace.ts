@@ -208,7 +208,12 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: modelHaiku,
       },
       plan: {
-        default: modelOpus,
+        // plan job split into plan (observe/clarify/seal) + execute (author):
+        // the plan node reasons over the codebase → Opus; execute authors the
+        // document from the sealed brief → Sonnet (job default).
+        default: modelSonnet,
+        plan: modelOpus,
+        execute: modelSonnet,
       },
       visual: {
         default: 'gemini-3-flash-preview',

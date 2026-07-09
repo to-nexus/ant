@@ -67,7 +67,9 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('plan', state._uiLocale || 'en'), 'plan');
   }
 
-  const llm = state.deps?.llm;
+  // Per-node model: plan reasons over the codebase → Opus (llmModels.plan.plan),
+  // falling back to the job default when unset.
+  const llm = state.deps?.planLlm ?? state.deps?.llm;
   if (!llm) throw new Error('LLM is required for plan node');
 
   if (state.deps?.workflowUpdate && state._httpJobId) {

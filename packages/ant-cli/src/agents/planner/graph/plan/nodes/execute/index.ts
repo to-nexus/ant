@@ -62,7 +62,9 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('generate', state._uiLocale || 'en'), 'generate');
   }
 
-  const llm = state.deps?.llm;
+  // Per-node model: execute authors from the sealed brief → Sonnet
+  // (llmModels.plan.execute = job default), falling back to `llm` when unset.
+  const llm = state.deps?.executeLlm ?? state.deps?.llm;
   if (!llm) throw new Error('LLM is required for execute node');
 
   if (state.deps?.workflowUpdate && state._httpJobId) {

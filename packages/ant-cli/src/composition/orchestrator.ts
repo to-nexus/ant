@@ -478,6 +478,12 @@ export async function orchestrator(params: {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('planner', undefined, { jobType: 'plan' }, configData);
+      // Per-node models for the plan→execute split (llmModels.plan.{plan,execute}
+      // → job default). Created here (single model-birth site for the planner,
+      // alongside `llm`) and injected via deps; the plan/execute nodes pick their
+      // own. Falls back to the job-default `llm` when a node slot is unset.
+      const planLlm = createLLMClient('planner', undefined, { jobType: 'plan', nodeType: 'plan' }, configData);
+      const executeLlm = createLLMClient('planner', undefined, { jobType: 'plan', nodeType: 'execute' }, configData);
 
       // Setup real-time updates via Redis Pub/Sub
       let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
@@ -561,7 +567,7 @@ export async function orchestrator(params: {
         chatSource: chatSource,
         skipTriage: skipTriage,
         actionMetadata: actionMetadata,
-        deps: { llm, session, fileSystem, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort, promptBuilder: planPromptBuilder },
+        deps: { llm, planLlm, executeLlm, session, fileSystem, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort, promptBuilder: planPromptBuilder },
         _httpJobId: jobId,
       });
 
