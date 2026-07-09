@@ -2,7 +2,7 @@
  * Render Node (Visual Graph)
  *
  * Final high-quality rendering using Pro model.
- * Uses gemini-3-pro-image-preview (Nano Banana Pro).
+ * Uses gemini-3-pro-image (Nano Banana Pro).
  * Receives refined prompt from direct node.
  */
 

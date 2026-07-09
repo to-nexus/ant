@@ -8,7 +8,7 @@
  */
 
 import { VisualGraphState, SvgSketch } from '../types.js';
-import { accumulateTokenUsage, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, broadcastTokenUsageByModel, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
@@ -40,60 +40,70 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   const svgSketches: SvgSketch[] = [];
   const sketchCount = usePerSketchPrompts ? variations!.length : candidateCount;
 
-  for (let i = 0; i < sketchCount; i++) {
-    let sketchPrompt: string;
+  const buildSketchPrompt = (i: number): string => {
     if (usePerSketchPrompts) {
-      sketchPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
-    } else {
-      const variationHint = candidateCount > 1
-        ? `\n\nThis is variation ${i + 1} of ${candidateCount}. ${i > 0 ? 'Create a different style/approach from previous variations.' : ''}`
-        : '';
-      sketchPrompt = fallbackPrompt + variationHint;
+      return `${basePrompt} ${variations![i].prompt}`.trim();
     }
+    const variationHint = candidateCount > 1
+      ? `\n\nThis is variation ${i + 1} of ${candidateCount}. ${i > 0 ? 'Create a different style/approach from previous variations.' : ''}`
+      : '';
+    return fallbackPrompt + variationHint;
+  };
 
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: sketchPrompt },
-    ];
-
-    try {
-      let svgCode: string;
-      if (llm.invokeWithUsage) {
-        const response = await llm.invokeWithUsage(messages);
-        svgCode = response.content;
-        if (response.usage) {
-          accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
+  // Generate all SVG candidates in parallel — the calls are independent, so a
+  // sequential await-loop needlessly multiplied wall-clock. Token accumulation
+  // runs afterwards in index order so accounting stays deterministic.
+  const rawResults = await Promise.all(
+    Array.from({ length: sketchCount }, async (_unused, i): Promise<{ i: number; sketchPrompt: string; svgCode?: string; usage?: TokenUsage; error?: any }> => {
+      const sketchPrompt = buildSketchPrompt(i);
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: sketchPrompt },
+      ];
+      try {
+        if (llm.invokeWithUsage) {
+          const response = await llm.invokeWithUsage(messages);
+          return { i, sketchPrompt, svgCode: response.content, usage: response.usage };
         }
-      } else {
-        svgCode = await llm.invoke(messages);
+        return { i, sketchPrompt, svgCode: await llm.invoke(messages) };
+      } catch (err: any) {
+        return { i, sketchPrompt, error: err };
       }
+    })
+  );
 
-      svgCode = svgCode.trim();
-      if (svgCode.startsWith('```')) {
-        svgCode = svgCode.replace(/^```(?:svg|xml)?\n?/, '').replace(/\n?```$/, '').trim();
-      }
-
-      // Robustly extract the <svg>…</svg> region. The model sometimes wraps the
-      // SVG in prose ("Here is the logo:") or adds a trailing note, leaving the
-      // saved file starting with a non-`<` char — then both sharp/librsvg AND
-      // the browser fail to render it (log: "Start tag expected '<' not found").
-      const svgMatch = svgCode.match(/<svg[\s\S]*<\/svg>/i);
-      if (svgMatch) svgCode = svgMatch[0];
-
-      // Validate: a complete SVG element must open with <svg and close with
-      // </svg>. A truncated generation (log: "Couldn't find end of Start Tag")
-      // has no closing tag and must be dropped, not saved as a broken candidate.
-      const isValidSvg = /^<svg[\s>]/i.test(svgCode) && /<\/svg>\s*$/i.test(svgCode);
-      if (!isValidSvg) {
-        console.error(`❌ [Visual:Engrave] Variation ${i + 1} produced invalid/incomplete SVG — dropped`);
-        continue;
-      }
-
-      svgSketches.push({ code: svgCode, prompt: sketchPrompt, index: i });
-      console.log(`✒️ [Visual:Engrave] SVG variation ${i + 1} generated (${svgCode.length} chars)`);
-    } catch (err: any) {
-      console.error(`❌ [Visual:Engrave] Variation ${i + 1} failed:`, err.message);
+  for (const result of rawResults) {
+    if (result.error) {
+      console.error(`❌ [Visual:Engrave] Variation ${result.i + 1} failed:`, result.error.message);
+      continue;
     }
+    if (result.usage) {
+      accumulateTokenUsage(state, result.usage, { taskLevel: true, jobLevel: true });
+    }
+
+    let svgCode = (result.svgCode || '').trim();
+    if (svgCode.startsWith('```')) {
+      svgCode = svgCode.replace(/^```(?:svg|xml)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+
+    // Robustly extract the <svg>…</svg> region. The model sometimes wraps the
+    // SVG in prose ("Here is the logo:") or adds a trailing note, leaving the
+    // saved file starting with a non-`<` char — then both sharp/librsvg AND
+    // the browser fail to render it (log: "Start tag expected '<' not found").
+    const svgMatch = svgCode.match(/<svg[\s\S]*<\/svg>/i);
+    if (svgMatch) svgCode = svgMatch[0];
+
+    // Validate: a complete SVG element must open with <svg and close with
+    // </svg>. A truncated generation (log: "Couldn't find end of Start Tag")
+    // has no closing tag and must be dropped, not saved as a broken candidate.
+    const isValidSvg = /^<svg[\s>]/i.test(svgCode) && /<\/svg>\s*$/i.test(svgCode);
+    if (!isValidSvg) {
+      console.error(`❌ [Visual:Engrave] Variation ${result.i + 1} produced invalid/incomplete SVG — dropped`);
+      continue;
+    }
+
+    svgSketches.push({ code: svgCode, prompt: result.sketchPrompt, index: result.i });
+    console.log(`✒️ [Visual:Engrave] SVG variation ${result.i + 1} generated (${svgCode.length} chars)`);
   }
 
   if (state._httpJobId && state.featurePath) {

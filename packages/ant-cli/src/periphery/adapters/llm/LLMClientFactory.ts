@@ -264,7 +264,7 @@ export function createImageGenerationClient(
 
   const modelName = modelNameOverride
     || workspaceConfig?.llmModels?.visual?.sketch
-    || 'gemini-3.1-flash-image-preview';
+    || 'gemini-3.1-flash-image';
 
   return new GeminiImageClient({
     apiKey: process.env.GEMINI_API_KEY,

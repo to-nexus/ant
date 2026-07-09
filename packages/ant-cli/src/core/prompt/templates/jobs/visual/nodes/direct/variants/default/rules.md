@@ -1,3 +1,17 @@
+## Format Signal — observe FIRST
+
+Before choosing a route, observe whether the user explicitly named an output format. This observation
+takes priority over every complexity or ambiguity heuristic below.
+
+| Observed signal | Consequence |
+|-----------------|-------------|
+| User named a vector format (e.g. "SVG", "vector") | Produce vector → route `engrave` |
+| User named a raster format (e.g. "PNG", "JPG", "photo", "image", "raster") | Produce raster → route `sketch` or `render` |
+| No format named | Raster is the DEFAULT — route `sketch` or `render`. Raster is delivered as an image that post-processing converts to the correct final format (including transparency); the user does not need a vector for a transparent result. |
+
+**Principle**: an explicit format request is honored unconditionally; absent one, raster is the default
+and vector (`engrave`) is the exception, reserved for the narrow case below.
+
 ## Routing Decision
 
 Observe the request and choose ONE route:
@@ -6,17 +20,16 @@ Observe the request and choose ONE route:
 |-------|------------|
 | `sketch` | Subject is defined but style/composition is open — explore multiple directions |
 | `render` | Subject AND style are both unambiguous — produce final output directly |
-| `engrave` | Request is for a structurally simple element where vector precision matters (icon, geometric shape, diagram) |
+| `engrave` | ONLY when the user asked for a vector/SVG, OR the entire subject is a trivially simple geometric mark reducible to a handful of primitives (single glyph, chevron, arrow, geometric shape, monogram) |
 | `clarify` | Subject itself is ambiguous — cannot determine WHAT to generate. Use sparingly. |
 | `end` | User wants to stop, or request is unrelated to visual asset creation |
 
 ### Routing Constraints
 
-- Route is determined by whether meaningful visual dimensions remain open for exploration
-- `sketch`/`engrave` when visual direction is genuinely ambiguous — dimensions worth exploring across multiple candidates
-- `render` when the user's intent fully resolves the visual direction — no dimension benefits from multi-candidate exploration
+- The Format Signal above is observed first; it overrides the ambiguity/complexity heuristics here
+- Among raster routes: `sketch` when visual direction is genuinely ambiguous — dimensions worth exploring across multiple candidates; `render` when the user's intent fully resolves the visual direction
 - Do NOT use `clarify` when only style/mood is unclear — infer style from context
-- `engrave` is strictly for elements where clean geometry and scalability outweigh visual richness
+- `engrave` is FORBIDDEN for pictorial, organic, character, mascot, scene, or illustrative subjects. A text model authoring SVG markup cannot render recognizable organic/pictorial forms — those are always raster (`sketch` → `render`). Choose `engrave` only when the entire subject is reducible to simple geometry, or the user explicitly requested a vector
 - When the user references a specific sketch for final output, route to `render` with a refined prompt that preserves the selected direction while adding precision
 
 ### Refinement Routing
@@ -137,9 +150,8 @@ When the user is iterating on a previous result:
 #### Constraints
 
 - Do NOT add gradients, shadows, or 3D effects unless the user explicitly requests them
-- If the shape is simple enough for SVG, consider routing to `engrave`
-- For logos requiring transparent backgrounds, prefer `engrave` (SVG) — raster models cannot produce actual transparency
-- For raster output, always specify a solid-color background — the background removal service handles transparency in post-processing
+- Logos default to raster (`sketch` → `render`). A logo is `engrave`-eligible ONLY when the user explicitly asked for a vector/SVG, OR the mark is itself a pure geometric monogram/single glyph — a pictorial mascot, character, or scene is always raster
+- Transparency is delivered by the post-processing background-removal service — it is NOT a reason to choose vector/SVG. For raster output, always specify a solid-color background; post-processing handles the transparent result
 - If the user describes a concept, translate it into a symbolic visual element — do NOT depict it literally
 {{/if}}
 
@@ -160,7 +172,7 @@ When the user is iterating on a previous result:
 #### Constraints
 
 - Do NOT add decorative elements (shadows, glows, badges) unless explicitly requested
-- For simple geometric icons (≤3 colors), prefer routing to `engrave` (SVG)
+- A simple geometric icon reducible to a handful of primitives (≤3 colors) is `engrave`-eligible. A pictorial or detailed icon is raster (`sketch` → `render`)
 {{/if}}
 
 {{#if isHero}}
@@ -200,6 +212,7 @@ When the user is iterating on a previous result:
 #### Constraints
 
 - Maintain consistent style throughout the composition — mixing styles is a defect
+- Illustrations are always raster (`sketch` → `render`) — never `engrave`. A pictorial/organic composition cannot be authored as SVG markup
 {{/if}}
 
 ## Response Format

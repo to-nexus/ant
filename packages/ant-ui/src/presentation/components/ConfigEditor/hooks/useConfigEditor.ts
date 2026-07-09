@@ -46,8 +46,8 @@ export function useConfigEditor(
             visual: {
               default: 'gemini-3.1-pro-preview',
               direct: 'gemini-3.1-pro-preview',
-              sketch: 'gemini-3.1-flash-image-preview',
-              render: 'gemini-3-pro-image-preview',
+              sketch: 'gemini-3.1-flash-image',
+              render: 'gemini-3-pro-image',
               engrave: 'gemini-3.1-pro-preview',
             },
           }
