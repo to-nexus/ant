@@ -16,7 +16,7 @@
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
-import { PortRegistryPort, PreviewState } from '../../../../core/ports/portRegistry';
+import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
@@ -69,17 +69,6 @@ const RESERVED_PATHS = ['/projects/', '/admin/', '/health', '/deploy/'];
 export interface PreviewProxyConfig {
   portRegistry: PortRegistryPort;
   pathPrefix?: string;  // Default: '' (no prefix, dedicated host)
-  /**
-   * Ensure a preview's {host, port} is still reachable before proxying to it.
-   * Returns null if not found or unreachable; returns the state if locally-owned
-   * or cross-pod reachable.
-   */
-  ensureReachable?: (
-    tenantId: string,
-    userId: string,
-    projectId: string,
-    feature: string,
-  ) => Promise<PreviewState | null>;
   /**
    * Optional resolver for backend port (fullstack).
    * If provided, /:urlKey/api/* can be routed to backend instead of the entry (frontend) port.
@@ -135,7 +124,7 @@ function extractUrlKeyFromReferer(refererStr: string): string | null {
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '', getBackendPort, jwtService, ensureReachable } = config;
+  const { portRegistry, pathPrefix = '', getBackendPort, jwtService } = config;
   const cookieName = config.cookieName ?? 'ant_session';
 
   // Owner-only access gate. Runs before cookie-parser (see PreviewServer mount
@@ -172,14 +161,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         return;
       }
 
-      // Validate the preview is still reachable (cross-pod liveness check)
-      const state = ensureReachable
-        ? await ensureReachable(tenantId, userId, projectId, feature)
-        : match;
-      if (!state) {
-        res.status(404).json({ error: 'Preview unavailable — restart it' });
-        return;
-      }
+      // The matched label record carries host/port/packages. A dead target
+      // fails fast via the transport-retry timeout below — no destructive
+      // liveness gate (see PreviewServer WS upgrade for the same rationale).
+      const state = match;
 
       await portRegistry.touchPreview(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
 
@@ -281,10 +266,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
 
           try {
-            // Validate the preview is still reachable (cross-pod liveness check)
-            const mapping = ensureReachable
-              ? await ensureReachable(tenantId, userId, projectId, feature)
-              : await portRegistry.getPreview(tenantId, userId, projectId, feature);
+            const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
             if (mapping) {
               const host = mapping.host || 'localhost';
               const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
@@ -366,10 +348,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     type ProxyPkg = { name: string; slug?: string; type: string; port: number; urlKey?: string };
     let previewPackages: ProxyPkg[] = [];
     try {
-      // Validate the preview is still reachable (cross-pod liveness check)
-      const mapping = ensureReachable
-        ? await ensureReachable(tenantId, userId, projectId, feature)
-        : await portRegistry.getPreview(tenantId, userId, projectId, feature);
+      const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
 
       if (!mapping) {
         logger.warn(`No preview found for ${internalKey}`, { component: 'PreviewProxy' });
