@@ -259,6 +259,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       conversations: { [CONV_KEYS.NODE_PLAN]: updatedHistory },
       pendingToolCalls: toolCalls,
       tokenUsage: state.tokenUsage,
+      tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       _activePhase: 'plan',
     };
@@ -302,6 +303,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       conversations: { [CONV_KEYS.NODE_PLAN]: clarifyHistory },
       pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
+      tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       awaitingClarify: true,
       ...clarifyGate.stateUpdates,
@@ -323,6 +325,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       conversations: { [CONV_KEYS.NODE_PLAN]: explainHistory },
       pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
+      tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
     };
   }
@@ -358,6 +361,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     conversations: { [CONV_KEYS.NODE_PLAN]: [] },
     pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
+    tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
     recursionLimit: state.recursionLimit,
   };

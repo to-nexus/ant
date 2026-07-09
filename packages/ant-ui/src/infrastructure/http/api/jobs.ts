@@ -103,9 +103,13 @@ export function fetchJobHistory(
   projectId: string,
   featureName: string,
 ): Promise<{ jobs: JobHistoryEntry[] }> {
+  // Rejects on error — callers decide how to degrade. A blanket `.catch` here
+  // silently blanked the whole history dropdown on any transient hiccup (e.g.
+  // a mid-run endpoint blip), which read to the user as "only the running job
+  // is listed." `useJobHistory` now keeps its last-good entries on failure.
   return apiGet<{ jobs: JobHistoryEntry[] }>(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs`,
-  ).catch(() => ({ jobs: [] }));
+  );
 }
 
 /**

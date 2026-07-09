@@ -119,6 +119,7 @@ export async function saveConversationToSession(
     sessionData.state.chatSource = state.chatSource;
     sessionData.state.resolvedAction = state.resolvedAction;
     sessionData.state.tokenUsage = state.tokenUsage;
+    sessionData.state.tokenUsageByModel = state.tokenUsageByModel;
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;
     sessionData.state.recursionLimit = state.recursionLimit;
