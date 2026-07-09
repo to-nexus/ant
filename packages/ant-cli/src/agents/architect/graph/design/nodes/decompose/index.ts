@@ -21,6 +21,7 @@ import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { ExecutionTierId, recordUserTurnMeta } from "../../../../../../core/executionTier";
 import { emitDetectOutcome } from "../../../../../../core/streaming/emitDetectOutcome";
+import { reconcileBasisTechTier } from "./reconcileBasisTechTier";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -205,6 +206,18 @@ async function handleDefaultTask(
 
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   const result = await runDesignDecompose(state);
+
+  // Single convergence owner: sub-handlers rebuild `basis.techTier` from the
+  // LLM/profile emit and drop the user's explicit framework + gameEngine. Merge
+  // the preset back here — once, at the funnel — mirroring the per-task path
+  // (applyExplicitTechTierOverrides) so the confirmation message, the persisted
+  // basis, and the execute basis-summary block all agree.
+  if (result.resolvedAction?.basis) {
+    result.resolvedAction.basis.techTier = reconcileBasisTechTier(
+      state.actionMetadata?.basis?.techTier,
+      result.resolvedAction.basis.techTier,
+    );
+  }
 
   // Re-emit the finalized basis once the sub-handler has completed.
   // Routed through the Canonical Tag Rendering SSOT (SpecialTagTransformer

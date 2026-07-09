@@ -20,6 +20,7 @@ import {
 } from '@ant/shared';
 import type { TechTier, TechTierConfig } from '@ant/shared';
 import { AutoInjectionResolver } from '../../src/core/prompt/builder/AutoInjectionResolver';
+import { reconcileBasisTechTier } from '../../src/agents/architect/graph/design/nodes/decompose/reconcileBasisTechTier';
 
 const resolver = new AutoInjectionResolver();
 
@@ -226,6 +227,69 @@ describe('applyExplicitTechTierOverrides', () => {
     const be = applyExplicitTechTierOverrides(resolveTaskTechTierFromStack('backend', config), undefined);
     expect(fe[0].framework).toBe('react');
     expect(be[0].framework).toBe('express');
+  });
+});
+
+// ============================================
+// reconcileBasisTechTier (design decompose funnel — enumerated-snowflake fix)
+// ============================================
+
+describe('reconcileBasisTechTier', () => {
+  // Regression: design decompose sub-handlers rebuild basis.techTier from the
+  // LLM/profile emit and drop the explicit framework + gameEngine. The funnel
+  // reconcile must merge the preset back (preset wins), matching the per-task
+  // path, while keeping the inferred stack authoritative.
+  it('retains explicit framework + gameEngine when the inferred basis stripped them', () => {
+    const preset: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend', gameEngine: 'phaser' },
+    };
+    const inferred: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', stack: 'frontend' },
+    };
+    const out = reconcileBasisTechTier(preset, inferred);
+    expect(out?.frontend?.framework).toBe('react');
+    expect(out?.frontend?.gameEngine).toBe('phaser');
+    expect(out?.frontend?.language).toBe('typescript');
+    expect(out?.stack).toBe('frontend');
+  });
+
+  it('keeps the inferred stack (does not let the preset stack win)', () => {
+    const preset: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+    };
+    const inferred: TechTierConfig = {
+      stack: 'fullstack',
+      frontend: { language: 'typescript', stack: 'frontend' },
+      backend: { language: 'typescript', stack: 'backend' },
+    };
+    const out = reconcileBasisTechTier(preset, inferred);
+    expect(out?.stack).toBe('fullstack');
+  });
+
+  it('no explicit preset → inferred passes through unchanged', () => {
+    const inferred: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+    };
+    const out = reconcileBasisTechTier(undefined, inferred);
+    expect(out?.frontend?.framework).toBe('react');
+    expect(out?.stack).toBe('frontend');
+  });
+
+  it('inferred framework survives when the preset omits it', () => {
+    const preset: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', stack: 'frontend' },
+    };
+    const inferred: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+    };
+    const out = reconcileBasisTechTier(preset, inferred);
+    expect(out?.frontend?.framework).toBe('react');
   });
 });
 
