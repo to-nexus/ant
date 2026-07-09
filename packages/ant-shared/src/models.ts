@@ -178,8 +178,8 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     contextWindow: 1_000_000,
     thinkingMode: 'none',
   },
-  'gemini-3-flash-preview': {
-    id: 'gemini-3-flash-preview',
+  'gemini-3-flash': {
+    id: 'gemini-3-flash',
     displayName: 'Gemini 3 Flash',
     provider: 'google',
     description: 'Fast classification and triage for visual jobs',
@@ -187,18 +187,18 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     capabilities: ['fast', 'classification'],
     thinkingMode: 'none',
   },
-  'gemini-3-pro-image-preview': {
-    id: 'gemini-3-pro-image-preview',
-    displayName: 'Gemini 3 Pro Image',
+  'gemini-3-pro-image': {
+    id: 'gemini-3-pro-image',
+    displayName: 'Gemini 3 Pro Image (Nano Banana Pro)',
     provider: 'google',
     description: 'High-quality image generation for final renders',
     recommended: true,
     capabilities: ['image-generation', 'high-quality'],
     thinkingMode: 'none',
   },
-  'gemini-3.1-flash-image-preview': {
-    id: 'gemini-3.1-flash-image-preview',
-    displayName: 'Gemini 3.1 Flash Image',
+  'gemini-3.1-flash-image': {
+    id: 'gemini-3.1-flash-image',
+    displayName: 'Gemini 3.1 Flash Image (Nano Banana 2)',
     provider: 'google',
     description: 'Fast image generation for draft exploration',
     recommended: false,

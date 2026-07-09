@@ -4,8 +4,8 @@
  * Implements ImageGenerationPort using Gemini's native image generation (Nano Banana).
  * Uses generateContent with image-capable models (gemini-*-image-preview).
  *
- * Sketch model: gemini-3.1-flash-image-preview (fast, draft quality)
- * Render model: gemini-3-pro-image-preview (high quality, production)
+ * Sketch model: gemini-3.1-flash-image (fast, draft quality)
+ * Render model: gemini-3-pro-image (high quality, production)
  *
  * **Format limitation**: The Gemini API (non-Vertex) does NOT support the
  * `outputMimeType` parameter in `imageConfig`. The model autonomously decides

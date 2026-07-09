@@ -3,7 +3,7 @@
  *
  * Sketch exploration — generates multiple candidate images using Flash model.
  * Fast, low-cost generation for user to choose from.
- * Uses gemini-3.1-flash-image-preview (Nano Banana 2).
+ * Uses gemini-3.1-flash-image (Nano Banana 2).
  */
 
 import * as fs from 'fs';
@@ -49,18 +49,25 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     let phaseOutputTokens = 0;
 
     if (usePerSketchPrompts) {
-      for (let i = 0; i < variations!.length; i++) {
-        const composedPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
-        console.log(`✏️ [Visual:Sketch] Sketch ${i + 1}/${variations!.length}: ${composedPrompt.substring(0, 80)}...`);
+      // Generate all variations in parallel — candidates are independent, so a
+      // sequential await-loop needlessly tripled wall-clock. Client calls run
+      // concurrently; state mutation (token accumulation) happens after, in
+      // input order, so accounting stays deterministic.
+      const generatedPerVariation = await Promise.all(
+        variations!.map((variation, i) => {
+          const composedPrompt = `${basePrompt} ${variation.prompt}`.trim();
+          console.log(`✏️ [Visual:Sketch] Sketch ${i + 1}/${variations!.length}: ${composedPrompt.substring(0, 80)}...`);
+          return imageClient.generate(composedPrompt, {
+            numberOfImages: 1,
+            outputFormat: 'jpeg',
+            aspectRatio,
+            temperature: 1.0,
+            referenceImage: refImage,
+          }).then(generated => ({ i, composedPrompt, generated }));
+        })
+      );
 
-        const generated = await imageClient.generate(composedPrompt, {
-          numberOfImages: 1,
-          outputFormat: 'jpeg',
-          aspectRatio,
-          temperature: 1.0,
-          referenceImage: refImage,
-        });
-
+      for (const { i, composedPrompt, generated } of generatedPerVariation) {
         if (generated.length > 0) {
           const genUsage = generated[0].tokenUsage;
           if (genUsage) {
@@ -77,7 +84,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
             mimeType: generated[0].mimeType,
             prompt: composedPrompt,
             modelConfig: {
-              model: (imageClient as any).modelName || 'gemini-3.1-flash-image-preview',
+              model: (imageClient as any).modelName || 'gemini-3.1-flash-image',
               aspectRatio,
             },
             modelResponseMetadata: generated[0].modelResponseMetadata || {},
@@ -111,7 +118,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
           mimeType: generated[i].mimeType,
           prompt: generated[i].prompt,
           modelConfig: {
-            model: (imageClient as any).modelName || 'gemini-3.1-flash-image-preview',
+            model: (imageClient as any).modelName || 'gemini-3.1-flash-image',
             aspectRatio,
           },
           modelResponseMetadata: generated[i].modelResponseMetadata || {},

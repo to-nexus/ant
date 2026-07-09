@@ -203,11 +203,11 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         execute: modelSonnet,
       },
       visual: {
-        default: 'gemini-3-flash-preview',
+        default: 'gemini-3-flash',
         direct: 'gemini-3.1-pro-preview',
         explain: 'gemini-3.1-pro-preview',
-        sketch: 'gemini-3.1-flash-image-preview',
-        render: 'gemini-3-pro-image-preview',
+        sketch: 'gemini-3.1-flash-image',
+        render: 'gemini-3-pro-image',
         engrave: 'gemini-3.1-pro-preview',
       },
       reviewer: {
