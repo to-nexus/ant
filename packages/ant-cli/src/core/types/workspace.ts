@@ -167,12 +167,39 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
  * the Haiku tier; reviewer/doc default to the Opus tier. Tier ids come from
  * the DEFAULT_MODELS SSOT (@ant/shared/models.ts) — never hardcode a model id here.
  */
-export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
+/**
+ * Get the minimal default LLM config for merging during load-time.
+ * This provides ONLY the job-level `default` for each job, no node-specific overrides.
+ * This ensures that existing projects that have only customized a job's `default`
+ * can genuinely fall through to that `default` for all node types via `resolveModelForContext`.
+ *
+ * Node-specific opinionated defaults (decompose=Opus, plan=Opus) MUST be part of the
+ * creation-time snapshot only (getDefaultWorkspaceConfig), not the load-time merge base.
+ */
+export function getConfigMergeDefaults(): LLMModels {
   const envModel = process.env.AI_MODEL_NAME;
   const modelOpus = envModel || DEFAULT_MODELS.opusTier;
   const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
   const modelHaiku = envModel || DEFAULT_MODELS.haikuTier;
-  
+
+  return {
+    design: { default: modelSonnet },
+    code: { default: modelSonnet },
+    learn: { default: modelHaiku },
+    plan: { default: modelSonnet },
+    visual: {
+      default: 'gemini-3-flash',
+    },
+    reviewer: { default: modelOpus },
+    doc: { default: modelOpus },
+  };
+}
+
+export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
+  const envModel = process.env.AI_MODEL_NAME;
+  const modelOpus = envModel || DEFAULT_MODELS.opusTier;
+  const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
+
   return {
     projectName,
     // Phase 2 (D22): default project domain is 'service'.
@@ -192,7 +219,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         execute: modelSonnet,
       },
       learn: {
-        default: modelHaiku,
+        default: modelSonnet,
       },
       plan: {
         // plan job split into plan (observe/clarify/seal) + execute (author):

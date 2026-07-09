@@ -169,17 +169,24 @@ export function ModelSelectChip({
         color: 'oklch(45% 0.14 55)',
         border: '1px dashed oklch(75% 0.15 65)',
       }
-    : displayModel
+    : isInherited
       ? {
           background: triggerAccent!.bg,
           color: triggerAccent!.fg,
-          border: `1px solid ${triggerAccent!.ring}`,
+          border: `1px dashed ${triggerAccent!.ring}`,
+          opacity: 0.7,
         }
-      : {
-          background: 'var(--bg-surface-2)',
-          color: 'var(--text-4)',
-          border: '1px dashed var(--border-2)',
-        };
+      : displayModel
+        ? {
+            background: triggerAccent!.bg,
+            color: triggerAccent!.fg,
+            border: `1px solid ${triggerAccent!.ring}`,
+          }
+        : {
+            background: 'var(--bg-surface-2)',
+            color: 'var(--text-4)',
+            border: '1px dashed var(--border-2)',
+          };
 
   // Label text + length-based auto-shrink (no fragile container queries). Long
   // names wrap to 2 lines (see the label span) and step the font down.
@@ -191,21 +198,25 @@ export function ModelSelectChip({
   const labelFontSize = labelText.length > 20 ? 10.5 : labelText.length > 13 ? 11.5 : 12.5;
 
   // Single caption line carries the state marker so it never eats label width.
-  const isUnconfigured = !!displayModel && !isUnavailable && isProviderUnconfigured(displayModel.provider);
+  const isUnconfigured = !!displayModel && !isUnavailable && !isInherited && isProviderUnconfigured(displayModel.provider);
   const caption = isUnavailable
     ? `⚠ ${t('projectEditor.unavailableModel')}`
     : isLegacy
       ? t('projectEditor.legacyModel')
-      : isUnconfigured
-        ? `⚠ ${t('projectEditor.noApiKey')}`
-        : null;
+      : isInherited
+        ? t('projectEditor.inheritedFromDefault')
+        : isUnconfigured
+          ? `⚠ ${t('projectEditor.noApiKey')}`
+          : null;
   const captionTitle = isUnavailable
     ? t('projectEditor.unavailableModelTooltip')
     : isLegacy
       ? t('projectEditor.legacyModelTooltip')
-      : isUnconfigured
-        ? t('projectEditor.noApiKeyWarning')
-        : undefined;
+      : isInherited
+        ? t('projectEditor.inheritedFromDefaultTooltip')
+        : isUnconfigured
+          ? t('projectEditor.noApiKeyWarning')
+          : undefined;
 
   const dropdown =
     isOpen &&

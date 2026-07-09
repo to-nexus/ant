@@ -120,6 +120,8 @@
     "custom": "커스텀",
     "noApiKey": "API 키 없음",
     "noApiKeyWarning": "이 제공자는 서버에 API 키가 설정되어 있지 않습니다 — 키를 설정하기 전까지 이 제공자를 사용하는 작업은 실패합니다.",
+    "inheritedFromDefault": "작업 기본값에서 상속됨",
+    "inheritedFromDefaultTooltip": "이 노드는 명시적으로 재정의되지 않았으며 작업의 기본 모델을 사용합니다.",
     "legacyModel": "레거시",
     "legacyModelTooltip": "이 모델은 더 이상 새 선택지로 제공되지 않지만 계속 동작합니다. 다른 모델을 선택하기 전까지 유지됩니다.",
     "unavailableModel": "사용 불가",

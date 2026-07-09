@@ -120,6 +120,8 @@
     "custom": "Custom",
     "noApiKey": "no API key",
     "noApiKeyWarning": "This provider has no API key configured on the server — jobs using it will fail until a key is set.",
+    "inheritedFromDefault": "inherited from job default",
+    "inheritedFromDefaultTooltip": "This node is not explicitly overridden and uses the job's default model.",
     "legacyModel": "legacy",
     "legacyModelTooltip": "This model is no longer offered as a new choice but still works. It will be kept unless you pick another.",
     "unavailableModel": "unavailable",

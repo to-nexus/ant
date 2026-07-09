@@ -144,19 +144,28 @@ export class ProjectCrudService {
       llmModels: {
         design: {
           default: modelSonnet,
+          decompose: modelSonnet,
+          plan: modelOpus,
+          execute: modelSonnet,
         },
         code: {
           default: modelSonnet,
+          decompose: modelOpus,
+          plan: modelSonnet,
+          execute: modelSonnet,
         },
         learn: {
           default: modelSonnet,
         },
         plan: {
           default: modelSonnet,
+          plan: modelOpus,
+          execute: modelSonnet,
         },
         visual: {
-          default: 'gemini-3.1-pro-preview',
+          default: 'gemini-3-flash',
           direct: 'gemini-3.1-pro-preview',
+          explain: 'gemini-3.1-pro-preview',
           sketch: 'gemini-3.1-flash-image',
           render: 'gemini-3-pro-image',
           engrave: 'gemini-3.1-pro-preview',

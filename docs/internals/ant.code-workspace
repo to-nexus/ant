@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"name": "ant",
+			"path": "../.."
+		},
+		{
+			"path": "../../../classboard"
+		},
+		{
+			"path": "../../../ant-cloud"
+		},
+		{
+			"path": "../../../../Downloads/classboard-handoff"
+		},
+		{
+			"path": "../../../../Downloads/artifact"
+		},
+		{
+			"path": "../../../classboard-be"
+		},
+		{
+			"path": "../../../jhedu"
+		},
+		{
+			"path": "../../../../Downloads/sessions-silk-flowing-golem"
+		}
+	]
+}

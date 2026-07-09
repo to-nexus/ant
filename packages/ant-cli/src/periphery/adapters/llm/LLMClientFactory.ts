@@ -86,13 +86,13 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
 
 /**
  * Resolve model name based on job/node context
- * Priority: 
+ * Priority:
  *   1. workspaceConfig.llmModels[job][node]
  *   2. workspaceConfig.llmModels[job].default
  *   3. env var (AI_MODEL_NAME)
  *   4. hardcoded default
  */
-function resolveModelForContext(
+export function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
