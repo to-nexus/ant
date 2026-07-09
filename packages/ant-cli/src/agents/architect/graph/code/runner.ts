@@ -9,6 +9,7 @@ import {
 } from "../../../common/graph/runnerHelpers";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
+import { deriveResumableState } from "../../../../core/session/resumable";
 import type { InterruptionDetails } from "@ant/shared";
 import type { TriageResult } from "../../../common/graph/nodes/triage/types";
 
@@ -47,7 +48,6 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
       );
       
       const hasInterruption = Boolean(session?.state?.interruption);
-      const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
       // Project the last checkpoint's in-flight tasks onto the queue head with
       // `interrupted:true`. Symmetric with design/runner.ts. Two boundaries:
       //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
@@ -60,9 +60,19 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         (t: any) => ({ ...t, interrupted: true }) as CodeTask,
       );
       const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
-      const hasAnyResumable = hasTaskQueue || runningMarked.length > 0;
 
-      if ((hasInterruption || hasOrphanedRunning) && hasAnyResumable && session.state) {
+      // Single owner of "what work is left" (code-job-flickering-sparkle):
+      // `hasResumableWork` = taskQueue | currentTask | runningTasks, the same
+      // definition the Kanban card and the /resume route use, so they cannot
+      // diverge. TRIGGER: auto-restore on an interruption/orphaned-running
+      // checkpoint (unchanged); ADDITIONALLY restore a marker-less, running-less
+      // taskQueue on an EXPLICIT resume request only (route sets ANT_IS_RESUME /
+      // initial.isResume) — never on a fresh invocation, so new work on a
+      // feature is not silently swallowed.
+      const verdict = deriveResumableState(session?.state, 'code', { isActuallyRunning: false });
+      const explicitResume = initial.isResume === true || isEnvResume();
+
+      if (verdict.hasResumableWork && (hasInterruption || hasOrphanedRunning || explicitResume) && session?.state) {
         const persistedQueue = (session.state.taskQueue ?? []) as CodeTask[];
         console.log(`🔄 Resuming: ${persistedQueue.length + runningMarked.length} tasks in queue (running=${runningMarked.length}), ${session.state.completedTasks?.length || 0} completed`);
 
@@ -76,7 +86,15 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         // This makes the resume-after-permanent-fail contract idempotent and
         // recovers from any historical drift (vast-curling-perch RCA — fix
         // re-deploys after pre-fix saves had stale 11 leaked into Redis).
-        const loadedQueue = [...runningMarked, ...persistedQueue];
+        // currentTask-only fallback: if the checkpoint carried an in-flight
+        // `currentTask` but no queue/running (rare sequential boundary),
+        // project it onto the head so an explicit resume never rebuilds an
+        // empty queue (which would silently fall through to a fresh decompose
+        // and re-diverge from the route/card that counted it as resumable).
+        let loadedQueue = [...runningMarked, ...persistedQueue];
+        if (loadedQueue.length === 0 && session.state.currentTask) {
+          loadedQueue = [{ ...(session.state.currentTask as CodeTask), interrupted: true }];
+        }
         initial.taskQueue = TaskQueue.from<CodeTask>(normalizeResumedQueueBudgets(loadedQueue));
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];

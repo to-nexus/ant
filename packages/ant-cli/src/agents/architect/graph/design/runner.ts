@@ -4,6 +4,7 @@ import { DesignTask } from "../../types/task";
 import path from 'node:path';
 import * as fs from 'fs/promises';
 import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
+import { deriveResumableState } from '../../../../core/session/resumable';
 import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
@@ -63,7 +64,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
       );
       
       const hasInterruption = Boolean(session?.state?.interruption);
-      const hasTaskQueue = Boolean(session?.state?.taskQueue && session.state.taskQueue.length > 0);
       // Project the last checkpoint's in-flight tasks onto the queue head with
       // `interrupted:true`. Two boundaries land tasks here:
       //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
@@ -74,11 +74,20 @@ export async function runDesignGraph(initial: DesignGraphState) {
       const persistedRunning: any[] = (session?.state as any)?.runningTasks ?? [];
       const runningMarked = persistedRunning.map((t: any) => ({ ...t, interrupted: true }));
       const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
-      const hasAnyResumable = hasTaskQueue || runningMarked.length > 0;
 
-      if ((hasInterruption || hasOrphanedRunning) && hasAnyResumable && session.state) {
+      // Single owner of "what work is left" (code-job-flickering-sparkle) —
+      // symmetric with code/runner.ts. Auto-restore on interruption/orphaned
+      // running (unchanged); additionally restore a marker-less, running-less
+      // taskQueue on an EXPLICIT resume request only.
+      const verdict = deriveResumableState(session?.state, 'design', { isActuallyRunning: false });
+      const explicitResume = initial.isResume === true || isEnvResume();
+
+      if (verdict.hasResumableWork && (hasInterruption || hasOrphanedRunning || explicitResume) && session?.state) {
         const persistedQueue: any[] = (session.state as any).taskQueue ?? [];
-        const finalQueueArr = [...runningMarked, ...persistedQueue];
+        let finalQueueArr = [...runningMarked, ...persistedQueue];
+        if (finalQueueArr.length === 0 && session.state.currentTask) {
+          finalQueueArr = [{ ...(session.state.currentTask as any), interrupted: true }];
+        }
         console.log(`🔄 [DesignRunner] Resuming: ${finalQueueArr.length} tasks in queue (running=${runningMarked.length}), ${session.state.completedTasks?.length || 0} completed`);
 
         // ✅ Set isResume flag for graph router

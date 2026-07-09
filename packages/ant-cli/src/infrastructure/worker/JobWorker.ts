@@ -279,11 +279,13 @@ export class JobWorker {
         let projectId: string | undefined;
         let featureName: string | undefined;
         let userEmail: string | undefined;
+        let jobType: string | undefined;
         try {
           const mapping = await this.stateStore.getJobMapping(jobId);
           if (mapping) {
             projectId = mapping.projectId;
             featureName = mapping.featureName;
+            jobType = mapping.jobType;
             if (mapping.userContext) {
               userEmail = `${mapping.userContext.userId}@${mapping.userContext.organizationId}`;
             }
@@ -297,12 +299,8 @@ export class JobWorker {
           projectId,
           featureName,
           userEmail,
-          interruption: {
-            reason: 'worker_stalled',
-            message: 'Worker process became unresponsive. You can resume this job.',
-            canResume: true,
-            timestamp: new Date().toISOString(),
-          },
+          // jobType-gated canResume via the single owner (plan/visual → false).
+          interruption: buildInfrastructureInterruption('worker_stalled', jobType),
           timestamp: new Date().toISOString(),
         });
       } catch (err) {

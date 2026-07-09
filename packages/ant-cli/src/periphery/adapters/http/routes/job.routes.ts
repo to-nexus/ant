@@ -11,6 +11,7 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { deriveResumableState } from '../../../../core/session/resumable';
 import { generateTurnId } from '../../../../composition/recordUserTurn';
 import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
@@ -776,33 +777,31 @@ export function createJobRoutes(deps: {
       let foundAgent: string | null = null;
 
       for (const entry of getAllSessionPaths(featurePath)) {
-        if (fs.existsSync(entry.path)) {
-          const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
-          if (data.state?.jobId && data.state?.interruption) {
-            // ✅ If a specific jobId was requested, only match that exact session
-            if (requestedJobId && data.state.jobId !== requestedJobId) {
-              continue;
-            }
-            
-            // ✅ Guard against stale interruption: if taskQueue is empty and tasks
-            // were completed, the interruption is leftover from a recursion-limit
-            // retry that ultimately succeeded. Skip it — there's nothing to resume.
-            const taskQueueSize = data.state.taskQueue?.length || 0;
-            const completedCount = data.state.completedTasks?.length || 0;
-            if (taskQueueSize === 0 && completedCount > 0) {
-              logger.debug(`   ⚠️ Skipping stale interruption in ${entry.agent}/${entry.job}.json (0 tasks remaining, ${completedCount} completed)`);
-              continue;
-            }
-            
-            jobType = entry.job;
-            foundAgent = entry.agent;
-            sessionJobId = data.state.jobId;
-            sessionData = data;
-            logger.debug(`   Found interrupted job in ${entry.agent}/${entry.job}.json`);
-            logger.debug(`   Session jobId: ${sessionJobId}`);
-            break;
-          }
+        if (!fs.existsSync(entry.path)) continue;
+        const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+        if (!data.state?.jobId) continue;
+        // ✅ If a specific jobId was requested, only match that exact session
+        if (requestedJobId && data.state.jobId !== requestedJobId) continue;
+
+        // ✅ Single owner of the resume verdict (code-job-flickering-sparkle):
+        // do NOT hard-require a persisted `state.interruption` — an abrupt crash
+        // (poison-skipped final checkpoint) leaves leftover work with no marker,
+        // yet is resumable. `deriveResumableState` synthesizes `server_crash`
+        // when the marker is absent, applies the jobType→canResume gate, and
+        // subsumes the old stale guard (empty queue + completed → canResume:false).
+        // A job being resumed is by definition not running → isActuallyRunning:false.
+        const verdict = deriveResumableState(data.state, entry.job, { isActuallyRunning: false });
+        if (!verdict.canResume) {
+          logger.debug(`   ⚠️ ${entry.agent}/${entry.job}.json not resumable (hasWork=${verdict.hasResumableWork}, completed=${verdict.isJobCompleted})`);
+          continue;
         }
+
+        jobType = entry.job;
+        foundAgent = entry.agent;
+        sessionJobId = data.state.jobId;
+        sessionData = data;
+        logger.debug(`   Found resumable job in ${entry.agent}/${entry.job}.json (synthesized=${verdict.synthesized}, jobId: ${sessionJobId})`);
+        break;
       }
       
       if (!jobType || !sessionJobId || !sessionData) {

@@ -34,6 +34,7 @@ import { parseRedisUrl } from '../utils/redis';
 import { REDIS_CHANNELS } from '../state/redisConstants';
 import { generateHumanId } from '../../utils/humanId';
 import { LOCK_DURATION } from './constants';
+import { buildInfrastructureInterruption } from '@ant/shared';
 
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
@@ -319,11 +320,13 @@ export class BullMQJobQueue implements JobQueuePort {
         let projectId: string | undefined;
         let featureName: string | undefined;
         let userEmail: string | undefined;
+        let jobType: string | undefined;
 
         if (bullJob?.data) {
           const payload = bullJob.data as JobPayload;
           projectId = payload.projectId;
           featureName = payload.feature;
+          jobType = payload.type;
           const uc = payload.userContext;
           if (uc) userEmail = `${uc.userId}@${uc.organizationId}`;
         }
@@ -335,12 +338,9 @@ export class BullMQJobQueue implements JobQueuePort {
           projectId,
           featureName,
           userEmail,
-          interruption: {
-            reason: 'worker_stalled',
-            message: 'Worker process became unresponsive. You can resume this job.',
-            canResume: true,
-            timestamp: new Date().toISOString(),
-          },
+          // canResume is jobType-gated by the single owner — plan/visual (no
+          // mid-graph checkpoint) must resolve to false, not a hardcoded true.
+          interruption: buildInfrastructureInterruption('worker_stalled', jobType),
           timestamp: new Date().toISOString(),
         });
       } catch (err) {

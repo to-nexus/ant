@@ -5,6 +5,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { pauseJob } from './pauseJob';
+import { buildInfrastructureInterruption } from '@ant/shared';
 
 /**
  * ServerLifecycleManager
@@ -119,12 +120,8 @@ export class ServerLifecycleManager {
           featureName: mapping.featureName,
           jobType: mapping.jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
           userContext: mapping.userContext as { userId: string; organizationId: string } | undefined,
-          interruption: {
-            reason: 'server_shutdown',
-            message: 'Server is shutting down',
-            canResume: true,
-            timestamp: new Date().toISOString(),
-          },
+          // jobType-gated canResume via the single owner (plan/visual → false).
+          interruption: buildInfrastructureInterruption('server_shutdown', mapping.jobType),
         },
       ).catch((error) => {
         logger.warn(`Failed to save job: ${error.message}`, {

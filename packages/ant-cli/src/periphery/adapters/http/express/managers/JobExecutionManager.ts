@@ -15,7 +15,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from './JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
+import { isSessionableJobType, isExecutableJobType, buildInfrastructureInterruption } from '@ant/shared';
 
 /**
  * JobExecutionManager
@@ -481,7 +481,7 @@ export class JobExecutionManager {
     }
     
     // Analyze logs to determine interruption reason
-    const interruption = this.analyzeFailureReason(jobId, code, signal, isUserStop);
+    const interruption = this.analyzeFailureReason(jobId, code, signal, isUserStop, params.jobType);
 
     // Don't cleanup if user explicitly stopped (already handled in Stop API).
     // user-stopped flag is read from Redis SSOT.
@@ -505,10 +505,11 @@ export class JobExecutionManager {
    * Analyze failure reason from logs
    */
   private analyzeFailureReason(
-    jobId: string, 
-    code: number | null, 
+    jobId: string,
+    code: number | null,
     signal: NodeJS.Signals | null,
-    isUserStop: boolean
+    isUserStop: boolean,
+    jobType: string,
   ): InterruptionDetails | undefined {
     if (isUserStop) {
       return {
@@ -588,12 +589,11 @@ export class JobExecutionManager {
       };
     }
     
-    // Process crash
+    // Process crash — infra reason: jobType-gated canResume via the single
+    // owner (plan/visual → false); keep the exit-code message + metadata.
     return {
-      reason: 'process_crash',
+      ...buildInfrastructureInterruption('process_crash', jobType),
       message: `Process crashed with exit code ${code}`,
-      timestamp: new Date().toISOString(),
-      canResume: true,
       metadata: { exitCode: code, signal }
     };
   }
@@ -619,16 +619,14 @@ export class JobExecutionManager {
     });
     
     const interruption: InterruptionDetails = {
-      reason: 'process_crash',
+      ...buildInfrastructureInterruption('process_crash', params.jobType),
       message: `Process error: ${error.message}`,
-      timestamp: new Date().toISOString(),
-      canResume: true,
       metadata: {
         errorType: 'process_error',
         errorMessage: error.message
       }
     };
-    
+
     await this.onJobComplete(jobId, params.project, params.feature, interruption);
   }
 

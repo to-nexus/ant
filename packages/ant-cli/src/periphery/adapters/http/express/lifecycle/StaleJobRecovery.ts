@@ -41,7 +41,7 @@ import { logger } from '../../../../../utils/logger';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { BullMQJobQueue } from '../../../../../infrastructure/queue/BullMQJobQueue';
 import type { InterruptionDetails } from '../../../../../core/types';
-import { isMidGraphResumable } from '@ant/shared';
+import { buildInfrastructureInterruption } from '@ant/shared';
 import type { JobCleanupManager } from '../managers/JobCleanupManager';
 import type { JobStateTracker } from '../managers/JobStateTracker';
 import type { KanbanService } from '../../services';
@@ -162,16 +162,10 @@ async function recoverOrphanedRunningJobs(
 
       // Only decomposable jobs (code/design/learn) checkpoint mid-graph, so
       // only they can resume "from where it stopped". plan/visual would just
-      // restart — offering Resume there is misleading, so surface as notify-only.
-      const resumable = isMidGraphResumable(jobType);
-      const interruption: InterruptionDetails = {
-        reason: 'server_crash',
-        message: resumable
-          ? 'Server was terminated unexpectedly. You can resume this job.'
-          : 'Server was terminated unexpectedly. This job did not finish.',
-        canResume: resumable,
-        timestamp: new Date().toISOString(),
-      };
+      // restart — offering Resume there is misleading. The single owner
+      // (buildInfrastructureInterruption) applies that jobType gate + the
+      // canonical message; do NOT hand-build the details here (drift).
+      const interruption: InterruptionDetails = buildInfrastructureInterruption('server_crash', jobType);
 
       if (!job.projectId || !job.featureName) {
         logger.warn(
@@ -277,13 +271,9 @@ async function recoverMissedCompletions(
         // Attach an interruption hint for failed jobs so the UX surfaces a
         // "canResume" affordance — `finalizeTerminalJob` forwards this to
         // the cancelled chat card. For completed jobs there's no interruption.
+        // jobType-gated via the single owner (plan/visual → canResume:false).
         const interruption: InterruptionDetails | undefined = isFailed
-          ? {
-              reason: 'server_crash',
-              message: 'Job failed while server was down. You can resume this job.',
-              canResume: true,
-              timestamp: new Date().toISOString(),
-            }
+          ? buildInfrastructureInterruption('server_crash', jobType)
           : undefined;
 
         const userContext = mapping?.userContext || payload?.userContext;
