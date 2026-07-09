@@ -418,28 +418,3 @@ function JobRow({
   );
 }
 
-interface LegendDotProps {
-  label: string;
-  color: string;
-  dotBg: string;
-  dotBorder: string;
-  dashed?: boolean;
-}
-
-function LegendDot({ label, color, dotBg, dotBorder, dashed = false }: LegendDotProps) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span
-        aria-hidden
-        style={{
-          width: 9,
-          height: 9,
-          borderRadius: '50%',
-          background: dotBg,
-          border: `${dashed ? '1px dashed' : '1.5px solid'} ${dotBorder}`,
-        }}
-      />
-      <span style={{ color }}>{label}</span>
-    </span>
-  );
-}
