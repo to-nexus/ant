@@ -38,13 +38,16 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { compactJob } from '../../../../../../core/context';
-import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from '../../../../../../core/context';
+import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS, PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../../core/context';
+import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
+import { composeMessages } from '../../../../../../core/utils/messageComposer';
+import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildPlanSystemPrompt } from './buildSystemPrompt';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
 import type { IntentId } from '@ant/shared';
-import { saveConversationToSession, pruneConversationHistory } from '../sessionWriter';
+import { saveConversationToSession } from '../sessionWriter';
 import { extractPlanText } from '../../../../../common/graph/nodes/plan/extractPlanText';
 
 const MIN_BRIEF_LENGTH = 40;
@@ -104,7 +107,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     compactionResult = { entries: allButLast, wasCompacted: false };
   }
   if (compactionResult.tokenUsage) {
-    accumulateTokenUsage(state, compactionResult.tokenUsage, { taskLevel: false, jobLevel: true });
+    accumulateTokenUsage(state, compactionResult.tokenUsage, { taskLevel: false, jobLevel: true, modelId: (llm as any).modelName });
   }
   const compactionMeta = compactionResult.wasCompacted
     ? { summary: compactionResult.summary!, summarizedCount: allButLast.length - PLAN_COMPACTION_WINDOW }
@@ -144,25 +147,34 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     }
   }
 
-  // Build messages: fresh entry seeds the directive; re-entry replays the
-  // pruned NODE_PLAN history.
-  const messages: Array<{ role: string; content: any }> = [];
-  if (nodePlan.length === 0) {
-    const userMessage = state.isConversationContinuation && sessionMain.length
-      ? sessionMain[sessionMain.length - 1].content
-      : state.directive;
-    messages.push({ role: 'user', content: userMessage });
-  } else {
-    try {
-      messages.push(...(await pruneConversationHistory(nodePlan)));
-    } catch (err) {
-      console.warn(`⚠️ [Planner:Plan] pruneConversationHistory failed, using raw history:`, err);
-      messages.push(...nodePlan);
-    }
-  }
-  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-    messages.push({ role: 'user', content: 'Continue.' });
-  }
+  // Build messages via the shared cache-aware composer (single owner — the
+  // same path code/design execute use). The stable system + injections
+  // sections become `cache_control`-marked leading blocks (Block 1/2) so the
+  // ~12K prompt prefix is cached across the plan node's tool-loop iterations
+  // instead of being re-sent cold as a plain `system` string. The growing
+  // NODE_PLAN tool history rides as prior turns (composeMessages runs the same
+  // `compactRun` pruning that `pruneConversationHistory` did). The fresh-entry
+  // ask (directive, or the last session turn on a conversation continuation)
+  // is appended as an uncached Block 3 part.
+  const freshAsk = state.isConversationContinuation && sessionMain.length
+    ? String(sessionMain[sessionMain.length - 1].content ?? '')
+    : (state.directive || '');
+  const initialBlocks = buildCacheableBlocks(built.result, {
+    runtimeParts: nodePlan.length === 0 ? [freshAsk] : undefined,
+  });
+  const planTokenManager = new TokenBudgetManager({
+    areaBudgets: {
+      systemPrompt: 30_000,
+      projectContext: 30_000,
+      taskContext: 25_000,
+      conversationHistory: PLAN_CONVERSATION_HISTORY_BUDGET,
+    },
+  });
+  const { messages } = composeMessages({
+    initialBlocks,
+    priorTurns: nodePlan as any,
+    tokenManager: planTokenManager,
+  });
 
   // Plan phase is read-only research for ALL modes — the edit_file write path
   // belongs to execute (refactor). Explain is read-only too.
@@ -183,9 +195,8 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   await chatAPI.showChatStatus('placeholder');
 
   try {
-    applyEstimatedInputTokensFromMessages(state as any, [...messages, { role: 'system', content: systemPrompt }]);
+    applyEstimatedInputTokensFromMessages(state as any, messages);
     for await (const event of llm.stream(messages, {
-      system: systemPrompt,
       tools: toolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
@@ -206,7 +217,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       if (event.type === 'done') {
         const capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
-          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true, modelId: (llm as any).modelName });
           upsertPhaseTokenUsage(state, 'plan', capturedUsage);
         }
         if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {

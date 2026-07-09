@@ -72,7 +72,7 @@ export function buildPlanGraph() {
   graph.addNode('triage', triage as any);
   graph.addNode('detect', createInferDetectNode(augmentPlanExecutionTier) as any);
   graph.addNode('plan', withPhaseTracking('plan', planNode) as any);
-  graph.addNode('execute', withPhaseTracking('execute', executeNode, 'n') as any);
+  graph.addNode('execute', withPhaseTracking('execute', executeNode, 'planExecute') as any);
   graph.addNode('tool', toolNode as any);
 
   graph.addEdge('__start__' as any, 'resolve' as any);

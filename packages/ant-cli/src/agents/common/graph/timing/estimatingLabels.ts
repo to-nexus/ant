@@ -34,9 +34,12 @@ const LABELS: Record<string, Record<UILocale, string>> = {
   // Ask agent (question answering)
   agent:        { ko: '질문 처리 중',          en: 'Thinking' },
 
-  // Planner agent nodes
-  generate:     { ko: 'PRD 생성 중',           en: 'Generating PRD' },
-  write:        { ko: 'PRD 저장 중',           en: 'Saving PRD' },
+  // Planner agent execute node. Graph node id / phase is `execute` (shares
+  // token-gauge chip-gating with the code job); this distinct label key keeps
+  // the planner-specific wording. Wired via
+  // `withPhaseTracking('execute', …, 'planExecute')`. The observe/clarify/seal
+  // node reuses the shared `plan` label above.
+  planExecute:  { ko: 'PRD 생성 중',           en: 'Generating PRD' },
 
   // Creator agent (visual job) nodes
   classify:     { ko: '에셋 유형 분석 중',     en: 'Classifying asset type' },
