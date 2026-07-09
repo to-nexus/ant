@@ -2,14 +2,13 @@
 import type { ReactNode } from 'react';
 
 /**
- * Aurora two-column layout: sticky TOC (left) + content (right).
+ * Aurora two-column layout: sticky TOC (left) + scrollable content (right).
  *
- * Follows the C3_COMMON sticky-grid recipe verbatim:
- *   - outer grid with `align-items: stretch` (default, do NOT override)
- *   - no overflow clipping on the wrapper (the caller's parent owns scroll)
- *   - first grid child wraps `toc` in a `minHeight: 100%` div so its
- *     internal `position: sticky` works against the right column's height
- *   - second grid child constrains content width via `maxWidth` while
+ * Follows the CSS Grid sticky-sidebar standard pattern:
+ *   - outer grid with no overflow clipping (caller's parent owns scroll)
+ *   - first grid child: `position: sticky`, `alignSelf: start`, `maxHeight: 100vh`
+ *     pins the TOC to viewport while allowing its own overflow scroll if items exceed viewport
+ *   - second grid child: constrains content width via `maxWidth` while
  *     `minWidth: 0` allows flex/grid shrinkage of children
  */
 export interface TwoColLayoutProps {
@@ -37,7 +36,16 @@ export function TwoColLayout({
         padding: '0 24px',
       }}
     >
-      <div style={{ minHeight: '100%', display: 'flex', justifyContent: 'center' }}>
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'start',
+          maxHeight: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
         {toc}
       </div>
       <div style={{ minWidth: 0, maxWidth: resolvedMaxWidth }}>
