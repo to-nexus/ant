@@ -16,7 +16,7 @@ import { OpenAILLMClient } from './OpenAILLMClient';
 import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
-import { DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
+import { DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider, type ModelNodeKey } from '@ant/shared';
 import { LlmAuthError } from '../../../core/llm/isLlmAuthError';
 
 export type { ModelProvider };
@@ -51,7 +51,8 @@ interface LLMConfig {
  */
 export interface LLMContext {
   jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'reviewer' | 'doc';
-  nodeType?: 'decompose' | 'plan' | 'execute' | 'tool' | 'validate' | 'learn' | 'detect' | 'direct' | 'sketch' | 'render' | 'engrave' | 'explain';
+  // Every node key except the job-level `default` (owned by @ant/shared llm-slots).
+  nodeType?: Exclude<ModelNodeKey, 'default'>;
 }
 
 /**

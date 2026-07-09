@@ -1,6 +1,11 @@
 
 import { useTranslation } from 'react-i18next';
 import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
+import {
+  OVERRIDABLE_MODEL_SLOTS,
+  type ModelJobKey,
+  type ModelNodeKey,
+} from '@ant/shared';
 import { AvailableModel } from '../hooks/useAvailableModels';
 import { ModelSelectChip } from './ModelSelectChip';
 import { resolveModelDisplay } from '../utils/resolveModelDisplay';
@@ -18,83 +23,29 @@ interface LLMModelsSectionProps {
   configuredProviders?: string[];
 }
 
-type JobKey = 'plan' | 'design' | 'code' | 'learn' | 'visual';
-type NodeKey = keyof JobLLMConfig;
-
 interface JobDef {
-  jobKey: JobKey;
+  jobKey: ModelJobKey;
   jobLabel: string;
   agentLabel: string;
   accent: SectionAccent;
   icon: string;
-  /** Map of node-column → i18n description key. `default` always present. */
-  nodes: Partial<Record<NodeKey, string>>;
 }
 
+// Presentation only — which nodes are overridable per job is owned by
+// OVERRIDABLE_MODEL_SLOTS (@ant/shared), reconciled against the compiled graph
+// by tests/config/llm-model-slots-coverage.test.ts.
 const JOB_DEFS: JobDef[] = [
-  {
-    jobKey: 'plan',
-    jobLabel: 'Plan',
-    agentLabel: 'Planner',
-    accent: 'cool',
-    icon: 'Compass',
-    nodes: {
-      default: 'llmModels.defaultPlanDesc',
-      plan: 'llmModels.planDesc',
-      execute: 'llmModels.planExecuteDesc',
-    },
-  },
-  {
-    jobKey: 'design',
-    jobLabel: 'Design',
-    agentLabel: 'Architect',
-    accent: 'violet-pink',
-    icon: 'Beaker',
-    nodes: {
-      default: 'llmModels.defaultDesignDesc',
-      decompose: 'llmModels.decomposeDesc',
-      execute: 'llmModels.designExecuteDesc',
-      plan: 'llmModels.planDesc',
-    },
-  },
-  {
-    jobKey: 'code',
-    jobLabel: 'Code',
-    agentLabel: 'Architect',
-    accent: 'pink-orange',
-    icon: 'Terminal',
-    nodes: {
-      default: 'llmModels.defaultCodeDesc',
-      decompose: 'llmModels.decomposeDesc',
-      execute: 'llmModels.codeExecuteDesc',
-      plan: 'llmModels.planDesc',
-    },
-  },
-  {
-    jobKey: 'learn',
-    jobLabel: 'Learn',
-    agentLabel: 'Architect',
-    accent: 'aurora',
-    icon: 'Book',
-    nodes: { default: 'llmModels.defaultLearnDesc' },
-  },
-  {
-    jobKey: 'visual',
-    jobLabel: 'Visual',
-    agentLabel: 'Creator',
-    accent: 'sunset',
-    icon: 'Palette',
-    nodes: {
-      default: 'llmModels.defaultVisualDesc',
-      direct: 'llmModels.directDesc',
-      sketch: 'llmModels.sketchDesc',
-      render: 'llmModels.renderDesc',
-      engrave: 'llmModels.engraveDesc',
-    },
-  },
+  { jobKey: 'plan', jobLabel: 'Plan', agentLabel: 'Planner', accent: 'cool', icon: 'Compass' },
+  { jobKey: 'design', jobLabel: 'Design', agentLabel: 'Architect', accent: 'violet-pink', icon: 'Beaker' },
+  { jobKey: 'code', jobLabel: 'Code', agentLabel: 'Architect', accent: 'pink-orange', icon: 'Terminal' },
+  { jobKey: 'learn', jobLabel: 'Learn', agentLabel: 'Architect', accent: 'aurora', icon: 'Book' },
+  { jobKey: 'visual', jobLabel: 'Visual', agentLabel: 'Creator', accent: 'sunset', icon: 'Palette' },
 ];
 
-const NODE_COLUMNS: NodeKey[] = [
+// Left-to-right column order for the picker. The rendered columns are the union
+// of overridable slots across all jobs, filtered to this order — so a new slot
+// in OVERRIDABLE_MODEL_SLOTS surfaces automatically once added to this order.
+const COLUMN_ORDER: ModelNodeKey[] = [
   'decompose',
   'plan',
   'execute',
@@ -102,9 +53,13 @@ const NODE_COLUMNS: NodeKey[] = [
   'sketch',
   'render',
   'engrave',
+  'explain',
 ];
 
-const NODE_LABEL: Record<NodeKey, string> = {
+const ALL_SLOTS = new Set<ModelNodeKey>(Object.values(OVERRIDABLE_MODEL_SLOTS).flat());
+const NODE_COLUMNS: ModelNodeKey[] = COLUMN_ORDER.filter((c) => ALL_SLOTS.has(c));
+
+const NODE_LABEL: Record<ModelNodeKey, string> = {
   default: 'Default',
   decompose: 'Decompose',
   plan: 'Plan',
@@ -113,6 +68,7 @@ const NODE_LABEL: Record<NodeKey, string> = {
   sketch: 'Sketch',
   render: 'Render',
   engrave: 'Engrave',
+  explain: 'Explain',
   tool: 'Tool',
   validate: 'Validate',
   learn: 'Learn',
@@ -383,7 +339,7 @@ function JobRow({
 
       {/* Override cells */}
       {NODE_COLUMNS.map((col) => {
-        const applicable = !!job.nodes[col];
+        const applicable = OVERRIDABLE_MODEL_SLOTS[job.jobKey].includes(col);
         if (!applicable) {
           return (
             <div

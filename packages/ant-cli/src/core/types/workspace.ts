@@ -2,6 +2,13 @@
  * Workspace Configuration Types
  */
 
+// JobLLMConfig / ModelNodeKey are owned by @ant/shared (llm-slots.ts) so the FE
+// picker, BE defaults, and factory nodeType union share one shape. Imported for
+// local use (LLMModels below) and re-exported so existing
+// `import { JobLLMConfig } from '.../workspace'` sites keep working.
+import type { JobLLMConfig, ModelNodeKey } from '@ant/shared';
+export type { JobLLMConfig, ModelNodeKey };
+
 /**
  * Repository type
  * - local: Local file system (development)
@@ -9,26 +16,6 @@
  * - github: GitHub repository
  */
 export type RepoType = 'local' | 'cloud' | 'github';
-
-/**
- * LLM Model Configuration: Job -> Node hierarchy
- * Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
- */
-export interface JobLLMConfig {
-  default?: string;           // Job-level default model (used when node-specific model not set)
-  decompose?: string;         // Decompose node (task planning)
-  plan?: string;              // Plan node (context gathering, planning)
-  execute?: string;           // Work node: code execution (code job) / document generation (design job)
-  tool?: string;              // Tool execution node
-  validate?: string;          // Validation node (code job only)
-  learn?: string;             // Learning node
-  detect?: string;
-  direct?: string;            // Art Direction node (visual job)
-  sketch?: string;            // Sketch exploration node (visual job)
-  render?: string;            // Final render node (visual job)
-  engrave?: string;           // SVG code generation node (visual job)
-  explain?: string;           // Explain node (visual job — text Q&A, no image gen)
-}
 
 /**
  * LLM Models Configuration per Job

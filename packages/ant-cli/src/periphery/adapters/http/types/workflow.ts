@@ -27,6 +27,7 @@ export enum EdgeType {
 
 export enum ActorType {
   LLM = 'llm',                    // LLM API
+  IMAGE_GEN = 'image-gen',        // Image Generation Model (visual sketch/render)
   EMBEDDING = 'embedding',        // Embedding Model
   VECTOR_DB = 'vector-db',        // Vector Database
   LOCAL_STORAGE = 'local-storage', // Session 저장

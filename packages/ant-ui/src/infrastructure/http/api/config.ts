@@ -1,20 +1,9 @@
 import { API_BASE, authFetch, apiPut } from './client';
-import type { Domain } from '@ant/shared';
+import type { Domain, JobLLMConfig } from '@ant/shared';
 
-export interface JobLLMConfig {
-  default?: string;
-  decompose?: string;
-  plan?: string;
-  execute?: string;
-  tool?: string;
-  validate?: string;
-  learn?: string;
-  detect?: string;
-  direct?: string;
-  sketch?: string;
-  render?: string;
-  engrave?: string;
-}
+// JobLLMConfig is owned by @ant/shared (llm-slots.ts). Re-exported so existing
+// `import { JobLLMConfig } from '@/infrastructure/http/api'` sites keep working.
+export type { JobLLMConfig };
 
 export interface ProjectConfig {
   repositoryName: string;
