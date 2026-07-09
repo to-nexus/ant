@@ -56,6 +56,10 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     state.setLocalSelectedChoice('resume');
     state.setLocalResolvedLabel(t('cancelled.resumed'));
 
+    // Snapshot the dismissed marker so a FAILED resume can roll it back —
+    // otherwise the optimistic set below hides the (still-live) interruption
+    // locally while the BE still holds `paused`, and the card silently vanishes.
+    const prevDismissed = useStore.getState().dismissedInterruptTimestamp;
     try {
       if (kanbanData?.interruption?.timestamp) {
         setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
@@ -75,6 +79,7 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] Failed:', error);
       useStore.getState().setRunning(false);
+      setDismissedInterruptTimestamp(prevDismissed);
       state.setLocalSelectedChoice(null);
       state.setLocalResolvedLabel(null);
     } finally {
@@ -88,6 +93,7 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     state.setLocalSelectedChoice('dismiss');
     state.setLocalResolvedLabel(t('cancelled.dismissed'));
 
+    const prevDismissed = useStore.getState().dismissedInterruptTimestamp;
     if (kanbanData?.interruption?.timestamp) {
       setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
     }
@@ -97,6 +103,9 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       await state.persistToBackend('dismiss', t('cancelled.dismissed'));
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] Failed:', error);
+      // Roll back the optimistic dismissal so a failed dismiss doesn't hide a
+      // still-live interruption until the next kanban poll.
+      setDismissedInterruptTimestamp(prevDismissed);
       state.setLocalSelectedChoice(null);
       state.setLocalResolvedLabel(null);
     }

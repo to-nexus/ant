@@ -7,7 +7,7 @@ import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task'
 import type { SessionState } from '../../../../core/types/session';
 import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { projectSessionStateToKanban } from '../../../../core/realtime/projectSessionStateToKanban';
-import { buildInfrastructureInterruption } from '@ant/shared';
+import { deriveResumableState } from '../../../../core/session/resumable';
 import type { SessionableJobType } from '@ant/shared';
 
 /**
@@ -399,21 +399,23 @@ export class KanbanService {
     // jobs — kept out of the pure projector so its direct-call invariant
     // (unmarked running stays inProgress when isActuallyRunning=false) is
     // preserved.
-    const hasLeftoverRunning = (((sessionState as any).runningTasks?.length) ?? 0) > 0;
+    // Single owner of the resume verdict (code-job-flickering-sparkle):
+    // `deriveResumableState` computes hasResumableWork (taskQueue | currentTask
+    // | runningTasks) and the synthesized `server_crash` interruption with a
+    // jobType-gated canResume, so this card and the `/resume` route can never
+    // diverge. We still self-heal only when NO explicit interruption was
+    // persisted (the write-side handoff missed) and the job is not running/done.
+    const verdict = deriveResumableState(sessionState, jobType, { isActuallyRunning });
     const isOrphanedUncarded =
-      !isActuallyRunning &&
-      !isJobCompleted &&
-      !hasInterruption &&
-      (hasTasksRemaining || hasLeftoverRunning);
+      !isActuallyRunning && !isJobCompleted && !hasInterruption && verdict.hasResumableWork;
 
-    if (isOrphanedUncarded) {
-      const synthesized = buildInfrastructureInterruption('server_crash', jobType);
+    if (isOrphanedUncarded && verdict.interruption) {
       const healedSession = {
         ...sessionData,
-        state: { ...sessionState, interruption: synthesized },
+        state: { ...sessionState, interruption: verdict.interruption },
       };
       console.log(
-        `[KanbanService] SELF-HEAL orphaned uncarded job=${sessionJobId ?? 'none'} jobType=${jobType} canResume=${synthesized.canResume}`,
+        `[KanbanService] SELF-HEAL orphaned uncarded job=${sessionJobId ?? 'none'} jobType=${jobType} canResume=${verdict.interruption.canResume}`,
       );
       return this.buildSessionKanbanData(healedSession, sessionJobId, jobType, false);
     }

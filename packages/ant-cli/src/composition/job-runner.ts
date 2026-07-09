@@ -292,10 +292,10 @@ async function runJob(params: JobParams): Promise<void> {
           canResume: false,
         }
       : {
-          reason: 'process_crash' as InterruptionReason,
+          // Infra crash — jobType-gated canResume via the single owner
+          // (plan/visual/inline-ask → false); keep the error message.
+          ...buildInfrastructureInterruption('process_crash', params.jobType),
           message: error.message || 'Unexpected error occurred.',
-          timestamp: new Date().toISOString(),
-          canResume: true,
         };
 
     reportProgress('failed', interruption.message);
