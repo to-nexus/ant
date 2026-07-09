@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Settings } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createProject } from '@/infrastructure/http/api';
+import { createProject, fetchProjectConfig } from '@/infrastructure/http/api';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
@@ -13,6 +13,7 @@ import { SectionShell } from './layout/Explorer/SectionShell';
 import { RowList } from './layout/Explorer/RowList';
 import { ProjectRow, type ProjectDotAccent } from './layout/Explorer/ProjectRow';
 import { GitToolbar } from './layout/Explorer/GitToolbar';
+import type { Domain } from '@ant/shared';
 
 const PROJECT_DOTS: ProjectDotAccent[] = ['violet', 'pink', 'orange', 'cool'];
 
@@ -33,12 +34,15 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     openMainPanelTab,
     fetchProjectConfig,
     createProjectConfig,
+    projectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
 
   const [showWizard, setShowWizard] = useState(false);
   const [forceInlineCreate, setForceInlineCreate] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [projectDomainByName, setProjectDomainByName] = useState<Record<string, Domain>>({});
+
   const handleOpenWizard = useCallback(() => setShowWizard(true), []);
   const handleCloseWizard = useCallback(() => setShowWizard(false), []);
   const handleCreateEmpty = useCallback(() => {
@@ -102,6 +106,25 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
   const handleClearProject = useCallback(() => {
     setSelectedProject(undefined);
   }, [setSelectedProject]);
+
+  const handlePrefetchDomain = useCallback((projectName: string) => {
+    // Skip if already cached
+    if (projectDomainByName[projectName]) return;
+
+    // Prefetch the project config to get domain
+    fetchProjectConfig(projectName)
+      .then((cfg) => {
+        if (cfg?.domain) {
+          setProjectDomainByName((prev) => ({
+            ...prev,
+            [projectName]: cfg.domain || 'service',
+          }));
+        }
+      })
+      .catch(() => {
+        // Silently ignore prefetch errors
+      });
+  }, [projectDomainByName]);
 
   const handleSubmitNewProject = useCallback(async () => {
     const name = newProjectName.trim();
@@ -212,16 +235,21 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             <RowList ariaLabel={t('workspace.title')}>
               {orderedProjects.map((name) => {
                 const isActive = name === selectedProject;
+                const domain = isActive
+                  ? (projectConfig.data?.domain || 'service')
+                  : (projectDomainByName[name] || 'service');
                 return (
                   <ProjectRow
                     key={name}
                     name={name}
                     isActive={isActive}
                     accent={projectAccents[name] || 'violet'}
+                    domain={domain}
                     disabled={!policy.canChangeProject && !isActive}
                     disabledReason={policy.disabledReason || undefined}
                     onSwitch={() => handleSwitchProject(name)}
                     onClear={isActive ? handleClearProject : undefined}
+                    onHover={() => handlePrefetchDomain(name)}
                   />
                 );
               })}

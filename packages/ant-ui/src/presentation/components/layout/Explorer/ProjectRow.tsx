@@ -1,7 +1,8 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X, Globe, Gamepad2 } from 'lucide-react';
 import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
+import type { Domain } from '@ant/shared';
 
 export type ProjectDotAccent = 'violet' | 'pink' | 'orange' | 'cool';
 
@@ -17,11 +18,15 @@ interface ProjectRowProps {
   isActive: boolean;
   /** PROJECT_DOTS accent (deterministic per-project — see ProjectSection). */
   accent: ProjectDotAccent;
+  /** Project domain (service or game) — displays as icon */
+  domain?: Domain;
   /** Disabled state (e.g. policy.canChangeProject === false). */
   disabled?: boolean;
   disabledReason?: string;
   /** Called when an inactive row is intentionally switched-to. */
   onSwitch: () => void;
+  /** Called on hover to prefetch domain info */
+  onHover?: () => void;
   /** Active row: ✕ clears selection. */
   onClear?: () => void;
   /** Optional right-side adornment (e.g. small status text). */
@@ -47,9 +52,11 @@ export function ProjectRow({
   name,
   isActive,
   accent,
+  domain,
   disabled,
   disabledReason,
   onSwitch,
+  onHover,
   onClear,
   rightSlot,
 }: ProjectRowProps) {
@@ -72,9 +79,15 @@ export function ProjectRow({
       aria-current={isActive ? 'true' : undefined}
       aria-disabled={disabled || undefined}
       title={disabled ? disabledReason : undefined}
-      onMouseEnter={() => setHover(true)}
+      onMouseEnter={() => {
+        setHover(true);
+        onHover?.();
+      }}
       onMouseLeave={() => setHover(false)}
-      onFocus={() => setHover(true)}
+      onFocus={() => {
+        setHover(true);
+        onHover?.();
+      }}
       onBlur={() => setHover(false)}
       onClick={handleBodyClick}
       tabIndex={isActive || disabled ? -1 : 0}
@@ -102,7 +115,7 @@ export function ProjectRow({
         transition: 'background var(--dur-fast), border-color var(--dur-fast)',
       }}
     >
-      {/* 8px accent dot inside 12px cell — always glows (handoff spec) */}
+      {/* Domain icon — service (Globe) or game (Gamepad) */}
       <span
         aria-hidden
         style={{
@@ -112,17 +125,14 @@ export function ProjectRow({
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
+          color: DOT_COLOR[accent],
         }}
       >
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: DOT_COLOR[accent],
-            boxShadow: `0 0 12px ${DOT_COLOR[accent]}`,
-          }}
-        />
+        {domain === 'game' ? (
+          <Gamepad2 size={12} strokeWidth={2} />
+        ) : (
+          <Globe size={12} strokeWidth={2} />
+        )}
       </span>
 
       {/* Project name (mono) */}
