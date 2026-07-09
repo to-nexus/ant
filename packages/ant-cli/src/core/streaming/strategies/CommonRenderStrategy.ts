@@ -43,7 +43,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     gitPort?: GitPort,
     fileSystem?: FileSystemPort,
     writeImmediately: boolean = false,
-    jobType?: 'code' | 'design' | 'planner',
+    jobType?: 'code' | 'design' | 'plan',
     featurePath?: string,
     codebasePath?: string,
     fileTreeUpdate?: FileTreeUpdatePort,
@@ -51,7 +51,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     /**
      * For `jobType === 'code'`, distinguishes plan vs execute phase.
      * Plan phase rejects `codebase/` writes via the same gate that
-     * design / planner use (see FileRenderer codebase mutation gate).
+     * design / plan jobs use (see FileRenderer codebase mutation gate).
      * Defaults to `'execute'` semantics when omitted.
      */
     codePhase?: 'plan' | 'execute',

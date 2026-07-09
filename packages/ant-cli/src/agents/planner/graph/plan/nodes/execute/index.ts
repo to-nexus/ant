@@ -131,7 +131,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   const chatAPI = getChatAPIClient();
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
-    chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'planner',
+    chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'plan',
   );
   const orchestrator = new StreamOrchestrator({ parser, renderStrategy, existingFiles: new Set() });
 
