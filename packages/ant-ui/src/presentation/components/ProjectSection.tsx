@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Settings } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createProject, fetchProjectConfig } from '@/infrastructure/http/api';
+import { createProject, fetchProjectConfig as apiFetchProjectConfig } from '@/infrastructure/http/api';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
@@ -34,13 +34,21 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     openMainPanelTab,
     fetchProjectConfig,
     createProjectConfig,
-    projectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
+  // Live domain mirror for the ACTIVE project. `DomainToggle` updates this
+  // synchronously (uiSlice.updateActionMetadata) + persists to config.json,
+  // whereas `projectConfig.data.domain` only updates on re-fetch — so the
+  // active row must read from here to reflect a toggle immediately.
+  const activeDomain = useStore((s) => s.actionMetadata.domain as Domain | undefined);
 
   const [showWizard, setShowWizard] = useState(false);
   const [forceInlineCreate, setForceInlineCreate] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  // Per-project domain cache for the NON-active rows (project-level SSOT is
+  // `config.json` WorkspaceConfig.domain — one value per project, feature-
+  // independent). Filled by a bulk parallel fetch; never routed through the
+  // single-project `projectConfig` store slice.
   const [projectDomainByName, setProjectDomainByName] = useState<Record<string, Domain>>({});
 
   const handleOpenWizard = useCallback(() => setShowWizard(true), []);
@@ -107,24 +115,44 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     setSelectedProject(undefined);
   }, [setSelectedProject]);
 
-  const handlePrefetchDomain = useCallback((projectName: string) => {
-    // Skip if already cached
-    if (projectDomainByName[projectName]) return;
+  // Bulk-resolve every project's domain so ALL rows show the correct icon
+  // without any interaction (including when no project/feature is selected).
+  // Uses the RAW API (aliased) — the store's `fetchProjectConfig` is a
+  // single-project slice writer and must NOT be used for other projects.
+  useEffect(() => {
+    const missing = projects.filter((p) => !(p in projectDomainByName));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void Promise.allSettled(
+      missing.map(async (name) => {
+        const cfg = await apiFetchProjectConfig(name);
+        return [name, (cfg?.domain as Domain) ?? 'service'] as const;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const resolved: Record<string, Domain> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled') resolved[r.value[0]] = r.value[1];
+      }
+      if (Object.keys(resolved).length > 0) {
+        setProjectDomainByName((prev) => ({ ...prev, ...resolved }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projects, projectDomainByName]);
 
-    // Prefetch the project config to get domain
-    fetchProjectConfig(projectName)
-      .then((cfg) => {
-        if (cfg?.domain) {
-          setProjectDomainByName((prev) => ({
-            ...prev,
-            [projectName]: cfg.domain || 'service',
-          }));
-        }
-      })
-      .catch(() => {
-        // Silently ignore prefetch errors
-      });
-  }, [projectDomainByName]);
+  // Warm-keep: mirror the active project's live domain into the cache so the
+  // icon stays correct after the project is deselected / becomes non-active.
+  useEffect(() => {
+    if (!selectedProject || !activeDomain) return;
+    setProjectDomainByName((prev) =>
+      prev[selectedProject] === activeDomain
+        ? prev
+        : { ...prev, [selectedProject]: activeDomain },
+    );
+  }, [selectedProject, activeDomain]);
 
   const handleSubmitNewProject = useCallback(async () => {
     const name = newProjectName.trim();
@@ -235,8 +263,10 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             <RowList ariaLabel={t('workspace.title')}>
               {orderedProjects.map((name) => {
                 const isActive = name === selectedProject;
-                const domain = isActive
-                  ? (projectConfig.data?.domain || 'service')
+                // Active row: live mirror (reflects a DomainToggle immediately).
+                // Non-active rows: bulk-resolved cache. Default `service`.
+                const domain: Domain = isActive
+                  ? (activeDomain || 'service')
                   : (projectDomainByName[name] || 'service');
                 return (
                   <ProjectRow
@@ -249,7 +279,6 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
                     disabledReason={policy.disabledReason || undefined}
                     onSwitch={() => handleSwitchProject(name)}
                     onClear={isActive ? handleClearProject : undefined}
-                    onHover={() => handlePrefetchDomain(name)}
                   />
                 );
               })}

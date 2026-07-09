@@ -1,6 +1,6 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, X, Globe, Gamepad2 } from 'lucide-react';
+import { ChevronRight, X, Layers, Gamepad2 } from 'lucide-react';
 import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
 import type { Domain } from '@ant/shared';
 
@@ -25,8 +25,6 @@ interface ProjectRowProps {
   disabledReason?: string;
   /** Called when an inactive row is intentionally switched-to. */
   onSwitch: () => void;
-  /** Called on hover to prefetch domain info */
-  onHover?: () => void;
   /** Active row: ✕ clears selection. */
   onClear?: () => void;
   /** Optional right-side adornment (e.g. small status text). */
@@ -44,9 +42,10 @@ interface ProjectRowProps {
  *    transition is gated by an explicit affordance rather than implicit
  *    hover behaviour).
  *  • Active row: shows ✕ clear + ⚙ settings on the right; no 「전환」.
- *  • Project domain表示 is intentionally NOT rendered (spec §5.4).
  *
- * Visual: 4px accent dot (PROJECT_DOTS token), mono name, 28px height.
+ * Visual: domain icon (Layers=service / Gamepad2=game) tinted with the
+ * per-project accent color, mono name, 28px height. Domain is a single
+ * project-level value (WorkspaceConfig.domain) — the caller resolves it.
  */
 export function ProjectRow({
   name,
@@ -56,7 +55,6 @@ export function ProjectRow({
   disabled,
   disabledReason,
   onSwitch,
-  onHover,
   onClear,
   rightSlot,
 }: ProjectRowProps) {
@@ -79,15 +77,9 @@ export function ProjectRow({
       aria-current={isActive ? 'true' : undefined}
       aria-disabled={disabled || undefined}
       title={disabled ? disabledReason : undefined}
-      onMouseEnter={() => {
-        setHover(true);
-        onHover?.();
-      }}
+      onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onFocus={() => {
-        setHover(true);
-        onHover?.();
-      }}
+      onFocus={() => setHover(true)}
       onBlur={() => setHover(false)}
       onClick={handleBodyClick}
       tabIndex={isActive || disabled ? -1 : 0}
@@ -115,7 +107,7 @@ export function ProjectRow({
         transition: 'background var(--dur-fast), border-color var(--dur-fast)',
       }}
     >
-      {/* Domain icon — service (Globe) or game (Gamepad) */}
+      {/* Domain icon — service (Layers) or game (Gamepad2) */}
       <span
         aria-hidden
         style={{
@@ -131,7 +123,7 @@ export function ProjectRow({
         {domain === 'game' ? (
           <Gamepad2 size={12} strokeWidth={2} />
         ) : (
-          <Globe size={12} strokeWidth={2} />
+          <Layers size={12} strokeWidth={2} />
         )}
       </span>
 
