@@ -48,7 +48,6 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
         alignItems: 'center',
         gap: 4,
         padding: '20px 6px',
-        minWidth: 52,
       }}
     >
       {resolvedItems.map((item) => {
@@ -65,13 +64,14 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
             title={item.label}
             aria-label={item.label}
             style={{
-              position: 'relative',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 40,
-              height: 40,
-              padding: 0,
+              gap: 4,
+              width: 64,
+              minHeight: 52,
+              padding: '6px 4px',
               border: 'none',
               borderRadius: 'var(--r-md)',
               cursor: 'pointer',
@@ -82,46 +82,72 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
                 : null),
             }}
           >
-            {IconComp ? (
-              <IconComp size={20} strokeWidth={2} />
-            ) : (
-              <span style={{ width: 20, display: 'inline-block' }} />
-            )}
-            {item.count != null ? (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: 2,
-                  right: 2,
-                  fontSize: 9,
-                  fontWeight: 700,
-                  minWidth: 14,
-                  textAlign: 'center',
-                  padding: '0 3px',
-                  borderRadius: 'var(--r-pill)',
-                  background: 'var(--bg-surface-2)',
-                  color: 'var(--text-3)',
-                  letterSpacing: '0.02em',
-                }}
-              >
-                {item.count}
-              </span>
-            ) : (
-              item.dirty && (
+            <span
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 40,
+                height: 40,
+              }}
+            >
+              {IconComp ? (
+                <IconComp size={20} strokeWidth={2} />
+              ) : (
+                <span style={{ width: 20, display: 'inline-block' }} />
+              )}
+              {item.count != null ? (
                 <span
-                  aria-label="unsaved"
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    right: 5,
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: 'var(--gradient-pink-orange)',
+                    top: 0,
+                    right: 0,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    minWidth: 14,
+                    textAlign: 'center',
+                    padding: '0 3px',
+                    borderRadius: 'var(--r-pill)',
+                    background: 'var(--bg-surface-2)',
+                    color: 'var(--text-3)',
+                    letterSpacing: '0.02em',
                   }}
-                />
-              )
-            )}
+                >
+                  {item.count}
+                </span>
+              ) : (
+                item.dirty && (
+                  <span
+                    aria-label="unsaved"
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      right: 3,
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: 'var(--gradient-pink-orange)',
+                    }}
+                  />
+                )
+              )}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                lineHeight: 1.15,
+                fontWeight: isActive ? 700 : 500,
+                textAlign: 'center',
+                wordBreak: 'keep-all',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {item.label}
+            </span>
           </button>
         );
       })}

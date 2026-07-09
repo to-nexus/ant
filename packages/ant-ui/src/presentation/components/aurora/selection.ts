@@ -49,9 +49,10 @@ export function selectedRowLabel(
 }
 
 /**
- * Active surface for an icon-only rail button (settings section nav). No label
- * to read, so the brand cue is the tinted tile itself + high-contrast icon —
- * a centered fill (never a left rail, which would offset a centered glyph).
+ * Active surface for an icon+label rail button (settings section nav). The
+ * brand cue is the tinted tile backing both the icon and its caption + a
+ * high-contrast fg — a centered fill (never a left rail, which would offset
+ * the centered stack).
  */
 export function selectedIconTileStyle(isActive: boolean): CSSProperties {
   return {

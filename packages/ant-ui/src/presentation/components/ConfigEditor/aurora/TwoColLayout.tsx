@@ -31,13 +31,15 @@ export function TwoColLayout({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '56px 1fr',
+        gridTemplateColumns: '76px 1fr',
         gap: 12,
         width: '100%',
         padding: '0 24px',
       }}
     >
-      <div style={{ minHeight: '100%' }}>{toc}</div>
+      <div style={{ minHeight: '100%', display: 'flex', justifyContent: 'center' }}>
+        {toc}
+      </div>
       <div style={{ minWidth: 0, maxWidth: resolvedMaxWidth }}>
         <div
           style={{
