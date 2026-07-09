@@ -13,7 +13,21 @@ import { createToolNode } from '../../../../common/tool/createToolNode';
 import { createChatStatusReporter } from '../../../../common/tool/chatStatusAdapter';
 import { createPlanToolRegistry } from '../../../../common/tool/presets';
 import { ToolRegistry } from '../../../../common/tool/registry';
-import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
+import { CONV_KEYS, getConv, type ConversationKey } from '../../../../common/graph/conversations';
+
+/**
+ * Resolve which conversation channel this tool round belongs to, based on the
+ * active phase set by the upstream node (mirrors design's `activeConvKey`):
+ *  - `_activePhase === 'execute'` → execute↔tool loop (NODE_EXECUTE)
+ *  - otherwise (plan)            → plan↔tool loop (NODE_PLAN)
+ *
+ * Both loops share the one physical tool node; keying the channel off the
+ * phase keeps the plan and execute transcripts severed — execute's tool
+ * results never leak into the plan transcript (the whole point of the split).
+ */
+function activeConvKey(state: PlanGraphState): ConversationKey {
+  return state._activePhase === 'execute' ? CONV_KEYS.NODE_EXECUTE : CONV_KEYS.NODE_PLAN;
+}
 
 let _registry: ToolRegistry | null = null;
 
@@ -63,20 +77,21 @@ const toolNodeFn = createToolNode<PlanGraphState>({
   // No resultManager — lightweight graph, no truncation needed
 
   getHistory(state) {
-    return getConv(state.conversations, CONV_KEYS.NODE_GENERATE);
+    return getConv(state.conversations, activeConvKey(state));
   },
 
   hooks: {
     onComplete: async (state, _events, { updatedHistory }) => {
       const session = state.deps?.session;
       if (!session) return;
+      const key = activeConvKey(state);
       const pid = session.projectId || process.env.ANT_PROJECT_ID || 'default';
       const fname = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
       try {
         const sessionData = await session.load(pid, fname, 'plan');
         const updatedConversations = {
           ...sessionData.state?.conversations,
-          [CONV_KEYS.NODE_GENERATE]: updatedHistory,
+          [key]: updatedHistory,
         };
         await session.updateArtifacts(pid, fname, 'plan', {
           state: {
@@ -85,13 +100,13 @@ const toolNodeFn = createToolNode<PlanGraphState>({
             tokenUsage: state.tokenUsage,
           }
         });
-        console.log(`💾 [Planner:Tool] Checkpoint saved (${updatedHistory.length} history entries)`);
+        console.log(`💾 [Planner:Tool] Checkpoint saved to ${key} (${updatedHistory.length} history entries)`);
       } catch (err: any) {
         console.warn(`⚠️ [Planner:Tool] Failed to save checkpoint: ${err.message}`);
       }
 
       if (state.deps?.stateSnapshot) {
-        state.deps.stateSnapshot.conversations = { ...state.conversations, [CONV_KEYS.NODE_GENERATE]: updatedHistory };
+        state.deps.stateSnapshot.conversations = { ...state.conversations, [key]: updatedHistory };
         state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
       }
     },
@@ -99,7 +114,7 @@ const toolNodeFn = createToolNode<PlanGraphState>({
 
   buildReturn(state, { updatedHistory }) {
     return {
-      conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory },
+      conversations: { [activeConvKey(state)]: updatedHistory },
       pendingToolCalls: [],
     };
   },

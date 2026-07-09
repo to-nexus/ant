@@ -65,8 +65,8 @@ export const HEAVIEST_NODE_BY_INTENT: Partial<Record<IntentId, HeaviestNodeMappi
   'explain-spec':             { job: 'design', node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Plan (3)
-  'gen-plan':                 { job: 'plan',   node: 'generate',  reason: 'static-max',  templates: TEMPLATE_PATHS.plannerPlan },
-  'rev-plan':                 { job: 'plan',   node: 'generate',  reason: 'static-max',  templates: TEMPLATE_PATHS.plannerPlan },
+  'gen-plan':                 { job: 'plan',   node: 'execute',   reason: 'static-max',  templates: TEMPLATE_PATHS.plannerExecute },
+  'rev-plan':                 { job: 'plan',   node: 'execute',   reason: 'static-max',  templates: TEMPLATE_PATHS.plannerExecute },
   'explain-plan':             { job: 'plan',   node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Visual (5) — retired. Image-generation jobs have no PromptBuilder-based

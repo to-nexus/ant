@@ -32,7 +32,7 @@ import { getDefaultTargetPaths, getConfigSlotsForDomain } from '@ant/shared';
 import type { ActionMetadata, IntentId } from '@ant/shared';
 import { createDetectNode } from '../../src/agents/common/graph/nodes/detect/index.js';
 import type { DetectStrategy, DetectableState } from '../../src/agents/common/graph/nodes/detect/types.js';
-import { isSafeStagingPath } from '../../src/agents/planner/graph/plan/nodes/generate/index.js';
+import { isSafeStagingPath } from '../../src/agents/planner/graph/plan/nodes/sessionWriter.js';
 import { renderSlotSummaries } from '../../src/agents/common/graph/nodes/detect/inferRacWithTools.js';
 
 // ============================================

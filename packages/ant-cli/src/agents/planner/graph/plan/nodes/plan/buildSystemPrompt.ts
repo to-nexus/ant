@@ -4,11 +4,11 @@ import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePa
 
 /**
  * Format conversation entries for the system prompt.
- * Excludes the last user message (which goes into the messages array).
+ * Truncates long assistant messages to keep the prompt bounded.
  */
 export function formatConversationForPrompt(conversation: ConversationMessage[]): string {
   if (!conversation || conversation.length === 0) return '';
-  
+
   return conversation.map(entry => {
     if (entry.role === 'system') {
       return `**[Previous context]**: ${entry.content}`;
@@ -25,37 +25,37 @@ export function formatConversationForPrompt(conversation: ConversationMessage[])
   }).join('\n\n');
 }
 
-/**
- * Return the target path from resolvedAction.target[0] directly.
- */
+/** Return the target path from resolvedAction.target[0] directly. */
 export function getTargetPath(state: PlanGraphState): string | undefined {
   return state.resolvedAction?.target?.[0];
 }
 
 /**
- * Build system prompt via PromptBuilder pipeline.
+ * Build the `plan`-node system prompt via the PromptBuilder pipeline.
+ *
+ * The plan node OBSERVES (codebase / web / live-site), scopes gaps, may
+ * clarify, and seals a brief (inside a `<plan>` tag) — it does NOT author the document.
+ * The domain overlay (`jobs/plan/domain/{d}.md`) is injected here too because
+ * gap analysis + the brief's `proposedOutline` are derived against the
+ * document skeleton it defines.
  */
-export async function buildSystemPrompt(
+export async function buildPlanSystemPrompt(
   state: PlanGraphState,
   compaction: { entries: ConversationMessage[]; summary?: string; wasCompacted: boolean },
 ): Promise<{ prompt: string; injectedTemplates: string[]; basisInjected: boolean }> {
   const promptBuilder = state.deps?.promptBuilder;
-  if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available in state.deps');
+  if (!promptBuilder) throw new Error('[Planner:Plan] PromptBuilder not available in state.deps');
 
   const targetPath = getTargetPath(state);
   const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
   const planMode = getPlanMode(state);
 
-  // dusk-mounding-pilot guard — the detect explicit branch now always
-  // populates a default target via the matrix, but if a future caller
-  // produces a generate/refactor RAC with an empty `target`, the prompt
-  // would silently drop the "Target Path" section and the LLM would
-  // hallucinate a path (last regression: `architecture/system/main.md`).
-  // Hard-fail loudly here instead of producing a degraded prompt.
-  // `explain` mode is read-only and legitimately has no target.
+  // dusk-mounding-pilot guard — a generate/refactor RAC with an empty target
+  // would silently drop the Target-Path section and let the LLM hallucinate a
+  // path. Hard-fail loudly instead. `explain` is read-only and has no target.
   if (!targetPath && (planMode === 'generate' || planMode === 'refactor')) {
     throw new Error(
-      `[Planner:Generate] resolvedAction.target is empty in ${planMode} mode `
+      `[Planner:Plan] resolvedAction.target is empty in ${planMode} mode `
       + `(intent=${state.resolvedAction?.intent ?? 'unknown'}, source=${state.resolvedAction?.source ?? 'unknown'}). `
       + `Refusing to render a Target-Path-less prompt — see detect/index.ts explicit branch fallback.`,
     );
@@ -67,14 +67,10 @@ export async function buildSystemPrompt(
     templates: TEMPLATE_PATHS.plannerPlan,
     intent: state.resolvedAction?.intent,
     artifacts: resolvedArtifacts.length > 0 ? resolvedArtifacts : undefined,
-    // Phase 1 (F-1) + D27: plan generate must opt into basis injection so
-    // `buildBasisSection` runs. That section now layers
-    // `templates/domain/{d}.md` (identity, D27) +
-    // `templates/jobs/plan/domain/{d}.md` (GDD/PRD skeleton overlay) on top
-    // of the active tier set, in addition to any plan-overlay tiers
-    // (gameContentTier, etc.). Without `includeBasis: true` + `basis` +
-    // `techContext`, the section is silently skipped and plan-overlay
-    // templates are dead code.
+    // D27 / born-dead-overlay guard: the plan node needs the domain overlay
+    // (document skeleton) so gap analysis + proposedOutline are grounded.
+    // Requires includeBasis + basis + techContext together or the section is
+    // silently skipped.
     pipeline: {
       includeBasis: true,
     },
@@ -99,17 +95,14 @@ export async function buildSystemPrompt(
       conversationSummary: compaction.summary || '',
       hasConversationSummary: !!compaction.summary,
       resolvedAction: state.resolvedAction,
-      // Codebase Channel SSOT — flow workspace state to the
-      // codebase-channel partial / AutoInjectionResolver gate.
+      // Codebase Channel SSOT — flow workspace state to the codebase-channel
+      // partial / AutoInjectionResolver gate.
       workspaceState: state.workspaceState,
     },
   });
 
   return {
     prompt: [result.user, result.system].filter(Boolean).join('\n\n---\n\n'),
-    // Logging fidelity: expose what was ACTUALLY assembled so the debug prompt
-    // log reflects real injection (the domain overlay / basis section) instead
-    // of a hardcoded template list that hid the born-dead-overlay bug.
     injectedTemplates: result.injections ?? [],
     basisInjected: !!result.sections?.profiles,
   };

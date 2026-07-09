@@ -29,7 +29,8 @@ export const PlanAnnotation = Annotation.Root({
   clarifyPhase: Annotation<any>,
   featureContext: Annotation<any>,
   turnId: Annotation<any>,
-  _planAuthoringPhase: Annotation<any>,
+  planText: Annotation<any>,
+  _activePhase: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -78,11 +79,11 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   executionTier?: ExecutionTierId;
 
   /**
-   * Set when generate emits a `<clarify>` card and the run pauses for user
-   * input. On the next invocation, runner restores this flag from session
-   * state so `routeAfterPlannerResolve` can short-circuit triage/detect and
-   * generate's entry hook (`consumeAwaitingClarify`) can append the user's
-   * answer to NODE_GENERATE before the LLM call. Cleared by the helper.
+   * Set when the plan node emits a `<clarify>` card and the run pauses for
+   * user input. On the next invocation, runner restores this flag from session
+   * state so `routeAfterPlannerResolve` can short-circuit triage/detect and the
+   * plan node's entry hook (`consumeAwaitingClarify`) can append the user's
+   * answer to NODE_PLAN before the LLM call. Cleared by the helper.
    */
   awaitingClarify?: boolean;
 
@@ -119,20 +120,21 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   detect?: import('../../../common/graph/nodes/detect/types').DetectResult<PlanGraphState>;
 
   /**
-   * generate → generate self-loop signal for the dedicated authoring turn.
-   *
-   * Set by `generate` when a `generate`-mode ReAct research loop concludes
-   * (model stopped calling tools) WITHOUT emitting a `<file>` — the
-   * arctic-edging-grass failure: after a long codebase-inspection loop a weak
-   * model spills the PRD as prose. On re-entry the node authors in a
-   * **tool-free turn over a compacted findings context** (not the raw tool
-   * transcript), reproducing the confirmed-working greenfield condition where
-   * `<file>` is emitted cleanly. The write channel stays `<file>` (no new
-   * tool / channel — see plan-job-valiant-pebble). `routeAfterGenerate` reads
-   * this to route back to `generate`; the authoring turn clears it so the loop
-   * runs at most once.
+   * Sealed plan artifact (the brief payload, sealed in a `<plan>` tag) produced by the `plan` node
+   * and consumed by `execute`. Mirrors the code/design job's `state.planText`.
+   * The plan node clears its `NODE_PLAN` transcript on seal, so `execute`
+   * starts from `directive + planText` with the research history severed.
    */
-  _planAuthoringPhase?: boolean;
+  planText?: string;
+
+  /**
+   * Which loop (`plan` or `execute`) is active. Set by the plan/execute nodes
+   * before yielding to the shared `tool` node; read by `routeAfterTool` to
+   * dispatch back and by the tool node's `activeConvKey` to pick the
+   * conversation channel (NODE_PLAN vs NODE_EXECUTE). Same field name and
+   * discipline as the design job's `_activePhase`.
+   */
+  _activePhase?: 'plan' | 'execute';
 }
 
 /** Helper to read planMode from resolvedAction */

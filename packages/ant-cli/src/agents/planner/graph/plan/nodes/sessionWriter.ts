@@ -1,22 +1,22 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
-import { PlanGraphState, getPlanMode } from '../../state';
-import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
-import { applyCompactionToConversation } from '../../../../../../core/context';
-import type { ConversationCompaction } from '../../../../../../core/context';
-import { getTargetPath } from './buildSystemPrompt';
+import { PlanGraphState, getPlanMode } from '../state';
+import { CONV_KEYS, getConv, type ConversationKey, type ConversationMessage } from '../../../../common/graph/conversations';
+import { applyCompactionToConversation } from '../../../../../core/context';
+import type { ConversationCompaction } from '../../../../../core/context';
+import { getTargetPath } from './plan/buildSystemPrompt';
 
 /**
  * Prune node history (Anthropic-format ReAct messages) via compactRun.
- * Used both before LLM call and before session persist.
+ * Used both before the LLM call and before session persist.
  */
 export async function pruneConversationHistory(
   history: Array<{ role: string; content: any }>,
 ): Promise<Array<{ role: string; content: any }>> {
-  const { compactRun } = await import('../../../../../../core/context');
-  const { TokenBudgetManager } = await import('../../../../../../core/utils/tokenBudget');
-  const { PLAN_CONVERSATION_HISTORY_BUDGET } = await import('../../../../../../core/context');
+  const { compactRun } = await import('../../../../../core/context');
+  const { TokenBudgetManager } = await import('../../../../../core/utils/tokenBudget');
+  const { PLAN_CONVERSATION_HISTORY_BUDGET } = await import('../../../../../core/context');
   const planTokenManager = new TokenBudgetManager({
     areaBudgets: {
       systemPrompt: 30_000,
@@ -28,40 +28,44 @@ export async function pruneConversationHistory(
   return compactRun(history as any, planTokenManager).result;
 }
 
+export interface SaveConversationOpts {
+  /** Which node loop's history to persist (NODE_PLAN for plan, NODE_EXECUTE for execute). */
+  nodeKey: ConversationKey;
+  responseText: string;
+  generatedDocument?: string;
+  /** Full ReAct node history for resume support. */
+  nodeHistory?: Array<{ role: string; content: any }>;
+  compaction?: ConversationCompaction;
+  /**
+   * When set, persists the clarify-pause flag (+ budget) so the next runner
+   * invocation restores RAC + conversations and routes resolve → plan.
+   */
+  awaitingClarify?: boolean;
+  clarifyRoundsUsed?: number;
+  clarifyPhase?: import('@ant/shared').ClarifyPhase;
+}
+
 /**
- * Save conversation history to session file for multi-turn persistence.
+ * Save conversation history to the plan session file for multi-turn
+ * persistence. Persists SESSION_MAIN (semantic history) + the given node
+ * channel (`nodeKey`) for resume, plus the clarify-pause flags.
  *
- * On first run: adds user directive + assistant response.
- * On continuation: adds assistant response (user message was already appended by resolve).
- *
- * Also saves node history (full LLM messages) for resume support.
- *
- * `opts.awaitingClarify`: when true, persist the clarify-pause flag so the
- * next planner runner invocation restores RAC + conversations and routes
- * straight to generate (see runner.ts awaitingClarify branch). Mirrors
- * design's `saveClarifyCheckpoint(kind:'execute')` semantically; planner
- * doesn't have a separate checkpoint module so we fold it into the existing
- * conversation save to keep all session writes on one path.
+ * Shared by the `plan` node (NODE_PLAN — clarify pause / explain answer) and
+ * the `execute` node (NODE_EXECUTE — final artifact turn). The write is atomic
+ * (tmp + rename).
  */
 export async function saveConversationToSession(
   state: PlanGraphState,
-  responseText: string,
-  generatedDocument: string | undefined,
-  currentConversationHistory?: Array<{ role: string; content: any }>,
-  compaction?: ConversationCompaction,
-  opts?: {
-    awaitingClarify?: boolean;
-    clarifyRoundsUsed?: number;
-    clarifyPhase?: import('@ant/shared').ClarifyPhase;
-  },
+  opts: SaveConversationOpts,
 ): Promise<void> {
+  const { nodeKey, responseText, generatedDocument, nodeHistory, compaction } = opts;
   const featurePath = state.featurePath;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
-  
+
   try {
     const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
     const updatedConversation: ConversationMessage[] = [...sessionMain];
-    
+
     if (updatedConversation.length === 0 && state.directive) {
       updatedConversation.push({
         role: 'user',
@@ -69,7 +73,7 @@ export async function saveConversationToSession(
         timestamp: new Date().toISOString(),
       });
     }
-    
+
     updatedConversation.push({
       role: 'assistant',
       content: responseText,
@@ -80,7 +84,7 @@ export async function saveConversationToSession(
         mode: getPlanMode(state),
       },
     });
-    
+
     let sessionData: any = {};
     try {
       sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
@@ -96,10 +100,8 @@ export async function saveConversationToSession(
         state: {},
       };
     }
-    
-    if (!sessionData.state) {
-      sessionData.state = {};
-    }
+
+    if (!sessionData.state) sessionData.state = {};
     if (!sessionData.state.conversations) sessionData.state.conversations = {};
     sessionData.state.conversations[CONV_KEYS.SESSION_MAIN] = applyCompactionToConversation(
       updatedConversation as any,
@@ -120,41 +122,52 @@ export async function saveConversationToSession(
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;
     sessionData.state.recursionLimit = state.recursionLimit;
-    // ✅ Persist clarify-pause flag so the next runner invocation restores
-    // RAC + conversations and routes resolve → generate (mirrors design's
-    // saveClarifyCheckpoint(kind:'execute')). Always write so a non-clarify
-    // save resets the flag (cannot leave it stale from a prior run).
-    sessionData.state.awaitingClarify = opts?.awaitingClarify === true ? true : undefined;
-    // Clarify budget round-trip: persist so the next runner restores it and the
-    // gate bounds re-asks across continuation jobs (see runner.ts restore).
-    sessionData.state.clarifyRoundsUsed = opts?.clarifyRoundsUsed;
-    sessionData.state.clarifyPhase = opts?.clarifyPhase;
-    if (currentConversationHistory?.length) {
+    // Persist the clarify-pause flag so the next runner invocation restores
+    // RAC + conversations and routes resolve → plan. Always write so a
+    // non-clarify save resets the flag (cannot leave it stale).
+    sessionData.state.awaitingClarify = opts.awaitingClarify === true ? true : undefined;
+    sessionData.state.clarifyRoundsUsed = opts.clarifyRoundsUsed;
+    sessionData.state.clarifyPhase = opts.clarifyPhase;
+    if (nodeHistory?.length) {
       try {
-        sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = await pruneConversationHistory(currentConversationHistory);
+        sessionData.state.conversations[nodeKey] = await pruneConversationHistory(nodeHistory);
       } catch {
-        sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = currentConversationHistory;
+        sessionData.state.conversations[nodeKey] = nodeHistory;
       }
     }
     sessionData.updatedAt = new Date().toISOString();
-    
+
     if (state.deps?.stateSnapshot) {
       state.deps.stateSnapshot.conversations = {
         ...state.conversations,
-        [CONV_KEYS.NODE_GENERATE]: (currentConversationHistory || getConv(state.conversations, CONV_KEYS.NODE_GENERATE)) as ConversationMessage[],
+        [nodeKey]: (nodeHistory || getConv(state.conversations, nodeKey)) as ConversationMessage[],
       };
       state.deps.stateSnapshot.directive = state.directive;
       state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
     }
-    
+
     const sessionDir = path.dirname(sessionPath);
     await fsPromises.mkdir(sessionDir, { recursive: true });
     const tmpPath = `${sessionPath}.tmp`;
     await fsPromises.writeFile(tmpPath, JSON.stringify(sessionData, null, 2), 'utf-8');
     await fsPromises.rename(tmpPath, sessionPath);
-    
-    console.log(`💬 [Planner:Generate] Conversation saved (${updatedConversation.length} entries, ${currentConversationHistory?.length || 0} history)`);
+
+    console.log(`💬 [Planner] Conversation saved to ${nodeKey} (${updatedConversation.length} entries, ${nodeHistory?.length || 0} history)`);
   } catch (error: any) {
-    console.warn(`⚠️ [Planner:Generate] Failed to save conversation: ${error.message}`);
+    console.warn(`⚠️ [Planner] Failed to save conversation: ${error.message}`);
   }
+}
+
+/**
+ * Writer-fallback safety whitelist (dusk-mounding-pilot). Validates a
+ * feature-relative path emitted by the LLM in a `<file>` tag before it is used
+ * as the disk-write target when RAC.target is empty.
+ */
+export function isSafeStagingPath(relPath: string): boolean {
+  if (!relPath) return false;
+  if (path.isAbsolute(relPath)) return false;
+  const normalized = path.normalize(relPath);
+  if (normalized.startsWith('..') || normalized.includes(`..${path.sep}`)) return false;
+  const allowedPrefixes = ['plan/', 'meta/evals/'];
+  return allowedPrefixes.some(prefix => normalized.startsWith(prefix));
 }
