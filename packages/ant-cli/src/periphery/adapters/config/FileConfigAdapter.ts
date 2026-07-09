@@ -1,18 +1,19 @@
 import fs from "fs";
 import path from "path";
 import { ConfigPort } from "../../../core/ports";
-import { getDefaultWorkspaceConfig } from "../../../core/types/workspace";
+import { getConfigMergeDefaults } from "../../../core/types/workspace";
 
 /**
  * FileConfigAdapter - File system implementation of ConfigPort
  * Loads project configuration from config.json files.
- * Merges user config with defaults so that newly added model/settings
- * entries are always available even in legacy project configs.
+ * Merges user config with minimal defaults (job-level defaults only, no node-specific overrides)
+ * so that users who only customize a job's `default` can fall through to that value
+ * for all unconfigured node types.
  */
 export class FileConfigAdapter implements ConfigPort {
   async load(project: string): Promise<any> {
     const projectPath = process.env.ANT_PROJECT_PATH;
-    
+
     if (!projectPath) {
       throw new Error(
         'ANT_PROJECT_PATH environment variable is required.\n' +
@@ -20,16 +21,24 @@ export class FileConfigAdapter implements ConfigPort {
         'Use WorkspaceResolver.getProjectPath() to generate the correct path.'
       );
     }
-    
+
     const configPath = path.join(projectPath, "config.json");
-    
+
     if (!fs.existsSync(configPath)) {
       throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
     }
 
     const userConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const defaults = getDefaultWorkspaceConfig(userConfig.projectName || project);
-    return deepMergeConfig(defaults, userConfig);
+    const mergeBase = getConfigMergeDefaults();
+
+    // Merge with minimal defaults to ensure node-specific overrides from hardcoded defaults
+    // do not shadow user's per-job `default` customization.
+    const mergedLlmModels = deepMergeConfig(mergeBase, userConfig.llmModels || {});
+
+    return {
+      ...userConfig,
+      llmModels: mergedLlmModels,
+    };
   }
 }
 

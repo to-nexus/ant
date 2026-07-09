@@ -39,17 +39,34 @@ export function useConfigEditor(
         setEditedConfig(prev => ({
           ...prev,
           llmModels: {
-            design: { default: defaultModelId, decompose: defaultModelId },
-            code: { default: defaultModelId, decompose: defaultModelId },
+            design: {
+              default: defaultModelId,
+              decompose: defaultModelId,
+              plan: 'claude-opus-4-8',
+              execute: defaultModelId,
+            },
+            code: {
+              default: defaultModelId,
+              decompose: 'claude-opus-4-8',
+              plan: defaultModelId,
+              execute: defaultModelId,
+            },
             learn: { default: defaultModelId },
-            plan: { default: defaultModelId },
+            plan: {
+              default: defaultModelId,
+              plan: 'claude-opus-4-8',
+              execute: defaultModelId,
+            },
             visual: {
-              default: 'gemini-3.1-pro-preview',
+              default: 'gemini-3-flash',
               direct: 'gemini-3.1-pro-preview',
+              explain: 'gemini-3.1-pro-preview',
               sketch: 'gemini-3.1-flash-image',
               render: 'gemini-3-pro-image',
               engrave: 'gemini-3.1-pro-preview',
             },
+            reviewer: { default: 'claude-opus-4-8' },
+            doc: { default: 'claude-opus-4-8' },
           }
         }));
       }
