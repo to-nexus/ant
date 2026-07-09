@@ -93,15 +93,42 @@ function fileErrorsToViolations(
 }
 
 /**
+ * Summarize the dominant repeated failure from commandHistory (5-min window).
+ * Used by noDoneSignalViolation to provide concrete diagnostic info to the
+ * plan node instead of generic "Safety Net forced exit" message.
+ */
+function summarizeDominantFailure(
+  commandHistory: ArchitectGraphState['commandHistory'],
+): { command: string; count: number; lastErrorSnippet?: string } | null {
+  if (!commandHistory || commandHistory.length === 0) return null;
+  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+  const recentFailures = commandHistory.filter(h => !h.success && h.timestamp > fiveMinutesAgo);
+  if (recentFailures.length === 0) return null;
+
+  const counts = new Map<string, { count: number; lastErrorSnippet?: string }>();
+  for (const h of recentFailures) {
+    const entry = counts.get(h.command) ?? { count: 0, lastErrorSnippet: undefined };
+    entry.count += 1;
+    entry.lastErrorSnippet = h.errorSnippet ?? entry.lastErrorSnippet;
+    counts.set(h.command, entry);
+  }
+
+  let dominant: { command: string; count: number; lastErrorSnippet?: string } | null = null;
+  for (const [command, v] of counts) {
+    if (!dominant || v.count > dominant.count) dominant = { command, ...v };
+  }
+  return dominant;
+}
+
+/**
  * Missing-done-signal guard. `<done>` is the only LLM-driven completion
  * signal; reaching checkTaskStatus without it means the task exited via
  * a Safety Net (A: recursionLimit, B: repeated tool failures) or a file
  * error short-circuit. Applies universally — not task-type-gated.
  *
- * The retry-oriented hint for diagnostic tasks is opt-in via the
- * task-check hook's `noDoneSignalHint` (set on verification). Task
- * types that do not override receive the generic "break down the scope"
- * direction.
+ * Violation message is concrete when dominated by a single failure pattern
+ * (Safety Net B case), generic when dominated by pure recursion (Safety Net A).
+ * Suggested fix is also context-specific per the failure pattern.
  */
 function noDoneSignalViolation(
   state: ArchitectGraphState,
@@ -115,14 +142,25 @@ function noDoneSignalViolation(
   console.warn(
     `⚠️  [${logPrefix}] Task "${task.name}" (type=${task.type}) reached checkTaskStatus without <done> tag`,
   );
+
+  const dominant = summarizeDominantFailure(state.commandHistory);
+  const filePathMatch = dominant?.command.match(/^tool:\w+:(.+)$/);
   const hookHint = hooksIfActive(state)?.check?.noDoneSignalHint;
+
   return {
     type: 'no_done_signal',
-    message:
-      'Task reached checkTaskStatus without LLM signaling completion via <done> tag. ' +
-      'A Safety Net (recursionLimit / repeated tool failures) likely forced the exit.',
+    message: dominant
+      ? `Task reached checkTaskStatus without <done>. Repeated failure detected: "${dominant.command}" ` +
+        `failed ${dominant.count} time(s) in the last 5 minutes` +
+        (dominant.lastErrorSnippet ? ` — latest error: ${dominant.lastErrorSnippet.slice(0, 300)}` : '') +
+        `. Repeating the identical call will not fix this.`
+      : 'Task reached checkTaskStatus without LLM signaling completion via <done> tag. ' +
+        'A Safety Net (recursionLimit / repeated tool failures) likely forced the exit.',
+    file: filePathMatch?.[1],
     isRetryable: true,
-    suggestedFix: hookHint ?? 'Break down the task scope or provide clearer implementation direction.',
+    suggestedFix: hookHint ?? (dominant
+      ? 'Do not repeat the exact same call. If the error indicates a missing file, verify the path with list_files or create it explicitly with a <file> tag before reading/editing it. If it is a persistent command/environment error, try a different approach.'
+      : 'Break down the task scope or provide clearer implementation direction.'),
   };
 }
 

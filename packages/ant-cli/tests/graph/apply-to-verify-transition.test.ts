@@ -312,4 +312,35 @@ describe('executeRouter Safety Net B — tool-dispatch failure coverage (tight-d
     const state = verifStateWithHistory(toolFailures(4));
     expect(routeAfterExecute(state)).toBe('tool');
   });
+
+  it('[Fix A] protects feature tasks too (NOT just final/error): 5 recorded failures → checkTaskStatus regardless of task.type', () => {
+    // Regression: humble-parsing-nurse had a feature task with 116 consecutive
+    // read_file failures on the same path. Safety Net B existed but was gated
+    // `if (isFinalTask || isCurrentErrorTask)`, so feature tasks were never
+    // protected. Fix A removes this gate so all task types are equally protected.
+    const state = verifStateWithHistory(toolFailures(5, 'tool:read_file:codebase/src/options-overlay.tsx'));
+    state.currentTask = {
+      id: 'options-overlay',
+      name: 'options-overlay 기능',
+      description: 'feature task demonstrating the humble-parsing-nurse regression',
+      type: 'feature',
+      priority: 250,
+    } as any;
+    // Before fix: would route to 'tool' because feature tasks were not checked.
+    // After fix: routes to 'checkTaskStatus' at 5 failures.
+    expect(routeAfterExecute(state)).toBe('checkTaskStatus');
+  });
+
+  it('[Fix A] feature task with 4 failures still routes to tool (threshold not yet reached)', () => {
+    const state = verifStateWithHistory(toolFailures(4, 'tool:read_file:codebase/src/path.tsx'));
+    state.currentTask = {
+      id: 'some-feature',
+      name: 'some feature',
+      description: 'feature task',
+      type: 'feature',
+      priority: 250,
+    } as any;
+    // At 4 failures, feature task routes to 'tool' (continues executing).
+    expect(routeAfterExecute(state)).toBe('tool');
+  });
 });
