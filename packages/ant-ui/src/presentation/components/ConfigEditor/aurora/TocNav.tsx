@@ -41,13 +41,13 @@ export function TocNav({ items, active, onSelect }: TocNavProps) {
   return (
     <nav
       style={{
-        position: 'sticky',
-        top: 0,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: 4,
         padding: '20px 6px',
+        maxHeight: '100%',
+        overflowY: 'auto',
       }}
     >
       {resolvedItems.map((item) => {
