@@ -89,6 +89,29 @@ export interface PreviewServerOptions {
 const LOOPBACK_HOST = 'localhost';
 
 /**
+ * Upper bound for the WS/HMR tunnel's CONNECT + upgrade-handshake phase.
+ * If the upstream TCP connect never completes, or completes but the dev
+ * server never finishes the HTTP Upgrade handshake (never sends a byte back
+ * post-101), the client socket occupies one of the browser's 6 HTTP/1.1
+ * per-origin connection slots indefinitely — starving other module/script
+ * requests to the same preview host. 20s is generous for a dev server that's
+ * merely busy/cold-starting (WS upgrade doesn't wait on Vite's dependency
+ * optimizer the way the first HTTP request does — HMR sockets are opened by
+ * client JS after the page's own scripts already loaded) while still finite.
+ *
+ * This timeout is disabled once the first byte is received from upstream
+ * (handshake response observed) — after that, the tunnel is confirmed live and
+ * may sit idle indefinitely (e.g., HMR with no file changes).
+ *
+ * Tunable via ANT_PREVIEW_WS_HANDSHAKE_TIMEOUT_MS env var (parsed once on
+ * module load), and overridable per-call for testing.
+ */
+export const WS_HANDSHAKE_TIMEOUT_MS = (() => {
+  const envVal = process.env.ANT_PREVIEW_WS_HANDSHAKE_TIMEOUT_MS;
+  return envVal ? Number(envVal) || 20_000 : 20_000;
+})();
+
+/**
  * Rewrite an inbound upgrade request's raw header pairs for replay to the
  * upstream. `Host` and `Origin` are normalized to the dev server's trusted
  * self-origin (`localhost`) so it sees a same-origin handshake — otherwise
@@ -123,16 +146,38 @@ export function rewriteUpgradeHeaders(
  * normalized to loopback. The TCP connect uses `targetHost` (a pod IP in
  * cloud); the replayed headers do not — see `rewriteUpgradeHeaders`. Shared by
  * the preview and deploy upgrade branches.
+ *
+ * The handshakeTimeoutMs parameter bounds the connect + handshake phase only.
+ * Once the first byte is received from upstream (handshake response observed),
+ * the timeout is permanently disabled so an idle-but-healthy HMR socket
+ * (no file changes for a while) is never killed.
  */
-function openRawTunnel(
+export function openRawTunnel(
   req: IncomingMessage,
   clientSocket: net.Socket,
   head: Buffer,
   targetHost: string,
   targetPort: number,
   targetPath: string,
+  handshakeTimeoutMs: number = WS_HANDSHAKE_TIMEOUT_MS,
 ): void {
-  const proxySocket = net.connect(targetPort, targetHost, () => {
+  const proxySocket = net.connect(targetPort, targetHost);
+
+  // Bound the connect + handshake phase only. Cleared on the first byte
+  // received from upstream post-connect (handshake response observed) —
+  // after that, the tunnel is a confirmed-live pipe and may sit idle
+  // indefinitely (e.g. HMR with no file changes).
+  proxySocket.setTimeout(handshakeTimeoutMs);
+  proxySocket.once('timeout', () => {
+    logger.warn(
+      `[PreviewServer] WS tunnel handshake timed out after ${handshakeTimeoutMs}ms (${targetHost}:${targetPort}) — destroying stuck sockets`,
+      { component: 'PreviewServer' },
+    );
+    proxySocket.destroy();
+    clientSocket.destroy();
+  });
+
+  proxySocket.once('connect', () => {
     const rawHeaders = rewriteUpgradeHeaders(req.rawHeaders, targetPort);
 
     const upgradeReq =
@@ -144,6 +189,13 @@ function openRawTunnel(
     if (head.length > 0) {
       proxySocket.write(head);
     }
+
+    // First byte back = handshake response observed = tunnel confirmed live.
+    // Disable the idle timer permanently so a quiet-but-healthy HMR socket
+    // (no file changes for a while) is never killed.
+    proxySocket.once('data', () => {
+      proxySocket.setTimeout(0);
+    });
 
     proxySocket.pipe(clientSocket);
     clientSocket.pipe(proxySocket);

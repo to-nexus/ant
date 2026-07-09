@@ -27,6 +27,7 @@ import {
   escapeRegExp as sharedEscapeRegExp,
   extractForwardingContext,
   fetchWithTransportRetry,
+  forwardRequestAbort,
   forwardRequestBody,
   parseCookieHeader,
   streamUpstreamResponse,
@@ -206,6 +207,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           method: req.method,
           headers: cleanHeaders,
           ...forwardRequestBody(req),
+          ...forwardRequestAbort(req),
         } as RequestInit);
 
         if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
@@ -293,10 +295,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
               logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback)`, { component: 'PreviewProxy' });
 
-              const response = await fetch(targetUrl, {
+              const response = await fetchWithTransportRetry(targetUrl, {
                 method: req.method,
                 headers: cleanHeaders,
                 ...forwardRequestBody(req),
+                ...forwardRequestAbort(req),
               } as RequestInit);
 
               // Favicon fallback in Referer/Cookie routing path
@@ -475,10 +478,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
 
       // Transport-error retry shared with baseProxy / deployProxy. Absorbs
       // dev-server startup races; upstream HTTP errors pass through untouched.
+      // Client disconnect (forwardRequestAbort) and upstream timeout
+      // (UPSTREAM_FETCH_TIMEOUT_MS from proxyForwarding) are both wired in
+      // automatically by fetchWithTransportRetry.
       const response = await fetchWithTransportRetry(effectiveTargetUrl, {
         method: req.method,
         headers: cleanHeaders,
         ...forwardRequestBody(req),
+        ...forwardRequestAbort(req),
       } as RequestInit);
 
       const contentType = response.headers.get('content-type') || '';
