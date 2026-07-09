@@ -3,12 +3,13 @@
  *
  * 라우팅 로직 (평가 순서):
  * 0. File errors → checkTaskStatus (self-healing, tool 불필요)
- * B. 최근 5분 내 tool 실패 5회 이상 → checkTaskStatus 강제 (실패 tool 루프 차단)
+ * B. 최근 5분 내 tool 실패 5회 이상 → checkTaskStatus 강제 (모든 task 타입, 반복 실패 루프 차단)
  * 1. Tool calls → tool 노드
  * 2. Done → verification 책임자는 plan 재검증, 그 외 checkTaskStatus
  * A. Final task recursion budget 부족 AND tool/done 없음 → checkTaskStatus (graceful drain)
  * 3. 그 외 → execute 노드 (재추론)
  *
+ * Safety Net B는 task 타입 blind (R1) — feature/ui/setup 등도 동등하게 보호된다.
  * Safety Net B는 toolCalls 검사 *위*에 둔다(실패 batch가 매번 tool로 라우팅되어 무력화되지
  * 않도록). Safety Net A는 toolCalls·done 검사 *아래*에 둔다(대기 중 gate-rerun / `<done>` 을
  * 폐기하지 않도록 — A는 진짜 비생산 turn 에서만 발동).
@@ -83,21 +84,18 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // (no tool call, no done) near budget exhaustion. See the block before the
   // final `execute` fallback.
 
-  // Safety Net B: Check for repeated tool failures
-  if (isFinalTask || isCurrentErrorTask) {
-    const recentFailures = detectRecentToolFailures(state);
-
-    if (recentFailures >= 5) {
-      console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected`);
-      console.warn(`   🚨 Forcing checkTaskStatus`);
-      return 'checkTaskStatus';
-    }
+  // Safety Net B: Check for repeated tool failures (all task types, R1 blind)
+  const recentFailures = detectRecentToolFailures(state);
+  if (recentFailures >= 5) {
+    console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected`);
+    console.warn(`   🚨 Forcing checkTaskStatus (Safety Net B)`);
+    return 'checkTaskStatus';
   }
 
-  // Runaway is bounded by Safety Net A (recursionLimit), Safety Net B
-  // (repeated tool failures), LangGraph's `recursionLimit` ceiling, and
-  // `batch_cycle_limit` for queue-side fan-out. Per-task call-count
-  // budgets have been retired.
+  // Runaway is bounded by Safety Net A (recursionLimit for final tasks),
+  // Safety Net B (repeated tool failures for all tasks),
+  // LangGraph's `recursionLimit` ceiling, and `batch_cycle_limit` for
+  // queue-side fan-out. Per-task call-count budgets have been retired.
 
 
   // 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)

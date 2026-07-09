@@ -95,10 +95,13 @@ export async function handleReadFile(
     const fileContent = await fileSystem.readFile(resolved.fsPath);
 
     if (!fileContent) {
-      const errorMsg = `File not found: ${resolved.displayPath}`;
-      console.error(`[readFile] ❌ ${errorMsg}`);
+      const errorMsg =
+        `File not found: ${resolved.displayPath}\n\n` +
+        `Before retrying: use list_files("${path.dirname(resolved.displayPath)}") to verify the exact path, ` +
+        `or if this file is meant to be new, use <file path="${resolved.displayPath}"> to create it instead of reading it.`;
+      console.error(`[readFile] ❌ File not found: ${resolved.displayPath}`);
       await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: errorMsg });
-      return { content: errorMsg, error: errorMsg };
+      return { content: errorMsg, error: `File not found: ${resolved.displayPath}` };
     }
 
     console.log(`[readFile] ✅ Read from disk: ${resolved.displayPath} (${fileContent.length} bytes)`);
