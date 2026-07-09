@@ -134,7 +134,7 @@ function extractUrlKeyFromReferer(refererStr: string): string | null {
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '', getBackendPort, jwtService } = config;
+  const { portRegistry, pathPrefix = '', getBackendPort, jwtService, ensureReachable } = config;
   const cookieName = config.cookieName ?? 'ant_session';
 
   // Owner-only access gate. Runs before cookie-parser (see PreviewServer mount
