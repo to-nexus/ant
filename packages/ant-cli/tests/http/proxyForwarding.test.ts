@@ -5,6 +5,7 @@ import {
   extractForwardingContext,
   forwardRequestBody,
   isDevResourceRequest,
+  isTransportError,
   rewriteLocation,
   rewriteSetCookiePath,
   streamUpstreamResponse,
@@ -409,5 +410,27 @@ describe('isDevResourceRequest', () => {
     expect(isDevResourceRequest('/k/dashboard')).toBe(false);
     expect(isDevResourceRequest('/api/me')).toBe(false);
     expect(isDevResourceRequest(undefined)).toBe(false);
+  });
+});
+
+describe('fetchWithTransportRetry timeout contract', () => {
+  it('isTransportError returns false for TimeoutError', () => {
+    const timeoutErr = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    expect(isTransportError(timeoutErr)).toBe(false);
+  });
+
+  it('isTransportError returns false for AbortError (client disconnect)', () => {
+    const abortErr = new DOMException('The operation was aborted', 'AbortError');
+    expect(isTransportError(abortErr)).toBe(false);
+  });
+
+  it('isTransportError still matches ECONNREFUSED', () => {
+    const err = new Error('fetch failed: ECONNREFUSED 127.0.0.1:30000');
+    expect(isTransportError(err)).toBe(true);
+  });
+
+  it('isTransportError still matches ECONNRESET', () => {
+    const err = new Error('ECONNRESET: Connection reset by peer');
+    expect(isTransportError(err)).toBe(true);
   });
 });

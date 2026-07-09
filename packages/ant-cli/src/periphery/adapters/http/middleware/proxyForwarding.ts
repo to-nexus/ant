@@ -431,6 +431,38 @@ export const isTransportError = (err: unknown): boolean => {
 };
 
 /**
+ * Upper bound on a single upstream fetch attempt, from request start to
+ * response headers arriving. (fetch() resolves once headers are in; the body
+ * is streamed separately and is NOT subject to this deadline.)
+ *
+ * Rationale for 45s: Vite's cold-start dependency-optimization scan for a
+ * heavy library (e.g. Phaser) can legitimately take tens of seconds on the
+ * first request. 45s is comfortably above realistic cold-start latencies while
+ * still being finite enough that a truly-stuck dev server (frozen process,
+ * deadlocked optimizer) fails deterministically instead of hanging for minutes
+ * on undici's own default timeouts.
+ *
+ * Tunable via ANT_PREVIEW_PROXY_TIMEOUT_MS env var (parsed once on module load).
+ */
+export const UPSTREAM_FETCH_TIMEOUT_MS = (() => {
+  const envVal = process.env.ANT_PREVIEW_PROXY_TIMEOUT_MS;
+  return envVal ? Number(envVal) || 45_000 : 45_000;
+})();
+
+/**
+ * Merge an internal deadline (UPSTREAM_FETCH_TIMEOUT_MS) with an optional
+ * caller-supplied signal (e.g. forwardRequestAbort's client-disconnect signal),
+ * so whichever fires first wins. AbortSignal.any's resulting signal exposes
+ * `.reason` from whichever input signal aborted — callers can inspect
+ * `signal.reason instanceof DOMException && signal.reason.name === 'TimeoutError'`
+ * to distinguish a deadline trip from a client disconnect if needed for logging.
+ */
+function mergeAbortSignal(callerSignal?: AbortSignal): AbortSignal {
+  const deadline = AbortSignal.timeout(UPSTREAM_FETCH_TIMEOUT_MS);
+  return callerSignal ? AbortSignal.any([deadline, callerSignal]) : deadline;
+}
+
+/**
  * Single canonical fetch wrapper for every HTTP reverse proxy in this codebase
  * (baseProxy / previewProxy / deployProxy). Retries transient transport
  * failures with exponential backoff; passes upstream HTTP responses through
@@ -440,15 +472,29 @@ export const isTransportError = (err: unknown): boolean => {
  * so that retry behavior is auditable in one place. If a proxy genuinely
  * needs different policy, it likely needs a different helper, not different
  * options here.
+ *
+ * Every call to this helper automatically gets the UPSTREAM_FETCH_TIMEOUT_MS
+ * deadline applied. If the caller supplies a signal (e.g. from forwardRequestAbort),
+ * it is merged in via AbortSignal.any — whichever fires first (deadline or caller
+ * abort) wins. A timeout does NOT trigger a retry — fetch() rejects with a
+ * TimeoutError, which falls outside isTransportError's classification, so
+ * withRetry throws immediately on attempt 1.
  */
 export const fetchWithTransportRetry = (
   url: string,
   init: RequestInit,
 ): Promise<globalThis.Response> =>
-  withRetry<globalThis.Response>(() => fetch(url, init), {
-    maxAttempts: 6,
-    initialDelayMs: 250,
-    maxDelayMs: 2500,
-    backoffMultiplier: 2,
-    shouldRetry: isTransportError,
-  });
+  withRetry<globalThis.Response>(
+    () =>
+      fetch(url, {
+        ...init,
+        signal: mergeAbortSignal(init.signal as AbortSignal | undefined),
+      }),
+    {
+      maxAttempts: 6,
+      initialDelayMs: 250,
+      maxDelayMs: 2500,
+      backoffMultiplier: 2,
+      shouldRetry: isTransportError,
+    },
+  );
