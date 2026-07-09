@@ -179,6 +179,7 @@
     "codeExecuteDesc": "Code generation and editing",
     "defaultLearnDesc": "Default model for learning tasks",
     "defaultPlanDesc": "Default model for plan-document generation (Planner agent)",
+    "planExecuteDesc": "Planning-document authoring from the sealed brief",
     "defaultVisualDesc": "Default model for all visual asset generation nodes",
     "direct": "Art Direction",
     "directDesc": "Prompt engineering and routing decisions",

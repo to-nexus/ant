@@ -38,7 +38,11 @@ const JOB_DEFS: JobDef[] = [
     agentLabel: 'Planner',
     accent: 'cool',
     icon: 'Compass',
-    nodes: { default: 'llmModels.defaultPlanDesc' },
+    nodes: {
+      default: 'llmModels.defaultPlanDesc',
+      plan: 'llmModels.planDesc',
+      execute: 'llmModels.planExecuteDesc',
+    },
   },
   {
     jobKey: 'design',
@@ -237,62 +241,6 @@ export function LLMModelsSection({
                 );
               })}
             </div>
-          </div>
-
-          {/* Legend strip */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              flexWrap: 'wrap',
-              padding: '8px 18px',
-              borderTop: '1px solid var(--border-1)',
-              background: 'oklch(from var(--bg-surface-2) l c h / 0.45)',
-              fontSize: 10.5,
-              color: 'var(--text-4)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            <LegendDot
-              label="Default"
-              color="var(--violet-700)"
-              dotBg="oklch(94% 0.06 290 / 0.8)"
-              dotBorder="oklch(72% 0.16 290)"
-            />
-            <LegendDot
-              label="inherited"
-              color="var(--text-3)"
-              dotBg="transparent"
-              dotBorder="var(--border-2)"
-              dashed
-            />
-            <LegendDot
-              label={t('projectEditor.legacyModel')}
-              color="var(--text-3)"
-              dotBg="oklch(94% 0.06 40 / 0.8)"
-              dotBorder="oklch(72% 0.16 40)"
-            />
-            <LegendDot
-              label={t('projectEditor.unavailableModel')}
-              color="oklch(50% 0.14 55)"
-              dotBg="oklch(94% 0.07 65 / 0.85)"
-              dotBorder="oklch(75% 0.15 65)"
-            />
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span
-                aria-hidden
-                style={{
-                  display: 'inline-block',
-                  fontSize: 11,
-                  color: 'var(--text-4)',
-                  fontWeight: 700,
-                }}
-              >
-                —
-              </span>
-              <span>not applicable</span>
-            </span>
           </div>
 
           {unconfiguredProviders.length > 0 && (
