@@ -68,33 +68,6 @@ function buildProvidedDocsSection(docs: ResolvedArtifact[]): string | null {
 }
 
 /**
- * Build previous game-art catalogs from the pool as REFERENCE.
- * game-art-spec depends on tokens + assets (mirrors ui-spec's dependency).
- */
-function buildPreviousGameArtDocsFromPool(pool: ResolvedArtifact[], taskId: string): string {
-  if (!taskId.startsWith('game-art-spec')) return '';
-
-  const docs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.GAME_ART_ANT] });
-  let injected = '';
-  const banner = (name: string, note: string) =>
-    `\n\n════════════════════════════════════════════════════════════════════════════════\n`
-    + `# REFERENCE: ${name} (ALL chapters completed)\n> ${note}\n`
-    + `════════════════════════════════════════════════════════════════════════════════\n\n`;
-
-  for (const a of docs) {
-    const filename = a.path.split('/').pop() || '';
-    if (filename === 'game-art-tokens.json' && a.content && !a.content.includes('ant:template')) {
-      injected += banner('game-art-tokens.json', 'Use these token keys. Do NOT use raw values that are defined here.');
-      injected += '```json\n' + a.content + '\n```';
-    } else if (filename === 'game-art-assets.json' && a.content && !a.content.includes('ant:template')) {
-      injected += banner('game-art-assets.json', 'Reference these asset identifiers when documenting spec entries.');
-      injected += '```json\n' + a.content + '\n```';
-    }
-  }
-  return injected;
-}
-
-/**
  * Build multimodal messages for game-art catalog generation.
  * Tool-based: source docs arrive via the pool (task.include), assets via list_assets.
  */
@@ -138,18 +111,17 @@ export async function buildGameArtMessages(state: DesignGraphState): Promise<Arr
   const providedDocs = buildProvidedDocsSection(selectedDocs);
   if (providedDocs) content.push({ type: 'text', text: providedDocs });
 
-  // Previously generated catalogs (game-art-spec depends on tokens + assets).
-  const taskInclude = designTask?.include;
-  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.GAME_ART_ANT))
-    ? buildPreviousGameArtDocsFromPool(state.artifacts || [], task?.id || '')
-    : '';
-  if (previousDocs) content.push({ type: 'text', text: previousDocs });
+  // Upstream catalogs (tokens for assets; tokens+assets for spec) are NOT
+  // pre-injected — dependents read them on-disk via `read_file` per the
+  // per-file guide's Workflow. The scheduling barrier (barriers.assets/spec)
+  // guarantees the upstream catalog is fully written before a dependent runs,
+  // so the on-disk copy is authoritative (the in-batch pool is not refreshed
+  // mid-run — see design/graph.ts pool-merge timing).
 
   await logGameArtPrompt(state, 'execute-gameArt-fullMessage', content, {
     taskId: task?.id,
     taskName: task?.name,
     sourceDocs: selectedDocs.length,
-    previousDocsLen: previousDocs.length,
   });
 
   return [{ role: 'user', content }];
@@ -174,17 +146,12 @@ export async function buildGameArtFreshPrompt(state: DesignGraphState): Promise<
   const providedDocs = buildProvidedDocsSection(sourceArtifacts);
   if (providedDocs) content.push({ type: 'text', text: providedDocs });
 
-  const taskInclude = designTask?.include;
-  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.GAME_ART_ANT))
-    ? buildPreviousGameArtDocsFromPool(state.artifacts || [], task?.id || '')
-    : '';
-  if (previousDocs) content.push({ type: 'text', text: previousDocs });
+  // Upstream catalogs obtained via `read_file` (see buildGameArtMessages note).
 
   await logGameArtPrompt(state, 'execute-gameArt-freshPrompt', content, {
     taskId: task?.id,
     taskName: task?.name,
     sourceDocs: sourceArtifacts.length,
-    previousDocsLen: previousDocs.length,
     isFreshPrompt: true,
   });
 

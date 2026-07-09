@@ -138,18 +138,21 @@ The system will automatically merge this into the existing JSON.
 ## ⚠️ CATALOG DEPENDENCY CHAIN
 ════════════════════════════════════════════════════════════════════════════════
 
-`game-art-tokens` and `game-art-assets` run in parallel (no dependency between them). `game-art-spec` depends on both — previously generated catalogs are automatically injected as REFERENCE sections for spec tasks.
+`game-art-tokens` is authored first. `game-art-assets` depends on tokens; `game-art-spec` depends on tokens + assets. Scheduling guarantees an upstream catalog is fully written to disk before its dependents run — so dependents obtain it with the `read_file` tool (the authoritative on-disk copy), NOT from any in-prompt section.
 
 ```
-game-art-tokens.json (no dependencies)
-game-art-assets.json (no dependencies)
-        ↓        ↓
-game-art-spec.json (receives both tokens AND assets as REFERENCE)
+game-art-tokens.json  (authored first — palette/silhouette/motion/lighting/hud SSOT)
+        ↓
+game-art-assets.json  (read_file tokens.json → reference its keys)
+        ↓
+game-art-spec.json    (read_file tokens.json + assets.json → reference their keys/ids)
 ```
+
+**When generating `game-art-assets.json`:** `read_file game-art-tokens.json` first; derive colors/silhouette from its exact keys.
 
 **When generating `game-art-spec.json`:**
-- Find the `# REFERENCE: game-art-tokens.json` and `# REFERENCE: game-art-assets.json` sections in this prompt
-- ALL visual values must reference token keys (e.g. `palette.accent`), never raw values
+- `read_file game-art-tokens.json` AND `read_file game-art-assets.json` first
+- ALL visual values must reference token keys that EXIST in tokens.json (e.g. `palette.accent`), never raw values or invented keys
 - ALL asset references must use identifiers defined in `game-art-assets.json`
 
 ════════════════════════════════════════════════════════════════════════════════

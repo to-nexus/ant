@@ -392,7 +392,7 @@ For each positioned element, document:
 
 ## Workflow
 
-1. **Read inputs**: `read_file` PRD if you need to refresh requirements; consult `directive` and `visualTier`
+1. **Read upstream (required)**: `read_file ui-tokens.json` AND `read_file ui-assets.json` — the token keys and asset ids you may reference. Also `read_file` the PRD if you need to refresh requirements; consult `directive` and `visualTier`. Reference only token keys / asset ids that actually exist — never invent keys or inline raw values the tokens catalog already defines.
 2. **Plan**: Identify which sections/components belong to your task
 3. **Document**: Write the JSON, anchored on directive + PRD intent
 4. **Verify**: Run the quality checklist

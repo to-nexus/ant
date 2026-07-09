@@ -52,7 +52,7 @@ You have access to the Figma MCP tools plus asset / file tools:
 ## CATALOG DEPENDENCY CHAIN
 ════════════════════════════════════════════════════════════════════════════════
 
-`game-art-tokens` and `game-art-assets` run in parallel. `game-art-spec` depends on both — previously generated catalogs are injected as `# REFERENCE:` sections. When generating `game-art-spec.json`, reference token keys and asset identifiers only; never raw values.
+`game-art-tokens` is authored first; `game-art-assets` depends on tokens; `game-art-spec` depends on tokens + assets. Scheduling guarantees an upstream catalog is fully written to disk before its dependents run, so dependents obtain it with `read_file` (the authoritative on-disk copy), NOT from any in-prompt section. When generating `game-art-assets.json`, `read_file game-art-tokens.json` first; when generating `game-art-spec.json`, `read_file` both tokens and assets first. Reference only token keys / asset ids that actually exist — never raw values or invented keys.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Catalog Quality Guidelines

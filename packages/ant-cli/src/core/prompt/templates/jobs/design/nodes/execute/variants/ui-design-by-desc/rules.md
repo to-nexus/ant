@@ -255,28 +255,24 @@ For each topic in your task description:
 ## ⚠️ DOCUMENT DEPENDENCY CHAIN
 ════════════════════════════════════════════════════════════════════════════════
 
-ui-tokens and ui-assets run in parallel (no dependencies between them). ui-spec depends on both — previous documents are automatically injected as REFERENCE sections for spec tasks.
+ui-tokens is authored first. ui-assets depends on tokens; ui-spec depends on tokens + assets. Scheduling guarantees an upstream document is fully written to disk before its dependents run — so dependents obtain it with the `read_file` tool (the authoritative on-disk copy), NOT from any in-prompt section.
 
 ```
-ui-tokens.json (no dependencies)
-ui-assets.json (no dependencies)
-     ↓  ↓
-ui-spec.json (receives both ui-tokens.json AND ui-assets.json as REFERENCE)
+ui-tokens.json (authored first — colors/spacing/typography SSOT)
+     ↓
+ui-assets.json (read_file ui-tokens.json → reference its token keys)
+     ↓
+ui-spec.json   (read_file ui-tokens.json + ui-assets.json → reference their keys/ids)
 ```
 
-### How to Use the REFERENCE Sections
+### How to Obtain Upstream Documents
 
-For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt containing previously generated content:
-
-```
-# REFERENCE: ui-tokens.json
-# REFERENCE: ui-assets.json
-```
+**When generating ui-assets.json:** `read_file ui-tokens.json` first; reference its exact token keys for any color/spacing/typography value.
 
 **When generating ui-spec.json:**
-- Find and read both `# REFERENCE: ui-tokens.json` and `# REFERENCE: ui-assets.json` sections
-- ALL visual values must use token references (e.g., `colors.primary.green`)
-- ALL assets must use identifiers from the asset mapping
+- `read_file ui-tokens.json` AND `read_file ui-assets.json` first
+- ALL visual values must use token references that EXIST in ui-tokens.json (e.g., `colors.primary.green`) — never raw values or invented keys
+- ALL assets must use identifiers that exist in ui-assets.json
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Document Quality Guidelines
@@ -287,7 +283,7 @@ For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt c
 1. **Token-First**: ALL visual values MUST reference tokens (e.g., `token(color.primary)`, NOT `#1E40AF`)
 2. **Specification Only**: Document WHAT to build, NOT HOW (no framework names, no implementation code)
 3. **Complete Coverage**: Capture all behaviors and requirements implied by the directive / PRD
-4. **Use REFERENCE Sections**: For dependent tasks, find and use `# REFERENCE:` sections in this prompt
+4. **Read upstream first**: For dependent tasks, `read_file` the upstream document(s) (ui-tokens.json for assets; ui-tokens.json + ui-assets.json for spec) and reference only keys/ids they actually define
 
 ---
 
