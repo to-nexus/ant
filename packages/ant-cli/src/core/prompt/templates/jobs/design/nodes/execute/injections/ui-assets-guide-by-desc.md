@@ -122,6 +122,7 @@ Emit a JSON catalog of the **logical** asset surface — what each asset is, how
 
 ### Workflow
 
-1. `list_assets` → Discover all available asset files
-2. Cross-reference the directive / PRD to confirm naming, categories, and per-asset purpose
-3. Generate ui-assets.json with logical metadata only — no placement decisions
+1. `read_file ui-tokens.json` → the color/spacing/typography SSOT; note the exact token keys any asset metadata should reference (no invented keys, no contradicting raw values)
+2. `list_assets` → Discover all available asset files
+3. Cross-reference the directive / PRD to confirm naming, categories, and per-asset purpose
+4. Generate ui-assets.json with logical metadata only — no placement decisions

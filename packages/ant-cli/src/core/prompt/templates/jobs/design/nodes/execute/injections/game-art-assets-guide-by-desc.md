@@ -96,11 +96,15 @@ For procedural audio:
 - ❌ Multi-layer character art / detailed sprite sheets
 - ❌ Full BGM tracks
 
-**Concept alignment**: The inline visuals MUST reflect
-`gameArtTier.concept`'s palette and silhouette weight (see
-`game-art-tokens.json`). Reference token paths instead of inlining hex
-values when possible (e.g. `fill='currentColor'` paired with CSS
-custom properties).
+**Concept alignment & token authority**: `game-art-tokens.json` is the
+single palette/silhouette authority — it is authored before this task.
+`read_file game-art-tokens.json` FIRST and derive every color and
+silhouette value from the token keys it actually defines. Do NOT invent
+a parallel palette namespace or hardcode hex values that contradict the
+tokens catalog — reference the exact keys present (via `fill='currentColor'`
++ CSS custom properties, or by naming the token key in a `_palette` note).
+If a needed key is absent, use the closest existing token key rather than
+minting a new one.
 
 #### `kind: 'external'` shape (rare in directive-only mode)
 
@@ -193,16 +197,18 @@ Marker derivation:
 2. **Stable ids** (kebab-case, unique)
 3. **inline-first**: external entries only with directive-referenced files
 4. **Inline scope respected**: simple primitives only
-5. **Concept-aligned**: visuals reflect `gameArtTier.concept` mood
+5. **Concept-aligned & token-conformant**: visuals reflect `gameArtTier.concept` mood and reference only token keys that exist in `game-art-tokens.json` — no invented palette namespace, no contradicting hex
 6. **Path safety**: any external `src` starts with `assets/game/`
 7. **Valid JSON**
 
 ### Workflow
 
-1. Re-read the directive to extract the category's intended entries
-2. For each entry:
+1. `read_file game-art-tokens.json` — this is the palette/silhouette SSOT.
+   Note the exact token keys you will reference (colors, silhouette).
+2. Re-read the directive to extract the category's intended entries
+3. For each entry:
    - Default to `kind: 'inline'` with a simple primitive
    - Use `kind: 'external'` only when the directive names a specific
      user-placed file
-3. If the directive lacks specifics for a category — emit fewer, simpler
+4. If the directive lacks specifics for a category — emit fewer, simpler
    inline entries rather than inventing details

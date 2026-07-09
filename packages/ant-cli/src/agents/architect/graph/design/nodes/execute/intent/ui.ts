@@ -86,7 +86,6 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     taskSourceFiles.push('figma.json');
   }
 
-  const taskInclude = (task as DesignTask | undefined)?.include;
   const designTask = task as DesignTask | undefined;
   // Single injection SSOT — `task.include` (LLM-authored), falling back to
   // SOURCES so a task without an authored manifest still sees its upstream
@@ -127,16 +126,11 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     content.push({ type: 'text', text: sections.join('\n') });
   }
   
-  // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
-  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.UI_ANT))
-    ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
-    : '';
-  if (previousDocs) {
-    content.push({
-      type: 'text',
-      text: previousDocs
-    });
-  }
+  // ✅ 4. Upstream docs (ui-tokens for assets; ui-tokens+ui-assets for spec)
+  // are obtained on-disk via `read_file` per the per-file guide Workflow, NOT
+  // pre-injected here. The scheduling barrier (barriers.assets/spec) guarantees
+  // the upstream doc is fully written before a dependent runs, so the on-disk
+  // copy is authoritative (the in-batch pool is not refreshed mid-run).
   
   // ✅ Log prompt structure (not content)
   const jobId = state.jobId || state._httpJobId || 'unknown';
@@ -172,7 +166,6 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
             sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${ctx.length}]` : undefined,
-            previousDocs: previousDocs ? `[${(previousDocs as string).length} chars]` : undefined,
             uiAssetsList: state.uiAssetsList ? 'SET' : undefined,
           },
         }
@@ -215,7 +208,6 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   // SSOT: mirror role-guide wording. Source docs arrive via the RAC as
   // `role='context'` for Figma/Ref UI intents and as `role='ref'` for desc
   // intents; either way they are authoritative inputs (ref wins on conflict).
-  const freshTaskInclude = (task as DesignTask | undefined)?.include;
   const freshTaskSourceFiles = (task as DesignTask)?.sourceFiles;
   let freshSourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
   if (freshTaskSourceFiles?.length) {
@@ -244,17 +236,9 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     content.push({ type: 'text', text: sections.join('\n') });
   }
   
-  // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
-  const freshPreviousDocs = (!freshTaskInclude || freshTaskInclude.includes(ARTIFACT_PREFIX.UI_ANT))
-    ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
-    : '';
-  if (freshPreviousDocs) {
-    content.push({
-      type: 'text',
-      text: freshPreviousDocs
-    });
-  }
-  
+  // ✅ 4. Upstream docs obtained on-disk via `read_file` per the per-file
+  // guide Workflow (see buildUiDesignMessages note) — not pre-injected here.
+
   // ✅ 5. Add next-step instruction after tool call (figma mode only).
   // The continuation reminder existed because the legacy reference-image
   // pipeline split the task into "discover refs (Turn 1) → load image
@@ -315,7 +299,6 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
             sourceDocs: freshSourceArtifacts.length > 0 ? `[${freshSourceArtifacts.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, count=${freshSourceArtifacts.length}]` : undefined,
-            previousDocs: freshPreviousDocs ? `[${freshPreviousDocs.length} chars]` : undefined,
             isUiTokensTask,
             isUiSpecTask,
             isFreshPrompt: true,
@@ -425,39 +408,6 @@ function buildResourcesSummary(state: DesignGraphState): string {
   }
   
   return resourcesSummary;
-}
-
-/**
- * Build previous UI docs context from artifact pool.
- * Only ui-spec tasks need tokens + assets as REFERENCE.
- */
-function buildPreviousUiDocsFromPool(
-  pool: import('@ant/shared').ResolvedArtifact[],
-  taskId: string,
-): string {
-  if (!taskId.startsWith('ui-spec')) return '';
-
-  const uiDocs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.UI_ANT] });
-  let injectedDocs = '';
-
-  for (const a of uiDocs) {
-    const filename = a.path.split('/').pop() || '';
-    if (filename === 'ui-tokens.json' && a.content && !a.content.includes('ant:template')) {
-      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-      injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
-      injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
-      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      injectedDocs += '```json\n' + a.content + '\n```';
-    } else if (filename === 'ui-assets.json' && a.content && !a.content.includes('ant:template')) {
-      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-      injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
-      injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
-      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      injectedDocs += '```json\n' + a.content + '\n```';
-    }
-  }
-
-  return injectedDocs;
 }
 
 /**

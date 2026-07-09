@@ -73,11 +73,19 @@ The code job must be able to render this behavior with a **primitive stand-in** 
 
 `_meta` is written only by the FIRST task.
 
-### Asset-Reference Discipline
+### Upstream-Reference Discipline (read both catalogs FIRST)
 
-Every reference inside a spec entry MUST be the `id` of an asset entry
-in `game-art-assets.json`. Without references / Figma, your sibling
-assets task is likely producing inline-first entries — use those ids.
+`game-art-tokens.json` (palette/motion/lighting/hud) and
+`game-art-assets.json` (asset ids) are both authored before this task.
+`read_file` BOTH FIRST, then:
+
+- Every asset reference MUST be the `id` of an entry that actually exists
+  in `game-art-assets.json`.
+- Every color / motion / lighting / hud reference MUST name a token key
+  that actually exists in `game-art-tokens.json` (e.g. `palette.accent`,
+  `motionTone.combo.easing`) — do NOT invent keys (`palette.primary.*`
+  when the catalog has no such key) or inline raw values that the tokens
+  catalog already defines.
 
 ### Output Format
 
@@ -114,8 +122,8 @@ assets task is likely producing inline-first entries — use those ids.
 
 1. **Single category** per task
 2. **Behavior-only**: no asset bytes here
-3. **Asset references valid**: every id matches a sibling
-   `game-art-assets.json` entry
+3. **References valid**: every asset id matches a `game-art-assets.json`
+   entry AND every token ref matches a `game-art-tokens.json` key
 4. **Conservative numerics**: stay within the default ranges above
    unless the directive explicitly specifies otherwise
 5. **No UI surface keywords**
@@ -123,9 +131,12 @@ assets task is likely producing inline-first entries — use those ids.
 
 ### Workflow
 
-1. Re-read the directive's behavior descriptions
-2. For each entry's category, list the entries needed
-3. Fill in conservative-default fields, referencing asset ids from
-   the sibling assets task
-4. If a behavior specification feels under-determined, prefer fewer
+1. `read_file game-art-tokens.json` and `read_file game-art-assets.json` —
+   the token keys and asset ids you may reference. Do not proceed until you
+   know the exact keys/ids they define.
+2. Re-read the directive's behavior descriptions
+3. For each entry's category, list the entries needed
+4. Fill in conservative-default fields, referencing existing asset ids and
+   token keys only
+5. If a behavior specification feels under-determined, prefer fewer
    entries with cleaner specs over many speculative ones

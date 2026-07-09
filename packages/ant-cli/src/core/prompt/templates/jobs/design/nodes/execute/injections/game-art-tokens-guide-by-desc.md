@@ -32,7 +32,21 @@ magenta"), follow it; the concept's default mood gives the unspecified
 axes (silhouette / lighting / motion).
 
 #### 3. Single Source of Truth
-All assets and spec entries reference these tokens by dot notation.
+This file is the palette SSOT. All assets and spec entries reference these
+tokens by dot notation — they `read_file` this catalog and MUST use the exact
+key paths defined here.
+
+### Canonical palette namespace (fixed — do NOT invent parallel keys)
+
+- `palette.primary` / `accent` / `danger` / `outline` are **single role
+  colors** — each is a string hex. Do NOT turn `primary` into an object of
+  sub-colors (`palette.primary.mint`) — that breaks every downstream reference.
+- `palette.entities` is the **canonical home for the N distinct per-entity
+  colors** a board / puzzle / arcade game needs (blocks, tiles, pieces, …).
+  It is a dictionary keyed by the entity/block/tile id — one stable key per
+  distinct color. Assets and spec reference `palette.entities.<id>`. This is
+  the ONLY place N-way entity colors live; do NOT scatter them under invented
+  keys.
 
 ### JSON Structure
 
@@ -49,7 +63,10 @@ All assets and spec entries reference these tokens by dot notation.
     "accent": "#xxxxxx",
     "danger": "#xxxxxx",
     "background": ["#xxxxxx", "#xxxxxx"],
-    "outline": "#xxxxxx"
+    "outline": "#xxxxxx",
+    "entities": {
+      "<entity-or-block-id>": "#xxxxxx"
+    }
   },
   "silhouette": {
     "weight": "thin" | "medium" | "bold",
@@ -62,9 +79,21 @@ All assets and spec entries reference these tokens by dot notation.
   "motionTone": {
     "easing": "snappy" | "smooth" | "weighted",
     "scale": "subtle" | "moderate" | "expressive"
+  },
+  "hud": {
+    "spacingRhythm": "<base unit or scale name>",
+    "cornerRadius": { "panel": "<value>", "button": "<value>" },
+    "shadow": { "blurPx": 0, "opacity": 0.0, "offsetYPx": 0 },
+    "typography": { "fontFamily": "<font stack>", "weightDefault": 400, "weightBold": 700 }
   }
 }
 ```
+
+**HUD layer (D28)**: a game project has no separate `ui-tokens.json` — the
+React HUD overlay (menus / score / dialog) pulls its spacing / radius / shadow /
+typography from `hud` here. Populate it from the concept's mood so the HUD
+reads as one system with the in-canvas art. Omit `hud` only for a pure
+canvas-only game with no HTML overlay.
 
 ### Single-task constraint
 
@@ -76,10 +105,11 @@ All assets and spec entries reference these tokens by dot notation.
 <file path="visual/game-art/ant/game-art-tokens.json">
 {
   "_meta": { "gameArtTier": { "concept": "...", "perspective": "2d" } },
-  "palette": { ... },
+  "palette": { "primary": "...", "accent": "...", "danger": "...", "background": ["...","..."], "outline": "...", "entities": { "...": "..." } },
   "silhouette": { ... },
   "lighting": { ... },
-  "motionTone": { ... }
+  "motionTone": { ... },
+  "hud": { ... }
 }
 </file>
 ```
@@ -88,11 +118,18 @@ All assets and spec entries reference these tokens by dot notation.
 
 1. **Concept-aligned**: every value matches the chosen concept's mood
    table above (or a documented directive-driven shift)
-2. **Token-only**: no asset paths / behavior here
-3. **Valid JSON**: proper syntax, no trailing commas
+2. **Canonical namespace**: role colors are string hex under `palette.*`;
+   N-way entity colors live only under `palette.entities.<id>` — no invented
+   parallel keys, no object-valued `palette.primary`
+3. **HUD present** when the game has an HTML overlay (D28)
+4. **Token-only**: no asset paths / behavior here
+5. **Valid JSON**: proper syntax, no trailing commas
 
 ### Workflow
 
 1. Look up the concept's row in the table above
-2. Apply directive-specified shifts (palette overrides, etc.)
-3. Encode as `game-art-tokens.json`
+2. Enumerate the distinct entities/blocks/tiles the directive/PRD implies and
+   assign each a stable `palette.entities.<id>` color (strong mutual contrast)
+3. Apply directive-specified shifts (palette overrides, etc.)
+4. Populate `hud` from the concept mood if the game has an HTML overlay
+5. Encode as `game-art-tokens.json`

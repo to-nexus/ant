@@ -261,7 +261,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       || state.resolvedAction?.intent === 'gen-ui-figma'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
-    const isGameArtDesign = state.resolvedAction?.intentGroup === 'design-game-art';
+    const isGameArtDesign = state.resolvedAction?.intentGroup === 'design-game-art'
+      || state.resolvedAction?.intent === 'gen-game-art-figma'
+      || state.resolvedAction?.intent === 'gen-game-art-desc'
+      || state.resolvedAction?.intent === 'rev-game-art';
     const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';
 
     // Canonical destination: UI → visual/ui/ant, Game-Art → visual/game-art/ant,
