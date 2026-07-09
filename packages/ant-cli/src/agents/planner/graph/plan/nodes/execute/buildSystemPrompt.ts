@@ -1,5 +1,6 @@
 import { PlanGraphState, getPlanMode } from '../../state';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
+import type { PromptBuildResult } from '../../../../../../core/prompt/builder/PromptBuildConfig';
 import { getTargetPath } from '../plan/buildSystemPrompt';
 
 /**
@@ -17,7 +18,7 @@ import { getTargetPath } from '../plan/buildSystemPrompt';
  */
 export async function buildExecuteSystemPrompt(
   state: PlanGraphState,
-): Promise<{ prompt: string; injectedTemplates: string[]; basisInjected: boolean }> {
+): Promise<{ prompt: string; result: PromptBuildResult; injectedTemplates: string[]; basisInjected: boolean }> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Planner:Execute] PromptBuilder not available in state.deps');
 
@@ -64,6 +65,7 @@ export async function buildExecuteSystemPrompt(
 
   return {
     prompt: [result.user, result.system].filter(Boolean).join('\n\n---\n\n'),
+    result,
     injectedTemplates: result.injections ?? [],
     basisInjected: !!result.sections?.profiles,
   };

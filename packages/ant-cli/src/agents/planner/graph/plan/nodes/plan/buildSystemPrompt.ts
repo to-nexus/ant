@@ -1,6 +1,7 @@
 import { PlanGraphState, getPlanMode } from '../../state';
 import type { ConversationMessage } from '../../../../../common/graph/conversations';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
+import type { PromptBuildResult } from '../../../../../../core/prompt/builder/PromptBuildConfig';
 
 /**
  * Format conversation entries for the system prompt.
@@ -42,7 +43,7 @@ export function getTargetPath(state: PlanGraphState): string | undefined {
 export async function buildPlanSystemPrompt(
   state: PlanGraphState,
   compaction: { entries: ConversationMessage[]; summary?: string; wasCompacted: boolean },
-): Promise<{ prompt: string; injectedTemplates: string[]; basisInjected: boolean }> {
+): Promise<{ prompt: string; result: PromptBuildResult; injectedTemplates: string[]; basisInjected: boolean }> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Planner:Plan] PromptBuilder not available in state.deps');
 
@@ -103,6 +104,7 @@ export async function buildPlanSystemPrompt(
 
   return {
     prompt: [result.user, result.system].filter(Boolean).join('\n\n---\n\n'),
+    result,
     injectedTemplates: result.injections ?? [],
     basisInjected: !!result.sections?.profiles,
   };

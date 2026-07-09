@@ -36,11 +36,15 @@ import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStr
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
+import { PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../../core/context';
+import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
+import { composeMessages } from '../../../../../../core/utils/messageComposer';
+import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildExecuteSystemPrompt } from './buildSystemPrompt';
 import { getTargetPath } from '../plan/buildSystemPrompt';
-import { saveConversationToSession, pruneConversationHistory, isSafeStagingPath } from '../sessionWriter';
+import { saveConversationToSession, isSafeStagingPath } from '../sessionWriter';
 
 export function buildAuthoringMessage(directive: string, targetPath: string, mode: string, isKorean: boolean): string {
   if (mode === 'refactor') {
@@ -59,7 +63,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   console.log(`\n✍️  [Planner:Execute] Authoring document... (iteration ${recursionCount}/${state.recursionLimit})`);
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('generate', state._uiLocale || 'en'), 'generate');
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('planExecute', state._uiLocale || 'en'), 'execute');
   }
 
   // Per-node model: execute authors from the sealed brief → Sonnet
@@ -107,24 +111,34 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  // Fresh entry seeds the authoring message (directive + brief anchor); re-entry
-  // (execute → tool → execute) replays the pruned NODE_EXECUTE history.
+  // Build messages via the shared cache-aware composer (single owner — same
+  // path code/design execute use). The stable system + injections sections
+  // become `cache_control`-marked leading blocks so the prompt prefix is
+  // cached across execute → tool → execute re-entries instead of re-sent cold
+  // as a plain `system` string. On fresh entry the authoring message
+  // (directive + brief anchor) is appended as an uncached Block 3 part; on
+  // re-entry the pruned NODE_EXECUTE history rides as prior turns
+  // (composeMessages runs the same `compactRun` pruning as before).
   const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   const targetPath = getTargetPath(state) || '';
-  const messages: Array<{ role: string; content: any }> = [];
-  if (nodeExecute.length === 0) {
-    messages.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko') });
-  } else {
-    try {
-      messages.push(...(await pruneConversationHistory(nodeExecute)));
-    } catch (err) {
-      console.warn(`⚠️ [Planner:Execute] pruneConversationHistory failed, using raw history:`, err);
-      messages.push(...nodeExecute);
-    }
-  }
-  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-    messages.push({ role: 'user', content: 'Continue.' });
-  }
+  const initialBlocks = buildCacheableBlocks(built.result, {
+    runtimeParts: nodeExecute.length === 0
+      ? [buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko')]
+      : undefined,
+  });
+  const execTokenManager = new TokenBudgetManager({
+    areaBudgets: {
+      systemPrompt: 30_000,
+      projectContext: 30_000,
+      taskContext: 25_000,
+      conversationHistory: PLAN_CONVERSATION_HISTORY_BUDGET,
+    },
+  });
+  const { messages } = composeMessages({
+    initialBlocks,
+    priorTurns: nodeExecute as any,
+    tokenManager: execTokenManager,
+  });
 
   // generate → `<file>` write path (no edit_file); refactor → edit_file.
   const activeTools = plannerToolsForMode(planMode);
@@ -144,9 +158,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   await chatAPI.showChatStatus('placeholder');
 
   try {
-    applyEstimatedInputTokensFromMessages(state as any, [...messages, { role: 'system', content: systemPrompt }]);
+    applyEstimatedInputTokensFromMessages(state as any, messages);
     for await (const event of llm.stream(messages, {
-      system: systemPrompt,
       tools: toolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
