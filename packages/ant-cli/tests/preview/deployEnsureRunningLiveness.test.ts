@@ -41,21 +41,24 @@ describe('DeployService.ensureRunning cross-pod liveness', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('returns the cross-pod running state as-is when the target IS reachable', async () => {
-    const state = crossPodRunning('10.0.0.9', 4000);
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as net.AddressInfo).port;
+
+    const state = crossPodRunning('127.0.0.1', port);
     const { svc } = makeService(async () => state);
-    vi.spyOn(svc as any, 'isDeployStateReachable').mockResolvedValue(true);
     const metaRead = vi.spyOn((svc as any).metaStore, 'read');
 
     const result = await svc.ensureRunning(COORDS.tenantId, COORDS.userId, COORDS.projectId, COORDS.feature);
 
     expect(result).toBe(state);
     expect(metaRead).not.toHaveBeenCalled(); // no rehydrate
+    await new Promise<void>((r) => server.close(() => r()));
   });
 
   it('falls through to rehydrate (does NOT return the stale state) when the target is unreachable', async () => {
-    const state = crossPodRunning('10.0.0.9', 4000);
+    const state = crossPodRunning('10.0.0.9', 54321);
     const { svc } = makeService(async () => state);
-    vi.spyOn(svc as any, 'isDeployStateReachable').mockResolvedValue(false);
     vi.spyOn(svc as any, 'broadcastStatus').mockResolvedValue(undefined);
     // No meta → rehydrate returns null fast (no spawn). Proves we fell through.
     const metaRead = vi.spyOn((svc as any).metaStore, 'read').mockResolvedValue(null as any);
@@ -65,21 +68,5 @@ describe('DeployService.ensureRunning cross-pod liveness', () => {
     expect(result).not.toBe(state);   // stale state was rejected
     expect(result).toBeNull();
     expect(metaRead).toHaveBeenCalled(); // rehydrate was attempted on this pod
-  });
-
-  it('isDeployStateReachable: true for a live port, false for a closed one', async () => {
-    const { svc } = makeService(async () => null);
-    const server = net.createServer();
-    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-    const port = (server.address() as net.AddressInfo).port;
-
-    const aliveState: any = { host: '127.0.0.1', packages: [{ port }] };
-    await expect((svc as any).isDeployStateReachable(aliveState)).resolves.toBe(true);
-
-    await new Promise<void>((r) => server.close(() => r()));
-    await expect((svc as any).isDeployStateReachable(aliveState, 500)).resolves.toBe(false);
-
-    // Missing host/port → false, never throws.
-    await expect((svc as any).isDeployStateReachable({ host: '', packages: [] })).resolves.toBe(false);
   });
 });
