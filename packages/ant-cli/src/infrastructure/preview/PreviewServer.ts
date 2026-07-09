@@ -1435,19 +1435,18 @@ export class PreviewServer {
                   } catch { socket.destroy(); return; }
                 }
               }
-              // Validate the preview is still reachable (cross-pod liveness check)
-              const state = await this.previewService.ensureReachable(
-                pMatch.tenantId,
-                pMatch.userId,
-                pMatch.projectId,
-                pMatch.feature,
-              );
-              if (!state) { socket.destroy(); return; }
-
-              const internalKey = `${state.tenantId}:${state.userId}:${state.projectId}:${state.feature}`;
-              const target = resolvePreviewTarget({ host: state.host, packages: state.packages }, pMatch.serviceName, internalKey);
-              const targetHost = target?.targetHost ?? state.host;
-              const targetPort = target?.targetPort ?? state.port;
+              // Resolve the target directly from the already-matched label
+              // record (host/port/packages/serviceName). The HMR socket must
+              // NOT be gated on a cross-pod liveness probe: in a multi-replica
+              // deployment this upgrade can land on a non-owner pod, and a
+              // probe miss would both kill HMR and corrupt the (healthy)
+              // preview to 'stopped'. A genuinely dead target fails fast via
+              // openRawTunnel's own handshake timeout — forgiving + bounded,
+              // matching the HTTP path and deploy's non-destructive posture.
+              const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
+              const target = resolvePreviewTarget({ host: pMatch.host, packages: pMatch.packages }, pMatch.serviceName, internalKey);
+              const targetHost = target?.targetHost ?? pMatch.host;
+              const targetPort = target?.targetPort ?? pMatch.port;
               // Root-served: forward the path verbatim (no basePath prefix).
               openRawTunnel(req, socket, head, targetHost, targetPort, urlPath);
               return;
@@ -1538,8 +1537,12 @@ export class PreviewServer {
             socket.destroy();
             return;
           }
-          // Validate the preview is still reachable (cross-pod liveness check)
-          const mapping = await this.previewService.ensureReachable(
+          // Resolve the target from the preview record (phase-agnostic). The
+          // HMR socket must NOT be gated on a cross-pod liveness probe — a
+          // probe miss on a non-owner replica would kill HMR and corrupt a
+          // healthy preview to 'stopped'. A dead target fails fast via
+          // openRawTunnel's handshake timeout (forgiving + bounded).
+          const mapping = await this.stateStore.getPreview(
             tenantId,
             userId,
             projectId,
