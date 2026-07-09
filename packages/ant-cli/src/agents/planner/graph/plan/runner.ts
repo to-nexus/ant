@@ -22,6 +22,16 @@ import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, is
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';
 import { isInfrastructureInterruption, isMidGraphResumable } from '@ant/shared';
 
+/**
+ * Total node-loop history length across both loops (NODE_PLAN + NODE_EXECUTE).
+ * Used by the interruption save/restore guards — a non-empty node history means
+ * there is real progress worth persisting/restoring for resume.
+ */
+function nodeHistoryLen(convs?: Conversations): number {
+  if (!convs) return 0;
+  return (convs[CONV_KEYS.NODE_PLAN]?.length ?? 0) + (convs[CONV_KEYS.NODE_EXECUTE]?.length ?? 0);
+}
+
 export interface PlanRunnerParams {
   directive: string;
   language: 'ko' | 'en';
@@ -124,9 +134,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         
         // ✅ Restore conversations from session (enables LLM to continue from exact interruption point)
         if (session.state.conversations) {
-          const nodeGen = session.state.conversations[CONV_KEYS.NODE_GENERATE];
-          if (nodeGen?.length) {
-            console.log(`🔄 [PlanRunner] Restoring conversations (node:generate=${nodeGen.length} entries)`);
+          const nodeLen = nodeHistoryLen(session.state.conversations);
+          if (nodeLen) {
+            console.log(`🔄 [PlanRunner] Restoring conversations (${nodeLen} node history entries)`);
             initialState.conversations = { ...initialState.conversations, ...session.state.conversations };
           }
         }
@@ -147,8 +157,8 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         // ✅ Clarify continuation: previous run emitted a `<clarify>` card and
         // wrote `awaitingClarify=true` + RAC + conversations to session.
         // Restore everything so triage/detect can be skipped via
-        // routeAfterPlannerResolve and generate's entry hook can append the
-        // user's answer (state.overrideDirective) to NODE_GENERATE.
+        // routeAfterPlannerResolve and the plan node's entry hook can append
+        // the user's answer (state.overrideDirective) to NODE_PLAN.
         // Mirrors design/runner.ts:138-156 (canonical pattern).
         console.log(`🔄 [PlanRunner] Restoring awaitingClarify state from session`);
         initialState.isResume = true;
@@ -309,14 +319,14 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             },
           };
           // Only override conversations when non-empty (preserve existing from prior run)
-          const nodeGen = stateSnapshot.conversations?.[CONV_KEYS.NODE_GENERATE];
-          if (nodeGen?.length) {
+          const nodeLen = nodeHistoryLen(stateSnapshot.conversations);
+          if (nodeLen) {
             updates.conversations = stateSnapshot.conversations;
           }
           await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
             state: updates
           });
-          console.log(`💾 [PlanRunner] Saved state on interruption (${nodeGen?.length || 0} history entries)`);
+          console.log(`💾 [PlanRunner] Saved state on interruption (${nodeLen} history entries)`);
         } catch (err) {
           console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
         }
@@ -377,8 +387,8 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
               jobTiming: jobTimingRef || session.state?.jobTiming,
               // ✅ Save latest conversations from stateSnapshot for resume
-              conversations: stateSnapshot?.conversations?.[CONV_KEYS.NODE_GENERATE]?.length
-                ? stateSnapshot.conversations
+              conversations: nodeHistoryLen(stateSnapshot?.conversations)
+                ? stateSnapshot!.conversations
                 : session.state?.conversations,
               recursionCount: recursionLimit,  // Hit the limit
               recursionLimit,

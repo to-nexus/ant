@@ -154,7 +154,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
 
   // 6. Load multi-turn conversation + recent session turns
   let sessionMain: ConversationMessage[] = [];
-  let nodeGenerate: ConversationMessage[] = [];
+  let nodePlan: ConversationMessage[] = [];
   let isConversationContinuation = false;
   let nodeHistoryReset = false;
   let recentTurnSummaries: string[] | undefined;
@@ -168,8 +168,10 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
       console.log(`   Conversation: ${sessionMain.length} entries loaded from session`);
     }
 
-    if (sessionData.state?.conversations?.[CONV_KEYS.NODE_GENERATE]) {
-      nodeGenerate = sessionData.state.conversations[CONV_KEYS.NODE_GENERATE];
+    // Clarify continuation resumes into the `plan` node (clarify lives there),
+    // which reads NODE_PLAN — seed that channel from the persisted history.
+    if (sessionData.state?.conversations?.[CONV_KEYS.NODE_PLAN]) {
+      nodePlan = sessionData.state.conversations[CONV_KEYS.NODE_PLAN];
     }
 
     const shouldContinueConversation = sessionMain.length > 0 && state.overrideDirective && (
@@ -258,9 +260,9 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     recentTurnSummaries,
     conversations: {
       [CONV_KEYS.SESSION_MAIN]: sessionMain,
-      ...(nodeGenerate.length > 0 && !nodeHistoryReset
-        ? { [CONV_KEYS.NODE_GENERATE]: nodeGenerate }
-        : { [CONV_KEYS.NODE_GENERATE]: [] }),
+      ...(nodePlan.length > 0 && !nodeHistoryReset
+        ? { [CONV_KEYS.NODE_PLAN]: nodePlan }
+        : { [CONV_KEYS.NODE_PLAN]: [] }),
     },
     isConversationContinuation,
     resolvedArtifacts: documents.length > 0 ? documents : undefined,

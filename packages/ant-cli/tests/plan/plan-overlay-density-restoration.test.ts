@@ -54,6 +54,13 @@ const RULES_FILE = path.join(
   TEMPLATES_ROOT,
   'jobs/plan/nodes/plan/variants/default/rules.md',
 );
+// After the plan→execute split, the authoring-side disciplines (periphery
+// chapter ban, Required-core/Conditional/Optional document structure) live in
+// the execute (authoring) rules; the plan rules own observation/clarify/seal.
+const EXECUTE_RULES_FILE = path.join(
+  TEMPLATES_ROOT,
+  'jobs/plan/nodes/execute/variants/default/rules.md',
+);
 
 function read(p: string): string {
   return fs.readFileSync(p, 'utf-8');
@@ -232,10 +239,11 @@ describe('Game plan overlay — required-core / conditional / optional partition
 // 5) Plan rules.md — periphery chapters explicitly forbidden
 // ──────────────────────────────────────────────────────────────────────
 
-describe('Plan rules.md (Phase B) — periphery chapter discipline', () => {
+describe('Execute rules.md (authoring) — periphery chapter discipline', () => {
   let src: string;
   beforeAll(() => {
-    src = read(RULES_FILE);
+    // Authoring disciplines moved to the execute node in the plan→execute split.
+    src = read(EXECUTE_RULES_FILE);
   });
 
   it('removes the 7-chapter "Standard PRD Structure" template', () => {

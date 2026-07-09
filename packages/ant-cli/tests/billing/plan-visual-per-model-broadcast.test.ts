@@ -49,8 +49,9 @@ describe('broadcastTokenUsageByModel helper', () => {
 });
 
 describe('plan / visual broadcast sites are wired for per-model cost', () => {
-  it('planner generate node broadcasts per-model before updateTaskQueue', () => {
-    expect(read('agents/planner/graph/plan/nodes/generate/index.ts')).toContain('broadcastTokenUsageByModel');
+  it('planner plan + execute nodes broadcast per-model before updateTaskQueue', () => {
+    expect(read('agents/planner/graph/plan/nodes/plan/index.ts')).toContain('broadcastTokenUsageByModel');
+    expect(read('agents/planner/graph/plan/nodes/execute/index.ts')).toContain('broadcastTokenUsageByModel');
   });
 
   const visualNodes = ['render', 'sketch', 'engrave', 'explain', 'direct'];

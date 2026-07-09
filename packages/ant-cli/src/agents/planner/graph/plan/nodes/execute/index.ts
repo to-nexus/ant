@@ -1,0 +1,387 @@
+/**
+ * Execute Node (Planner Job)
+ *
+ * The authoring phase. Consumes ONLY `directive + planText` on a fresh
+ * NODE_EXECUTE channel — the plan-loop research transcript is severed, so the
+ * research momentum / auditor-persona tail that used to drift the monolith
+ * never reaches authoring. Streams the document (`<file>` in generate mode,
+ * `edit_file` in refactor mode), writes to disk, records the session run, and
+ * finalizes inline (no `learn` tail node).
+ *
+ * There is no clarify here — clarify lives in the plan node. There is no
+ * authoring-turn self-loop (plan-job-valiant-pebble) — the context is already
+ * clean and re-anchored, so a missing `<file>` in generate mode is a genuine
+ * terminal error.
+ */
+
+import * as path from 'path';
+import * as fsPromises from 'fs/promises';
+import { PlanGraphState, getPlanMode } from '../../state';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
+import {
+  extractTokenUsageFromStreamEvent,
+  accumulateTokenUsage,
+  upsertPhaseTokenUsage,
+  maybeUpdatePhaseTokenUsage,
+  applyEstimatedInputTokensFromMessages,
+  broadcastTokenUsageByModel,
+} from '../../../../../common/graph/llmHelpers';
+import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
+import { v4 as uuidv4 } from 'uuid';
+import { plannerToolsForMode } from '../tools';
+import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
+import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
+import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
+import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
+import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
+import { logPrompt } from '../../../../../../core/utils/promptLogger';
+import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
+import { extractLLMInfo } from '../../../../../../core/ports/workflow';
+import { buildExecuteSystemPrompt } from './buildSystemPrompt';
+import { getTargetPath } from '../plan/buildSystemPrompt';
+import { saveConversationToSession, pruneConversationHistory, isSafeStagingPath } from '../sessionWriter';
+
+export function buildAuthoringMessage(directive: string, targetPath: string, mode: string, isKorean: boolean): string {
+  if (mode === 'refactor') {
+    return isKorean
+      ? `아래 지시에 따라 \`${targetPath}\` 문서를 편집하세요. 시스템 프롬프트의 브리프가 편집 범위의 근거입니다. \`edit_file\`로 범위 내 변경만 적용하세요.\n\n지시(원문):\n${directive}`
+      : `Apply the scoped edit to \`${targetPath}\` per the directive below. The brief in the system prompt is the edit-scope anchor. Use \`edit_file\` for the in-scope change only.\n\nDirective (verbatim):\n${directive}`;
+  }
+  return isKorean
+    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 하나의 \`<file path="${targetPath}">\` 태그 안에 출력하세요.\n\n지시(원문):\n${directive}`
+    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Emit the complete document inside a single \`<file path="${targetPath}">\` tag.\n\nDirective (verbatim):\n${directive}`;
+}
+
+export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
+  const recursionCount = (state.recursionCount || 0) + 1;
+  const planMode = getPlanMode(state);
+  console.log(`\n✍️  [Planner:Execute] Authoring document... (iteration ${recursionCount}/${state.recursionLimit})`);
+
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('generate', state._uiLocale || 'en'), 'generate');
+  }
+
+  const llm = state.deps?.llm;
+  if (!llm) throw new Error('LLM is required for execute node');
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'execute', 0,
+      undefined, extractLLMInfo(llm),
+      recursionCount, state.recursionLimit,
+    );
+  }
+
+  const built = await buildExecuteSystemPrompt(state);
+  const systemPrompt = built.prompt;
+
+  if (state._httpJobId && state.featurePath) {
+    try {
+      await logPrompt(
+        state.featurePath, state._httpJobId, 'plan', 'execute',
+        systemPrompt.length,
+        {
+          templatePath: TEMPLATE_PATHS.plannerExecute.base,
+          usedTemplates: [
+            TEMPLATE_PATHS.plannerExecute.base,
+            TEMPLATE_PATHS.plannerExecute.rules!,
+            ...built.injectedTemplates,
+          ],
+          injectedVariables: {
+            directive: state.directive || '',
+            mode: planMode,
+            targets: state.resolvedAction?.target || [],
+            domain: state.resolvedAction?.domain ?? '(unset)',
+            basisInjected: built.basisInjected,
+            hasPlanText: !!state.planText,
+            planTextLen: state.planText?.length ?? 0,
+            recursionCount,
+          },
+        },
+      );
+    } catch (err) {
+      console.warn(`⚠️ [Planner:Execute] Failed to log prompt:`, err);
+    }
+  }
+
+  // Fresh entry seeds the authoring message (directive + brief anchor); re-entry
+  // (execute → tool → execute) replays the pruned NODE_EXECUTE history.
+  const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+  const targetPath = getTargetPath(state) || '';
+  const messages: Array<{ role: string; content: any }> = [];
+  if (nodeExecute.length === 0) {
+    messages.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko') });
+  } else {
+    try {
+      messages.push(...(await pruneConversationHistory(nodeExecute)));
+    } catch (err) {
+      console.warn(`⚠️ [Planner:Execute] pruneConversationHistory failed, using raw history:`, err);
+      messages.push(...nodeExecute);
+    }
+  }
+  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+    messages.push({ role: 'user', content: 'Continue.' });
+  }
+
+  // generate → `<file>` write path (no edit_file); refactor → edit_file.
+  const activeTools = plannerToolsForMode(planMode);
+  const toolDefinitions = activeTools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+
+  const chatAPI = getChatAPIClient();
+  const parser = new XMLStreamParser();
+  const renderStrategy = new CommonRenderStrategy(
+    chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'planner',
+  );
+  const orchestrator = new StreamOrchestrator({ parser, renderStrategy, existingFiles: new Set() });
+
+  let responseText = '';
+  const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
+  const isFirstCall = nodeExecute.length === 0;
+
+  await chatAPI.showChatStatus('placeholder');
+
+  try {
+    applyEstimatedInputTokensFromMessages(state as any, [...messages, { role: 'system', content: systemPrompt }]);
+    for await (const event of llm.stream(messages, {
+      system: systemPrompt,
+      tools: toolDefinitions,
+      maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      enableThinking: isFirstCall,
+    })) {
+      if (event.type === 'retry') {
+        responseText = '';
+        toolCalls.length = 0;
+        continue;
+      }
+      maybeUpdatePhaseTokenUsage(state, event);
+      await orchestrator.processEvent(event);
+      if (event.type === 'text' && event.text) responseText += event.text;
+      if (event.type === 'tool_use' && event.toolUse) {
+        const { id, name, input } = event.toolUse;
+        await chatAPI.sendLLMEvent(event);
+        toolCalls.push({ id: id || uuidv4(), name, args: input });
+      }
+      if (event.type === 'done') {
+        const capturedUsage = extractTokenUsageFromStreamEvent(event);
+        if (capturedUsage) {
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+          upsertPhaseTokenUsage(state, 'execute', capturedUsage);
+        }
+        if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
+          broadcastTokenUsageByModel(state as any);
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpJobId, null, [], [], recursionCount, state.recursionLimit, state.tokenUsage,
+          );
+        }
+        if (state.phaseTokenUsages && state.deps?.kanbanUpdate?.updatePhaseTokenUsages) {
+          state.deps.kanbanUpdate.updatePhaseTokenUsages(state.phaseTokenUsages);
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error(`❌ [Planner:Execute] LLM error: ${error.message}`);
+    throw error;
+  }
+
+  const updatedHistory: ConversationMessage[] = [...nodeExecute];
+  if (nodeExecute.length === 0) {
+    updatedHistory.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko') });
+  }
+
+  // ── Tool-call round: short-circuit to the tool node (stay in execute loop) ──
+  if (toolCalls.length > 0) {
+    await orchestrator.finalize(true);
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', 0);
+    }
+    updatedHistory.push(buildAssistantMessage({ text: responseText || undefined, toolCalls }) as ConversationMessage);
+    if (state.deps?.stateSnapshot) {
+      state.deps.stateSnapshot.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: updatedHistory };
+      state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
+    }
+    return {
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
+      pendingToolCalls: toolCalls,
+      tokenUsage: state.tokenUsage,
+      recursionCount,
+      _activePhase: 'execute',
+    };
+  }
+
+  await orchestrator.finalize(true);
+
+  // ── Authoring done — extract the document, write to disk, record session ──
+  let resolvedTargetRelPath = getTargetPath(state);
+  let generatedDocument: string | undefined;
+
+  if (planMode !== 'refactor') {
+    const files = orchestrator.getRegistry().getAllFiles();
+    const matchedFile = resolvedTargetRelPath
+      ? files.find(f => f.path.includes(path.basename(resolvedTargetRelPath!)))
+      : files[0];
+    generatedDocument = matchedFile?.content || undefined;
+
+    // dusk-mounding-pilot writer hardening — promote a safe LLM-emitted path
+    // if RAC.target was empty, so a fully streamed document is not lost.
+    if (generatedDocument && !resolvedTargetRelPath && matchedFile?.path) {
+      const emitted = matchedFile.path;
+      if (isSafeStagingPath(emitted)) {
+        console.warn(`⚠️ [Planner:Execute] RAC.target empty — falling back to LLM-emitted path "${emitted}".`);
+        resolvedTargetRelPath = emitted;
+      } else {
+        console.error(`❌ [Planner:Execute] RAC.target empty AND emitted path "${emitted}" failed whitelist; refusing to write.`);
+      }
+    }
+  } else if (resolvedTargetRelPath) {
+    // refactor: edits were applied via edit_file; read back the file for session metadata.
+    const editTargetPath = path.join(state.featurePath, resolvedTargetRelPath);
+    try {
+      generatedDocument = await fsPromises.readFile(editTargetPath, 'utf-8');
+    } catch {
+      console.log(`📝 [Planner:Execute] No target file found (no edits made)`);
+    }
+  }
+
+  if (generatedDocument && resolvedTargetRelPath && planMode !== 'refactor') {
+    const targetAbsPath = path.join(state.featurePath, resolvedTargetRelPath);
+    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+      state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
+    }
+    try {
+      await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
+      await fsPromises.writeFile(targetAbsPath, generatedDocument, 'utf-8');
+      console.log(`📝 [Planner:Execute] Written ${generatedDocument.length} chars to ${resolvedTargetRelPath}`);
+    } catch (error: any) {
+      console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
+      throw error;
+    }
+    notifyFileTree(state, resolvedTargetRelPath);
+  }
+
+  if (generatedDocument && resolvedTargetRelPath) {
+    await recordSessionRun(state, planMode, resolvedTargetRelPath, generatedDocument);
+    await emitRefineImpactIfPrd(state, planMode, resolvedTargetRelPath, responseText);
+  }
+
+  // Writer integrity guard — in generate mode a `<file>` MUST have been emitted.
+  // The context is clean and re-anchored, so a miss is a genuine terminal error
+  // (no authoring-turn self-loop — that was the monolith's crutch).
+  if (!generatedDocument && planMode === 'generate') {
+    const missTarget = resolvedTargetRelPath ?? '(unresolved)';
+    console.error(
+      `❌ [Planner:Execute] NO <file> artifact for target "${missTarget}" — response was not wrapped in a <file> tag. Nothing written to disk.`,
+    );
+    try {
+      const notice = state.language === 'ko'
+        ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — 응답이 \`<file>\` 형식으로 출력되지 않았습니다. 다시 시도해 주세요.`
+        : `\n\n> ⚠️ No document was saved — the response was not emitted as a \`<file>\` document. Please try again.`;
+      await chatAPI.sendLLMEvent({ type: 'text', text: notice });
+    } catch (err) {
+      console.warn(`⚠️ [Planner:Execute] Failed to surface no-artifact notice:`, err);
+    }
+  }
+
+  await chatAPI.finalizeMessage();
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', 0);
+  }
+
+  updatedHistory.push({ role: 'assistant', content: responseText });
+  const finalHistory = [...updatedHistory];
+  await saveConversationToSession(state, {
+    nodeKey: CONV_KEYS.NODE_EXECUTE,
+    responseText,
+    generatedDocument,
+    nodeHistory: finalHistory,
+  });
+
+  return {
+    conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
+    pendingToolCalls: [],
+    tokenUsage: state.tokenUsage,
+    recursionCount,
+  };
+}
+
+/** Router: decide next node after execute. */
+export function routeAfterExecute(state: PlanGraphState): 'tool' | '__end__' {
+  if (state.pendingToolCalls && state.pendingToolCalls.length > 0) return 'tool';
+  return '__end__';
+}
+
+// ── helpers salvaged from the old generate node ──
+
+function notifyFileTree(state: PlanGraphState, relPath: string): void {
+  if (!state.deps?.fileTreeUpdate) return;
+  const projectId = process.env.ANT_PROJECT_ID;
+  const featureName = process.env.ANT_FEATURE_NAME;
+  if (!projectId || !featureName) {
+    console.warn(`⚠️ [Planner:Execute] Cannot notify file tree: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
+    return;
+  }
+  try {
+    state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+    if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
+      (state.deps.fileTreeUpdate as any).addUnseenArtifacts(projectId, featureName, [relPath]);
+    }
+  } catch (error: any) {
+    console.warn(`⚠️ [Planner:Execute] Failed to notify file tree update: ${error.message}`);
+  }
+}
+
+async function recordSessionRun(
+  state: PlanGraphState,
+  planMode: string,
+  relPath: string,
+  generatedDocument: string,
+): Promise<void> {
+  try {
+    const session = state.deps?.session;
+    if (!session) return;
+    const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
+    const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+    const now = new Date().toISOString();
+    // Carry the jobId so this run is a Job-tab-visible entry (the /jobs endpoint
+    // skips runs without a jobId).
+    await session.addRun(projectId, featureName, 'plan', {
+      runId: 0,
+      job: 'plan',
+      timestamp: now,
+      jobId: state._httpJobId,
+      status: 'completed',
+      completedAt: now,
+      input: {
+        type: 'directive',
+        source: planMode === 'refactor' ? state.resolvedAction?.target?.[0] : undefined,
+        summary: (state.directive || '').substring(0, 200),
+      },
+      output: {
+        planSummary: `${planMode} completed (${generatedDocument.length} chars)`,
+      },
+    });
+  } catch (error: any) {
+    console.warn(`⚠️ [Planner:Execute] Failed to record session: ${error.message}`);
+  }
+}
+
+async function emitRefineImpactIfPrd(
+  state: PlanGraphState,
+  planMode: string,
+  relPath: string,
+  responseText: string,
+): Promise<void> {
+  if (planMode !== 'refactor') return;
+  if (path.basename(relPath) !== 'prd.md') return;
+  try {
+    const { emitRefineImpactAlert } = await import('../../../../../../core/refine/refineImpactAlert');
+    await emitRefineImpactAlert({
+      featurePath: state.featurePath,
+      updatedDoc: 'prd.md',
+      llmResponse: responseText,
+      directive: state.directive,
+    });
+  } catch (error: any) {
+    console.warn(`⚠️ [Planner:Execute] Failed to emit refine impact alert: ${error?.message ?? error}`);
+  }
+}

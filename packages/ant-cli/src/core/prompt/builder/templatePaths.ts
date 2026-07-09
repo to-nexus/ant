@@ -173,6 +173,10 @@ export const TEMPLATE_PATHS = {
     base: 'jobs/plan/nodes/plan/variants/default/base',
     rules: 'jobs/plan/nodes/plan/variants/default/rules',
   },
+  plannerExecute: {
+    base: 'jobs/plan/nodes/execute/variants/default/base',
+    rules: 'jobs/plan/nodes/execute/variants/default/rules',
+  },
 
   // ─── creator / visual ────────────────────────────────────────────────────
   // Visual nodes render via PromptBuilder.render() (single-shot) rather than

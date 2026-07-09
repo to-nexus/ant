@@ -1716,6 +1716,18 @@
       "basis-registry"
     ]
   },
+  "jobs/plan/nodes/execute/variants/default/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/plan/nodes/execute/variants/default/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
   "jobs/plan/nodes/plan/variants/default/base": {
     "sources": [
       "build-callsite",
