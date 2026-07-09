@@ -5,13 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { AvailableModel } from '../hooks/useAvailableModels';
 import { resolveModelDisplay } from '../utils/resolveModelDisplay';
 
-const PROVIDER_ICON: Record<string, string> = {
-  anthropic: '⬡',
-  google: '◈',
-  openai: '◉',
-  deepseek: '⬢',
-};
-
 interface ProviderAccent {
   fg: string;
   bg: string;
@@ -263,9 +256,6 @@ export function ModelSelectChip({
               textAlign: 'left',
             }}
           >
-            <span style={{ fontSize: 11, opacity: 0.6 }}>
-              {PROVIDER_ICON[inheritedModel.provider] || ''}
-            </span>
             <span
               style={{
                 flex: 1,
@@ -360,9 +350,6 @@ export function ModelSelectChip({
                     color: accent.fg,
                   }}
                 >
-                  <span aria-hidden style={{ fontSize: 11 }}>
-                    {PROVIDER_ICON[provider] || ''}
-                  </span>
                   <span>{provider}</span>
                   {isProviderUnconfigured(provider) && (
                     <span
@@ -415,9 +402,6 @@ export function ModelSelectChip({
                         textAlign: 'left',
                       }}
                     >
-                      <span style={{ fontSize: 11, opacity: 0.5 }}>
-                        {PROVIDER_ICON[model.provider] || ''}
-                      </span>
                       <span
                         style={{
                           flex: 1,
