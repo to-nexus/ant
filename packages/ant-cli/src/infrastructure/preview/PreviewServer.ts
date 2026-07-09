@@ -1383,10 +1383,19 @@ export class PreviewServer {
                   } catch { socket.destroy(); return; }
                 }
               }
-              const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
-              const target = resolvePreviewTarget({ host: pMatch.host, packages: pMatch.packages }, pMatch.serviceName, internalKey);
-              const targetHost = target?.targetHost ?? pMatch.host;
-              const targetPort = target?.targetPort ?? pMatch.port;
+              // Validate the preview is still reachable (cross-pod liveness check)
+              const state = await this.previewService.ensureReachable(
+                pMatch.tenantId,
+                pMatch.userId,
+                pMatch.projectId,
+                pMatch.feature,
+              );
+              if (!state) { socket.destroy(); return; }
+
+              const internalKey = `${state.tenantId}:${state.userId}:${state.projectId}:${state.feature}`;
+              const target = resolvePreviewTarget({ host: state.host, packages: state.packages }, pMatch.serviceName, internalKey);
+              const targetHost = target?.targetHost ?? state.host;
+              const targetPort = target?.targetPort ?? state.port;
               // Root-served: forward the path verbatim (no basePath prefix).
               openRawTunnel(req, socket, head, targetHost, targetPort, urlPath);
               return;
@@ -1477,7 +1486,13 @@ export class PreviewServer {
             socket.destroy();
             return;
           }
-          const mapping = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
+          // Validate the preview is still reachable (cross-pod liveness check)
+          const mapping = await this.previewService.ensureReachable(
+            tenantId,
+            userId,
+            projectId,
+            feature,
+          );
           if (!mapping) {
             socket.destroy();
             return;

@@ -25,6 +25,7 @@ import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
+import { resolveCrossPodLiveness } from '../../../../../core/utils/crossPodLiveness';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../../../../utils/userConfig';
 import { DevProcessControl, isPortConflictOutput, OwnedProcessRecord } from '../../../../../core/process/DevProcessControl';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
@@ -1901,14 +1902,65 @@ export class PreviewService {
       this.onStatusChange(serverKey);
     }
     
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: stoppedCount > 0
         ? `Stopped ${stoppedCount} process(es)`
         : 'Cleaned up preview state from registry'
     };
   }
-  
+
+  /**
+   * Ensure a preview is reachable before trusting its {host, port} for proxying.
+   *
+   * Cross-pod requests must validate that the owning pod is still alive.
+   * Locally-owned previews (running on this pod) are always trusted. For
+   * cross-pod records, a fast TCP probe is performed; unreachable cross-pod
+   * records are marked 'stopped' and return null.
+   *
+   * @returns The PreviewState if reachable/locally-owned, or null if not found
+   *          or unreachable
+   */
+  async ensureReachable(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): Promise<PreviewState | null> {
+    if (!this.stateStore) return null;
+
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    const state = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
+
+    if (!state || state.phase !== 'running') {
+      return null;
+    }
+
+    const isLocallyOwned = this.previewServers.has(serverKey);
+    const liveness = await resolveCrossPodLiveness(
+      { host: state.host, port: state.port },
+      isLocallyOwned,
+    );
+
+    if (liveness === 'local-owned' || liveness === 'reachable') {
+      return state;
+    }
+
+    // Unreachable cross-pod record — mark it stopped so FE knows to restart
+    logger.warn(
+      `[Preview] Cross-pod running state unreachable (host=${state.host}:${state.port}) — marking stopped: ${serverKey}`,
+      { component: 'PreviewService' },
+    );
+
+    try {
+      await this.stateStore.updatePreview(tenantId, userId, projectId, feature, { phase: 'stopped' });
+    } catch (err) {
+      logger.warn(`[Preview] Failed to mark preview stopped: ${err}`, { component: 'PreviewService' });
+    }
+
+    return null;
+  }
+
   /**
    * Get preview server status
    */

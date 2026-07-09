@@ -23,7 +23,6 @@
 
 import * as os from 'os';
 import * as fs from 'fs';
-import * as net from 'net';
 import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
@@ -48,6 +47,7 @@ import { isSubdomainRouting } from '../../core/config/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
 import { logger } from '../../utils/logger';
+import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
 
 /**
  * Structured reason codes returned from startDeploy so the HTTP layer can
@@ -908,33 +908,6 @@ export class DeployService {
     return null;
   }
 
-  /**
-   * Fast TCP liveness probe for a deploy's target host:port. A cross-pod
-   * `running` state is only trustworthy if its owner still accepts connections;
-   * a rolled/crashed pod leaves a stale record that would otherwise hang the
-   * proxy on a dead target. Probes the first package's port (a dead pod fails
-   * every port). Never throws — any failure resolves `false`.
-   */
-  private isDeployStateReachable(state: DeployState, timeoutMs = 1000): Promise<boolean> {
-    const host = state.host;
-    const port = state.packages?.[0]?.port;
-    if (!host || port == null) return Promise.resolve(false);
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const socket = net.connect({ host, port });
-      const done = (ok: boolean) => {
-        if (settled) return;
-        settled = true;
-        socket.destroy();
-        resolve(ok);
-      };
-      socket.setTimeout(timeoutMs);
-      socket.once('connect', () => done(true));
-      socket.once('timeout', () => done(false));
-      socket.once('error', () => done(false));
-    });
-  }
-
   async ensureRunning(
     tenantId: string, userId: string, projectId: string, feature: string
   ): Promise<DeployState | null> {
@@ -954,8 +927,15 @@ export class DeployService {
     // until the transport timeout, then 502 with no recovery in the subdomain /
     // WS serving paths. If unreachable, fall through to rehydrate on this pod.
     if (state?.phase === 'running' && state.podId && state.podId !== selfPod) {
-      if (await this.isDeployStateReachable(state)) {
-        return state;
+      const port = state.packages?.[0]?.port;
+      if (port != null) {
+        const liveness = await resolveCrossPodLiveness(
+          { host: state.host, port },
+          false,  // not locally owned (it's cross-pod)
+        );
+        if (liveness === 'reachable') {
+          return state;
+        }
       }
       logger.warn(
         `[Deploy] Cross-pod running state unreachable (podId=${state.podId} host=${state.host}) — rehydrating on ${selfPod}: ${key}`,
