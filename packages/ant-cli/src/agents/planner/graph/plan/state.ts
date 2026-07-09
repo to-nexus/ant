@@ -10,7 +10,7 @@ import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import type { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
 import type { TriageableState, WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { PromptPort } from '../../../../core/ports/prompt';
-import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata, ExecutionTierId } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata, ExecutionTierId, TokenUsageByModel } from '@ant/shared';
 import type { Conversations } from '../../../common/graph/conversations';
 import type { FeatureContext } from '../../../../core/context/featureContextBuilder';
 
@@ -75,6 +75,15 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   _uiLocale?: 'ko' | 'en';
   recursionCount: number;
   recursionLimit: number;
+
+  /**
+   * Per-model job-level token usage, keyed by model id. Declared explicitly
+   * here (the reducer-form annotation in ResolvableFields isn't surfaced on
+   * this hand-written interface the way plain `tokenUsage` is). Carried across
+   * the plan→execute node boundary so the per-model billing breakdown includes
+   * every node's model, not just the last node's.
+   */
+  tokenUsageByModel?: TokenUsageByModel;
 
   /**
    * 5-tier execution strategy — LLM direct output from the Tier Entry Node

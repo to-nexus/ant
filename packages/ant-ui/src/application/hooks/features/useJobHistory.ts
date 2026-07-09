@@ -44,8 +44,10 @@ export function useJobHistory(): UseJobHistoryReturn {
       const result = await fetchJobHistory(selectedProject, selectedFeature);
       setEntries(result.jobs);
     } catch (err: any) {
+      // Keep the last-good entries on failure — a transient error (e.g. a
+      // mid-run endpoint blip) must NOT blank the whole dropdown, which would
+      // leave only the synthesized current job visible.
       setError(err?.message || 'Failed to load job history');
-      setEntries([]);
     } finally {
       setLoading(false);
     }

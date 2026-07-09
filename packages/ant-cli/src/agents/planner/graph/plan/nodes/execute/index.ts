@@ -180,7 +180,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       if (event.type === 'done') {
         const capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
-          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true, modelId: (llm as any).modelName });
           upsertPhaseTokenUsage(state, 'execute', capturedUsage);
         }
         if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
@@ -219,6 +219,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
       pendingToolCalls: toolCalls,
       tokenUsage: state.tokenUsage,
+      tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       _activePhase: 'execute',
     };
@@ -315,6 +316,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
     pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
+    tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
   };
 }

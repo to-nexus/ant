@@ -126,7 +126,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
             isNonTaskJob(jobType)
               ? Promise.resolve(null)
               : fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
-            fetchJobHistory(state.selectedProject!, state.selectedFeature!),
+            // History is best-effort here (drives auto-select only) — its
+            // failure must not fail the whole session/kanban load.
+            fetchJobHistory(state.selectedProject!, state.selectedFeature!).catch(() => ({ jobs: [] })),
           ]);
 
           if (get().selectedJobType !== jobType) {
