@@ -39,6 +39,12 @@ const COMMON_ACTORS = {
     label: 'LLM API',
     icon: '🤖'
   },
+  imageGen: {
+    id: 'image-gen',
+    type: ActorType.IMAGE_GEN,
+    label: 'Image Generation',
+    icon: '🎨'
+  },
   embedding: {
     id: 'embedding-model',
     type: ActorType.EMBEDDING,
@@ -80,7 +86,7 @@ const COMMON_ACTORS = {
 /**
  * Actor 매핑 (실제 Port 사용 기반)
  */
-const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }> = {
+export const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }> = {
   // Architect Code
   'architect:code:resolve': {
     actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.vectorDb.id, COMMON_ACTORS.localStorage.id],
@@ -176,13 +182,59 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     actors: [COMMON_ACTORS.llm.id],
     description: 'Classify intent and check agent/job match'
   },
-  'planner:plan:generate': {
+  'planner:plan:detect': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Classify tier and resolve action context'
+  },
+  'planner:plan:plan': {
     actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id],
-    description: 'Generate/refine PRD, stream file card, write to disk'
+    description: 'Observe codebase, clarify scope, seal the planning brief'
+  },
+  'planner:plan:execute': {
+    actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id],
+    description: 'Author PRD from the brief, stream the file card, write to disk'
   },
   'planner:plan:tool': {
     actors: [COMMON_ACTORS.fileSystem.id],
     description: 'Execute tools (read workspace, web search)'
+  },
+
+  // Creator Visual
+  'creator:visual:resolve': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load context and session state'
+  },
+  'creator:visual:triage': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Classify intent and check agent/job match'
+  },
+  'creator:visual:detect': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Classify tier and resolve action context'
+  },
+  'creator:visual:direct': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Art direction — plan the visual approach'
+  },
+  'creator:visual:sketch': {
+    actors: [COMMON_ACTORS.imageGen.id],
+    description: 'Explore candidate sketches via image generation'
+  },
+  'creator:visual:render': {
+    actors: [COMMON_ACTORS.imageGen.id],
+    description: 'Render the final image'
+  },
+  'creator:visual:engrave': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Generate SVG / vector code from the render'
+  },
+  'creator:visual:deliver': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Write generated assets to the workspace'
+  },
+  'creator:visual:explain': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Answer visual questions (text, no image gen)'
   }
 };
 
