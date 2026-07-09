@@ -50,7 +50,7 @@ export interface FileRendererConfig {
    * Job context for the codebase-write guard.
    * - `code` + `codePhase === 'execute'` → `codebase/` writes allowed
    * - `code` + `codePhase === 'plan'` → `codebase/` writes rejected
-   * - `design` / `planner` → `codebase/` writes rejected (artifact paths only)
+   * - `design` / `plan` → `codebase/` writes rejected (artifact paths only)
    *
    * Mirrors `ToolExecutionContext.allowMutateInCodebase` for the
    * tool-handler path — the streaming `<file>`/`<append>`/`<edit>`/
@@ -61,7 +61,7 @@ export interface FileRendererConfig {
    * `ToolExecutionContext.allowShellExecution` and never goes through
    * the FileRenderer path.
    */
-  jobType?: 'code' | 'design' | 'planner';
+  jobType?: 'code' | 'design' | 'plan';
   /**
    * For `jobType === 'code'`, identifies whether the renderer is
    * driven by the plan or the execute phase. Plan-phase artifacts
@@ -108,7 +108,7 @@ export class FileRenderer {
   private fileSystem?: FileSystemPort;  // ✅ Add fileSystem property
   private fileTreeUpdate?: FileTreeUpdatePort;  // ✅ For real-time file tree updates
   private writeImmediately: boolean;
-  private jobType?: 'code' | 'design' | 'planner';
+  private jobType?: 'code' | 'design' | 'plan';
   private codePhase?: 'plan' | 'execute';
   private featurePath?: string;
   private codebasePath?: string;
