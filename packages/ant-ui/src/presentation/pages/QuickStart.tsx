@@ -268,7 +268,9 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       const language = useStore.getState().language;
       await Promise.all([createFeature(projectId, feat, language), delay(1000)]);
 
-      useStore.getState().addFeatureOptimistic(feat);
+      // Pass projectId explicitly: this runs before setSelectedProject on the
+      // new-project path, so relying on selectedProject would mis-tag the entry.
+      useStore.getState().addFeatureOptimistic(feat, projectId);
 
       // Step: plan
       setActiveStep('plan');

@@ -13,7 +13,7 @@ export interface ProjectActions {
   fetchFeatures: (projectId?: string) => Promise<Feature[]>;
   setFeatures: (features: Feature[]) => void;
   // ✅ Optimistic feature addition (bypasses fetchFeatures race)
-  addFeatureOptimistic: (featureName: string) => void;
+  addFeatureOptimistic: (featureName: string, projectId?: string) => void;
   // ✅ Session restore actions
   startSessionRestore: (expectedFeature: string | undefined) => void;
   completeSessionRestore: () => void;
@@ -35,6 +35,7 @@ export const createProjectSlice: StateCreator<
   selectedProject: undefined,
   selectedFeature: undefined,
   features: [],
+  pendingFeatures: [],
   // ✅ Session restore tracking
   isSessionRestoring: false,
   sessionRestoreCompleted: false,
@@ -268,25 +269,65 @@ export const createProjectSlice: StateCreator<
       if (featureList.length !== filteredFeatures.length) {
         console.log(`[Store] ⚠️ Filtered out base branches:`, featureList.filter(f => baseBranchNames.includes(f.name.toLowerCase())).map(f => f.name));
       }
-      
-      set({ features: filteredFeatures });
-      return filteredFeatures;
+
+      // Non-regressing merge: a successful POST is durable (backend creates the
+      // feature dir synchronously before responding), so a GET that omits a
+      // just-created feature is a stale cross-pod NFS dir-cache read, not
+      // authority. Keep such optimistic entries for a short grace window and
+      // reconcile once the server catches up. Per-project tag prevents leaking
+      // into another project's list and self-clears without cleanup elsewhere.
+      const GRACE_MS = 30_000;
+      const now = Date.now();
+      // Read fresh (not the entry snapshot): an optimistic add may have landed
+      // during the network round-trip above.
+      const pending = ((get() as any).pendingFeatures ?? []) as ProjectState['pendingFeatures'];
+      const serverNames = new Set(filteredFeatures.map(f => f.name));
+      const keptPending = pending.filter(p =>
+        p.projectId !== targetProject
+          ? true
+          : !serverNames.has(p.name) && now - p.at < GRACE_MS,
+      );
+      const mergedExtra = keptPending
+        .filter(p => p.projectId === targetProject && !serverNames.has(p.name))
+        .map(p => ({ name: p.name, path: `feature/${p.name}` }));
+      const merged = [...filteredFeatures, ...mergedExtra];
+
+      set({ features: merged, pendingFeatures: keptPending });
+      return merged;
     } catch (error) {
-      console.error('[Store] Failed to fetch features:', error);
-      set({ features: [] });
-      return [];
+      // Do NOT wipe the list to []: a transient GET failure must not discard a
+      // known-good (incl. optimistically-created) feature list.
+      console.error('[Store] Failed to fetch features (list preserved):', error);
+      return (get() as any).features as Feature[];
     }
   },
 
   setFeatures: (features) => set({ features }),
 
-  addFeatureOptimistic: (featureName) => {
-    const currentFeatures = (get() as any).features as Feature[];
+  addFeatureOptimistic: (featureName, projectId) => {
+    const state = get() as any;
+    const targetProject = projectId ?? state.selectedProject;
+    const currentFeatures = state.features as Feature[];
+    const pending = (state.pendingFeatures ?? []) as ProjectState['pendingFeatures'];
+
     const exists = currentFeatures.some((f) => f.name === featureName);
+    const nextFeatures = exists
+      ? currentFeatures
+      : [...currentFeatures, { name: featureName, path: `feature/${featureName}` }];
+
+    // Record the pending tag so a stale post-create fetchFeatures can't drop it.
+    // Keyed by project so it never leaks into another project's list.
+    const nextPending = targetProject
+      ? [
+          ...pending.filter(p => !(p.projectId === targetProject && p.name === featureName)),
+          { name: featureName, projectId: targetProject, at: Date.now() },
+        ]
+      : pending;
+
     if (!exists) {
       console.log(`[Store] ⚡ Optimistic add feature: ${featureName}`);
-      set({ features: [...currentFeatures, { name: featureName, path: `feature/${featureName}` }] });
     }
+    set({ features: nextFeatures, pendingFeatures: nextPending });
   },
   
   // ✅ Session restore actions
