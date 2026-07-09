@@ -24,6 +24,13 @@ export interface ProjectState {
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   features: Feature[];
+  /**
+   * Optimistically-created features not yet reflected by the server's
+   * git-dir listing. `fetchFeatures` merges these back (per-project,
+   * grace-windowed) so a stale cross-pod GET can't drop a just-created
+   * feature. Transient — never persisted.
+   */
+  pendingFeatures: { name: string; projectId: string; at: number }[];
   // ✅ Session restore tracking
   isSessionRestoring: boolean;  // Session restore가 진행 중인지
   sessionRestoreCompleted: boolean;  // Session restore가 완료되었는지 (한 번만 true)
