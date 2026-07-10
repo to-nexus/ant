@@ -20,7 +20,7 @@ import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
-import { isSubdomainRouting, getPreviewBaseDomain, getPreviewRoutingMode } from '../../../../core/config/previewRouting';
+import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
 import {
   resolvePreviewTarget,
   resolvePreviewLabel,
@@ -59,9 +59,9 @@ const escapeRegExp = sharedEscapeRegExp;
  * survives the production log level (`warn`+). High-signal, low-volume during a
  * debug session; off by default.
  */
-function trace(message: string, meta?: unknown): void {
+function trace(message: string): void {
   if (!process.env.ANT_PREVIEW_TRACE) return;
-  logger.warn(`[PreviewProxy][trace] ${message}`, { component: 'PreviewProxy' }, meta);
+  logger.warn(`[PreviewProxy][trace] ${message}`, { component: 'PreviewProxy' });
 }
 
 /**
@@ -165,31 +165,16 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // correctly by construction.
     if (isSubdomainRouting()) {
       const label = extractLabelFromHost(req.headers.host, getPreviewBaseDomain());
-      trace('subdomain entry', {
-        host: req.headers.host,
-        xForwardedHost: req.headers['x-forwarded-host'],
-        mode: getPreviewRoutingMode(),
-        label,
-        url: req.url,
-      });
       if (!label) return next();
 
       const match = resolvePreviewLabel(await portRegistry.listPreviews(), label);
       if (!match) {
-        trace('label MISS → 404', { label });
+        trace(`${req.headers.host} label=${label} → MISS 404`);
         res.status(404).json({ error: 'Preview not found' });
         return;
       }
       const { tenantId, userId, projectId, feature, serviceName } = match;
       const internalKey = `${tenantId}:${userId}:${projectId}:${feature}`;
-      trace('label match', {
-        internalKey,
-        serviceName,
-        ownerPodId: match.podId,
-        ownerHost: match.host,
-        ownerPort: match.port,
-        selfPodId: selfPodId(),
-      });
 
       if (!isOwner(req, { tenantId, userId })) {
         res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
@@ -214,10 +199,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         state.host,
         req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
       );
-      trace('owner-forward decision', {
-        forward: ownerForward ?? 'served-local',
-        alreadyForwarded: req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
-      });
+      trace(
+        `${req.headers.host} label=${label} owner=${state.podId ?? '?'}@${state.host}:${state.port} self=${selfPodId()} ` +
+        `→ ${ownerForward ? `fwd ${ownerForward.forwardHost}:${ownerForward.forwardPort}` : 'local'}`,
+      );
       if (ownerForward) {
         // Fast-fail: probe the owner's service port (1s) before committing to a
         // fetch that would otherwise hang to the 45s deadline (→ front-tier 504)
@@ -239,7 +224,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         const fwdUrl = `http://${ownerForward.forwardHost}:${ownerForward.forwardPort}${req.url}`;
         const fwdHeaders = buildForwardHeaders(req);
         fwdHeaders[PREVIEW_PEER_FORWARD_HEADER] = '1';
-        trace('forwarding to owner', { fwdUrl });
         try {
           const response = await fetchWithTransportRetry(fwdUrl, {
             method: req.method,
@@ -278,7 +262,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
 
       const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
-      trace('served-local dev fetch', { targetUrl });
       try {
         const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
         const response = await fetchWithTransportRetry(targetUrl, {

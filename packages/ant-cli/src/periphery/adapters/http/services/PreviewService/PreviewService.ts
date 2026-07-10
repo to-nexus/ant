@@ -314,7 +314,7 @@ export class PreviewService {
     // K8s typically sets POD_IP via downward API
     const podIp = process.env.POD_IP;
     if (podIp) {
-      logger.warn(`[Preview] Using POD_IP: ${podIp}`, { component: 'PreviewService' });
+      logger.debug(`[Preview] Using POD_IP: ${podIp}`, { component: 'PreviewService' });
       return podIp;
     }
     
@@ -327,7 +327,7 @@ export class PreviewService {
           // Note: Node.js 18+ uses numeric family (4/6), older versions use strings
           const isIPv4 = iface.family === 'IPv4' || (iface.family as unknown) === 4;
           if (!iface.internal && isIPv4) {
-            logger.warn(`[Preview] Using network interface IP: ${iface.address} (${name})`, { component: 'PreviewService' });
+            logger.debug(`[Preview] Using network interface IP: ${iface.address} (${name})`, { component: 'PreviewService' });
             return iface.address;
           }
         }
