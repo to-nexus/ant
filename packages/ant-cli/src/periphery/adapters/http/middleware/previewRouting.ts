@@ -16,6 +16,7 @@
  *     helper resolves ONLY the slug-matched case and returns null otherwise.
  */
 
+import * as os from 'os';
 import { logger } from '../../../../utils/logger';
 import { packageSlug, toUrlKey, parseUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { toDnsLabel } from '../services/PreviewService/utils/previewLabel';
@@ -35,10 +36,20 @@ export interface PreviewTarget {
  */
 export const PREVIEW_PEER_FORWARD_HEADER = 'x-ant-preview-fwd';
 
-/** This ant-preview replica's own address (K8s `POD_IP`), or undefined off-cluster. */
+/** This replica's raw `POD_IP` (or undefined) — for boot/diagnostic logging only. */
 export function selfPodHost(): string | undefined {
   const v = process.env.POD_IP;
   return v && v.trim() ? v.trim() : undefined;
+}
+
+/**
+ * This replica's identity for cross-pod ownership — the pod hostname, EXACTLY the
+ * value `PreviewService` records as `podId` (`os.hostname()`). Always present (no
+ * env dependency), so owner detection never silently disables itself. This mirrors
+ * `DeployService.ensureRunning`'s `state.podId !== os.hostname()` check.
+ */
+export function selfPodId(): string {
+  return os.hostname();
 }
 
 /**
@@ -52,7 +63,7 @@ export function selfServicePort(): number {
 }
 
 export interface OwnerForwardDecision {
-  /** Owning pod's address (its `POD_IP`, from the Redis record's `host`). */
+  /** Owning pod's address (its `host`, from the Redis record — a routable pod IP). */
   forwardHost: string;
   /** ant-preview service port on that pod (same as ours). */
   forwardPort: number;
@@ -69,18 +80,26 @@ export interface OwnerForwardDecision {
  * whole request to the owner's ant-preview SERVICE port (open) with the original
  * `Host` preserved, and the owner proxies to its own `localhost` dev server.
  *
- * Returns null when the request can be served from this pod directly: off-cluster
- * (no POD_IP — local dev / tests), owner host unknown / loopback, owner IS this pod,
- * or the request was already forwarded once (loop guard against a stale record).
+ * Ownership is decided by `podId` (`os.hostname()`) — the SAME signal deploy uses —
+ * NOT `POD_IP`. (An earlier version gated on `process.env.POD_IP`, which the record
+ * writer does not require: `getPodHost()` falls back to the eth0 IP when POD_IP is
+ * unset, so records looked cross-pod-routable while the forwarder believed it was
+ * off-cluster and disabled itself. Using the always-present hostname removes that
+ * silent-inert failure.)
+ *
+ * Returns null when the request can be served from this pod directly: no owner podId
+ * (stale/legacy record → forgiving fallback to record host), owner IS this pod,
+ * owner host unknown/loopback, or the request was already forwarded once (loop guard
+ * against a stale owner record bouncing a request between pods).
  */
 export function resolveOwnerForward(
+  ownerPodId: string | undefined,
   ownerHost: string | undefined,
   alreadyForwarded: boolean,
 ): OwnerForwardDecision | null {
-  const self = selfPodHost();
-  if (!self) return null; // off-cluster: single process, no cross-pod concept
   if (alreadyForwarded) return null; // owner couldn't serve locally → don't bounce again
-  if (!ownerHost || ownerHost === 'localhost' || ownerHost === self) return null; // owner is us
+  if (!ownerPodId || ownerPodId === selfPodId()) return null; // owned locally (or unknown → forgiving)
+  if (!ownerHost || ownerHost === 'localhost') return null; // owner host not routable
   return { forwardHost: ownerHost, forwardPort: selfServicePort() };
 }
 
@@ -138,6 +157,8 @@ export interface PreviewLabelPool {
   projectId: string;
   feature: string;
   host?: string;
+  /** Owning pod hostname (`os.hostname()`) — drives cross-pod owner-forwarding. */
+  podId?: string;
   port: number; // entry port
   packages?: ReadonlyArray<{ type: string; port: number; slug?: string; urlKey?: string }>;
 }
@@ -150,6 +171,8 @@ export interface PreviewLabelMatch {
   /** 5th urlKey segment of the matched frontend (multi-frontend); undefined for a 4-part / single-frontend / top-level label. */
   serviceName?: string;
   host: string;
+  /** Owning pod hostname (`os.hostname()`) — passed to `resolveOwnerForward`. */
+  podId?: string;
   /** Entry (first frontend) port — the fallback when no per-package serviceName. */
   port: number;
   packages: ReadonlyArray<{ type: string; port: number; slug?: string; urlKey?: string }>;
@@ -188,6 +211,7 @@ export function resolvePreviewLabel(
         feature: st.feature,
         serviceName,
         host: st.host || 'localhost',
+        podId: st.podId,
         port: st.port,
         packages: st.packages || [],
       };
