@@ -33,6 +33,14 @@ describe('token-usage channels are declared (billing root-cause guard)', () => {
     expect(DesignGraphChannels).toHaveProperty('tokenUsageByModel');
   });
 
+  it('both graphs declare the per-task per-model twin channel (worker delta carry)', () => {
+    // The reset-per-task per-model counter is mutated in the worker subgraph and
+    // reported as a delta — an undeclared field would be dropped each node hop,
+    // collapsing per-model billing to a single task.
+    expect(CodeGraphChannels).toHaveProperty('_currentTaskTokenUsageByModel');
+    expect(DesignGraphChannels).toHaveProperty('_currentTaskTokenUsageByModel');
+  });
+
   it('the shared Resolvable→Triageable→Detectable chain (planner) declares tokenUsageByModel', () => {
     expect(ResolvableFields).toHaveProperty('tokenUsage');
     expect(ResolvableFields).toHaveProperty('tokenUsageByModel');

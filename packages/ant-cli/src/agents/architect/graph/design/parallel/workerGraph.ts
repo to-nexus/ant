@@ -150,14 +150,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
     const { TaskTimingHelper } = await import('../../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
+    const { getTaskTokenUsage, rollUpTaskUsageToJob } = await import('../../../../common/graph/llmHelpers');
 
     const taskTokenUsage = getTaskTokenUsage(state);
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
 
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
+    // Roll into worker job-level totals, preserving per-model attribution. The
+    // worker also reports `_currentTaskTokenUsageByModel` as a delta to the
+    // orchestrator (TaskWorker), which is the parallel-mode billing SSOT.
+    rollUpTaskUsageToJob(state);
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
 

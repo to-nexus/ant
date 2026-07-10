@@ -141,3 +141,101 @@ export function computeModelCostBreakdownUsd(
 export function costOfTaskUsage(modelId: string, usage: TaskTokenUsage): number {
   return computeCallCostUsdSafe(modelId, usage).usd;
 }
+
+/**
+ * Total input-side tokens of one usage record = new input + cache-read +
+ * cache-creation. This is the model-INDEPENDENT quantity that must be
+ * conserved between the aggregate `tokenUsage` and the summed per-model map;
+ * a drop between them is the signature of a per-model accounting bug. Used by
+ * the broadcaster anti-shrink guard and the settle-time safety-net.
+ */
+export function inputSideTokens(u: CallUsage): number {
+  return u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
+}
+
+/** Sum {@link inputSideTokens} across every model in a per-model usage map. */
+export function sumInputSideTokens(byModel: Record<string, CallUsage>): number {
+  let total = 0;
+  for (const u of Object.values(byModel)) total += inputSideTokens(u);
+  return total;
+}
+
+export interface ReconcileResult {
+  /** The map to price — either the original (no drop) or an augmented copy. */
+  byModel: Record<string, TaskTokenUsage>;
+  /** True when the safety-net augmented the map (a drop was detected). */
+  corrected: boolean;
+  /** Input-side tokens that were missing from the per-model map. */
+  shortfallInput: number;
+  /** Output tokens that were missing from the per-model map. */
+  shortfallOutput: number;
+  /** Model the shortfall was attributed to (when corrected). */
+  targetModelId?: string;
+}
+
+/**
+ * Verify-before-settle safety-net. The per-model billing map MUST conserve the
+ * job's authoritative aggregate token totals; a large shortfall is the
+ * signature of a per-model accounting bug (e.g. a partial map that under-charges
+ * ~55×). When the summed per-model input-side tokens fall below the aggregate by
+ * more than `tolerance`, attribute the missing tokens to the most-expensive
+ * model PRESENT in the map (the shortfall is almost always that model's dropped
+ * usage; pricing it at full input rate is conservative — a regression
+ * over-charges slightly rather than silently under-charging). Falls back to
+ * {@link MOST_EXPENSIVE_MODEL_ID} when the map is empty/degenerate.
+ *
+ * Pure: caller supplies the authoritative aggregate totals (from
+ * `snapshot.tokenUsage` / reconstructed from per-task usage). Never mutates the
+ * input map.
+ */
+export function reconcilePerModelUsage(
+  byModel: Record<string, TaskTokenUsage>,
+  aggregateInputSide: number,
+  aggregateOutput: number,
+  opts: { tolerance?: number } = {},
+): ReconcileResult {
+  const tolerance = opts.tolerance ?? 0.02;
+  const perModelInput = sumInputSideTokens(byModel);
+  let perModelOutput = 0;
+  for (const u of Object.values(byModel)) perModelOutput += u.outputTokens;
+
+  const noop: ReconcileResult = {
+    byModel,
+    corrected: false,
+    shortfallInput: 0,
+    shortfallOutput: 0,
+  };
+  if (aggregateInputSide <= 0) return noop;
+  if (perModelInput >= aggregateInputSide * (1 - tolerance)) return noop;
+
+  const shortfallInput = aggregateInputSide - perModelInput;
+  const shortfallOutput = Math.max(0, aggregateOutput - perModelOutput);
+
+  // Most-expensive model present (by input rate); else the conservative default.
+  let targetModelId = MOST_EXPENSIVE_MODEL_ID;
+  let bestRate = -1;
+  for (const id of Object.keys(byModel)) {
+    const r = MODEL_RATE_CARD[id]?.input ?? -1;
+    if (r > bestRate) {
+      bestRate = r;
+      targetModelId = id;
+    }
+  }
+
+  const augmented: Record<string, TaskTokenUsage> = {};
+  for (const [id, u] of Object.entries(byModel)) augmented[id] = { ...u };
+  const entry = (augmented[targetModelId] ??= {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    callCount: 0,
+  });
+  // Attribute the whole shortfall to raw input (full rate) — conservative.
+  entry.inputTokens += shortfallInput;
+  entry.outputTokens += shortfallOutput;
+  entry.totalTokens = entry.inputTokens + entry.outputTokens;
+
+  return { byModel: augmented, corrected: true, shortfallInput, shortfallOutput, targetModelId };
+}

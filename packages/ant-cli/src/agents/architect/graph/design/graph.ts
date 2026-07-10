@@ -89,13 +89,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   // ✅ FIGMA CONNECTION LOST INTERRUPTION: Figma MCP failed N consecutive times
   if (state._figmaConnectionLost && state.currentTask) {
     const { TaskTimingHelper } = await import('../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
-    
-    const taskTokenUsage = getTaskTokenUsage(state);
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
-    
+    const { rollUpTaskUsageToJob } = await import('../../../common/graph/llmHelpers');
+
+    // Roll the paused task's usage into the job totals, preserving per-model
+    // attribution (execute/explain tagged the per-node model at task level).
+    rollUpTaskUsageToJob(state);
+
     const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
     (pausedTask as any).interrupted = true;
     
@@ -197,18 +196,16 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   if (state.currentTask) {
     // ✅ Get helpers
     const { TaskTimingHelper } = await import('../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
-    
+    const { getTaskTokenUsage, rollUpTaskUsageToJob } = await import('../../../common/graph/llmHelpers');
+
     // ✅ Get task-level token usage
     const taskTokenUsage = getTaskTokenUsage(state);
-    
+
     // ✅ Complete task with timing and token usage
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
-    
-    // ✅ Accumulate task tokens into job-level tokenUsage
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
+
+    // ✅ Roll task tokens into job-level totals, preserving per-model attribution
+    rollUpTaskUsageToJob(state);
     
     // ✅ Log completion
     if (completedTask.timing?.elapsedTime) {
@@ -489,6 +486,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       },
     },
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
+    // Seed accumulators with pre-parallel job-level usage (design estimating /
+    // decompose) so its per-model usage is never dropped — mirrors the code job.
+    state.tokenUsage,
+    state.tokenUsageByModel,
   );
 
   registerActiveOrchestrator(orchestrator);
@@ -656,6 +657,9 @@ export const DesignGraphChannels = {
   turnId: Annotation<any>,
   jobTiming: Annotation<any>,
   _currentTaskTokenUsage: Annotation<any>,
+  // Per-task per-model twin — declared so the worker subgraph carries the
+  // reset-per-task per-model delta (used for correct per-model billing rollup).
+  _currentTaskTokenUsageByModel: Annotation<any>,
   _estimatingTokenUsage: Annotation<any>,
   // Job-level token accumulators — MUST be declared so `accumulateTokenUsage`'s
   // writes survive node transitions (an undeclared field is dropped each hop).

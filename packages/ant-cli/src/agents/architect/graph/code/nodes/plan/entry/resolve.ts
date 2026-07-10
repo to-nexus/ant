@@ -269,6 +269,12 @@ async function handleFreshTaskEntry(
   if (nextTask.tokenUsage) {
     state._currentTaskTokenUsage = { ...nextTask.tokenUsage };
   }
+  // Per-model carry seed (lockstep with the aggregate seed above) — the
+  // requeued parent owns its pre-split per-model usage so the reported per-task
+  // per-model delta matches the aggregate delta at completion.
+  if (nextTask.tokenUsageByModel) {
+    state._currentTaskTokenUsageByModel = { ...nextTask.tokenUsageByModel };
+  }
 
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
