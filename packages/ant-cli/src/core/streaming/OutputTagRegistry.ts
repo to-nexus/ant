@@ -635,20 +635,6 @@ register({
 });
 
 register({
-  name: 'gameContentTier',
-  pattern: /<gameContentTier>\s*[\s\S]*?\s*<\/gameContentTier>/i,
-  axis: {
-    intent: 'decision',
-    processing: ['consumed-suppressed', 'post-stream'],
-    persistence: ['sealed-state'],
-    blocking: 'non-blocking',
-  },
-  extract: (text) => extractTagBody(text, 'gameContentTier'),
-  promptContract:
-    'Emit `<gameContentTier>{...JSON...}</gameContentTier>` for game-domain content classification. Genre × coreLoop must satisfy the matrix gate.',
-});
-
-register({
   name: 'serviceVirtualization',
   pattern: /<serviceVirtualization>\s*[\s\S]*?\s*<\/serviceVirtualization>/i,
   axis: {

@@ -20,7 +20,6 @@ import {
   VISUAL_TIER_LAYER_KEYS,
   GAME_ART_TIER_TEMPLATE_PATHS,
   GAME_ART_TIER_AXIS_KEYS,
-  GAME_CONTENT_TIER_TEMPLATE_PATHS,
   TIER_KEYS,
   isTierActive,
   shouldEmitVisualTierSpatialFloor,
@@ -130,7 +129,7 @@ export class PromptBuilder implements PromptPort {
 
   /**
    * Render only the basis section (stack + language + framework + visualTier
-   * + gameArtTier + gameContentTier + domain). For nodes that use render() but
+   * + gameArtTier + domain). For nodes that use render() but
    * still need basis context (e.g., plan / verify / error / test-code hooks).
    *
    * Phase 1 (BC4) — `slot` is REQUIRED. Callers MUST pass
@@ -466,7 +465,6 @@ export class PromptBuilder implements PromptPort {
       `gameEngine=${basis.techTier?.frontend?.gameEngine ?? basis.techTier?.backend?.gameEngine ?? 'none'}, ` +
       `visualTier=${basis.visualTier ? Object.keys(basis.visualTier).join(',') : 'none'}, ` +
       `gameArtTier=${basis.gameArtTier ? Object.keys(basis.gameArtTier).join(',') : 'none'}, ` +
-      `gameContentTier=${basis.gameContentTier ? Object.keys(basis.gameContentTier).join(',') : 'none'}, ` +
       `taskTechTiers=${taskTechTiers?.length || 0}`
     );
 
@@ -488,9 +486,6 @@ export class PromptBuilder implements PromptPort {
           break;
         case 'gameArtTier':
           await this.renderGameArtTier(sections, basis, job, outPaths);
-          break;
-        case 'gameContentTier':
-          await this.renderGameContentTier(sections, basis, job, outPaths);
           break;
       }
     }
@@ -670,26 +665,6 @@ export class PromptBuilder implements PromptPort {
       }
     }
     await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
-  }
-
-  private async renderGameContentTier(
-    sections: string[],
-    basis: Basis,
-    job: string,
-    outPaths?: Set<string>,
-  ): Promise<void> {
-    const gct = basis.gameContentTier;
-    if (!gct) return;
-    const hasAnyAxis = !!(gct.genre || gct.coreLoop);
-    if (!hasAnyAxis) return;
-    await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.preamble(), outPaths);
-    if (gct.genre) {
-      await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.genre(gct.genre), outPaths);
-    }
-    if (gct.coreLoop) {
-      await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.coreLoop(gct.coreLoop), outPaths);
-    }
-    await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
   }
 
   /**

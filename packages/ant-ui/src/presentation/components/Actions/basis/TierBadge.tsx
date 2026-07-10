@@ -1,6 +1,6 @@
 import { Lock } from 'lucide-react';
 
-export type TierVariant = 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier';
+export type TierVariant = 'techTier' | 'visualTier' | 'gameArtTier';
 
 export interface TierBadgeData {
   keyLabel: string;
@@ -60,14 +60,6 @@ const VARIANT_STYLES: Record<TierVariant, {
       border: '1px solid oklch(88% 0.08 85)',
     },
     keyColor: 'oklch(70% 0.10 85)',
-  },
-  gameContentTier: {
-    normal: {
-      background: 'oklch(96% 0.05 155)',
-      color: 'oklch(40% 0.14 155)',
-      border: '1px solid oklch(88% 0.08 155)',
-    },
-    keyColor: 'oklch(60% 0.10 155)',
   },
 };
 

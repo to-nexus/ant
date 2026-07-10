@@ -40,7 +40,6 @@ const BASE_VARS: Record<string, any> = {
   isExplicitPipeline: false,
   visualTierActive: false,
   gameArtTierActive: false,
-  gameContentTierActive: false,
   domainTierActive: false,
   needsBoundaryClassification: false,
   specClarifyBypassed: false,

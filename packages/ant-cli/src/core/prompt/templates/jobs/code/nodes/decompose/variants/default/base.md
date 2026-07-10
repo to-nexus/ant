@@ -164,20 +164,6 @@ Output the game-art tier in `<gameArtTier>` tags after `<techTier>` (before `<ta
 - Unknown axes are silently dropped; unknown values for known axes are dropped at parse time and the slot falls back to the default-on-retry value.
 {{/if}}
 
-{{#if gameContentTierActive}}
-**Step 1.6: Determine GameContentTier (game-domain content policy)**
-
-Two axes:
-- `genre` — game genre identity (sub-genre, css-only inline production scope). Candidates: {{{gameGenreCandidates}}}.
-- `coreLoop` — player loop pattern (matrix-narrowed by the resolved genre). Candidates: {{{gameCoreLoopCandidates}}}.
-
-Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3 with cascading drops" → `genre=match3`, `coreLoop=solve`; "Snake clone with food and walls" → `genre=arcadeSnake`, `coreLoop=survive`).
-
-Output the game content tier in `<gameContentTier>` tags after `<gameArtTier>` (before `<tasks>`):
-
-<gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
-{{/if}}
-
 **Step 2: Break into Tasks**
 
 Break this specification into a prioritized list of implementation tasks.

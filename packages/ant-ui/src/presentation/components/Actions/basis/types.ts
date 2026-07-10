@@ -15,7 +15,7 @@ import type { BasisSlotConfig } from '@ant/shared';
  *   5. wiring options inside `useBasisWizard.getOptionsForStep`,
  *   6. handling the new layerKeys inside `useBasisWizard.selectVariant`/`goToStep`.
  */
-export type TierKey = 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier';
+export type TierKey = 'techTier' | 'visualTier' | 'gameArtTier';
 
 export interface BasisWizardState {
   activeTier: TierKey;
@@ -43,10 +43,6 @@ export interface BasisWizardState {
       // time and never enter wizard state.
       concept?: string;
       perspective?: string;
-    };
-    gameContentTier: {
-      genre?: string;
-      coreLoop?: string;
     };
   };
 }

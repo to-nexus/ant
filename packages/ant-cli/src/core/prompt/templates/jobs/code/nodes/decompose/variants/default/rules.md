@@ -1061,12 +1061,6 @@ Output in this exact order:
 The body is a comma-separated `axis=value` list. Phase 4 emits all 7 axes (concept / perspective / entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile).
 {{/if}}
 
-{{#if gameContentTierActive}}
-**{{#if needsBoundaryClassification}}{{#if gameArtTierActive}}4{{else}}3{{/if}}{{else}}{{#if gameArtTierActive}}3{{else}}2{{/if}}{{/if}}. `<gameContentTier>` tag** (game-domain content policy — see Step 1.6 above):
-
-<gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
-{{/if}}
-
 {{#if serviceVirtualizationTagActive}}
 **`<serviceVirtualization>` tag** (Service Virtualization build policy):
 

@@ -7,11 +7,7 @@
  * matrix predicates that the live decision pipeline enforces — otherwise
  * the system would default to a value that the parser itself rejects.
  *
- * Three predicates:
- *
- *   (a) `gameContentTier.defaultOnRetryExhaustion = { genre, coreLoop }`
- *       — `genre ∈ GAME_GENRE_VARIANTS`, `coreLoop ∈ GAME_CORE_LOOP_VARIANTS`,
- *         and `(genre, coreLoop)` ∈ `GENRE_CORELOOP_MATRIX[genre]` (I9).
+ * Two predicates:
  *
  *   (b) `gameArtTier.defaultOnRetryExhaustion = { concept, perspective,
  *        entityCatalog, motionPattern, particleProfile, projectilePolicy,
@@ -34,9 +30,6 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  GAME_GENRE_VARIANTS,
-  GAME_CORE_LOOP_VARIANTS,
-  GENRE_CORELOOP_MATRIX,
   GAME_ART_CONCEPT_VARIANTS,
   GAME_ART_PERSPECTIVE_VARIANTS,
   GAME_ART_ENTITY_CATALOG_VARIANTS,
@@ -73,31 +66,6 @@ describe('D40 — Decision Default × Matrix Consistency', () => {
       // A missing/garbled tag must degrade to BUILD (SV generation on), never to
       // a value the parser would itself reject.
       expect(def.defaultOnRetryExhaustion).toEqual({ optedOut: false });
-    });
-  });
-
-  describe('gameContentTier default × matrix (I9)', () => {
-    const def = findTag<{ genre?: string; coreLoop?: string }>('gameContentTier');
-
-    it('default genre ∈ GAME_GENRE_VARIANTS', () => {
-      const g = def.defaultOnRetryExhaustion?.genre;
-      expect(g).toBeDefined();
-      expect(GAME_GENRE_VARIANTS as readonly string[]).toContain(g!);
-    });
-
-    it('default coreLoop ∈ GAME_CORE_LOOP_VARIANTS', () => {
-      const c = def.defaultOnRetryExhaustion?.coreLoop;
-      expect(c).toBeDefined();
-      expect(GAME_CORE_LOOP_VARIANTS as readonly string[]).toContain(c!);
-    });
-
-    it('default (genre, coreLoop) pair satisfies GENRE_CORELOOP_MATRIX', () => {
-      const { genre, coreLoop } = def.defaultOnRetryExhaustion ?? {};
-      expect(genre).toBeDefined();
-      expect(coreLoop).toBeDefined();
-      const allowed = GENRE_CORELOOP_MATRIX[genre as keyof typeof GENRE_CORELOOP_MATRIX];
-      expect(allowed).toBeDefined();
-      expect(allowed as readonly string[]).toContain(coreLoop!);
     });
   });
 

@@ -9,7 +9,6 @@ import {
   type TechTierConfig,
   type VisualTier,
   type GameArtTier,
-  type GameContentTier,
   type Domain,
   type GameEngine,
   STACK_OPTIONS,
@@ -26,8 +25,6 @@ import {
   // particleProfile / projectilePolicy / audioProfile) are LLM-emitted
   // only; their _OPTIONS arrays remain in @ant/shared for the BE
   // decompose path but are no longer imported here.
-  GAME_GENRE_OPTIONS,
-  GAME_CORE_LOOP_OPTIONS,
   deriveInteractionGrammar,
   listActiveTiers,
   getEffectiveDomain,
@@ -43,7 +40,6 @@ import {
 import {
   GAME_ENGINE_STEP,
   GAME_ART_STEPS,
-  GAME_CONTENT_STEPS,
 } from './TierStepDef';
 import type { BasisWizardState, TierKey, WizardStepDef } from './types';
 
@@ -56,7 +52,7 @@ function isReal(val: string | undefined): val is string {
 /**
  * Build a `Basis` from wizard selections (Phase 1 — 4 tiers).
  *
- * Uses `buildBasisPreset` for techTier+visualTier. gameArtTier+gameContentTier
+ * Uses `buildBasisPreset` for techTier+visualTier. gameArtTier
  * are passed through directly because their shape matches the runtime
  * Basis fields 1:1 (no derivation needed). The `gameEngine` 5th slot is
  * stored on the active TechTier entry (frontend or single stack).
@@ -117,10 +113,6 @@ function buildBasisFromSelections(
   if (isReal(selections.gameArtTier.concept)) gat.concept = selections.gameArtTier.concept as any;
   if (isReal(selections.gameArtTier.perspective)) gat.perspective = selections.gameArtTier.perspective as any;
 
-  const gct: Partial<GameContentTier> = {};
-  if (isReal(selections.gameContentTier.genre)) gct.genre = selections.gameContentTier.genre as any;
-  if (isReal(selections.gameContentTier.coreLoop)) gct.coreLoop = selections.gameContentTier.coreLoop as any;
-
   const ds = selections.visualTier.designSystem;
   const basis = buildBasisPreset({
     stack: stack || undefined,
@@ -128,10 +120,9 @@ function buildBasisFromSelections(
     designSystem: isReal(ds) ? ds : undefined,
     visualTier: Object.keys(vt).length > 0 ? (vt as any) : undefined,
     gameArtTier: Object.keys(gat).length > 0 ? gat : undefined,
-    gameContentTier: Object.keys(gct).length > 0 ? gct : undefined,
   });
 
-  return (basis.techTier || basis.visualTier || basis.gameArtTier || basis.gameContentTier) ? basis : undefined;
+  return (basis.techTier || basis.visualTier || basis.gameArtTier) ? basis : undefined;
 }
 
 // Pure step-set computation. Hoisted to module scope so `selectVariant` can
@@ -189,10 +180,6 @@ function computeGameArtSteps(hasGameArtTier: boolean): WizardStepDef[] {
   return hasGameArtTier ? [...GAME_ART_STEPS] : [];
 }
 
-function computeGameContentSteps(hasGameContentTier: boolean): WizardStepDef[] {
-  return hasGameContentTier ? [...GAME_CONTENT_STEPS] : [];
-}
-
 function getSelectionValue(sel: BasisWizardState['selections'], step: WizardStepDef): string | undefined {
   switch (step.tierKey) {
     case 'techTier':
@@ -201,8 +188,6 @@ function getSelectionValue(sel: BasisWizardState['selections'], step: WizardStep
       return (sel.visualTier as Record<string, string | undefined>)[step.layerKey];
     case 'gameArtTier':
       return (sel.gameArtTier as Record<string, string | undefined>)[step.layerKey];
-    case 'gameContentTier':
-      return (sel.gameContentTier as Record<string, string | undefined>)[step.layerKey];
   }
 }
 
@@ -273,10 +258,6 @@ export function useBasisWizard(
           concept: currentBasis?.gameArtTier?.concept,
           perspective: currentBasis?.gameArtTier?.perspective,
         },
-        gameContentTier: {
-          genre: currentBasis?.gameContentTier?.genre,
-          coreLoop: currentBasis?.gameContentTier?.coreLoop,
-        },
       },
     };
   });
@@ -327,7 +308,6 @@ export function useBasisWizard(
 
   const hasVisualTier = isTierAvailable('visualTier');
   const hasGameArtTier = isTierAvailable('gameArtTier');
-  const hasGameContentTier = isTierAvailable('gameContentTier');
 
   // Cascade prune: when an upstream layer resolves to AUTO/undefined, downstream
   // steps are dropped from the wizard entirely. "Not set = auto-detect" is the
@@ -349,19 +329,13 @@ export function useBasisWizard(
     [hasGameArtTier],
   );
 
-  const gameContentSteps = useMemo(
-    () => computeGameContentSteps(hasGameContentTier),
-    [hasGameContentTier],
-  );
-
   const activeSteps = useMemo<WizardStepDef[]>(() => {
     switch (state.activeTier) {
       case 'techTier': return techSteps;
       case 'visualTier': return visualSteps;
       case 'gameArtTier': return gameArtSteps;
-      case 'gameContentTier': return gameContentSteps;
     }
-  }, [state.activeTier, techSteps, visualSteps, gameArtSteps, gameContentSteps]);
+  }, [state.activeTier, techSteps, visualSteps, gameArtSteps]);
 
   const currentStep = activeSteps[state.stepIndex];
 
@@ -437,13 +411,6 @@ export function useBasisWizard(
       }
     }
 
-    if (step.tierKey === 'gameContentTier') {
-      switch (layerKey) {
-        case 'genre': return GAME_GENRE_OPTIONS;
-        case 'coreLoop': return GAME_CORE_LOOP_OPTIONS;
-      }
-    }
-
     return [];
   }, [state.selections]);
 
@@ -506,10 +473,6 @@ export function useBasisWizard(
         const gatSel = { ...next.selections.gameArtTier };
         (gatSel as Record<string, string | undefined>)[step.layerKey] = value;
         next.selections.gameArtTier = gatSel;
-      } else if (step.tierKey === 'gameContentTier') {
-        const gctSel = { ...next.selections.gameContentTier };
-        (gctSel as Record<string, string | undefined>)[step.layerKey] = value;
-        next.selections.gameContentTier = gctSel;
       }
 
       // AUTO selection prunes downstream steps. Don't advance — the user's
@@ -533,9 +496,6 @@ export function useBasisWizard(
         case 'gameArtTier':
           newActiveSteps = computeGameArtSteps(hasGameArtTier);
           break;
-        case 'gameContentTier':
-          newActiveSteps = computeGameContentSteps(hasGameContentTier);
-          break;
       }
 
       const isLastStep = prev.stepIndex >= newActiveSteps.length - 1;
@@ -545,7 +505,7 @@ export function useBasisWizard(
       if (isLastStep || isGroupBoundary) return next;
       return { ...next, stepIndex: prev.stepIndex + 1 };
     });
-  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasLockedStack, hasVisualTier, hasGameArtTier, hasGameContentTier, effectiveDomain]);
+  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasLockedStack, hasVisualTier, hasGameArtTier, effectiveDomain]);
 
   const goToStep = useCallback((index: number) => {
     setState(prev => {
@@ -582,18 +542,12 @@ export function useBasisWizard(
             (gatSel as Record<string, string | undefined>)[gameArtSteps[i].layerKey] = undefined;
           }
           next.selections.gameArtTier = gatSel;
-        } else if (prev.activeTier === 'gameContentTier') {
-          const gctSel = { ...next.selections.gameContentTier };
-          for (let i = index + 1; i < gameContentSteps.length; i++) {
-            (gctSel as Record<string, string | undefined>)[gameContentSteps[i].layerKey] = undefined;
-          }
-          next.selections.gameContentTier = gctSel;
         }
       }
 
       return next;
     });
-  }, [techSteps, visualSteps, gameArtSteps, gameContentSteps]);
+  }, [techSteps, visualSteps, gameArtSteps]);
 
   const switchTier = useCallback((tier: TierKey) => {
     setState(prev => ({
@@ -625,9 +579,9 @@ export function useBasisWizard(
   const isTierSaved = useCallback((tier: TierKey): boolean => {
     const saved = savedBasisRef.current;
     if (!saved) return false;
-    // gameArtTier / gameContentTier / techTier / visualTier are 1:1 keys
-    // on Basis. The cast is safe because TierKey enumerates exactly those
-    // four keys (D23 removed `'domain'`).
+    // gameArtTier / techTier / visualTier are 1:1 keys on Basis. The cast
+    // is safe because TierKey enumerates exactly those keys (D23 removed
+    // `'domain'`).
     return !!(saved as Record<string, unknown>)[tier];
   }, []);
 
@@ -670,10 +624,6 @@ export function useBasisWizard(
         gameArtTier: {
           concept: saved?.gameArtTier?.concept,
           perspective: saved?.gameArtTier?.perspective,
-        },
-        gameContentTier: {
-          genre: saved?.gameContentTier?.genre,
-          coreLoop: saved?.gameContentTier?.coreLoop,
         },
       },
     }));

@@ -302,10 +302,10 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 runtime suppressors are consumed only by
                 `decideActionsStepAfterIntent` for auto-routing — they
                 must not hide the manual override entry.
-                  - rev-* intents declare `basis.tiers === []` → 0 → skip.
-                  - gen-ui-figma + service → ['gameContentTier'] which the
-                    matrix closes on service → 0 → skip (figma is the
-                    visual authority). */}
+                  - rev-* / plan / spec intents declare `basis.tiers === []`
+                    → 0 → skip (no wizard tiers to configure).
+                  - gen-ui-figma / gen-game-art-figma → `tiers === []` → skip
+                    (figma is the authority; the wizard would add nothing). */}
             {slots.basis && listActiveTiers(slots.basis, actionMetadata.domain ?? 'service').length > 0 && (
               <Section
                 title={t('section.basis')}
@@ -327,7 +327,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                     if (!current) return;
                     const updated = { ...current, [tierKey]: undefined };
                     const hasAnything =
-                      updated.techTier || updated.visualTier || updated.gameArtTier || updated.gameContentTier;
+                      updated.techTier || updated.visualTier || updated.gameArtTier;
                     updateActionMetadata({ basis: hasAnything ? updated : undefined });
                   }}
                   lang={lang}

@@ -1,16 +1,15 @@
 /**
- * Content / Art Tier Variants Non-Stub (v9 + Phase 4 — Wave 2 + Wave 4 regression)
+ * Art Tier Variants Non-Stub (v9 + Phase 4 — Wave 2 + Wave 4 regression)
  *
- * Verifies that every registered variant under `basis/gameContentTier/{genre,coreLoop}/`
- * and `basis/gameArtTier/{concept,perspective,entityCatalog,motionPattern,particleProfile,projectilePolicy,audioProfile}/`
+ * Verifies that every registered variant under
+ * `basis/gameArtTier/{concept,perspective,entityCatalog,motionPattern,particleProfile,projectilePolicy,audioProfile}/`
  * carries a substantive body (≥ 600 chars of markdown) and mentions its own
  * variant name in the body so the SBS gate's information payload is non-zero.
  *
- * v9 (D31-revised / D32-revised) — genre is now a 6-element sub-genre set
- * (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake /
- * crowdRunner); the concept set stays 5-element (concepts generalise
+ * v9 (D32-revised) — the concept set stays 5-element (concepts generalise
  * across genres). Phase 4 — the 5 Phase 4 axes are also fully bodied
- * (15 partials).
+ * (15 partials). (The gameContentTier genre/coreLoop tier was removed —
+ * genre/coreLoop now live as free prose in the universal PRD skeleton.)
  *
  * The threshold (≥ 600) was chosen so a Phase 1 stub (~100 chars) cannot
  * pass. Wave 2 / Wave 4 partials run 1.5–4 KB; the threshold leaves
@@ -24,9 +23,7 @@ import * as path from 'node:path';
 
 const TEMPLATES_ROOT = path.resolve(__dirname, '../../src/core/prompt/templates');
 
-// v9 (D31-revised / D32-revised) — registry-aligned variant arrays.
-const GENRE_VARIANTS = ['match3', 'slidingPuzzle', 'cardSolitaire', 'arcadePaddle', 'arcadeSnake', 'crowdRunner'];
-const CORELOOP_VARIANTS = ['solve', 'collect', 'survive'];
+// v9 (D32-revised) — registry-aligned variant arrays.
 const CONCEPT_VARIANTS = ['flatMinimal', 'pixelRetro', 'neonArcade', 'softPastel', 'cardClassic'];
 const PERSPECTIVE_VARIANTS = ['2d'];
 // Phase 4 axes.
@@ -57,16 +54,6 @@ function spec(group: string, basePath: string, variant: string, aliases: string[
 }
 
 const VARIANT_SPECS: VariantSpec[] = [
-  // v9 sub-genres (D31-revised) — humanized aliases for the SBS gate check.
-  ...GENRE_VARIANTS.map(v => spec('gameContentTier.genre', 'basis/gameContentTier/genre', v, [
-    v === 'match3' ? 'Match-3' :
-    v === 'slidingPuzzle' ? 'Sliding Puzzle' :
-    v === 'cardSolitaire' ? 'Card Solitaire' :
-    v === 'arcadePaddle' ? 'Arcade Paddle' :
-    v === 'arcadeSnake' ? 'Arcade Snake' :
-    v === 'crowdRunner' ? 'Crowd Runner' : v,
-  ])),
-  ...CORELOOP_VARIANTS.map(v => spec('gameContentTier.coreLoop', 'basis/gameContentTier/coreLoop', v)),
   // v9 concepts (D32-revised) — humanized aliases.
   ...CONCEPT_VARIANTS.map(v => spec('gameArtTier.concept', 'basis/gameArtTier/concept', v, [
     v === 'flatMinimal' ? 'Flat Minimal' :
@@ -110,7 +97,7 @@ describe('Content / Art Tier Variants Non-Stub (Wave 2)', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('all genre / coreLoop / concept / perspective variants exist on disk', () => {
+  it('all concept / perspective variants exist on disk', () => {
     for (const { file } of VARIANT_SPECS) {
       expect(fs.existsSync(file), `missing variant file: ${path.relative(TEMPLATES_ROOT, file)}`).toBe(true);
     }
@@ -142,14 +129,11 @@ describe('Content / Art Tier Variant Cross-Pollution (Wave 2)', () => {
   }
 
   // Cross-pollution check applies only to groups whose variant names are
-  // domain-specific identifiers (sub-genres, coreLoops, concepts) — common
-  // English words like `static` / `subtle` / `none` / `light` / `simple` /
-  // `procedural` collide with prose vocabulary, so the Phase 4 axes are
-  // excluded. (The axes still get the body-length + SBS-name presence
-  // check above.)
+  // domain-specific identifiers (concepts) — common English words like
+  // `static` / `subtle` / `none` / `light` / `simple` / `procedural`
+  // collide with prose vocabulary, so the Phase 4 axes are excluded. (The
+  // axes still get the body-length + SBS-name presence check above.)
   const groups = [
-    'gameContentTier.genre',
-    'gameContentTier.coreLoop',
     'gameArtTier.concept',
     'gameArtTier.perspective',
   ];

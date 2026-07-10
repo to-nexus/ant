@@ -17,9 +17,9 @@
  *
  * Two scan modes:
  *
- *   (a) **Slot-keyed pattern** — `concept=...` / `genre=...` / `perspective=...`
- *       / `coreLoop=...` / `gameEngine=...` / `<gameArtTier>...</gameArtTier>` /
- *       `<gameContentTier>...</gameContentTier>` / `<techTier>...|...</techTier>`
+ *   (a) **Slot-keyed pattern** — `concept=...` / `perspective=...` /
+ *       `gameEngine=...` / `<gameArtTier>...</gameArtTier>` /
+ *       `<techTier>...|...</techTier>`
  *       — narrow because slot prefix scopes the value to a registry slot.
  *
  *   (b) **Unique-word boundary** — `modernCasual` / `sfFantasy` / `darkFantasy`
@@ -223,126 +223,6 @@ describe('D39 — Prompt Body × Registry Consistency', () => {
     // markers. The lint test above requires (ii)-or-(i); this sanity test
     // documents the EXPECTATION that the file is allowed to mention them.
     expect(citations).toEqual([]);
-  });
-});
-
-// ============================================
-// D45 (v9.1) — gameContentTier preamble strict scan
-// ============================================
-//
-// Why this guard exists: D39's bare-word boundary scan only fires on
-// PascalCase concept ids (modernCasual / sfFantasy / ...) which have no
-// English overlap. Plain-English deprecated genre / coreLoop words
-// (puzzle / casual / arcade / action / platformer / shooter / rpg /
-// strategy / fight / build / explore) are NOT bare-word-scanned because
-// they collide with normal prose and would generate false positives in
-// every other template.
-//
-// HOWEVER, four high-risk preamble files are uniquely vulnerable to
-// silent drift because they enumerate genre / coreLoop tables:
-//
-//   - `basis/gameContentTier/_preamble.md` (universal ledger)
-//   - `jobs/plan/basis/gameContentTier/_preamble.md`
-//   - `jobs/code/basis/gameContentTier/_preamble.md`
-//   - `jobs/design/basis/gameContentTier/_preamble.md`
-//
-// In these four files, a plain-English deprecated word in a table row /
-// example is almost certainly a stale registry citation rather than
-// incidental prose — so we add a stricter bare-word scan scoped to
-// these files only. Allowlist markers (Phase 5+ / archive / deferred /
-// hook / legacy / 폐기) on the same / adjacent line still permit
-// intentional historical references.
-
-const STRICT_GAME_CONTENT_TIER_PREAMBLE_FILES = [
-  'basis/gameContentTier/_preamble.md',
-  'jobs/plan/basis/gameContentTier/_preamble.md',
-  'jobs/code/basis/gameContentTier/_preamble.md',
-  'jobs/design/basis/gameContentTier/_preamble.md',
-] as const;
-
-const STRICT_BARE_WORD_DEPRECATED = [
-  ...DEPRECATED_GENRE,
-  ...DEPRECATED_CORE_LOOP,
-] as const;
-
-function scanGameContentTierPreambleStrict(fileAbs: string, fileRel: string): Citation[] {
-  const text = fs.readFileSync(fileAbs, 'utf8');
-  const lines = text.split('\n');
-  const out: Citation[] = [];
-
-  const lineHasMarker = (idx: number): boolean => {
-    const window = [lines[idx - 1] ?? '', lines[idx] ?? '', lines[idx + 1] ?? ''];
-    const joined = window.join(' ').toLowerCase();
-    return ALLOWLIST_MARKERS.some(m => joined.includes(m));
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    for (const v of STRICT_BARE_WORD_DEPRECATED) {
-      // Word-boundary, case-sensitive. Camel-case compounds like
-      // `slidingPuzzle` / `arcadePaddle` are NOT matched (because the
-      // capital letter is part of the same word and `(?<![A-Za-z0-9_])`
-      // anchors the boundary on word-character class). Hyphenated
-      // compounds like `sliding-puzzle` ARE matched (hyphen is not a
-      // word character) — that is the v8 mismatch we want to catch.
-      const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(v)}(?![A-Za-z0-9_])`);
-      if (re.test(line) && !lineHasMarker(i)) {
-        out.push({
-          fileRel,
-          line: i + 1,
-          pattern: `strict bare-word ${v}`,
-          text: line.trim().slice(0, 200),
-        });
-      }
-    }
-  }
-  return out;
-}
-
-describe('D45 (v9.1) — gameContentTier preamble × Registry Consistency (strict)', () => {
-  it('the four gameContentTier preamble files all exist', () => {
-    for (const fileRel of STRICT_GAME_CONTENT_TIER_PREAMBLE_FILES) {
-      const fileAbs = path.join(TEMPLATES_ROOT, fileRel);
-      expect(fs.existsSync(fileAbs)).toBe(true);
-    }
-  });
-
-  it('these four high-risk preamble bodies do not cite deprecated bare words outside the Phase 5+ hook allowlist', () => {
-    const allCitations: Citation[] = [];
-    for (const fileRel of STRICT_GAME_CONTENT_TIER_PREAMBLE_FILES) {
-      const fileAbs = path.join(TEMPLATES_ROOT, fileRel);
-      allCitations.push(...scanGameContentTierPreambleStrict(fileAbs, fileRel));
-    }
-
-    if (allCitations.length > 0) {
-      const summary = allCitations
-        .map(c => `  - ${c.fileRel}:${c.line}  [${c.pattern}]\n      ${c.text}`)
-        .join('\n');
-      throw new Error(
-        `D45 lint failure — ${allCitations.length} bare-word citation(s) of deprecated genre / coreLoop in gameContentTier preamble bodies.\n` +
-        `These four files are uniquely vulnerable to silent registry drift because they enumerate genre / coreLoop tables — a plain-English deprecated word in a row / example is almost certainly stale.\n` +
-        `Add a Phase 5+ hook marker (one of: ${ALLOWLIST_MARKERS.join(', ')}) to the same / adjacent line OR replace with a v9 registry-current variant (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner; solve / collect / survive).\n` +
-        `Citations:\n${summary}`,
-      );
-    }
-    expect(allCitations).toEqual([]);
-  });
-
-  it('camel-case compound names (slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner) are NOT flagged by the strict scan', () => {
-    // Document the regex boundary behaviour: the strict scan must NOT
-    // false-positive on the registry-current compounds. Use a synthetic
-    // line to verify.
-    const tmpLine = 'genres: match3, slidingPuzzle, cardSolitaire, arcadePaddle, arcadeSnake, crowdRunner';
-    const fakeFile = path.join(TEMPLATES_ROOT, '__nonexistent__.md');
-    // Use a synthetic in-memory scan equivalent.
-    const out: Citation[] = [];
-    for (const v of STRICT_BARE_WORD_DEPRECATED) {
-      const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(v)}(?![A-Za-z0-9_])`);
-      if (re.test(tmpLine)) {
-        out.push({ fileRel: fakeFile, line: 1, pattern: `strict bare-word ${v}`, text: tmpLine });
-      }
-    }
-    expect(out).toEqual([]);
   });
 });
 

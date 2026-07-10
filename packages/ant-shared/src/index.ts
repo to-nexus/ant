@@ -39,7 +39,6 @@ export * from './file-descriptions';
 export * from './tech-tier-registry';
 export * from './visual-tier-registry';
 export * from './game-art-tier-registry';
-export * from './game-content-tier-registry';
 export * from './tier-matrix';
 export * from './rac';
 export * from './prompt-policy-matrix';

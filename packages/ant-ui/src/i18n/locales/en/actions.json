@@ -69,7 +69,6 @@
     "wizardTechTier": "Tech Tier",
     "wizardVisualTier": "Visual Tier",
     "wizardGameArtTier": "Game Art Tier",
-    "wizardGameContentTier": "Game Content",
     "wizardDone": "Done",
     "wizardStepStack": "Stack",
     "wizardStepLanguage": "Language",
@@ -80,8 +79,6 @@
     "wizardStepSpatialSystem": "Spatial System",
     "wizardStepConcept": "Concept",
     "wizardStepPerspective": "Perspective",
-    "wizardStepGenre": "Genre",
-    "wizardStepCoreLoop": "Core Loop",
     "summary": {
       "techTier": {
         "gameEngine": "Engine"
@@ -89,10 +86,6 @@
       "gameArtTier": {
         "concept": "Concept",
         "perspective": "Perspective"
-      },
-      "gameContentTier": {
-        "genre": "Genre",
-        "coreLoop": "Core Loop"
       }
     }
   },

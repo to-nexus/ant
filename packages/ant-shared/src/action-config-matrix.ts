@@ -565,19 +565,20 @@ export function pickExistingPlanFilename(
 
 // Tier presets per intent group — Phase 2 (D23: 'domain' removed from tiers).
 // Domain is workspace-level (D22) and acts as the matrix gate, not a wizard
-// tier. Service-domain plan/spec wizards thus auto-collapse (gameContentTier
-// is game-only → no active tier rows for service → wizard hidden).
+// tier. plan/spec expose no wizard tiers (genre/coreLoop live in the PRD prose
+// authored by the universal game-domain overlay, not a basis tier) → the basis
+// wizard is hidden and the panel routes straight to `config`.
 //
-// plan / spec      → [gameContentTier]
-// gen-sys-*        → [techTier, gameContentTier]
-// gen-ui-*         → [visualTier, gameContentTier]                     (D18)
-// gen-game-art-*   → [gameArtTier, gameContentTier]                    (D18 / D28 — Phase 2)
-// gen-code-*       → [techTier, visualTier, gameArtTier, gameContentTier]
-const PLAN_TIERS = ['gameContentTier'] as const;
-const SYS_TIERS = ['techTier', 'gameContentTier'] as const;
-const UI_TIERS = ['visualTier', 'gameContentTier'] as const;
-const GAME_ART_TIERS = ['gameArtTier', 'gameContentTier'] as const;
-const CODE_TIERS = ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] as const;
+// plan / spec      → []
+// gen-sys-*        → [techTier]
+// gen-ui-*         → [visualTier]                     (D18)
+// gen-game-art-*   → [gameArtTier]                    (D18 / D28 — Phase 2)
+// gen-code-*       → [techTier, visualTier, gameArtTier]
+const PLAN_TIERS = [] as const;
+const SYS_TIERS = ['techTier'] as const;
+const UI_TIERS = ['visualTier'] as const;
+const GAME_ART_TIERS = ['gameArtTier'] as const;
+const CODE_TIERS = ['techTier', 'visualTier', 'gameArtTier'] as const;
 
 // Per-domain seed presets (Phase 1; game backend added Game-Activation T3-a).
 // `GAME_FE_PHASER` is the FE-only envelope (self-contained Phaser client).
@@ -680,7 +681,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     // whose answers figma immediately overrides. BE matches: the
     // `hasUiDoc=true` runtime suppressor in `tier-matrix.ts` already
     // closes visualTier post-RAC; this just aligns the static gate.
-    basis: { tiers: ['gameContentTier'] },
+    basis: { tiers: [] },
   },
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -708,9 +709,9 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     // figma.json (locked ref) is the game-art authority — same reasoning
-    // as `gen-ui-figma` above. gameContentTier (genre / coreLoop) stays
-    // because figma cannot decide gameplay axes; user must pick.
-    basis: { tiers: ['gameContentTier'], defaults: { game: GAME_FE_PHASER } },
+    // as `gen-ui-figma` above. No wizard tier; the phaser engine seeds via
+    // `defaults` and gameplay axes come from the PRD.
+    basis: { tiers: [], defaults: { game: GAME_FE_PHASER } },
   },
   'gen-game-art-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],

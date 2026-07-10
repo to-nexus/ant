@@ -108,7 +108,6 @@ describe('OutputTagRegistry — Phase 1 inventory parity', () => {
       'specClarify',
       'domain',
       'gameArtTier',
-      'gameContentTier',
     ];
     const names = new Set(allTagNames());
     for (const e of expected) {

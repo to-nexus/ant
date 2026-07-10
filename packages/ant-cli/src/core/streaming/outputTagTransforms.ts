@@ -259,15 +259,13 @@ export function transformDetect(
     const flatBasisHasAny = !!(
       parsed.techTier ||
       parsed.visualTier ||
-      flatGameArtTier ||
-      parsed.gameContentTier
+      flatGameArtTier
     );
     const basis: Basis | undefined = flatBasisHasAny
       ? {
           techTier: parsed.techTier,
           visualTier: parsed.visualTier,
           gameArtTier: flatGameArtTier,
-          gameContentTier: parsed.gameContentTier,
         }
       : undefined;
 

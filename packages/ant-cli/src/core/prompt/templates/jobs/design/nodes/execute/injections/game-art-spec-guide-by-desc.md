@@ -58,10 +58,8 @@ The code job must be able to render this behavior with a **primitive stand-in** 
 ```json
 {
   "_meta": {
-    "gameContentTier": {
-      "genre": "<from resolvedAction.basis.gameContentTier.genre>",
-      "coreLoop": "<from resolvedAction.basis.gameContentTier.coreLoop>"
-    }
+    "genre": "<the game's genre, from the PRD Genre & Coreloop section>",
+    "coreLoop": "<the player's core loop, from the PRD Genre & Coreloop section>"
   },
   "<your-category>": {
     "<entry-id>": {
@@ -108,7 +106,7 @@ The code job must be able to render this behavior with a **primitive stand-in** 
 <file path="visual/game-art/ant/game-art-spec.json">
 {
   "_meta": {
-    "gameContentTier": { "genre": "...", "coreLoop": "..." }
+    "genre": "...", "coreLoop": "..."
   },
   "<your-category>": {
     "<entry-id>": { /* spec */ }

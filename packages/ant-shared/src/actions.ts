@@ -416,8 +416,8 @@ export interface ActionMetadata {
   domain?: Domain;
   /**
    * Per-IntentGroup techTier cache. Only `techTier` is scoped per group;
-   * `visualTier` / `gameArtTier` / `gameContentTier` remain sticky on
-   * `basis` so the user's design intent stays consistent across groups.
+   * `visualTier` / `gameArtTier` remain sticky on `basis` so the user's
+   * design intent stays consistent across groups.
    *
    * The currently-active group's value is mirrored into `basis.techTier`
    * (the SSOT consumed by the wizard, BE detect, and prompt builder).

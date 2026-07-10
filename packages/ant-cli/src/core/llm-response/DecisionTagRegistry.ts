@@ -7,15 +7,13 @@
  * iteration in `parseDecisionTags`, `decisionTagRetryFraming`,
  * `SpecialTagTransformer`) picks them up automatically.
  *
- * Phase 1 registered 3 tags: `domain`, `gameArtTier`, `gameContentTier`. Phase 2
- * (D12-revised) renames `gameArtTier`; the on-the-wire XML tag also flips so
- * prompts must emit `<gameArtTier>...</gameArtTier>`.
+ * Registered tags: `domain`, `gameArtTier`, `serviceVirtualization`. The
+ * on-the-wire XML tag for the art tier is `<gameArtTier>...</gameArtTier>`.
  */
 
 import type {
   Domain,
   GameArtTier,
-  GameContentTier,
 } from '@ant/shared';
 import {
   GAME_ART_TIER_AXIS_KEYS,
@@ -26,16 +24,13 @@ import {
   GAME_ART_PARTICLE_PROFILE_VARIANTS,
   GAME_ART_PROJECTILE_POLICY_VARIANTS,
   GAME_ART_AUDIO_PROFILE_VARIANTS,
-  GAME_GENRE_VARIANTS,
-  GAME_CORE_LOOP_VARIANTS,
-  GENRE_CORELOOP_MATRIX,
 } from '@ant/shared';
 
 // ============================================
 // Public types
 // ============================================
 
-export type DecisionTagName = 'domain' | 'gameArtTier' | 'gameContentTier' | 'serviceVirtualization';
+export type DecisionTagName = 'domain' | 'gameArtTier' | 'serviceVirtualization';
 
 export interface DecisionTagViolation {
   tag: DecisionTagName;
@@ -60,7 +55,6 @@ export class DecisionTagViolationError extends Error {
 export type ParsedDecisionTag =
   | { name: 'domain'; value: Domain }
   | { name: 'gameArtTier'; value: GameArtTier }
-  | { name: 'gameContentTier'; value: GameContentTier }
   | { name: 'serviceVirtualization'; value: { optedOut: boolean } };
 
 // ============================================
@@ -163,42 +157,6 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
   },
 };
 
-const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
-  name: 'gameContentTier',
-  pattern: /<gameContentTier>\s*([\s\S]*?)\s*<\/gameContentTier>/i,
-  // v9 (D31-revised) — `match3` × `solve` is the most compact, css-only-
-  // verifiable default (Bejeweled-style swap+cascade). The matrix admits
-  // this pair (`match3 → [solve, collect]`).
-  defaultOnRetryExhaustion: { genre: 'match3', coreLoop: 'solve' },
-  retryPolicy: 'inline',
-  parse: (raw) => {
-    const out: GameContentTier = {};
-    const body = raw.trim();
-    if (!body) return { ok: false, reason: 'missing' };
-    for (const part of body.split(',')) {
-      const [k, v] = part.split('=').map(s => s.trim());
-      if (!k || !v) continue;
-      if (k === 'genre' && (GAME_GENRE_VARIANTS as readonly string[]).includes(v)) {
-        out.genre = v as GameContentTier['genre'];
-      } else if (k === 'coreLoop' && (GAME_CORE_LOOP_VARIANTS as readonly string[]).includes(v)) {
-        out.coreLoop = v as GameContentTier['coreLoop'];
-      }
-    }
-    // v9 (D31-revised / I9) — apply the genre×coreLoop matrix at parse
-    // time. If the LLM emits a (genre, coreLoop) pair outside the matrix,
-    // drop the coreLoop so retry / default-fill can reissue. This is a
-    // pure lookup; no node-side branching.
-    if (out.genre && out.coreLoop) {
-      const allowed = GENRE_CORELOOP_MATRIX[out.genre];
-      if (allowed && !(allowed as readonly string[]).includes(out.coreLoop)) {
-        out.coreLoop = undefined;
-      }
-    }
-    if (Object.keys(out).length === 0) return { ok: false, reason: 'invalid_value', observed: raw };
-    return { ok: true, value: out };
-  },
-};
-
 /**
  * serviceVirtualization (§4) — SV build decision for service-domain code jobs.
  * Body grammar: `build | opt-out`. Default is BUILD (SV generation is on by
@@ -223,7 +181,6 @@ const serviceVirtualizationTagDef: DecisionTagDef<{ optedOut: boolean }> = {
 export const DECISION_TAG_REGISTRY: ReadonlyArray<DecisionTagDef<unknown>> = [
   domainTagDef,
   gameArtTierTagDef,
-  gameContentTierTagDef,
   serviceVirtualizationTagDef,
 ] as const;
 

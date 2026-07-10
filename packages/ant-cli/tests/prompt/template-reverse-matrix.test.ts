@@ -43,9 +43,6 @@ import {
   GAME_ART_PARTICLE_PROFILE_VARIANTS,
   GAME_ART_PROJECTILE_POLICY_VARIANTS,
   GAME_ART_AUDIO_PROFILE_VARIANTS,
-  GAME_CONTENT_TIER_TEMPLATE_PATHS,
-  GAME_GENRE_VARIANTS,
-  GAME_CORE_LOOP_VARIANTS,
   SUPPORTED_GAME_ENGINES,
 } from '@ant/shared';
 import type { SupportedLanguage, SupportedStack, LanguageVariant } from '@ant/shared';
@@ -474,18 +471,6 @@ function collectBasisPaths(): Set<string> {
   // Job-specific gameArtTier preambles (code + design, matching the renderer dispatch).
   for (const job of ['code', 'design']) {
     paths.add(GAME_ART_TIER_TEMPLATE_PATHS.jobPreamble(job));
-  }
-
-  // ── GameContentTier paths (Phase 1) ──
-  paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.preamble());
-  for (const g of GAME_GENRE_VARIANTS) {
-    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.genre(g));
-  }
-  for (const c of GAME_CORE_LOOP_VARIANTS) {
-    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.coreLoop(c));
-  }
-  for (const job of ['plan', 'code', 'design']) {
-    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.jobPreamble(job));
   }
 
   // ── GameEngine paths (Phase 1, game domain only) ──

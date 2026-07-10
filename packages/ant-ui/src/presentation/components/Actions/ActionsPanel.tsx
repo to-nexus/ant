@@ -82,12 +82,12 @@ export function ActionsPanel() {
     selectIntent(intentId);
     const slots = getConfigSlots(intentId as Parameters<typeof getConfigSlots>[0]);
     // SSOT D27 — `decideActionsStepAfterIntent` funnels through
-    // `listActiveTiers` so static `slot.tiers` that the domain × runtime
-    // matrix has fully closed (e.g. service + gen-plan with PLAN_TIERS =
-    // ['gameContentTier']) route to `'config'` instead of `'basis-edit'`.
-    // Routing on the static count alone would mount a `BasisWizard` whose
-    // `availableTiers === []` triggers its `!currentStep → return null`
-    // defensive guard, leaving the panel completely blank.
+    // `listActiveTiers` so intents with no wizard tiers (e.g. gen-plan /
+    // gen-spec with `PLAN_TIERS === []`, or a domain × runtime matrix that
+    // fully closes the remaining tiers) route to `'config'` instead of
+    // `'basis-edit'`. Routing on the static count alone would mount a
+    // `BasisWizard` whose `availableTiers === []` triggers its
+    // `!currentStep → return null` defensive guard, leaving the panel blank.
     // `hasCodebase` activates the techTier runtime suppressor
     // (RUNTIME_SUPPRESSORS.techTier in `@ant/shared/tier-matrix.ts`), so
     // when the workspace already contains a codebase the techTier wizard
@@ -227,9 +227,9 @@ export function ActionsPanel() {
 
     if (step === 'basis-edit' && selectedIntentId && selectedSlots?.basis) {
       // Mirror ActionConfigView's visibility gate: static slot × domain
-      // matrix (empty runtime ctx → suppressors do not fire). rev-*
-      // intents (tiers === []) and gen-ui-figma on service (only
-      // gameContentTier, domain-closed) both fall through to null.
+      // matrix (empty runtime ctx → suppressors do not fire). Intents with
+      // no wizard tiers (rev-* / plan / spec with tiers === [], or
+      // gen-*-figma where figma is the authority) fall through to null.
       if (listActiveTiers(selectedSlots.basis, currentDomain ?? 'service').length > 0) {
         return (
           <div className="h-full">

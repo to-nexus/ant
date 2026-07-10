@@ -24,9 +24,9 @@
  *
  * Future-domain extension (Phase 4+):
  *   - Adding `'3d'` / `'data-viz'` / `'interactive-art'` is a Domain union
- *     edit ([detection.ts]) plus row updates here. The
- *     `gameContentTier` row stays game-only; non-game domains will simply
- *     have `gameContentTier=false` automatically.
+ *     edit ([detection.ts]) plus row updates here. The `gameArtTier` row
+ *     stays game-only; non-game domains simply have `gameArtTier=false`
+ *     automatically.
  */
 
 import type { BasisSlotConfig } from './action-config-matrix';
@@ -46,8 +46,8 @@ import type { TechTierConfig } from './rac';
  *
  * D23 — `'domain'` is NOT a TierKey. Domain is a workspace-level 1st-class
  * slot (D22) and acts as the matrix gate argument, not a wizard tier.
- * Service-domain plan/spec basis wizards thus auto-collapse (no tier rows
- * for service in the gameContentTier-only PLAN_TIERS / SPEC_TIERS).
+ * Service-domain plan/spec basis wizards thus auto-collapse (PLAN_TIERS is
+ * empty — plan/spec expose no wizard tiers).
  *
  * D28 — `visualTier` is service-domain-only (vertical split). The game
  * domain has `gameArtTier` as its sole art SSOT and never sees visualTier
@@ -56,14 +56,12 @@ import type { TechTierConfig } from './rac';
 export type TierKey =
   | 'techTier'
   | 'visualTier'
-  | 'gameArtTier'
-  | 'gameContentTier';
+  | 'gameArtTier';
 
 export const TIER_KEYS: ReadonlyArray<TierKey> = [
   'techTier',
   'visualTier',
   'gameArtTier',
-  'gameContentTier',
 ] as const;
 
 // ============================================
@@ -78,7 +76,6 @@ export const TIER_DOMAIN_MATRIX: Readonly<Record<TierKey, ReadonlyArray<Domain>>
   techTier:        ['service', 'game'],
   visualTier:      ['service'],       // D28 — service-domain only (vertical split)
   gameArtTier:     ['game'],          // D12-revised — game-domain only
-  gameContentTier: ['game'],
 } as const;
 
 // ============================================

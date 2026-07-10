@@ -185,7 +185,7 @@ describe('decompose Shared Integration Points — neutral host/per-unit + closur
     hasExistingCode: false, codebaseFilePaths: [], fileList: '', hasDocuments: false, documents: [],
     hasCompactedArtifacts: false, hasErrorInDirective: false, hasUi: false, uiSource: undefined,
     hasRuntimeError: false, isExplicitPipeline: false, visualTierActive: false, gameArtTierActive: false,
-    gameContentTierActive: false, domainTierActive: false, needsBoundaryClassification: false,
+    domainTierActive: false, needsBoundaryClassification: false,
     specClarifyBypassed: false, intentClarifyDisabled: true,
   };
 

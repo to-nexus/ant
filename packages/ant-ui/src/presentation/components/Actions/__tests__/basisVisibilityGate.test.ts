@@ -33,13 +33,13 @@ const visibilityCount = (intent: IntentId, domain: Domain): number =>
 
 describe('Basis visibility gate — static slot × domain matrix (no runtime suppressors)', () => {
   describe('Section MUST render — manual override entry must survive runtime suppression', () => {
-    it('gen-ui-desc on service → visualTier passes (gameContentTier domain-blocked)', () => {
-      // UI_TIERS = ['visualTier', 'gameContentTier']
+    it('gen-ui-desc on service → visualTier passes', () => {
+      // UI_TIERS = ['visualTier']
       expect(visibilityCount('gen-ui-desc', 'service')).toBeGreaterThan(0);
     });
 
-    it('gen-code-sys on service → techTier + visualTier pass (game tiers domain-blocked)', () => {
-      // CODE_TIERS = ['techTier','visualTier','gameArtTier','gameContentTier']
+    it('gen-code-sys on service → techTier + visualTier pass (game tier domain-blocked)', () => {
+      // CODE_TIERS = ['techTier','visualTier','gameArtTier']
       expect(visibilityCount('gen-code-sys', 'service')).toBeGreaterThan(0);
     });
 
@@ -53,13 +53,11 @@ describe('Basis visibility gate — static slot × domain matrix (no runtime sup
   });
 
   describe('Section MUST stay hidden — declared tiers are all domain-blocked or empty', () => {
-    it('gen-ui-figma on service → 0 (only gameContentTier declared, domain-blocked)', () => {
-      // gen-ui-figma's basis.tiers === ['gameContentTier'] because figma
-      // is the visual authority; on service the matrix closes
-      // gameContentTier → 0 tiers → Section hidden. Without the
-      // domain-matrix component in the gate, the Section would render
-      // an anonymous "Configure" CTA which the user explicitly does
-      // NOT want here.
+    it('gen-ui-figma on service → 0 (empty static tiers)', () => {
+      // gen-ui-figma's basis.tiers === [] because figma is the visual
+      // authority — the wizard would add nothing → 0 tiers → Section
+      // hidden. Without this the Section would render an anonymous
+      // "Configure" CTA which the user explicitly does NOT want here.
       expect(visibilityCount('gen-ui-figma', 'service')).toBe(0);
     });
 
@@ -73,11 +71,12 @@ describe('Basis visibility gate — static slot × domain matrix (no runtime sup
   });
 
   describe('Game domain — game-only tiers unlock', () => {
-    it('gen-ui-figma on game → gameContentTier passes', () => {
-      expect(visibilityCount('gen-ui-figma', 'game')).toBeGreaterThan(0);
+    it('gen-game-art-desc on game → gameArtTier passes', () => {
+      // GAME_ART_TIERS = ['gameArtTier']; game-only, unlocks on game domain.
+      expect(visibilityCount('gen-game-art-desc', 'game')).toBeGreaterThan(0);
     });
 
-    it('gen-code-sys on game → 4 tiers pass', () => {
+    it('gen-code-sys on game → techTier + gameArtTier pass (visualTier is service-only)', () => {
       expect(visibilityCount('gen-code-sys', 'game')).toBeGreaterThan(0);
     });
   });
