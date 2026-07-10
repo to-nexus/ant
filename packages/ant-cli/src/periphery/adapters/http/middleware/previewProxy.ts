@@ -21,9 +21,15 @@ import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
 import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
-import { resolvePreviewTarget, resolvePreviewLabel } from './previewRouting';
+import {
+  resolvePreviewTarget,
+  resolvePreviewLabel,
+  resolveOwnerForward,
+  PREVIEW_PEER_FORWARD_HEADER,
+} from './previewRouting';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
+  buildForwardHeaders,
   escapeRegExp as sharedEscapeRegExp,
   extractForwardingContext,
   fetchWithTransportRetry,
@@ -165,6 +171,40 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // fails fast via the transport-retry timeout below — no destructive
       // liveness gate (see PreviewServer WS upgrade for the same rationale).
       const state = match;
+
+      // Cross-pod owner-forwarding: in a multi-replica deployment the ALB
+      // round-robins this preview host across replicas with no owner affinity.
+      // The dev server lives only on the pod that spawned it (`state.host` =
+      // that pod's POD_IP), on a port not reachable cross-pod. When we are NOT
+      // that pod, forward the whole request to the owner's ant-preview service
+      // port (open pod-to-pod) with the original Host preserved; the owner then
+      // proxies to its own localhost dev server. Loop-guarded against a stale
+      // owner record. Off-cluster (no POD_IP) this is a no-op.
+      const ownerForward = resolveOwnerForward(
+        state.host,
+        req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
+      );
+      if (ownerForward) {
+        const fwdUrl = `http://${ownerForward.forwardHost}:${ownerForward.forwardPort}${req.url}`;
+        const fwdHeaders = buildForwardHeaders(req);
+        fwdHeaders[PREVIEW_PEER_FORWARD_HEADER] = '1';
+        try {
+          const response = await fetchWithTransportRetry(fwdUrl, {
+            method: req.method,
+            headers: fwdHeaders,
+            ...forwardRequestBody(req),
+            ...forwardRequestAbort(req),
+          } as RequestInit);
+          await streamUpstreamResponse(response, res, {
+            upstreamHost: `${ownerForward.forwardHost}:${ownerForward.forwardPort}`,
+            cacheControl: 'no-cache, no-store, must-revalidate',
+          });
+        } catch (error: any) {
+          logger.error(`[Preview] Owner-forward error: ${error.message}`, { component: 'PreviewProxy' });
+          res.status(502).json({ error: 'Bad Gateway' });
+        }
+        return;
+      }
 
       await portRegistry.touchPreview(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
 

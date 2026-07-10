@@ -167,6 +167,28 @@ export function buildCleanHeaders(
 }
 
 /**
+ * Build headers for a PEER forward — re-sending the request verbatim to another
+ * ant-preview replica (the owning pod's service port), NOT to a dev server.
+ *
+ * Unlike `buildCleanHeaders`, this preserves the original `Host` and `Origin`:
+ * the owner replica re-runs its own subdomain resolution (which keys off `Host`)
+ * and applies its own dev-server `Origin` rewrite when it proxies onward. Drops
+ * hop-by-hop headers, forces `accept-encoding: identity` (we re-stream raw bytes),
+ * and keeps `Cookie` so the owner can re-verify ownership. The caller adds the
+ * loop-guard header (`PREVIEW_PEER_FORWARD_HEADER`).
+ */
+export function buildForwardHeaders(req: Request): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    if (typeof value !== 'string') continue;
+    headers[key] = value;
+  }
+  headers['accept-encoding'] = 'identity';
+  return headers;
+}
+
+/**
  * fetch body init for the upstream call. Returns `{ body, duplex }` for
  * methods that may carry a body, `{}` otherwise.
  *
