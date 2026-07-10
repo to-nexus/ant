@@ -174,55 +174,11 @@ export interface GameArtTier {
   audioProfile?: GameArtAudioProfileVariant;
 }
 
-// ============================================
-// GameContentTier — game-only content policy
-// ============================================
-
-/**
- * v9 (D31-revised) — 6 sub-genres tuned for css-only inline production.
- * Each sub-genre commits a narrow systems-shape domain (board/match-rule,
- * sliding-rule, card-suit, paddle-physics, snake-grid, crowd+steering)
- * so the LLM-emitted partial does not blur category boundaries the way
- * the v7 `puzzle/casual/arcade` super-categories did. Phase 5+ widens
- * the registry when the visual job authors production assets for
- * action/platformer/shooter/rpg/strategy super-categories.
- *
- * Genre partials are GUIDES, not closed contracts: they fix the systems
- * shape *categories* the project must cover and surface universal blind
- * spots, but the axes inside each category (steering axis, op universe,
- * formation rule, threat shape, …) remain PRD's surface.
- */
-export type GameGenreVariant =
-  | 'match3'
-  | 'slidingPuzzle'
-  | 'cardSolitaire'
-  | 'arcadePaddle'
-  | 'arcadeSnake'
-  | 'crowdRunner';
-
-/**
- * v8 (D31-revised) — coreLoop registry stays 3-element (`solve` /
- * `collect` / `survive`), but the candidate set seen by the LLM is
- * narrowed by the genre-loop matrix (`GENRE_CORELOOP_MATRIX`) once a genre
- * is decided. The pipeline does NOT branch on genre — `gameCoreLoopCandidates`
- * is the only gate.
- */
-export type GameCoreLoopVariant = 'solve' | 'collect' | 'survive';
-
-export interface GameContentTier {
-  /** Genre identity (D31-revised v9: match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner — 6 sub-genres). */
-  genre?: GameGenreVariant;
-  /** Core-loop pattern (D31-revised v9: solve / collect / survive — 3 universals, matrix-gated per genre by `GENRE_CORELOOP_MATRIX`). */
-  coreLoop?: GameCoreLoopVariant;
-}
-
 export interface Basis {
   techTier?: TechTierConfig;
   visualTier?: VisualTier;
   /** Phase 2 — game-domain art tier (gated by `TIER_DOMAIN_MATRIX.gameArtTier`). */
   gameArtTier?: GameArtTier;
-  /** Phase 1 — game-domain content tier (genre + coreLoop). */
-  gameContentTier?: GameContentTier;
   /**
    * Service Virtualization build decision (§4). Decompose emits a
    * `<serviceVirtualization>` tag (default `build`); `optedOut: true` means the
@@ -258,8 +214,6 @@ export function buildBasisPreset(opts: {
   };
   /** Phase 2 — game-domain art tier (concept / perspective fillable from wizard). */
   gameArtTier?: GameArtTier;
-  /** Phase 1 — game-domain content tier (genre / coreLoop fillable from wizard). */
-  gameContentTier?: GameContentTier;
 }): Basis {
   const tierEntries: Record<string, TechTier> = {};
   if (opts.tiers) {
@@ -279,7 +233,6 @@ export function buildBasisPreset(opts: {
   const hasVisualLayers = opts.visualTier && Object.values(opts.visualTier).some(Boolean);
   const gameArtInput = opts.gameArtTier;
   const hasGameArtAxis = gameArtInput && Object.values(gameArtInput).some(Boolean);
-  const hasGameContentAxis = opts.gameContentTier && Object.values(opts.gameContentTier).some(Boolean);
 
   return {
     techTier: (opts.stack || hasTiers) ? {
@@ -291,7 +244,6 @@ export function buildBasisPreset(opts: {
       ...(hasVisualLayers ? opts.visualTier : {}),
     } : undefined,
     gameArtTier: hasGameArtAxis ? { ...gameArtInput } : undefined,
-    gameContentTier: hasGameContentAxis ? { ...opts.gameContentTier } : undefined,
   };
 }
 
@@ -387,7 +339,7 @@ export function resolveTaskTechTierFromStack(
  *
  * Policy: explicit fields from `actionMetadata.basis.techTier` are authoritative
  * — they win over any value emitted by the LLM in `<techTier>`. Mirrors the
- * `visualTier` / `gameArtTier` / `gameContentTier` invariant.
+ * `visualTier` / `gameArtTier` invariant.
  *
  * Behavior:
  *  - `explicit` undefined → return input unchanged (infer path).

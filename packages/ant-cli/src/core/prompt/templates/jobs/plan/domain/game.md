@@ -124,6 +124,10 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game-design voc
 - ⚠️ MDA (§4) is layered: **Mechanics** are the verbs (`MC-Jump`, `MC-Shoot`, `MC-Match`); **Dynamics** are what emerges from interaction (`combo`, `risk-reward`); **Aesthetic** is the intended feeling (`fellowship`, `discovery`, `mastery`). State all three; do NOT collapse them.
 - ⚠️ Content Scope (§8) needs a number AND a stable ID per entity. "A few stages" is a planning failure — write "3 stages: `LV-Forest`, `LV-Castle`, `LV-Throne`". Without `EN-` / `LV-` IDs, game-art-design has nothing to derive asset categories from.
 - ⚠️ Input & Perspective (§9) MUST commit an **orientation policy** AND a **viewport target**. Omitting them lets downstream design / code default silently, and a portrait-only puzzle that ships landscape (or vice versa) is a defect that surfaces only in playtest. Single-line commitment is enough — e.g., "locked-portrait, fullscreen" — but it MUST be explicit.
+- ⚠️ Genre (§2) is not specified until its **defining systems** are named. Whatever the genre, enumerate the small set of systems it structurally requires and commit each with the project's own twist — a genre label alone ("match-3", "roguelike", "tower defense") is a category, not a commitment. Naming a famous title is empty; naming the systems and their rules is the commitment.
+- ⚠️ When the core loop can reach a **dead end** (no legal move, empty resource, stuck state), the PRD MUST commit the recovery policy (reshuffle / undo / soft-fail / restart). A silent dead end reads as a bug to the player.
+- ⚠️ When a mechanic **feeds itself** (chains, multipliers, spawns that beget spawns), the PRD MUST commit a cap or a ramp so the feedback loop cannot run away past the player's control.
+- ⚠️ A reflective, decision-driven loop MUST keep its decision state **observable** — hidden information the player cannot see before acting breaks the observe → act → confirm contract. Explicit randomness is fine; hidden state is a category error.
 
 ### Refine-mode discipline
 

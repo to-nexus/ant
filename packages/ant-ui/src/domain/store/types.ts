@@ -234,7 +234,7 @@ export interface UIState {
   // Ephemeral: which tier the basis wizard should land on when entering
   // 'basis-edit'. Set by tier-specific edit buttons (BasisSummaryBar). Cleared
   // by the wizard itself or by global edit triggers that don't target a tier.
-  basisEditInitialTier: 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier' | undefined;
+  basisEditInitialTier: 'techTier' | 'visualTier' | 'gameArtTier' | undefined;
   selectedActionId: string | null;
   selectedIntentId: string | null;
   actionMetadata: import('@ant/shared').ActionMetadata;

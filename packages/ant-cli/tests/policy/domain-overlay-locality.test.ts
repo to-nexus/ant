@@ -26,7 +26,6 @@
  *        - jobs/code/basis/techTier/gameEngine/phaser.md  engine SBS
  *        - jobs/design/domain/game.md           §9 design-level policy
  *        - jobs/plan/domain/game.md             §9 PRD orientation
- *        - jobs/code/basis/gameContentTier/_preamble.md  HUD anchor
  *        - jobs/code/basis/gameArtTier/_preamble.md      table rows split
  *        - jobs/code/base/injections/game-art-source.md  table rows split
  */
@@ -257,7 +256,6 @@ const CODE_DOMAIN_GAME = path.join(TEMPLATES_ROOT, 'jobs/code/domain/game.md');
 const CODE_PHASER = path.join(TEMPLATES_ROOT, 'jobs/code/basis/techTier/gameEngine/phaser.md');
 const DESIGN_DOMAIN_GAME = path.join(TEMPLATES_ROOT, 'jobs/design/domain/game.md');
 const PLAN_DOMAIN_GAME = path.join(TEMPLATES_ROOT, 'jobs/plan/domain/game.md');
-const GAMECONTENT_PREAMBLE = path.join(TEMPLATES_ROOT, 'jobs/code/basis/gameContentTier/_preamble.md');
 const GAMEART_PREAMBLE = path.join(TEMPLATES_ROOT, 'jobs/code/basis/gameArtTier/_preamble.md');
 const GAMEART_SOURCE = path.join(TEMPLATES_ROOT, 'jobs/code/base/injections/game-art-source.md');
 
@@ -302,9 +300,8 @@ describe('Render Boundary Locality — code/domain/game.md (§7 SSOT)', () => {
     expect(src.toLowerCase()).toMatch(/full-screen modals?.*react/i);
   });
 
-  it('R5 — single-screen disclaimer for the five registered genres', () => {
+  it('R5 — single-screen disclaimer is present', () => {
     expect(src.toLowerCase()).toContain('single-screen');
-    expect(src).toMatch(/match3.*slidingPuzzle.*cardSolitaire.*arcadePaddle.*arcadeSnake/);
   });
 });
 
@@ -373,18 +370,6 @@ describe('Render Boundary Locality — plan/domain/game.md (§9 PRD)', () => {
 
   it('blind-spot reminder for §9 omission is present', () => {
     expect(src.toLowerCase()).toMatch(/orientation.*viewport|viewport.*orientation/);
-  });
-});
-
-describe('Render Boundary Locality — gameContentTier preamble (anchor)', () => {
-  const src = read(GAMECONTENT_PREAMBLE);
-
-  it('HUD = React rendering surface anchor line is present', () => {
-    expect(src.toLowerCase()).toMatch(/hud.*react.*rendering surface|hud.*screen-space.*react/i);
-  });
-
-  it('Cross-references the code/domain/game.md §7 SSOT', () => {
-    expect(src).toMatch(/jobs\/code\/domain\/game\.md/);
   });
 });
 

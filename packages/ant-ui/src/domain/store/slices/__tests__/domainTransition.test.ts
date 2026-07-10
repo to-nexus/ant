@@ -5,10 +5,9 @@
  * (DomainToggle / `@domain:` mention / future SSE broadcast) shares
  * the same behaviour:
  *
- *   (a) game → service drops `gameArtTier` / `gameContentTier` / `visualTier`
- *       (D28 — visualTier is service-only) and the `gameEngine` 5th slot
- *       from `basis.techTier`. service → game drops `visualTier` for the
- *       same reason.
+ *   (a) game → service drops `gameArtTier` (D28 — game-only) and the
+ *       `gameEngine` 5th slot from `basis.techTier`. service → game drops
+ *       `visualTier` (D28 — service-only).
  *   (b) If the currently-selected action card no longer passes the
  *       matrix gate (e.g. `design-game-art` on service or `design-ui` on
  *       game — D28), the wizard unwinds to `pick-action`. This is what
@@ -151,20 +150,18 @@ describe('uiSlice — domain persistence to BE artifact (D22)', () => {
 });
 
 describe('uiSlice — domain transition cleanup (game → service)', () => {
-  it('drops gameArtTier / gameContentTier on game → service', () => {
+  it('drops gameArtTier on game → service', () => {
     const store = makeStore();
     store.getState().updateActionMetadata({ domain: 'game' });
     store.getState().updateActionMetadata({
       basis: {
         gameArtTier: { concept: 'flatMinimal', perspective: '2d' },
-        gameContentTier: { genre: 'match3', coreLoop: 'solve' },
         visualTier: { visualLanguage: 'modernSaas' },
       },
     });
     store.getState().updateActionMetadata({ domain: 'service' });
     const basis = store.getState().actionMetadata.basis;
     expect(basis?.gameArtTier).toBeUndefined();
-    expect(basis?.gameContentTier).toBeUndefined();
     expect(basis?.visualTier).toEqual({ visualLanguage: 'modernSaas' });
   });
 
@@ -289,7 +286,7 @@ describe('uiSlice — techTier IntentGroup scoping', () => {
     expect(store.getState().actionMetadata.basis?.techTier?.stack).toBe('backend');
   });
 
-  it('other tiers (visualTier / gameContentTier) stay sticky across group changes', () => {
+  it('other tiers (visualTier / gameArtTier) stay sticky across group changes', () => {
     const store = makeStore();
     store.getState().selectAction('code');
     store.getState().updateActionMetadata({

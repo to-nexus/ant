@@ -4,7 +4,7 @@
  * The matrix is the single authority for "is tier X active for slot Y in
  * domain Z under runtime R?". This test exercises the full grid:
  *
- *   - 4 tiers (`techTier` / `visualTier` / `gameArtTier` / `gameContentTier`)
+ *   - 3 tiers (`techTier` / `visualTier` / `gameArtTier`)
  *   - 2 domains (`service` / `game`)
  *   - representative slot configs from `getConfigSlots`
  *   - runtime suppression scenarios for `visualTier`
@@ -32,8 +32,8 @@ import {
 const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
 
 describe('TIER_KEYS — registry shape', () => {
-  it('all 4 tiers are present (D23 removed `domain`)', () => {
-    expect(TIER_KEYS).toEqual(['techTier', 'visualTier', 'gameArtTier', 'gameContentTier']);
+  it('all 3 tiers are present (D23 removed `domain`; gameContentTier removed)', () => {
+    expect(TIER_KEYS).toEqual(['techTier', 'visualTier', 'gameArtTier']);
   });
 });
 
@@ -50,21 +50,19 @@ describe('isTierActive — slot/domain/runtime composition', () => {
   });
 
   it('returns false when slot omits the tier even if matrix permits', () => {
-    const slot: BasisSlotConfig = { tiers: ['gameContentTier'] };
+    const slot: BasisSlotConfig = { tiers: ['visualTier'] };
     expect(isTierActive('techTier', slot, 'service')).toBe(false);
     expect(isTierActive('gameArtTier', slot, 'game')).toBe(false);
   });
 
   it('returns false when matrix forbids the (tier, domain) combo', () => {
-    const slot: BasisSlotConfig = { tiers: ['gameArtTier', 'gameContentTier'] };
+    const slot: BasisSlotConfig = { tiers: ['gameArtTier'] };
     expect(isTierActive('gameArtTier', slot, 'service')).toBe(false);
-    expect(isTierActive('gameContentTier', slot, 'service')).toBe(false);
   });
 
   it('returns true when slot opts in AND matrix permits', () => {
-    const slot: BasisSlotConfig = { tiers: ['gameArtTier', 'gameContentTier'] };
+    const slot: BasisSlotConfig = { tiers: ['gameArtTier'] };
     expect(isTierActive('gameArtTier', slot, 'game')).toBe(true);
-    expect(isTierActive('gameContentTier', slot, 'game')).toBe(true);
   });
 
   it('visualTier suppressor: backend-only stack closes the gate', () => {
@@ -138,41 +136,40 @@ describe('shouldEmitVisualTierSpatialFloor — layer-selective hasUiDoc survivor
 
 describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
   // Expected (tier, domain) cells per intent. After D23, `'domain'` is no
-  // longer a TierKey — service-domain plan/spec wizards collapse because
-  // gameContentTier is game-only (no other tiers), and the wizard is
-  // hidden entirely. After the rev-overlay refactor, every `rev-*` intent
+  // longer a TierKey. Plan intents expose zero tiers (PLAN_TIERS = []), so
+  // their wizard is hidden entirely. After the rev-overlay refactor, every `rev-*` intent
   // declares `tiers: []` because the document under review already encodes
   // every basis decision (exposing tier pickers would invite the user to
   // overwrite settings already encoded in the artifact).
   const expectations: Array<{ intent: IntentId; tiers: ReadonlyArray<TierKey> }> = [
-    { intent: 'gen-plan', tiers: ['gameContentTier'] },
+    { intent: 'gen-plan', tiers: [] },
     { intent: 'rev-plan', tiers: [] },
     // Code-grounded design docs (spec + system) activate techTier so the doc
     // can reference the real stack's conventions — gen-spec/rev-spec/rev-sys now
     // mirror gen-sys-* (SYS_TIERS). For an existing codebase the FE wizard still
     // suppresses the techTier step (hasCodebase runtime suppressor); BE execute
     // injection omits hasCodebase from its runtime, so the grounding still flows.
-    { intent: 'gen-spec', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'rev-spec', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'gen-sys-fe', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'gen-sys-be', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'gen-sys-full', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'rev-sys', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'gen-spec', tiers: ['techTier'] },
+    { intent: 'rev-spec', tiers: ['techTier'] },
+    { intent: 'gen-sys-fe', tiers: ['techTier'] },
+    { intent: 'gen-sys-be', tiers: ['techTier'] },
+    { intent: 'gen-sys-full', tiers: ['techTier'] },
+    { intent: 'rev-sys', tiers: ['techTier'] },
     // figma source is the visualTier authority — wizard tier intentionally
     // elided so the user is not forced to override what figma already
     // decides on action-tab entry.
-    { intent: 'gen-ui-figma', tiers: ['gameContentTier'] },
-    { intent: 'gen-ui-desc', tiers: ['visualTier', 'gameContentTier'] },
+    { intent: 'gen-ui-figma', tiers: [] },
+    { intent: 'gen-ui-desc', tiers: ['visualTier'] },
     { intent: 'rev-ui', tiers: [] },
     // Phase 2 (D17/D28) — game-art design intents. tiers omits visualTier (D18).
     // figma source is the gameArtTier authority — wizard tier elided
     // (mirrors `gen-ui-figma`).
-    { intent: 'gen-game-art-figma', tiers: ['gameContentTier'] },
-    { intent: 'gen-game-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-game-art-figma', tiers: [] },
+    { intent: 'gen-game-art-desc', tiers: ['gameArtTier'] },
     { intent: 'rev-game-art', tiers: [] },
-    { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
-    { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
-    { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
+    { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
+    { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
     { intent: 'rev-code', tiers: [] },
   ];
 
@@ -183,7 +180,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
   });
 
   it('service-domain plan wizards collapse (D23 effect — plan only)', () => {
-    // PLAN_TIERS = [gameContentTier], which is game-only. Service domain
+    // PLAN_TIERS = [] — plan intents expose zero tiers. Service domain
     // therefore has zero active tiers → wizard hides. NOTE: spec intents
     // (gen-spec/rev-spec) intentionally NO LONGER collapse — they activate
     // techTier (SYS_TIERS) so a code-grounded spec references the real stack.

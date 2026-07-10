@@ -49,15 +49,14 @@ import i18n from '@/i18n';
 // intents and vice versa. `basis.techTier` mirrors the active group's entry
 // from `techTierByGroup`; whenever `selectedActionId` transitions, we swap
 // the live mirror to match the new group. Other tiers (visualTier /
-// gameArtTier / gameContentTier) stay on `basis` as sticky, group-agnostic
-// state.
+// gameArtTier) stay on `basis` as sticky, group-agnostic state.
 // ─────────────────────────────────────────────────────────────────────────
 
 type GroupCache = Partial<Record<IntentGroup, TechTierConfig>>;
 
 function basisHasOtherTiers(basis: Basis | undefined): boolean {
   if (!basis) return false;
-  return !!(basis.visualTier || basis.gameArtTier || basis.gameContentTier);
+  return !!(basis.visualTier || basis.gameArtTier);
 }
 
 /**
@@ -230,7 +229,7 @@ export interface UIActions {
   // Actions panel
   openActionsPanel: (actionId?: string) => void;
   setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit') => void;
-  setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier' | undefined) => void;
+  setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'gameArtTier' | undefined) => void;
   selectAction: (actionId: string) => void;
   selectIntent: (intentId: string) => void;
   updateActionMetadata: (patch: Partial<ActionMetadata>) => void;
@@ -1487,7 +1486,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         if (patch.domain !== 'game' && next.basis) {
           const cleaned = { ...next.basis };
           cleaned.gameArtTier = undefined;
-          cleaned.gameContentTier = undefined;
           if (cleaned.techTier?.frontend) {
             cleaned.techTier = {
               ...cleaned.techTier,
@@ -1501,7 +1499,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             };
           }
           const stillHasAny =
-            cleaned.techTier || cleaned.visualTier || cleaned.gameArtTier || cleaned.gameContentTier;
+            cleaned.techTier || cleaned.visualTier || cleaned.gameArtTier;
           next.basis = stillHasAny ? cleaned : undefined;
         }
 

@@ -29,8 +29,7 @@ interface DomainToggleProps {
  * explicit > infer).
  *
  * Switching domains resets domain-heterogeneous basis selections —
- * service → game wipes `gameContentTier` / `gameArtTier`; the reverse
- * additionally clears the `gameEngine` 5th slot.
+ * game → service wipes `gameArtTier` and clears the `gameEngine` 5th slot.
  */
 // Game-domain activation (game-activation WS1/WS2): the `game` toggle is now
 // surfaced. The full domain pipeline (contract / store / matrix / mention) was

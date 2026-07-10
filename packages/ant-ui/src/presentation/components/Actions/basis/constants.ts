@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Settings2, Palette, Brush, Gamepad2, type LucideProps } from 'lucide-react';
+import { Settings2, Palette, Brush, type LucideProps } from 'lucide-react';
 import type { BasisSlotConfig } from '@ant/shared';
 import type { TierKey, WizardStepDef, WizardTierTabItem } from './types';
 
@@ -58,15 +58,6 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     icon: Brush,
     iconBg: 'bg-[color:var(--bg-surface-2)]',
     iconColor: 'text-[color:var(--amber-500)]',
-  },
-  {
-    id: 'gameContentTier',
-    label: { en: 'Game Content', ko: '게임 콘텐츠' },
-    description: { en: 'Genre and core loop pattern', ko: '장르와 코어 루프 패턴' },
-    isConfigured: (slot) => Boolean(slot.tiers?.includes('gameContentTier')),
-    icon: Gamepad2,
-    iconBg: 'bg-[color:var(--bg-surface-2)]',
-    iconColor: 'text-[color:var(--emerald-500)]',
   },
 ];
 

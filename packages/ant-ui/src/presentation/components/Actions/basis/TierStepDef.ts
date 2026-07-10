@@ -18,8 +18,7 @@
  *                      the LLM decides them at decompose time from the
  *                      registry candidate set. Only `concept` and
  *                      `perspective` are user-facing decisions; the rest
- *                      are inferred from genre / coreLoop / directive.)
- *   - gameContentTier: [genre, coreLoop]
+ *                      are inferred from the directive / PRD.)
  *
  * Note: techTier is special — it has dynamic step ordering that depends
  * on the chosen stack (fullstack vs single). The single-stack ordering
@@ -67,23 +66,6 @@ export const GAME_ART_STEPS: WizardStepDef[] = [
   },
 ];
 
-export const GAME_CONTENT_STEPS: WizardStepDef[] = [
-  {
-    id: 'genre',
-    tierKey: 'gameContentTier',
-    layerKey: 'genre',
-    title: { en: 'Genre', ko: '장르' },
-    description: { en: 'Pick the genre identity (puzzle / action / ...)', ko: '게임 장르 (퍼즐 / 액션 / ...) 를 선택하세요' },
-  },
-  {
-    id: 'coreLoop',
-    tierKey: 'gameContentTier',
-    layerKey: 'coreLoop',
-    title: { en: 'Core Loop', ko: '코어 루프' },
-    description: { en: 'Select the player loop pattern', ko: '플레이어 코어 루프 패턴을 선택하세요' },
-  },
-];
-
 /**
  * TIER_STEP_DEF — single source of truth for "given an active tier, which
  * steps does the wizard expose?". `useBasisWizard.computeStepsByTier`
@@ -98,7 +80,6 @@ export const TIER_STEP_DEF: Readonly<Record<TierKey, WizardStepDef[]>> = {
   techTier: [...TECH_STEPS],
   visualTier: [...VISUAL_STEPS],
   gameArtTier: GAME_ART_STEPS,
-  gameContentTier: GAME_CONTENT_STEPS,
 } as const;
 
 export const TIER_STEP_DEF_FULLSTACK_TECH: WizardStepDef[] = [...FULLSTACK_STEPS];

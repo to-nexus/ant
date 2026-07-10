@@ -1,8 +1,8 @@
 /**
  * Decision Tag Registry SSOT (Phase 2, I3 — D12-revised)
  *
- * Phase 2 ships 3 tags via the registry: `domain`, `gameArtTier`,
- * `gameContentTier`. The 5th-slot `gameEngine` lives inside the existing
+ * The registry ships 3 tags: `domain`, `gameArtTier`,
+ * `serviceVirtualization`. The `gameEngine` slot lives inside the existing
  * `<techTier>` JSON (parsed in `responseParser.ts`) and is NOT a separate
  * registry entry. The other 4 (executionTier / techTier / boundary /
  * directHints) keep their per-callsite parsers — Phase 4 migrates them.
@@ -21,7 +21,6 @@ describe('DECISION_TAG_REGISTRY', () => {
     expect(DECISION_TAG_REGISTRY.map(d => d.name)).toEqual([
       'domain',
       'gameArtTier',
-      'gameContentTier',
       'serviceVirtualization',
     ]);
   });
@@ -54,11 +53,6 @@ describe('parseDecisionTags — happy path', () => {
     });
   });
 
-  it('parses gameContentTier (v8 D31-revised — match3 × solve)', () => {
-    const r = parseDecisionTags('<gameContentTier>genre=match3,coreLoop=solve</gameContentTier>');
-    expect(r.parsed.gameContentTier).toEqual({ genre: 'match3', coreLoop: 'solve' });
-  });
-
   it('parses serviceVirtualization build → { optedOut: false } (§4)', () => {
     const r = parseDecisionTags('<serviceVirtualization>build</serviceVirtualization>');
     expect(r.parsed.serviceVirtualization).toEqual({ optedOut: false });
@@ -81,11 +75,10 @@ describe('parseDecisionTags — happy path', () => {
     expect(filled.serviceVirtualization).toEqual({ optedOut: false });
   });
 
-  it('parses all three together (v8)', () => {
+  it('parses domain + gameArtTier together', () => {
     const raw = `
       <domain>game</domain>
       <gameArtTier>concept=cardClassic,perspective=2d</gameArtTier>
-      <gameContentTier>genre=cardSolitaire,coreLoop=collect</gameContentTier>
     `;
     const r = parseDecisionTags(raw);
     expect(r.violations).toHaveLength(0);
@@ -94,7 +87,6 @@ describe('parseDecisionTags — happy path', () => {
     expect(r.missing).toEqual(['serviceVirtualization']);
     expect(r.parsed.domain).toBe('game');
     expect(r.parsed.gameArtTier).toEqual({ concept: 'cardClassic', perspective: '2d' });
-    expect(r.parsed.gameContentTier).toEqual({ genre: 'cardSolitaire', coreLoop: 'collect' });
   });
 
   it('IGNORES standalone <gameEngine> tag (lives inside <techTier>)', () => {
@@ -137,14 +129,14 @@ describe('parseDecisionTags — invalid bodies', () => {
 describe('parseDecisionTags — missing tags', () => {
   it('lists all missing names', () => {
     const r = parseDecisionTags('');
-    expect(r.missing).toEqual(['domain', 'gameArtTier', 'gameContentTier', 'serviceVirtualization']);
+    expect(r.missing).toEqual(['domain', 'gameArtTier', 'serviceVirtualization']);
   });
 });
 
 describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
-  it('fills gameArtTier and gameContentTier defaults when missing (v8 + Phase 4)', () => {
+  it('fills gameArtTier defaults when missing (Phase 4)', () => {
     const r = parseDecisionTags('');
-    const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier', 'gameContentTier']);
+    const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier']);
     // Phase 4 default fills all 7 art axes — registry-backed conservative
     // values that work in css-only inline production.
     expect(filled.gameArtTier).toEqual({
@@ -156,8 +148,6 @@ describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
       projectilePolicy: 'none',
       audioProfile: 'procedural',
     });
-    // v8 (D31-revised) — match3 × solve is the matrix-admitted default.
-    expect(filled.gameContentTier).toEqual({ genre: 'match3', coreLoop: 'solve' });
   });
 
   it('does not override an existing parsed value', () => {

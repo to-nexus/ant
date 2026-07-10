@@ -96,7 +96,7 @@ A playable build runs two render systems in the same browser tab — an HTML/CSS
 
 The single decision rule: *"if the camera pans, does this UI element pan with it?"* — yes ⇒ world-space (engine), no ⇒ screen-space (React). Putting world-space UI into React forces the React tree to re-mirror the camera transform every frame; this is the most common source of visible misalignment between UI and world.
 
-Currently registered genres (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`) are all single-screen — the camera does not pan — so the world-space-UI slot is typically empty and **every UI element naturally collapses into screen-space (React)**. The world-space slot stays available as a seam for future camera-panning genres; do not invent in-world UI for these five.
+For a **single-screen game** (the camera does not pan) the world-space-UI slot is typically empty and **every UI element naturally collapses into screen-space (React)**. The world-space slot stays available as a seam for camera-panning games; do not invent in-world UI when the camera is fixed.
 
 #### Viewport contract
 
@@ -120,7 +120,7 @@ If the HUD layout decision and the canvas scale decision conflict on the same di
 
 - ⚠️ **Pointer-event routing (R1)**: A React HUD that overlays the canvas with default `pointer-events` absorbs touch / click events that should reach the canvas. The HUD container MUST default to `pointer-events: none`; only the interactive subset (buttons, sliders, menu items) re-enables `pointer-events: auto`. Forgetting this is the second-most-common reason a freshly built game appears to "not respond to clicks".
 - ⚠️ **Modal stack location (R3)**: Full-screen modals (Game Over, Pause, Settings, Confirm) are screen-space — they belong in React, not in an engine scene. Building a modal as an engine scene forfeits browser routing, focus management, and screen-reader compatibility. The exception is **in-world** dialog (a speech bubble anchored to an NPC sprite) — that one stays in the engine because its position is world-bound.
-- ⚠️ **Single-screen disclaimer (R5)**: The five registered genres are all single-screen, so the world-space-UI slot is normally empty. Do not invent in-world UI for these five. When a future camera-panning genre lands, world-space UI activates naturally — until then, every UI element resolves to screen-space (React).
+- ⚠️ **Single-screen disclaimer (R5)**: When the game is single-screen (fixed camera), the world-space-UI slot is normally empty — do not invent in-world UI. When the camera pans, world-space UI activates naturally; until then, every UI element resolves to screen-space (React).
 
 #### Blind-spot reminders
 

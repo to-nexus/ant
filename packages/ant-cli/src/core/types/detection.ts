@@ -119,7 +119,6 @@ export function formatRACForChat(
   formatted += renderTechTierSection(rac, isKorean);
   formatted += renderVisualTierSection(rac, isKorean);
   formatted += renderGameArtTierSection(rac, isKorean);
-  formatted += renderGameContentTierSection(rac, isKorean);
 
   return formatted;
 }
@@ -343,24 +342,6 @@ function renderGameArtTierSection(rac: ResolvedActionContext, isKorean: boolean)
   if (present.length === 0) return '';
 
   const header = isKorean ? `🖌️ **게임 아트 기반**\n` : `🖌️ **Game Art Basis**\n`;
-  return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
-}
-
-/**
- * Render the gameContentTier (game-domain content policy) section of the
- * chat RAC summary. Phase 1 / Phase 2 axes: genre + coreLoop.
- */
-function renderGameContentTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
-  const gct = rac.basis?.gameContentTier;
-  if (!gct) return '';
-  const entries: Array<[string, string | undefined]> = [
-    [isKorean ? '장르' : 'Genre', gct.genre],
-    [isKorean ? '코어 루프' : 'Core Loop', gct.coreLoop],
-  ];
-  const present = entries.filter(([, v]) => !!v);
-  if (present.length === 0) return '';
-
-  const header = isKorean ? `🎮 **게임 콘텐츠**\n` : `🎮 **Game Content**\n`;
   return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
 }
 

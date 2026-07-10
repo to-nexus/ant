@@ -114,10 +114,6 @@ describe('Domain-Surface Boundary (D28) — matrix layer', () => {
     expect(TIER_DOMAIN_MATRIX.gameArtTier).toEqual(['game']);
   });
 
-  it('gameContentTier matrix row is game-only', () => {
-    expect(TIER_DOMAIN_MATRIX.gameContentTier).toEqual(['game']);
-  });
-
   it('techTier remains domain-universal (the only universal tier)', () => {
     expect(TIER_DOMAIN_MATRIX.techTier).toEqual(['service', 'game']);
   });

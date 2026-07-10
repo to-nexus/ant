@@ -88,7 +88,6 @@
     "wizardTechTier": "기술 티어",
     "wizardVisualTier": "비주얼 티어",
     "wizardGameArtTier": "게임 아트 티어",
-    "wizardGameContentTier": "게임 콘텐츠",
     "wizardDone": "완료",
     "wizardStepStack": "스택",
     "wizardStepLanguage": "언어",
@@ -99,8 +98,6 @@
     "wizardStepSpatialSystem": "공간 시스템",
     "wizardStepConcept": "컨셉",
     "wizardStepPerspective": "시점",
-    "wizardStepGenre": "장르",
-    "wizardStepCoreLoop": "코어 루프",
     "summary": {
       "techTier": {
         "gameEngine": "엔진"
@@ -108,10 +105,6 @@
       "gameArtTier": {
         "concept": "컨셉",
         "perspective": "시점"
-      },
-      "gameContentTier": {
-        "genre": "장르",
-        "coreLoop": "코어 루프"
       }
     }
   },

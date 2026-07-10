@@ -133,7 +133,7 @@ describe('resolveTaskTechTierFromStack', () => {
 // applyExplicitTechTierOverrides
 //
 // Policy: explicit basis from `actionMetadata.basis.techTier` is authoritative.
-// Mirrors the visualTier / gameArtTier / gameContentTier invariant — preset
+// Mirrors the visualTier / gameArtTier invariant — preset
 // fields win over LLM-emitted `<techTier>` values for the same stack.
 // ============================================
 

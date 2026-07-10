@@ -16,7 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, basePriorityFor } from "../../state";
 import { renderPriorityBandGuide } from "../../state.priorityGuide";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -368,7 +368,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     _effectiveDomain === 'game' &&
     isTierActive('techTier', _decomposeSlot, _effectiveDomain, _runtime);
   const _gameArtTierEnabled = isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime);
-  const _gameContentTierEnabled = isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime);
 
   // Defensive normalization of `state.resolvedAction.documents` entries so
   // any `action-context` partial render reached via this entry point (sub-
@@ -452,7 +451,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // without inspecting `domain` directly.
     domainTierActive: !!_effectiveDomain,
     gameArtTierActive: _gameArtTierEnabled,
-    gameContentTierActive: _gameContentTierEnabled,
     // §4 — gate the `<serviceVirtualization>` opt-out teaching/emission to
     // service-domain jobs (game uses the game-art surface, not SV). Keeps the
     // domain comparison in code, not the template (Domain-Branching Locality I1).
@@ -470,20 +468,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       : undefined,
     gameArtPerspectiveCandidates: _gameArtTierEnabled
       ? GAME_ART_PERSPECTIVE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
-      : undefined,
-    gameGenreCandidates: _gameContentTierEnabled
-      ? GAME_GENRE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
-      : undefined,
-    // v9 (D31-revised / I9) — coreLoop candidate set is matrix-gated by
-    // the resolved genre. When genre is decided up-front (basis wizard
-    // explicit or a previous LLM emit), the LLM only sees the loops the
-    // matrix admits for that genre; otherwise the universe is exposed
-    // and the matrix gate fires on the next retry. Pure lookup, no node
-    // branching (D6 / I1 — Domain-Branching Locality).
-    gameCoreLoopCandidates: _gameContentTierEnabled
-      ? coreLoopCandidatesFor(state.resolvedAction?.basis?.gameContentTier?.genre)
-          .map((v: string) => `\`${v}\``)
-          .join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
     // Canonical priority band guide, rendered from the `TASK_PRIORITY` map
@@ -911,12 +895,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       const { parseDecisionTags, decisionTagRetryFraming } =
         await import('../../../../../../core/llm-response/DecisionTagRegistry');
       decisionTagsAtFinal = parseDecisionTags(rawResponse);
-      const expectedTags: Array<'gameArtTier' | 'gameContentTier'> = [];
+      const expectedTags: Array<'gameArtTier'> = [];
       if (isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime)) {
         expectedTags.push('gameArtTier');
-      }
-      if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
-        expectedTags.push('gameContentTier');
       }
       const missingExpected = expectedTags.filter(t => decisionTagsAtFinal!.parsed[t] === undefined);
       if (missingExpected.length > 0 || decisionTagsAtFinal.violations.length > 0) {
@@ -961,9 +942,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       }
 
       // Even if executionTier passed, retry when decision tags are missing
-      // for matrix-active tiers (game projects need gameArtTier/gameContentTier
-      // emission for the LLM SSOT to be honoured) OR when Tier 3 analysis
-      // is missing.
+      // for matrix-active tiers (game projects need gameArtTier emission for
+      // the LLM SSOT to be honoured) OR when Tier 3 analysis is missing.
       if ((decisionTagViolationFraming || analysisRequiredFraming) && attempt < MAX_ATTEMPTS) {
         console.warn(
           `⚠️  [Decompose] Contract violation attempt ${attempt}/${MAX_ATTEMPTS} — retrying with framing` +
@@ -1441,23 +1421,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.65: Apply Phase 1 decision tags (gameArtTier / gameContentTier)
+  // STEP 6.65: Apply Phase 1 decision tags (gameArtTier / serviceVirtualization)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // The decompose LLM emits `<gameArtTier>` and `<gameContentTier>` only when
-  // those tiers are matrix-active. The 5th-slot `gameEngine` is parsed
-  // out of the existing `<techTier>` JSON in STEP 6.5 (responseParser
-  // surfaces `parsedTechTier.gameEngine`); it is NOT re-parsed here.
+  // The decompose LLM emits `<gameArtTier>` only when that tier is
+  // matrix-active. The 5th-slot `gameEngine` is parsed out of the existing
+  // `<techTier>` JSON in STEP 6.5 (responseParser surfaces
+  // `parsedTechTier.gameEngine`); it is NOT re-parsed here.
   //
   // We reuse the parse result the retry loop already produced (decisionTagsAtFinal)
   // to avoid the cost of a second pass through the response body.
   if (state.resolvedAction && _effectiveDomain && decisionTagsAtFinal) {
     const { applyDecisionTagDefaults } = await import('../../../../../../core/llm-response/DecisionTagRegistry');
-    const expectedTags: Array<'gameArtTier' | 'gameContentTier' | 'domain' | 'serviceVirtualization'> = [];
+    const expectedTags: Array<'gameArtTier' | 'domain' | 'serviceVirtualization'> = [];
     if (isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime)) {
       expectedTags.push('gameArtTier');
-    }
-    if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
-      expectedTags.push('gameContentTier');
     }
     // §4 — SV build decision is expected for every service-domain code job, so
     // a missing tag default-fills to BUILD (optedOut:false) rather than leaving
@@ -1468,19 +1445,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const applied = applyDecisionTagDefaults(decisionTagsAtFinal.parsed, expectedTags);
 
     const gameArtTier = applied.gameArtTier as import('@ant/shared').GameArtTier | undefined;
-    const gameContentTier = applied.gameContentTier as import('@ant/shared').GameContentTier | undefined;
     const serviceVirtualization = applied.serviceVirtualization as { optedOut: boolean } | undefined;
 
-    if (gameArtTier || gameContentTier || serviceVirtualization) {
+    if (gameArtTier || serviceVirtualization) {
       const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
       if (gameArtTier) newBasis.gameArtTier = { ...(state.resolvedAction.basis?.gameArtTier ?? {}), ...gameArtTier };
-      if (gameContentTier) newBasis.gameContentTier = { ...(state.resolvedAction.basis?.gameContentTier ?? {}), ...gameContentTier };
       if (serviceVirtualization) newBasis.serviceVirtualization = serviceVirtualization;
       state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
       console.log(
         `🎮 [Decompose] Phase-1 decision tags applied: ` +
         `gameArtTier=${gameArtTier ? Object.keys(gameArtTier).join(',') : '-'}, ` +
-        `gameContentTier=${gameContentTier ? Object.keys(gameContentTier).join(',') : '-'}, ` +
         `serviceVirtualization=${serviceVirtualization ? (serviceVirtualization.optedOut ? 'opt-out' : 'build') : '-'}`,
       );
     }
@@ -1499,7 +1473,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (currentTechTierConfig) {
     // Explicit techTier (raw actionMetadata.basis.techTier — never merged with LLM emit)
     // is the authority signal: preset fields override LLM-emitted values for the same
-    // stack. Mirrors the visualTier / gameArtTier / gameContentTier policy.
+    // stack. Mirrors the visualTier / gameArtTier policy.
     const explicitTechTier = state.actionMetadata?.basis?.techTier;
     for (const task of taskQueue.getAll()) {
       const resolved = resolveTaskTechTierFromStack(task.stack, currentTechTierConfig);

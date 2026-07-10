@@ -36,7 +36,7 @@ Tags from different intent axes MUST NOT nest inside each other.
 | artifact | `<file>` `<append>` `<edit>` `<delete>` `<plan>` |
 | narrative | `<reply>` |
 | control | `<done>` `<clarify>` |
-| decision | `<executionTier>` `<domain>` `<gameArtTier>` `<gameContentTier>` `<techTier>` |
+| decision | `<executionTier>` `<domain>` `<gameArtTier>` `<techTier>` |
 | metadata | `<tasks>` `<task>` `<references>` `<thinking>` `<detect>` `<learn_command>` `<boundary>` `<directHints>` `<specClarify>` `<triage>` `<direct>` `<eval>` |
 
 A `<file>` body is the file content verbatim — no `<reply>` inside, no

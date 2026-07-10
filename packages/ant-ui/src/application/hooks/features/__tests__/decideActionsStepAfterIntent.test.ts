@@ -3,9 +3,9 @@
  *
  * Background — the original `handleIntentSelect` routed on the static
  * `slot.tiers?.length > 0`, ignoring the domain × runtime matrix. For
- * intents whose static tiers are all closed by the matrix (e.g.
- * `gen-plan`'s `PLAN_TIERS = ['gameContentTier']` under the `service`
- * domain) this routed the user to `basis-edit`, which then mounted a
+ * intents with no live wizard tiers (e.g. `gen-plan`'s `PLAN_TIERS = []`,
+ * or an intent whose remaining tiers the matrix / runtime suppressors
+ * close) this routed the user to `basis-edit`, which then mounted a
  * `BasisWizard` whose `availableTiers === []` triggered its defensive
  * `!currentStep → return null` guard, leaving the entire panel blank.
  *
@@ -30,45 +30,43 @@ const empty = (overrides: Partial<ActionMetadata> = {}): ActionMetadata => ({
 });
 
 describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
-  describe('service domain — game-only tiers collapse to config', () => {
-    it('gen-plan (PLAN_TIERS = gameContentTier) → config', () => {
+  describe('plan intents expose no wizard tiers → config', () => {
+    it('gen-plan (PLAN_TIERS = []) → config on service', () => {
       const slot = getConfigSlots('gen-plan')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('config');
     });
 
+    // gen-plan carries no wizard tiers in EITHER domain — genre/coreLoop now
+    // live as free prose in the PRD, not a basis tier. So game domain routes
+    // to config too (no wizard hop).
+    it('gen-plan (PLAN_TIERS = []) → config on game', () => {
+      const slot = getConfigSlots('gen-plan')?.basis;
+      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'game' }))).toBe('config');
+    });
+
     // gen-spec grounds in the existing codebase's stack, so its basis is
-    // SYS_TIERS = ['techTier', 'gameContentTier'] (see action-config-matrix
-    // "Code-grounded design doc → activate techTier grounding"). On service the
-    // game-only gameContentTier drops, but techTier is domain-universal and
-    // stays active on greenfield → basis-edit (same shape as gen-sys-*).
+    // SYS_TIERS = ['techTier']. techTier is domain-universal and stays active
+    // on greenfield → basis-edit (same shape as gen-sys-*).
     it('gen-spec (SYS_TIERS: techTier-grounded) → basis-edit on service greenfield', () => {
       const slot = getConfigSlots('gen-spec')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('basis-edit');
     });
 
     // …and once a codebase exists, techTier is suppressed too → config.
-    it('gen-spec + service + hasCodebase=true → config (techTier suppressed, gameContentTier closed)', () => {
+    it('gen-spec + service + hasCodebase=true → config (techTier suppressed)', () => {
       const slot = getConfigSlots('gen-spec')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }), true)).toBe('config');
     });
-  });
 
-  describe('game domain — same intents now route to basis-edit', () => {
-    it('gen-plan → basis-edit', () => {
-      const slot = getConfigSlots('gen-plan')?.basis;
-      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'game' }))).toBe('basis-edit');
-    });
-
-    it('gen-spec → basis-edit', () => {
+    it('gen-spec → basis-edit on game (techTier active)', () => {
       const slot = getConfigSlots('gen-spec')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'game' }))).toBe('basis-edit');
     });
   });
 
   describe('runtime suppressors close visualTier even on service domain', () => {
-    // gen-ui-desc's static tiers are ['visualTier', 'gameContentTier'].
-    // Under service: gameContentTier is closed by the matrix, leaving
-    // visualTier — but if the user already attached a UI design doc
+    // gen-ui-desc's static tiers are ['visualTier']. Under service,
+    // visualTier is live — but if the user already attached a UI design doc
     // (handoff/ant/figma) to refs, visualTier suppresses too, leaving
     // zero active tiers.
     //
@@ -87,12 +85,11 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
       expect(decideActionsStepAfterIntent(slot, metadata)).toBe('config');
     });
 
-    // Direct routing test for the figma intent: with visualTier elided
-    // from static tiers and gameContentTier closed by the service-domain
-    // matrix, the chip click MUST land on `config` — no wizard required.
-    // Pinning this prevents a future revert of the matrix prune from
-    // silently re-introducing the wizard hop on chip click.
-    it('gen-ui-figma on service (empty refs) → config (static tier prune)', () => {
+    // Direct routing test for the figma intent: its static tiers are `[]`
+    // (figma is the visual authority — no wizard step), so the chip click
+    // MUST land on `config` — no wizard required. Pinning this prevents a
+    // future revert of the matrix prune from re-introducing the wizard hop.
+    it('gen-ui-figma on service (empty refs) → config (empty static tiers)', () => {
       const slot = getConfigSlots('gen-ui-figma')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('config');
     });
@@ -103,7 +100,7 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
       const slot = getConfigSlots('gen-plan')?.basis;
       const metadata = empty({
         domain: 'game',
-        basis: { gameContentTier: { genre: 'puzzle', coreLoop: 'solve' } } as any,
+        basis: { gameArtTier: { concept: 'flatMinimal' } } as any,
       });
       expect(decideActionsStepAfterIntent(slot, metadata)).toBe('config');
     });
@@ -123,9 +120,9 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
 
   describe('code intents with multiple tiers — at least one stays active on service', () => {
     // gen-code-sys's static tiers are ['techTier', 'visualTier',
-    // 'gameArtTier', 'gameContentTier']. Under service the game-only
-    // pair drops, but techTier + visualTier survive (no UI doc, no
-    // backend lock at chip-click time), so basis-edit is correct.
+    // 'gameArtTier']. Under service the game-only gameArtTier drops, but
+    // techTier + visualTier survive (no UI doc, no backend lock at
+    // chip-click time), so basis-edit is correct.
     it('gen-code-sys on service with empty basis → basis-edit', () => {
       const slot = getConfigSlots('gen-code-sys')?.basis;
       expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('basis-edit');
@@ -143,11 +140,10 @@ describe('existing codebase short-circuits techTier AND visualTier (D27 SSOT run
   //     the user's existing visual choices.
   //
   // For service-domain code intents whose static tiers are
-  // ['techTier','visualTier','gameArtTier','gameContentTier']
-  // (gen-code-sys / gen-code-spec / gen-code-directive), the service
-  // matrix already closes gameArtTier + gameContentTier, and hasCodebase
-  // now closes techTier + visualTier — so zero tiers stay active and the
-  // chip MUST route to `config`. Pinning all three intents prevents a
+  // ['techTier','visualTier','gameArtTier'] (gen-code-sys / gen-code-spec /
+  // gen-code-directive), the service matrix already closes gameArtTier, and
+  // hasCodebase now closes techTier + visualTier — so zero tiers stay active
+  // and the chip MUST route to `config`. Pinning all three intents prevents a
   // future revert of the visualTier suppressor from silently re-introducing
   // the wizard hop for any of them.
 
@@ -179,7 +175,7 @@ describe('existing codebase short-circuits techTier AND visualTier (D27 SSOT run
     ).toBe('config');
   });
 
-  it('gen-code-sys + game + hasCodebase=true → basis-edit (gameArtTier/gameContentTier remain active)', () => {
+  it('gen-code-sys + game + hasCodebase=true → basis-edit (gameArtTier remains active)', () => {
     const slot = getConfigSlots('gen-code-sys')?.basis;
     expect(
       decideActionsStepAfterIntent(slot, empty({ domain: 'game' }), true),
