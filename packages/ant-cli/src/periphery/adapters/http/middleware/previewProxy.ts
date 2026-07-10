@@ -20,13 +20,15 @@ import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
-import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
+import { isSubdomainRouting, getPreviewBaseDomain, getPreviewRoutingMode } from '../../../../core/config/previewRouting';
 import {
   resolvePreviewTarget,
   resolvePreviewLabel,
   resolveOwnerForward,
+  selfPodId,
   PREVIEW_PEER_FORWARD_HEADER,
 } from './previewRouting';
+import { resolveCrossPodLiveness } from '../../../../core/utils/crossPodLiveness';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
   buildForwardHeaders,
@@ -50,6 +52,17 @@ const DEFAULT_FAVICON_SVG = Buffer.from(
 );
 
 const escapeRegExp = sharedEscapeRegExp;
+
+/**
+ * Per-request diagnostic trace for the subdomain preview path (the branch that
+ * 504s). Gated by `ANT_PREVIEW_TRACE` so it's opt-in, and emitted at `warn` so it
+ * survives the production log level (`warn`+). High-signal, low-volume during a
+ * debug session; off by default.
+ */
+function trace(message: string, meta?: unknown): void {
+  if (!process.env.ANT_PREVIEW_TRACE) return;
+  logger.warn(`[PreviewProxy][trace] ${message}`, { component: 'PreviewProxy' }, meta);
+}
 
 /**
  * Rewrite _next/image url param to include basePath.
@@ -152,15 +165,31 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // correctly by construction.
     if (isSubdomainRouting()) {
       const label = extractLabelFromHost(req.headers.host, getPreviewBaseDomain());
+      trace('subdomain entry', {
+        host: req.headers.host,
+        xForwardedHost: req.headers['x-forwarded-host'],
+        mode: getPreviewRoutingMode(),
+        label,
+        url: req.url,
+      });
       if (!label) return next();
 
       const match = resolvePreviewLabel(await portRegistry.listPreviews(), label);
       if (!match) {
+        trace('label MISS → 404', { label });
         res.status(404).json({ error: 'Preview not found' });
         return;
       }
       const { tenantId, userId, projectId, feature, serviceName } = match;
       const internalKey = `${tenantId}:${userId}:${projectId}:${feature}`;
+      trace('label match', {
+        internalKey,
+        serviceName,
+        ownerPodId: match.podId,
+        ownerHost: match.host,
+        ownerPort: match.port,
+        selfPodId: selfPodId(),
+      });
 
       if (!isOwner(req, { tenantId, userId })) {
         res.status(403).json({ error: 'Forbidden: preview belongs to another account' });
@@ -168,26 +197,49 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
 
       // The matched label record carries host/port/packages. A dead target
-      // fails fast via the transport-retry timeout below — no destructive
-      // liveness gate (see PreviewServer WS upgrade for the same rationale).
+      // fails fast via the liveness probe below — no destructive liveness gate
+      // (see PreviewServer WS upgrade for the same rationale).
       const state = match;
 
       // Cross-pod owner-forwarding: in a multi-replica deployment the ALB
       // round-robins this preview host across replicas with no owner affinity.
-      // The dev server lives only on the pod that spawned it (`state.host` =
-      // that pod's POD_IP), on a port not reachable cross-pod. When we are NOT
-      // that pod, forward the whole request to the owner's ant-preview service
-      // port (open pod-to-pod) with the original Host preserved; the owner then
-      // proxies to its own localhost dev server. Loop-guarded against a stale
-      // owner record. Off-cluster (no POD_IP) this is a no-op.
+      // The dev server lives only on the pod that spawned it (`state.podId`), on
+      // a port not reachable cross-pod. When we are NOT that pod, forward the
+      // whole request to the owner's ant-preview service port with the original
+      // Host preserved; the owner then proxies to its own localhost dev server.
+      // Ownership is decided by podId (os.hostname) — never POD_IP — so it can't
+      // silently disable itself. Loop-guarded against a stale owner record.
       const ownerForward = resolveOwnerForward(
+        state.podId,
         state.host,
         req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
       );
+      trace('owner-forward decision', {
+        forward: ownerForward ?? 'served-local',
+        alreadyForwarded: req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
+      });
       if (ownerForward) {
+        // Fast-fail: probe the owner's service port (1s) before committing to a
+        // fetch that would otherwise hang to the 45s deadline (→ front-tier 504)
+        // when pod-to-pod on the service port is blocked. Turns an opaque 504
+        // into an immediate, logged 502 that names the infra cause.
+        const liveness = await resolveCrossPodLiveness(
+          { host: ownerForward.forwardHost, port: ownerForward.forwardPort },
+          false,
+        );
+        if (liveness !== 'reachable') {
+          logger.warn(
+            `[Preview] Owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable on service port ` +
+            `(pod-to-pod blocked?) — owner=${state.podId} self=${selfPodId()} key=${internalKey}`,
+            { component: 'PreviewProxy' },
+          );
+          res.status(502).json({ error: 'Preview owner pod unreachable — cross-pod networking blocked' });
+          return;
+        }
         const fwdUrl = `http://${ownerForward.forwardHost}:${ownerForward.forwardPort}${req.url}`;
         const fwdHeaders = buildForwardHeaders(req);
         fwdHeaders[PREVIEW_PEER_FORWARD_HEADER] = '1';
+        trace('forwarding to owner', { fwdUrl });
         try {
           const response = await fetchWithTransportRetry(fwdUrl, {
             method: req.method,
@@ -226,6 +278,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
 
       const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
+      trace('served-local dev fetch', { targetUrl });
       try {
         const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
         const response = await fetchWithTransportRetry(targetUrl, {

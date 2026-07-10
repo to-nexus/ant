@@ -26,7 +26,7 @@ import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
-import { isSubdomainRouting, getDeployBaseDomain, getPreviewBaseDomain } from '../../core/config/previewRouting';
+import { isSubdomainRouting, getDeployBaseDomain, getPreviewBaseDomain, getPreviewRoutingMode } from '../../core/config/previewRouting';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
@@ -46,7 +46,8 @@ import { extractUserContext } from '../../periphery/adapters/http/routes/helpers
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
-import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
+import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, selfPodId, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
+import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import {
@@ -87,6 +88,13 @@ export interface PreviewServerOptions {
  * (a pod IP in cloud — used only for the TCP connect in `openRawTunnel`).
  */
 const LOOPBACK_HOST = 'localhost';
+
+/**
+ * Deployed-build marker for the preview cross-pod routing. Printed in the boot
+ * `routing diag` line so a redeploy can be confirmed live from the logs. Bump on
+ * material changes to the owner-forwarding path.
+ */
+const PREVIEW_ROUTING_BUILD = process.env.ANT_BUILD_SHA || 'owner-forward-podId-v2';
 
 /**
  * Upper bound for the WS/HMR tunnel's CONNECT + upgrade-handshake phase.
@@ -1377,7 +1385,17 @@ export class PreviewServer {
         logger.warn(`[PreviewServer] 📡 Ready for /preview/* requests`, {
           component: 'PreviewServer'
         });
-        
+        // Routing/identity diagnostics — confirms the deployed build, the routing
+        // mode, and whether POD_IP is injected (the config that decides whether
+        // cross-pod owner-forwarding can work). `build` is the marker to grep for
+        // after a redeploy to be certain the new image is live.
+        logger.warn(
+          `[PreviewServer] routing diag: build=${PREVIEW_ROUTING_BUILD} mode=${getPreviewRoutingMode()} ` +
+          `previewBase=${getPreviewBaseDomain() ?? '(unset)'} deployBase=${getDeployBaseDomain() ?? '(unset)'} ` +
+          `podId=${os.hostname()} POD_IP=${process.env.POD_IP ?? '(unset)'} PORT=${process.env.PORT ?? '(unset→8080)'}`,
+          { component: 'PreviewServer' },
+        );
+
         // Start idle check
         this.previewService.startIdleCheck();
         
@@ -1468,13 +1486,31 @@ export class PreviewServer {
               // Cross-pod owner-forwarding (mirrors the HTTP proxy): when this
               // HMR upgrade lands on a non-owner replica, tunnel it to the owner
               // pod's ant-preview service port (Host preserved via peerForward)
-              // instead of the owner's dev port (unreachable cross-pod). Off-
-              // cluster / owner-is-self / already-forwarded → serve here directly.
+              // instead of the owner's dev port (unreachable cross-pod). Ownership
+              // is decided by podId (os.hostname), never POD_IP. owner-is-self /
+              // stale-podId / already-forwarded → serve here directly.
               const ownerForward = resolveOwnerForward(
+                pMatch.podId,
                 pMatch.host,
                 req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
               );
               if (ownerForward) {
+                // Fast-fail: probe the owner service port (1s) so a blocked
+                // pod-to-pod path destroys the socket immediately instead of the
+                // client hanging until the WS handshake timeout.
+                const liveness = await resolveCrossPodLiveness(
+                  { host: ownerForward.forwardHost, port: ownerForward.forwardPort },
+                  false,
+                );
+                if (liveness !== 'reachable') {
+                  logger.warn(
+                    `[PreviewServer] WS owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable on service port ` +
+                    `(pod-to-pod blocked?) — owner=${pMatch.podId} self=${selfPodId()}`,
+                    { component: 'PreviewServer' },
+                  );
+                  socket.destroy();
+                  return;
+                }
                 openRawTunnel(req, socket, head, ownerForward.forwardHost, ownerForward.forwardPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, true);
                 return;
               }
