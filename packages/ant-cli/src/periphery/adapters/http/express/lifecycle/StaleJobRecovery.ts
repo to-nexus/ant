@@ -11,6 +11,20 @@
  *     crash). Transition to `paused` via `pauseJob(server_crash)` so the
  *     UI can offer a Resume button.
  *
+ *   Phase 1b — Paused jobs missing their cancel/resume chat card:
+ *     Scan Redis for `status='paused'`. A pause projection ran, so the job
+ *     is resumable, but the durable chat "cancelled" card may never have
+ *     been emitted — e.g. a resume wiped the Redis `turnId` anchor and a
+ *     second interruption hit `no turn anchor` (slow-earning-heron RCA), or
+ *     the emit crashed mid-flight. Detect "uncarded" via the absence of the
+ *     `ant:chat:cancelled-emitted:job:{id}` NX flag (the definitive
+ *     one-successful-emit-per-job bit) and re-drive `pauseJob(server_crash)`
+ *     — idempotent via the pause lock + the card NX guard — so the missing
+ *     card is emitted and `state.interruption` is (re)persisted. This closes
+ *     the read-side KanbanService self-heal loop (board healed but chat card
+ *     absent forever). Fix 1 (RouteConfigurator turnId preservation) prevents
+ *     the anchor loss going forward; this repairs jobs already stranded.
+ *
  *   Phase 2 — Missed BullMQ completions (Pub/Sub message lost):
  *     Scan BullMQ completed/failed, and for any whose Redis status still
  *     says 'running' or 'queued' (meaning the completion Pub/Sub event was
@@ -75,6 +89,9 @@ export async function recoverStaleJobs(deps: StaleJobRecoveryDeps): Promise<void
 
     // --- Phase 1: Orphaned "running" jobs in Redis → pause via SSOT ---
     await recoverOrphanedRunningJobs(jobQueue, stateStore, deps);
+
+    // --- Phase 1b: Paused jobs missing their cancel/resume chat card ---
+    await recoverUncardedPausedJobs(stateStore, deps);
 
     // --- Phase 2: Missed BullMQ completions (Pub/Sub message lost) ---
     await recoverMissedCompletions(jobQueue, stateStore, deps);
@@ -212,6 +229,68 @@ async function recoverOrphanedRunningJobs(
       logger.info(`Recovered orphaned job ${job.jobId} → interrupted (resumable)`, { component: COMPONENT });
     } catch (err) {
       logger.warn(`Failed to recover job ${job.jobId}`, { component: COMPONENT }, err);
+    }
+  }
+}
+
+/**
+ * Phase 1b — Paused jobs whose cancel/resume chat card was never successfully
+ * emitted. `status='paused'` is set only by `pauseJob`, i.e. an interruption
+ * with leftover work already decided the job is resumable-paused; we only
+ * repair the missing card, we do not re-decide resumability. "Uncarded" is the
+ * absence of the `ant:chat:cancelled-emitted:job:{id}` NX flag — set on a
+ * successful emit, released by the resume paths — so a properly-carded (or
+ * carded-then-resumed-and-recarded) job is skipped. Re-driving `pauseJob` is
+ * idempotent: the pause lock + the card NX guard collapse duplicate work, and
+ * `cleanupJobState` re-persists `state.interruption`. The jobType→canResume
+ * gate (same `buildInfrastructureInterruption` owner Phase 1 uses) skips
+ * plan/visual, which never offer a resume card.
+ */
+async function recoverUncardedPausedJobs(
+  stateStore: ReturnType<ReturnType<typeof getInfrastructureFactory>['getStateStore']>,
+  deps: StaleJobRecoveryDeps,
+): Promise<void> {
+  const pausedJobs = await stateStore.findJobsByStatus('paused');
+  if (pausedJobs.length === 0) return;
+
+  for (const job of pausedJobs) {
+    try {
+      if (!job.projectId || !job.featureName) continue;
+
+      const mapping = await stateStore.getJobMapping(job.jobId);
+      const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+
+      // Single-owner jobType gate: plan/visual restart rather than resume, so
+      // they never carry a resume card — nothing to repair.
+      const interruption: InterruptionDetails = buildInfrastructureInterruption('server_crash', jobType);
+      if (!interruption.canResume) continue;
+
+      // Uncarded ⇔ no successful cancelled-card emit recorded for this job.
+      const carded = await stateStore.exists(`ant:chat:cancelled-emitted:job:${job.jobId}`);
+      if (carded) continue;
+
+      // Per-job idempotency shared with the stalled handlers / Phase 1.
+      const jobLock = await stateStore.acquireLock(`${PER_JOB_LOCK_PREFIX}${job.jobId}`, PER_JOB_LOCK_TTL);
+      if (!jobLock) continue;
+
+      logger.info(
+        `Uncarded paused job ${job.jobId} — re-driving pause to emit the missing resume card`,
+        { component: COMPONENT, jobId: job.jobId, projectId: job.projectId, featureName: job.featureName },
+      );
+
+      await pauseJob(
+        { cleanupJobState: deps.cleanupJobState },
+        {
+          jobId: job.jobId,
+          projectId: job.projectId,
+          featureName: job.featureName,
+          jobType,
+          userContext: job.userContext,
+          interruption,
+        },
+      );
+    } catch (err) {
+      logger.warn(`Failed to re-card paused job ${job.jobId}`, { component: COMPONENT }, err);
     }
   }
 }
