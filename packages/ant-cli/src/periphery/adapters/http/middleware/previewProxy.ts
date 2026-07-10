@@ -16,7 +16,7 @@
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
-import { PortRegistryPort } from '../../../../core/ports/portRegistry';
+import { PortRegistryPort, PreviewState } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
@@ -107,6 +107,20 @@ export interface PreviewProxyConfig {
   jwtService?: ProxyJwtVerifier;
   /** Session cookie name (e.g. `JwtService.cookieName`). */
   cookieName?: string;
+  /**
+   * Self-heal hook: ensure the dev server is serving from THIS pod (rehydrate
+   * from the shared EFS workspace if needed) and return the fresh record. The
+   * preview twin of deploy's `ensureRunning`. Called when a request lands on a
+   * non-owner replica whose owner is unreachable cross-pod, or when a local
+   * fetch to the recorded target fails — so the request is served locally
+   * instead of a hard 502. `undefined` in contexts without a PreviewService.
+   */
+  ensureRunning?: (coords: {
+    tenantId: string;
+    userId: string;
+    projectId: string;
+    feature: string;
+  }) => Promise<PreviewState | null>;
 }
 
 /**
@@ -181,10 +195,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         return;
       }
 
-      // The matched label record carries host/port/packages. A dead target
-      // fails fast via the liveness probe below — no destructive liveness gate
-      // (see PreviewServer WS upgrade for the same rationale).
-      const state = match;
+      // The matched label record carries host/port/packages. A dead/cross-pod
+      // target self-heals via `config.ensureRunning` (rehydrate on THIS pod)
+      // below — `state` is reassigned to the fresh local record on recovery.
+      let state = match;
 
       // Cross-pod owner-forwarding: in a multi-replica deployment the ALB
       // round-robins this preview host across replicas with no owner affinity.
@@ -204,90 +218,117 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         `→ ${ownerForward ? `fwd ${ownerForward.forwardHost}:${ownerForward.forwardPort}` : 'local'}`,
       );
       if (ownerForward) {
-        // Fast-fail: probe the owner's service port (1s) before committing to a
-        // fetch that would otherwise hang to the 45s deadline (→ front-tier 504)
-        // when pod-to-pod on the service port is blocked. Turns an opaque 504
-        // into an immediate, logged 502 that names the infra cause.
+        // Owner-forward is a best-effort FAST PATH: if the owner pod is
+        // reachable on its service port (1s probe), forward the whole request
+        // there (Host preserved) and let it proxy to its localhost dev server.
+        // Pod-to-pod on the service port is NOT guaranteed cross-pod, so an
+        // unreachable owner is NOT fatal — we self-heal by rehydrating the dev
+        // server on THIS pod (spawn-only, from the shared EFS workspace) and
+        // fall through to the local-serve path below. This is the preview twin
+        // of deploy's ensureRunning-then-rehydrate.
         const liveness = await resolveCrossPodLiveness(
           { host: ownerForward.forwardHost, port: ownerForward.forwardPort },
           false,
         );
-        if (liveness !== 'reachable') {
-          logger.warn(
-            `[Preview] Owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable on service port ` +
-            `(pod-to-pod blocked?) — owner=${state.podId} self=${selfPodId()} key=${internalKey}`,
-            { component: 'PreviewProxy' },
-          );
+        if (liveness === 'reachable') {
+          const fwdUrl = `http://${ownerForward.forwardHost}:${ownerForward.forwardPort}${req.url}`;
+          const fwdHeaders = buildForwardHeaders(req);
+          fwdHeaders[PREVIEW_PEER_FORWARD_HEADER] = '1';
+          try {
+            const response = await fetchWithTransportRetry(fwdUrl, {
+              method: req.method,
+              headers: fwdHeaders,
+              ...forwardRequestBody(req),
+              ...forwardRequestAbort(req),
+            } as RequestInit);
+            await streamUpstreamResponse(response, res, {
+              upstreamHost: `${ownerForward.forwardHost}:${ownerForward.forwardPort}`,
+              cacheControl: 'no-cache, no-store, must-revalidate',
+            });
+          } catch (error: any) {
+            logger.error(`[Preview] Owner-forward error: ${error.message}`, { component: 'PreviewProxy' });
+            res.status(502).json({ error: 'Bad Gateway' });
+          }
+          return;
+        }
+        // Owner unreachable cross-pod → rehydrate on THIS pod and serve locally.
+        logger.warn(
+          `[Preview] Owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable — rehydrating locally: ` +
+          `owner=${state.podId} self=${selfPodId()} key=${internalKey}`,
+          { component: 'PreviewProxy' },
+        );
+        const rehydrated = config.ensureRunning
+          ? await config.ensureRunning({ tenantId, userId, projectId, feature })
+          : null;
+        if (!rehydrated) {
           res.status(502).json({ error: 'Preview owner pod unreachable — cross-pod networking blocked' });
           return;
         }
-        const fwdUrl = `http://${ownerForward.forwardHost}:${ownerForward.forwardPort}${req.url}`;
-        const fwdHeaders = buildForwardHeaders(req);
-        fwdHeaders[PREVIEW_PEER_FORWARD_HEADER] = '1';
-        try {
-          const response = await fetchWithTransportRetry(fwdUrl, {
-            method: req.method,
-            headers: fwdHeaders,
-            ...forwardRequestBody(req),
-            ...forwardRequestAbort(req),
-          } as RequestInit);
-          await streamUpstreamResponse(response, res, {
-            upstreamHost: `${ownerForward.forwardHost}:${ownerForward.forwardPort}`,
-            cacheControl: 'no-cache, no-store, must-revalidate',
-          });
-        } catch (error: any) {
-          logger.error(`[Preview] Owner-forward error: ${error.message}`, { component: 'PreviewProxy' });
-          res.status(502).json({ error: 'Bad Gateway' });
-        }
-        return;
+        state = rehydrated;
+        // fall through to local-serve with the rehydrated (local) record
       }
 
       await portRegistry.touchPreview(tenantId, userId, projectId, feature).catch(() => { /* best-effort */ });
 
-      // Per-package frontend routing (multi-frontend): the matched Host label
-      // carries the package's `serviceName`. `resolvePreviewTarget` (SSOT,
-      // shared with the path branch + WS upgrade) returns null for a 4-part /
-      // single-frontend / unmatched label → keep the entry port.
-      let targetPort = state.port;
-      const svc = resolvePreviewTarget({ host: state.host, packages: state.packages }, serviceName, internalKey);
-      if (svc) targetPort = svc.targetPort;
-      const previewHost = state.host;
+      // Local-serve with a single self-heal retry: proxy to the recorded
+      // dev-server target; if the fetch fails (dead/stale/cross-pod target) and
+      // nothing has been streamed yet, rehydrate on THIS pod and retry once
+      // against the fresh local record. Mirrors deploy's serveDeployWithSelfHeal.
+      for (let attempt = 0; ; attempt++) {
+        // Per-package frontend routing (multi-frontend): the matched Host label
+        // carries the package's `serviceName`. `resolvePreviewTarget` (SSOT,
+        // shared with the path branch + WS upgrade) returns null for a 4-part /
+        // single-frontend / unmatched label → keep the entry port.
+        let targetPort = state.port;
+        const svc = resolvePreviewTarget({ host: state.host, packages: state.packages }, serviceName, internalKey);
+        if (svc) targetPort = svc.targetPort;
+        const previewHost = state.host;
 
-      // Fullstack: `/api/*` → backend port (wins over the per-package frontend).
-      if (typeof getBackendPort === 'function' && (req.path === '/api' || req.path.startsWith('/api/'))) {
-        try {
-          const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
-          if (typeof backendPort === 'number' && backendPort > 0) targetPort = backendPort;
-        } catch { /* fall through to frontend */ }
-      }
-
-      const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
-      try {
-        const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
-        const response = await fetchWithTransportRetry(targetUrl, {
-          method: req.method,
-          headers: cleanHeaders,
-          ...forwardRequestBody(req),
-          ...forwardRequestAbort(req),
-        } as RequestInit);
-
-        if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
-          res.status(200)
-            .setHeader('Content-Type', 'image/svg+xml')
-            .setHeader('Cache-Control', 'public, max-age=3600')
-            .end(DEFAULT_FAVICON_SVG);
-          return;
+        // Fullstack: `/api/*` → backend port (wins over the per-package frontend).
+        if (typeof getBackendPort === 'function' && (req.path === '/api' || req.path.startsWith('/api/'))) {
+          try {
+            const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
+            if (typeof backendPort === 'number' && backendPort > 0) targetPort = backendPort;
+          } catch { /* fall through to frontend */ }
         }
 
-        await streamUpstreamResponse(response, res, {
-          upstreamHost: `${previewHost}:${targetPort}`,
-          cacheControl: 'no-cache, no-store, must-revalidate',
-        });
-      } catch (error: any) {
-        logger.error(`[Preview] Subdomain fetch error: ${error.message}`, { component: 'PreviewProxy' });
-        res.status(502).json({ error: 'Bad Gateway' });
+        const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
+        try {
+          const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
+          const response = await fetchWithTransportRetry(targetUrl, {
+            method: req.method,
+            headers: cleanHeaders,
+            ...forwardRequestBody(req),
+            ...forwardRequestAbort(req),
+          } as RequestInit);
+
+          if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
+            res.status(200)
+              .setHeader('Content-Type', 'image/svg+xml')
+              .setHeader('Cache-Control', 'public, max-age=3600')
+              .end(DEFAULT_FAVICON_SVG);
+            return;
+          }
+
+          await streamUpstreamResponse(response, res, {
+            upstreamHost: `${previewHost}:${targetPort}`,
+            cacheControl: 'no-cache, no-store, must-revalidate',
+          });
+          return;
+        } catch (error: any) {
+          if (attempt === 0 && !res.headersSent && config.ensureRunning) {
+            logger.warn(
+              `[Preview] Subdomain fetch error (${error.message}) — rehydrating locally: ${internalKey}`,
+              { component: 'PreviewProxy' },
+            );
+            const rehydrated = await config.ensureRunning({ tenantId, userId, projectId, feature });
+            if (rehydrated) { state = rehydrated; continue; }
+          }
+          logger.error(`[Preview] Subdomain fetch error: ${error.message}`, { component: 'PreviewProxy' });
+          if (!res.headersSent) res.status(502).json({ error: 'Bad Gateway' });
+          return;
+        }
       }
-      return;
     }
 
     // ✅ Extract first path segment to check if it's a urlKey

@@ -519,8 +519,54 @@ export class PreviewService {
   }
   
   /**
+   * Ensure a dev server for this feature is serving from THIS pod, rehydrating
+   * from the shared EFS workspace when necessary. The preview twin of
+   * `DeployService.ensureRunning`: the proxy calls it when a request lands on a
+   * replica that is not the recorded owner (or the owner is unreachable on the
+   * cross-pod service port), so the request is served locally instead of failing
+   * cross-pod.
+   *
+   * Rehydrate reuses `startPreview(forceRestart=false)` — its `installIfNeeded`
+   * is a filesystem-only no-op when `node_modules` already exist on EFS (the
+   * original start left them), so this is a spawn-only replay, not a reinstall.
+   * The distributed PREVIEW lock inside `startPreview` serializes concurrent
+   * multi-pod attempts. Returns the fresh `PreviewState` (now local) or the
+   * best-available record.
+   */
+  async ensureRunning(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    localPath: string,
+  ): Promise<PreviewState | null> {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    const selfPod = os.hostname();
+    const current = this.portRegistry
+      ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature)
+      : null;
+
+    // Own-pod fast path: this replica already runs the dev server.
+    if (this.previewServers.has(serverKey) && current?.podId === selfPod) {
+      return current;
+    }
+
+    try {
+      await this.startPreview(tenantId, userId, projectId, feature, localPath, undefined, false);
+    } catch (err: any) {
+      logger.warn(
+        `[Preview] ensureRunning rehydrate failed for ${serverKey}: ${err?.message ?? err}`,
+        { component: 'PreviewService' },
+      );
+    }
+    return this.portRegistry
+      ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature)
+      : null;
+  }
+
+  /**
    * Start preview server for a project feature
-   * 
+   *
    * @param forceRestart - If true, stops existing server before starting a new one
    */
   async startPreview(

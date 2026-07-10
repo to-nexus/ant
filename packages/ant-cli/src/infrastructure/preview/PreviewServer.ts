@@ -671,6 +671,14 @@ export class PreviewServer {
         const state = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
         return state?.backendPort || null;
       },
+      // Self-heal: rehydrate the dev server on THIS pod (spawn-only, from the
+      // shared EFS workspace) when a request lands on a non-owner replica whose
+      // owner is unreachable cross-pod. The preview twin of deploy's ensureRunning.
+      ensureRunning: ({ tenantId, userId, projectId, feature }) =>
+        this.previewService.ensureRunning(
+          tenantId, userId, projectId, feature,
+          this.resolveWorkspacePath({ organizationId: tenantId, userId }, projectId, feature),
+        ),
       jwtService: createJwtServiceFromEnv(),
       cookieName: JwtService.cookieName,
     }));
@@ -1495,23 +1503,31 @@ export class PreviewServer {
                 req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
               );
               if (ownerForward) {
-                // Fast-fail: probe the owner service port (1s) so a blocked
-                // pod-to-pod path destroys the socket immediately instead of the
-                // client hanging until the WS handshake timeout.
+                // Fast path: probe the owner service port (1s). Reachable →
+                // forward the HMR socket there (Host preserved).
                 const liveness = await resolveCrossPodLiveness(
                   { host: ownerForward.forwardHost, port: ownerForward.forwardPort },
                   false,
                 );
-                if (liveness !== 'reachable') {
-                  logger.warn(
-                    `[PreviewServer] WS owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable on service port ` +
-                    `(pod-to-pod blocked?) — owner=${pMatch.podId} self=${selfPodId()}`,
-                    { component: 'PreviewServer' },
-                  );
-                  socket.destroy();
+                if (liveness === 'reachable') {
+                  openRawTunnel(req, socket, head, ownerForward.forwardHost, ownerForward.forwardPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, true);
                   return;
                 }
-                openRawTunnel(req, socket, head, ownerForward.forwardHost, ownerForward.forwardPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, true);
+                // Owner unreachable cross-pod → rehydrate the dev server on THIS
+                // pod and tunnel the HMR socket locally (mirrors the HTTP proxy).
+                logger.warn(
+                  `[PreviewServer] WS owner pod ${ownerForward.forwardHost}:${ownerForward.forwardPort} unreachable — rehydrating locally: ` +
+                  `owner=${pMatch.podId} self=${selfPodId()}`,
+                  { component: 'PreviewServer' },
+                );
+                const fresh = await this.previewService.ensureRunning(
+                  pMatch.tenantId, pMatch.userId, pMatch.projectId, pMatch.feature,
+                  this.resolveWorkspacePath({ organizationId: pMatch.tenantId, userId: pMatch.userId }, pMatch.projectId, pMatch.feature),
+                );
+                if (!fresh) { socket.destroy(); return; }
+                const localKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
+                const localTarget = resolvePreviewTarget({ host: fresh.host, packages: fresh.packages }, pMatch.serviceName, localKey);
+                openRawTunnel(req, socket, head, localTarget?.targetHost ?? fresh.host, localTarget?.targetPort ?? fresh.port, urlPath);
                 return;
               }
               const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
