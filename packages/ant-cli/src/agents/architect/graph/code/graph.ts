@@ -405,6 +405,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       },
     },
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
+    // Seed accumulators with the pre-parallel job-level usage so the estimating
+    // (decompose) tokens — often a different/costlier model, e.g. opus — are
+    // never dropped from the per-model billing map. On resume, `state.tokenUsage`/
+    // `tokenUsageByModel` are the RESTORED cumulative (prior completed tasks +
+    // estimating), which are additive-correct since completed tasks are not re-run.
+    state.tokenUsage,
+    state.tokenUsageByModel,
   );
 
   // ✅ Log parallel_start (and job_resumed if resuming) events to debug/logs/.
@@ -688,6 +695,11 @@ export const CodeGraphChannels = {
       reportFile: Annotation<any>,
       directives: Annotation<any>,
       _currentTaskTokenUsage: Annotation<any>,
+      // Per-task per-model twin of `_currentTaskTokenUsage` — declared so the
+      // worker subgraph (which spreads `...CodeGraphChannels`) carries the
+      // reset-per-task per-model delta across node transitions instead of
+      // silently dropping it. Same plain reducer as its aggregate twin.
+      _currentTaskTokenUsageByModel: Annotation<any>,
       _estimatingTokenUsage: Annotation<any>,
       // Job-level token accumulators. These MUST be declared channels: nodes
       // (and worker subgraphs that spread `...CodeGraphChannels`) mutate them

@@ -192,26 +192,73 @@ export async function finalizeTerminalJob(
       const snapshot = await stateStore.getTaskQueue(jobId);
       const byModel = snapshot?.tokenUsageByModel;
       if (byModel && Object.keys(byModel).length > 0) {
-        const { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask } =
-          await import('@ant/shared');
-        const { usd, unknownModelIds } = computeJobCostUsd(byModel as Record<string, any>);
+        const { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask,
+          inputSideTokens, reconcilePerModelUsage } = await import('@ant/shared');
+
+        // Verify-before-settle safety-net. The per-model map is the cost SSOT but
+        // is built by a fragile accumulation path; cross-check its input-side
+        // token total against the AUTHORITATIVE aggregate (job-level tokenUsage,
+        // or reconstructed from per-task usage — the source the FE trusts). A
+        // large drop under-charges (historically ~55×), so on divergence we log
+        // loudly and attribute the shortfall to the most-expensive model present
+        // — a regression then over-charges slightly rather than silently
+        // under-charging.
+        const aggFromJob = snapshot?.tokenUsage ? inputSideTokens(snapshot.tokenUsage) : 0;
+        let aggFromParts = snapshot?.estimatingTokenUsage
+          ? inputSideTokens(snapshot.estimatingTokenUsage)
+          : 0;
+        let outputFromParts = snapshot?.estimatingTokenUsage?.outputTokens ?? 0;
+        for (const t of snapshot?.completedTasks ?? []) {
+          if (t.tokenUsage) {
+            aggFromParts += inputSideTokens(t.tokenUsage);
+            outputFromParts += t.tokenUsage.outputTokens;
+          }
+        }
+        const aggregateInputSide = Math.max(aggFromJob, aggFromParts);
+        const aggregateOutput = Math.max(snapshot?.tokenUsage?.outputTokens ?? 0, outputFromParts);
+        const reconciled = reconcilePerModelUsage(
+          byModel as Record<string, any>,
+          aggregateInputSide,
+          aggregateOutput,
+        );
+        if (reconciled.corrected) {
+          logger.error(
+            `billing safety-net: per-model token map under-attributed — auto-correcting`,
+            { component: COMPONENT, jobId },
+            {
+              perModelInputSide: aggregateInputSide - reconciled.shortfallInput,
+              aggregateInputSide,
+              shortfallInput: reconciled.shortfallInput,
+              shortfallOutput: reconciled.shortfallOutput,
+              targetModelId: reconciled.targetModelId,
+              originalByModel: byModel,
+            },
+          );
+        }
+        const effectiveByModel = reconciled.byModel;
+
+        const { usd, unknownModelIds } = computeJobCostUsd(effectiveByModel);
         // Neutral platform-fee facts — the cloud ledger computes the fee from its
         // catalog and folds it into the same cumulative debit (LLM stays pass-through).
         const billableTaskCount = (snapshot?.completedTasks ?? []).filter(isBillableWorkTask).length;
+        const notes = [
+          ...(unknownModelIds.length > 0 ? [`unknown model fallback: ${unknownModelIds.join(', ')}`] : []),
+          ...(reconciled.corrected
+            ? [`per-model safety-net: +${reconciled.shortfallInput} input / +${reconciled.shortfallOutput} output → ${reconciled.targetModelId}`]
+            : []),
+        ];
         await ledger.settle({
           jobId,
           orgId: userContext.organizationId,
           userId: userContext.userId,
           usdCost: usd,
-          modelBreakdown: computeModelCostBreakdownUsd(byModel as Record<string, any>),
+          modelBreakdown: computeModelCostBreakdownUsd(effectiveByModel),
           jobType,
           executionTier: snapshot?.executionTier,
           billableTaskCount,
           projectId,
           featureName,
-          ...(unknownModelIds.length > 0 && {
-            note: `unknown model fallback: ${unknownModelIds.join(', ')}`,
-          }),
+          ...(notes.length > 0 && { note: notes.join('; ') }),
         });
       } else {
         // No usage to debit (e.g. reflex/no-LLM job) — still release any hold.

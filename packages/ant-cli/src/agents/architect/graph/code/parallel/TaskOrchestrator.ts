@@ -236,6 +236,18 @@ export class TaskOrchestrator<T extends BaseTask> {
     callbacks: OrchestratorCallbacks<T> = {},
     config?: Partial<OrchestratorConfig>,
     initialCompletedTasks?: T[],
+    /**
+     * Pre-parallel job-level usage to SEED the accumulators — the estimating
+     * phase (decompose, often a different/more expensive model like opus) runs
+     * before any worker exists, so its usage lives only on the graph state.
+     * Seeding here makes the orchestrator the single authoritative owner of the
+     * per-model map from its first broadcast (opus never dropped), and worker
+     * deltas accumulate on top. On resume, pass the RESTORED cumulative (which
+     * already includes prior completed-task usage) — completed tasks are not
+     * re-run, so this is additive-correct, not a double-count.
+     */
+    initialTokenUsage?: TaskTokenUsage,
+    initialTokenUsageByModel?: TokenUsageByModel,
   ) {
     this.taskQueue = taskQueue;
     this.graphBuilder = graphBuilder;
@@ -248,6 +260,11 @@ export class TaskOrchestrator<T extends BaseTask> {
       checkpointInterval: config?.checkpointInterval ?? 60_000,
       barriers: config?.barriers,
     };
+
+    // Seed accumulators through the same merge helpers workers use, so the seed
+    // and worker deltas combine on one code path.
+    if (initialTokenUsage) this.addTokenUsage(initialTokenUsage);
+    if (initialTokenUsageByModel) this.addTokenUsageByModel(initialTokenUsageByModel);
 
     console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);
   }

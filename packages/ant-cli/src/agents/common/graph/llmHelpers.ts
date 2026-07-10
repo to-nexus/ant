@@ -59,6 +59,16 @@ export type TokenUsage = TaskTokenUsage;
  */
 export interface TokenTrackingState {
   _currentTaskTokenUsage?: TokenUsage;
+  /**
+   * Per-task per-model token usage — the model-partitioned twin of
+   * `_currentTaskTokenUsage`. Reset per task at the worker boundary
+   * (`TaskWorker.executeTask` workerState build) so the worker can report a
+   * clean per-task DELTA that the orchestrator sums job-level. Without this,
+   * per-model attribution has no reset-per-task counter (unlike the aggregate)
+   * and the parallel executor under-attributes cost. SSOT symmetry: mirrors
+   * `_currentTaskTokenUsage` exactly, one axis (model) deeper.
+   */
+  _currentTaskTokenUsageByModel?: TokenUsageByModel;
   tokenUsage?: TokenUsage;  // Job-level token usage
   /**
    * Per-model job-level token usage, keyed by `state.deps.llm.modelName`.
@@ -201,7 +211,8 @@ function computeTotal(usage: TokenUsage): number {
 function accumulatePerModelUsage(
   state: TokenTrackingState,
   usage: TokenUsage,
-  explicitModelId?: string,
+  explicitModelId: string | undefined,
+  target: TokenUsageByModel,
 ): void {
   let modelId: string;
   if (explicitModelId) {
@@ -213,8 +224,7 @@ function accumulatePerModelUsage(
       modelId = 'unknown';
     }
   }
-  if (!state.tokenUsageByModel) state.tokenUsageByModel = {};
-  const entry = (state.tokenUsageByModel[modelId] ??= initTokenUsage());
+  const entry = (target[modelId] ??= initTokenUsage());
   entry.inputTokens += usage.inputTokens;
   entry.outputTokens += usage.outputTokens;
   entry.totalTokens = computeTotal(entry);
@@ -260,15 +270,21 @@ export function accumulateTokenUsage(
     state._currentTaskTokenUsage.callCount = (state._currentTaskTokenUsage.callCount ?? 0) + 1;
     
     if (usage.cacheReadTokens) {
-      state._currentTaskTokenUsage.cacheReadTokens = 
+      state._currentTaskTokenUsage.cacheReadTokens =
         (state._currentTaskTokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
     }
     if (usage.cacheCreationTokens) {
-      state._currentTaskTokenUsage.cacheCreationTokens = 
+      state._currentTaskTokenUsage.cacheCreationTokens =
         (state._currentTaskTokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
     }
+
+    // Per-task per-model breakdown — the model-partitioned twin of the scalar
+    // task counter above. The worker reports this reset-per-task delta so the
+    // orchestrator can sum per-model job-level (mirrors the aggregate path).
+    if (!state._currentTaskTokenUsageByModel) state._currentTaskTokenUsageByModel = {};
+    accumulatePerModelUsage(state, usage, modelId, state._currentTaskTokenUsageByModel);
   }
-  
+
   // Job-level accumulation
   if (jobLevel) {
     if (!state.tokenUsage) {
@@ -293,7 +309,8 @@ export function accumulateTokenUsage(
     // the call (`modelId` when the node overrode the model, else the job
     // default) so the billing settle hook can price each model's tokens at its
     // own rate. Mirrors the job-level fields above but partitioned by model.
-    accumulatePerModelUsage(state, usage, modelId);
+    if (!state.tokenUsageByModel) state.tokenUsageByModel = {};
+    accumulatePerModelUsage(state, usage, modelId, state.tokenUsageByModel);
   }
 
   // Current-node snapshot (overwrite, not accumulate).
@@ -589,6 +606,56 @@ export async function invokeWithTracking(
  */
 export function resetTaskTokenUsage(state: TokenTrackingState): void {
   state._currentTaskTokenUsage = initTokenUsage();
+  // Reset the per-model twin in lockstep so `Σ(per-model delta) == aggregate
+  // delta` holds — any drift between these two reset points would make the
+  // per-model billing map diverge from the aggregate.
+  state._currentTaskTokenUsageByModel = {};
+}
+
+/**
+ * Roll the per-task counters up into the job-level totals, PRESERVING per-model
+ * attribution. Used by the design job's task-completion sites, which accumulate
+ * at task level (execute / explain pass the correct per-node `modelId`) and fold
+ * up on completion. This replaces the old
+ * `accumulateTokenUsage(state, taskUsage, { jobLevel: true })` rollup, which
+ * had no `modelId` and therefore re-attributed the whole task to the
+ * graph-default model — the design-job per-model mis-attribution.
+ *
+ * Merges BOTH `_currentTaskTokenUsage → tokenUsage` (aggregate) and
+ * `_currentTaskTokenUsageByModel → tokenUsageByModel` (correctly attributed).
+ */
+export function rollUpTaskUsageToJob(state: TokenTrackingState): void {
+  const taskAgg = state._currentTaskTokenUsage;
+  if (taskAgg) {
+    if (!state.tokenUsage) state.tokenUsage = initTokenUsage();
+    const j = state.tokenUsage;
+    j.inputTokens += taskAgg.inputTokens;
+    j.outputTokens += taskAgg.outputTokens;
+    j.totalTokens = computeTotal(j);
+    j.callCount = (j.callCount ?? 0) + (taskAgg.callCount ?? 0);
+    if (taskAgg.cacheReadTokens) {
+      j.cacheReadTokens = (j.cacheReadTokens || 0) + taskAgg.cacheReadTokens;
+    }
+    if (taskAgg.cacheCreationTokens) {
+      j.cacheCreationTokens = (j.cacheCreationTokens || 0) + taskAgg.cacheCreationTokens;
+    }
+  }
+
+  const taskByModel = state._currentTaskTokenUsageByModel;
+  if (taskByModel) {
+    if (!state.tokenUsageByModel) state.tokenUsageByModel = {};
+    for (const [modelId, u] of Object.entries(taskByModel)) {
+      const e = (state.tokenUsageByModel[modelId] ??= initTokenUsage());
+      e.inputTokens += u.inputTokens;
+      e.outputTokens += u.outputTokens;
+      e.totalTokens = computeTotal(e);
+      e.callCount = (e.callCount ?? 0) + (u.callCount ?? 0);
+      if (u.cacheReadTokens) e.cacheReadTokens = (e.cacheReadTokens || 0) + u.cacheReadTokens;
+      if (u.cacheCreationTokens) {
+        e.cacheCreationTokens = (e.cacheCreationTokens || 0) + u.cacheCreationTokens;
+      }
+    }
+  }
 }
 
 /**

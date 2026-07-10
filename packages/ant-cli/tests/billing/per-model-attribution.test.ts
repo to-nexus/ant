@@ -15,7 +15,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { accumulateTokenUsage, type TokenTrackingState } from '../../src/agents/common/graph/llmHelpers';
+import {
+  accumulateTokenUsage,
+  resetTaskTokenUsage,
+  rollUpTaskUsageToJob,
+  type TokenTrackingState,
+} from '../../src/agents/common/graph/llmHelpers';
 
 const usage = (input: number, output: number) => ({
   inputTokens: input,
@@ -54,5 +59,62 @@ describe('per-model token attribution', () => {
 
     expect(state.tokenUsageByModel?.['claude-opus-4-8']).toMatchObject({ inputTokens: 50, outputTokens: 20, callCount: 1 });
     expect(state.tokenUsageByModel?.['claude-sonnet-4-6']).toMatchObject({ inputTokens: 500, outputTokens: 200, callCount: 2 });
+  });
+});
+
+/**
+ * Per-task per-model delta symmetry — the parallel-executor billing fix.
+ *
+ * The aggregate `tokenUsage` is robust because it uses a reset-per-task counter
+ * (`_currentTaskTokenUsage`) reported as a clean delta and summed by the
+ * orchestrator. The per-model map now has the exact same twin
+ * (`_currentTaskTokenUsageByModel`) so `Σ(per-task per-model deltas)` equals the
+ * job-level per-model map. Without this, the parallel executor under-attributed
+ * per-model cost ~55× (a single task's worth).
+ */
+describe('per-task per-model delta symmetry', () => {
+  it('taskLevel write populates the per-task per-model twin with the right model', () => {
+    const state = makeState('claude-opus-4-8');
+    accumulateTokenUsage(state, usage(200, 80), { taskLevel: true, jobLevel: false, modelId: 'deepseek-v4-pro' });
+    expect(state._currentTaskTokenUsageByModel?.['deepseek-v4-pro']).toMatchObject({ inputTokens: 200, outputTokens: 80 });
+  });
+
+  it('resetTaskTokenUsage clears the per-task per-model twin (per-task deltas)', () => {
+    const state = makeState('claude-opus-4-8');
+    accumulateTokenUsage(state, usage(200, 80), { taskLevel: true, jobLevel: false, modelId: 'deepseek-v4-pro' });
+    resetTaskTokenUsage(state);
+    expect(state._currentTaskTokenUsageByModel).toEqual({});
+  });
+
+  it('sum of per-task per-model deltas equals the job-level per-model map', () => {
+    // Simulate a mixed-model job: opus decompose (job-level), then two deepseek
+    // tasks each accumulating task-level, rolled up to job-level per task.
+    const state = makeState('claude-opus-4-8');
+
+    // decompose (estimating): job-level only, opus.
+    accumulateTokenUsage(state, usage(147, 15), { taskLevel: false, jobLevel: true });
+
+    const deltas: Record<string, { input: number; output: number }> = {};
+    for (const [inTok, outTok] of [[300, 4], [250, 6]] as const) {
+      resetTaskTokenUsage(state);
+      accumulateTokenUsage(state, usage(inTok, outTok), { taskLevel: true, jobLevel: false, modelId: 'deepseek-v4-pro' });
+      // capture the per-task delta then roll it up (mirrors the design-job path)
+      const d = state._currentTaskTokenUsageByModel!['deepseek-v4-pro'];
+      deltas['deepseek-v4-pro'] = {
+        input: (deltas['deepseek-v4-pro']?.input ?? 0) + d.inputTokens,
+        output: (deltas['deepseek-v4-pro']?.output ?? 0) + d.outputTokens,
+      };
+      rollUpTaskUsageToJob(state);
+    }
+
+    // Job-level per-model map: opus from decompose + deepseek from rolled-up deltas.
+    expect(state.tokenUsageByModel?.['claude-opus-4-8']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
+    expect(state.tokenUsageByModel?.['deepseek-v4-pro']).toMatchObject({
+      inputTokens: deltas['deepseek-v4-pro'].input,
+      outputTokens: deltas['deepseek-v4-pro'].output,
+    });
+    // 300+250 = 550 input, 4+6 = 10 output.
+    expect(state.tokenUsageByModel?.['deepseek-v4-pro']?.inputTokens).toBe(550);
+    expect(state.tokenUsageByModel?.['deepseek-v4-pro']?.outputTokens).toBe(10);
   });
 });

@@ -23,7 +23,7 @@ import type {
   DecomposableJobType
 } from '../types/task';
 import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId } from '@ant/shared';
-import { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask } from '@ant/shared';
+import { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask, sumInputSideTokens } from '@ant/shared';
 import type { CreditLedgerPort } from '../ports/creditLedger';
 import { 
   getRealtimeBroadcastChannel,
@@ -250,6 +250,24 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // the no-usage `releaseHold` branch (no debit). Guarding here protects every
     // funnel at one point.
     if (!byModel || Object.keys(byModel).length === 0) return;
+    // Anti-shrink guard (defense-in-depth). Every legitimate writer feeds a
+    // job-CUMULATIVE map from a single authoritative owner per phase, so the
+    // input-side token total is monotonic non-decreasing. An incoming map that
+    // is SMALLER than the cache signals a partial/stale publisher (the class of
+    // bug that let one task's map clobber the full job map and under-charge
+    // ~55×) — reject it with a loud warning rather than silently losing data.
+    if (this.cachedTokenUsageByModel) {
+      const incoming = sumInputSideTokens(byModel as Record<string, any>);
+      const cached = sumInputSideTokens(this.cachedTokenUsageByModel as Record<string, any>);
+      if (incoming < cached) {
+        console.warn(
+          `[KanbanBroadcaster] Ignoring shrinking tokenUsageByModel update ` +
+          `(incoming input-side ${incoming} < cached ${cached}) for job ${this.jobId} — ` +
+          `partial/stale publisher suspected.`,
+        );
+        return;
+      }
+    }
     this.cachedTokenUsageByModel = byModel;
     this.meterCredits(byModel);
   }

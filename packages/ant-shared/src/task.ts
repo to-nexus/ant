@@ -327,6 +327,14 @@ interface BaseTaskCommon {
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
   /**
+   * Per-model twin of `tokenUsage`, used ONLY as the batch-split Path A carry
+   * channel: when a parent task is re-queued mid-flight, its accumulated
+   * per-model usage rides here so the next fresh entry re-seeds
+   * `_currentTaskTokenUsageByModel` (mirrors the `tokenUsage` carry). Keeps the
+   * per-model billing delta in lockstep with the aggregate delta across a split.
+   */
+  tokenUsageByModel?: TokenUsageByModel;
+  /**
    * Per-task tech-tier pointer. In a fullstack job each task targets exactly one
    * runtime, so `stack` selects which `basis.techTier[stack]` slot resolves to
    * `task.techTiers`. Single-stack jobs may omit it (the sole tier is used).

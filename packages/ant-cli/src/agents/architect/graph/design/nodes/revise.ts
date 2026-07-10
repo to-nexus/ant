@@ -128,7 +128,10 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       // ✅ Track token usage for revise node
       if (result.usage) {
         const { accumulateTokenUsage, logTokenUsageToFile, resolveModelIdSafe } = await import('../../../../common/graph/llmHelpers');
-        accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true });
+        // Attribute to the revise node's model (the job-default client) so the
+        // per-model billing map is not mis-attributed. Matches the modelId the
+        // debug log already records below.
+        accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true, modelId: resolveModelIdSafe(state) });
         if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
           state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
         }

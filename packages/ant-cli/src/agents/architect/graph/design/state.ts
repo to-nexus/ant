@@ -176,6 +176,9 @@ export interface DesignGraphState extends TriageableState {
   
   // ✅ Token usage (per-turn tracking; job-level is `tokenUsage` from ResolvableState)
   _currentTaskTokenUsage?: TokenUsage;
+  // Per-task per-model twin of `_currentTaskTokenUsage` — reset per task, rolled
+  // up job-level on completion via `rollUpTaskUsageToJob` (correct per-model attribution).
+  _currentTaskTokenUsageByModel?: TokenUsageByModel;
   _estimatingTokenUsage?: TokenUsage;
   // Per-model job-level usage breakdown (declared channel in graph.ts; surfaced
   // explicitly because the object-config Annotation form is not lifted by

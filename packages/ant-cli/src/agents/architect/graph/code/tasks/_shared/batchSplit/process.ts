@@ -487,10 +487,17 @@ export function processDiagnosticBatchSplit(
       const carriedTokenUsage = state._currentTaskTokenUsage
         ? { ...state._currentTaskTokenUsage }
         : nextTask.tokenUsage;
+      // Per-model twin of the token carry — kept in lockstep so the requeued
+      // parent's eventual per-model delta matches its aggregate delta (else the
+      // per-model billing map under-counts the pre-split portion).
+      const carriedTokenUsageByModel = state._currentTaskTokenUsageByModel
+        ? { ...state._currentTaskTokenUsageByModel }
+        : nextTask.tokenUsageByModel;
       const requeuedTask: CodeTask = {
         ...nextTask,
         ...(carriedTiming ? { timing: carriedTiming } : {}),
         ...(carriedTokenUsage ? { tokenUsage: carriedTokenUsage } : {}),
+        ...(carriedTokenUsageByModel ? { tokenUsageByModel: carriedTokenUsageByModel } : {}),
         interrupted: !!snapshot ? true : undefined,
         _failed: undefined,
         _failureReason: undefined,

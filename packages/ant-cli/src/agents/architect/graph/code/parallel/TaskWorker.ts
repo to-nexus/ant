@@ -153,10 +153,12 @@ export class TaskWorker<T extends BaseTask> {
       try {
         const result = await this.executeTask(task);
         const tokenUsage = result?._currentTaskTokenUsage || result?.tokenUsage;
-        // Per-task per-model breakdown (worker state is fresh per task, so
-        // `tokenUsageByModel` holds only this task's per-model usage). The
-        // orchestrator merges it job-level for billing.
-        const tokenUsageByModel = result?.tokenUsageByModel;
+        // Per-task per-model breakdown. Report the RESET-per-task delta
+        // (`_currentTaskTokenUsageByModel`, reset in `workerState`), mirroring
+        // the aggregate `_currentTaskTokenUsage` above — the orchestrator sums
+        // deltas job-level for billing. Fallback to the cumulative map only if
+        // the delta counter is absent (task made no per-model-tracked call).
+        const tokenUsageByModel = result?._currentTaskTokenUsageByModel || result?.tokenUsageByModel;
         // ✅ Use the enriched task from graph result (has timing + tokenUsage from workerCheckTaskStatus)
         // The original `task` reference lacks timing.completedAt/elapsedTime and tokenUsage
         const completedTask = result?.currentTask || task;
@@ -273,6 +275,11 @@ export class TaskWorker<T extends BaseTask> {
       retries: 0,
       enforcementHistory: [],
       _currentTaskTokenUsage: undefined,
+      // Reset the per-task per-model counter too — its whole purpose is to hold
+      // ONLY this task's per-model usage so the worker reports a clean delta
+      // (the cumulative `tokenUsageByModel` is inherited from sharedContext and
+      // must NOT be reported as a per-task figure).
+      _currentTaskTokenUsageByModel: undefined,
       // Restore tool result cache from previous failed attempt (design job: avoids re-reading source docs)
       _toolResultCache: (task as any)._cachedToolResults || undefined,
       // Restore cross-task fields from resumeState if task was interrupted or re-queued.

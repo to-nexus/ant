@@ -616,6 +616,14 @@ export interface ArchitectGraphState extends TriageableState {
   _currentTaskTokenUsage?: TokenUsage;
 
   /**
+   * Per-task per-model token usage — the model-partitioned twin of
+   * `_currentTaskTokenUsage`. Reset per task at the worker boundary so the
+   * worker reports a clean per-task DELTA the orchestrator sums job-level for
+   * per-model billing. SSOT symmetry with the aggregate counter above.
+   */
+  _currentTaskTokenUsageByModel?: TokenUsageByModel;
+
+  /**
    * Token usage snapshot captured at the end of the decompose phase, before
    * the first task runs. Used to report "estimating phase" tokens separately
    * from task tokens in the final summary.
