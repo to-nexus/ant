@@ -503,6 +503,20 @@ export class RouteConfigurator {
       // Generate jobId
       const { generateHumanId } = await import('../../../../../utils/humanId');
       const jobId = params.jobId || generateHumanId();
+
+      // Preserve the turn anchor across a same-jobId re-launch. Callers that
+      // resume an existing job (/resume, /continue, proceed_without_spec,
+      // supersede-on-new-execute) carry no seedTurnId, but the setJobStatus
+      // below is a FULL overwrite — writing without a turnId erases the
+      // existing JobStatusData.turnId, the only cross-pod-safe anchor the
+      // cancel/resume choice card resolves from. A later interruption then
+      // hits "no turn anchor" and silently drops the card (slow-earning-heron
+      // RCA). Carry the prior turnId forward; an explicit seedTurnId still wins.
+      let seedTurnId: string | undefined = params.seedTurnId;
+      if (!seedTurnId && params.jobId) {
+        const prior = await stateStore.getJobStatus(params.jobId).catch(() => undefined);
+        seedTurnId = prior?.turnId;
+      }
       
       // ⏱️ DEBUG: Record enqueue start time for latency analysis
       const enqueueStartTime = Date.now();
@@ -540,10 +554,11 @@ export class RouteConfigurator {
         inputFile: params.inputFile,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId,
-        // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
-        // forwarded to the worker entry so the durable user_turn line
-        // shares the same id as the optimistic SSE broadcast.
-        seedTurnId: params.seedTurnId,
+        // chat SSOT §6 — pre-allocated turnId from /chat/user-message (fresh
+        // jobs) or the preserved prior turnId (same-jobId re-launch), forwarded
+        // to the worker entry so the durable user_turn line shares the same id
+        // as the optimistic SSE broadcast.
+        seedTurnId,
       });
       
       // Set initial job status in Redis
@@ -558,8 +573,10 @@ export class RouteConfigurator {
         timestamp: new Date().toISOString(),
         // Persist the pre-allocated turnId so a worker_stalled pause can
         // anchor its cancellation card from Redis even if the durable
-        // user_turn disk write is lost — see JobStatusData.turnId.
-        ...(params.seedTurnId && { turnId: params.seedTurnId }),
+        // user_turn disk write is lost — see JobStatusData.turnId. On a
+        // same-jobId re-launch this carries the preserved prior turnId so the
+        // full overwrite does not erase the anchor.
+        ...(seedTurnId && { turnId: seedTurnId }),
       });
       
       // ✅ CRITICAL: Register job mapping in Redis for cross-Pod SSE broadcast
