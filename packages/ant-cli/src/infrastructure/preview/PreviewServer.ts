@@ -46,7 +46,7 @@ import { extractUserContext } from '../../periphery/adapters/http/routes/helpers
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
-import { resolvePreviewTarget, resolvePreviewLabel } from '../../periphery/adapters/http/middleware/previewRouting';
+import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import {
@@ -141,6 +141,25 @@ export function rewriteUpgradeHeaders(
 }
 
 /**
+ * Replay an upgrade request's headers for a PEER forward to the owning pod's
+ * ant-preview service port (NOT a dev server). Unlike `rewriteUpgradeHeaders`,
+ * Host/Origin are preserved verbatim so the owner replica resolves the preview by
+ * its subdomain Host and applies its own loopback normalization when it tunnels
+ * onward. Injects the loop-guard header so the owner never forwards again.
+ */
+export function buildPeerForwardUpgradeHeaders(rawHeaderPairs: readonly string[]): string[] {
+  const rawHeaders: string[] = [];
+  for (let i = 0; i < rawHeaderPairs.length; i += 2) {
+    const key = rawHeaderPairs[i];
+    const value = rawHeaderPairs[i + 1];
+    if (key.toLowerCase() === PREVIEW_PEER_FORWARD_HEADER) continue; // dedup — re-added below
+    rawHeaders.push(`${key}: ${value}`);
+  }
+  rawHeaders.push(`${PREVIEW_PEER_FORWARD_HEADER}: 1`);
+  return rawHeaders;
+}
+
+/**
  * Open a raw TCP tunnel between an inbound WebSocket Upgrade and an upstream
  * dev/static server, replaying the original HTTP request with Host and Origin
  * normalized to loopback. The TCP connect uses `targetHost` (a pod IP in
@@ -160,6 +179,7 @@ export function openRawTunnel(
   targetPort: number,
   targetPath: string,
   handshakeTimeoutMs: number = WS_HANDSHAKE_TIMEOUT_MS,
+  peerForward: boolean = false,
 ): void {
   const proxySocket = net.connect(targetPort, targetHost);
 
@@ -178,7 +198,9 @@ export function openRawTunnel(
   });
 
   proxySocket.once('connect', () => {
-    const rawHeaders = rewriteUpgradeHeaders(req.rawHeaders, targetPort);
+    const rawHeaders = peerForward
+      ? buildPeerForwardUpgradeHeaders(req.rawHeaders)
+      : rewriteUpgradeHeaders(req.rawHeaders, targetPort);
 
     const upgradeReq =
       `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
@@ -1443,6 +1465,19 @@ export class PreviewServer {
               // preview to 'stopped'. A genuinely dead target fails fast via
               // openRawTunnel's own handshake timeout — forgiving + bounded,
               // matching the HTTP path and deploy's non-destructive posture.
+              // Cross-pod owner-forwarding (mirrors the HTTP proxy): when this
+              // HMR upgrade lands on a non-owner replica, tunnel it to the owner
+              // pod's ant-preview service port (Host preserved via peerForward)
+              // instead of the owner's dev port (unreachable cross-pod). Off-
+              // cluster / owner-is-self / already-forwarded → serve here directly.
+              const ownerForward = resolveOwnerForward(
+                pMatch.host,
+                req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
+              );
+              if (ownerForward) {
+                openRawTunnel(req, socket, head, ownerForward.forwardHost, ownerForward.forwardPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, true);
+                return;
+              }
               const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
               const target = resolvePreviewTarget({ host: pMatch.host, packages: pMatch.packages }, pMatch.serviceName, internalKey);
               const targetHost = target?.targetHost ?? pMatch.host;

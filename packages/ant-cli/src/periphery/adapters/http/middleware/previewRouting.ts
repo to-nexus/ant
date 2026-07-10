@@ -28,6 +28,63 @@ export interface PreviewTarget {
 }
 
 /**
+ * Loop-guard header for cross-pod owner-forwarding (see `resolveOwnerForward`).
+ * The non-owner replica sets it when forwarding to the owner; the owner replica
+ * must never forward again — if it still doesn't own the preview locally, the
+ * record is stale and the request fails fast instead of bouncing between pods.
+ */
+export const PREVIEW_PEER_FORWARD_HEADER = 'x-ant-preview-fwd';
+
+/** This ant-preview replica's own address (K8s `POD_IP`), or undefined off-cluster. */
+export function selfPodHost(): string | undefined {
+  const v = process.env.POD_IP;
+  return v && v.trim() ? v.trim() : undefined;
+}
+
+/**
+ * The ant-preview HTTP listen port — identical on every replica and the port the
+ * ingress/ALB forwards to, so pod-to-pod on it is open by construction. Dev-server
+ * ports (Vite/Next, arbitrary high ports) are NOT reachable cross-pod. Mirrors
+ * `createPreviewServer`'s `parseInt(process.env.PORT || '8080')`.
+ */
+export function selfServicePort(): number {
+  return parseInt(process.env.PORT || '8080', 10);
+}
+
+export interface OwnerForwardDecision {
+  /** Owning pod's address (its `POD_IP`, from the Redis record's `host`). */
+  forwardHost: string;
+  /** ant-preview service port on that pod (same as ours). */
+  forwardPort: number;
+}
+
+/**
+ * Decide whether a preview request that landed on THIS replica must be forwarded
+ * to the pod that actually spawned the dev server.
+ *
+ * A preview's dev server lives on exactly one owner pod, bound to that pod's IP on
+ * an ephemeral port. The ALB round-robins each preview host across replicas with no
+ * owner affinity, so ~half of requests land on a non-owner pod. That pod cannot
+ * reach the owner's dev-server port cross-pod (blocked); instead it forwards the
+ * whole request to the owner's ant-preview SERVICE port (open) with the original
+ * `Host` preserved, and the owner proxies to its own `localhost` dev server.
+ *
+ * Returns null when the request can be served from this pod directly: off-cluster
+ * (no POD_IP — local dev / tests), owner host unknown / loopback, owner IS this pod,
+ * or the request was already forwarded once (loop guard against a stale record).
+ */
+export function resolveOwnerForward(
+  ownerHost: string | undefined,
+  alreadyForwarded: boolean,
+): OwnerForwardDecision | null {
+  const self = selfPodHost();
+  if (!self) return null; // off-cluster: single process, no cross-pod concept
+  if (alreadyForwarded) return null; // owner couldn't serve locally → don't bounce again
+  if (!ownerHost || ownerHost === 'localhost' || ownerHost === self) return null; // owner is us
+  return { forwardHost: ownerHost, forwardPort: selfServicePort() };
+}
+
+/**
  * Minimal structural view of a preview registry record — the only fields this
  * router reads. `PreviewState` (WS handler) and the HTTP middleware's hoisted
  * locals both satisfy it, so neither caller has to materialize a full record.
