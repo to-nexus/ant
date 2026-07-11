@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, ChevronDown } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { selectServerMode, selectIsApproved } from '@/domain/store/selectors/auth';
+import { selectIsAuthenticated, selectIsApproved } from '@/domain/store/selectors/auth';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -33,9 +33,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { showError } = useAlertModalContext();
   const { t } = useTranslation('chat');
   const isRunning = useStore((state) => state.isRunning);
-  const serverMode = useStore((state) => selectServerMode(state));
   const hasPendingClarify = useStore((state) => Object.keys(state.pendingClarifyAnswers).length > 0);
-  const userEmail = useStore((state) => state.userEmail);
   const pendingChatInput = useStore((state) => state.pendingChatInput);
   const [message, setMessage] = useState('');
   const [isComposing, setIsComposing] = useState(false);
@@ -43,7 +41,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isAuthenticated = serverMode === 'local' || !!userEmail;
+  const isAuthenticated = useStore(selectIsAuthenticated);
   const isApproved = useStore((state) => selectIsApproved(state));
   const approvalStatus = useStore((state) => state.approvalStatus);
 

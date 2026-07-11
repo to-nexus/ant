@@ -29,6 +29,25 @@ export function selectServerMode(state: StoreState): ServerMode | null {
 }
 
 /**
+ * Single SSOT for "is the current visitor allowed to act as a user?" — the
+ * positive gate shared by every UI action/render surface (chat input & policy,
+ * explorer, UI action policy, and the QuickStart onboarding entry/submit).
+ *
+ * `true` when local mode (the app always acts as the local tenant) OR a
+ * `userEmail` is present (cloud signed-in). While `serverMode` is still `null`
+ * (system config loading) this reads as `!!userEmail` — conservative for cloud,
+ * and the short window is already covered by upstream loading gates.
+ *
+ * Distinct from `selectIsAuthBlocked`, which additionally blocks during the
+ * cloud `verifying` window to protect PROTECTED FETCHES. UI presence gates use
+ * this simpler form so chat / explorer / onboarding stay consistent — do NOT
+ * re-inline `serverMode === 'local' || !!userEmail` at call sites.
+ */
+export function selectIsAuthenticated(state: StoreState): boolean {
+  return selectServerMode(state) === 'local' || !!state.userEmail;
+}
+
+/**
  * Single SSOT for "should this lifecycle / sync hook skip its protected
  * fetch right now?".
  *

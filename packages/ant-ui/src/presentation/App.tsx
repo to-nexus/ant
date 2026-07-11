@@ -43,7 +43,7 @@ import {
 } from '@/application/auth/onboardingRouter';
 import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
-import { selectIsAuthBlocked, selectServerMode } from '@/domain/store/selectors';
+import { selectIsAuthBlocked, selectIsAuthenticated, selectServerMode } from '@/domain/store/selectors';
 import {
   getAuthBroadcaster,
   markSessionExpired,
@@ -286,6 +286,10 @@ function AppShell() {
   // ✅ Onboarding state
   const userEmail = useStore((state) => state.userEmail);
   const serverMode = useStore((state) => selectServerMode(state));
+  // Local mode acts as the local tenant (no userEmail), so gate onboarding on
+  // the shared "can act as a user" SSOT — NOT bare `!!userEmail`, which is
+  // always false in local and silently swallows the QuickStart entry.
+  const isAuthenticated = useStore(selectIsAuthenticated);
   const authStatusValue = useStore((state) => state.authStatus);
   const needsOnboarding = useStore((state) => state.needsOnboarding);
   const projects = useStore((state) => state.projects);
@@ -303,7 +307,7 @@ function AppShell() {
   // the welcome — keep the app in its neutral state.
   const shouldShowWelcome = serverMode === 'cloud' && !userEmail;
   // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
-  const shouldShowQuickStart = !!userEmail && projectsLoaded && !onboardingSkipped
+  const shouldShowQuickStart = isAuthenticated && projectsLoaded && !onboardingSkipped
     && (projects.length === 0 || !!quickStartProjectId);
   // Reset skip flag when projects appear (user created one via QuickStart or externally)
   useEffect(() => {

@@ -25,7 +25,7 @@
  */
 
 import { useStore } from '@/domain/store';
-import { selectServerMode } from '@/domain/store/selectors/auth';
+import { selectIsAuthenticated } from '@/domain/store/selectors/auth';
 
 export interface UIActionPolicy {
   // ============================================
@@ -89,19 +89,16 @@ export function useUIActionPolicy(): UIActionPolicy {
   const isDisconnected = useStore(state => state.connectionStatus === 'disconnected');
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
-  const serverMode = useStore(state => selectServerMode(state));
-  const userEmail = useStore(state => state.userEmail);
 
   // ============================================
   // Policy Rules (정책 규칙)
   // ============================================
 
   /**
-   * Rule 0: Cloud 모드에서 비로그인 시 모든 액션 불가
-   * - cloud + !userEmail → 비활성화
-   * - serverMode 미해석 동안은 cloud 로 취급 (보수)
+   * Rule 0: Cloud 모드에서 비로그인 시 모든 액션 불가 (local 은 항상 인증됨).
+   * SSOT: selectIsAuthenticated (serverMode 미해석 동안은 cloud 로 취급, 보수).
    */
-  const isAuthenticated = serverMode === 'local' || !!userEmail;
+  const isAuthenticated = useStore(selectIsAuthenticated);
   
   /**
    * Rule 1: 작업 진행 중에는 파일/설정 변경 불가
