@@ -11,7 +11,7 @@ import {
   type AuthBroadcaster,
   type AuthUser as SharedAuthUser,
 } from '@ant/auth-client';
-import { RAW_API_BASE, API_BASE, SERVER_MODE, type ServerMode } from './apiBase';
+import { RAW_API_BASE, API_BASE, SERVER_MODE, CLOUD_APP_BASE, APP_BASE, type ServerMode } from './apiBase';
 
 /**
  * ant-site keeps a slimmer AuthUser than ant-ui — picture / name come from
@@ -184,15 +184,17 @@ export function useAuthSession(): AuthSessionContextValue {
 }
 
 /**
- * Entry URL for "Get Started" / hero / pricing CTAs that should always land
- * the user inside ant-ui (`/app/`). Routes through OAuth when the visitor is
- * unauthenticated; bypasses straight to `/app/` once a session cookie is set.
+ * Entry URL for "Get Started" / hero CTAs that land the user inside ant-ui
+ * (`/app/`). Routes through OAuth when the visitor is unauthenticated; bypasses
+ * straight to the app once a session cookie is set. `APP_BASE` prefixes the
+ * origin — empty in single-origin production (relative `/app/`), set to ant-ui's
+ * origin in local dev where the site and app run on separate ports.
  */
 export function getAppEntryUrl(user: AuthUser | null): string {
   return buildAppEntryUrl({
     isSignedIn: !!user,
     oauthBase: RAW_API_BASE,
-    appPath: '/app/',
+    appPath: `${APP_BASE}/app/`,
   });
 }
 
@@ -200,13 +202,35 @@ export function getAppEntryUrl(user: AuthUser | null): string {
  * Deep-link for pricing plan CTAs — lands the visitor in ant-ui's Payment
  * Center (`/app/billing`). The marketing site never hosts checkout; it shows
  * plans and routes here. Unauthenticated visitors route through OAuth first.
+ * Same `APP_BASE` origin discipline as `getAppEntryUrl`.
  */
 export function getBillingUrl(user: AuthUser | null): string {
   return buildAppEntryUrl({
     isSignedIn: !!user,
     oauthBase: RAW_API_BASE,
-    appPath: '/app/billing',
+    appPath: `${APP_BASE}/app/billing`,
   });
+}
+
+/**
+ * Absolute entry URL for the managed ANT Cloud product, used by the /cloud
+ * page's "Try ANT Cloud" CTA. Unlike `getAppEntryUrl`, this is NOT session- or
+ * origin-aware: it always targets the configured cloud host (`CLOUD_APP_BASE`)
+ * so a local/self-host build advertises the hosted product rather than its own
+ * origin's `/app/`. A bare `/app/` visit with no session is handled safely by
+ * ant-ui itself (it renders its own sign-in flow), so no OAuth bootstrapping is
+ * needed here. Returns '' when `NEXT_PUBLIC_CLOUD_APP_BASE` is unset.
+ */
+export function getCloudAppUrl(): string {
+  return CLOUD_APP_BASE ? `${CLOUD_APP_BASE}/app/` : '';
+}
+
+/**
+ * Managed-cloud deep-link to ant-ui's Payment Center, for the /cloud page's
+ * pricing-plan CTAs. Same host discipline as `getCloudAppUrl`; '' when unset.
+ */
+export function getCloudBillingUrl(): string {
+  return CLOUD_APP_BASE ? `${CLOUD_APP_BASE}/app/billing` : '';
 }
 
 /**

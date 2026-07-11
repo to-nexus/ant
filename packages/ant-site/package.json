@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 4300",
+    "dev": "next dev --port ${ANT_SITE_PORT:-4300}",
     "build": "next build",
     "start": "npx serve out -l 4300",
     "lint": "next lint",

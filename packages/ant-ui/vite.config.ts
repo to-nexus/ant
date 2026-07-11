@@ -8,7 +8,17 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SITE_PROXY_TARGET = 'http://localhost:4300';
+/**
+ * Local dev port + peer-origin config — env-driven with defaults so each
+ * service works on whatever port it is configured for (peers read the origin
+ * from the SAME env, never guess). `strictPort: true` (server/preview below)
+ * makes an occupied port fail loudly instead of silently drifting to 4201/4202/…
+ * — a drifted port breaks the fixed origin ant-site's "Go to App" link expects.
+ */
+const UI_PORT = Number(process.env.ANT_UI_PORT ?? 4200);
+const SITE_PROXY_TARGET = process.env.ANT_SITE_ORIGIN ?? 'http://localhost:4300';
+const API_PROXY_TARGET = process.env.ANT_API_ORIGIN ?? 'http://localhost:4100';
+const REALTIME_PROXY_TARGET = process.env.ANT_REALTIME_ORIGIN ?? 'http://localhost:4101';
 
 /**
  * Backend service proxy table — single source of truth for both `vite dev`
@@ -19,16 +29,16 @@ const SITE_PROXY_TARGET = 'http://localhost:4300';
  */
 const PROXY_TABLE = {
   '/api': {
-    target: 'http://localhost:4100',
+    target: API_PROXY_TARGET,
     changeOrigin: true,
   },
   '/ide': {
-    target: 'http://localhost:4100',
+    target: API_PROXY_TARGET,
     changeOrigin: true,
     ws: true,
   },
   '/realtime': {
-    target: 'http://localhost:4101',
+    target: REALTIME_PROXY_TARGET,
     changeOrigin: true,
   },
 } as const;
@@ -211,12 +221,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 4200,
+      port: UI_PORT,
+      strictPort: true,
       open: false,
       proxy: PROXY_TABLE,
     },
     preview: {
-      port: 4200,
+      port: UI_PORT,
+      strictPort: true,
       open: false,
       proxy: PROXY_TABLE,
     },
