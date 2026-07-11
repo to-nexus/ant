@@ -119,6 +119,10 @@ describe('previewProxy subdomain branch self-heal', () => {
 
     expect(ensureRunning).toHaveBeenCalledWith(COORDS);
     expect(res._c.status).toBe(502);
-    expect(res._c.body).toEqual({ error: 'Preview owner pod unreachable — cross-pod networking blocked' });
+    // Diagnostic body: names both pods + the network-layer suspicion so the
+    // infra team can grep the evidence straight out of the response.
+    expect(res._c.body).toMatchObject({ error: 'Preview owner pod unreachable — cross-pod networking blocked' });
+    expect(res._c.body.detail).toContain('pod-to-pod TCP appears blocked');
+    expect(res._c.body.detail).toContain('ant-preview-other-replica');
   });
 });
