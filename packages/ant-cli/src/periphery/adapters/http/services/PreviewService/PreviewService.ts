@@ -27,6 +27,7 @@ import { logger } from '../../../../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../../../../utils/userConfig';
 import { DevProcessControl, isPortConflictOutput, OwnedProcessRecord } from '../../../../../core/process/DevProcessControl';
+import { resolveCrossPodLiveness } from '../../../../../core/utils/crossPodLiveness';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import type { CleanupRequestPayload } from '../ProjectService/previewCleanup';
 import { randomUUID } from 'crypto';
@@ -34,6 +35,17 @@ import { randomUUID } from 'crypto';
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
+
+// How long ensureRunning waits for the dev server's health check before
+// returning a not-yet-ready record. Vite/Next cold start on EFS is 10-30s;
+// the proxy's per-attempt upstream deadline (45s) + transport retry absorb
+// the tail beyond this bound.
+const ENSURE_READY_TIMEOUT_MS = 30_000;
+
+// Grace window before an orphaned local instance (live handles, no Redis
+// record) is reaped by the idle check — protects the forceRestart
+// unregister→register window from a racing idle tick.
+const ORPHAN_REAP_MIN_AGE_MS = 2 * 60 * 1000;
 
 /**
  * Thrown when a startup stage (infra / provisioning) fails hard. Carries the
@@ -113,6 +125,20 @@ export class PreviewService {
   
   // Health check abort controllers (cancel on process exit or stop)
   private healthCheckAbortControllers: Map<string, AbortController> = new Map();
+
+  // Pod-local spawn facts — the preview twin of DeployService.activeDeploys /
+  // rehydrateLocks (permitted per-process lifecycle bookkeeping, NOT a Redis
+  // mirror): after another pod's rehydrate REPLACEs the shared Redis record,
+  // THIS pod's dev-server ports exist nowhere else. Local-first serving
+  // (getLocalPreview) reads these so a healthy local instance stays reachable
+  // regardless of who currently owns the shared record.
+  private localPreviews: Map<string, PreviewState> = new Map();
+  // In-flight health check per serverKey — ensureRunning awaits this (bounded)
+  // so the triggering request is not proxied to a not-yet-listening dev server.
+  private pendingReadiness: Map<string, Promise<boolean>> = new Map();
+  // In-process rehydrate coalescing (deploy parity): concurrent requests on
+  // this pod share one rehydrate instead of racing startPreview.
+  private rehydrateLocks: Map<string, Promise<PreviewState | null>> = new Map();
   
   // Idle check
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -519,19 +545,55 @@ export class PreviewService {
   }
   
   /**
+   * Pod-local spawn facts for a preview THIS pod is running, or null. Gated on
+   * live process handles so a stopped/crashed instance never resolves. Unlike
+   * the Redis record, this survives another pod's rehydrate REPLACE — it is the
+   * only place this pod's dev-server ports remain known after ownership moves.
+   */
+  getLocalPreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): PreviewState | null {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    if (!this.previewServers.has(serverKey)) return null;
+    return this.localPreviews.get(serverKey) ?? null;
+  }
+
+  /** Bounded wait on the in-flight health check (no-op when none pending). */
+  private async awaitReadiness(serverKey: string, timeoutMs: number): Promise<void> {
+    const readiness = this.pendingReadiness.get(serverKey);
+    if (!readiness) return;
+    await Promise.race([
+      readiness,
+      new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, timeoutMs);
+        (t as any).unref?.();
+      }),
+    ]);
+  }
+
+  /**
    * Ensure a dev server for this feature is serving from THIS pod, rehydrating
    * from the shared EFS workspace when necessary. The preview twin of
-   * `DeployService.ensureRunning`: the proxy calls it when a request lands on a
-   * replica that is not the recorded owner (or the owner is unreachable on the
-   * cross-pod service port), so the request is served locally instead of failing
-   * cross-pod.
+   * `DeployService.ensureRunning` (local-first self-heal):
+   *
+   *   1. Local fast path — this pod holds live handles: serve the local spawn
+   *      facts regardless of who owns the shared Redis record (the record may
+   *      have been REPLACE'd by another pod's rehydrate).
+   *   2. Cross-pod trust gate — another pod's `running` record is trusted ONLY
+   *      if its dev-server port passes the TCP liveness probe. A record that
+   *      fails the probe is NEVER returned (returning it verbatim was the
+   *      stale-record 502: the proxy burned its transport retries against a
+   *      network-blocked cross-pod target).
+   *   3. Rehydrate locally — in-process coalesced; takes a POD-scoped start
+   *      lock (each pod legitimately needs its own instance when pod-to-pod
+   *      networking is blocked) and awaits the health check (bounded) so the
+   *      triggering request lands on a listening dev server.
    *
    * Rehydrate reuses `startPreview(forceRestart=false)` — its `installIfNeeded`
-   * is a filesystem-only no-op when `node_modules` already exist on EFS (the
-   * original start left them), so this is a spawn-only replay, not a reinstall.
-   * The distributed PREVIEW lock inside `startPreview` serializes concurrent
-   * multi-pod attempts. Returns the fresh `PreviewState` (now local) or the
-   * best-available record.
+   * is a filesystem-only no-op when `node_modules` already exist on EFS.
    */
   async ensureRunning(
     tenantId: string,
@@ -542,32 +604,93 @@ export class PreviewService {
   ): Promise<PreviewState | null> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     const selfPod = os.hostname();
+
+    // 1. Local fast path — no Redis podId requirement: live local handles win.
+    const local = this.getLocalPreview(tenantId, userId, projectId, feature);
+    if (local) {
+      if (!local.ready) {
+        await this.awaitReadiness(serverKey, ENSURE_READY_TIMEOUT_MS);
+      }
+      const current = this.portRegistry
+        ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature)
+        : null;
+      if (current?.podId === selfPod) return current; // shared record is ours (fresher phase/ready)
+      return this.getLocalPreview(tenantId, userId, projectId, feature) ?? current;
+    }
+
+    // 2. Cross-pod trust gate (deploy parity, DeployService.ensureRunning).
     const current = this.portRegistry
       ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature)
       : null;
-
-    // Own-pod fast path: this replica already runs the dev server.
-    if (this.previewServers.has(serverKey) && current?.podId === selfPod) {
-      return current;
+    if (current?.running && current.podId && current.podId !== selfPod) {
+      const probePort = current.port || current.packages?.[0]?.port;
+      if (probePort) {
+        const liveness = await resolveCrossPodLiveness({ host: current.host, port: probePort }, false);
+        if (liveness === 'reachable') return current;
+      }
     }
 
+    // 3. In-process coalescing: concurrent requests share one rehydrate.
+    const inflight = this.rehydrateLocks.get(serverKey);
+    if (inflight) return inflight;
+    const promise = this.rehydrateLocal(tenantId, userId, projectId, feature, localPath, serverKey, selfPod)
+      .finally(() => this.rehydrateLocks.delete(serverKey));
+    this.rehydrateLocks.set(serverKey, promise);
+    return promise;
+  }
+
+  private async rehydrateLocal(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    localPath: string,
+    serverKey: string,
+    selfPod: string,
+  ): Promise<PreviewState | null> {
     try {
-      await this.startPreview(tenantId, userId, projectId, feature, localPath, undefined, false);
+      await this.startPreview(tenantId, userId, projectId, feature, localPath, undefined, false, { lockScope: 'pod' });
     } catch (err: any) {
       logger.warn(
         `[Preview] ensureRunning rehydrate failed for ${serverKey}: ${err?.message ?? err}`,
         { component: 'PreviewService' },
       );
     }
-    return this.portRegistry
+    // Wait (bounded) for the dev server to actually listen; on timeout the
+    // local record is still returned (ready:false) — the proxy's transport
+    // retry + single self-heal retry absorb the remaining cold-start tail.
+    await this.awaitReadiness(serverKey, ENSURE_READY_TIMEOUT_MS);
+
+    const localState = this.getLocalPreview(tenantId, userId, projectId, feature);
+    if (localState) return localState;
+
+    // No local instance came up (start failed / lock contention). NEVER hand
+    // back a cross-pod record that fails the liveness probe — that is the
+    // stale-record 502 regression.
+    const state = this.portRegistry
       ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature)
       : null;
+    if (!state) return null;
+    if (state.podId && state.podId !== selfPod) {
+      const probePort = state.port || state.packages?.[0]?.port;
+      const liveness = probePort
+        ? await resolveCrossPodLiveness({ host: state.host, port: probePort }, false)
+        : 'unreachable';
+      if (liveness !== 'reachable') return null;
+    }
+    return state;
   }
 
   /**
    * Start preview server for a project feature
    *
    * @param forceRestart - If true, stops existing server before starting a new one
+   * @param opts.lockScope - `'global'` (default): one start per serverKey across
+   *   ALL pods — protects the first-start npm-install race on the shared EFS
+   *   path. `'pod'`: lock key is suffixed with this pod's hostname — used by
+   *   the rehydrate path, where each pod legitimately needs its own instance
+   *   (pod-to-pod networking may be blocked) and cross-pod exclusion would
+   *   make `ensureRunning` hand back an unreachable cross-pod record.
    */
   async startPreview(
     tenantId: string,
@@ -576,7 +699,8 @@ export class PreviewService {
     feature: string,
     localPath: string,
     port?: number,
-    forceRestart: boolean = true
+    forceRestart: boolean = true,
+    opts?: { lockScope?: 'global' | 'pod' }
   ): Promise<{
     success: boolean;
     message?: string;
@@ -607,7 +731,11 @@ export class PreviewService {
     // Only one pod should handle start for a given serverKey at a time.
     // Without this, ALB round-robin can send multiple start requests to different pods,
     // causing npm install race on the same EFS path and corrupted node_modules.
-    const lockKey = `${PREVIEW_LOCK_PREFIX}${serverKey}`;
+    // lockScope 'pod' (rehydrate path) suffixes the key with this hostname so
+    // pods don't exclude EACH OTHER's rehydrates; same-pod duplicates are
+    // coalesced in-process by `rehydrateLocks`.
+    const lockScope = opts?.lockScope ?? 'global';
+    const lockKey = `${PREVIEW_LOCK_PREFIX}${serverKey}${lockScope === 'pod' ? `:${os.hostname()}` : ''}`;
     let lockAcquired = false;
     
     if (this.stateStore) {
@@ -1004,6 +1132,10 @@ export class PreviewService {
         
         await this.portRegistry.registerPreview(previewState);
         logger.info(`[Preview] Registered: ${serverKey} -> ${host}:${entryPort}`, { component: 'PreviewService' });
+
+        // Pod-local copy of the spawn facts — survives another pod's
+        // registerPreview REPLACE, which erases this pod's ports from Redis.
+        this.localPreviews.set(serverKey, { ...previewState, lastAccessedAt: new Date() });
       }
 
       // Save connections separately if registerPreview was skipped
@@ -1105,37 +1237,54 @@ export class PreviewService {
         this.broadcastStatus(serverKey, updatedStatus);
       }
       
-      // 8. Health check (async)
+      // 8. Health check (async, but AWAITABLE via `pendingReadiness`)
+      // The chain still runs detached from this call (user-start returns
+      // immediately as before); `ensureRunning` awaits the stored promise
+      // (bounded) so a rehydrate-triggering request is not proxied to a
+      // not-yet-listening dev server.
       // If health check fails, kill all processes and clean up — the dev server is unusable.
       const healthAbort = new AbortController();
       this.healthCheckAbortControllers.set(serverKey, healthAbort);
-      this.healthChecker.check(entryPort!, logCallback, undefined, undefined, healthAbort.signal).then(async (ready) => {
+      const readiness = this.healthChecker.check(entryPort!, logCallback, undefined, undefined, healthAbort.signal).then(async (ready) => {
         this.healthCheckAbortControllers.delete(serverKey);
         // Release lock after health check completes (success or fail)
         if (this.stateStore && lockAcquired) {
           this.stateStore.releaseLock(lockKey).catch(() => {});
         }
-        
+
         if (ready) {
           // Truthful success signal — emitted ONLY after the health check
           // passes. The FE progress view (preview.ts) matches this string to
           // flip packages to 'running'; the spawn-time summary above is
           // intentionally neutral so the UI never shows a premature success.
           this.appendLog(serverKey, 'stdout', '✅ All preview servers started successfully!');
+          const localCopy = this.localPreviews.get(serverKey);
+          if (localCopy) {
+            this.localPreviews.set(serverKey, { ...localCopy, ready: true, phase: 'running' });
+          }
           await this.updatePhase(serverKey, 'running', { running: true, ready: true });
         } else {
           // Health check failed — dev server is not responding. Clean up everything.
           logger.warn(`[Preview] Health check failed for ${serverKey}, stopping all processes`, { component: 'PreviewService' });
           this.appendLog(serverKey, 'stderr', '❌ Dev server failed health check. Stopping preview.');
-          
+
           try {
-            await this.stopPreview(tenantId, userId, projectId, feature);
+            // Local failure only — do NOT fan out, other pods' instances of
+            // this preview are independent and may be healthy.
+            await this.stopPreview(tenantId, userId, projectId, feature, { skipFanout: true });
           } catch { /* best-effort */ }
-          
+
           await this.updatePhase(serverKey, 'error', {
             running: false, ready: false,
             error: `Dev server failed to respond on port ${entryPort}`
           });
+        }
+        return ready;
+      }).catch(() => false);
+      this.pendingReadiness.set(serverKey, readiness);
+      void readiness.finally(() => {
+        if (this.pendingReadiness.get(serverKey) === readiness) {
+          this.pendingReadiness.delete(serverKey);
         }
       });
       
@@ -1180,6 +1329,7 @@ export class PreviewService {
       this.startingServers.delete(serverKey);
       this.startCancelledServers.delete(serverKey);
       this.startAbortControllers.delete(serverKey);
+      this.localPreviews.delete(serverKey);
       
       // Release distributed lock on failure
       if (this.stateStore && lockAcquired) {
@@ -1330,7 +1480,8 @@ export class PreviewService {
     // Clean up local state (process handles, paths)
     this.previewServers.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
-    
+    this.localPreviews.delete(serverKey);
+
     // Build issues stack
     const issues: PreviewIssue[] = [];
     issues.push(this.issueDetector.createFatalIssue(
@@ -1707,44 +1858,60 @@ export class PreviewService {
         await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
       }
 
-      // Release ALL ports (entry + every package port)
-      if (this.portRegistry && this.portManager) {
-        try {
-          const state = await this.portRegistry.getPreview(t, u, p, f);
-          if (state) {
-            const portsToRelease = new Set<number>();
-            if (state.port) portsToRelease.add(state.port);
-            if (state.backendPort) portsToRelease.add(state.backendPort);
-            for (const pkg of state.packages || []) {
-              if (pkg.port) portsToRelease.add(pkg.port);
-            }
-            for (const p of portsToRelease) {
-              this.portManager.release(p);
-            }
+      // Release ALL ports this pod spawned — from the pod-local spawn facts,
+      // NOT the Redis record: after a rehydrate REPLACE the record carries
+      // another pod's ports, and releasing those would corrupt that pod's
+      // healthy claims while leaking our own.
+      const localFacts = this.localPreviews.get(serverKey);
+      // Only touch the shared Redis record when it is OURS — a pod-B crash
+      // must not clobber pod-A's healthy record with error/stopped state.
+      const redisState = this.portRegistry ? await this.portRegistry.getPreview(t, u, p, f).catch(() => null) : null;
+      const recordIsOurs = redisState?.podId === os.hostname();
+      if (this.portManager) {
+        const portsToRelease = new Set<number>();
+        const collect = (s: { port?: number | null; backendPort?: number; packages?: ReadonlyArray<{ port?: number }> } | null | undefined) => {
+          if (!s) return;
+          if (s.port) portsToRelease.add(s.port);
+          if (s.backendPort) portsToRelease.add(s.backendPort);
+          for (const pkg of s.packages || []) {
+            if (pkg.port) portsToRelease.add(pkg.port);
           }
-        } catch { /* best-effort */ }
+        };
+        collect(localFacts);
+        if (recordIsOurs) collect(redisState);
+        for (const port of portsToRelease) {
+          try { this.portManager.release(port); } catch { /* best-effort */ }
+        }
       }
-      
+
       // Clear local state (process handles, paths)
       this.previewServers.delete(serverKey);
       this.previewServerPaths.delete(serverKey);
-      
-      // Reset connection status to stopped
-      if (this.portRegistry) {
-        try {
-          const currentState = await this.getPreviewStatus(t, u, p, f);
-          if (currentState.connections?.length) {
-            const resetConnections = currentState.connections.map((c: ServiceConnection) => ({ ...c, status: 'stopped' as const }));
-            await this.portRegistry.updatePreview(t, u, p, f, { connections: resetConnections });
-          }
-        } catch { /* best-effort */ }
-      }
+      this.localPreviews.delete(serverKey);
 
-      // Update Redis to error + broadcast
-      await this.updatePhase(serverKey, 'error', {
-        running: false, ready: false,
-        error: 'All preview processes exited unexpectedly'
-      });
+      if (recordIsOurs) {
+        // Reset connection status to stopped
+        if (this.portRegistry) {
+          try {
+            const currentState = await this.getPreviewStatus(t, u, p, f);
+            if (currentState.connections?.length) {
+              const resetConnections = currentState.connections.map((c: ServiceConnection) => ({ ...c, status: 'stopped' as const }));
+              await this.portRegistry.updatePreview(t, u, p, f, { connections: resetConnections });
+            }
+          } catch { /* best-effort */ }
+        }
+
+        // Update Redis to error + broadcast
+        await this.updatePhase(serverKey, 'error', {
+          running: false, ready: false,
+          error: 'All preview processes exited unexpectedly'
+        });
+      } else {
+        logger.warn(
+          `[Preview] Local processes died for ${serverKey} but the shared record is owned by ${redisState?.podId ?? '(none)'} — cleaned local state only`,
+          { component: 'PreviewService' },
+        );
+      }
     } catch (e: any) {
       logger.warn(`[Preview] Cleanup error for ${serverKey}: ${e.message}`, { component: 'PreviewService' });
     }
@@ -1761,13 +1928,21 @@ export class PreviewService {
    * giving the user a continuous progression `stopping → installing →
    * starting → running` instead of a flicker through `'stopped'` that
    * would disable the cancel button mid-restart and clear the log feed.
+   *
+   * `opts.skipFanout` (default `false`) — when `false`, the stop is broadcast
+   * on the `preview-stop` pub/sub channel AFTER local teardown so every OTHER
+   * pod reaps its own instance of this preview (under blocked pod-to-pod
+   * networking, rehydrates leave one instance per traffic-receiving pod).
+   * Set `true` for LOCAL-failure or local-only paths where other pods'
+   * instances must survive: `stopPreviewIfOwned` (re-broadcast loop guard),
+   * health-check failure, orphan reap, and process shutdown `cleanup()`.
    */
   async stopPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string,
-    opts?: { suppressStoppedBroadcast?: boolean },
+    opts?: { suppressStoppedBroadcast?: boolean; skipFanout?: boolean },
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
@@ -1802,16 +1977,10 @@ export class PreviewService {
       return { success: false, error: 'Preview server not running' };
     }
 
-    // Cross-pod stop: when this pod does NOT hold the live handles but the
-    // preview is running on a DIFFERENT pod, that pod's process can only be
-    // reaped by its own local `killTree`. Broadcast a `preview-stop` so the
-    // owning pod reaps via the established cleanup-request channel. We still
-    // unregister Redis below (cleans dead-pod residue + frees the port claim);
-    // the owning pod's own stop reaps based on local handles, not Redis state,
-    // so there is no race. Fire-and-forget — no ack wait on the user's stop.
-    if (!hasLocalProcesses && isRunningInRedis && redisState?.podId && redisState.podId !== os.hostname()) {
-      await this.publishPreviewStop(tenantId, userId, projectId, feature);
-    }
+    // Cross-pod stop is fanned out AFTER local teardown (see below): every
+    // pod with live handles reaps via `stopPreviewIfOwned`, which no-ops on
+    // pods without handles — including this one, since by publish time our
+    // `previewServers` entry is already deleted (self-receipt loop guard).
 
     // Abort any running health check
     const healthAbort = this.healthCheckAbortControllers.get(serverKey);
@@ -1896,36 +2065,60 @@ export class PreviewService {
     
     // Read connections from Redis BEFORE unregister (so we can include them in broadcast)
     let resetConnections: ServiceConnection[] = [];
+    let currentState: PreviewState | null = null;
     if (this.portRegistry) {
       try {
-        const currentState = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        currentState = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
         if (currentState?.connections?.length) {
           resetConnections = currentState.connections.map(c => ({ ...c, status: 'stopped' as const }));
         }
-        // Release ALL ports (entry + every package port)
+        // Release ALL ports (entry + every package port). Merge the pod-local
+        // spawn facts: after a rehydrate REPLACE the Redis record carries the
+        // LAST rehydrator's ports, and this pod's own claims exist only in
+        // `localPreviews` — without the merge they leak until TTL.
         if (this.portManager) {
           const portsToRelease = new Set<number>();
-          if (currentState?.port) portsToRelease.add(currentState.port);
-          if (currentState?.backendPort) portsToRelease.add(currentState.backendPort);
-          for (const pkg of currentState?.packages || []) {
-            if (pkg.port) portsToRelease.add(pkg.port);
-          }
+          const collect = (s: { port?: number | null; backendPort?: number; packages?: ReadonlyArray<{ port?: number }> } | null | undefined) => {
+            if (!s) return;
+            if (s.port) portsToRelease.add(s.port);
+            if (s.backendPort) portsToRelease.add(s.backendPort);
+            for (const pkg of s.packages || []) {
+              if (pkg.port) portsToRelease.add(pkg.port);
+            }
+          };
+          collect(currentState);
+          collect(this.localPreviews.get(serverKey));
           for (const p of portsToRelease) {
             this.portManager.release(p);
           }
         }
       } catch { /* best-effort */ }
     }
-    
-    // Unregister from PortRegistry (Redis)
+
+    // Unregister from PortRegistry (Redis). A LOCAL-ONLY stop (skipFanout:
+    // fan-out receipt, orphan reap, shutdown) must NOT delete a record owned
+    // by another pod — e.g. a forceRestart fan-out receipt racing the
+    // restarting pod's freshly re-registered record, or a pod shutdown while
+    // the record's owner keeps serving.
     if (this.portRegistry) {
-      await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
+      const ownsRecord = !currentState?.podId || currentState.podId === os.hostname();
+      if (!opts?.skipFanout || ownsRecord) {
+        await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
+      }
     }
-    
+
     // Cleanup local state (process handles, paths — logs preserved until next start)
     this.previewServers.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
-    
+    this.localPreviews.delete(serverKey);
+
+    // Fan the stop out to the OTHER pods (each reaps its own instance via
+    // `stopPreviewIfOwned`). Published after local teardown so this pod's own
+    // receipt no-ops on the already-empty `previewServers`.
+    if (!opts?.skipFanout) {
+      await this.publishPreviewStop(tenantId, userId, projectId, feature);
+    }
+
     logger.info(`Stopped all servers for ${serverKey} (local=${stoppedCount}, redis=${isRunningInRedis})`, { component: 'PreviewService' });
 
     // Final 'stopped' broadcast — skipped during forceRestart so the UI
@@ -2159,116 +2352,89 @@ export class PreviewService {
   }
   
   /**
-   * Check for idle instances and terminate them
-   * Uses lastAccessedAt from Redis state, or local state as fallback
+   * Check for idle instances and terminate them.
+   *
+   * Iterates the POD-LOCAL instance set (`previewServers.keys()`) — not the
+   * Redis registry — so an orphaned local instance whose shared record was
+   * REPLACE-stolen and later deleted by another pod is still visited and
+   * reaped instead of leaking until pod restart. `lastAccessedAt` on the
+   * shared record is touched by WHICHEVER pod serves traffic, so a preview
+   * only counts as idle when it is idle globally.
    */
   private async checkIdleInstances(): Promise<void> {
     const now = Date.now();
     let checkedCount = 0;
     let terminatedCount = 0;
-    
+
+    const registry = this.stateStore ?? this.portRegistry;
+    if (!registry) {
+      logger.debug('[IdleCheck] No stateStore or portRegistry configured, skipping', {
+        component: 'PreviewService'
+      });
+      return;
+    }
+
     try {
-      // If stateStore is available, use Redis-based idle check
-      if (this.stateStore) {
-        const previews = await this.stateStore.listPreviews();
-        
-        for (const preview of previews) {
-          const serverKey = this.createServerKey(
-            preview.tenantId, 
-            preview.userId, 
-            preview.projectId, 
-            preview.feature
-          );
-          
-          // Skip if not running on this Pod
-          if (!this.previewServers.has(serverKey)) {
-            continue;
-          }
-          
-          checkedCount++;
-          
-          // Check last access time (convert Date to timestamp)
-          const lastAccessTime = preview.lastAccessedAt?.getTime?.() 
-            || (typeof preview.lastAccessedAt === 'number' ? preview.lastAccessedAt : 0);
-          const startTime = preview.startedAt?.getTime?.() 
-            || (typeof preview.startedAt === 'number' ? preview.startedAt : 0);
-          const lastAccess = lastAccessTime || startTime || 0;
-          const idleTime = now - lastAccess;
-          
-          if (idleTime > this.idleTimeoutMs) {
-            logger.info(`[IdleCheck] Terminating idle preview: ${serverKey} (idle for ${Math.round(idleTime / 60000)} minutes)`, {
+      const localKeys = Array.from(this.previewServers.keys());
+      if (localKeys.length === 0) return;
+
+      const previews = await registry.listPreviews();
+      const byKey = new Map(previews.map(p => [
+        this.createServerKey(p.tenantId, p.userId, p.projectId, p.feature), p,
+      ]));
+
+      for (const serverKey of localKeys) {
+        const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+        const preview = byKey.get(serverKey);
+        checkedCount++;
+
+        if (!preview) {
+          // Orphaned local instance: the shared record is gone (stopped /
+          // unregistered elsewhere). Reap locally — but give a fresh spawn a
+          // grace window so a racing forceRestart's unregister→register gap
+          // can't kill a healthy instance mid-start.
+          const spawnedAt = this.spawnTimestamps.get(serverKey) ?? 0;
+          if (now - spawnedAt < ORPHAN_REAP_MIN_AGE_MS) continue;
+          logger.warn(`[IdleCheck] Reaping orphaned local preview (no registry record): ${serverKey}`, {
+            component: 'PreviewService'
+          });
+          try {
+            await this.stopPreview(tenantId, userId, projectId, feature, { skipFanout: true });
+            terminatedCount++;
+          } catch (error: any) {
+            logger.warn(`[IdleCheck] Failed to reap orphaned preview ${serverKey}: ${error.message}`, {
               component: 'PreviewService'
             });
-            
-            try {
-              await this.stopPreview(
-                preview.tenantId,
-                preview.userId,
-                preview.projectId,
-                preview.feature
-              );
-              terminatedCount++;
-            } catch (error: any) {
-              logger.warn(`[IdleCheck] Failed to terminate idle preview ${serverKey}: ${error.message}`, {
-                component: 'PreviewService'
-              });
-            }
           }
+          continue;
         }
-      } else if (this.portRegistry) {
-        // Fallback: use local portRegistry
-        const previews = await this.portRegistry.listPreviews();
-        
-        for (const preview of previews) {
-          const serverKey = this.createServerKey(
-            preview.tenantId, 
-            preview.userId, 
-            preview.projectId, 
-            preview.feature
-          );
-          
-          // Skip if not running locally
-          if (!this.previewServers.has(serverKey)) {
-            continue;
-          }
-          
-          checkedCount++;
-          
-          // Check last access time
-          const lastAccessTime = preview.lastAccessedAt?.getTime?.() 
-            || (typeof preview.lastAccessedAt === 'number' ? preview.lastAccessedAt : 0);
-          const startTime = preview.startedAt?.getTime?.() 
-            || (typeof preview.startedAt === 'number' ? preview.startedAt : 0);
-          const lastAccess = lastAccessTime || startTime || 0;
-          const idleTime = now - lastAccess;
-          
-          if (idleTime > this.idleTimeoutMs) {
-            logger.info(`[IdleCheck] Terminating idle preview: ${serverKey} (idle for ${Math.round(idleTime / 60000)} minutes)`, {
+
+        // Check last access time (convert Date to timestamp)
+        const lastAccessTime = preview.lastAccessedAt?.getTime?.()
+          || (typeof preview.lastAccessedAt === 'number' ? preview.lastAccessedAt : 0);
+        const startTime = preview.startedAt?.getTime?.()
+          || (typeof preview.startedAt === 'number' ? preview.startedAt : 0);
+        const lastAccess = lastAccessTime || startTime || 0;
+        const idleTime = now - lastAccess;
+
+        if (idleTime > this.idleTimeoutMs) {
+          logger.info(`[IdleCheck] Terminating idle preview: ${serverKey} (idle for ${Math.round(idleTime / 60000)} minutes)`, {
+            component: 'PreviewService'
+          });
+
+          try {
+            // Global idleness (shared lastAccessedAt) → fan out so every
+            // pod's instance of this preview reaps together.
+            await this.stopPreview(tenantId, userId, projectId, feature);
+            terminatedCount++;
+          } catch (error: any) {
+            logger.warn(`[IdleCheck] Failed to terminate idle preview ${serverKey}: ${error.message}`, {
               component: 'PreviewService'
             });
-            
-            try {
-              await this.stopPreview(
-                preview.tenantId,
-                preview.userId,
-                preview.projectId,
-                preview.feature
-              );
-              terminatedCount++;
-            } catch (error: any) {
-              logger.warn(`[IdleCheck] Failed to terminate idle preview ${serverKey}: ${error.message}`, {
-                component: 'PreviewService'
-              });
-            }
           }
         }
-      } else {
-        logger.debug('[IdleCheck] No stateStore or portRegistry configured, skipping', { 
-          component: 'PreviewService' 
-        });
-        return;
       }
-      
+
       if (checkedCount > 0) {
         logger.debug(`[IdleCheck] Checked ${checkedCount} preview(s), terminated ${terminatedCount}`, {
           component: 'PreviewService'
@@ -2345,11 +2511,20 @@ export class PreviewService {
       } catch { /* best-effort */ }
     }
     const records: OwnedProcessRecord[] = [];
-    for (const pkg of state?.packages || []) {
-      if (typeof pkg.pid === 'number' && pkg.pid > 0 && pkg.podId) {
-        records.push({ pid: pkg.pid, pgid: pkg.pgid, podId: pkg.podId });
+    const seen = new Set<number>();
+    const collect = (pkgs: ReadonlyArray<{ pid?: number; pgid?: number; podId?: string }> | undefined) => {
+      for (const pkg of pkgs || []) {
+        if (typeof pkg.pid === 'number' && pkg.pid > 0 && pkg.podId && !seen.has(pkg.pid)) {
+          seen.add(pkg.pid);
+          records.push({ pid: pkg.pid, pgid: pkg.pgid, podId: pkg.podId });
+        }
       }
-    }
+    };
+    collect(state?.packages);
+    // Merge the pod-local spawn facts: after a rehydrate REPLACE the Redis
+    // record carries another pod's pids — ours are only recorded here.
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    collect(this.localPreviews.get(serverKey)?.packages);
     return records;
   }
 
@@ -2394,7 +2569,14 @@ export class PreviewService {
     const serverKey = this.createServerKey(organizationId, userId, projectId, feature);
     if (!this.previewServers.has(serverKey)) return; // not owned here
     try {
-      await this.stopPreview(organizationId, userId, projectId, feature);
+      // skipFanout — this call IS the fan-out receipt; re-publishing would
+      // loop. suppressStoppedBroadcast — the INITIATOR owns the FE-facing
+      // 'stopped' signal; a late receipt must not clobber a restart's
+      // 'installing' phase with a stray 'stopped'.
+      await this.stopPreview(organizationId, userId, projectId, feature, {
+        skipFanout: true,
+        suppressStoppedBroadcast: true,
+      });
     } catch (err) {
       logger.warn(`[PreviewService] stopPreviewIfOwned failed (continuing)`, { component: 'PreviewService' }, { serverKey, err });
     }
@@ -2427,6 +2609,15 @@ export class PreviewService {
     logger.warn(`[PreviewService] Reconciling ${previews.length} owned preview(s) from a prior process on ${host}`, { component: 'PreviewService' });
 
     for (const state of previews) {
+      // Stale PREVIEW_BY_POD index entry: `registerPreview` sadd's the new
+      // owner's index but never srem's the previous owner's, so after a
+      // rehydrate REPLACE this pod's index can point at a record now owned
+      // by ANOTHER pod. Releasing its ports / unregistering it here would
+      // tear down that pod's healthy preview — skip it.
+      if (state.podId && state.podId !== host) {
+        logger.debug(`[PreviewService] reconcile skip (record owned by ${state.podId}): ${state.projectId}/${state.feature}`, { component: 'PreviewService' });
+        continue;
+      }
       const records: OwnedProcessRecord[] = [];
       for (const pkg of state.packages || []) {
         if (typeof pkg.pid === 'number' && pkg.pid > 0) {
@@ -2476,8 +2667,10 @@ export class PreviewService {
     
     for (const serverKey of serverKeys) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      
-      const cleanupPromise = this.stopPreview(tenantId, userId, projectId, feature)
+
+      // skipFanout — pod shutdown reaps ONLY its own instances; other pods'
+      // instances of the same previews keep serving.
+      const cleanupPromise = this.stopPreview(tenantId, userId, projectId, feature, { skipFanout: true })
         .then(() => {
           logger.debug(`Stopped: ${serverKey}`, { component: 'PreviewService' });
         })

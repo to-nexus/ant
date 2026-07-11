@@ -121,6 +121,20 @@ export interface PreviewProxyConfig {
     projectId: string;
     feature: string;
   }) => Promise<PreviewState | null>;
+  /**
+   * Local-first hook: synchronous read of THIS pod's own spawn facts
+   * (`PreviewService.getLocalPreview`). When it resolves, the request is
+   * served from the local dev server directly — no owner-forward, no
+   * cross-pod liveness probe — even if the shared Redis record was
+   * REPLACE'd by another pod's rehydrate (the local ports exist nowhere
+   * else). `undefined` in contexts without a PreviewService.
+   */
+  getLocal?: (coords: {
+    tenantId: string;
+    userId: string;
+    projectId: string;
+    feature: string;
+  }) => PreviewState | null;
 }
 
 /**
@@ -198,7 +212,15 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // The matched label record carries host/port/packages. A dead/cross-pod
       // target self-heals via `config.ensureRunning` (rehydrate on THIS pod)
       // below — `state` is reassigned to the fresh local record on recovery.
-      let state = match;
+      let state: typeof match | PreviewState = match;
+
+      // LOCAL-FIRST: when THIS pod already runs the dev server, serve from
+      // the pod-local spawn facts and skip owner-forward entirely. The shared
+      // Redis record may point at another pod after a rehydrate REPLACE — the
+      // local instance is still the correct target (and the only reachable
+      // one when pod-to-pod TCP is blocked).
+      const localState = config.getLocal?.({ tenantId, userId, projectId, feature });
+      if (localState) state = localState;
 
       // Cross-pod owner-forwarding: in a multi-replica deployment the ALB
       // round-robins this preview host across replicas with no owner affinity.
@@ -208,14 +230,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // Host preserved; the owner then proxies to its own localhost dev server.
       // Ownership is decided by podId (os.hostname) — never POD_IP — so it can't
       // silently disable itself. Loop-guarded against a stale owner record.
-      const ownerForward = resolveOwnerForward(
+      const ownerForward = localState ? null : resolveOwnerForward(
         state.podId,
         state.host,
         req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
       );
       trace(
         `${req.headers.host} label=${label} owner=${state.podId ?? '?'}@${state.host}:${state.port} self=${selfPodId()} ` +
-        `→ ${ownerForward ? `fwd ${ownerForward.forwardHost}:${ownerForward.forwardPort}` : 'local'}`,
+        `→ ${ownerForward ? `fwd ${ownerForward.forwardHost}:${ownerForward.forwardPort}` : localState ? 'local-first' : 'local'}`,
       );
       if (ownerForward) {
         // Owner-forward is a best-effort FAST PATH: if the owner pod is
@@ -261,7 +283,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           ? await config.ensureRunning({ tenantId, userId, projectId, feature })
           : null;
         if (!rehydrated) {
-          res.status(502).json({ error: 'Preview owner pod unreachable — cross-pod networking blocked' });
+          res.status(502).json({
+            error: 'Preview owner pod unreachable — cross-pod networking blocked',
+            detail:
+              `owner=${state.podId ?? '?'}@${ownerForward.forwardHost}:${ownerForward.forwardPort} self=${selfPodId()} — ` +
+              `pod-to-pod TCP appears blocked (NetworkPolicy/SG) and local rehydrate also failed`,
+            key: internalKey,
+          });
           return;
         }
         state = rehydrated;
@@ -325,7 +353,18 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
             if (rehydrated) { state = rehydrated; continue; }
           }
           logger.error(`[Preview] Subdomain fetch error: ${error.message}`, { component: 'PreviewProxy' });
-          if (!res.headersSent) res.status(502).json({ error: 'Bad Gateway' });
+          if (!res.headersSent) {
+            res.status(502).json({
+              error: 'Bad Gateway',
+              detail:
+                `dev-server fetch failed (${error.message}) target=${previewHost}:${targetPort} ` +
+                `recordOwner=${state.podId ?? '?'} self=${selfPodId()}` +
+                (state.podId && state.podId !== selfPodId()
+                  ? ' — cross-pod target; pod-to-pod TCP appears blocked (NetworkPolicy/SG)'
+                  : ''),
+              key: internalKey,
+            });
+          }
           return;
         }
       }
@@ -383,7 +422,9 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
 
           try {
-            const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
+            // Local-first: this pod's own instance wins over the shared record.
+            const mapping = config.getLocal?.({ tenantId, userId, projectId, feature })
+              ?? await portRegistry.getPreview(tenantId, userId, projectId, feature);
             if (mapping) {
               const host = mapping.host || 'localhost';
               const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
@@ -465,7 +506,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     type ProxyPkg = { name: string; slug?: string; type: string; port: number; urlKey?: string };
     let previewPackages: ProxyPkg[] = [];
     try {
-      const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
+      // Local-first: this pod's own instance wins over the shared record
+      // (which another pod's rehydrate may have REPLACE'd with its own ports).
+      const mapping = config.getLocal?.({ tenantId, userId, projectId, feature })
+        ?? await portRegistry.getPreview(tenantId, userId, projectId, feature);
 
       if (!mapping) {
         logger.warn(`No preview found for ${internalKey}`, { component: 'PreviewProxy' });

@@ -46,7 +46,7 @@ import { extractUserContext } from '../../periphery/adapters/http/routes/helpers
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
-import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, selfPodId, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
+import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, selfPodId, selfServicePort, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
 import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
@@ -679,6 +679,10 @@ export class PreviewServer {
           tenantId, userId, projectId, feature,
           this.resolveWorkspacePath({ organizationId: tenantId, userId }, projectId, feature),
         ),
+      // Local-first: this pod's own instance (pod-local spawn facts) wins over
+      // the shared Redis record — no owner-forward probe, no cross-pod fetch.
+      getLocal: ({ tenantId, userId, projectId, feature }) =>
+        this.previewService.getLocalPreview(tenantId, userId, projectId, feature),
       jwtService: createJwtServiceFromEnv(),
       cookieName: JwtService.cookieName,
     }));
@@ -1404,6 +1408,12 @@ export class PreviewServer {
           { component: 'PreviewServer' },
         );
 
+        // Peer reachability probe — one greppable line per peer pod proving
+        // whether pod-to-pod TCP on the service port is open (owner-forward
+        // fast path) or blocked (previews self-heal locally). Infra evidence
+        // for the NetworkPolicy/SG request; fire-and-forget.
+        void this.probePeerReachability();
+
         // Start idle check
         this.previewService.startIdleCheck();
         
@@ -1491,6 +1501,20 @@ export class PreviewServer {
               // preview to 'stopped'. A genuinely dead target fails fast via
               // openRawTunnel's own handshake timeout — forgiving + bounded,
               // matching the HTTP path and deploy's non-destructive posture.
+              // LOCAL-FIRST (mirrors the HTTP proxy): when THIS pod already
+              // runs the dev server, tunnel to the pod-local spawn facts and
+              // skip owner-forward — the shared record may point at another
+              // pod after a rehydrate REPLACE, but the local instance is the
+              // correct (and only reachable) target.
+              const wsLocal = this.previewService.getLocalPreview(
+                pMatch.tenantId, pMatch.userId, pMatch.projectId, pMatch.feature,
+              );
+              if (wsLocal) {
+                const localKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
+                const t = resolvePreviewTarget({ host: wsLocal.host, packages: wsLocal.packages }, pMatch.serviceName, localKey);
+                openRawTunnel(req, socket, head, t?.targetHost ?? wsLocal.host, t?.targetPort ?? wsLocal.port, urlPath);
+                return;
+              }
               // Cross-pod owner-forwarding (mirrors the HTTP proxy): when this
               // HMR upgrade lands on a non-owner replica, tunnel it to the owner
               // pod's ant-preview service port (Host preserved via peerForward)
@@ -1629,12 +1653,14 @@ export class PreviewServer {
           // probe miss on a non-owner replica would kill HMR and corrupt a
           // healthy preview to 'stopped'. A dead target fails fast via
           // openRawTunnel's handshake timeout (forgiving + bounded).
-          const mapping = await this.stateStore.getPreview(
-            tenantId,
-            userId,
-            projectId,
-            feature,
-          );
+          // Local-first: this pod's own instance wins over the shared record.
+          const mapping = this.previewService.getLocalPreview(tenantId, userId, projectId, feature)
+            ?? await this.stateStore.getPreview(
+              tenantId,
+              userId,
+              projectId,
+              feature,
+            );
           if (!mapping) {
             socket.destroy();
             return;
@@ -1664,6 +1690,44 @@ export class PreviewServer {
         }
       });
     });
+  }
+
+  /**
+   * Boot-time diagnostic: probe every peer pod found in the preview registry
+   * on the shared service port. Emits one `peer-probe` warn line per peer —
+   * `UNREACHABLE` is the greppable evidence that pod-to-pod TCP is blocked
+   * at the network layer (NetworkPolicy / security group), which disables
+   * the owner-forward fast path and forces per-pod local self-heal.
+   */
+  private async probePeerReachability(): Promise<void> {
+    try {
+      const previews = await this.stateStore.listPreviews();
+      const self = os.hostname();
+      const peers = new Map<string, string>();
+      for (const p of previews) {
+        if (p.podId && p.host && p.host !== 'localhost' && p.podId !== self) {
+          peers.set(p.podId, p.host);
+        }
+      }
+      if (peers.size === 0) {
+        logger.warn(`[PreviewServer] peer-probe: no peer pods in the preview registry — nothing to probe`, { component: 'PreviewServer' });
+        return;
+      }
+      const port = selfServicePort();
+      for (const [podId, host] of peers) {
+        const liveness = await resolveCrossPodLiveness({ host, port }, false);
+        if (liveness === 'reachable') {
+          logger.warn(`[PreviewServer] peer-probe: ${podId}@${host}:${port} reachable — owner-forward fast path available`, { component: 'PreviewServer' });
+        } else {
+          logger.warn(
+            `[PreviewServer] peer-probe: ${podId}@${host}:${port} UNREACHABLE — pod-to-pod TCP appears blocked (NetworkPolicy/SG); previews self-heal locally on each pod`,
+            { component: 'PreviewServer' },
+          );
+        }
+      }
+    } catch (err: any) {
+      logger.debug(`[PreviewServer] peer-probe failed: ${err?.message ?? err}`, { component: 'PreviewServer' });
+    }
   }
 
   /**
