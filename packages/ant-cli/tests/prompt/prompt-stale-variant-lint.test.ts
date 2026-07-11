@@ -10,8 +10,6 @@
  *               (D31-revised v9 narrowed genre registry to 6 sub-genres — match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner)
  *   - coreLoop= `fight` / `build` / `explore`
  *               (D31-revised v9 narrowed coreLoop to 3 universals — solve / collect / survive)
- *   - perspective = `3d`
- *               (D30 v7 single-element registry)
  *   - gameEngine = `godot` / `cocos-creator`
  *               (D29 v7 single-element registry)
  *
@@ -59,7 +57,8 @@ import * as path from 'node:path';
 const DEPRECATED_CONCEPT = ['modernCasual', 'sfFantasy', 'darkFantasy', 'threeKingdoms', 'martialArts'] as const;
 const DEPRECATED_GENRE = ['puzzle', 'casual', 'arcade', 'action', 'platformer', 'shooter', 'rpg', 'strategy'] as const;
 const DEPRECATED_CORE_LOOP = ['fight', 'build', 'explore'] as const;
-const DEPRECATED_PERSPECTIVE = ['3d'] as const;
+// perspective is now a 2-variant registry (`['2d','3d']`) — neither is deprecated.
+const DEPRECATED_PERSPECTIVE = [] as const;
 const DEPRECATED_GAME_ENGINE = ['godot', 'cocos-creator'] as const;
 
 // Markers that authorise the citation as an intentional Phase 5+ hook /

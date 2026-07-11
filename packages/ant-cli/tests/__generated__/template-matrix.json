@@ -114,6 +114,11 @@
       "basis-registry"
     ]
   },
+  "basis/gameArtTier/perspective/3d": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/gameArtTier/projectilePolicy/complex": {
     "sources": [
       "basis-registry"

@@ -105,11 +105,10 @@ const domainTagDef: DecisionTagDef<Domain> = {
 const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
   name: 'gameArtTier',
   pattern: /<gameArtTier>\s*([\s\S]*?)\s*<\/gameArtTier>/i,
-  // v8 (D30 + D32-revised) — perspective single-element (`'2d'`); concept
-  // default `'flatMinimal'` is the most domain-agnostic of the 5 v9
-  // concepts (works for match3 / slidingPuzzle / cardSolitaire alike).
-  // Phase 4 (this revision) — the 5 new axes also carry conservative
-  // defaults that work in css-only inline production.
+  // Defaults degrade to the conservative, parser-valid value for each axis
+  // (D40): `perspective='2d'` (plain Phaser — the safe fallback when a 3D
+  // tag is garbled), `concept='flatMinimal'` (most domain-agnostic concept),
+  // and css-only-inline-friendly values for the remaining axes.
   defaultOnRetryExhaustion: {
     concept: 'flatMinimal',
     perspective: '2d',

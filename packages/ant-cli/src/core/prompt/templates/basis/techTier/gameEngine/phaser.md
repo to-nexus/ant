@@ -63,11 +63,16 @@ class MainScene extends Phaser.Scene {
   constructor() { super({ key: 'main' }); }
   init(data: SceneInitData) { /* receive cross-scene payload */ }
   preload() { /* load assets when not already loaded by BootScene */ }
-  create() { /* spawn sprites, register listeners */ }
+  create() { /* spawn world objects, register listeners */ }
   update(time: number, delta: number) { /* advance Domain with delta */ }
   shutdown() { /* MANDATORY — clean up emitter listeners, timers, tweens */ }
 }
 ```
+
+The scene base class is perspective-dependent: `gameArtTier.perspective === '2d'` extends
+`Phaser.Scene`; `=== '3d'` extends enable3d's `Scene3D` (itself a `Phaser.Scene` subclass, so the
+lifecycle above is identical). The active `perspective` partial names the exact base and the
+world-rendering API — this partial stays render-agnostic.
 
 Scene transitions:
 
@@ -77,32 +82,15 @@ Scene transitions:
 
 ⚠️ **Listener leak blind spot**: any `this.events.on(...)` or `EventEmitter.on(...)` in `create` MUST have a paired `off(...)` in `shutdown`. This is the single most common bug in Phaser scene transitions.
 
-### 3. Graphics API policy
+### 3. World render API policy
 
-Baseline visual scope (`_meta.visualScope === 'baseline'`, the default) uses **procedural shapes** via `Phaser.GameObjects.Graphics`:
+The world-rendering primitives are perspective-dependent and live in the active
+`gameArtTier.perspective` partial — 2D commits `Phaser.GameObjects.Graphics` / `Sprite`; 3D commits
+enable3d mesh primitives. Both honor the `_meta.visualScope` marker (`'baseline'` vs
+`'atlas-enabled'`) described in §6 and in `game-art-source`. This partial does not prescribe the
+draw calls.
 
-```ts
-const g = this.add.graphics();
-g.fillStyle(0xff5577, 1);            // ARGB (alpha 0..1)
-g.fillRect(x, y, width, height);
-g.lineStyle(2, 0xffffff, 0.8);
-g.strokeCircle(cx, cy, r);
-```
-
-Allowed primitives in baseline visual scope:
-
-- `fillStyle` / `fillRect` / `fillCircle` / `fillTriangle` / `fillRoundedRect`
-- `lineStyle` / `strokeRect` / `strokeCircle` / `strokeRoundedRect`
-- `Phaser.GameObjects.Text` for HUD glyphs (no custom fonts; rely on system fonts)
-- `Phaser.GameObjects.Sprite` only when an `external` catalog entry exists in `game-art-assets.json` (preload via `BootScene`)
-
-Atlas-enabled hook (active when `_meta.visualScope === 'atlas-enabled'`):
-
-- `this.load.atlas` / `this.load.spritesheet` for sprite atlases
-- `this.add.particles` with custom textures
-- WebGL shader pipelines
-
-❌ Do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `assets/game/...` pool (I6).
+❌ Regardless of perspective, do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `assets/game/...` pool (I6).
 
 ### 4. Audio API policy
 

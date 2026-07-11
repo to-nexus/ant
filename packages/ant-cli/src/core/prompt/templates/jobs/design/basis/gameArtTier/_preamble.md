@@ -54,7 +54,7 @@ Allowed inline asset shapes:
 - Detailed sprite sheets / animation frames.
 - Photorealistic textures or backgrounds.
 - Mp3 / ogg / wav file payloads (binary content).
-- 3D models / tilemaps / atlas frames.
+- Imported 3D model files (`.glb` / `.gltf`) or detailed meshes / tilemaps / atlas frames. (A code-only `geometry3d` primitive descriptor `{shape,dims,color}` under `perspective='3d'` is NOT a model — it is allowed inline.)
 
 The task-completion gate validates inline payloads against this ceiling
 (svg primitive count / viewBox side, css byte length, oscillator

@@ -146,11 +146,13 @@ export type GameArtConceptVariant =
   | 'softPastel'
   | 'cardClassic';
 /**
- * v7 (D30) — registry single-element: `'2d'`. Phaser 3 is a 2D engine and
- * css-only inline cannot author production 3D assets (glTF / textures /
- * lighting). Phase 5+ widens this union when the visual job activates.
+ * Render dimension. `'2d'` → plain Phaser; `'3d'` → Phaser + the enable3d
+ * extension (three.js render + ammo.js physics), which supplies code-only
+ * built-in primitives (box / sphere / ground / …) so a 3D game needs no
+ * imported model assets. The engine stays `gameEngine='phaser'` for both —
+ * perspective is the single owner of the 2D↔3D decision.
  */
-export type GameArtPerspectiveVariant = '2d';
+export type GameArtPerspectiveVariant = '2d' | '3d';
 export type GameArtEntityCatalogVariant = 'minimal' | 'standard' | 'rich';
 export type GameArtMotionPatternVariant = 'static' | 'subtle' | 'expressive';
 export type GameArtParticleProfileVariant = 'none' | 'light' | 'heavy';

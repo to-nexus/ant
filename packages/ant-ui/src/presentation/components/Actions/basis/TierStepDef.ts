@@ -62,7 +62,7 @@ export const GAME_ART_STEPS: WizardStepDef[] = [
     tierKey: 'gameArtTier',
     layerKey: 'perspective',
     title: { en: 'Perspective', ko: '시점' },
-    description: { en: 'Choose the camera / depth model (D30 v7 — 2D only; 3D is a Phase 5+ hook)', ko: '카메라/깊이 모델 (D30 v7 — 2D 만; 3D 는 Phase 5+ 훅)' },
+    description: { en: 'Choose the render dimension: 2D (plain Phaser) or 3D (Phaser + enable3d)', ko: '렌더 차원 선택: 2D (일반 Phaser) 또는 3D (Phaser + enable3d)' },
   },
 ];
 
