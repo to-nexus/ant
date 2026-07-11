@@ -10,6 +10,7 @@
 
 import * as crypto from 'crypto';
 import type { OrganizationKind } from '@ant/shared';
+import { logger } from '../../utils/logger';
 
 export interface JwtPayload {
   sub: string;        // userId (full lowercased email in cloud; 'local' in local mode)
@@ -198,10 +199,26 @@ export class JwtService {
 
 /**
  * Create JwtService from environment variables.
- * Returns undefined if ANT_JWT_SECRET is not set (local mode).
+ *
+ * Cloud mode only: JWT session auth exists solely for cloud multi-tenant
+ * surfaces. In local mode (single `local:local` tenant, no login flow) this
+ * ALWAYS returns undefined — even when ANT_JWT_SECRET happens to be set in
+ * .env (e.g. leftover from cloud testing). Secret presence is NOT a mode
+ * signal; `ANT_SERVER_MODE` is. Keying on the secret used to activate the
+ * preview/deploy proxy owner gates in local mode, where no session cookie
+ * can ever exist → every preview 403'd "belongs to another account".
  */
 export function createJwtServiceFromEnv(): JwtService | undefined {
   const secret = process.env.ANT_JWT_SECRET;
+  if (process.env.ANT_SERVER_MODE !== 'cloud') {
+    if (secret) {
+      logger.warn(
+        '[JwtService] ANT_JWT_SECRET is set but ANT_SERVER_MODE is not "cloud" — JWT auth disabled (local single-tenant)',
+        { component: 'JwtService' },
+      );
+    }
+    return undefined;
+  }
   if (!secret) {
     return undefined;
   }
