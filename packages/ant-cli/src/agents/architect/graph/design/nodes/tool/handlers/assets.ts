@@ -3,6 +3,54 @@ import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../p
 import type { Domain } from '@ant/shared';
 
 /**
+ * True when `ip` is a loopback / private / link-local / CGNAT address (IPv4 or
+ * IPv6). Unparseable input is treated as unsafe. `169.254.169.254` (cloud
+ * metadata) falls under the IPv4 link-local block.
+ */
+export function isPrivateAddress(ip: string): boolean {
+  if (ip.includes(':')) {
+    const v6 = ip.toLowerCase();
+    if (v6 === '::1' || v6 === '::') return true;
+    if (v6.startsWith('fe80')) return true; // link-local
+    if (v6.startsWith('fc') || v6.startsWith('fd')) return true; // unique-local
+    const mapped = v6.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isPrivateAddress(mapped[1]);
+    return false;
+  }
+  const parts = ip.split('.').map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true; // link-local incl. metadata endpoint
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  return false;
+}
+
+/**
+ * SSRF guard for server-side asset fetches: rejects non-http(s) schemes and
+ * hosts that resolve to any internal address (checks every A/AAAA record to
+ * blunt DNS-rebinding). Throws on a blocked target.
+ */
+async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid URL: ${rawUrl}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Blocked URL scheme: ${parsed.protocol}`);
+  }
+  const { lookup } = await import('dns/promises');
+  const resolved = await lookup(parsed.hostname, { all: true });
+  if (resolved.length === 0 || resolved.some((r) => isPrivateAddress(r.address))) {
+    throw new Error(`Blocked internal address for host: ${parsed.hostname}`);
+  }
+}
+
+/**
  * Pure routing input for `pickAssetsRoot` (Phase 2 — D22).
  *
  * Decoupled from `DesignGraphState` so the router is unit-testable without
@@ -93,13 +141,31 @@ export async function handleDownloadAsset(
     else category = 'misc';
   }
 
+  // Path traversal prevention — the LLM-supplied `category` is a single pool
+  // segment (e.g. 'icons' / 'entities'). Sanitize identically to `filename` so
+  // it cannot escape the assets root (e.g. `../../../tmp`).
+  const safeCategory = category.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safeCategory || safeCategory === '.' || safeCategory.includes('..')) {
+    const msg = `Invalid category: ${category}`;
+    return { content: msg, error: msg };
+  }
+  category = safeCategory;
+
   const pathMod = await import('path');
   const fsMod = await import('fs/promises');
 
-  const destDir = pathMod.join(featurePath, ...assetsRoot.split('/'), category);
+  // Containment guard (defense in depth): the resolved destination MUST stay
+  // within the feature's assets root even if sanitization is ever loosened.
+  const assetsBase = pathMod.resolve(featurePath, ...assetsRoot.split('/'));
+  const destDir = pathMod.join(assetsBase, category);
+  const destPath = pathMod.join(destDir, sanitized);
+  const resolvedDest = pathMod.resolve(destPath);
+  if (resolvedDest !== assetsBase && !resolvedDest.startsWith(assetsBase + pathMod.sep)) {
+    const msg = 'Resolved asset path escapes the assets root';
+    return { content: msg, error: msg };
+  }
   await fsMod.mkdir(destDir, { recursive: true });
 
-  const destPath = pathMod.join(destDir, sanitized);
   const relativePath = `${assetsRoot}/${category}/${sanitized}`;
 
   const dlMergeIdx = await ctx.chatStatus.showStatus('downloading', { filename: sanitized });
@@ -112,6 +178,15 @@ export async function handleDownloadAsset(
       console.log(`📥 [Tool] download_asset: proxying via bridge for ${sanitized}`);
       buffer = await proxyAssetDownload(ctx.userId, ctx.redis, url);
     } else {
+      // SSRF guard (cloud only): the direct fetch runs server-side, so an
+      // LLM-supplied URL must not reach internal/metadata endpoints. Legit
+      // Figma-local URLs go through the bridge-proxy branch above in cloud;
+      // in local self-host mode the operator's own loopback (Figma Desktop)
+      // is trusted, so the guard is scoped to cloud.
+      if (isCloudMode) {
+        await assertPublicHttpUrl(url);
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30_000);
 

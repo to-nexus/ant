@@ -54,7 +54,7 @@ export class FileSystemAdapter implements FileSystemPort {
 
     const fullPath = path.resolve(this.basePath, inputPath);
 
-    if (!fullPath.startsWith(this.basePath)) {
+    if (fullPath !== this.basePath && !fullPath.startsWith(this.basePath + path.sep)) {
       throw new Error(
         `Path traversal detected: "${inputPath}" resolves outside workspace. ` +
         `Workspace: ${this.basePath}, Requested: ${fullPath}`
