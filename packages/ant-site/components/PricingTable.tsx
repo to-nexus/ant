@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowRight, Check } from 'lucide-react';
 import type { PlanInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
-import { useAuthSession, getBillingUrl } from '@/lib/AuthSessionProvider';
+import { getCloudBillingUrl } from '@/lib/AuthSessionProvider';
 import { GlassCard } from '@/components/aurora/GlassCard';
 import { AuroraButton } from '@/components/aurora/AuroraButton';
 
@@ -128,11 +128,10 @@ function SkeletonGrid() {
 
 export function PricingTable() {
   const { t } = useTranslation('site');
-  const { user } = useAuthSession();
   const state = usePricingCatalog();
-  // Plan CTAs deep-link into ant-ui's Payment Center. Pay-as-you-go credits are
-  // a payment-center-only concept — the site shows plans only (no top-up strip).
-  const ctaHref = getBillingUrl(user);
+  // Plan CTAs deep-link into the managed cloud's Payment Center. Pay-as-you-go
+  // credits are a payment-center-only concept — the site shows plans only.
+  const ctaHref = getCloudBillingUrl();
 
   return (
     <div className="py-4">

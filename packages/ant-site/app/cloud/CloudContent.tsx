@@ -9,7 +9,7 @@ import { GlassCard } from '@/components/aurora/GlassCard';
 import { AuroraButton } from '@/components/aurora/AuroraButton';
 import { SectionHeading } from '@/components/aurora/SectionHeading';
 import { Reveal } from '@/components/aurora/Reveal';
-import { useAuthSession, getAppEntryUrl } from '@/lib/AuthSessionProvider';
+import { getCloudAppUrl } from '@/lib/AuthSessionProvider';
 
 interface FaqEntry {
   q: string;
@@ -18,8 +18,7 @@ interface FaqEntry {
 
 export default function CloudContent() {
   const { t } = useTranslation('site');
-  const { user } = useAuthSession();
-  const appEntryUrl = getAppEntryUrl(user);
+  const appEntryUrl = getCloudAppUrl();
 
   const includes = t('cloud.includes', { returnObjects: true }) as string[];
   const faq = t('cloud.faq', { returnObjects: true }) as FaqEntry[];
