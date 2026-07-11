@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Send, AlertCircle, Check, X, ArrowRight } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
+import { selectIsAuthenticated } from '@/domain/store/selectors';
 import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
@@ -194,7 +195,9 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   const [isExiting, setIsExiting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const userEmail = useStore((state) => state.userEmail);
+  // Local mode has no userEmail but still acts as the local tenant — gate on
+  // the shared "can act as a user" SSOT so submit isn't silently swallowed.
+  const isAuthenticated = useStore(selectIsAuthenticated);
   const projects = useStore((state) => state.projects);
   const features = useStore((state) => state.features);
   const [projectName, setProjectName] = useState(() =>
@@ -243,7 +246,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
 
   const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || isSubmitting || !userEmail) return;
+    if (!trimmed || isSubmitting || !isAuthenticated) return;
 
     setIsSubmitting(true);
     setError(null);
@@ -335,7 +338,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       setIsSubmitting(false);
       setActiveStep('idle');
     }
-  }, [input, isSubmitting, userEmail, existingProjectId, projectName, featureName, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
+  }, [input, isSubmitting, isAuthenticated, existingProjectId, projectName, featureName, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
