@@ -52,19 +52,17 @@ export const GAME_ART_CONCEPT_VARIANTS: readonly GameArtConceptVariant[] = [
 ] as const;
 
 /**
- * v7 (D30): `GAME_ART_PERSPECTIVE_VARIANTS` is a single-element registry
- * today (`['2d']`). Phaser 3 is a 2D HTML5 engine; production 3D requires
- * glTF models / lighting / scene graph that cannot be authored within the
- * design-time inline-payload ceiling. Three.js / `enable3d` / `Phaser3D`
- * integrations are Phase 5+ hooks (visual job activates 3D production
- * assets first). The decision pipeline is unchanged —
- * `gameArtPerspectiveCandidates` still serializes the (cardinality-1)
- * candidate list and the LLM still emits
- * `<gameArtTier>...,perspective=2d,...</gameArtTier>` through the normal
- * channel.
+ * Render dimension. `'2d'` renders with plain Phaser (Graphics / Sprite);
+ * `'3d'` layers the `enable3d` extension (three.js + ammo.js) onto the same
+ * Phaser host, drawing the world from code-only built-in primitives
+ * (box / sphere / ground / …) so no imported model assets are required.
+ * `gameEngine` stays `'phaser'` for both — perspective is the sole 2D↔3D
+ * signal. `gameArtPerspectiveCandidates` serializes this list to decompose,
+ * and the LLM emits `<gameArtTier>...,perspective=2d|3d,...</gameArtTier>`.
  */
 export const GAME_ART_PERSPECTIVE_VARIANTS: readonly GameArtPerspectiveVariant[] = [
   '2d',
+  '3d',
 ] as const;
 
 // Phase 4 axis — variants are typed but registry populates them with
@@ -131,7 +129,8 @@ export const GAME_ART_CONCEPT_OPTIONS: BasisOption[] = [
 ];
 
 export const GAME_ART_PERSPECTIVE_OPTIONS: BasisOption[] = [
-  { id: '2d', label: { en: '2D', ko: '2D' }, description: { en: 'Flat 2D camera (top-down / side / iso). Phaser 3 native; 3D deferred to Phase 5+.', ko: '평면 2D 카메라 (탑다운 / 사이드 / 아이소메트릭). Phaser 3 기본; 3D 는 Phase 5+ 로 연기.' }, accentColor: 'blue' },
+  { id: '2d', label: { en: '2D', ko: '2D' }, description: { en: 'Flat 2D camera (top-down / side / iso). Plain Phaser rendering.', ko: '평면 2D 카메라 (탑다운 / 사이드 / 아이소메트릭). 일반 Phaser 렌더링.' }, accentColor: 'blue' },
+  { id: '3d', label: { en: '3D', ko: '3D' }, description: { en: '3D scene via Phaser + enable3d. Built-in primitives (box / sphere / ground), no imported assets required.', ko: 'Phaser + enable3d 로 3D 씬. 내장 프리미티브 (박스 / 구 / 지면), 임포트 에셋 불필요.' }, accentColor: 'violet' },
 ];
 
 // Phase 4 axis options — populated for the 7-step wizard. Each option's

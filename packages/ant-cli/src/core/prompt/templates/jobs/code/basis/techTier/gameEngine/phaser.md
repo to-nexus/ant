@@ -169,6 +169,7 @@ The React side listens for `context-lost` / `context-restored` to keep its state
 This file MUST stay consistent with:
 
 - `basis/techTier/gameEngine/phaser.md` — universal Phaser ledger (API names, scene lifecycle, audio policy)
+- `basis/gameArtTier/perspective/{2d,3d}.md` — scene base class + world-render API. The mount / loop / event / Scale-Manager / WebGL-recovery discipline in this file is identical for both perspectives; under `perspective=3d` scenes extend enable3d's `Scene3D` (a `Phaser.Scene` subclass) and draw via `this.third.*` instead of `Graphics` / `Sprite`.
 - `jobs/code/domain/game.md` §7 — render boundary & viewport (screen-space React vs world-space engine, viewport-fill is the React container's responsibility)
 - `jobs/code/basis/gameArtTier/_preamble.md` — asset import policy (inline / external / engine procedural rendering, gated by `audioScope` × `visualScope`)
 

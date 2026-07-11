@@ -25,7 +25,13 @@ export interface GameArtAssetEntry {
   kind: 'inline' | 'external';
   /** Required when `kind === 'external'`; absent when `kind === 'inline'`. */
   src?: string;
-  /** Inline payload format hint (`css` / `svg` / `oscillator`). Optional. */
+  /**
+   * Inline payload format hint (`css` / `svg` / `oscillator` for 2D;
+   * `geometry3d` for a code-only 3D primitive descriptor `{shape,dims,color}`
+   * under `perspective='3d'`). Optional. A `geometry3d` descriptor carries no
+   * svg/css/oscillator payload, so it is inherently exempt from the D21
+   * ceilings below (geometry is code, not an authored asset).
+   */
   format?: string;
   /** Free-form metadata — not validated here. */
   [extra: string]: unknown;

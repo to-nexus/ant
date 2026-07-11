@@ -23,6 +23,8 @@ A React + Phaser host runs two render paths in the same browser tab. The split i
 
 Both paths share **one art direction** — palette / silhouette / lighting / motion-tone come from `game-art-tokens.json` and inform the React HUD's CSS treatment as much as the sprite's appearance. The five registered genres are all single-screen so the world-space slot in `UIScene` is typically empty; every UI element resolves to screen-space (React).
 
+How the world-space path renders is owned by the active `gameArtTier.perspective` partial — 2D draws with Phaser Graphics / Sprites, 3D draws code-only primitives via enable3d. This contract (loader key = `id`, palette drives color, spec categories) is identical across both.
+
 ### Principle (Separation of structure vs. style)
 
 Component / scene STRUCTURE comes from the code skeleton (or refs). STYLE / behaviour / asset choice comes from `game-art-*.json`. These are orthogonal inputs; reading the skeleton first prevents accidental DOM / scene edits during a styling pass.
@@ -41,7 +43,7 @@ Every `game-art-assets.json` carries two independent markers:
 | Marker | Values | Code-time effect |
 |---|---|---|
 | `_meta.audioScope` | `'procedural-only'` (default) / `'external-enabled'` | `'procedural-only'` suppresses all `kind: 'external'` audio entries at load time — procedural OscillatorNode is the only audio path. `'external-enabled'` lifts the suppression and file-based audio activates. |
-| `_meta.visualScope` | `'baseline'` (default) / `'atlas-enabled'` | `'baseline'` keeps the canvas on catalog entries + the engine's procedural API + build-time static assets + runtime procedural texture composition; atlas / multi-emitter / multi-projectile groups are disabled. `'atlas-enabled'` activates them. |
+| `_meta.visualScope` | `'baseline'` (default) / `'atlas-enabled'` | `'baseline'` keeps the canvas on catalog entries + the engine's procedural API + build-time static assets + runtime procedural texture composition (in 3D: built-in geometry primitives + procedural materials); atlas / multi-emitter / multi-projectile groups are disabled. `'atlas-enabled'` activates them. |
 
 Code MUST honor each marker regardless of the LLM-emitted `audioProfile` / axis values. The `audioScope` marker overrides `audioProfile` when they disagree (procedural wins on the baseline boundary). image-LLM API calls and image-LLM-derived asset insertion are forbidden across both `visualScope` values — that surface is reserved for the future `visual` job.
 
