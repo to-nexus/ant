@@ -7,7 +7,7 @@ import type { StateStorePort, JobStatusData } from '../../../../core/ports/state
 import type { JobProjectMapping } from '../../../../core/types/task';
 import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
-import { extractUserContext } from './helpers/userContext';
+import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
@@ -141,8 +141,38 @@ export function createJobRoutes(deps: {
   async function getJobStatusAsync(jobId: string): Promise<JobStatusData | null> {
     return deps.stateStore.getJobStatus(jobId);
   }
-  
-  
+
+  /**
+   * Cross-tenant guard for `jobId`-addressed routes. `jobId` is a low-entropy
+   * human id that leaks into logs / SSE / URLs, so in cloud mode a tracked job
+   * may only be read or controlled by its owning `(org, user)`. Rejects with
+   * 403 when a tracked job's owner differs from the caller — this closes
+   * cross-tenant stop (DoS) and status read (info-disclosure). Local mode is
+   * single-tenant → no-op. Untracked jobs (no Redis record) are allowed: they
+   * expose no other tenant's state and the caller-scoped handlers operate only
+   * within the caller's own namespace.
+   */
+  async function assertJobAccess(
+    jobId: string,
+    userContext: { userId: string; organizationId: string },
+  ): Promise<{ code: number; body: { error: string } } | null> {
+    if (isLocalServerMode()) return null;
+    const owner = (await deps.stateStore.getJobStatus(jobId))?.userContext;
+    if (
+      owner &&
+      (owner.userId !== userContext.userId ||
+        owner.organizationId !== userContext.organizationId)
+    ) {
+      logger.warn(
+        `Cross-tenant job access denied: job=${jobId} owner=${owner.organizationId}/${owner.userId} caller=${userContext.organizationId}/${userContext.userId}`,
+        { component: 'JobRoute' },
+      );
+      return { code: 403, body: { error: 'Forbidden' } };
+    }
+    return null;
+  }
+
+
   /**
    * Check if feature already has a running or interrupted (paused) job
    * of the same jobType. Filters by jobType to prevent cross-type blocking
@@ -582,6 +612,11 @@ export function createJobRoutes(deps: {
 
   router.get('/jobs/:jobId/status', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
+    const denied = await assertJobAccess(jobId, extractUserContext(req));
+    if (denied) {
+      res.status(denied.code).json(denied.body);
+      return;
+    }
     const status = await getJobStatusAsync(jobId);
 
     if (status) {
@@ -645,7 +680,13 @@ export function createJobRoutes(deps: {
   // Get queue position for a job (enriched with Redis job status for crash recovery)
   router.get('/jobs/:jobId/queue-position', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
-    
+
+    const denied = await assertJobAccess(jobId, extractUserContext(req));
+    if (denied) {
+      res.status(denied.code).json(denied.body);
+      return;
+    }
+
     try {
       const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
       const factory = getInfrastructureFactory();
@@ -682,6 +723,12 @@ export function createJobRoutes(deps: {
     logger.debug(`Stop: project=${projectId}, feature=${featureName}`, { component: 'JobRoute' });
     const userContext = extractUserContext(req);
     logger.debug(`Stop: user=${userContext.userId}`, { component: 'JobRoute' });
+
+    const denied = await assertJobAccess(jobId, userContext);
+    if (denied) {
+      res.status(denied.code).json(denied.body);
+      return;
+    }
 
     // Mark as user-stopped in Redis (read by JobWorker's polling backup).
     // The seal inside finalize() will DEL this shortly after the worker
@@ -751,6 +798,11 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
+
+      const deniedResume = await assertJobAccess(requestedJobId, userContext);
+      if (deniedResume) {
+        return res.status(deniedResume.code).json(deniedResume.body);
+      }
 
       // Approval gate — an unapproved account cannot resume a job either.
       const notApprovedResume = await checkApproval(userContext);
@@ -908,6 +960,11 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
+
+      const deniedContinue = await assertJobAccess(jobId, userContext);
+      if (deniedContinue) {
+        return res.status(deniedContinue.code).json(deniedContinue.body);
+      }
 
       // Approval gate — continue = resume-with-new-directive; same block.
       const notApprovedContinue = await checkApproval(userContext);

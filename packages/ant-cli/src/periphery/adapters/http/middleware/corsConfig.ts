@@ -9,6 +9,7 @@
 
 import cors from 'cors';
 import type { Request, RequestHandler } from 'express';
+import { logger } from '../../../../utils/logger';
 
 /** Exact-prefix match — `.includes('localhost')` would let `localhost.attacker.com` through. */
 function isLoopbackOrigin(origin: string): boolean {
@@ -95,6 +96,21 @@ export function resolveFrontendOrigin(
 export function createCorsMiddleware(): RequestHandler {
   const allowAllOrigins = parseExtraOrigins().includes('*');
 
+  if (allowAllOrigins) {
+    // Reflecting any Origin WITH credentials would let any website make
+    // credentialed reads of the authenticated API (the session cookie is
+    // auto-attached) — a same-origin-policy bypass. We therefore serve the
+    // wildcard WITHOUT credentials (cookies are not accepted cross-origin)
+    // and surface the downgrade loudly so operators don't rely on it for
+    // authenticated cross-origin calls.
+    logger.warn(
+      "⚠️  ANT_CORS_ORIGINS contains '*': reflecting all origins but WITHOUT " +
+        'credentials (cross-origin cookies disabled). List explicit origins to ' +
+        'allow credentialed cross-origin requests.',
+      { component: 'cors' },
+    );
+  }
+
   const base: Omit<cors.CorsOptions, 'origin'> = {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -104,7 +120,8 @@ export function createCorsMiddleware(): RequestHandler {
   const delegate: cors.CorsOptionsDelegate<Request> = (req, callback) => {
     const origin = req.header('Origin');
     if (!origin) return callback(null, { ...base, origin: true });
-    if (allowAllOrigins) return callback(null, { ...base, origin: true });
+    // Wildcard: reflect the origin but strip credentials (see the startup warn).
+    if (allowAllOrigins) return callback(null, { ...base, origin: true, credentials: false });
     if (isSelfOrigin(req, origin)) return callback(null, { ...base, origin: true });
     if (isAllowedFrontendOrigin(origin)) return callback(null, { ...base, origin: true });
     callback(new Error(`CORS not allowed for origin: ${origin}`));
