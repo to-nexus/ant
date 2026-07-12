@@ -291,13 +291,17 @@ function buildResourcesSummary(state: DesignGraphState): string {
     summary += '## Description-driven Mode\n';
     summary += 'No external visual source is provided. Treat the directive plus PRD / source documents below as the design authority and produce the catalogs directly from them.\n\n';
   }
-  summary += '## Asset Files\n';
-  summary += 'Use `list_assets` to discover available game asset files (entities / particles / sfx / ...) for `kind:external` mapping.\n\n';
-  if (state.uiAssetsList) {
-    const counts = Object.entries(state.uiAssetsList)
-      .filter(([, files]) => files.length > 0)
-      .map(([group, files]) => `${group}: ${files.length}`);
-    if (counts.length > 0) summary += `Available: ${counts.join(', ')}\n`;
+  summary += '## Asset Files (real, already placed under assets/game/)\n';
+  const inv = state.assetInventory;
+  if (inv?.count) {
+    summary += `There are ${inv.count} real asset file(s). Reference the ones that fit each category as \`kind:'external'\` (\`src\` = the exact path below); use \`list_assets\` for more detail.\n`;
+    for (const [group, files] of Object.entries(inv.groups ?? {})) {
+      if (files.length === 0) continue;
+      summary += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
+    }
+    summary += '\n';
+  } else {
+    summary += 'No real asset files are placed yet — author entries as `kind:\'inline\'` primitives (the code-fulfillable floor).\n\n';
   }
   return summary;
 }

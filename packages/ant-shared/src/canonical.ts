@@ -641,6 +641,50 @@ export function pathsContainDesignDoc(paths: readonly string[] | undefined): boo
 }
 
 // ============================================
+// Asset pool root resolution (domain-scoped SSOT)
+// ============================================
+
+/**
+ * Pure routing input for {@link pickAssetsRoot}.
+ *
+ * Decoupled from any graph state so the resolver is unit-testable and shared
+ * by every asset surface (design tool handlers, code resolve, spec). The three
+ * D22 signals mirror the workspace-domain > per-turn-RAC > intent-heuristic
+ * precedence.
+ */
+export interface AssetsRootInput {
+  /** Workspace-level domain (SSOT after `p2-ui-actions-art-group`). */
+  workspaceDomain?: Domain;
+  /** Per-turn explicit/inferred RAC override. */
+  racDomain?: Domain;
+  /** RAC intent group — `'design-game-art'` implies `game` by matrix gate. */
+  intentGroup?: string;
+}
+
+/**
+ * Domain → asset pool root SSOT. Both the design tool handlers
+ * (`download_asset` / `list_assets`) and the code/spec jobs resolve the active
+ * pool through THIS one function so `assets/service` ↔ `assets/game` can never
+ * be mixed (Asset Surface Boundary I6 enforced by construction).
+ *
+ * Resolution order (most authoritative first):
+ *   1. `workspaceDomain`  — workspace-level 1st-class slot.
+ *   2. `racDomain`        — per-turn explicit/inferred override.
+ *   3. `intentGroup === 'design-game-art'` heuristic → `game`.
+ *   4. Default `'service'`.
+ *
+ * Returns a relative path string starting with `assets/`.
+ */
+export function pickAssetsRoot(input: AssetsRootInput): string {
+  const { workspaceDomain, racDomain, intentGroup } = input;
+  const effective: Domain =
+    workspaceDomain
+      ?? racDomain
+      ?? (intentGroup === 'design-game-art' ? 'game' : 'service');
+  return `assets/${effective}`;
+}
+
+// ============================================
 // Boundary classification (inter-job context bridge)
 // ============================================
 

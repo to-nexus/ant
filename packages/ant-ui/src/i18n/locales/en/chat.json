@@ -18,6 +18,7 @@
     "target": { "label": "target", "description": "Specify the target file" },
     "ref": { "label": "ref", "description": "Add a reference document" },
     "ctx": { "label": "ctx", "description": "Add a context document" },
+    "browse": { "label": "Browse in folder tree…", "description": "Pick files from a folder tree" },
     "explicit": { "label": "explicit", "description": "Skip inference and use metadata as-is" }
   },
   "panelTabs": {

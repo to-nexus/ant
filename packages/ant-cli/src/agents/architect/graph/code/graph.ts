@@ -141,7 +141,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     code: state.code,
     codeHead: state.codeHead,
     profile: state.profile,
-    runtimeAssetsIndex: state.runtimeAssetsIndex,
+    assetInventory: state.assetInventory,
     sessionContext: state.sessionContext,
     featureName: state.featureName,
     maxRetries: state.maxRetries || 3,
@@ -657,7 +657,7 @@ export const CodeGraphChannels = {
         reducer: (x: any, y: any) => y ?? x,
         default: () => undefined,
       }),
-      runtimeAssetsIndex: Annotation<any>,
+      assetInventory: Annotation<any>,
       sessionContext: Annotation<any>,
       planText: Annotation<any>({
         reducer: (x: any, y: any) => y ?? x,

@@ -70,8 +70,7 @@ const DEFAULT_PLAN_FRAMING = {
   description:
     'The following JSON contains the exact implementation instructions.\n' +
     '- `create`: Files to create with integration points. Import paths and observed API signatures of design-prescribed dependencies are inlined in each entry\'s `purpose`.\n' +
-    '- `modify`: Files to modify with specific changes. Dependency signatures relevant to the change are inlined in `changes`.\n' +
-    '- `assets`: Asset copy operations (source → destination)',
+    '- `modify`: Files to modify with specific changes. Dependency signatures relevant to the change are inlined in `changes`.',
 } as const;
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
@@ -263,6 +262,31 @@ function describeAssetDestinations(framework: string | undefined): {
     svgInstruction: `place under the framework's static-asset root (URL-referenced) or under src/assets/ if the bundler supports source-tree imports`,
     rasterInstruction: `place under the framework's static-asset root and reference by URL`,
     note: `Framework "${framework ?? 'unknown'}" not explicitly recognized — choose paths per its static-serving convention; do NOT assume src/assets/ is web-accessible.`,
+  };
+}
+
+/**
+ * Game-domain (Phaser) static-asset placement. Unlike the service/web path,
+ * every game asset (sprite / atlas / audio) is loaded by the engine at runtime
+ * from a servable URL, so all kinds go under `codebase/public/assets/` and the
+ * loader registers each under its catalog `id` (game-art-source.md contract).
+ * No SVGR/source-tree import path — the engine fetches, it does not bundle.
+ */
+function describeGameAssetDestinations(): {
+  svg: string;
+  raster: string;
+  svgInstruction: string;
+  rasterInstruction: string;
+  note: string | null;
+} {
+  const dest = `codebase/public/assets/<category>/ (engine-servable; the loader registers it under the catalog entry id / filename)`;
+  const instr = `copy to codebase/public/assets/<category>/ and register in the engine preload keyed by the asset id (NOT the raw src path)`;
+  return {
+    svg: dest,
+    raster: dest,
+    svgInstruction: instr,
+    rasterInstruction: `${instr} (sprites / atlas images / audio all follow this path)`,
+    note: `Game (Phaser): assets are fetched at runtime from public/*, never bundled/imported. Loader key = catalog entry id, so the spec's id references resolve. Honor _meta.audioScope / _meta.visualScope — procedural-only suppresses file-based audio.`,
   };
 }
 
@@ -878,7 +902,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             violationsCount: state.violations?.length || 0,
             messageCount: messages.length,
             nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
-            runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+            runtimeAssetsCount: state.assetInventory?.count || 0,
             profileLanguage: getTechTier(state)?.language || null,
             profileFramework: getTechTier(state)?.framework || null,
             profilesLoaded: !!promptResult.sections.profiles,
@@ -998,7 +1022,7 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
  * runtime-assets index + existing-codebase-files manifest.
  *
  * Every section rendered here is fixed for the lifetime of a single task
- * (plan node writes `state.planText` once; `runtimeAssetsIndex` is
+ * (plan node writes `state.planText` once; `assetInventory` is
  * sealed in `resolve/index.ts`; `_existingCodebaseFiles` is sealed in
  * `execute/index.ts` at task entry). The caller (`buildMessages`)
  * forwards this string into `buildCacheableBlocks` as a
@@ -1071,8 +1095,8 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
   }
 
   // ✅ Runtime assets reminder (text-only, small)
-  if (state.runtimeAssetsIndex?.count && state.runtimeAssetsIndex.count > 0) {
-    const idx = state.runtimeAssetsIndex;
+  if (state.assetInventory?.count && state.assetInventory.count > 0) {
+    const idx = state.assetInventory;
     // Framework-aware destination guidance. Physical placement is a
     // `framework` gate concern (SBS) — the design phase no longer commits
     // `dest` paths (see ui-assets-guide-*.md), so the code phase derives
@@ -1082,13 +1106,19 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     const taskTechTiers = state.currentTask?.techTiers
       ?? (getTechTier(state) ? [getTechTier(state)!] : []);
     const framework = effectiveTechTier(taskTechTiers).framework;
-    const dest = describeAssetDestinations(framework);
+    // Domain-aware placement (I1 locality — the ONLY domain branch for asset
+    // placement): game assets are engine-served from public/ keyed by id;
+    // service/web assets follow the framework's SVGR/public convention.
+    const isGame = getEffectiveDomain(state.resolvedAction?.domain) === 'game';
+    const dest = isGame ? describeGameAssetDestinations() : describeAssetDestinations(framework);
 
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`📦 Available Assets (assets/)`);
+    lines.push(`📦 Available Assets (assets/) — real files already placed`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`Check if this task needs any assets from the list below.`);
-    lines.push(`If needed: SVG (.svg) → ${dest.svgInstruction}`);
+    // doc-absent self-judge floor (goal #2): whether or not a design spec doc
+    // named these, inspect the list and use the ones that fit THIS task.
+    lines.push(`Inspect the list below and decide — for THIS task — which (if any) of these real assets are appropriate to use. If a design spec/catalog references one, honor that; if none is referenced, still use a fitting real asset over a placeholder when the task needs that kind of imagery/audio.`);
+    lines.push(`If used: SVG (.svg) → ${dest.svgInstruction}`);
     lines.push(`Raster (png, jpg, webp) → ${dest.rasterInstruction}`);
     lines.push(``);
     if (state.context?.featurePath) {

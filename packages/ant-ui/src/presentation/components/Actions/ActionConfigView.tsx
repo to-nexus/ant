@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useGitSnapshot } from '@/domain/git-world';
@@ -13,14 +13,16 @@ import {
   pickDefaultUiSourceRefs,
   listActiveTiers,
   supportsReferenceCodebase,
+  pruneFileTreeForWorkspaceDomain,
   type ReferenceTarget,
 } from '@ant/shared';
+import { FileTreePicker } from '@/presentation/components/common/FileTreePicker';
 import { IntentTabNav } from './IntentTabNav';
 import { DomainBadge } from './DomainBadge';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
-import { FileText, BookOpen, Crosshair, Layers, Link2 } from 'lucide-react';
+import { FileText, BookOpen, Crosshair, Layers, Link2, Plus } from 'lucide-react';
 import {
   Section,
   SlotEntryList,
@@ -40,6 +42,7 @@ interface ActionConfigViewProps {
 
 export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigViewProps) {
   const { t, i18n } = useTranslation('actions');
+  const { t: tCommon } = useTranslation('common');
   const lang = i18n.language as 'en' | 'ko';
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const selectedProject = useStore(s => s.selectedProject);
@@ -258,6 +261,25 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   // def.codebase 분기가 hasFiles=false 로 평가되어 항상 amber empty card 로
   // 렌더된다 (실제 코드베이스 존재 여부와 무관).
   const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedRefs, warningCtx, codebaseHasFiles]);
+
+  // Free-add picker (unified tree). Domain-pruned tree so a workspace never
+  // exposes the other domain's asset pool (I6). `suggestedDirs` are the slot
+  // candidate dirs so the tree ★-marks the recommended locations.
+  const [pickerField, setPickerField] = useState<'refs' | 'context' | null>(null);
+  const workspaceDomain = actionMetadata.domain ?? 'service';
+  const prunedTree = useMemo(
+    () => pruneFileTreeForWorkspaceDomain(fileTree as any, workspaceDomain) as typeof fileTree,
+    [fileTree, workspaceDomain],
+  );
+  const suggestedRefDirs = useMemo(
+    () => (slots?.refs ?? []).map(s => s.path).filter((p): p is string => !!p && p !== ''),
+    [slots],
+  );
+  const suggestedCtxDirs = useMemo(
+    () => (slots?.context ?? []).map(s => s.path).filter((p): p is string => !!p && p !== ''),
+    [slots],
+  );
+
   const targetExisting = useMemo(() => {
     if (!slots || slots.target.kind !== 'generate') return [];
     return listDir(fileTree, slots.target.dir);
@@ -361,6 +383,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   {slots.refs[0].emptyHint[lang] || slots.refs[0].emptyHint.en}
                 </p>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setPickerField('refs')}
+                className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-[color:var(--text-3)] hover:text-[color:var(--emerald-600)] hover:bg-[color:var(--bg-hover)] transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {tCommon('fileTreePicker.addRefs')}
+              </button>
             </Section>
 
             {/* Context (secondary) */}
@@ -389,6 +419,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   {t('section.none')}
                 </p>
               )}
+              <button
+                type="button"
+                onClick={() => setPickerField('context')}
+                className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-[color:var(--text-3)] hover:text-[color:var(--violet-600)] hover:bg-[color:var(--bg-hover)] transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {tCommon('fileTreePicker.addContext')}
+              </button>
             </Section>
 
             {/* Reference projects (cross-project code) — code + spec/system-design intents */}
@@ -432,6 +470,23 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       </PageTransition>
 
       <ActionFooter variant="intent" actionId={actionId} />
+
+      {pickerField && (
+        <FileTreePicker
+          isOpen={true}
+          onClose={() => setPickerField(null)}
+          title={pickerField === 'refs' ? tCommon('fileTreePicker.addRefs') : tCommon('fileTreePicker.addContext')}
+          eyebrow={pickerField === 'refs' ? t('section.refs') : t('section.context')}
+          accent={pickerField === 'refs' ? 'emerald' : 'violet'}
+          fileTree={prunedTree}
+          initialSelected={pickerField === 'refs' ? [...selectedRefs] : [...selectedCtx]}
+          suggestedDirs={pickerField === 'refs' ? suggestedRefDirs : suggestedCtxDirs}
+          selectableTypes={['file', 'directory']}
+          onConfirm={(paths) =>
+            updateActionMetadata({ [pickerField]: paths.length > 0 ? paths : undefined })
+          }
+        />
+      )}
     </div>
   );
 }

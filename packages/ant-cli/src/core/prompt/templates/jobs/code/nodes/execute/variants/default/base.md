@@ -9,9 +9,7 @@ You are implementing a specific task. Follow the instructions for your task type
 - Design artifacts: `architecture/system/` (design docs), `visual/ui/` (UI specs/tokens), `architecture/spec/` (feature specs)
 {{#if hasFrontend}}
 - Assets source: `features/<feature>/assets/...`
-- Assets destination:
-  - SVG assets → `codebase/src/assets/` (source tree — required for SVGR import)
-  - Raster assets (png, jpg, webp) → `codebase/public/...`
+- Assets destination: decided per domain + framework — see the "📦 Available Assets" section below for the exact destination and placement rule for this task. Do NOT assume a fixed folder.
 {{/if}}
 
 When writing files, use `codebase/` prefix for all code files.
@@ -84,17 +82,12 @@ When error occurs:
 - ✅ Apply the CORRECT solution → Done
 
 {{#if hasFrontend}}
-### 4. ASSET-FIRST FOR UI
-**Before implementing UI elements, check for asset references.**
-{{#if isSpecDriven}}
-- The feature specification contains asset inventory and UI details (self-contained)
-- Check the spec document for `assets/` path references
-- Copy referenced assets from `assets/` to the appropriate codebase location BEFORE using them in code
-{{else}}
-- If asset mapping exists for this element → MUST use the asset file
-- Asset specified in mapping → NOT a text substitute
-- Copy asset BEFORE referencing in code
-{{/if}}
+### 4. ASSET-FIRST
+**Before implementing an element that needs imagery/audio, check for real assets.**
+- Real asset files already placed under `assets/` are listed in the "📦 Available Assets" section below.
+- If a design spec / asset catalog references one → MUST use that asset file (it is NOT a text/placeholder substitute).
+- If none is referenced but a listed real asset fits the element → use it over a placeholder.
+- Either way: COPY the asset into the destination the "📦 Available Assets" section commits (domain + framework aware) BEFORE referencing it in code.
 {{/if}}
 
 ### 5. ENV FILE SYNC CONTRACT

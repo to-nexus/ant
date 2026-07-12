@@ -10,6 +10,8 @@ import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useTranslation } from 'react-i18next';
+import { pruneFileTreeForWorkspaceDomain } from '@ant/shared';
+import { FileTreePicker } from '@/presentation/components/common/FileTreePicker';
 import type { FileStats } from '@/domain/models/chat';
 
 import { useAgentJobOptions } from './hooks/useAgentJobOptions';
@@ -51,6 +53,12 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { handleSubmit } = useChatSubmit({ message, setMessage, showError });
   const { textareaHeight, isResizing, handleResizeStart, handleResizeMove, handleResizeEnd } = useResizableHeight();
   const mention = useMentionAutocomplete(message, cursorPos);
+
+  // Unified folder-tree picker (opened from the mention "Browse" row).
+  const fileTree = useStore((state) => state.fileTree);
+  const browseDomain = useStore((state) => state.actionMetadata.domain);
+  const browseTarget = useStore((state) => state.actionMetadata.target);
+  const updateActionMetadata = useStore((state) => state.updateActionMetadata);
 
   // PR-2 baseline gauge — fire-and-forget hook. Debounced 300ms inside.
   // Writes `kanban.baselinePhaseTokenUsage` so `TurnTokenRing` renders
@@ -216,6 +224,30 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             });
           }}
           onHover={mention.setSelectedIndex}
+        />
+      )}
+
+      {/* Unified folder-tree picker — opened from the mention "Browse" row */}
+      {mention.browseField && (
+        <FileTreePicker
+          isOpen={true}
+          onClose={mention.clearBrowseField}
+          title={t('mention.browse.label')}
+          eyebrow={mention.browseField}
+          accent={mention.browseField === 'refs' ? 'emerald' : mention.browseField === 'target' ? 'orange' : 'violet'}
+          fileTree={pruneFileTreeForWorkspaceDomain(fileTree as any, browseDomain ?? 'service') as typeof fileTree}
+          initialSelected={
+            mention.browseField === 'refs'
+              ? (actionMetadataRefs ?? [])
+              : mention.browseField === 'context'
+              ? (actionMetadataContext ?? [])
+              : (browseTarget ?? [])
+          }
+          selectableTypes={mention.browseField === 'target' ? ['file'] : ['file', 'directory']}
+          singleSelect={mention.browseField === 'target'}
+          onConfirm={(paths) =>
+            updateActionMetadata({ [mention.browseField!]: paths.length > 0 ? paths : undefined })
+          }
         />
       )}
 

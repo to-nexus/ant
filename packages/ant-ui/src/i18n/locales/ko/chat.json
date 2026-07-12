@@ -18,6 +18,7 @@
     "target": { "label": "target", "description": "대상 파일을 지정" },
     "ref": { "label": "ref", "description": "참조 문서를 추가" },
     "ctx": { "label": "ctx", "description": "컨텍스트 문서를 추가" },
+    "browse": { "label": "폴더 트리에서 찾기…", "description": "폴더 트리에서 파일 선택" },
     "explicit": { "label": "explicit", "description": "추론 생략, 직접 지정" }
   },
   "panelTabs": {

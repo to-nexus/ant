@@ -311,7 +311,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     techTier: getTechTier(state),
     codebaseFilePaths,
     hasProjectCode,
-    runtimeAssetsIndex: state.runtimeAssetsIndex,
+    assetInventory: state.assetInventory,
     hasErrorInDirective,
     needsBoundaryClassification: suggestedBoundary === SUGGESTED_BOUNDARY.PENDING,
   };
@@ -322,8 +322,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0);
   const fileList = (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0)
     ? decomposeVars.codebaseFilePaths.map((f: string) => `- ${f}`).join('\n') : '';
-  const assetsHint = decomposeVars.runtimeAssetsIndex && decomposeVars.runtimeAssetsIndex.count > 0
-    ? `\n\n## Runtime Assets Available (assets/)\nThere are ${decomposeVars.runtimeAssetsIndex.count} runtime asset file(s) under assets/.\nThese are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\nCopy rule: preserve relative paths under assets/.\nPlacement rule by format:\n- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n- Raster (png, jpg, webp) → <app>/public/ (static serving)\nExamples:\n- assets/service/icons/x.svg -> <app>/src/assets/icons/x.svg\n- assets/service/images/hero.webp -> <app>/public/bg/hero.webp\nAsset file list (first 50):\n${decomposeVars.runtimeAssetsIndex.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
+  const assetsHint = decomposeVars.assetInventory && decomposeVars.assetInventory.count > 0
+    ? `\n\n## Available Assets (assets/)\nThere are ${decomposeVars.assetInventory.count} real asset file(s) already placed under assets/.\nDo NOT add a dedicated "copy assets" task. The ui/feature task that actually needs an asset copies it into the app's static-asset root (framework-aware) and references it — placement + wiring happen inside that task's plan/execute.\nAsset file list (first 50):\n${decomposeVars.assetInventory.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
     : '';
   // Gate flag — decompose activates design-system task guidance
   // whenever ANY UI artifact (ref or context) is present in the
@@ -592,7 +592,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             mode: decomposeVars.mode,
             hasProjectCode,
             codebaseFilePaths: codebaseFilePaths?.length || 0,
-            runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+            runtimeAssetsCount: state.assetInventory?.count || 0,
             techTierLanguage: decomposeVars.techTier?.language || null,
             techTierFramework: decomposeVars.techTier?.framework || null,
             hasBasis: !!state.resolvedAction?.basis,

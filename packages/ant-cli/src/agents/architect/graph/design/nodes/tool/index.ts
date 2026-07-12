@@ -6,7 +6,7 @@
  * are adapted via designToolAdapters and registered at runtime.
  *
  * State data needed by design handlers is injected via ToolExecutionContext
- * fields (sourceDocuments, uiAssetsList, etc.) — no module-level
+ * fields (sourceDocuments, assetsRoot, etc.) — no module-level
  * _cachedState variable.
  */
 
@@ -91,7 +91,7 @@ function activeConvKey(state: DesignGraphState): ConversationKey {
 
 /**
  * Registry is built lazily. State-dependent handlers use ctx fields
- * (sourceDocuments, uiAssetsList, figmaExplorationResult, etc.)
+ * (sourceDocuments, assetsRoot, figmaExplorationResult, etc.)
  * populated by buildContext at call time — no _cachedState closure.
  */
 const registry = createDesignToolRegistry();
@@ -140,7 +140,6 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       taskId: state.currentTask?.id,
       assetsRoot,
       sourceDocuments: state.artifacts,
-      uiAssetsList: state.uiAssetsList,
       existingDesignDocs: state.existingDesignDocs,
       // Codebase mutation gate — design job's artifact lives under
       // architecture/, plan/, assets/, etc. Any `codebase/` write

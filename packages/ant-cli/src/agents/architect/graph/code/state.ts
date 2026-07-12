@@ -302,11 +302,14 @@ export interface ArchitectGraphState extends TriageableState {
     compressionRatio: number;
   };
 
-  // ✅ UI Runtime Assets (opt-in copy/sync)
-  // - assets/** are runtime assets (NOT injected to LLM).
-  // - In monorepos/multi-app repos, the correct static root must be chosen by the LLM and copied as a task.
-  runtimeAssetsIndex?: {
-    files: string[]; // paths relative to feature root (e.g., assets/service/icons/x.svg)
+  // ✅ Asset inventory — domain-scoped enumeration of the feature's asset pool
+  // (`assets/{service|game}/**`, path-only — NOT injected to LLM as content).
+  // Shared shape with the design job (see infrastructure/workspace/assetInventory.ts).
+  // In monorepos/multi-app repos, the correct static root is chosen by the LLM
+  // and referenced files are copied by the ui/feature task that needs them.
+  assetInventory?: {
+    files: string[];                    // feature-relative, e.g. assets/game/entities/hero.png
+    groups?: Record<string, string[]>;  // first-subdir grouping under the pool root
     count: number;
   };
   

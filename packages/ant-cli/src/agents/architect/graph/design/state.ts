@@ -249,9 +249,16 @@ export interface DesignGraphState extends TriageableState {
     message: string;
   };
   
-  // ✅ UI document generation context
-  // Populated when resolvedAction?.intentGroup === 'design-ui'
-  uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under assets/
+  // ✅ Real asset inventory — domain-scoped enumeration of the feature's asset
+  // pool (`assets/{service|game}/**`), populated at resolve via `indexAssetPool`.
+  // Shared shape + field name with the code job (see
+  // infrastructure/workspace/assetInventory.ts). Grounds the design guides so
+  // externals reference files that actually exist. Path-only (never content).
+  assetInventory?: {
+    files: string[];                    // feature-relative, e.g. assets/game/entities/hero.png
+    groups?: Record<string, string[]>;  // first-subdir grouping under the pool root
+    count: number;
+  };
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)
   figmaConfig?: FigmaDataConfig;        // Loaded from visual/ui/figma/figma.json at resolve

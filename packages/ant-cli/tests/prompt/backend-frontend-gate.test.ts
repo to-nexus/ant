@@ -42,8 +42,11 @@ const BACKEND_SAFETY = 'jobs/code/nodes/execute/injections/backend-safety';
 
 // Sentinels — appear ONLY in their respective gated/ungated block.
 const SENTINEL_TOKENS = 'Design Tokens Integration';
-const SENTINEL_ASSET = 'ASSET-FIRST FOR UI';
-const SENTINEL_SVGR = 'required for SVGR import';
+const SENTINEL_ASSET = 'ASSET-FIRST';
+// Frontend-gated asset guidance. Physical placement (SVGR / public / game
+// servable) now lives in the execute buildMessages "📦 Available Assets"
+// block — base.md only surfaces the source + a pointer, both hasFrontend-gated.
+const SENTINEL_SVGR = 'Assets source:';
 const SENTINEL_ENV = 'ENV FILE SYNC CONTRACT'; // backend-critical — must survive
 const SENTINEL_LAYER = 'LAYER-AWARE FIX'; // always-on core principle — must survive
 const SENTINEL_COOP = 'Cross-Origin-Opener-Policy'; // removed frontend caveat
@@ -104,13 +107,13 @@ describe('execute default variant — hasFrontend gate render', () => {
     expect(out).not.toContain(SENTINEL_TOKENS);
   });
 
-  it('base.md hasFrontend=true → ASSET-FIRST + SVGR path present', async () => {
+  it('base.md hasFrontend=true → ASSET-FIRST + frontend asset guidance present', async () => {
     const out = await adapter.render(EXECUTE_BASE, { hasFrontend: true });
     expect(out).toContain(SENTINEL_ASSET);
     expect(out).toContain(SENTINEL_SVGR);
   });
 
-  it('base.md hasFrontend=false → ASSET-FIRST + SVGR path absent', async () => {
+  it('base.md hasFrontend=false → ASSET-FIRST + frontend asset guidance absent', async () => {
     const out = await adapter.render(EXECUTE_BASE, { hasFrontend: false });
     expect(out).not.toContain(SENTINEL_ASSET);
     expect(out).not.toContain(SENTINEL_SVGR);
