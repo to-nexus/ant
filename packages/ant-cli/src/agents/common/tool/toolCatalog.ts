@@ -338,10 +338,14 @@ export const TOOL_SETS = {
   codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ...ANT_SOURCE_TOOLS] as ToolName[],
 
   // Design execute default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
-  // rationale for why `RUN_COMMAND` is absent.
+  // rationale for why `RUN_COMMAND` is absent. `LIST_ASSETS` is included so the
+  // game-art execute (which falls through to this set) and spec execute can
+  // survey the real `assets/{domain}/` pool to ground `kind:'external'`
+  // catalog entries — the prompt already instructs `list_assets`.
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
+    ToolName.LIST_ASSETS,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 

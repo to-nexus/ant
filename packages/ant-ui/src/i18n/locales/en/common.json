@@ -46,6 +46,15 @@
   "pathPicker": {
     "selectFolder": "Select entire folder"
   },
+  "fileTreePicker": {
+    "toggleFolder": "Toggle all files in folder",
+    "selectFolder": "Select folder",
+    "suggested": "Suggested for this action",
+    "filterPlaceholder": "Filter files...",
+    "selectedCount": "{{count}} selected",
+    "addRefs": "Add reference files",
+    "addContext": "Add context files"
+  },
   "memberPicker": {
     "placeholder": "Select member",
     "searchPlaceholder": "Search name..."

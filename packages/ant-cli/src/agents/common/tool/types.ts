@@ -291,7 +291,6 @@ export interface ToolExecutionContext {
   files?: Map<string, any>;
 
   // === Design-specific (populated by design buildContext) ===
-  uiAssetsList?: Record<string, string[]>;
   existingDesignDocs?: Record<string, string>;
   /**
    * Pre-resolved asset pool root for the active workspace, e.g.

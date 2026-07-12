@@ -3,8 +3,9 @@ import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathR
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, ARTIFACT_PREFIX, extractFigmaUrlParts } from "@ant/shared";
+import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, ARTIFACT_PREFIX, extractFigmaUrlParts, pickAssetsRoot } from "@ant/shared";
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
+import { indexAssetPool } from "../../../../../infrastructure/workspace/assetInventory";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 
@@ -280,11 +281,25 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       throw new Error("Generate mode requires source documents in plan/");
     }
 
+    // Real asset inventory (domain-scoped via `pickAssetsRoot`, I6) — grounds
+    // the design guides so `game-art-assets.json` / `ui-assets.json`
+    // `kind:'external'` entries reference files that actually exist. Path-only;
+    // never injected as content. Replaces the dead `uiAssetsList` channel.
+    const assetInventory = indexAssetPool({
+      featurePath: context.featurePath,
+      assetsRoot: pickAssetsRoot({
+        workspaceDomain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
+        racDomain: state.resolvedAction?.domain,
+        intentGroup: state.resolvedAction?.intentGroup,
+      }),
+    });
+
     return {
       context,
       featurePath: context.featurePath,
       directive,
       existingDesignDocs,
+      assetInventory,
       // Pool seeded empty — detect fills it via `loadResolvedArtifacts`
       // (post-RAC SSOT). The empty array is the channel-presence
       // sentinel for detect's truthy-check.

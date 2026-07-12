@@ -83,7 +83,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     const html = byPath['visual/ui/handoff/page.html'];
     expect(html).toBeDefined();
     expect(html.role).toBe('context');
-    expect(html.content).toMatch(/\[handoff file\] visual\/ui\/handoff\/page\.html/);
+    expect(html.content).toMatch(/\[reference file\] visual\/ui\/handoff\/page\.html/);
     expect(html.content).toMatch(/kind: text/);
     expect(html.content).toMatch(/read_file\("visual\/ui\/handoff\/page\.html"\)/);
     expect(html.content).not.toContain('<h1>Hello</h1>');
@@ -91,7 +91,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     // Binary file — stub flags as binary and forbids read_file
     const png = byPath['visual/ui/handoff/hero.png'];
     expect(png).toBeDefined();
-    expect(png.content).toMatch(/\[handoff asset\] visual\/ui\/handoff\/hero\.png/);
+    expect(png.content).toMatch(/\[asset\] visual\/ui\/handoff\/hero\.png/);
     expect(png.content).toMatch(/kind: binary/);
     expect(png.content).toMatch(/do NOT call read_file/);
 
@@ -110,7 +110,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     );
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0].path).toBe('visual/ui/handoff/styles.css');
-    expect(artifacts[0].content).toMatch(/\[handoff file\]/);
+    expect(artifacts[0].content).toMatch(/\[reference file\]/);
     expect(artifacts[0].content).not.toContain('#1a1a2e');
   });
 

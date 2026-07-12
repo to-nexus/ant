@@ -46,6 +46,15 @@
   "pathPicker": {
     "selectFolder": "폴더 전체 선택"
   },
+  "fileTreePicker": {
+    "toggleFolder": "폴더 내 파일 전체 선택/해제",
+    "selectFolder": "폴더 선택",
+    "suggested": "이 액션에 추천되는 파일",
+    "filterPlaceholder": "파일 검색...",
+    "selectedCount": "{{count}}개 선택됨",
+    "addRefs": "참조 파일 추가",
+    "addContext": "컨텍스트 파일 추가"
+  },
   "memberPicker": {
     "placeholder": "멤버 선택",
     "searchPlaceholder": "이름 검색..."

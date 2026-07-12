@@ -83,9 +83,7 @@ export async function decomposeUiDesign(
     refs: decomposeCtx.refs,
     context: decomposeCtx.context,
     directive: decomposeCtx.directive,
-    assetCount: state.uiAssetsList
-      ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
-      : 0,
+    assetCount: state.assetInventory?.count ?? 0,
     detectedMode: state.resolvedAction?.mode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
     nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary

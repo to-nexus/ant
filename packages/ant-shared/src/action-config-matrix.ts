@@ -359,6 +359,29 @@ function gameArtSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: str
   };
 }
 
+/**
+ * Asset-pool context slot, domain-gated (I6). Mirrors the `uiSourceCtx` /
+ * `gameArtSourceCtx` D28 dispatch pattern: both `assetsCtx('service')` and
+ * `assetsCtx('game')` are listed on a code/spec intent, and
+ * `filterSlotsByDomain` keeps only the one matching the workspace domain so
+ * `assets/service` ↔ `assets/game` can never both surface.
+ *
+ * The pool is loaded PATH-ONLY (stub, never eager-read) by
+ * `loadResolvedArtifacts` — binary assets are surfaced as references the
+ * code/spec job dereferences, not as prompt content (state.artifacts
+ * Post-RAC SSOT).
+ */
+function assetsCtx(domain: import('./detection').Domain): SlotDef {
+  return {
+    path: domain === 'game' ? 'assets/game' : 'assets/service',
+    label: L.assets,
+    type: 'dir',
+    required: false,
+    humanLabel: HL.assets,
+    applicableDomains: [domain],
+  };
+}
+
 function emptyRef(): SlotDef {
   return { path: '', label: CHAT_HINT, type: 'file', required: false, emptyHint: CHAT_HINT };
 }
@@ -464,13 +487,9 @@ const UI_DIR = 'visual/ui/ant';
 const GAME_ART_DIR = 'visual/game-art/ant';
 const SPEC_DIR = 'architecture/spec';
 const SOURCES_DIR = 'plan';
-/**
- * Parent assets directory (Phase 2 — D19-revised). Workspace.domain decides
- * the active sub-pool (`assets/service/` or `assets/game/`) at the asset
- * handler layer; the matrix slot here exposes the parent so the FE
- * Artifacts panel can show whichever pool the workspace owns.
- */
-const ASSETS_DIR = 'assets';
+// Asset pool RAC slots are domain-gated via `assetsCtx('service'|'game')`
+// (D28 dispatch) — the bare parent `assets/` is never a slot path (that would
+// walk both pools and violate I6). `assets/gen` stays for the visual job.
 const ASSETS_GEN_DIR = 'assets/gen';
 
 // `gen-sys-fe` matrix-default target stays `fe-system-*.md` only.
@@ -706,7 +725,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
   'gen-game-art-figma': {
     refs: [refFile('visual/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
-    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), assetsCtx('game')],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     // figma.json (locked ref) is the game-art authority — same reasoning
     // as `gen-ui-figma` above. No wizard tier; the phaser engine seeds via
@@ -715,7 +734,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   },
   'gen-game-art-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
-    context: [ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    context: [assetsCtx('game')],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
@@ -747,6 +766,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
       gameArtSourceCtx(),
       ctxDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }),
+      assetsCtx('service'),
+      assetsCtx('game'),
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
     chatRequiresRefs: false,
@@ -765,6 +786,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
       gameArtSourceCtx(),
       ctxDir(SPEC_DIR, L.specDocs, { excludeSelectedRefs: true, createIntent: 'gen-spec', humanLabel: HL.specDocs }),
+      assetsCtx('service'),
+      assetsCtx('game'),
     ],
     target: { kind: 'revise' },
     buildDisabled: true,
@@ -784,7 +807,11 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       uiSourceRef({ createIntent: 'gen-ui-desc' }),
       gameArtSourceRef(),
     ],
-    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [
+      ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+      assetsCtx('service'),
+      assetsCtx('game'),
+    ],
     target: { kind: 'codebase' },
     basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
@@ -795,6 +822,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
       gameArtSourceCtx(),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+      assetsCtx('service'),
+      assetsCtx('game'),
     ],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
@@ -807,6 +836,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       gameArtSourceCtx(),
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
       ctxDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }),
+      assetsCtx('service'),
+      assetsCtx('game'),
     ],
     target: { kind: 'codebase' },
     buildDisabled: true,
@@ -820,6 +851,8 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
       gameArtSourceCtx(),
+      assetsCtx('service'),
+      assetsCtx('game'),
     ],
     target: { kind: 'codebase' },
     basis: { tiers: [] },

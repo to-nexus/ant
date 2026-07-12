@@ -17,12 +17,15 @@ import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 export interface MentionSuggestion {
-  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command';
+  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command' | 'browse';
   id: string;
   label: string;
   description?: string;
   group?: 'suggested' | 'all';
 }
+
+/** Which RAC field the folder-tree picker should target when opened from chat. */
+export type BrowseField = 'refs' | 'context' | 'target';
 
 // Phase 2 (D22): `domain` is a workspace-scoped 1st-class selector and is
 // mutated only via `DomainToggle`. The chat-input mention surface is
@@ -146,6 +149,9 @@ function buildGroupedFileSuggestions(
 export function useMentionAutocomplete(message: string, cursorPos: number) {
   const [, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // When set, ChatInput opens the unified folder-tree picker for this field
+  // (the tree replaces the flat file list — see MentionDropdown "Browse" row).
+  const [browseField, setBrowseField] = useState<BrowseField | null>(null);
   const fileTree = useStore(s => s.fileTree);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const actionMetadata = useStore(s => s.actionMetadata);
@@ -241,13 +247,22 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       }
 
       case '@target:':
-        return buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
+        return [
+          { type: 'browse', id: 'target', label: t('mention.browse.label'), description: t('mention.browse.description') },
+          ...buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
+        ];
 
       case '@ref:':
-        return buildGroupedFileSuggestions('ref', '@ref:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
+        return [
+          { type: 'browse', id: 'refs', label: t('mention.browse.label'), description: t('mention.browse.description') },
+          ...buildGroupedFileSuggestions('ref', '@ref:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
+        ];
 
       case '@ctx:':
-        return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
+        return [
+          { type: 'browse', id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
+          ...buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
+        ];
 
       case '@explicit':
         if (!explicitSettable) return [];
@@ -257,7 +272,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND]);
+  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
@@ -285,6 +300,15 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     }
 
     const newMessage = beforeMention + afterCursor;
+
+    // Browse: strip the mention token and open the folder-tree picker for
+    // this field (ChatInput observes `browseField`).
+    if (suggestion.type === 'browse') {
+      setBrowseField(suggestion.id as BrowseField);
+      setIsOpen(false);
+      setSelectedIndex(0);
+      return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
+    }
 
     switch (suggestion.type) {
       case 'intent':
@@ -358,5 +382,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     handleKeyDown,
     isOpen: showSuggestions,
     setIsOpen,
+    browseField,
+    clearBrowseField: () => setBrowseField(null),
   };
 }

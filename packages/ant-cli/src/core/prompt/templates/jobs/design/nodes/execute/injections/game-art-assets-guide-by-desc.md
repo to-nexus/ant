@@ -15,17 +15,21 @@ directive only — without reference images or Figma frames as grounding.
 - Do NOT write `visual/ui/...` paths — that is the UI surface
   (I6 Asset Surface Boundary)
 
-### Asset-Source Kind Policy (D20 — directive-only inline-first)
+### Asset-Source Kind Policy (D20 — survey-first, inline as floor)
 
-| kind       | When valid (directive-only mode)                                              |
+Real asset files may already be placed under `assets/game/<category>/`. **Survey
+that inventory first** (the injected asset list + `list_assets`) and prefer a
+real file when one fits the entry you are authoring.
+
+| kind       | When valid                                                                     |
 |------------|--------------------------------------------------------------------------------|
-| `inline`   | Default — every entry without a directive-referenced external file             |
-| `external` | When the directive explicitly names a user-placed file (e.g. "use my hero.svg") OR when the relevant scope marker is upgraded — `_meta.audioScope === 'external-enabled'` for `sfx` / `bgm`, `_meta.visualScope === 'atlas-enabled'` for `atlas` / multi-image entities |
+| `external` | A real inventory file under `assets/game/...` satisfies this entry's need (surveyed, or named by the directive). Its `src` is that exact path. For `sfx` / `bgm` this additionally requires `_meta.audioScope === 'external-enabled'`; for `atlas` / multi-image entities, `_meta.visualScope === 'atlas-enabled'` |
+| `inline`   | Floor — used when no inventory file fits the entry (or the pool is empty). Author a simple primitive per the D21 ceiling |
 
-**Directive-only constraint**: Without references or Figma, the LLM
-CANNOT invent production sprite paths — `kind: 'external'` entries are
-allowed only when the directive supplies the file name AND the file is
-present under `assets/game/...`.
+**Grounding constraint**: `kind: 'external'` `src` MUST name a file that is
+actually present under `assets/game/...` — either observed in the inventory or
+named by the directive. Do NOT invent a production sprite path that no file
+backs; if nothing fits, fall back to `inline`.
 
 ### External-asset hook (per-marker)
 
@@ -106,7 +110,7 @@ tokens catalog — reference the exact keys present (via `fill='currentColor'`
 If a needed key is absent, use the closest existing token key rather than
 minting a new one.
 
-#### `kind: 'external'` shape (rare in directive-only mode)
+#### `kind: 'external'` shape (preferred when a real inventory file fits)
 
 ```json
 {
@@ -195,7 +199,7 @@ Marker derivation:
 
 1. **Single category** per task
 2. **Stable ids** (kebab-case, unique)
-3. **inline-first**: external entries only with directive-referenced files
+3. **Grounded**: `external` entries reference a real surveyed file (`src` = its exact path); `inline` is the floor when none fits
 4. **Inline scope respected**: simple primitives only
 5. **Concept-aligned & token-conformant**: visuals reflect `gameArtTier.concept` mood and reference only token keys that exist in `game-art-tokens.json` — no invented palette namespace, no contradicting hex
 6. **Path safety**: any external `src` starts with `assets/game/`
@@ -203,12 +207,14 @@ Marker derivation:
 
 ### Workflow
 
-1. `read_file game-art-tokens.json` — this is the palette/silhouette SSOT.
-   Note the exact token keys you will reference (colors, silhouette).
-2. Re-read the directive to extract the category's intended entries
-3. For each entry:
-   - Default to `kind: 'inline'` with a simple primitive
-   - Use `kind: 'external'` only when the directive names a specific
-     user-placed file
-4. If the directive lacks specifics for a category — emit fewer, simpler
-   inline entries rather than inventing details
+1. **Survey the real inventory** — read the injected asset list (real files
+   under `assets/game/`) and/or call `list_assets`. Note which files could back
+   entries in YOUR category.
+2. `read_file game-art-tokens.json` — the palette/silhouette SSOT. Note the
+   exact token keys you will reference (colors, silhouette).
+3. Re-read the directive to extract the category's intended entries.
+4. For each entry:
+   - If a surveyed real file fits it → `kind: 'external'`, `src` = that exact path.
+   - Otherwise → `kind: 'inline'` with a simple primitive (the floor).
+5. If neither the inventory nor the directive gives specifics for a category —
+   emit fewer, simpler inline entries rather than inventing details.

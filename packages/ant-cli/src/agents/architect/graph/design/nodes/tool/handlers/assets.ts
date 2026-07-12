@@ -1,6 +1,9 @@
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
 import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../periphery/adapters/figma/MCPTransport';
-import type { Domain } from '@ant/shared';
+// Asset pool root resolution moved to `@ant/shared` (canonical.ts) so the
+// code/spec jobs share the single domain gate instead of re-deriving it.
+// Re-exported here for back-compat with existing importers of this module.
+export { pickAssetsRoot, type AssetsRootInput } from '@ant/shared';
 
 /**
  * True when `ip` is a loopback / private / link-local / CGNAT address (IPv4 or
@@ -50,42 +53,6 @@ async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
   }
 }
 
-/**
- * Pure routing input for `pickAssetsRoot` (Phase 2 — D22).
- *
- * Decoupled from `DesignGraphState` so the router is unit-testable without
- * needing to fabricate a full graph state. Both `download_asset` and
- * `list_assets` derive these three signals from the live state and delegate
- * the actual decision to `pickAssetsRoot`.
- */
-export interface AssetsRootInput {
-  /** Workspace-level domain (SSOT after `p2-ui-actions-art-group`). */
-  workspaceDomain?: Domain;
-  /** Per-turn explicit/inferred RAC override. */
-  racDomain?: Domain;
-  /** RAC intent group — `'design-game-art'` implies `game` by matrix gate. */
-  intentGroup?: string;
-}
-
-/**
- * Pure resolver — picks the asset pool root from the three D22 signals.
- *
- * Resolution order (most authoritative first):
- *   1. `workspaceDomain`  — workspace-level 1st-class slot.
- *   2. `racDomain`        — per-turn explicit/inferred override.
- *   3. `intentGroup === 'design-game-art'` heuristic — `game` (matrix gate).
- *   4. Default `'service'`.
- *
- * Returns relative path string starting with `assets/`.
- */
-export function pickAssetsRoot(input: AssetsRootInput): string {
-  const { workspaceDomain, racDomain, intentGroup } = input;
-  const effective: Domain =
-    workspaceDomain
-      ?? racDomain
-      ?? (intentGroup === 'design-game-art' ? 'game' : 'service');
-  return `assets/${effective}`;
-}
 
 /**
  * Handle download_asset tool (ctx-pure).

@@ -148,8 +148,9 @@ Marker derivation:
 
 1. `figma_get_design_context` against your task's frame nodeId
 2. For each component instance / variant in the frame:
-   - If a user export exists under `assets/game/...` (use
-     `list_assets` to verify) → `kind: 'external'` with `figmaNodeId`
+   - If a real file exists under `assets/game/...` (check the injected asset
+     inventory and/or `list_assets`) → `kind: 'external'`, `src` = that exact
+     path, with `figmaNodeId`
    - Otherwise → `kind: 'inline'` with simple SVG approximation
 3. Optionally `figma_get_screenshot` to confirm the inline approximation
    is visually plausible

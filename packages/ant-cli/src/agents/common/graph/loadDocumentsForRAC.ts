@@ -149,7 +149,7 @@ function appendPath(
           );
         }
       }
-      if (isHandoffPath(rel)) {
+      if (isStubLoadedPath(rel)) {
         try {
           const s = fs.statSync(child);
           out.push({ path: rel, content: buildHandoffStub(rel, s.size), role });
@@ -162,7 +162,7 @@ function appendPath(
     return;
   }
 
-  if (isHandoffPath(relativePath)) {
+  if (isStubLoadedPath(relativePath)) {
     out.push({ path: relativePath, content: buildHandoffStub(relativePath, stat.size), role });
     return;
   }
@@ -171,18 +171,27 @@ function appendPath(
 }
 
 /**
- * Handoff paths are not eager-loaded. Rather than embedding content, we emit
- * a stub so the downstream prompt surfaces a manifest-style entry and the
- * execute-phase LLM picks up files on demand via `read_file`. Binaries are
- * tagged path-only (utf-8 reads would be garbage).
+ * Stub-loaded paths are NOT eager-read into the pool. Rather than embedding
+ * content, we emit a stub so the downstream prompt surfaces a manifest-style
+ * entry and the execute-phase LLM picks up files on demand via `read_file`
+ * (binaries are tagged path-only — utf-8 reads would be garbage).
+ *
+ * Two families qualify:
+ *   - handoff sub-sources (`visual/{ui,game-art}/handoff/**`) — WS2 §3C.
+ *   - asset pools (`assets/{service,game}/**`) — real binary/asset files the
+ *     code/spec job references and copies, never injects as content
+ *     (state.artifacts Post-RAC SSOT; Asset Surface Boundary I6).
  */
-function isHandoffPath(rel: string): boolean {
-  // Both surfaces' handoff sub-sources are stub-loaded, never eager-read (WS2 §3C).
-  const uiRoot = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
-  const gameArtRoot = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, '');
+function isStubLoadedPath(rel: string): boolean {
+  const startsWithRoot = (prefix: string): boolean => {
+    const root = prefix.replace(/\/$/, '');
+    return rel === root || rel.startsWith(prefix);
+  };
   return (
-    rel === uiRoot || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF) ||
-    rel === gameArtRoot || rel.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)
+    startsWithRoot(ARTIFACT_PREFIX.UI_HANDOFF) ||
+    startsWithRoot(ARTIFACT_PREFIX.GAME_ART_HANDOFF) ||
+    startsWithRoot(ARTIFACT_PREFIX.ASSETS_SERVICE) ||
+    startsWithRoot(ARTIFACT_PREFIX.ASSETS_GAME)
   );
 }
 
@@ -202,18 +211,20 @@ function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
+// Path-only stub for handoff sub-sources AND asset pools. Binary entries are
+// referenced by path (never read_file'd); text entries advertise on-demand read.
 function buildHandoffStub(relPath: string, sizeBytes: number): string {
   const kind = isBinaryPath(relPath) ? 'binary' : 'text';
   const size = formatSize(sizeBytes);
   if (kind === 'binary') {
     return [
-      `[handoff asset] ${relPath}`,
+      `[asset] ${relPath}`,
       `size: ${size}, kind: binary`,
-      `Reference this path from code output; do NOT call read_file on it.`,
+      `Reference this path from code output (copy it into the app's static-asset root); do NOT call read_file on it.`,
     ].join('\n');
   }
   return [
-    `[handoff file] ${relPath}`,
+    `[reference file] ${relPath}`,
     `size: ${size}, kind: text`,
     `Call read_file("${relPath}") — optionally with startLine/endLine — to observe contents on demand.`,
   ].join('\n');

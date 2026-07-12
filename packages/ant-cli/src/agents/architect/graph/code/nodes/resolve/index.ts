@@ -5,7 +5,8 @@ import { hydrateFeatureContext } from "../../../../../../core/context/featureCon
 import { getExecutionTier } from "../../../../../../core/executionTier";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, pickAssetsRoot } from '@ant/shared';
+import { indexAssetPool } from '../../../../../../infrastructure/workspace/assetInventory';
 
 /**
  * Code Resolve Strategy
@@ -103,8 +104,12 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     state.figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;
     console.log(`🎨 [Resolve/Resume] Figma MCP: ${figmaDetected.available ? `available (fileKey=${figmaDetected.fileKey})` : 'unavailable'}`);
 
-    // Index runtime assets
-    state.runtimeAssetsIndex = await indexRuntimeAssets(state.context.featurePath);
+    // Index runtime assets — domain-scoped via `pickAssetsRoot` so a game
+    // workspace never surfaces `assets/service/*` (Asset Surface Boundary I6).
+    state.assetInventory = indexAssetPool({
+      featurePath: state.context.featurePath,
+      assetsRoot: resolveAssetsRootFor(state),
+    });
 
     // Rehydrate featureContext + turnId from feature.jsonl (§12 resume path).
     // Checkpoints do not persist either — see runner.ts / checkpoint/index.ts.
@@ -144,7 +149,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       profile: state.profile,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
-      runtimeAssetsIndex: state.runtimeAssetsIndex,
+      assetInventory: state.assetInventory,
       featureContext,
       turnId: state.turnId,
     } as Partial<ArchitectGraphState>;
@@ -166,8 +171,11 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     });
     context.featurePath = featurePath;
 
-    // Index runtime assets
-    const runtimeAssetsIndex = await indexRuntimeAssets(featurePath);
+    // Index runtime assets — domain-scoped (I6). See onResume note.
+    const assetInventory = indexAssetPool({
+      featurePath,
+      assetsRoot: resolveAssetsRootFor(state),
+    });
 
     // Pool SSOT — `state.artifacts` is filled by detect via
     // `loadResolvedArtifacts` (the single writer keyed off
@@ -284,45 +292,27 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       figmaStartNodeId,
       featureContext,
       turnId,
-      runtimeAssetsIndex,
+      assetInventory,
       conversations: {},
     } as Partial<ArchitectGraphState>;
   },
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Helper: index runtime assets under assets/
+// Helper: resolve the domain-scoped asset pool root for this job
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async function indexRuntimeAssets(featurePath?: string): Promise<{ files: string[]; count: number }> {
-  if (!featurePath) return { files: [], count: 0 };
-  try {
-    const pathMod = await import('path');
-    const fsMod = await import('fs');
-    const assetsRootAbs = pathMod.join(featurePath, 'assets');
-    const files: string[] = [];
-    const maxFiles = parseInt(process.env.ANT_RUNTIME_ASSETS_INDEX_MAX || '200', 10);
-
-    const walk = (dirAbs: string) => {
-      if (files.length >= maxFiles) return;
-      let entries: any[] = [];
-      try { entries = fsMod.readdirSync(dirAbs, { withFileTypes: true }); } catch { return; }
-      for (const e of entries) {
-        if (files.length >= maxFiles) break;
-        if (e.name.startsWith('.')) continue;
-        const abs = pathMod.join(dirAbs, e.name);
-        if (e.isDirectory()) walk(abs);
-        else if (e.isFile()) {
-          const relToFeature = pathMod.relative(featurePath, abs).replace(/\\/g, '/');
-          if (relToFeature && !relToFeature.startsWith('..')) files.push(relToFeature);
-        }
-      }
-    };
-
-    if (fsMod.existsSync(assetsRootAbs)) walk(assetsRootAbs);
-    return { files, count: files.length };
-  } catch {
-    return { files: [], count: 0 };
-  }
+/**
+ * Domain-scoped pool root for the runtime asset index. `workspaceConfig.domain`
+ * is the workspace-level SSOT (available before detect); `resolvedAction`
+ * refines it per-turn once detect has run (resume path). Delegates the actual
+ * decision to the shared `pickAssetsRoot` gate so code and design agree.
+ */
+function resolveAssetsRootFor(state: ArchitectGraphState): string {
+  return pickAssetsRoot({
+    workspaceDomain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
+    racDomain: state.resolvedAction?.domain,
+    intentGroup: state.resolvedAction?.intentGroup,
+  });
 }
 

@@ -11,7 +11,7 @@ function makeCodeState(overrides: Record<string, any> = {}): any {
   return {
     currentTask: { id: 'task-1', name: 'Build API', description: 'Create REST endpoints' },
     planText: null,
-    runtimeAssetsIndex: null,
+    assetInventory: null,
     context: {},
     ...overrides,
   };
@@ -45,9 +45,9 @@ describe('buildTaskInvariantContext (code)', () => {
     expect(result).toContain('create');
   });
 
-  it('includes assets section when runtimeAssetsIndex has files', async () => {
+  it('includes assets section when assetInventory has files', async () => {
     const result = await buildTaskInvariantContext(makeCodeState({
-      runtimeAssetsIndex: {
+      assetInventory: {
         count: 1,
         files: ['logo.png'],
       },

@@ -166,7 +166,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
             sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${ctx.length}]` : undefined,
-            uiAssetsList: state.uiAssetsList ? 'SET' : undefined,
+            assetInventory: state.assetInventory ? `[${state.assetInventory.count} files]` : undefined,
           },
         }
       );
@@ -394,17 +394,17 @@ function buildResourcesSummary(state: DesignGraphState): string {
     resourcesSummary += 'No external visual source is provided. Treat the directive plus PRD / source documents listed below as the design authority and produce the UI documents directly from them.\n\n';
   }
   
-  resourcesSummary += '\n## Asset Files\n';
-  resourcesSummary += 'Use `list_assets` tool to discover available asset files for mapping.\n\n';
-  
-  if (state.uiAssetsList) {
-    const assetCounts = Object.entries(state.uiAssetsList)
-      .filter(([, files]) => files.length > 0)
-      .map(([group, files]) => `${group}: ${files.length}`);
-    
-    if (assetCounts.length > 0) {
-      resourcesSummary += `Available: ${assetCounts.join(', ')}\n`;
+  resourcesSummary += '\n## Asset Files (real, already placed under assets/service/)\n';
+  const inv = state.assetInventory;
+  if (inv?.count) {
+    resourcesSummary += `There are ${inv.count} real asset file(s). Map the ones the UI needs into ui-assets.json with \`src\` = the exact path below; use \`list_assets\` for detail.\n`;
+    for (const [group, files] of Object.entries(inv.groups ?? {})) {
+      if (files.length === 0) continue;
+      resourcesSummary += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
     }
+    resourcesSummary += '\n';
+  } else {
+    resourcesSummary += 'No real asset files placed yet — document needed slots as placeholder `src` paths under `assets/service/<category>/`.\n\n';
   }
   
   return resourcesSummary;

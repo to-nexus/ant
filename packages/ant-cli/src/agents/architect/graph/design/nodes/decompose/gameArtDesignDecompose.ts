@@ -98,14 +98,9 @@ export async function decomposeGameArtDesign(
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/game-art-design-${variant}/base`;
 
-  // Asset count is sourced from `assets/game/` (D19-revised) when
-  // workspace.domain is `game`. The pool view's `uiAssetsList` is reused
-  // here because the asset-handler routing (D22 auto-effect) already
-  // points it at the game pool. If a future reorg splits the lists,
-  // this is the single dispatch point to update.
-  const assetCount = state.uiAssetsList
-    ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
-    : 0;
+  // Asset count from the domain-scoped `assetInventory` (populated at resolve
+  // via `indexAssetPool`, pointed at `assets/game/` for the game domain).
+  const assetCount = state.assetInventory?.count ?? 0;
 
   const artDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
     documentName: decomposeCtx.documentName,
