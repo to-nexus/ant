@@ -21,14 +21,18 @@ import { getModelContextWindow, getThinkingMode } from '@ant/shared';
  * Used as the conversion target in convertBlock() to ensure
  * only API-permitted fields are sent (whitelist approach).
  */
+type CacheControl = { type: 'ephemeral' };
+
 type AnthropicSubBlock =
-  | { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
-  | { type: 'image'; source: { type: 'base64'; media_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; data: string } };
+  | { type: 'text'; text: string; cache_control?: CacheControl }
+  | { type: 'image'; source: { type: 'base64'; media_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; data: string }; cache_control?: CacheControl };
 
 type AnthropicBlock =
   | AnthropicSubBlock
   | { type: 'tool_use'; id: string; name: string; input: Record<string, any> }
-  | { type: 'tool_result'; tool_use_id: string; content: string | AnthropicSubBlock[]; is_error?: boolean }
+  // cache_control on tool_result is API-supported and is where the rolling
+  // breakpoint usually lands (last block of the trailing user turn).
+  | { type: 'tool_result'; tool_use_id: string; content: string | AnthropicSubBlock[]; is_error?: boolean; cache_control?: CacheControl }
   | { type: 'thinking'; thinking: string; signature: string };
 
 export class AnthropicLLMClient implements LLMClient {
@@ -167,6 +171,12 @@ export class AnthropicLLMClient implements LLMClient {
     // as .messages.create() but keeps the HTTP connection alive via SSE.
     // Wrapped with withRetry to handle overloaded_error delivered inside SSE stream
     // (HTTP 200 + error event), which bypasses the SDK's built-in HTTP-status retry.
+    // Build + normalize cache breakpoints ONCE (outside retry): rolling tail
+    // marker + ≤4 cap so Anthropic caches the growing history, not just the
+    // static prefix. `converted` is adapter-owned (fresh from convertMessages).
+    const converted = this.convertMessages(userMessages);
+    this.applyProviderCacheBreakpoints(systemParam, converted);
+
     const signal: AbortSignal | undefined = options?.signal;
     const response = await withRetry(
       async () => {
@@ -175,7 +185,7 @@ export class AnthropicLLMClient implements LLMClient {
           max_tokens: maxTokens,
           ...(systemParam && { system: systemParam }),
           ...this.buildThinkingParams(enableThinking, thinkingBudget),
-          messages: this.convertMessages(userMessages),
+          messages: converted,
         }, { signal });
         return await stream.finalMessage();
       },
@@ -304,12 +314,18 @@ export class AnthropicLLMClient implements LLMClient {
       ? options!.stopSequences as string[]
       : undefined;
 
+    // Rolling tail marker + ≤4 cap so Anthropic caches the growing tool-loop
+    // history (not just the static prefix). `converted` is adapter-owned.
+    // systemParam here is a string, so it contributes 0 breakpoints.
+    const converted = this.convertMessages(userMessages);
+    this.applyProviderCacheBreakpoints(systemParam, converted);
+
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: maxTokens,
       ...(systemParam ? { system: systemParam } : {}),
       ...this.buildThinkingParams(enableThinking, thinkingBudget),
-      messages: this.convertMessages(userMessages),
+      messages: converted,
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({
           name: t.name,
@@ -631,6 +647,77 @@ export class AnthropicLLMClient implements LLMClient {
             timestamp: new Date().toISOString(),
           },
         };
+      }
+    }
+  }
+
+  /**
+   * Provider cache-breakpoint mechanics (Anthropic-specific).
+   *
+   * Anthropic prompt caching requires an EXPLICIT `cache_control` marker on
+   * each cached span — unlike DeepSeek/OpenAI which auto-cache prefixes
+   * server-side. Callers (CacheBlockMapper / buildPlanPromptBlocks /
+   * composeMessages) only mark the static turn-1 prefix, so across a growing
+   * tool-loop the accumulated history was never cached under Anthropic models:
+   * cacheRead froze at the prefix size while billable input climbed every
+   * round (prime-nesting-grate RCA — 46-min / 6.5M-token plan phase). The fix
+   * lives here, the single wire chokepoint every assembly seam converges on,
+   * so no caller needs provider knowledge.
+   *
+   *   1. Rolling tail — mark the last block of the last message so the NEXT
+   *      round reads the whole prior prefix (system + docs + history) from
+   *      cache. Anthropic caches the longest prefix ending at a marker.
+   *   2. ≤4 cap — Anthropic hard-limits breakpoints to 4 across
+   *      system + messages + tools. Keep the earliest stable-prefix markers
+   *      + the rolling tail; drop the intermediate ones.
+   *
+   * Mutates in place — `systemParam` and `messages` are adapter-owned
+   * (messages are fresh from convertMessages), never the caller's arrays.
+   */
+  private applyProviderCacheBreakpoints(
+    systemParam: string | Array<{ type: 'text'; text: string; cache_control?: CacheControl }> | undefined,
+    messages: Array<{ role: 'user' | 'assistant'; content: string | AnthropicBlock[] }>,
+  ): void {
+    const CACHEABLE_TYPES = new Set(['text', 'image', 'tool_result']);
+
+    // 1. Rolling tail on the last markable block of the last message.
+    //    Gated on history presence (>1): a single-shot call would only pay
+    //    the 1.25x cache-WRITE with no later round to read it back. From the
+    //    2nd round on, the tail lets each round read the full prior prefix.
+    if (messages.length > 1) {
+      const last = messages[messages.length - 1];
+      if (typeof last.content === 'string') {
+        last.content = [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }];
+      } else {
+        for (let i = last.content.length - 1; i >= 0; i--) {
+          const block = last.content[i] as { type: string; cache_control?: CacheControl };
+          if (CACHEABLE_TYPES.has(block.type)) {
+            block.cache_control = { type: 'ephemeral' };
+            break;
+          }
+        }
+      }
+    }
+
+    // 2. Cap to 4. Collect marked blocks in wire order (system first, then
+    //    messages) and strip the middle when over the limit.
+    const marked: Array<{ cache_control?: CacheControl }> = [];
+    if (Array.isArray(systemParam)) {
+      for (const b of systemParam) if (b.cache_control) marked.push(b);
+    }
+    for (const m of messages) {
+      if (Array.isArray(m.content)) {
+        for (const b of m.content) {
+          const cb = b as { cache_control?: CacheControl };
+          if (cb.cache_control) marked.push(cb);
+        }
+      }
+    }
+    const MAX_BREAKPOINTS = 4;
+    if (marked.length > MAX_BREAKPOINTS) {
+      // Keep the first (MAX-1) stable-prefix markers + the last (rolling tail).
+      for (let i = MAX_BREAKPOINTS - 1; i < marked.length - 1; i++) {
+        delete marked[i].cache_control;
       }
     }
   }
