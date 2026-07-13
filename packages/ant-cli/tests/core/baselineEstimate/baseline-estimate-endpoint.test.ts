@@ -26,6 +26,7 @@ vi.mock('../../../src/periphery/adapters/http/middleware/rateLimiter', () => ({
 // For unit-test mode we shortcut it.
 vi.mock('../../../src/periphery/adapters/http/routes/helpers/userContext', () => ({
   extractUserContext: () => ({ userId: 'u1', organizationId: 'o1' }),
+  isLocalServerMode: () => true,
 }));
 
 const estimateSpy = vi.fn();
