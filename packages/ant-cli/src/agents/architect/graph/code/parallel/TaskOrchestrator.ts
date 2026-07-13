@@ -182,6 +182,25 @@ function isPreSeamWork<T extends BaseTask>(t: T): boolean {
   return schedClassify(t, 'producesSeamGate');
 }
 
+/**
+ * Merge one per-model usage map into a target, accumulating each field. Shared
+ * by the seed/completion fold (`addTokenUsageByModel`) and the live cumulative
+ * builder (`liveCumulativeByModel`) so both combine on one code path.
+ */
+function mergeByModelInto(target: TokenUsageByModel, src: TokenUsageByModel): void {
+  for (const [modelId, u] of Object.entries(src)) {
+    const e = (target[modelId] ??= {
+      inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, callCount: 0,
+    });
+    e.inputTokens += u.inputTokens;
+    e.outputTokens += u.outputTokens;
+    e.totalTokens += u.totalTokens;
+    e.cacheReadTokens = (e.cacheReadTokens || 0) + (u.cacheReadTokens || 0);
+    e.cacheCreationTokens = (e.cacheCreationTokens || 0) + (u.cacheCreationTokens || 0);
+    e.callCount = (e.callCount || 0) + (u.callCount || 0);
+  }
+}
+
 export class TaskOrchestrator<T extends BaseTask> {
   // Shared state (protected by lock)
   private taskQueue: TaskQueue<T>;
@@ -198,6 +217,16 @@ export class TaskOrchestrator<T extends BaseTask> {
   /** Per-model job-level accumulation, merged from each worker's per-task
    *  breakdown. Billing settle SSOT (priced per model). */
   private accumulatedTokenUsageByModel: TokenUsageByModel = {};
+  /**
+   * Live in-flight per-model usage, keyed by workerId — the CURRENT task's
+   * running delta for each active worker. Its final value is folded into
+   * `accumulatedTokenUsageByModel` and the entry cleared at each task boundary,
+   * so `liveCumulativeByModel()` = accumulated (seed + completed) + Σ running
+   * partials is monotonic non-decreasing. This is what makes a RUNNING job show
+   * live, correctly-attributed per-model cost instead of a value frozen at the
+   * seed until the first task completes. See `reportInProgressTokenUsage`.
+   */
+  private runningPartialByModel = new Map<number, TokenUsageByModel>();
 
   // Worker management
   private workers = new Map<number, TaskWorker<T>>();
@@ -363,6 +392,10 @@ export class TaskOrchestrator<T extends BaseTask> {
   async reportCompletion(workerId: number, task: T, tokenUsage?: TaskTokenUsage, tokenUsageByModel?: TokenUsageByModel): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      // Fold-out: the task's final per-model delta is added to the accumulator
+      // below (addTokenUsageByModel), so drop its running partial in the same
+      // lock-held section — the token moves buckets, never counted twice.
+      this.runningPartialByModel.delete(workerId);
 
       // Guard: Prevent duplicate completion (defense against overlapping child processes)
       const alreadyCompleted = this.completedTasks.some(t => t.id === task.id);
@@ -477,6 +510,13 @@ export class TaskOrchestrator<T extends BaseTask> {
   ): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      // Drop the parent's running partial. Batch-split does NOT fold the parent's
+      // consumed tokens into the accumulator (pre-existing: neither the aggregate
+      // nor per-model total bills the split parent's plan tokens — the replacement
+      // sub-tasks re-do and bill the work). The resulting one-off dip in the live
+      // cumulative is absorbed by the broadcaster's anti-shrink guard (it keeps the
+      // last value) and self-heals as the sub-tasks grow the accumulator.
+      this.runningPartialByModel.delete(workerId);
       // Do NOT add the requeued task itself to completedTasks — it is back in
       // todo (Path A) or replaced by sub-tasks + FV (Path B). However, Path B
       // parent snapshots (carried in `supersededDetails`) DO go in so they
@@ -525,6 +565,9 @@ export class TaskOrchestrator<T extends BaseTask> {
     await this.lock.runExclusive(async () => {
       const task = this.runningTasks.get(workerId);
       this.runningTasks.delete(workerId);
+      // Fold-out: the stopped attempt's per-model delta is folded into the
+      // accumulator below, so drop its running partial in the same section.
+      this.runningPartialByModel.delete(workerId);
 
       // Tokens spent before the stop are a real cost — bill them. The re-run
       // (fresh worker state) accumulates its own usage separately, so this is
@@ -567,6 +610,9 @@ export class TaskOrchestrator<T extends BaseTask> {
 
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      // Fold-out: the failed attempt's per-model delta is folded into the
+      // accumulator below, so drop its running partial in the same section.
+      this.runningPartialByModel.delete(workerId);
 
       // Tokens consumed by the failed attempt are a real cost — bill them even
       // when the task is re-queued (the retry accumulates its own usage with a
@@ -1040,6 +1086,10 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.callbacks.onWorkerTerminate?.(workerId);
 
       this.lock.runExclusive(() => {
+        // Defensive: a terminated worker can hold no in-flight task, so its
+        // running partial (if any survived an abnormal exit) must not linger in
+        // the live cumulative. Idempotent when a report method already cleared it.
+        this.runningPartialByModel.delete(workerId);
         this.checkAllDone();
         // Defense-in-depth respawn guard: if every worker has died but
         // the queue is non-empty and the orchestrator is not draining,
@@ -1100,7 +1150,9 @@ export class TaskOrchestrator<T extends BaseTask> {
       [...queue, ...failedAsQueue] as T[],
       this.completedTasks,
       this.accumulatedTokenUsage,
-      this.accumulatedTokenUsageByModel,
+      // Live cumulative (accumulated + running partials), NOT the raw
+      // completed-only accumulator — so per-model / USD reflect in-flight work.
+      this.liveCumulativeByModel(),
     );
   }
 
@@ -1116,17 +1168,41 @@ export class TaskOrchestrator<T extends BaseTask> {
 
   /** Merge one worker's per-task per-model breakdown into the job-level map. */
   private addTokenUsageByModel(byModel: TokenUsageByModel): void {
-    for (const [modelId, u] of Object.entries(byModel)) {
-      const e = (this.accumulatedTokenUsageByModel[modelId] ??= {
-        inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, callCount: 0,
-      });
-      e.inputTokens += u.inputTokens;
-      e.outputTokens += u.outputTokens;
-      e.totalTokens += u.totalTokens;
-      e.cacheReadTokens = (e.cacheReadTokens || 0) + (u.cacheReadTokens || 0);
-      e.cacheCreationTokens = (e.cacheCreationTokens || 0) + (u.cacheCreationTokens || 0);
-      e.callCount = (e.callCount || 0) + (u.callCount || 0);
+    mergeByModelInto(this.accumulatedTokenUsageByModel, byModel);
+  }
+
+  /**
+   * Record a worker's current in-flight per-task per-model usage and return the
+   * live job-cumulative map (accumulated + Σ all running partials). The worker
+   * relays the returned map to the broadcaster (via the port it already holds)
+   * so a RUNNING job shows live, correctly model-attributed per-model cost — not
+   * a value frozen at the seed until the first task completes. The orchestrator
+   * stays the single OWNER of the map; the worker is only the transport.
+   *
+   * No double-count: at each task boundary the worker's final delta is folded
+   * into `accumulatedTokenUsageByModel` and its partial deleted in the SAME
+   * lock-held report method, so a token sits in exactly one bucket at every
+   * observable broadcast and the cumulative never shrinks (the broadcaster's
+   * anti-shrink guard stays untripped as defense-in-depth).
+   */
+  reportInProgressTokenUsage(
+    workerId: number,
+    byModel: TokenUsageByModel | undefined,
+  ): TokenUsageByModel {
+    if (byModel && Object.keys(byModel).length > 0) {
+      this.runningPartialByModel.set(workerId, byModel);
     }
+    return this.liveCumulativeByModel();
+  }
+
+  /** Job-cumulative per-model = accumulated (seed + completed) + Σ running partials. */
+  private liveCumulativeByModel(): TokenUsageByModel {
+    const out: TokenUsageByModel = {};
+    mergeByModelInto(out, this.accumulatedTokenUsageByModel);
+    for (const partial of this.runningPartialByModel.values()) {
+      mergeByModelInto(out, partial);
+    }
+    return out;
   }
 
   // ============================================

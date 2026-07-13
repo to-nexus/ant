@@ -753,10 +753,24 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   const isWorkerCtx = state.workerId !== undefined && state.workerId !== null;
   if (isWorkerCtx) {
     state.currentTask.tokenUsage = { ...taskTokens };
-    state.deps.kanbanUpdate.updateInProgressTaskTokenUsage?.(
-      state.currentTask.id,
-      { ...taskTokens }
-    );
+    // Route through the orchestrator-owned per-model reporter when present so a
+    // RUNNING job's per-model / USD update live (not frozen at the seed until
+    // task completion). It publishes the live job-cumulative per-model map AND
+    // the per-task aggregate card. Falls back to the aggregate-only broadcast
+    // for non-orchestrator contexts (design job / no reporter injected).
+    const reportInProgress = state.deps.reportInProgressTokenUsage;
+    if (reportInProgress) {
+      reportInProgress(
+        state.currentTask.id,
+        { ...taskTokens },
+        state._currentTaskTokenUsageByModel,
+      );
+    } else {
+      state.deps.kanbanUpdate.updateInProgressTaskTokenUsage?.(
+        state.currentTask.id,
+        { ...taskTokens }
+      );
+    }
     return;
   }
   

@@ -13,7 +13,7 @@
  * and exits the loop without requesting more tasks.
  */
 
-import type { BaseTask, TaskTokenUsage } from '@ant/shared';
+import type { BaseTask, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
@@ -240,6 +240,12 @@ export class TaskWorker<T extends BaseTask> {
       ? new WorkerFileSystem(originalFileSystem, sharedFileBuffer, this.workerId, task.name)
       : originalFileSystem;
 
+    // Broadcaster port (KanbanBroadcaster) captured at orchestrator init. The
+    // in-flight reporter below relays the orchestrator-owned live per-model
+    // cumulative through it — the port the worker's graph nodes already use for
+    // per-task token updates.
+    const kanbanUpdate = this.sharedContext.deps?.kanbanUpdate;
+
     const workerState: Record<string, any> = {
       ...this.sharedContext,
       workerId: this.workerId,
@@ -248,6 +254,27 @@ export class TaskWorker<T extends BaseTask> {
       deps: {
         ...this.sharedContext.deps,
         fileSystem: workerFileSystem,
+        // ✅ Live per-model publication for a RUNNING job. The orchestrator owns
+        // the job-cumulative per-model map; this worker-bound reporter records
+        // THIS worker's in-flight delta, gets back the live cumulative, and
+        // relays it to the broadcaster (updateTokenUsageByModel caches it, then
+        // updateInProgressTaskTokenUsage fires the broadcast that carries it).
+        // Absent this, per-model / USD stay frozen at the seed until the first
+        // task completes — the running-job blank-cost bug.
+        reportInProgressTokenUsage: (
+          taskId: string,
+          taskTokens: TaskTokenUsage,
+          byModel: TokenUsageByModel | undefined,
+        ) => {
+          const liveCumulative = this.orchestrator.reportInProgressTokenUsage(
+            this.workerId,
+            byModel,
+          );
+          if (liveCumulative && Object.keys(liveCumulative).length > 0) {
+            kanbanUpdate?.updateTokenUsageByModel?.(liveCumulative);
+          }
+          kanbanUpdate?.updateInProgressTaskTokenUsage?.(taskId, taskTokens);
+        },
       },
       // ✅ Live orchestrator → worker propagation of `completedTasksDetails`.
       // sharedContext is captured at orchestrator init time and never refreshed,
