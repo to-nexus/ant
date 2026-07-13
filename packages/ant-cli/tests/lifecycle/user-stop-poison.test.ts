@@ -29,6 +29,7 @@ vi.mock('../../src/periphery/adapters/http/middleware/rateLimiter', () => ({
 
 vi.mock('../../src/periphery/adapters/http/routes/helpers/userContext', () => ({
   extractUserContext: () => ({ userId: 'u1', organizationId: 'o1' }),
+  isLocalServerMode: () => true,
 }));
 
 // finalize() is exercised separately (finalizeTerminalJob own tests); here
