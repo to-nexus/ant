@@ -6,6 +6,10 @@ that has the best chance of getting merged quickly.
 
 If you only have a few minutes, please read **[Quick checklist](#quick-checklist)**.
 
+This project and everyone participating in it is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
+uphold it.
+
 ---
 
 ## Project Layout

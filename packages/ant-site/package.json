@@ -2,6 +2,7 @@
   "name": "@ant/site",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "next dev --port ${ANT_SITE_PORT:-4300}",
     "build": "next build",

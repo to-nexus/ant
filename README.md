@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
-  <a href="https://github.com/<org>/ant/actions"><img alt="Build" src="https://img.shields.io/badge/build-pending-lightgrey"></a>
+  <a href="https://github.com/to-nexus/ant/actions"><img alt="Build" src="https://img.shields.io/badge/build-pending-lightgrey"></a>
   <a href="README.ko.md"><img alt="Korean" src="https://img.shields.io/badge/lang-한국어-red"></a>
   <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
@@ -54,7 +54,7 @@ black box that occasionally writes code.
 ## Quickstart
 
 ```bash
-git clone https://github.com/<org>/ant && cd ant
+git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
 pnpm dev:infra            # Redis + ChromaDB via Docker
 pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
