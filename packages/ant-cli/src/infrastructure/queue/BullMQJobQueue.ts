@@ -164,7 +164,8 @@ export class BullMQJobQueue implements JobQueuePort {
       let projectId: string | undefined;
       let featureName: string | undefined;
       let userEmail: string | undefined;
-      
+      let userContext: JobPayload['userContext'] | undefined;
+
       try {
         // ✅ Use BullMQ's getJob() to retrieve original job payload
         const bullJob = await this.queue.getJob(jobId);
@@ -173,7 +174,7 @@ export class BullMQJobQueue implements JobQueuePort {
           projectId = payload.projectId;
           featureName = payload.feature;
           // Construct user email from userContext if available
-          const userContext = payload.userContext;
+          userContext = payload.userContext;
           if (userContext) {
             userEmail = `${userContext.userId}@${userContext.organizationId}`;
           }
@@ -182,7 +183,7 @@ export class BullMQJobQueue implements JobQueuePort {
       } catch (error) {
         logger.warn(`Failed to get job data for SSE context: ${jobId}`, { component: 'BullMQJobQueue' }, error);
       }
-      
+
       // Broadcast job completion via Redis Pub/Sub for SSE
       // This allows API Server to notify UI clients
       // Use a global channel for job status updates (API server subscribes to this)
@@ -194,6 +195,9 @@ export class BullMQJobQueue implements JobQueuePort {
           projectId,
           featureName,
           userEmail,
+          // Structured context — cloud userIds contain '@', so the composite
+          // userEmail string cannot be split back apart (prime-nesting-grate RCA).
+          userContext,
           result: parsedResult,
           // ✅ Promote interruption to top level for reliable extraction downstream
           interruption,
@@ -264,6 +268,7 @@ export class BullMQJobQueue implements JobQueuePort {
             projectId: payload.projectId,
             featureName: payload.feature,
             userEmail,
+            userContext,
             result: { success: false, error: failedReason },
             timestamp: new Date().toISOString()
           });
@@ -320,6 +325,7 @@ export class BullMQJobQueue implements JobQueuePort {
         let projectId: string | undefined;
         let featureName: string | undefined;
         let userEmail: string | undefined;
+        let userContext: JobPayload['userContext'] | undefined;
         let jobType: string | undefined;
 
         if (bullJob?.data) {
@@ -327,8 +333,8 @@ export class BullMQJobQueue implements JobQueuePort {
           projectId = payload.projectId;
           featureName = payload.feature;
           jobType = payload.type;
-          const uc = payload.userContext;
-          if (uc) userEmail = `${uc.userId}@${uc.organizationId}`;
+          userContext = payload.userContext;
+          if (userContext) userEmail = `${userContext.userId}@${userContext.organizationId}`;
         }
 
         await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
@@ -338,6 +344,7 @@ export class BullMQJobQueue implements JobQueuePort {
           projectId,
           featureName,
           userEmail,
+          userContext,
           // canResume is jobType-gated by the single owner — plan/visual (no
           // mid-graph checkpoint) must resolve to false, not a hardcoded true.
           interruption: buildInfrastructureInterruption('worker_stalled', jobType),

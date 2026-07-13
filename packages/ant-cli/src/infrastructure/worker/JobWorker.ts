@@ -279,6 +279,7 @@ export class JobWorker {
         let projectId: string | undefined;
         let featureName: string | undefined;
         let userEmail: string | undefined;
+        let userContext: { userId: string; organizationId: string } | undefined;
         let jobType: string | undefined;
         try {
           const mapping = await this.stateStore.getJobMapping(jobId);
@@ -287,6 +288,7 @@ export class JobWorker {
             featureName = mapping.featureName;
             jobType = mapping.jobType;
             if (mapping.userContext) {
+              userContext = mapping.userContext;
               userEmail = `${mapping.userContext.userId}@${mapping.userContext.organizationId}`;
             }
           }
@@ -299,6 +301,7 @@ export class JobWorker {
           projectId,
           featureName,
           userEmail,
+          userContext,
           // jobType-gated canResume via the single owner (plan/visual → false).
           interruption: buildInfrastructureInterruption('worker_stalled', jobType),
           timestamp: new Date().toISOString(),
@@ -1182,6 +1185,7 @@ export class JobWorker {
         let projectId: string | undefined;
         let featureName: string | undefined;
         let userEmail: string | undefined;
+        let userContext: { userId: string; organizationId: string } | undefined;
         let jobType: string | undefined;
         try {
           const mapping = await this.stateStore.getJobMapping(jobId);
@@ -1190,6 +1194,7 @@ export class JobWorker {
             featureName = mapping.featureName;
             jobType = mapping.jobType;
             if (mapping.userContext) {
+              userContext = mapping.userContext;
               userEmail = `${mapping.userContext.userId}@${mapping.userContext.organizationId}`;
             }
           }
@@ -1202,6 +1207,7 @@ export class JobWorker {
           projectId,
           featureName,
           userEmail,
+          userContext,
           // Single owner for infra canResume: plan/visual → false, code/design/learn → true.
           interruption: buildInfrastructureInterruption('server_shutdown', jobType),
           timestamp: new Date().toISOString(),

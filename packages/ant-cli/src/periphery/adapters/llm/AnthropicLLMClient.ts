@@ -113,9 +113,19 @@ export class AnthropicLLMClient implements LLMClient {
   // large prompts (plum-meeting-ember execute incident). Gated on the
   // adaptive-thinking regime (per-model via MODEL_REGISTRY), not a name
   // heuristic — Sonnet 5 is adaptive and needs the same 300s window.
+  //
+  // The adaptive window applies EVEN WHEN the request sets
+  // enableThinking=false: an adaptive model decides server-side and can
+  // still go silent past 90s after message_start. prime-nesting-grate
+  // RCA — plan tool-loop rounds 2+ (enableThinking:false) on sonnet-5
+  // received message_start (cache usage) within seconds, then stalled
+  // past the 90s watchdog; all 8 stream retries died the same way and
+  // the task permanently failed while re-billing ~150K cached tokens
+  // per retry. The tight 90s window is only safe for non-adaptive models.
   private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {
-    if (!enableThinking) return 90_000;
-    return getThinkingMode(this.modelName) === 'adaptive' && thinkingBudget >= 5000 ? 300_000 : 180_000;
+    const isAdaptiveModel = getThinkingMode(this.modelName) === 'adaptive';
+    if (!enableThinking) return isAdaptiveModel ? 300_000 : 90_000;
+    return isAdaptiveModel && thinkingBudget >= 5000 ? 300_000 : 180_000;
   }
 
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {

@@ -6,6 +6,7 @@ import { orchestrator } from '../composition/orchestrator';
 import { TaskLogger } from './logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../core/config/WorkspacePathResolver';
 import { getSessionDebugDir } from '../core/utils/sessionPaths';
+import { parseCompositeUserEmail } from '../core/utils/compositeUserEmail';
 
 /**
  * CLI Command Structure
@@ -183,15 +184,15 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
     const workspaceResolver = new UnifiedWorkspaceResolver(workspacesPath);
     
     // ✅ Extract userContext from environment (set by server in Cloud mode)
-    let userContext: import('../core/types/user').UserContext;
-    if (process.env.ANT_USER_EMAIL) {
-      // Cloud mode: Parse user email
-      const [userId, organizationId] = process.env.ANT_USER_EMAIL.split('@');
-      userContext = { userId, organizationId };
-    } else {
-      // Local mode: Use default
-      userContext = { userId: 'local', organizationId: 'local' };
-    }
+    // ANT_USER_EMAIL is the composite `${userId}@${organizationId}`; cloud
+    // userIds are full emails, so parse at the LAST '@' via the shared codec
+    // (a naive split('@') shears `a@b.c@org` into {a, b.c} — prime-nesting-grate RCA).
+    const parsed = process.env.ANT_USER_EMAIL
+      ? parseCompositeUserEmail(process.env.ANT_USER_EMAIL)
+      : undefined;
+    // Cloud mode: parsed composite email. Local mode: default local tenant.
+    const userContext: import('../core/types/user').UserContext =
+      parsed ?? { userId: 'local', organizationId: 'local' };
     
     // ✅ Extract chat-related environment variables (already declared at line 100)
     const chatSource = process.env.ANT_CHAT_SOURCE === 'true';
