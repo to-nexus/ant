@@ -11,6 +11,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Initial OSS release scaffolding: `LICENSE` (Apache-2.0), `SECURITY.md`,
   `CONTRIBUTING.md`, `AGENTS.md`, `.github/` issue and PR templates.
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
 
 ### Changed
 

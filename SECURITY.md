@@ -24,9 +24,8 @@ Instead, send a private report using one of the following channels:
    [Report a vulnerability](../../security/advisories/new) button on the
    repository's Security tab. This creates a private, encrypted thread with the
    maintainers.
-2. **Email**: `security@ant.example` (replace with the maintainer contact when
-   the project transfers to its public org). PGP key fingerprint will be
-   published on the repository homepage when available.
+2. **Email**: `probe@to.nexus`. A PGP key fingerprint will be published on the
+   repository homepage when available.
 
 Include in your report:
 

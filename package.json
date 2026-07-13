@@ -80,10 +80,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<org>/ant"
+    "url": "https://github.com/to-nexus/ant"
   },
-  "homepage": "https://github.com/<org>/ant#readme",
+  "homepage": "https://github.com/to-nexus/ant#readme",
   "bugs": {
-    "url": "https://github.com/<org>/ant/issues"
+    "url": "https://github.com/to-nexus/ant/issues"
   }
 }

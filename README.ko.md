@@ -40,7 +40,7 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
 ## 빠른 시작
 
 ```bash
-git clone https://github.com/<org>/ant && cd ant
+git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
 pnpm dev:infra            # Redis + ChromaDB (Docker)
 pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
