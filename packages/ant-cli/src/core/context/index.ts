@@ -14,6 +14,19 @@ export { compactTurns } from './compactTurns';
 export { TurnPruner } from './pruneTurns';
 export type { TurnPruneConfig } from './pruneTurns';
 
+// Duplicate-read tracking (history-derived; shared by compaction + tool node)
+export {
+  extractLatestReadContent,
+  preservedReadKeyOf,
+  readRangeOf,
+  stringifyToolResultContent,
+  buildDuplicateReadStub,
+  isDuplicateReadStub,
+  buildAlreadyReadManifest,
+  DUPLICATE_READ_STUB_PREFIX,
+} from './duplicateReads';
+export type { PreservedRead } from './duplicateReads';
+
 // Run orchestrator
 export { compactRun } from './compactRun';
 
