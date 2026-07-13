@@ -9,6 +9,7 @@ import {
   createApiRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
+import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
@@ -257,6 +258,7 @@ export class RouteConfigurator {
           projectId?: string;
           featureName?: string;
           userEmail?: string;
+          userContext?: { userId: string; organizationId: string };
           result?: any;
           interruption?: any;  // ✅ Top-level interruption (promoted by BullMQJobQueue)
         };
@@ -314,35 +316,35 @@ export class RouteConfigurator {
 
           // ✅ Broadcast inline-ask completion to frontend via user-scoped SSE channel
           try {
-            if (userEmail) {
-              const [userId, organizationId] = userEmail.split('@');
-              if (userId && organizationId) {
-                const { getRealtimeBroadcastChannel } = await import('../../../../../infrastructure/state/redisConstants');
-                const channel = getRealtimeBroadcastChannel(organizationId, userId);
-                const userContext = {
-                  userId,
-                  organizationId,
-                };
-                await stateStore.publish(channel, {
+            const inlineAskContext = data.userContext
+              ?? (userEmail ? parseCompositeUserEmail(userEmail) : undefined);
+            if (inlineAskContext) {
+              const { userId, organizationId } = inlineAskContext;
+              const { getRealtimeBroadcastChannel } = await import('../../../../../infrastructure/state/redisConstants');
+              const channel = getRealtimeBroadcastChannel(organizationId, userId);
+              const userContext = {
+                userId,
+                organizationId,
+              };
+              await stateStore.publish(channel, {
+                projectId,
+                featureName,
+                type: 'chat',
+                data: {
+                  type: 'inline_ask_complete',
                   projectId,
                   featureName,
-                  type: 'chat',
-                  data: {
-                    type: 'inline_ask_complete',
-                    projectId,
-                    featureName,
-                    jobId,
-                    intent,
-                    action,
-                    suggestedJob,
-                    suggestedAgent,
-                    redirectReason,
-                    noSession,
-                    timestamp: new Date().toISOString(),
-                  },
-                  userContext,
-                });
-              }
+                  jobId,
+                  intent,
+                  action,
+                  suggestedJob,
+                  suggestedAgent,
+                  redirectReason,
+                  noSession,
+                  timestamp: new Date().toISOString(),
+                },
+                userContext,
+              });
             }
           } catch (broadcastError) {
             logger.warn(`Failed to broadcast inline-ask completion: ${jobId}`, {
@@ -354,28 +356,28 @@ export class RouteConfigurator {
 
         // Resolve project/feature/user context — fall back to Redis mapping
         // when the payload didn't include them (stalled-handler best-effort).
+        // Context precedence: structured payload.userContext → Redis mapping →
+        // composite userEmail parse (last '@' — see parseCompositeUserEmail).
         let resolvedProjectId = projectId;
         let resolvedFeatureName = featureName;
-        let userContext: { userId: string; organizationId: string } | undefined;
-        if (userEmail) {
-          const [userId, organizationId] = userEmail.split('@');
-          if (userId && organizationId) {
-            userContext = { userId, organizationId };
-          }
-        }
-        if (!resolvedProjectId || !resolvedFeatureName) {
+        let userContext: { userId: string; organizationId: string } | undefined =
+          data.userContext;
+        if (!resolvedProjectId || !resolvedFeatureName || !userContext) {
           try {
             const mapping = await stateStore.getJobMapping(jobId);
             if (mapping?.projectId && mapping?.featureName) {
-              resolvedProjectId = mapping.projectId;
-              resolvedFeatureName = mapping.featureName;
-              if (!userContext && mapping.userContext) {
-                userContext = mapping.userContext as { userId: string; organizationId: string };
-              }
+              resolvedProjectId = resolvedProjectId || mapping.projectId;
+              resolvedFeatureName = resolvedFeatureName || mapping.featureName;
+            }
+            if (!userContext && mapping?.userContext) {
+              userContext = mapping.userContext as { userId: string; organizationId: string };
             }
           } catch (err) {
             logger.error(`Failed to resolve mapping for job ${jobId}`, { component: 'RouteConfigurator' }, err);
           }
+        }
+        if (!userContext && userEmail) {
+          userContext = parseCompositeUserEmail(userEmail);
         }
         if (!resolvedProjectId || !resolvedFeatureName) {
           logger.warn(

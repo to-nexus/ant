@@ -261,7 +261,11 @@ async function recoverUncardedPausedJobs(
       const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
 
       // Single-owner jobType gate: plan/visual restart rather than resume, so
-      // they never carry a resume card — nothing to repair.
+      // they never carry a resume card — nothing to repair. This server_crash
+      // interruption is a FALLBACK only — `preferSessionInterruption` below
+      // makes the session's recorded reason (e.g. tasks_failed) win, so the
+      // repair card cannot mislabel a real failure as a server crash
+      // (prime-nesting-grate RCA).
       const interruption: InterruptionDetails = buildInfrastructureInterruption('server_crash', jobType);
       if (!interruption.canResume) continue;
 
@@ -287,6 +291,7 @@ async function recoverUncardedPausedJobs(
           jobType,
           userContext: job.userContext,
           interruption,
+          preferSessionInterruption: true,
         },
       );
     } catch (err) {

@@ -44,6 +44,12 @@ export interface PauseJobArgs {
   jobType: 'code' | 'design' | 'learn' | 'plan' | 'visual';
   userContext?: UserContext;
   interruption: InterruptionDetails;
+  /**
+   * Repair-mode callers (StaleJobRecovery Phase 1b) pass true so the
+   * session's already-recorded interruption wins over `interruption`,
+   * which then only serves as a fallback. See JobCleanupManager.
+   */
+  preferSessionInterruption?: boolean;
 }
 
 export interface PauseJobDeps {
@@ -62,7 +68,7 @@ export interface PauseJobDeps {
  * resumed job can pause again later.
  */
 export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<void> {
-  const { jobId, projectId, featureName, jobType, userContext, interruption } = args;
+  const { jobId, projectId, featureName, jobType, userContext, interruption, preferSessionInterruption } = args;
 
   const stateStore = getInfrastructureFactory().getStateStore();
   const lockKey = `ant:job-pause:${jobId}`;
@@ -93,6 +99,7 @@ export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<
     jobType,
     userContext,
     'paused',
+    preferSessionInterruption ? { preferSessionInterruption: true } : undefined,
   );
 
   // updateJobStatus is null-safe: if the status key was already evicted

@@ -1061,14 +1061,25 @@ export class ChatService {
     }
 
     const adapter = this.makeAdapter(projectId, featureName, userContext);
-    if (!adapter) return null;
+    if (!adapter) {
+      // No userContext / unresolvable feature path ⇒ every disk anchor source
+      // is silently dead. Surface it — a wrong-context caller (e.g. a mangled
+      // composite-userEmail parse, prime-nesting-grate RCA) looks identical to
+      // "no anchor on disk" without this line. Include jobId so job-filtered
+      // log exports still show it.
+      logger.warn(
+        `resolveCancelledCardTurnId: no adapter for jobId=${jobId} (${projectId}/${featureName}, userContext=${userContext ? `${userContext.userId}/${userContext.organizationId}` : 'undefined'}) — disk anchor sources skipped`,
+        { component: COMPONENT, jobId },
+      );
+      return null;
+    }
     try {
       const { userTurns } = await adapter.loadSinceBoundary();
       if (userTurns.length > 0) return userTurns[userTurns.length - 1].turnId;
     } catch (err) {
       logger.warn(
-        `resolveCancelledCardTurnId: loadSinceBoundary failed for ${projectId}/${featureName}`,
-        { component: COMPONENT },
+        `resolveCancelledCardTurnId: loadSinceBoundary failed for jobId=${jobId} (${projectId}/${featureName})`,
+        { component: COMPONENT, jobId },
         err,
       );
     }
@@ -1081,8 +1092,8 @@ export class ChatService {
       }
     } catch (err) {
       logger.warn(
-        `resolveCancelledCardTurnId: chat.jsonl scan failed for ${projectId}/${featureName}`,
-        { component: COMPONENT },
+        `resolveCancelledCardTurnId: chat.jsonl scan failed for jobId=${jobId} (${projectId}/${featureName})`,
+        { component: COMPONENT, jobId },
         err,
       );
     }

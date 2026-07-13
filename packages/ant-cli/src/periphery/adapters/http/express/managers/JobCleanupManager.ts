@@ -65,6 +65,17 @@ export class JobCleanupManager {
     explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
     userContext?: UserContext,
     finalStatus?: SessionRunStatus,
+    opts?: {
+      /**
+       * Repair-mode (StaleJobRecovery Phase 1b): the session's already-recorded
+       * interruption for THIS job is the truth — the caller's interruption is
+       * only a fallback for when nothing was recorded. Event-mode callers
+       * (SIGTERM, stalled, worker RESULT) omit this so their fresh reason wins.
+       * Prevents a re-carded pause from masking the real reason (e.g.
+       * tasks_failed re-labeled as server_crash — prime-nesting-grate RCA).
+       */
+      preferSessionInterruption?: boolean;
+    },
   ): Promise<void> {
     logger.info(`cleanupJobState`, { 
       component: 'JobCleanupManager', 
@@ -374,11 +385,23 @@ export class JobCleanupManager {
           }
           
           // Save interruption details if provided
-          if (interruptionReason) {
+          if (
+            opts?.preferSessionInterruption
+            && sessionData.state.interruption
+            && sessionData.state.jobId === jobId
+          ) {
+            // Repair mode: the recorded interruption for this job is the truth;
+            // keep it for both the session write and the cancelled card below.
+            interruptionReason = sessionData.state.interruption;
+            logger.info(`Preserving recorded session interruption: ${interruptionReason?.reason}`, {
+              component: 'JobCleanupManager',
+              jobId
+            });
+          } else if (interruptionReason) {
             sessionData.state.interruption = interruptionReason;
-            logger.debug(`Saved interruption reason: ${interruptionReason.reason}`, { 
-              component: 'JobCleanupManager', 
-              jobId 
+            logger.debug(`Saved interruption reason: ${interruptionReason.reason}`, {
+              component: 'JobCleanupManager',
+              jobId
             });
           } else if (sessionData.state.interruption) {
             // ✅ Fallback: Session already has interruption (saved by saveCheckpoint in runner.ts)
