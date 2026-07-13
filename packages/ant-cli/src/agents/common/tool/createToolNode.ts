@@ -28,6 +28,7 @@ import type {
 import type { ToolResultManager, FigmaContext } from '../../../core/utils/toolResultManager';
 import { ToolOrchestrator } from './orchestrator';
 import type { WorkflowUpdate } from './orchestrator';
+import { elideDuplicateReads, buildManifestBlockIfChanged } from './duplicateReadElision';
 
 export interface ToolNodeConfig<TState> {
   /** Read pending tool calls from state. */
@@ -160,15 +161,31 @@ export function createToolNode<TState>(
       hookUpdates = config.hooks.afterBatch(state, batchResult.events);
     }
 
-    // Build user message content: tool_result blocks + optional extras
+    const baseHistory = config.getHistory(state);
+
+    // Duplicate-read elision (history-side only): a re-read whose content is
+    // identical to the preserved prior read of the same (path, range) gets a
+    // short stub instead of re-accumulating the full body. Events are left
+    // untouched so debug logs keep the real execution record.
+    const { blocks: resultBlocks, elided } = elideDuplicateReads(
+      calls, baseHistory, batchResult.toolResultBlocks,
+    );
+    for (const e of elided) {
+      console.log(`♻️  [Tool] Duplicate read elided: ${e.path}${e.label} (${e.chars} chars → stub)`);
+    }
+
+    // Build user message content: tool_result blocks + already-read manifest
+    // (only when it changed this batch) + optional extras (kept last — task
+    // reminders rely on recency).
+    const manifestBlock = buildManifestBlockIfChanged(baseHistory, resultBlocks as any[]);
     const extraContent = config.hooks?.buildExtraUserContent?.(state) ?? [];
     const userContent = [
-      ...batchResult.toolResultBlocks,
+      ...resultBlocks,
+      ...(manifestBlock ? [manifestBlock as any] : []),
       ...extraContent,
     ];
 
     // Append user(tool_result) to history
-    const baseHistory = config.getHistory(state);
     const updatedHistory = [
       ...baseHistory,
       { role: 'user' as const, content: userContent },

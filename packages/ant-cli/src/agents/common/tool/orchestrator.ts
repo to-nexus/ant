@@ -61,6 +61,13 @@ export interface OrchestratorBatchOptions {
 
 // Display names come from TOOL_DISPLAY_NAMES in toolCatalog.ts (single source of truth)
 
+/**
+ * Prefix prepended to a cache-hit tool result. Exported so duplicate-read
+ * elision can normalize it away when comparing a cached re-read against the
+ * preserved prior read (the bodies are identical; only this prefix differs).
+ */
+export const CACHED_RESULT_PREFIX = '[Cached result — same as previous call]\n\n';
+
 export class ToolOrchestrator {
   private config: OrchestratorConfig;
 
@@ -128,7 +135,7 @@ export class ToolOrchestrator {
             toolCallId: id,
             toolName: name,
             args,
-            result: { content: `[Cached result — same as previous call]\n\n${cached}` },
+            result: { content: `${CACHED_RESULT_PREFIX}${cached}` },
             cached: true,
           });
           continue;
